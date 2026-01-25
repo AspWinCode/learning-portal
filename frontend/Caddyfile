@@ -1,0 +1,20 @@
+{
+	# Email is optional but recommended for Let's Encrypt rate-limit recovery:
+	# email you@example.com
+}
+
+http://{$DOMAIN} https://{$DOMAIN} {
+	encode gzip zstd
+
+	# Frontend (static SPA)
+	root * /srv
+	try_files {path} /index.html
+	file_server
+
+	# Backend API
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+}
+
+

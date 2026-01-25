@@ -1,0 +1,280 @@
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, ForeignKey, Text, Float, Enum as SQLEnum, JSON
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from datetime import datetime
+import enum
+from app.database import Base
+
+
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    TRAINER = "trainer"
+    PARENT = "parent"
+    GUEST = "guest"
+
+
+class StudentStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class GroupStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class ProgramStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class TopicStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class CharacteristicStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=False)
+    role = Column(SQLEnum(UserRole), nullable=False)
+    is_active = Column(Boolean, default=True)
+    telegram_chat_id = Column(BigInteger, nullable=True, index=True)
+    telegram_link_code = Column(String, nullable=True, index=True)
+    telegram_link_code_expires_at = Column(DateTime(timezone=True), nullable=True)
+    password_reset_code_hash = Column(String, nullable=True, index=True)
+    password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    students = relationship("Student", back_populates="parent", foreign_keys="Student.parent_id")
+    trainer_groups = relationship("Group", back_populates="trainer", foreign_keys="Group.trainer_id")
+    program_trainers = relationship("ProgramTrainer", back_populates="trainer")
+    grades = relationship("Grade", back_populates="trainer")
+    characteristics = relationship("Characteristic", back_populates="trainer")
+
+
+class Student(Base):
+    __tablename__ = "students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String, nullable=False)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(SQLEnum(StudentStatus), default=StudentStatus.ACTIVE)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    parent = relationship("User", back_populates="students", foreign_keys=[parent_id])
+    group_students = relationship("GroupStudent", back_populates="student")
+    student_programs = relationship("StudentProgram", back_populates="student")
+    # Удобная связь для сериализации назначенных программ ученика
+    programs = relationship("Program", secondary="student_programs", viewonly=True)
+    grades = relationship("Grade", back_populates="student")
+    characteristics = relationship("Characteristic", back_populates="student")
+
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(SQLEnum(GroupStatus), default=GroupStatus.ACTIVE)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    trainer = relationship("User", back_populates="trainer_groups", foreign_keys=[trainer_id])
+    group_students = relationship("GroupStudent", back_populates="group")
+    # Удобная связь "многие-ко-многим" для сериализации в GroupResponse.students
+    students = relationship("Student", secondary="group_students", viewonly=True)
+    group_programs = relationship("GroupProgram", back_populates="group")
+    # Удобная связь для сериализации назначенных программ группы
+    programs = relationship("Program", secondary="group_programs", viewonly=True)
+
+
+class GroupStudent(Base):
+    __tablename__ = "group_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    group = relationship("Group", back_populates="group_students")
+    student = relationship("Student", back_populates="group_students")
+
+
+class Program(Base):
+    __tablename__ = "programs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    version = Column(Integer, default=1)
+    parent_program_id = Column(Integer, ForeignKey("programs.id"), nullable=True)
+    status = Column(SQLEnum(ProgramStatus), default=ProgramStatus.ACTIVE)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    modules = relationship("Module", back_populates="program", cascade="all, delete-orphan")
+    group_programs = relationship("GroupProgram", back_populates="program")
+    student_programs = relationship("StudentProgram", back_populates="program")
+    program_trainers = relationship("ProgramTrainer", back_populates="program")
+
+
+class Module(Base):
+    __tablename__ = "modules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    program_id = Column(Integer, ForeignKey("programs.id"), nullable=False)
+    name = Column(String, nullable=False)
+    order = Column(Integer, default=0)
+    status = Column(SQLEnum(ProgramStatus), default=ProgramStatus.ACTIVE)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    program = relationship("Program", back_populates="modules")
+    topics = relationship("Topic", back_populates="module", cascade="all, delete-orphan")
+
+
+class Topic(Base):
+    __tablename__ = "topics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_id = Column(Integer, ForeignKey("modules.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    final_result = Column(Text, nullable=True)  # Итог темы для ученика
+    order = Column(Integer, default=0)
+    status = Column(SQLEnum(TopicStatus), default=TopicStatus.ACTIVE)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    module = relationship("Module", back_populates="topics")
+    grades = relationship("Grade", back_populates="topic")
+
+
+class ProgramTrainer(Base):
+    __tablename__ = "program_trainers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    program_id = Column(Integer, ForeignKey("programs.id"), nullable=False)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    program = relationship("Program", back_populates="program_trainers")
+    trainer = relationship("User", back_populates="program_trainers")
+
+
+class GroupProgram(Base):
+    __tablename__ = "group_programs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    program_id = Column(Integer, ForeignKey("programs.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    group = relationship("Group", back_populates="group_programs")
+    program = relationship("Program", back_populates="group_programs")
+
+
+class StudentProgram(Base):
+    __tablename__ = "student_programs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    program_id = Column(Integer, ForeignKey("programs.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    student = relationship("Student", back_populates="student_programs")
+    program = relationship("Program", back_populates="student_programs")
+
+
+class Grade(Base):
+    __tablename__ = "grades"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    topic_id = Column(Integer, ForeignKey("topics.id"), nullable=False)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    grade = Column(Float, nullable=False)
+    comment = Column(Text, nullable=True)
+    date = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    student = relationship("Student", back_populates="grades")
+    topic = relationship("Topic", back_populates="grades")
+    trainer = relationship("User", back_populates="grades")
+
+
+class Characteristic(Base):
+    __tablename__ = "characteristics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    month = Column(Integer, nullable=False)  # 1-12
+    year = Column(Integer, nullable=False)
+    data = Column(JSON, nullable=False)  # Динамические поля формы
+    status = Column(SQLEnum(CharacteristicStatus), default=CharacteristicStatus.DRAFT)
+    admin_comment = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    published_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    student = relationship("Student", back_populates="characteristics")
+    trainer = relationship("User", back_populates="characteristics")
+
+
+class CharacteristicTemplate(Base):
+    __tablename__ = "characteristic_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    fields = Column(JSON, nullable=False)  # Схема полей формы
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ActionLog(Base):
+    __tablename__ = "action_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action_type = Column(String, nullable=False)
+    entity_type = Column(String, nullable=False)
+    entity_id = Column(Integer, nullable=True)
+    details = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user = relationship("User")
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True, nullable=False)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+

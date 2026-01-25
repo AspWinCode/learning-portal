@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . /app
 
-# Default command: run migrations then start API
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Default command: run migrations then start API.
+# `--proxy-headers` is required behind reverse proxies (Caddy/Nginx) to respect X-Forwarded-Proto/For.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
 
 

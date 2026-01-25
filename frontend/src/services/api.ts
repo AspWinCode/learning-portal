@@ -79,7 +79,8 @@ export const authApi = {
 
 export const usersApi = {
   getAll: async (role?: string): Promise<User[]> => {
-    const response = await api.get('/api/users', { params: role ? { role } : {} });
+    // Backend collection routes are mounted with trailing slash and otherwise respond with 307.
+    const response = await api.get('/api/users/', { params: role ? { role } : {} });
     return response.data;
   },
   getById: async (id: number): Promise<User> => {
@@ -87,14 +88,14 @@ export const usersApi = {
     return response.data;
   },
   create: async (data: { full_name: string; email: string; password: string; role: string }): Promise<User> => {
-    const response = await api.post('/api/users', data);
+    const response = await api.post('/api/users/', data);
     return response.data;
   },
 };
 
 export const studentsApi = {
   getAll: async (params?: any): Promise<Student[]> => {
-    const response = await api.get('/api/students', { params });
+    const response = await api.get('/api/students/', { params });
     return response.data;
   },
   getById: async (id: number): Promise<Student> => {
@@ -106,7 +107,7 @@ export const studentsApi = {
     return response.data;
   },
   create: async (data: Partial<Student>): Promise<Student> => {
-    const response = await api.post('/api/students', data);
+    const response = await api.post('/api/students/', data);
     return response.data;
   },
   update: async (id: number, data: Partial<Student>): Promise<Student> => {
@@ -120,7 +121,7 @@ export const studentsApi = {
 
 export const groupsApi = {
   getAll: async (): Promise<Group[]> => {
-    const response = await api.get('/api/groups');
+    const response = await api.get('/api/groups/');
     return response.data;
   },
   getById: async (id: number): Promise<Group> => {
@@ -128,7 +129,7 @@ export const groupsApi = {
     return response.data;
   },
   create: async (data: { name: string; trainer_id: number }): Promise<Group> => {
-    const response = await api.post('/api/groups', data);
+    const response = await api.post('/api/groups/', data);
     return response.data;
   },
   update: async (id: number, data: Partial<Group>): Promise<Group> => {
@@ -145,7 +146,7 @@ export const groupsApi = {
 
 export const programsApi = {
   getAll: async (): Promise<Program[]> => {
-    const response = await api.get('/api/programs');
+    const response = await api.get('/api/programs/');
     return response.data;
   },
   create: async (data: {
@@ -161,7 +162,7 @@ export const programsApi = {
       }>;
     }>;
   }): Promise<Program> => {
-    const response = await api.post('/api/programs', data);
+    const response = await api.post('/api/programs/', data);
     return response.data;
   },
   getById: async (id: number): Promise<Program> => {
@@ -194,11 +195,11 @@ export const programsApi = {
 
 export const gradesApi = {
   getAll: async (params?: any): Promise<Grade[]> => {
-    const response = await api.get('/api/grades', { params });
+    const response = await api.get('/api/grades/', { params });
     return response.data;
   },
   create: async (data: Partial<Grade>): Promise<Grade> => {
-    const response = await api.post('/api/grades', data);
+    const response = await api.post('/api/grades/', data);
     return response.data;
   },
   update: async (id: number, data: Partial<Grade>): Promise<Grade> => {
@@ -215,7 +216,7 @@ export const gradesApi = {
 
 export const characteristicsApi = {
   getAll: async (params?: any): Promise<Characteristic[]> => {
-    const response = await api.get('/api/characteristics', { params });
+    const response = await api.get('/api/characteristics/', { params });
     return response.data;
   },
   getTemplates: async (): Promise<CharacteristicTemplate[]> => {
@@ -231,7 +232,7 @@ export const characteristicsApi = {
     return response.data;
   },
   create: async (data: Partial<Characteristic>): Promise<Characteristic> => {
-    const response = await api.post('/api/characteristics', data);
+    const response = await api.post('/api/characteristics/', data);
     return response.data;
   },
   update: async (id: number, data: { data: Record<string, any> }): Promise<Characteristic> => {

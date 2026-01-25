@@ -7,7 +7,9 @@
 FROM node:18-alpine AS build
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+# package-lock.json in this repo may be out of sync; npm ci is strict and fails.
+# For deployment we prefer a tolerant install.
+RUN npm install --legacy-peer-deps --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 

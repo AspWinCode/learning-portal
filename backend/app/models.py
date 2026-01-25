@@ -39,6 +39,13 @@ class CharacteristicStatus(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
 
+def _enum_values(enum_cls):
+    """
+    Persist Python Enum values (e.g. "admin") instead of names (e.g. "ADMIN").
+    This must match Alembic migrations that created PostgreSQL enum types with lowercase values.
+    """
+    return [e.value for e in enum_cls]
+
 
 class User(Base):
     __tablename__ = "users"
@@ -47,7 +54,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
-    role = Column(SQLEnum(UserRole), nullable=False)
+    role = Column(SQLEnum(UserRole, name="userrole", values_callable=_enum_values), nullable=False)
     is_active = Column(Boolean, default=True)
     telegram_chat_id = Column(BigInteger, nullable=True, index=True)
     telegram_link_code = Column(String, nullable=True, index=True)
@@ -71,7 +78,7 @@ class Student(Base):
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
     parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    status = Column(SQLEnum(StudentStatus), default=StudentStatus.ACTIVE)
+    status = Column(SQLEnum(StudentStatus, name="studentstatus", values_callable=_enum_values), default=StudentStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -91,7 +98,7 @@ class Group(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    status = Column(SQLEnum(GroupStatus), default=GroupStatus.ACTIVE)
+    status = Column(SQLEnum(GroupStatus, name="groupstatus", values_callable=_enum_values), default=GroupStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -125,7 +132,7 @@ class Program(Base):
     name = Column(String, nullable=False)
     version = Column(Integer, default=1)
     parent_program_id = Column(Integer, ForeignKey("programs.id"), nullable=True)
-    status = Column(SQLEnum(ProgramStatus), default=ProgramStatus.ACTIVE)
+    status = Column(SQLEnum(ProgramStatus, name="programstatus", values_callable=_enum_values), default=ProgramStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -143,7 +150,7 @@ class Module(Base):
     program_id = Column(Integer, ForeignKey("programs.id"), nullable=False)
     name = Column(String, nullable=False)
     order = Column(Integer, default=0)
-    status = Column(SQLEnum(ProgramStatus), default=ProgramStatus.ACTIVE)
+    status = Column(SQLEnum(ProgramStatus, name="programstatus", values_callable=_enum_values), default=ProgramStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
@@ -160,7 +167,7 @@ class Topic(Base):
     description = Column(Text, nullable=True)
     final_result = Column(Text, nullable=True)  # Итог темы для ученика
     order = Column(Integer, default=0)
-    status = Column(SQLEnum(TopicStatus), default=TopicStatus.ACTIVE)
+    status = Column(SQLEnum(TopicStatus, name="topicstatus", values_callable=_enum_values), default=TopicStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
@@ -234,7 +241,7 @@ class Characteristic(Base):
     month = Column(Integer, nullable=False)  # 1-12
     year = Column(Integer, nullable=False)
     data = Column(JSON, nullable=False)  # Динамические поля формы
-    status = Column(SQLEnum(CharacteristicStatus), default=CharacteristicStatus.DRAFT)
+    status = Column(SQLEnum(CharacteristicStatus, name="characteristicstatus", values_callable=_enum_values), default=CharacteristicStatus.DRAFT)
     admin_comment = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

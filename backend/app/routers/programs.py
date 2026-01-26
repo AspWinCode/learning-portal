@@ -8,7 +8,7 @@ from app.schemas import ProgramCreate, ProgramResponse, ProgramUpdate
 from app.models import (
     Program, Module, Topic, User, ProgramStatus, TopicStatus,
     ProgramTrainer, GroupProgram, StudentProgram, Grade, UserRole,
-    Student, StudentStatus, GroupStudent
+    Student, StudentStatus, GroupStudent, Group
 )
 from app.routers.action_log import log_action
 
@@ -240,6 +240,33 @@ async def update_program(
                     order=topic_data.get("order", 0),
                     status=TopicStatus.ACTIVE
                 ))
+
+        # Автоматически архивируем базовую (старую) версию
+        db_program.status = ProgramStatus.ARCHIVED
+
+        # Автоматически переключаем назначения групп/учеников на новую версию
+        # (чтобы везде сразу использовалась обновлённая программа)
+        db.query(GroupProgram).filter(GroupProgram.program_id == db_program.id).update(
+            {"program_id": new_program.id}, synchronize_session=False
+        )
+        db.query(StudentProgram).filter(StudentProgram.program_id == db_program.id).update(
+            {"program_id": new_program.id}, synchronize_session=False
+        )
+
+        # Переносим видимость для тренеров: копируем привязки ProgramTrainer со старой версии на новую
+        old_trainer_ids = db.query(ProgramTrainer.trainer_id).filter(ProgramTrainer.program_id == db_program.id).distinct().all()
+        for (tid,) in old_trainer_ids:
+            if tid:
+                ensure_program_trainer(db, new_program.id, tid)
+
+        # Также гарантируем видимость новой версии для тренеров групп, которые были назначены на старую версию
+        # (если ProgramTrainer раньше не использовался)
+        group_trainer_ids = db.query(Group.trainer_id).join(GroupProgram, GroupProgram.group_id == Group.id).filter(
+            GroupProgram.program_id == new_program.id
+        ).distinct().all()
+        for (tid,) in group_trainer_ids:
+            if tid:
+                ensure_program_trainer(db, new_program.id, tid)
         
         db.commit()
         db.refresh(new_program)

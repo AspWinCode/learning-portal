@@ -273,6 +273,10 @@ export const reportsApi = {
     const response = await api.get('/api/reports/action-logs', { params });
     return response.data;
   },
+  getCharacteristicsCompliance: async (month: number, year: number): Promise<any> => {
+    const response = await api.get('/api/reports/characteristics-compliance', { params: { month, year } });
+    return response.data;
+  },
   exportReport: async (params: any): Promise<Blob> => {
     const response = await api.post('/api/reports/export', params, {
       responseType: 'blob',

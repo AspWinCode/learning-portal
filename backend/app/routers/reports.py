@@ -1,18 +1,138 @@
-from typing import List
+from typing import List, Dict, Tuple, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app import auth
-from app.models import User, Grade, Student, Characteristic, ActionLog, UserRole
+from app.models import (
+    User, Grade, Student, Characteristic, ActionLog, UserRole,
+    GroupStudent, Group, StudentStatus, GroupStatus, CharacteristicStatus
+)
 from app.schemas import ReportRequest
 import io
 import csv
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
+from datetime import datetime
 
 router = APIRouter()
+
+
+@router.get("/characteristics-compliance")
+async def characteristics_compliance_report(
+    month: int,
+    year: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin"]))
+):
+    """
+    Контроль сдачи характеристик по месяцам для админа.
+
+    Логика:
+    - "успешно" = характеристика имеет status=approved и published_at попадает в окно 1..5 числа выбранного месяца (включительно).
+    - иначе = красный (нет / поздно / не опубликовано).
+
+    Отчёт строится по связке "тренер группы -> ученик в группе" для активных групп/учеников.
+    """
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="month must be 1..12")
+    if year < 2000 or year > 2100:
+        raise HTTPException(status_code=400, detail="year must be reasonable")
+
+    window_start = datetime(year, month, 1, 0, 0, 0)
+    window_end = datetime(year, month, 5, 23, 59, 59)
+
+    # Все пары (trainer_id, student_id), за которых тренер отвечает в этом месяце (по активным группам)
+    pairs: List[Tuple[int, int]] = [
+        (tid, sid) for (tid, sid) in db.query(Group.trainer_id, GroupStudent.student_id)
+        .join(GroupStudent, GroupStudent.group_id == Group.id)
+        .join(Student, Student.id == GroupStudent.student_id)
+        .filter(
+            Group.status == GroupStatus.ACTIVE,
+            Student.status == StudentStatus.ACTIVE,
+        )
+        .distinct()
+        .all()
+    ]
+
+    if not pairs:
+        return {
+            "month": month,
+            "year": year,
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "rows": [],
+        }
+
+    trainer_ids = sorted({t for (t, _) in pairs})
+    student_ids = sorted({s for (_, s) in pairs})
+
+    trainers = {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()}
+    students = {s.id: s for s in db.query(Student).filter(Student.id.in_(student_ids)).all()}
+
+    # Характеристики за период по этим парам (берём все и выбираем "лучшую" по приоритету статуса)
+    chars = db.query(Characteristic).filter(
+        Characteristic.month == month,
+        Characteristic.year == year,
+        Characteristic.trainer_id.in_(trainer_ids),
+        Characteristic.student_id.in_(student_ids),
+    ).all()
+
+    # status priority: approved > pending > draft > rejected (fallback)
+    priority = {
+        CharacteristicStatus.APPROVED: 4,
+        CharacteristicStatus.PENDING: 3,
+        CharacteristicStatus.DRAFT: 2,
+        CharacteristicStatus.REJECTED: 1,
+    }
+
+    best: Dict[Tuple[int, int], Characteristic] = {}
+    for c in chars:
+        k = (c.trainer_id, c.student_id)
+        prev = best.get(k)
+        if not prev:
+            best[k] = c
+            continue
+        if priority.get(c.status, 0) > priority.get(prev.status, 0):
+            best[k] = c
+        elif priority.get(c.status, 0) == priority.get(prev.status, 0):
+            # tie-breaker: later updated/created
+            prev_ts = prev.updated_at or prev.created_at
+            cur_ts = c.updated_at or c.created_at
+            if cur_ts and prev_ts and cur_ts > prev_ts:
+                best[k] = c
+
+    rows: List[Dict[str, Any]] = []
+    for trainer_id, student_id in sorted(pairs, key=lambda x: (x[0], x[1])):
+        trainer = trainers.get(trainer_id)
+        student = students.get(student_id)
+        c = best.get((trainer_id, student_id))
+
+        published_at = getattr(c, "published_at", None) if c else None
+        is_approved = bool(c and c.status == CharacteristicStatus.APPROVED)
+        is_on_time = bool(is_approved and published_at and window_start <= published_at <= window_end)
+
+        rows.append({
+            "trainer": {"id": trainer_id, "full_name": trainer.full_name if trainer else f"#{trainer_id}"},
+            "student": {"id": student_id, "full_name": student.full_name if student else f"#{student_id}"},
+            "characteristic": None if not c else {
+                "id": c.id,
+                "status": c.status.value if hasattr(c.status, "value") else str(c.status),
+                "published_at": published_at.isoformat() if published_at else None,
+            },
+            "ok": is_on_time,
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+        })
+
+    return {
+        "month": month,
+        "year": year,
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "rows": rows,
+    }
 
 
 @router.get("/students")

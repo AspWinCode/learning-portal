@@ -19,12 +19,13 @@ import {
   MenuItem,
   TextField,
   Alert,
+  Chip,
 } from '@mui/material';
 import { reportsApi, studentsApi, usersApi } from '../services/api';
 import { Student, User } from '../types';
 
 const ReportsPage: React.FC = () => {
-  const [tab, setTab] = useState<'students' | 'trainers' | 'logs' | 'export'>('trainers');
+  const [tab, setTab] = useState<'students' | 'trainers' | 'logs' | 'export' | 'characteristics'>('trainers');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
 
@@ -45,6 +46,12 @@ const ReportsPage: React.FC = () => {
   const [exportEndDate, setExportEndDate] = useState<string>('');
   const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
 
+  // Characteristics compliance (admin)
+  const now = new Date();
+  const [ccMonth, setCcMonth] = useState<number>(now.getMonth() + 1);
+  const [ccYear, setCcYear] = useState<number>(now.getFullYear());
+  const [ccData, setCcData] = useState<any | null>(null);
+
   useEffect(() => {
     // default: load trainers report
     loadTrainersReport();
@@ -56,6 +63,9 @@ const ReportsPage: React.FC = () => {
     if (tab === 'logs' && !actionLogs) loadActionLogs(true);
     if (tab === 'export' && allStudents.length === 0) {
       loadExportLookups();
+    }
+    if (tab === 'characteristics' && !ccData) {
+      loadCharacteristicsCompliance(true);
     }
   }, [tab]);
 
@@ -160,6 +170,17 @@ const ReportsPage: React.FC = () => {
     }
   };
 
+  const loadCharacteristicsCompliance = async (reset = false) => {
+    try {
+      if (reset) setCcData(null);
+      const data = await reportsApi.getCharacteristicsCompliance(ccMonth, ccYear);
+      setCcData(data);
+    } catch (err: any) {
+      console.error('Ошибка загрузки контроля характеристик', err);
+      setError(err.response?.data?.detail || 'Ошибка загрузки контроля характеристик');
+    }
+  };
+
   return (
     <Layout>
       <Typography variant="h4" gutterBottom>
@@ -190,6 +211,7 @@ const ReportsPage: React.FC = () => {
         >
           <Tab value="students" label="Ученики" />
           <Tab value="trainers" label="Тренеры" />
+          <Tab value="characteristics" label="Контроль характеристик" />
           <Tab value="logs" label="Журнал действий" />
           <Tab value="export" label="Экспорт" />
         </Tabs>
@@ -272,6 +294,98 @@ const ReportsPage: React.FC = () => {
                     <TableCell>{item.average_grade}</TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
+
+      {tab === 'characteristics' && (
+        <Paper sx={{ p: 2, mt: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
+            <Box>
+              <Typography variant="h6">Контроль сдачи характеристик</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Зелёный: характеристика опубликована (approved) с 1 по 5 число выбранного месяца. Красный: нет или позже.
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel>Месяц</InputLabel>
+                <Select value={ccMonth} label="Месяц" onChange={(e) => setCcMonth(Number(e.target.value))}>
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <MenuItem key={i + 1} value={i + 1}>
+                      {i + 1}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                size="small"
+                label="Год"
+                type="number"
+                value={ccYear}
+                onChange={(e) => setCcYear(Number(e.target.value))}
+                sx={{ width: 120 }}
+              />
+              <Button variant="outlined" onClick={() => loadCharacteristicsCompliance(true)}>
+                Обновить
+              </Button>
+            </Box>
+          </Box>
+
+          <Typography variant="caption" color="text.secondary">
+            Окно сдачи: {ccData?.window_start ? new Date(ccData.window_start).toLocaleDateString('ru-RU') : '—'} —{' '}
+            {ccData?.window_end ? new Date(ccData.window_end).toLocaleDateString('ru-RU') : '—'}
+          </Typography>
+
+          <TableContainer sx={{ mt: 1 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Тренер</TableCell>
+                  <TableCell>Ученик</TableCell>
+                  <TableCell>Статус</TableCell>
+                  <TableCell>Опубликовано</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(ccData?.rows || []).map((r: any, idx: number) => {
+                  const ok = !!r.ok;
+                  const bg = ok ? 'rgba(46, 125, 50, 0.10)' : 'rgba(211, 47, 47, 0.10)';
+                  const status = r.characteristic?.status || 'missing';
+                  const publishedAt = r.characteristic?.published_at
+                    ? new Date(r.characteristic.published_at).toLocaleString('ru-RU')
+                    : '—';
+                  return (
+                    <TableRow key={`${r.trainer?.id}-${r.student?.id}-${idx}`} sx={{ backgroundColor: bg }}>
+                      <TableCell>{r.trainer?.full_name || '—'}</TableCell>
+                      <TableCell>{r.student?.full_name || '—'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={ok ? 'В срок' : 'Не в срок'}
+                          color={ok ? 'success' : 'error'}
+                          sx={{ mr: 1 }}
+                        />
+                        <Typography component="span" variant="caption" color="text.secondary">
+                          ({status})
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{publishedAt}</TableCell>
+                    </TableRow>
+                  );
+                })}
+                {ccData && (ccData.rows || []).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        Нет данных (нет активных групп/учеников).
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </TableContainer>

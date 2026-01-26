@@ -14,6 +14,30 @@ from app.routers.action_log import log_action
 
 router = APIRouter()
 
+def _get_program_family_ids(db: Session, any_version_id: int) -> List[int]:
+    """
+    Return all program IDs in the same version family (root + all descendants).
+    Family is defined by parent_program_id chain.
+    """
+    # Find root
+    root_id = any_version_id
+    while True:
+        parent_id = db.query(Program.parent_program_id).filter(Program.id == root_id).scalar()
+        if parent_id is None:
+            break
+        root_id = parent_id
+
+    seen = {root_id}
+    frontier = [root_id]
+    while frontier:
+        child_ids = [cid for (cid,) in db.query(Program.id).filter(Program.parent_program_id.in_(frontier)).all()]
+        frontier = []
+        for cid in child_ids:
+            if cid not in seen:
+                seen.add(cid)
+                frontier.append(cid)
+    return list(seen)
+
 
 def check_topics_have_grades(db: Session, topic_ids: List[int]) -> bool:
     """Проверка наличия оценок по темам"""
@@ -241,32 +265,37 @@ async def update_program(
                     status=TopicStatus.ACTIVE
                 ))
 
-        # Автоматически архивируем базовую (старую) версию
-        db_program.status = ProgramStatus.ARCHIVED
+        # Автоматически архивируем ВСЕ предыдущие версии в семействе (активной остаётся только новая).
+        family_ids = _get_program_family_ids(db, db_program.id)
+        if family_ids:
+            db.query(Program).filter(
+                Program.id.in_(family_ids),
+                Program.id != new_program.id
+            ).update({"status": ProgramStatus.ARCHIVED}, synchronize_session=False)
 
-        # Автоматически переключаем назначения групп/учеников на новую версию
-        # (чтобы везде сразу использовалась обновлённая программа)
-        db.query(GroupProgram).filter(GroupProgram.program_id == db_program.id).update(
-            {"program_id": new_program.id}, synchronize_session=False
-        )
-        db.query(StudentProgram).filter(StudentProgram.program_id == db_program.id).update(
-            {"program_id": new_program.id}, synchronize_session=False
-        )
+            # Автоматически переключаем назначения групп/учеников на новую версию
+            db.query(GroupProgram).filter(GroupProgram.program_id.in_(family_ids)).update(
+                {"program_id": new_program.id}, synchronize_session=False
+            )
+            db.query(StudentProgram).filter(StudentProgram.program_id.in_(family_ids)).update(
+                {"program_id": new_program.id}, synchronize_session=False
+            )
 
-        # Переносим видимость для тренеров: копируем привязки ProgramTrainer со старой версии на новую
-        old_trainer_ids = db.query(ProgramTrainer.trainer_id).filter(ProgramTrainer.program_id == db_program.id).distinct().all()
-        for (tid,) in old_trainer_ids:
-            if tid:
-                ensure_program_trainer(db, new_program.id, tid)
+            # Переносим видимость для тренеров: копируем привязки ProgramTrainer со всех старых версий на новую
+            old_trainer_ids = db.query(ProgramTrainer.trainer_id).filter(
+                ProgramTrainer.program_id.in_(family_ids)
+            ).distinct().all()
+            for (tid,) in old_trainer_ids:
+                if tid:
+                    ensure_program_trainer(db, new_program.id, tid)
 
-        # Также гарантируем видимость новой версии для тренеров групп, которые были назначены на старую версию
-        # (если ProgramTrainer раньше не использовался)
-        group_trainer_ids = db.query(Group.trainer_id).join(GroupProgram, GroupProgram.group_id == Group.id).filter(
-            GroupProgram.program_id == new_program.id
-        ).distinct().all()
-        for (tid,) in group_trainer_ids:
-            if tid:
-                ensure_program_trainer(db, new_program.id, tid)
+            # Гарантируем видимость новой версии для тренеров групп, которым назначена новая версия
+            group_trainer_ids = db.query(Group.trainer_id).join(GroupProgram, GroupProgram.group_id == Group.id).filter(
+                GroupProgram.program_id == new_program.id
+            ).distinct().all()
+            for (tid,) in group_trainer_ids:
+                if tid:
+                    ensure_program_trainer(db, new_program.id, tid)
         
         db.commit()
         db.refresh(new_program)

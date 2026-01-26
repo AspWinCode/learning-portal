@@ -216,60 +216,30 @@ async def update_program(
         )
         db.add(new_program)
         db.flush()
-        
-        # Копируем модули и темы
-        for module in db_program.modules:
+
+        # Для новой версии создаём модули/темы прямо из payload.
+        # Раньше мы копировали старые модули, а потом удаляли и пересоздавали — из-за этого
+        # в сессии оставались "висячие" объекты и возникали FK ошибки.
+        modules_payload = update_data.get("modules") or []
+        for module_data in modules_payload:
             new_module = Module(
                 program_id=new_program.id,
-                name=module.name,
-                order=module.order,
-                status=module.status
+                name=module_data["name"],
+                order=module_data.get("order", 0),
+                status=ProgramStatus.ACTIVE
             )
             db.add(new_module)
             db.flush()
-            
-            for topic in module.topics:
-                # IMPORTANT: bind via relationship so ORM knows dependencies and deletes topics before modules
-                new_topic = Topic(
+
+            for topic_data in module_data.get("topics", []):
+                db.add(Topic(
                     module=new_module,
-                    name=topic.name,
-                    description=topic.description,
-                    final_result=topic.final_result,
-                    order=topic.order,
-                    status=topic.status
-                )
-                db.add(new_topic)
-        
-        # Обновляем новую версию с изменениями
-        if "modules" in update_data:
-            # Удаляем старые модули новой версии и их темы (сначала topics, потом modules),
-            # иначе PostgreSQL FK topics.module_id_fkey не позволит удалить модуль.
-            module_ids = [mid for (mid,) in db.query(Module.id).filter(Module.program_id == new_program.id).all()]
-            if module_ids:
-                db.query(Topic).filter(Topic.module_id.in_(module_ids)).delete(synchronize_session=False)
-                db.query(Module).filter(Module.id.in_(module_ids)).delete(synchronize_session=False)
-                db.flush()
-            
-            for module_data in update_data["modules"]:
-                new_module = Module(
-                    program_id=new_program.id,
-                    name=module_data["name"],
-                    order=module_data.get("order", 0),
-                    status=ProgramStatus.ACTIVE
-                )
-                db.add(new_module)
-                db.flush()
-                
-                for topic_data in module_data.get("topics", []):
-                    new_topic = Topic(
-                        module=new_module,
-                        name=topic_data["name"],
-                        description=topic_data.get("description"),
-                        final_result=topic_data.get("final_result"),
-                        order=topic_data.get("order", 0),
-                        status=TopicStatus.ACTIVE
-                    )
-                    db.add(new_topic)
+                    name=topic_data["name"],
+                    description=topic_data.get("description"),
+                    final_result=topic_data.get("final_result"),
+                    order=topic_data.get("order", 0),
+                    status=TopicStatus.ACTIVE
+                ))
         
         db.commit()
         db.refresh(new_program)

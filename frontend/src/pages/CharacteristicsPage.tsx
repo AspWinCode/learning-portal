@@ -53,7 +53,14 @@ const CharacteristicsPage: React.FC = () => {
 
   const [programOptions, setProgramOptions] = useState<Record<number, { id: number; name: string; version: number; status: string }[]>>({});
   const [selectedProgramId, setSelectedProgramId] = useState<number | ''>('');
-  const [selectedProgramModules, setSelectedProgramModules] = useState<Array<{ id: number; name: string; status: string }>>([]);
+  const [selectedProgramModules, setSelectedProgramModules] = useState<Array<{
+    id: number;
+    name: string;
+    status: string;
+    topics: Array<{ id: number; name: string; status: string }>;
+  }>>([]);
+  const [selectedModuleId, setSelectedModuleId] = useState<number | ''>('');
+  const [selectedTopicId, setSelectedTopicId] = useState<number | ''>('');
 
   const [newCharacteristic, setNewCharacteristic] = useState({
     student_id: '',
@@ -90,17 +97,40 @@ const CharacteristicsPage: React.FC = () => {
         const nextProgramId = match?.id ?? opts[0]?.id ?? '';
         setSelectedProgramId(nextProgramId);
         setSelectedProgramModules([]);
+        setSelectedModuleId('');
+        setSelectedTopicId('');
 
         if (nextProgramId) {
           try {
             const p = await programsApi.getById(nextProgramId);
-            setSelectedProgramModules((p.modules || []).map((m) => ({ id: m.id, name: m.name, status: m.status })));
+            setSelectedProgramModules((p.modules || []).map((m) => ({
+              id: m.id,
+              name: m.name,
+              status: m.status,
+              topics: (m.topics || []).map((t) => ({ id: t.id, name: t.name, status: t.status })),
+            })));
             // В режиме редактирования не перетираем поля, если они уже заполнены
             setFormData((prev) => ({
               ...prev,
               course_name: prev.course_name ? prev.course_name : `${p.name} (v${p.version})`,
               module_topic: prev.module_topic ? prev.module_topic : '',
             }));
+
+            // Best-effort: если module_topic уже заполнено строкой "Модуль — Тема", выберем модуль/тему автоматически
+            const raw = String(formData.module_topic || '').trim();
+            if (raw) {
+              const parts = raw.split(/—|\/|-{1,2}>/).map((s) => s.trim()).filter(Boolean);
+              const moduleNameGuess = parts[0];
+              const topicNameGuess = parts.length > 1 ? parts.slice(1).join(' ').trim() : '';
+              const moduleMatch = (p.modules || []).find((mm) => mm.name === moduleNameGuess);
+              if (moduleMatch) {
+                setSelectedModuleId(moduleMatch.id);
+                if (topicNameGuess) {
+                  const topicMatch = (moduleMatch.topics || []).find((tt) => tt.name === topicNameGuess);
+                  if (topicMatch) setSelectedTopicId(topicMatch.id);
+                }
+              }
+            }
           } catch {
             if (!editingId) setFormData((prev) => ({ ...prev, course_name: '', module_topic: '' }));
           }
@@ -111,6 +141,8 @@ const CharacteristicsPage: React.FC = () => {
         // не блокируем форму, просто оставляем пусто
         setSelectedProgramId('');
         setSelectedProgramModules([]);
+        setSelectedModuleId('');
+        setSelectedTopicId('');
       }
     })();
   }, [createOpen, newCharacteristic.student_id, user?.role, editingId, formData.course_name, formData.module_topic]);
@@ -310,9 +342,16 @@ const CharacteristicsPage: React.FC = () => {
               const pid = Number(e.target.value);
               setSelectedProgramId(pid);
               setFormData((prev) => ({ ...prev, course_name: '', module_topic: '' }));
+              setSelectedModuleId('');
+              setSelectedTopicId('');
               try {
                 const p = await programsApi.getById(pid);
-                setSelectedProgramModules((p.modules || []).map((m) => ({ id: m.id, name: m.name, status: m.status })));
+                setSelectedProgramModules((p.modules || []).map((m) => ({
+                  id: m.id,
+                  name: m.name,
+                  status: m.status,
+                  topics: (m.topics || []).map((t) => ({ id: t.id, name: t.name, status: t.status })),
+                })));
                 setFormData((prev) => ({ ...prev, course_name: `${p.name} (v${p.version})` }));
               } catch {
                 setSelectedProgramModules([]);
@@ -337,24 +376,59 @@ const CharacteristicsPage: React.FC = () => {
 
     if (user?.role === 'trainer' && field.name === 'module_topic') {
       const modules = selectedProgramModules.filter((m) => m.status !== 'archived');
+      const selectedModule = modules.find((m) => m.id === selectedModuleId);
+      const topics = (selectedModule?.topics || []).filter((t) => t.status !== 'archived');
       return (
-        <FormControl fullWidth sx={{ mt: 2 }} key={field.name} disabled={!selectedProgramId || !modules.length}>
-          <InputLabel>{field.label}{field.required ? ' *' : ''}</InputLabel>
-          <Select
-            value={value}
-            label={field.label}
-            onChange={(e) => setFormData((prev) => ({ ...prev, [field.name]: e.target.value }))}
-          >
-            <MenuItem value="">
-              <em>{selectedProgramId ? 'Выберите модуль' : 'Сначала выберите программу'}</em>
-            </MenuItem>
-            {modules.map((m) => (
-              <MenuItem key={m.id} value={m.name}>
-                {m.name}
+        <Box key={field.name} sx={{ mt: 2 }}>
+          <FormControl fullWidth disabled={!selectedProgramId || !modules.length}>
+            <InputLabel>Модуль{field.required ? ' *' : ''}</InputLabel>
+            <Select
+              value={selectedModuleId === '' ? '' : selectedModuleId}
+              label={`Модуль${field.required ? ' *' : ''}`}
+              onChange={(e) => {
+                const mid = Number(e.target.value);
+                setSelectedModuleId(mid);
+                setSelectedTopicId('');
+                // пока тема не выбрана, поле считается незаполненным
+                setFormData((prev) => ({ ...prev, module_topic: '' }));
+              }}
+            >
+              <MenuItem value="">
+                <em>{selectedProgramId ? 'Выберите модуль' : 'Сначала выберите программу'}</em>
               </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+              {modules.map((m) => (
+                <MenuItem key={m.id} value={m.id}>
+                  {m.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mt: 2 }} disabled={!selectedProgramId || !selectedModuleId || !topics.length}>
+            <InputLabel>Тема{field.required ? ' *' : ''}</InputLabel>
+            <Select
+              value={selectedTopicId === '' ? '' : selectedTopicId}
+              label={`Тема${field.required ? ' *' : ''}`}
+              onChange={(e) => {
+                const tid = Number(e.target.value);
+                setSelectedTopicId(tid);
+                const topic = topics.find((t) => t.id === tid);
+                if (!selectedModule || !topic) return;
+                // сохраняем в существующее поле (для совместимости со старыми шаблонами)
+                setFormData((prev) => ({ ...prev, module_topic: `${selectedModule.name} — ${topic.name}` }));
+              }}
+            >
+              <MenuItem value="">
+                <em>{selectedModuleId ? 'Выберите тему' : 'Сначала выберите модуль'}</em>
+              </MenuItem>
+              {topics.map((t) => (
+                <MenuItem key={t.id} value={t.id}>
+                  {t.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
       );
     }
 
@@ -438,6 +512,10 @@ const CharacteristicsPage: React.FC = () => {
                 setInfo('');
                 setEditingId(null);
                 setFormData({});
+                setSelectedProgramId('');
+                setSelectedProgramModules([]);
+                setSelectedModuleId('');
+                setSelectedTopicId('');
                 setNewCharacteristic({
                   student_id: '',
                   month: String(new Date().getMonth() + 1),

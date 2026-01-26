@@ -229,8 +229,9 @@ async def update_program(
             db.flush()
             
             for topic in module.topics:
+                # IMPORTANT: bind via relationship so ORM knows dependencies and deletes topics before modules
                 new_topic = Topic(
-                    module_id=new_module.id,
+                    module=new_module,
                     name=topic.name,
                     description=topic.description,
                     final_result=topic.final_result,
@@ -241,10 +242,13 @@ async def update_program(
         
         # Обновляем новую версию с изменениями
         if "modules" in update_data:
-            # Удаляем старые модули новой версии и создаем новые
-            for module in new_program.modules:
-                db.delete(module)
-            db.flush()
+            # Удаляем старые модули новой версии и их темы (сначала topics, потом modules),
+            # иначе PostgreSQL FK topics.module_id_fkey не позволит удалить модуль.
+            module_ids = [mid for (mid,) in db.query(Module.id).filter(Module.program_id == new_program.id).all()]
+            if module_ids:
+                db.query(Topic).filter(Topic.module_id.in_(module_ids)).delete(synchronize_session=False)
+                db.query(Module).filter(Module.id.in_(module_ids)).delete(synchronize_session=False)
+                db.flush()
             
             for module_data in update_data["modules"]:
                 new_module = Module(
@@ -258,7 +262,7 @@ async def update_program(
                 
                 for topic_data in module_data.get("topics", []):
                     new_topic = Topic(
-                        module_id=new_module.id,
+                        module=new_module,
                         name=topic_data["name"],
                         description=topic_data.get("description"),
                         final_result=topic_data.get("final_result"),

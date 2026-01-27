@@ -20,6 +20,7 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Autocomplete,
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
 
@@ -75,6 +76,8 @@ type RevenueRow = {
   groupId: number;
   direction: string;
   discount: number;
+  category?: string;
+  manualAmount?: number;
 };
 
 type CostRow = {
@@ -191,6 +194,20 @@ const FinancialModelPage: React.FC = () => {
     }
   });
   const [dashboardMonth, setDashboardMonth] = useState<string>('2026-01');
+  const [entryDate, setEntryDate] = useState<string>(() => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+  const [entryType, setEntryType] = useState<'income' | 'expense'>('income');
+  const [entryCategory, setEntryCategory] = useState<string>('');
+  const [entryAmount, setEntryAmount] = useState<number>(0);
+  const [entryCategoryType, setEntryCategoryType] = useState<'Variable' | 'Fixed'>('Fixed');
+  const [entryGroupId, setEntryGroupId] = useState<number | ''>('');
+  const [entryTeacherId, setEntryTeacherId] = useState<number | ''>('');
+  const [entryDirection, setEntryDirection] = useState<string>('');
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -199,6 +216,56 @@ const FinancialModelPage: React.FC = () => {
   const selectedTax = data.inputs.selectedTax;
   const selectedTaxRate = data.taxRates.find((t) => t.taxName === selectedTax)?.taxPercent ?? 0;
   const selectedTaxFixed = data.taxRates.find((t) => t.taxName === selectedTax)?.taxFixedMonthly ?? 0;
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    data.costs.forEach((c) => c.subcategory && set.add(c.subcategory));
+    data.revenue.forEach((r) => r.category && set.add(r.category));
+    return Array.from(set.values());
+  }, [data.costs, data.revenue]);
+
+  const handleAddEntry = () => {
+    const [year, month] = entryDate.split('-');
+    const monthKey = year && month ? `${year}-${month}` : '';
+    if (!monthKey || !entryCategory || entryAmount <= 0) return;
+
+    if (entryType === 'income') {
+      setData((prev) => ({
+        ...prev,
+        revenue: [
+          ...prev.revenue,
+          {
+            month: monthKey,
+            groupId: typeof entryGroupId === 'number' ? entryGroupId : 0,
+            direction: entryDirection,
+            discount: prev.inputs.defaultDiscount,
+            category: entryCategory,
+            manualAmount: entryAmount,
+          },
+        ],
+      }));
+    } else {
+      setData((prev) => ({
+        ...prev,
+        costs: [
+          ...prev.costs,
+          {
+            month: monthKey,
+            category: entryCategoryType,
+            subcategory: entryCategory,
+            amount: entryAmount,
+            groupId: typeof entryGroupId === 'number' ? entryGroupId : undefined,
+            teacherId: typeof entryTeacherId === 'number' ? entryTeacherId : undefined,
+          },
+        ],
+      }));
+    }
+
+    setEntryCategory('');
+    setEntryAmount(0);
+    setEntryGroupId('');
+    setEntryTeacherId('');
+    setEntryDirection('');
+  };
 
   const groupCurrentStudents = useMemo(() => {
     const counts = new Map<number, number>();
@@ -211,6 +278,7 @@ const FinancialModelPage: React.FC = () => {
 
   const revenueComputed = useMemo(() => {
     return data.revenue.map((row) => {
+      const isManual = typeof row.manualAmount === 'number' && row.manualAmount > 0;
       const monthEnd = parseMonthEnd(row.month);
       const activeStudents = data.students.filter((s) => {
         if (s.status !== 'Active') return false;
@@ -219,15 +287,17 @@ const FinancialModelPage: React.FC = () => {
         return new Date(s.startDate) <= monthEnd;
       });
       const pricePerStudent =
-        activeStudents.length === 0
+        isManual || activeStudents.length === 0
           ? 0
           : activeStudents.reduce((sum, s) => sum + toNumber(s.monthlyPrice), 0) / activeStudents.length;
       const discount = row.discount ?? data.inputs.defaultDiscount;
-      const gross = activeStudents.length * pricePerStudent * (1 - discount);
-      const net = gross * (1 - data.inputs.acquiringPercent) - activeStudents.length * data.inputs.acquiringFixed;
+      const gross = isManual ? row.manualAmount || 0 : activeStudents.length * pricePerStudent * (1 - discount);
+      const net = isManual
+        ? gross * (1 - data.inputs.acquiringPercent) - data.inputs.acquiringFixed
+        : gross * (1 - data.inputs.acquiringPercent) - activeStudents.length * data.inputs.acquiringFixed;
       return {
         ...row,
-        activeStudents: activeStudents.length,
+        activeStudents: isManual ? 0 : activeStudents.length,
         pricePerStudent,
         discount,
         grossRevenue: gross,
@@ -358,6 +428,85 @@ const FinancialModelPage: React.FC = () => {
                 }}
               >
                 Сбросить к шаблону
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            Ввод данных (доходы / расходы)
+          </Typography>
+          <Stack spacing={2}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Дата"
+                type="date"
+                size="small"
+                value={entryDate}
+                onChange={(e) => setEntryDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel>Тип</InputLabel>
+                <Select label="Тип" value={entryType} onChange={(e) => setEntryType(e.target.value as 'income' | 'expense')}>
+                  <MenuItem value="income">Доход</MenuItem>
+                  <MenuItem value="expense">Расход</MenuItem>
+                </Select>
+              </FormControl>
+              {entryType === 'expense' && (
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Категория</InputLabel>
+                  <Select
+                    label="Категория"
+                    value={entryCategoryType}
+                    onChange={(e) => setEntryCategoryType(e.target.value as 'Variable' | 'Fixed')}
+                  >
+                    <MenuItem value="Variable">Variable</MenuItem>
+                    <MenuItem value="Fixed">Fixed</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <Autocomplete
+                freeSolo
+                options={categoryOptions}
+                value={entryCategory}
+                onInputChange={(_, value) => setEntryCategory(value)}
+                renderInput={(params) => <TextField {...params} size="small" label="Статья" placeholder="Начните ввод" />}
+                sx={{ minWidth: 260 }}
+              />
+              <TextField
+                label="Сумма"
+                size="small"
+                type="number"
+                value={entryAmount}
+                onChange={(e) => setEntryAmount(toNumber(e.target.value))}
+              />
+              <TextField
+                label="GroupID"
+                size="small"
+                type="number"
+                value={entryGroupId}
+                onChange={(e) => setEntryGroupId(e.target.value === '' ? '' : toNumber(e.target.value))}
+              />
+              <TextField
+                label="TeacherID"
+                size="small"
+                type="number"
+                value={entryTeacherId}
+                onChange={(e) => setEntryTeacherId(e.target.value === '' ? '' : toNumber(e.target.value))}
+              />
+              <TextField
+                label="Direction"
+                size="small"
+                value={entryDirection}
+                onChange={(e) => setEntryDirection(e.target.value)}
+              />
+              <Button variant="contained" onClick={handleAddEntry}>
+                Добавить
               </Button>
             </Stack>
           </Stack>
@@ -894,9 +1043,11 @@ const FinancialModelPage: React.FC = () => {
                   <TableCell>Month</TableCell>
                   <TableCell>GroupID</TableCell>
                   <TableCell>Direction</TableCell>
+                  <TableCell>Category</TableCell>
                   <TableCell>ActiveStudents</TableCell>
                   <TableCell>PricePerStudent</TableCell>
                   <TableCell>Discount</TableCell>
+                  <TableCell>ManualAmount</TableCell>
                   <TableCell>GrossRevenue</TableCell>
                   <TableCell>NetRevenue</TableCell>
                   <TableCell />
@@ -946,6 +1097,19 @@ const FinancialModelPage: React.FC = () => {
                         }
                       />
                     </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        value={row.category || ''}
+                        onChange={(e) =>
+                          setData((prev) => {
+                            const revenue = [...prev.revenue];
+                            revenue[idx] = { ...revenue[idx], category: e.target.value };
+                            return { ...prev, revenue };
+                          })
+                        }
+                      />
+                    </TableCell>
                     <TableCell>{row.activeStudents}</TableCell>
                     <TableCell>{row.pricePerStudent.toFixed(2)}</TableCell>
                     <TableCell>
@@ -957,6 +1121,21 @@ const FinancialModelPage: React.FC = () => {
                           setData((prev) => {
                             const revenue = [...prev.revenue];
                             revenue[idx] = { ...revenue[idx], discount: toNumber(e.target.value) };
+                            return { ...prev, revenue };
+                          })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={row.manualAmount ?? ''}
+                        onChange={(e) =>
+                          setData((prev) => {
+                            const revenue = [...prev.revenue];
+                            const next = e.target.value === '' ? undefined : toNumber(e.target.value);
+                            revenue[idx] = { ...revenue[idx], manualAmount: next };
                             return { ...prev, revenue };
                           })
                         }

@@ -290,9 +290,12 @@ async def get_student_progress(
             # Фолбэк: берём программу группы (первую), если ученик состоит в группе с назначенной программой.
             # В SQLAlchemy 2.x нужно явно указывать условие join, иначе возникает
             # "Don't know how to join to Mapper; use select_from / explicit ON".
+            # Строим запрос явно через select_from(GroupStudent),
+            # чтобы SQLAlchemy точно знал, с какой таблицы начинается join.
             gp = (
                 db.query(GroupProgram)
-                .join(GroupStudent, GroupStudent.group_id == GroupProgram.group_id)
+                .select_from(GroupStudent)
+                .join(GroupProgram, GroupProgram.group_id == GroupStudent.group_id)
                 .filter(GroupStudent.student_id == student_id)
                 .order_by(GroupProgram.created_at.desc())
                 .first()

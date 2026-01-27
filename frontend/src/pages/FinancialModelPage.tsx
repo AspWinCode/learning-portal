@@ -92,6 +92,7 @@ type CostRow = {
 type ModelData = {
   inputs: Inputs;
   taxRates: TaxRate[];
+  categories: { id: number; name: string; type: 'income' | 'expense' }[];
   students: Student[];
   groups: Group[];
   teachers: Teacher[];
@@ -116,6 +117,12 @@ const defaultData: ModelData = {
     { taxName: 'ИП Патент', taxPercent: 0.06, taxFixedMonthly: 0 },
     { taxName: 'ООО УСН 15%', taxPercent: 0.15, taxFixedMonthly: 0 },
     { taxName: 'ООО УСН 6%', taxPercent: 0.06, taxFixedMonthly: 0 },
+  ],
+  categories: [
+    { id: 1, name: 'Абонементы', type: 'income' },
+    { id: 2, name: 'Индивидуальные занятия', type: 'income' },
+    { id: 3, name: 'ФОТ тренеров', type: 'expense' },
+    { id: 4, name: 'Маркетинг', type: 'expense' },
   ],
   students: [
     {
@@ -188,7 +195,12 @@ const FinancialModelPage: React.FC = () => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultData;
     try {
-      return JSON.parse(raw) as ModelData;
+      const parsed = JSON.parse(raw) as ModelData;
+      return {
+        ...defaultData,
+        ...parsed,
+        categories: parsed.categories ?? defaultData.categories,
+      };
     } catch {
       return defaultData;
     }
@@ -217,11 +229,8 @@ const FinancialModelPage: React.FC = () => {
   const selectedTaxRate = data.taxRates.find((t) => t.taxName === selectedTax)?.taxPercent ?? 0;
   const selectedTaxFixed = data.taxRates.find((t) => t.taxName === selectedTax)?.taxFixedMonthly ?? 0;
   const categoryOptions = useMemo(() => {
-    const set = new Set<string>();
-    data.costs.forEach((c) => c.subcategory && set.add(c.subcategory));
-    data.revenue.forEach((r) => r.category && set.add(r.category));
-    return Array.from(set.values());
-  }, [data.costs, data.revenue]);
+    return data.categories.filter((c) => c.type === entryType).map((c) => c.name);
+  }, [data.categories, entryType]);
 
   const handleAddEntry = () => {
     const [year, month] = entryDate.split('-');
@@ -471,11 +480,12 @@ const FinancialModelPage: React.FC = () => {
 
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
               <Autocomplete
-                freeSolo
                 options={categoryOptions}
                 value={entryCategory}
-                onInputChange={(_, value) => setEntryCategory(value)}
-                renderInput={(params) => <TextField {...params} size="small" label="Статья" placeholder="Начните ввод" />}
+                onChange={(_, value) => setEntryCategory(value || '')}
+                renderInput={(params) => (
+                  <TextField {...params} size="small" label="Статья" placeholder="Начните ввод" />
+                )}
                 sx={{ minWidth: 260 }}
               />
               <TextField
@@ -514,7 +524,7 @@ const FinancialModelPage: React.FC = () => {
 
         <Paper sx={{ p: 2, mb: 2 }}>
           <Tabs value={sheetIndex} onChange={(_, v) => setSheetIndex(v)} variant="scrollable">
-            {['Inputs', 'TaxRates', 'Students', 'Groups', 'Teachers', 'Revenue', 'Costs', 'P&L', 'Dashboard'].map(
+            {['Inputs', 'TaxRates', 'Статьи', 'Students', 'Groups', 'Teachers', 'Revenue', 'Costs', 'P&L', 'Dashboard'].map(
               (label) => (
                 <Tab key={label} label={label} />
               )
@@ -722,6 +732,85 @@ const FinancialModelPage: React.FC = () => {
         {sheetIndex === 2 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+              <Typography variant="h6">Статьи (доходы / расходы)</Typography>
+              <Button
+                startIcon={<Add />}
+                onClick={() =>
+                  setData((prev) => ({
+                    ...prev,
+                    categories: [
+                      ...prev.categories,
+                      { id: Date.now(), name: '', type: 'income' },
+                    ],
+                  }))
+                }
+              >
+                Добавить
+              </Button>
+            </Stack>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Название</TableCell>
+                  <TableCell>Тип</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {data.categories.map((cat, idx) => (
+                  <TableRow key={cat.id}>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        value={cat.name}
+                        onChange={(e) =>
+                          setData((prev) => {
+                            const categories = [...prev.categories];
+                            categories[idx] = { ...categories[idx], name: e.target.value };
+                            return { ...prev, categories };
+                          })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        size="small"
+                        value={cat.type}
+                        onChange={(e) =>
+                          setData((prev) => {
+                            const categories = [...prev.categories];
+                            categories[idx] = { ...categories[idx], type: e.target.value as 'income' | 'expense' };
+                            return { ...prev, categories };
+                          })
+                        }
+                      >
+                        <MenuItem value="income">Доход</MenuItem>
+                        <MenuItem value="expense">Расход</MenuItem>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <IconButton
+                        color="error"
+                        onClick={() =>
+                          setData((prev) => ({
+                            ...prev,
+                            categories: prev.categories.filter((_, i) => i !== idx),
+                          }))
+                        }
+                      >
+                        <Delete />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Paper>
+        )}
+
+        {sheetIndex === 3 && (
+          <Paper sx={{ p: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6">Students</Typography>
               <Button
                 startIcon={<Add />}
@@ -825,7 +914,7 @@ const FinancialModelPage: React.FC = () => {
           </Paper>
         )}
 
-        {sheetIndex === 3 && (
+        {sheetIndex === 4 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6">Groups</Typography>
@@ -930,7 +1019,7 @@ const FinancialModelPage: React.FC = () => {
           </Paper>
         )}
 
-        {sheetIndex === 4 && (
+        {sheetIndex === 5 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6">Teachers</Typography>
@@ -1021,7 +1110,7 @@ const FinancialModelPage: React.FC = () => {
           </Paper>
         )}
 
-        {sheetIndex === 5 && (
+        {sheetIndex === 6 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6">Revenue</Typography>
@@ -1163,7 +1252,7 @@ const FinancialModelPage: React.FC = () => {
           </Paper>
         )}
 
-        {sheetIndex === 6 && (
+        {sheetIndex === 7 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6">Costs</Typography>
@@ -1302,7 +1391,7 @@ const FinancialModelPage: React.FC = () => {
           </Paper>
         )}
 
-        {sheetIndex === 7 && (
+        {sheetIndex === 8 && (
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               P&amp;L
@@ -1338,7 +1427,7 @@ const FinancialModelPage: React.FC = () => {
           </Paper>
         )}
 
-        {sheetIndex === 8 && (
+        {sheetIndex === 9 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6">Dashboard</Typography>

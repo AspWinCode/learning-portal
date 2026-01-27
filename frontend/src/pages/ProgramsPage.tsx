@@ -66,6 +66,7 @@ const ProgramsPage: React.FC = () => {
     { name: 'Основной модуль', topics: [{ name: '', description: '', final_result: '' }] },
   ]);
   const { user } = useAuth();
+  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
 
   useEffect(() => {
     loadPrograms();
@@ -317,7 +318,7 @@ const ProgramsPage: React.FC = () => {
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Программы обучения</Typography>
-        {user?.role === 'admin' && (
+        {isAdminLike && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -370,7 +371,7 @@ const ProgramsPage: React.FC = () => {
                       </Typography>
                     </AccordionSummary>
                     <AccordionDetails>
-                      {user?.role === 'admin' && (
+                      {isAdminLike && (
                         <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                           <Button variant="outlined" onClick={() => openNewVersionDialog(program)}>
                             Создать новую версию от v{program.version}
@@ -384,7 +385,7 @@ const ProgramsPage: React.FC = () => {
                               <Typography variant="h6">{module.name}</Typography>
                               {module.status === 'archived' && <Chip size="small" label="Модуль в архиве" />}
                             </Box>
-                            {user?.role === 'admin' && module.status !== 'archived' && (
+                            {isAdminLike && module.status !== 'archived' && (
                               <Button
                                 size="small"
                                 color="warning"
@@ -401,7 +402,7 @@ const ProgramsPage: React.FC = () => {
                                 Архивировать модуль
                               </Button>
                             )}
-                            {user?.role === 'admin' && module.status === 'archived' && (
+                            {isAdminLike && module.status === 'archived' && (
                               <Button
                                 size="small"
                                 color="success"
@@ -424,7 +425,7 @@ const ProgramsPage: React.FC = () => {
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
                                 <Typography variant="body2">{topic.name}</Typography>
                                 {topic.status === 'archived' && <Chip size="small" label="Архив" />}
-                                {user?.role === 'admin' && topic.status !== 'archived' && (
+                                {isAdminLike && topic.status !== 'archived' && (
                                   <Button
                                     size="small"
                                     color="warning"
@@ -441,7 +442,7 @@ const ProgramsPage: React.FC = () => {
                                     Архивировать
                                   </Button>
                                 )}
-                                {user?.role === 'admin' && topic.status === 'archived' && (
+                                {isAdminLike && topic.status === 'archived' && (
                                   <Button
                                     size="small"
                                     color="success"
@@ -482,7 +483,7 @@ const ProgramsPage: React.FC = () => {
       </Box>
 
       {/* Диалог создания программы */}
-      {user?.role === 'admin' && (
+      {isAdminLike && (
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>Создать программу</DialogTitle>
           <DialogContent>
@@ -604,7 +605,7 @@ const ProgramsPage: React.FC = () => {
       )}
 
       {/* Диалог создания новой версии */}
-      {user?.role === 'admin' && (
+      {isAdminLike && (
         <Dialog open={versionOpen} onClose={() => setVersionOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>
             Новая версия: {baseProgram?.name} (текущая v{baseProgram?.version})

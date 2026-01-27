@@ -19,8 +19,8 @@ async def global_search(
     """Глобальный поиск по ФИО Ученика, ФИО Родителя, Названию Группы и ФИО Тренера"""
     search_term = f"%{q}%"
 
-    # ADMIN: полный поиск
-    if current_user.role == UserRole.ADMIN:
+    # ADMIN/OWNER: полный поиск
+    if current_user.role in (UserRole.ADMIN, UserRole.OWNER):
         students = db.query(Student).filter(Student.full_name.ilike(search_term)).all()
         groups = db.query(Group).filter(Group.name.ilike(search_term)).all()
         trainers = db.query(User).filter(User.full_name.ilike(search_term), User.role == UserRole.TRAINER).all()

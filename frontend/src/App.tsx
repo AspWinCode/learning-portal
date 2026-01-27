@@ -13,6 +13,7 @@ import GuestProgramsPage from './pages/GuestProgramsPage';
 import GradesPage from './pages/GradesPage';
 import CharacteristicsPage from './pages/CharacteristicsPage';
 import ReportsPage from './pages/ReportsPage';
+import FinancialModelPage from './pages/FinancialModelPage';
 import ParentDashboardPage from './pages/ParentDashboardPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
@@ -96,6 +97,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin']}>
                   <ReportsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/financial-model"
+              element={
+                <PrivateRoute allowedRoles={['owner']}>
+                  <FinancialModelPage />
                 </PrivateRoute>
               }
             />

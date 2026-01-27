@@ -31,6 +31,7 @@ import {
   Grade,
   Description,
   Assessment,
+  AccountBalance,
   Home,
   ExitToApp,
   Telegram as TelegramIcon,
@@ -152,6 +153,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const effectiveMenuItems = (() => {
     const role = user?.role;
+    const isAdminLike = role === 'admin' || role === 'owner';
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
     if (role === 'parent')
       return [
@@ -170,7 +172,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
     ];
 
-    if (role === 'admin') items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
+    if (isAdminLike) items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
+    if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     return items;
   })();
 
@@ -285,7 +288,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               open={Boolean(anchorEl)}
               onClose={handleMenuClose}
             >
-              {user?.role === 'admin' && (
+              {isAdminLike && (
                 <MenuItem onClick={handleLogoOpen}>
                   <ListItemText>Логотип сайта</ListItemText>
                 </MenuItem>

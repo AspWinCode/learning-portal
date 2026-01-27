@@ -46,10 +46,11 @@ const GroupsPage: React.FC = () => {
     trainer_id: '',
   });
   const { user } = useAuth();
+  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
 
   useEffect(() => {
     loadGroups();
-    if (user?.role === 'admin') {
+    if (isAdminLike) {
       loadTrainers();
       loadStudents();
       loadPrograms();
@@ -247,7 +248,7 @@ const GroupsPage: React.FC = () => {
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Группы</Typography>
-        {user?.role === 'admin' && (
+        {isAdminLike && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -276,7 +277,7 @@ const GroupsPage: React.FC = () => {
               <TableCell>Ученики</TableCell>
               <TableCell>Программа</TableCell>
               <TableCell>Статус</TableCell>
-              {(user?.role === 'admin' || user?.role === 'trainer') && <TableCell>Действия</TableCell>}
+              {(isAdminLike || user?.role === 'trainer') && <TableCell>Действия</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -287,7 +288,7 @@ const GroupsPage: React.FC = () => {
                 <TableCell>{group.students?.length ?? '-'}</TableCell>
                 <TableCell>{renderPrograms(group)}</TableCell>
                 <TableCell>{group.status === 'active' ? 'Активна' : 'Архивирована'}</TableCell>
-                {(user?.role === 'admin' || user?.role === 'trainer') && (
+                {(isAdminLike || user?.role === 'trainer') && (
                   <TableCell>
                     <Button
                       size="small"
@@ -297,7 +298,7 @@ const GroupsPage: React.FC = () => {
                     >
                       Состав
                     </Button>
-                    {user?.role === 'admin' && (
+                    {isAdminLike && (
                       <Button
                         size="small"
                         startIcon={<BookIcon />}
@@ -307,7 +308,7 @@ const GroupsPage: React.FC = () => {
                         Программа
                       </Button>
                     )}
-                    {user?.role === 'admin' && (
+                    {isAdminLike && (
                       <>
                         <Button
                           size="small"
@@ -335,7 +336,7 @@ const GroupsPage: React.FC = () => {
       </TableContainer>
 
       {/* Диалог создания группы */}
-      {user?.role === 'admin' && (
+      {isAdminLike && (
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Создать группу</DialogTitle>
           <DialogContent>
@@ -376,7 +377,7 @@ const GroupsPage: React.FC = () => {
       )}
 
       {/* Диалог редактирования группы */}
-      {user?.role === 'admin' && (
+      {isAdminLike && (
         <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Редактировать группу</DialogTitle>
           <DialogContent>
@@ -417,11 +418,11 @@ const GroupsPage: React.FC = () => {
       )}
 
       {/* Диалог состава группы */}
-      {(user?.role === 'admin' || user?.role === 'trainer') && (
+      {(isAdminLike || user?.role === 'trainer') && (
         <Dialog open={membersOpen} onClose={() => setMembersOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Состав группы: {groupDetails?.name || selectedGroup?.name}</DialogTitle>
           <DialogContent>
-            {user?.role === 'admin' && (
+            {isAdminLike && (
               <>
                 <FormControl fullWidth sx={{ mt: 2 }}>
                   <InputLabel>Добавить ученика</InputLabel>
@@ -481,7 +482,7 @@ const GroupsPage: React.FC = () => {
                         {s.status === 'active' ? 'Активен' : 'Архивирован'}
                       </Typography>
                     </Box>
-                    {user?.role === 'admin' && (
+                    {isAdminLike && (
                       <Button
                         size="small"
                         color="error"
@@ -502,7 +503,7 @@ const GroupsPage: React.FC = () => {
       )}
 
       {/* Диалог назначения программы группе */}
-      {user?.role === 'admin' && (
+      {isAdminLike && (
         <Dialog open={programOpen} onClose={() => setProgramOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Программа для группы: {groupDetails?.name || selectedGroup?.name}</DialogTitle>
           <DialogContent>

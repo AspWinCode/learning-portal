@@ -69,7 +69,10 @@ async def notify_user(db: Session, user_id: int, text: str) -> None:
 
 
 async def notify_admins(db: Session, text: str) -> None:
-    admins = db.query(User).filter(User.role == UserRole.ADMIN, User.telegram_chat_id.isnot(None)).all()
+    admins = db.query(User).filter(
+        User.role.in_([UserRole.ADMIN, UserRole.OWNER]),
+        User.telegram_chat_id.isnot(None)
+    ).all()
     for admin in admins:
         try:
             await send_message(int(admin.telegram_chat_id), text)

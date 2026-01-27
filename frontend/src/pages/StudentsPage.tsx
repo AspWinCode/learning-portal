@@ -58,10 +58,11 @@ const StudentsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const { user } = useAuth();
+  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
 
   useEffect(() => {
     loadStudents();
-    if (user?.role === 'admin') {
+    if (isAdminLike) {
       loadParents();
       loadTrainers();
       loadGroups();

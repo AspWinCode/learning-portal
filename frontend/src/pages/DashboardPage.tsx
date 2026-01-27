@@ -13,8 +13,9 @@ const DashboardPage: React.FC = () => {
           Добро пожаловать, {user?.full_name}!
         </Typography>
         <Typography variant="body1" color="text.secondary" paragraph>
-          Роль: {user?.role === 'admin' ? 'Администратор' : 
-                 user?.role === 'trainer' ? 'Тренер' : 
+          Роль: {user?.role === 'admin' ? 'Администратор' :
+                 user?.role === 'owner' ? 'Владелец' :
+                 user?.role === 'trainer' ? 'Тренер' :
                  user?.role === 'parent' ? 'Родитель' : 'Гость'}
         </Typography>
         <Grid container spacing={3} sx={{ mt: 2 }}>

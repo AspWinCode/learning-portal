@@ -65,7 +65,7 @@ async def read_students(
             Student.status == StudentStatus.ACTIVE
         )
     # Администратор видит всех
-    elif current_user.role == UserRole.ADMIN:
+    elif current_user.role in (UserRole.ADMIN, UserRole.OWNER):
         if status_filter:
             query = query.filter(Student.status == status_filter)
     

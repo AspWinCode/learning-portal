@@ -118,7 +118,10 @@ async def get_current_active_user(
 def require_role(allowed_roles: list):
     """Dependency для проверки роли пользователя"""
     async def role_checker(current_user: User = Depends(get_current_active_user)):
-        if current_user.role.value not in allowed_roles:
+        effective_roles = set(allowed_roles)
+        if "admin" in effective_roles:
+            effective_roles.add("owner")
+        if current_user.role.value not in effective_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"

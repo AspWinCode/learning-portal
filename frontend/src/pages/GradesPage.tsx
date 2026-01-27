@@ -93,10 +93,11 @@ const GradesPage: React.FC = () => {
   const [groupedHistory, setGroupedHistory] = useState<GroupedGrades>([]);
   const [historyProgress, setHistoryProgress] = useState<any>(null);
   const { user } = useAuth();
+  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
 
   useEffect(() => {
     loadGrades();
-    if (user?.role === 'trainer' || user?.role === 'parent' || user?.role === 'admin') {
+    if (user?.role === 'trainer' || user?.role === 'parent' || isAdminLike) {
       loadStudents();
     }
   }, []);
@@ -114,7 +115,7 @@ const GradesPage: React.FC = () => {
     try {
       // для тренера/родителя backend вернет ограниченный список по правам
       // для админа — всех (по умолчанию)
-      const data = await studentsApi.getAll(user?.role === 'admin' ? { status: 'active' } : undefined);
+      const data = await studentsApi.getAll(isAdminLike ? { status: 'active' } : undefined);
       setStudents(data.filter((s) => s.status === 'active'));
     } catch (err) {
       console.error('Ошибка загрузки учеников', err);
@@ -467,7 +468,7 @@ const GradesPage: React.FC = () => {
           История оценок
         </Typography>
 
-        {(user?.role === 'admin' || user?.role === 'trainer' || user?.role === 'parent') && (
+        {(isAdminLike || user?.role === 'trainer' || user?.role === 'parent') && (
           <FormControl size="small" sx={{ minWidth: 320, mb: 2 }}>
             <InputLabel>Ученик</InputLabel>
             <Select
@@ -475,7 +476,7 @@ const GradesPage: React.FC = () => {
               label="Ученик"
               onChange={(e) => handleHistoryStudentChange(e.target.value)}
             >
-              {user?.role === 'admin' && (
+              {isAdminLike && (
                 <MenuItem value="">
                   <em>Все ученики</em>
                 </MenuItem>

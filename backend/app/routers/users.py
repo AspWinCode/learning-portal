@@ -59,7 +59,7 @@ async def read_user(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение пользователя по ID"""
-    if current_user.role != UserRole.ADMIN and current_user.id != user_id:
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER) and current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     
     user = db.query(User).filter(User.id == user_id).first()

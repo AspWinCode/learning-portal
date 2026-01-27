@@ -71,6 +71,7 @@ const CharacteristicsPage: React.FC = () => {
   const [formData, setFormData] = useState<Record<string, any>>({});
 
   const { user } = useAuth();
+  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
 
   useEffect(() => {
     loadCharacteristics();
@@ -491,7 +492,7 @@ const CharacteristicsPage: React.FC = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Характеристики</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {user?.role === 'admin' && (
+          {isAdminLike && (
             <Button
               variant="contained"
               onClick={() => {
@@ -641,7 +642,7 @@ const CharacteristicsPage: React.FC = () => {
                     </Button>
                   )}
 
-                  {user?.role === 'admin' && char.status === 'pending' && (
+                  {isAdminLike && char.status === 'pending' && (
                     <>
                       <Button
                         size="small"

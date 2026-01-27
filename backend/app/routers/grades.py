@@ -287,10 +287,16 @@ async def get_student_progress(
                 joinedload(Program.modules).joinedload(Module.topics)
             ).filter(Program.id == student_program.program_id).first()
         else:
-            # Фолбэк: берем программу группы (первую), если ученик состоит в группе с назначенной программой
-            gp = db.query(GroupProgram).join(GroupStudent).filter(
-                GroupStudent.student_id == student_id
-            ).order_by(GroupProgram.created_at.desc()).first()
+            # Фолбэк: берём программу группы (первую), если ученик состоит в группе с назначенной программой.
+            # В SQLAlchemy 2.x нужно явно указывать условие join, иначе возникает
+            # "Don't know how to join to Mapper; use select_from / explicit ON".
+            gp = (
+                db.query(GroupProgram)
+                .join(GroupStudent, GroupStudent.group_id == GroupProgram.group_id)
+                .filter(GroupStudent.student_id == student_id)
+                .order_by(GroupProgram.created_at.desc())
+                .first()
+            )
             if not gp:
                 raise HTTPException(status_code=404, detail="No program assigned to student")
             # Загружаем программу с модулями и темами

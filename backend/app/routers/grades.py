@@ -1,17 +1,31 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app import auth
 from app.schemas import GradeCreate, GradeResponse, GradeUpdate
 from app.models import (
     Grade, User, UserRole, Topic, TopicStatus, Student, StudentStatus, GroupStudent, Group,
-    ProgramTrainer, StudentProgram, GroupProgram
+    ProgramTrainer, StudentProgram, GroupProgram, Program, ProgramStatus, Module
 )
 from app.routers.action_log import log_action
 from app.services.telegram import notify_user
 
 router = APIRouter()
+
+
+def ensure_program_trainer(db: Session, program_id: int, trainer_id: int) -> None:
+    """
+    Ensure trainer is attached to program (ProgramTrainer row exists).
+    Used to keep program visibility and grading consistent.
+    """
+    existing = db.query(ProgramTrainer).filter(
+        ProgramTrainer.program_id == program_id,
+        ProgramTrainer.trainer_id == trainer_id
+    ).first()
+    if existing:
+        return
+    db.add(ProgramTrainer(program_id=program_id, trainer_id=trainer_id))
 
 
 @router.post("/", response_model=GradeResponse, status_code=status.HTTP_201_CREATED)
@@ -53,14 +67,6 @@ async def create_grade(
     if not program_id:
         raise HTTPException(status_code=400, detail="Topic is not attached to a program")
 
-    # Проверка: тренер привязан к этой программе
-    trainer_attached = db.query(ProgramTrainer).filter(
-        ProgramTrainer.program_id == program_id,
-        ProgramTrainer.trainer_id == current_user.id
-    ).first()
-    if not trainer_attached:
-        raise HTTPException(status_code=403, detail="Trainer is not assigned to this program")
-
     # Проверка: тема относится к программе, назначенной ученику (напрямую или через группу тренера)
     has_direct_program = db.query(StudentProgram).filter(
         StudentProgram.student_id == grade.student_id,
@@ -75,6 +81,17 @@ async def create_grade(
 
     if not has_direct_program and not has_group_program:
         raise HTTPException(status_code=400, detail="Topic is not in student's assigned program")
+
+    # Проверка/авто-привязка: тренер привязан к этой программе
+    trainer_attached = db.query(ProgramTrainer).filter(
+        ProgramTrainer.program_id == program_id,
+        ProgramTrainer.trainer_id == current_user.id
+    ).first()
+    if not trainer_attached:
+        # Если программа назначена группе тренера (или ученику, к которому у тренера есть доступ),
+        # то безопасно автопривязать тренера к программе.
+        ensure_program_trainer(db, program_id, current_user.id)
+        db.commit()
     
     # Запрет оценки по архивированной теме
     if topic.status == TopicStatus.ARCHIVED:
@@ -255,15 +272,20 @@ async def get_student_progress(
             raise HTTPException(status_code=403, detail="Not enough permissions")
     
     # Получаем программу ученика (или программы группы, если студенту напрямую не назначено)
-    from app.models import StudentProgram, GroupProgram, Program, Module, Topic
+    # Используем eager loading для модулей и тем
     if program_id:
-        program = db.query(Program).filter(Program.id == program_id).first()
+        program = db.query(Program).options(
+            joinedload(Program.modules).joinedload(Module.topics)
+        ).filter(Program.id == program_id).first()
     else:
         student_program = db.query(StudentProgram).filter(
             StudentProgram.student_id == student_id
         ).first()
         if student_program:
-            program = student_program.program
+            # Загружаем программу с модулями и темами
+            program = db.query(Program).options(
+                joinedload(Program.modules).joinedload(Module.topics)
+            ).filter(Program.id == student_program.program_id).first()
         else:
             # Фолбэк: берем программу группы (первую), если ученик состоит в группе с назначенной программой
             gp = db.query(GroupProgram).join(GroupStudent).filter(
@@ -271,7 +293,17 @@ async def get_student_progress(
             ).order_by(GroupProgram.created_at.desc()).first()
             if not gp:
                 raise HTTPException(status_code=404, detail="No program assigned to student")
-            program = gp.program
+            # Загружаем программу с модулями и темами
+            program = db.query(Program).options(
+                joinedload(Program.modules).joinedload(Module.topics)
+            ).filter(Program.id == gp.program_id).first()
+    
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+    
+    # Проверяем, что программа активна (не архивирована)
+    if program.status != ProgramStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Program is archived. Please contact administrator.")
     
     # Подсчет тем
     total_topics = 0

@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from app.database import get_db
 from app import auth
@@ -8,7 +8,7 @@ from app.schemas import ProgramCreate, ProgramResponse, ProgramUpdate
 from app.models import (
     Program, Module, Topic, User, ProgramStatus, TopicStatus,
     ProgramTrainer, GroupProgram, StudentProgram, Grade, UserRole,
-    Student, StudentStatus, GroupStudent, Group
+    Student, StudentStatus, GroupStudent, Group, GroupStatus
 )
 from app.routers.action_log import log_action
 
@@ -128,11 +128,22 @@ async def read_programs(
         programs = query.offset(skip).limit(limit).all()
         return programs
     
-    # Тренер видит только программы, к которым привязан
+    # Тренер видит:
+    # - программы, к которым привязан (ProgramTrainer)
+    # - программы, назначенные его активным группам (GroupProgram)
     if current_user.role == UserRole.TRAINER:
-        query = query.join(ProgramTrainer).filter(
-            ProgramTrainer.trainer_id == current_user.id
+        program_ids_from_groups = (
+            db.query(GroupProgram.program_id)
+            .join(Group, Group.id == GroupProgram.group_id)
+            .filter(Group.trainer_id == current_user.id, Group.status == GroupStatus.ACTIVE)
+            .subquery()
         )
+        program_ids_from_links = (
+            db.query(ProgramTrainer.program_id)
+            .filter(ProgramTrainer.trainer_id == current_user.id)
+            .subquery()
+        )
+        query = query.filter(or_(Program.id.in_(program_ids_from_groups), Program.id.in_(program_ids_from_links))).distinct()
 
     # Родитель видит только программы, назначенные его активным ученикам (напрямую или через группу)
     elif current_user.role == UserRole.PARENT:
@@ -162,7 +173,9 @@ async def read_program(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение программы по ID"""
-    program_query = db.query(Program).filter(Program.id == program_id)
+    program_query = db.query(Program).options(
+        joinedload(Program.modules).joinedload(Module.topics)
+    ).filter(Program.id == program_id)
     if current_user.role == UserRole.GUEST:
         program_query = program_query.filter(Program.status == ProgramStatus.ACTIVE)
     program = program_query.first()
@@ -176,7 +189,18 @@ async def read_program(
             ProgramTrainer.trainer_id == current_user.id
         ).first()
         if not has_access:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+            # Фолбэк: если программа назначена группе тренера, разрешаем доступ
+            has_group_access = db.query(GroupProgram).join(Group).filter(
+                GroupProgram.program_id == program_id,
+                Group.trainer_id == current_user.id,
+                Group.status == GroupStatus.ACTIVE
+            ).first()
+            if not has_group_access:
+                raise HTTPException(status_code=403, detail="Not enough permissions")
+
+            # И авто-привязываем тренера к программе, чтобы последующие запросы/оценки работали консистентно
+            ensure_program_trainer(db, program_id, current_user.id)
+            db.commit()
 
     # RBAC: родитель может читать только программы, назначенные его активным ученикам
     if current_user.role == UserRole.PARENT:

@@ -176,11 +176,15 @@ async def read_program(
     program_query = db.query(Program).options(
         joinedload(Program.modules).joinedload(Module.topics)
     ).filter(Program.id == program_id)
+    # Гости видят только активные программы
     if current_user.role == UserRole.GUEST:
         program_query = program_query.filter(Program.status == ProgramStatus.ACTIVE)
     program = program_query.first()
     if program is None:
         raise HTTPException(status_code=404, detail="Program not found")
+    
+    # Для тренеров и родителей разрешаем доступ к архивированным программам (для чтения)
+    # если они назначены их группам/ученикам
 
     # RBAC: тренер может читать только программы, к которым привязан
     if current_user.role == UserRole.TRAINER:
@@ -190,13 +194,19 @@ async def read_program(
         ).first()
         if not has_access:
             # Фолбэк: если программа назначена группе тренера, разрешаем доступ
+            # Проверяем как активные, так и неактивные группы (на случай архивации)
             has_group_access = db.query(GroupProgram).join(Group).filter(
                 GroupProgram.program_id == program_id,
-                Group.trainer_id == current_user.id,
-                Group.status == GroupStatus.ACTIVE
+                Group.trainer_id == current_user.id
             ).first()
             if not has_group_access:
-                raise HTTPException(status_code=403, detail="Not enough permissions")
+                # Дополнительная проверка: программа может быть назначена ученику через группу тренера
+                has_student_access = db.query(GroupProgram).join(Group).join(GroupStudent).filter(
+                    GroupProgram.program_id == program_id,
+                    Group.trainer_id == current_user.id
+                ).first()
+                if not has_student_access:
+                    raise HTTPException(status_code=403, detail="Not enough permissions")
 
             # И авто-привязываем тренера к программе, чтобы последующие запросы/оценки работали консистентно
             ensure_program_trainer(db, program_id, current_user.id)

@@ -302,8 +302,35 @@ async def get_student_progress(
         raise HTTPException(status_code=404, detail="Program not found")
     
     # Проверяем, что программа активна (не архивирована)
+    # Но разрешаем доступ к архивированным программам для тренеров/родителей,
+    # если они назначены их группам/ученикам (для обратной совместимости)
     if program.status != ProgramStatus.ACTIVE:
-        raise HTTPException(status_code=400, detail="Program is archived. Please contact administrator.")
+        # Для тренеров и родителей разрешаем доступ к архивированным программам
+        # если они назначены их группам/ученикам
+        if current_user.role == UserRole.TRAINER or current_user.role == UserRole.PARENT:
+            # Проверяем, что программа назначена группе/ученику тренера/родителя
+            if current_user.role == UserRole.TRAINER:
+                has_access = db.query(GroupProgram).join(Group).filter(
+                    GroupProgram.program_id == program.id,
+                    Group.trainer_id == current_user.id
+                ).first()
+            else:  # PARENT
+                has_access = db.query(StudentProgram).join(Student).filter(
+                    StudentProgram.program_id == program.id,
+                    Student.parent_id == current_user.id,
+                    Student.status == StudentStatus.ACTIVE
+                ).first()
+                if not has_access:
+                    has_access = db.query(GroupProgram).join(GroupStudent).join(Student).filter(
+                        GroupProgram.program_id == program.id,
+                        Student.parent_id == current_user.id,
+                        Student.status == StudentStatus.ACTIVE
+                    ).first()
+            
+            if not has_access:
+                raise HTTPException(status_code=400, detail="Program is archived. Please contact administrator.")
+        else:
+            raise HTTPException(status_code=400, detail="Program is archived. Please contact administrator.")
     
     # Подсчет тем
     total_topics = 0

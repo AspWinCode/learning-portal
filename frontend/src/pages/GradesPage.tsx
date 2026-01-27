@@ -170,12 +170,31 @@ const GradesPage: React.FC = () => {
         setInfo('Нет доступных тем для оценки (все темы оценены или неактивны).');
       }
     } catch (err: any) {
+      console.error('Ошибка загрузки тем для оценки:', err);
       // Частый кейс: нет программы у ученика
       const detail = err.response?.data?.detail;
+      const status = err.response?.status;
+      
       if (detail === 'No program assigned to student') {
         setInfo('Ученику не назначена программа — сначала назначьте программу.');
         return;
       }
+      
+      if (status === 403 && detail === 'Not enough permissions') {
+        setError('Нет доступа к программе. Обратитесь к администратору.');
+        return;
+      }
+      
+      if (detail === 'Program is archived. Please contact administrator.') {
+        setError('Программа архивирована. Обратитесь к администратору.');
+        return;
+      }
+      
+      if (status === 404) {
+        setError('Программа не найдена. Обратитесь к администратору.');
+        return;
+      }
+      
       setError(detail || 'Ошибка загрузки тем для оценки');
     }
   };

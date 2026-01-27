@@ -151,9 +151,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     navigate('/login');
   };
 
+  const role = user?.role;
+  const isAdminLike = role === 'admin' || role === 'owner';
+
   const effectiveMenuItems = (() => {
-    const role = user?.role;
-    const isAdminLike = role === 'admin' || role === 'owner';
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
     if (role === 'parent')
       return [

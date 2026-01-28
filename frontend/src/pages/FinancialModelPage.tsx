@@ -344,6 +344,7 @@ const FinancialModelPage: React.FC = () => {
     return list;
   }, [dbGroups]);
 
+  const effectiveGroups = dbGroups.length ? dbGroups : data.groups;
   const effectiveStudents = dbStudents.length ? dbStudents : data.students;
 
   const revenueComputed = useMemo(() => {
@@ -467,7 +468,8 @@ const FinancialModelPage: React.FC = () => {
       if (dbGroups.length) {
         const studentsForTeacher: ApiStudent[] = [];
         groupsForTeacher.forEach((g) => {
-          (g.students || []).forEach((s: ApiStudent) => {
+          const group = g as ApiGroup;
+          (group.students || []).forEach((s: ApiStudent) => {
             if (s.status === 'active') studentsForTeacher.push(s);
           });
         });
@@ -489,7 +491,9 @@ const FinancialModelPage: React.FC = () => {
         };
       }
 
-      const groupIds = new Set(groupsForTeacher.map((g) => g.groupId));
+      const groupIds = new Set(
+        (groupsForTeacher as Group[]).map((g) => g.groupId)
+      );
       const studentsForTeacher = effectiveStudents.filter(
         (s) => s.status === 'Active' && groupIds.has(s.groupId)
       );

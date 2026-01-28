@@ -17,6 +17,11 @@ def _validate_discount(discount_type: DiscountType, discount_value: float) -> No
         raise HTTPException(status_code=400, detail="Percent discount must be <= 100")
 
 
+def _validate_price(price: float) -> None:
+    if price < 0:
+        raise HTTPException(status_code=400, detail="Price must be >= 0")
+
+
 @router.get("/", response_model=List[AbonementResponse])
 async def read_abonements(
     status_filter: Optional[AbonementStatus] = None,
@@ -36,8 +41,10 @@ async def create_abonement(
     current_user: User = Depends(auth.require_role(["admin"]))
 ):
     _validate_discount(abonement.discount_type, abonement.discount_value)
+    _validate_price(float(abonement.price))
     db_abonement = Abonement(
         name=abonement.name,
+        price=abonement.price,
         discount_type=abonement.discount_type,
         discount_value=abonement.discount_value,
         status=AbonementStatus.ACTIVE
@@ -61,6 +68,8 @@ async def update_abonement(
         raise HTTPException(status_code=404, detail="Abonement not found")
 
     update_data = abonement_update.dict(exclude_unset=True)
+    if "price" in update_data:
+        _validate_price(float(update_data.get("price") or 0))
     if "discount_type" in update_data or "discount_value" in update_data:
         discount_type = update_data.get("discount_type", db_abonement.discount_type)
         discount_value = update_data.get("discount_value", db_abonement.discount_value)

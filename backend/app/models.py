@@ -111,6 +111,7 @@ class Abonement(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    price = Column(Float, default=0.0, nullable=False)
     discount_type = Column(
         SQLEnum(DiscountType, name="discounttype", values_callable=_enum_values),
         default=DiscountType.NONE,

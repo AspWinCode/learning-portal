@@ -89,6 +89,7 @@ class UserResponse(UserBase):
 # Abonement schemas
 class AbonementBase(BaseModel):
     name: str
+    price: float = 0.0
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
 
@@ -99,6 +100,7 @@ class AbonementCreate(AbonementBase):
 
 class AbonementUpdate(BaseModel):
     name: Optional[str] = None
+    price: Optional[float] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
     status: Optional[AbonementStatus] = None

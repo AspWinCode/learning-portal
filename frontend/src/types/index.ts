@@ -22,6 +22,7 @@ export interface Student {
 export interface Abonement {
   id: number;
   name: string;
+  price: number;
   discount_type: 'none' | 'amount' | 'percent';
   discount_value: number;
   status: 'active' | 'archived';

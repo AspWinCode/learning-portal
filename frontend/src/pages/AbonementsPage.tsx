@@ -25,7 +25,7 @@ import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
 import { abonementsApi } from '../services/api';
 import { Abonement } from '../types';
 
-const emptyForm = { name: '', discount_type: 'none', discount_value: 0 };
+const emptyForm = { name: '', price: 0, discount_type: 'none', discount_value: 0 };
 
 const AbonementsPage: React.FC = () => {
   const [abonements, setAbonements] = useState<Abonement[]>([]);
@@ -35,6 +35,7 @@ const AbonementsPage: React.FC = () => {
   const [editing, setEditing] = useState<Abonement | null>(null);
   const [form, setForm] = useState({
     name: '',
+    price: 0,
     discount_type: 'none',
     discount_value: 0,
   });
@@ -60,6 +61,7 @@ const AbonementsPage: React.FC = () => {
     try {
       await abonementsApi.create({
         name: form.name.trim(),
+        price: Number(form.price) || 0,
         discount_type: form.discount_type as Abonement['discount_type'],
         discount_value: Number(form.discount_value) || 0,
       });
@@ -80,6 +82,7 @@ const AbonementsPage: React.FC = () => {
     try {
       await abonementsApi.update(editing.id, {
         name: form.name.trim(),
+        price: Number(form.price) || 0,
         discount_type: form.discount_type as Abonement['discount_type'],
         discount_value: Number(form.discount_value) || 0,
       });
@@ -125,6 +128,7 @@ const AbonementsPage: React.FC = () => {
           <TableHead>
             <TableRow>
               <TableCell>Название</TableCell>
+              <TableCell>Цена</TableCell>
               <TableCell>Тип скидки</TableCell>
               <TableCell>Скидка</TableCell>
               <TableCell>Статус</TableCell>
@@ -135,6 +139,7 @@ const AbonementsPage: React.FC = () => {
             {abonements.map((abonement) => (
               <TableRow key={abonement.id}>
                 <TableCell>{abonement.name}</TableCell>
+                <TableCell>{abonement.price} ₽</TableCell>
                 <TableCell>{abonement.discount_type}</TableCell>
                 <TableCell>{renderDiscount(abonement)}</TableCell>
                 <TableCell>{abonement.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>
@@ -146,6 +151,7 @@ const AbonementsPage: React.FC = () => {
                       setEditing(abonement);
                       setForm({
                         name: abonement.name,
+                        price: abonement.price,
                         discount_type: abonement.discount_type,
                         discount_value: abonement.discount_value,
                       });
@@ -207,6 +213,14 @@ const AbonementsPage: React.FC = () => {
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             sx={{ mt: 2 }}
           />
+          <TextField
+            fullWidth
+            type="number"
+            label="Стоимость абонемента"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+            sx={{ mt: 2 }}
+          />
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Тип скидки</InputLabel>
             <Select
@@ -245,6 +259,14 @@ const AbonementsPage: React.FC = () => {
             label="Название *"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
+            sx={{ mt: 2 }}
+          />
+          <TextField
+            fullWidth
+            type="number"
+            label="Стоимость абонемента"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
             sx={{ mt: 2 }}
           />
           <FormControl fullWidth sx={{ mt: 2 }}>

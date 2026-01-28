@@ -378,24 +378,53 @@ const FinancialModelPage: React.FC = () => {
   }, [data.groups, revenueComputed, data.costs, dashboardMonth]);
 
   const dashboardTeachers = useMemo(() => {
+    const totalExpenses = data.costs
+      .filter((c) => c.month === dashboardMonth)
+      .reduce((sum, c) => sum + toNumber(c.amount), 0);
+    const totalCommissions = revenueComputed
+      .filter((r) => r.month === dashboardMonth)
+      .reduce((sum, r) => sum + (r.grossRevenue - r.netRevenue), 0);
+    const totalRevenue = revenueComputed
+      .filter((r) => r.month === dashboardMonth)
+      .reduce((sum, r) => sum + r.netRevenue, 0);
+    const totalTaxes = totalRevenue * selectedTaxRate + selectedTaxFixed;
+    const trainersCount = data.teachers.length || 1;
+    const expensesShare = totalExpenses / trainersCount;
+    const commissionsShare = totalCommissions / trainersCount;
+    const taxesShare = totalTaxes / trainersCount;
+
     return data.teachers.map((teacher) => {
       const groupsForTeacher = data.groups.filter((g) => g.teacherId === teacher.teacherId);
-      const revenue = revenueComputed
-        .filter((r) => r.month === dashboardMonth && groupsForTeacher.some((g) => g.groupId === r.groupId))
-        .reduce((sum, r) => sum + r.netRevenue, 0);
-      const hours = groupsForTeacher.reduce((sum, g) => sum + g.lessonHours * g.lessonsPerMonth, 0);
-      const teacherCost = data.costs
-        .filter((c) => c.month === dashboardMonth && c.teacherId === teacher.teacherId)
-        .reduce((sum, c) => sum + toNumber(c.amount), 0);
+      const groupIds = new Set(groupsForTeacher.map((g) => g.groupId));
+      const studentsForTeacher = data.students.filter(
+        (s) => s.status === 'Active' && groupIds.has(s.groupId)
+      );
+      const studentsCount = studentsForTeacher.length;
+      const groupRevenue = studentsForTeacher.reduce((sum, s) => sum + toNumber(s.monthlyPrice), 0);
+      const teacherPay = 0;
+      const total = groupRevenue - teacherPay - expensesShare - commissionsShare - taxesShare;
       return {
         teacherId: teacher.teacherId,
-        revenue,
-        hours,
-        teacherCost,
-        margin: revenue - teacherCost,
+        grade: teacher.grade,
+        studentsCount,
+        groupRevenue,
+        teacherPay,
+        expensesShare,
+        commissionsShare,
+        taxesShare,
+        total,
       };
     });
-  }, [data.teachers, data.groups, revenueComputed, data.costs, dashboardMonth]);
+  }, [
+    data.teachers,
+    data.groups,
+    data.students,
+    data.costs,
+    revenueComputed,
+    dashboardMonth,
+    selectedTaxRate,
+    selectedTaxFixed,
+  ]);
 
   const dashboardDirections = useMemo(() => {
     const directions = Array.from(new Set([...data.students.map((s) => s.direction), ...data.groups.map((g) => g.direction)]));
@@ -1496,26 +1525,41 @@ const FinancialModelPage: React.FC = () => {
             </Table>
 
             <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              По тренерам
+              Расчеты по тренерам
             </Typography>
             <Table size="small" sx={{ mb: 2 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>TeacherID</TableCell>
-                  <TableCell>Revenue</TableCell>
-                  <TableCell>Hours</TableCell>
-                  <TableCell>TeacherCost</TableCell>
-                  <TableCell>Margin</TableCell>
+                  <TableCell>Тренер</TableCell>
+                  <TableCell>Количество учеников</TableCell>
+                  <TableCell>Выручка группы</TableCell>
+                  <TableCell>Оплата тренера</TableCell>
+                  <TableCell>Расходы</TableCell>
+                  <TableCell>Комиссии</TableCell>
+                  <TableCell>Налоги</TableCell>
+                  <TableCell>Итог</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {dashboardTeachers.map((row) => (
                   <TableRow key={row.teacherId}>
-                    <TableCell>{row.teacherId}</TableCell>
-                    <TableCell>{row.revenue.toFixed(2)}</TableCell>
-                    <TableCell>{row.hours.toFixed(2)}</TableCell>
-                    <TableCell>{row.teacherCost.toFixed(2)}</TableCell>
-                    <TableCell>{row.margin.toFixed(2)}</TableCell>
+                    <TableCell>
+                      {row.teacherId} {row.grade ? `(${row.grade})` : ''}
+                    </TableCell>
+                    <TableCell>{row.studentsCount}</TableCell>
+                    <TableCell>{row.groupRevenue.toFixed(2)}</TableCell>
+                    <TableCell>{row.teacherPay.toFixed(2)}</TableCell>
+                    <TableCell>{row.expensesShare.toFixed(2)}</TableCell>
+                    <TableCell>{row.commissionsShare.toFixed(2)}</TableCell>
+                    <TableCell>{row.taxesShare.toFixed(2)}</TableCell>
+                    <TableCell
+                      sx={{
+                        color: row.total >= 0 ? 'success.main' : 'error.main',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {row.total.toFixed(2)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

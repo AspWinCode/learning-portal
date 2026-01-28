@@ -39,9 +39,19 @@ def upgrade() -> None:
         "abonements",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(), nullable=False),
-        sa.Column("discount_type", sa.Enum(name="discounttype"), nullable=False, server_default="none"),
+        sa.Column(
+            "discount_type",
+            sa.Enum("none", "amount", "percent", name="discounttype", create_type=False),
+            nullable=False,
+            server_default="none",
+        ),
         sa.Column("discount_value", sa.Float(), nullable=False, server_default="0"),
-        sa.Column("status", sa.Enum(name="abonementstatus"), nullable=False, server_default="active"),
+        sa.Column(
+            "status",
+            sa.Enum("active", "archived", name="abonementstatus", create_type=False),
+            nullable=False,
+            server_default="active",
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )

@@ -7,6 +7,7 @@ Create Date: 2026-01-28
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "0004_add_abonements"
 down_revision = "0003_add_owner_role"
@@ -35,20 +36,23 @@ def upgrade() -> None:
         """
     )
 
+    discount_type_enum = postgresql.ENUM("none", "amount", "percent", name="discounttype", create_type=False)
+    abonement_status_enum = postgresql.ENUM("active", "archived", name="abonementstatus", create_type=False)
+
     op.create_table(
         "abonements",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(), nullable=False),
         sa.Column(
             "discount_type",
-            sa.Enum("none", "amount", "percent", name="discounttype", create_type=False),
+            discount_type_enum,
             nullable=False,
             server_default="none",
         ),
         sa.Column("discount_value", sa.Float(), nullable=False, server_default="0"),
         sa.Column(
             "status",
-            sa.Enum("active", "archived", name="abonementstatus", create_type=False),
+            abonement_status_enum,
             nullable=False,
             server_default="active",
         ),

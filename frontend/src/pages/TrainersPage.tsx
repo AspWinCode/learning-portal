@@ -21,6 +21,11 @@ import { Add as AddIcon } from '@mui/icons-material';
 import { usersApi, groupsApi } from '../services/api';
 import { User, Group } from '../types';
 
+const toNumber = (value: string) => {
+  const parsed = Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const TrainersPage: React.FC = () => {
   const [trainers, setTrainers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -31,6 +36,8 @@ const TrainersPage: React.FC = () => {
     email: '',
     password: '',
   });
+  const [trainerRates, setTrainerRates] = useState<Record<number, number>>({});
+  const [trainerLessons, setTrainerLessons] = useState<Record<number, number>>({});
 
   const loadTrainers = async () => {
     try {
@@ -109,6 +116,9 @@ const TrainersPage: React.FC = () => {
             <TableRow>
               <TableCell>ФИО</TableCell>
               <TableCell>Email</TableCell>
+              <TableCell>Ставка тренера</TableCell>
+              <TableCell>Количество занятий</TableCell>
+              <TableCell>Оплата за месяц</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Количество групп</TableCell>
             </TableRow>
@@ -116,10 +126,40 @@ const TrainersPage: React.FC = () => {
           <TableBody>
             {trainers.map((trainer) => {
               const groupsCount = groups.filter(g => g.trainer_id === trainer.id).length;
+              const rate = trainerRates[trainer.id] ?? 0;
+              const lessons = trainerLessons[trainer.id] ?? 0;
+              const payment = rate * lessons;
               return (
                 <TableRow key={trainer.id}>
                   <TableCell>{trainer.full_name}</TableCell>
                   <TableCell>{trainer.email}</TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={rate}
+                      onChange={(e) =>
+                        setTrainerRates((prev) => ({
+                          ...prev,
+                          [trainer.id]: toNumber(e.target.value),
+                        }))
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={lessons}
+                      onChange={(e) =>
+                        setTrainerLessons((prev) => ({
+                          ...prev,
+                          [trainer.id]: toNumber(e.target.value),
+                        }))
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>{payment.toFixed(2)}</TableCell>
                   <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
                   <TableCell>{groupsCount}</TableCell>
                 </TableRow>

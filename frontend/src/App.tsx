@@ -15,6 +15,7 @@ import CharacteristicsPage from './pages/CharacteristicsPage';
 import ReportsPage from './pages/ReportsPage';
 import FinancialModelPage from './pages/FinancialModelPage';
 import AbonementsPage from './pages/AbonementsPage';
+import TrainersPage from './pages/TrainersPage';
 import ParentDashboardPage from './pages/ParentDashboardPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
@@ -56,7 +57,7 @@ function App() {
             <Route
               path="/students"
               element={
-                <PrivateRoute allowedRoles={['admin', 'trainer']}>
+                <PrivateRoute allowedRoles={['admin', 'trainer', 'owner']}>
                   <StudentsPage />
                 </PrivateRoute>
               }
@@ -114,6 +115,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']}>
                   <AbonementsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/trainers"
+              element={
+                <PrivateRoute allowedRoles={['owner']}>
+                  <TrainersPage />
                 </PrivateRoute>
               }
             />

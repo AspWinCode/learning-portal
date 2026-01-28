@@ -67,7 +67,9 @@ const StudentsPage: React.FC = () => {
     loadStudents();
     if (isAdminLike) {
       loadParents();
-      loadTrainers();
+      if (!isOwner) {
+        loadTrainers();
+      }
       loadGroups();
       loadPrograms();
       if (isOwner) {
@@ -381,16 +383,18 @@ const StudentsPage: React.FC = () => {
               <MenuItem value="archived">Архивированные</MenuItem>
             </Select>
           </FormControl>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setTrainerOpen(true);
-              setNewTrainer({ full_name: '', email: '', password: '' });
-            }}
-          >
-            Создать тренера
-          </Button>
+          {!isOwner && (
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setTrainerOpen(true);
+                setNewTrainer({ full_name: '', email: '', password: '' });
+              }}
+            >
+              Создать тренера
+            </Button>
+          )}
           <Button
             variant="outlined"
             startIcon={<AddIcon />}
@@ -538,34 +542,38 @@ const StudentsPage: React.FC = () => {
         </Table>
       </TableContainer>
 
-      <Typography variant="h5" sx={{ mt: 3, mb: 2 }}>
-        Тренеры
-      </Typography>
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>ФИО</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Статус</TableCell>
-              <TableCell>Количество групп</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {trainers.map((trainer) => {
-              const groupsCount = groups.filter(g => g.trainer_id === trainer.id).length;
-              return (
-                <TableRow key={trainer.id}>
-                  <TableCell>{trainer.full_name}</TableCell>
-                  <TableCell>{trainer.email}</TableCell>
-                  <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
-                  <TableCell>{groupsCount}</TableCell>
+      {!isOwner && (
+        <>
+          <Typography variant="h5" sx={{ mt: 3, mb: 2 }}>
+            Тренеры
+          </Typography>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>ФИО</TableCell>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Статус</TableCell>
+                  <TableCell>Количество групп</TableCell>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
+              </TableHead>
+              <TableBody>
+                {trainers.map((trainer) => {
+                  const groupsCount = groups.filter(g => g.trainer_id === trainer.id).length;
+                  return (
+                    <TableRow key={trainer.id}>
+                      <TableCell>{trainer.full_name}</TableCell>
+                      <TableCell>{trainer.email}</TableCell>
+                      <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
+                      <TableCell>{groupsCount}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
+      )}
 
       {/* Диалог добавления */}
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
@@ -819,72 +827,73 @@ const StudentsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Диалог создания тренера */}
-      <Dialog open={trainerOpen} onClose={() => setTrainerOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Создать тренера</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            label="ФИО тренера *"
-            value={newTrainer.full_name}
-            onChange={(e) => setNewTrainer({ ...newTrainer, full_name: e.target.value })}
-            sx={{ mt: 2 }}
-            required
-          />
-          <TextField
-            fullWidth
-            label="Email *"
-            type="email"
-            value={newTrainer.email}
-            onChange={(e) => setNewTrainer({ ...newTrainer, email: e.target.value })}
-            sx={{ mt: 2 }}
-            required
-          />
-          <TextField
-            fullWidth
-            label="Пароль *"
-            type="password"
-            value={newTrainer.password}
-            onChange={(e) => setNewTrainer({ ...newTrainer, password: e.target.value })}
-            sx={{ mt: 2 }}
-            required
-            helperText="Минимум 6 символов"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTrainerOpen(false)}>Отмена</Button>
-          <Button
-            onClick={async () => {
-              if (!newTrainer.full_name.trim() || !newTrainer.email.trim() || !newTrainer.password.trim()) {
-                setError('Заполните все поля');
-                return;
-              }
-              if (newTrainer.password.length < 6) {
-                setError('Пароль должен быть минимум 6 символов');
-                return;
-              }
-              try {
-                await usersApi.create({
-                  full_name: newTrainer.full_name.trim(),
-                  email: newTrainer.email.trim(),
-                  password: newTrainer.password,
-                  role: 'trainer',
-                });
-                setTrainerOpen(false);
-                setNewTrainer({ full_name: '', email: '', password: '' });
-                setError('');
-                loadTrainers(); // Обновляем список тренеров
-                loadGroups(); // Обновляем группы, так как там может быть новый тренер
-              } catch (err: any) {
-                setError(err.response?.data?.detail || 'Ошибка создания тренера');
-              }
-            }}
-            variant="contained"
-          >
-            Создать
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {!isOwner && (
+        <Dialog open={trainerOpen} onClose={() => setTrainerOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Создать тренера</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              label="ФИО тренера *"
+              value={newTrainer.full_name}
+              onChange={(e) => setNewTrainer({ ...newTrainer, full_name: e.target.value })}
+              sx={{ mt: 2 }}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Email *"
+              type="email"
+              value={newTrainer.email}
+              onChange={(e) => setNewTrainer({ ...newTrainer, email: e.target.value })}
+              sx={{ mt: 2 }}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Пароль *"
+              type="password"
+              value={newTrainer.password}
+              onChange={(e) => setNewTrainer({ ...newTrainer, password: e.target.value })}
+              sx={{ mt: 2 }}
+              required
+              helperText="Минимум 6 символов"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setTrainerOpen(false)}>Отмена</Button>
+            <Button
+              onClick={async () => {
+                if (!newTrainer.full_name.trim() || !newTrainer.email.trim() || !newTrainer.password.trim()) {
+                  setError('Заполните все поля');
+                  return;
+                }
+                if (newTrainer.password.length < 6) {
+                  setError('Пароль должен быть минимум 6 символов');
+                  return;
+                }
+                try {
+                  await usersApi.create({
+                    full_name: newTrainer.full_name.trim(),
+                    email: newTrainer.email.trim(),
+                    password: newTrainer.password,
+                    role: 'trainer',
+                  });
+                  setTrainerOpen(false);
+                  setNewTrainer({ full_name: '', email: '', password: '' });
+                  setError('');
+                  loadTrainers(); // Обновляем список тренеров
+                  loadGroups(); // Обновляем группы, так как там может быть новый тренер
+                } catch (err: any) {
+                  setError(err.response?.data?.detail || 'Ошибка создания тренера');
+                }
+              }}
+              variant="contained"
+            >
+              Создать
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Layout>
   );
 };

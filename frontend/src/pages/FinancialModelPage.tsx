@@ -440,6 +440,12 @@ const FinancialModelPage: React.FC = () => {
   }, [data.groups, revenueComputed, data.costs, dashboardMonth]);
 
   const dashboardTeachers = useMemo(() => {
+    const trainerComp = globalTrainers.reduce<Record<number, number>>((acc, trainer) => {
+      const rate = trainer.trainer_rate ?? 0;
+      const lessons = trainer.trainer_lessons ?? 0;
+      acc[trainer.id] = rate * lessons;
+      return acc;
+    }, {});
     const totalExpenses = data.costs
       .filter((c) => c.month === dashboardMonth)
       .reduce((sum, c) => sum + toNumber(c.amount), 0);
@@ -464,6 +470,7 @@ const FinancialModelPage: React.FC = () => {
       const groupsForTeacher = dbGroups.length
         ? dbGroups.filter((g) => g.trainer_id === teacher.teacherId)
         : data.groups.filter((g) => g.teacherId === teacher.teacherId);
+      const teacherPay = trainerComp[teacher.teacherId] ?? 0;
 
       if (dbGroups.length) {
         const studentsForTeacher: ApiStudent[] = [];
@@ -475,7 +482,6 @@ const FinancialModelPage: React.FC = () => {
         });
         const studentsCount = studentsForTeacher.length;
         const groupRevenue = studentsForTeacher.reduce((sum, s) => sum + (s.abonement?.price || 0), 0);
-        const teacherPay = 0;
         const total = groupRevenue - teacherPay - expensesShare - commissionsShare - taxesShare;
         return {
           teacherId: teacher.teacherId,
@@ -499,7 +505,6 @@ const FinancialModelPage: React.FC = () => {
       );
       const studentsCount = studentsForTeacher.length;
       const groupRevenue = studentsForTeacher.reduce((sum, s) => sum + toNumber(s.monthlyPrice), 0);
-      const teacherPay = 0;
       const total = groupRevenue - teacherPay - expensesShare - commissionsShare - taxesShare;
       return {
         teacherId: teacher.teacherId,

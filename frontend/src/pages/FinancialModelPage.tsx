@@ -322,7 +322,6 @@ const FinancialModelPage: React.FC = () => {
     return counts;
   }, [data.students]);
 
-  const effectiveGroups = dbGroups.length ? dbGroups : data.groups;
   const dbStudents: Student[] = useMemo(() => {
     if (!dbGroups.length) return [];
     const list: Student[] = [];
@@ -461,17 +460,41 @@ const FinancialModelPage: React.FC = () => {
 
     return teacherSource.map((teacher) => {
       const localTeacher = data.teachers.find((t) => t.teacherId === teacher.teacherId);
-      const groupsForTeacher = effectiveGroups.filter((g) =>
-        'trainer_id' in g ? g.trainer_id === teacher.teacherId : g.teacherId === teacher.teacherId
-      );
-      const studentsForTeacher: ApiStudent[] = [];
-      groupsForTeacher.forEach((g: any) => {
-        (g.students || []).forEach((s: ApiStudent) => {
-          if (s.status === 'active') studentsForTeacher.push(s);
+      const groupsForTeacher = dbGroups.length
+        ? dbGroups.filter((g) => g.trainer_id === teacher.teacherId)
+        : data.groups.filter((g) => g.teacherId === teacher.teacherId);
+
+      if (dbGroups.length) {
+        const studentsForTeacher: ApiStudent[] = [];
+        groupsForTeacher.forEach((g) => {
+          (g.students || []).forEach((s: ApiStudent) => {
+            if (s.status === 'active') studentsForTeacher.push(s);
+          });
         });
-      });
+        const studentsCount = studentsForTeacher.length;
+        const groupRevenue = studentsForTeacher.reduce((sum, s) => sum + (s.abonement?.price || 0), 0);
+        const teacherPay = 0;
+        const total = groupRevenue - teacherPay - expensesShare - commissionsShare - taxesShare;
+        return {
+          teacherId: teacher.teacherId,
+          name: teacher.full_name,
+          grade: localTeacher?.grade,
+          studentsCount,
+          groupRevenue,
+          teacherPay,
+          expensesShare,
+          commissionsShare,
+          taxesShare,
+          total,
+        };
+      }
+
+      const groupIds = new Set(groupsForTeacher.map((g) => g.groupId));
+      const studentsForTeacher = effectiveStudents.filter(
+        (s) => s.status === 'Active' && groupIds.has(s.groupId)
+      );
       const studentsCount = studentsForTeacher.length;
-      const groupRevenue = studentsForTeacher.reduce((sum, s) => sum + (s.abonement?.price || 0), 0);
+      const groupRevenue = studentsForTeacher.reduce((sum, s) => sum + toNumber(s.monthlyPrice), 0);
       const teacherPay = 0;
       const total = groupRevenue - teacherPay - expensesShare - commissionsShare - taxesShare;
       return {

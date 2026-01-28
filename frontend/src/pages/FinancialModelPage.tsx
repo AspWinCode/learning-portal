@@ -23,8 +23,8 @@ import {
   Autocomplete,
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
-import { usersApi } from '../services/api';
-import { User } from '../types';
+import { usersApi, groupsApi } from '../services/api';
+import { User, Group as ApiGroup, Student as ApiStudent } from '../types';
 
 type Inputs = {
   selectedTax: string;
@@ -209,6 +209,7 @@ const FinancialModelPage: React.FC = () => {
   });
   const [dashboardMonth, setDashboardMonth] = useState<string>('2026-01');
   const [globalTrainers, setGlobalTrainers] = useState<User[]>([]);
+  const [dbGroups, setDbGroups] = useState<ApiGroup[]>([]);
   const [entryDate, setEntryDate] = useState<string>(() => {
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -238,6 +239,27 @@ const FinancialModelPage: React.FC = () => {
       }
     };
     loadTrainers();
+  }, []);
+
+  useEffect(() => {
+    const loadGroupsWithStudents = async () => {
+      try {
+        const groups = await groupsApi.getAll();
+        const groupsWithStudents = await Promise.all(
+          groups.map(async (group) => {
+            try {
+              return await groupsApi.getById(group.id);
+            } catch {
+              return group;
+            }
+          })
+        );
+        setDbGroups(groupsWithStudents);
+      } catch {
+        setDbGroups([]);
+      }
+    };
+    loadGroupsWithStudents();
   }, []);
 
   const selectedTax = data.inputs.selectedTax;
@@ -300,11 +322,36 @@ const FinancialModelPage: React.FC = () => {
     return counts;
   }, [data.students]);
 
+  const effectiveGroups = dbGroups.length ? dbGroups : data.groups;
+  const dbStudents: Student[] = useMemo(() => {
+    if (!dbGroups.length) return [];
+    const list: Student[] = [];
+    dbGroups.forEach((group) => {
+      (group.students || []).forEach((student: ApiStudent) => {
+        list.push({
+          studentId: student.id,
+          startDate: student.created_at ? student.created_at.slice(0, 10) : '2026-01-01',
+          direction: '',
+          groupId: group.id,
+          teacherId: group.trainer_id,
+          monthlyPrice: student.abonement?.price || 0,
+          discountPercent: 0,
+          status: student.status === 'active' ? 'Active' : 'Paused',
+          paymentMonths: 1,
+          isAnnual: false,
+        });
+      });
+    });
+    return list;
+  }, [dbGroups]);
+
+  const effectiveStudents = dbStudents.length ? dbStudents : data.students;
+
   const revenueComputed = useMemo(() => {
     return data.revenue.map((row) => {
       const isManual = typeof row.manualAmount === 'number' && row.manualAmount > 0;
       const monthEnd = parseMonthEnd(row.month);
-      const activeStudents = data.students.filter((s) => {
+      const activeStudents = effectiveStudents.filter((s) => {
         if (s.status !== 'Active') return false;
         if (s.groupId !== row.groupId) return false;
         if (!monthEnd) return true;
@@ -328,7 +375,7 @@ const FinancialModelPage: React.FC = () => {
         netRevenue: net,
       };
     });
-  }, [data.revenue, data.students, data.inputs]);
+  }, [data.revenue, data.inputs, effectiveStudents]);
 
   const pnlRows = useMemo(() => {
     const months = Array.from(
@@ -414,13 +461,17 @@ const FinancialModelPage: React.FC = () => {
 
     return teacherSource.map((teacher) => {
       const localTeacher = data.teachers.find((t) => t.teacherId === teacher.teacherId);
-      const groupsForTeacher = data.groups.filter((g) => g.teacherId === teacher.teacherId);
-      const groupIds = new Set(groupsForTeacher.map((g) => g.groupId));
-      const studentsForTeacher = data.students.filter(
-        (s) => s.status === 'Active' && groupIds.has(s.groupId)
+      const groupsForTeacher = effectiveGroups.filter((g) =>
+        'trainer_id' in g ? g.trainer_id === teacher.teacherId : g.teacherId === teacher.teacherId
       );
+      const studentsForTeacher: ApiStudent[] = [];
+      groupsForTeacher.forEach((g: any) => {
+        (g.students || []).forEach((s: ApiStudent) => {
+          if (s.status === 'active') studentsForTeacher.push(s);
+        });
+      });
       const studentsCount = studentsForTeacher.length;
-      const groupRevenue = studentsForTeacher.reduce((sum, s) => sum + toNumber(s.monthlyPrice), 0);
+      const groupRevenue = studentsForTeacher.reduce((sum, s) => sum + (s.abonement?.price || 0), 0);
       const teacherPay = 0;
       const total = groupRevenue - teacherPay - expensesShare - commissionsShare - taxesShare;
       return {
@@ -438,14 +489,15 @@ const FinancialModelPage: React.FC = () => {
     });
   }, [
     data.teachers,
-    data.groups,
-    data.students,
+    effectiveGroups,
+    effectiveStudents,
     data.costs,
     revenueComputed,
     dashboardMonth,
     selectedTaxRate,
     selectedTaxFixed,
     globalTrainers,
+    dbGroups,
   ]);
 
   const dashboardDirections = useMemo(() => {

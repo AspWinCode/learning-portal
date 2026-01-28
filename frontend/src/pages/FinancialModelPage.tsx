@@ -23,6 +23,8 @@ import {
   Autocomplete,
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
+import { usersApi } from '../services/api';
+import { User } from '../types';
 
 type Inputs = {
   selectedTax: string;
@@ -206,6 +208,7 @@ const FinancialModelPage: React.FC = () => {
     }
   });
   const [dashboardMonth, setDashboardMonth] = useState<string>('2026-01');
+  const [globalTrainers, setGlobalTrainers] = useState<User[]>([]);
   const [entryDate, setEntryDate] = useState<string>(() => {
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -224,6 +227,18 @@ const FinancialModelPage: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
+
+  useEffect(() => {
+    const loadTrainers = async () => {
+      try {
+        const trainers = await usersApi.getAll('trainer');
+        setGlobalTrainers(trainers);
+      } catch {
+        setGlobalTrainers([]);
+      }
+    };
+    loadTrainers();
+  }, []);
 
   const selectedTax = data.inputs.selectedTax;
   const selectedTaxRate = data.taxRates.find((t) => t.taxName === selectedTax)?.taxPercent ?? 0;
@@ -393,7 +408,12 @@ const FinancialModelPage: React.FC = () => {
     const commissionsShare = totalCommissions / trainersCount;
     const taxesShare = totalTaxes / trainersCount;
 
-    return data.teachers.map((teacher) => {
+    const teacherSource = globalTrainers.length
+      ? globalTrainers.map((t) => ({ teacherId: t.id, full_name: t.full_name }))
+      : data.teachers.map((t) => ({ teacherId: t.teacherId, full_name: String(t.teacherId) }));
+
+    return teacherSource.map((teacher) => {
+      const localTeacher = data.teachers.find((t) => t.teacherId === teacher.teacherId);
       const groupsForTeacher = data.groups.filter((g) => g.teacherId === teacher.teacherId);
       const groupIds = new Set(groupsForTeacher.map((g) => g.groupId));
       const studentsForTeacher = data.students.filter(
@@ -405,7 +425,8 @@ const FinancialModelPage: React.FC = () => {
       const total = groupRevenue - teacherPay - expensesShare - commissionsShare - taxesShare;
       return {
         teacherId: teacher.teacherId,
-        grade: teacher.grade,
+        name: teacher.full_name,
+        grade: localTeacher?.grade,
         studentsCount,
         groupRevenue,
         teacherPay,
@@ -424,6 +445,7 @@ const FinancialModelPage: React.FC = () => {
     dashboardMonth,
     selectedTaxRate,
     selectedTaxFixed,
+    globalTrainers,
   ]);
 
   const dashboardDirections = useMemo(() => {
@@ -1543,9 +1565,9 @@ const FinancialModelPage: React.FC = () => {
               <TableBody>
                 {dashboardTeachers.map((row) => (
                   <TableRow key={row.teacherId}>
-                    <TableCell>
-                      {row.teacherId} {row.grade ? `(${row.grade})` : ''}
-                    </TableCell>
+                  <TableCell>
+                    {row.name || row.teacherId} {row.grade ? `(${row.grade})` : ''}
+                  </TableCell>
                     <TableCell>{row.studentsCount}</TableCell>
                     <TableCell>{row.groupRevenue.toFixed(2)}</TableCell>
                     <TableCell>{row.teacherPay.toFixed(2)}</TableCell>

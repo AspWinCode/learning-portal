@@ -5,6 +5,8 @@ export interface User {
   role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest';
   is_active: boolean;
   created_at: string;
+  trainer_rate?: number | null;
+  trainer_lessons?: number | null;
 }
 
 export interface Student {

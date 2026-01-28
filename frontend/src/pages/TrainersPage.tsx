@@ -43,6 +43,18 @@ const TrainersPage: React.FC = () => {
     try {
       const data = await usersApi.getAll('trainer');
       setTrainers(data);
+      setTrainerRates(
+        data.reduce<Record<number, number>>((acc, trainer) => {
+          acc[trainer.id] = trainer.trainer_rate ?? 0;
+          return acc;
+        }, {})
+      );
+      setTrainerLessons(
+        data.reduce<Record<number, number>>((acc, trainer) => {
+          acc[trainer.id] = trainer.trainer_lessons ?? 0;
+          return acc;
+        }, {})
+      );
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка загрузки тренеров');
     }
@@ -85,6 +97,17 @@ const TrainersPage: React.FC = () => {
       loadGroups();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка создания тренера');
+    }
+  };
+
+  const handleSaveCompensation = async (trainerId: number) => {
+    try {
+      await usersApi.update(trainerId, {
+        trainer_rate: trainerRates[trainerId] ?? 0,
+        trainer_lessons: trainerLessons[trainerId] ?? 0,
+      });
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка сохранения ставки');
     }
   };
 
@@ -144,6 +167,7 @@ const TrainersPage: React.FC = () => {
                           [trainer.id]: toNumber(e.target.value),
                         }))
                       }
+                      onBlur={() => handleSaveCompensation(trainer.id)}
                     />
                   </TableCell>
                   <TableCell>
@@ -157,6 +181,7 @@ const TrainersPage: React.FC = () => {
                           [trainer.id]: toNumber(e.target.value),
                         }))
                       }
+                      onBlur={() => handleSaveCompensation(trainer.id)}
                     />
                   </TableCell>
                   <TableCell>{payment.toFixed(2)}</TableCell>

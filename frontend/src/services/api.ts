@@ -93,6 +93,10 @@ export const usersApi = {
     const response = await api.post('/api/users/', data);
     return response.data;
   },
+  update: async (id: number, data: Partial<User>): Promise<User> => {
+    const response = await api.put(`/api/users/${id}`, data);
+    return response.data;
+  },
 };
 
 export const studentsApi = {

@@ -75,6 +75,8 @@ class User(Base):
     password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    trainer_rate = Column(Float, nullable=True)
+    trainer_lessons = Column(Integer, nullable=True)
 
     # Relationships
     students = relationship("Student", back_populates="parent", foreign_keys="Student.parent_id")

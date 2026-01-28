@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import {
   Box,
@@ -229,17 +229,29 @@ const FinancialModelPage: React.FC = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
 
-  useEffect(() => {
-    const loadTrainers = async () => {
-      try {
-        const trainers = await usersApi.getAll('trainer');
-        setGlobalTrainers(trainers);
-      } catch {
-        setGlobalTrainers([]);
-      }
-    };
-    loadTrainers();
+  const loadTrainers = useCallback(async () => {
+    try {
+      const trainers = await usersApi.getAll('trainer');
+      setGlobalTrainers(trainers);
+    } catch {
+      setGlobalTrainers([]);
+    }
   }, []);
+
+  useEffect(() => {
+    loadTrainers();
+
+    const interval = window.setInterval(loadTrainers, 10000);
+    const handleFocus = () => loadTrainers();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, [loadTrainers]);
 
   useEffect(() => {
     const loadGroupsWithStudents = async () => {

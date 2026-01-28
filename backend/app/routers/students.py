@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from app.database import get_db
 from app import auth
 from app.schemas import StudentCreate, StudentResponse, StudentUpdate, ProgramSummaryResponse
-from app.models import Student, User, StudentStatus, UserRole
+from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus
 from app.routers.action_log import log_action
 
 router = APIRouter()
@@ -27,9 +27,19 @@ async def create_student(
         if not parent:
             raise HTTPException(status_code=404, detail="Parent not found")
     
+    abonement_id = None
+    if student.abonement_id:
+        abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
+        if not abonement:
+            raise HTTPException(status_code=404, detail="Abonement not found")
+        if abonement.status != AbonementStatus.ACTIVE:
+            raise HTTPException(status_code=400, detail="Abonement is archived")
+        abonement_id = abonement.id
+
     db_student = Student(
         full_name=student.full_name,
         parent_id=student.parent_id if student.parent_id else None,
+        abonement_id=abonement_id,
         status=StudentStatus.ACTIVE
     )
     db.add(db_student)
@@ -173,6 +183,17 @@ async def update_student(
                 raise HTTPException(status_code=404, detail="Parent not found")
         else:
             update_data["parent_id"] = None
+
+    # Проверка абонемента (если указан)
+    if "abonement_id" in update_data:
+        if update_data["abonement_id"]:
+            abonement = db.query(Abonement).filter(Abonement.id == update_data["abonement_id"]).first()
+            if not abonement:
+                raise HTTPException(status_code=404, detail="Abonement not found")
+            if abonement.status != AbonementStatus.ACTIVE:
+                raise HTTPException(status_code=400, detail="Abonement is archived")
+        else:
+            update_data["abonement_id"] = None
     
     # При архивации проверяем, нужно ли деактивировать родителя
     if "status" in update_data and update_data["status"] == StudentStatus.ARCHIVED:

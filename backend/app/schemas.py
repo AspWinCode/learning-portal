@@ -24,6 +24,17 @@ class CharacteristicStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class AbonementStatus(str, Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class DiscountType(str, Enum):
+    NONE = "none"
+    AMOUNT = "amount"
+    PERCENT = "percent"
+
+
 # Auth schemas
 class Token(BaseModel):
     access_token: str
@@ -75,6 +86,33 @@ class UserResponse(UserBase):
         from_attributes = True
 
 
+# Abonement schemas
+class AbonementBase(BaseModel):
+    name: str
+    discount_type: DiscountType = DiscountType.NONE
+    discount_value: float = 0.0
+
+
+class AbonementCreate(AbonementBase):
+    pass
+
+
+class AbonementUpdate(BaseModel):
+    name: Optional[str] = None
+    discount_type: Optional[DiscountType] = None
+    discount_value: Optional[float] = None
+    status: Optional[AbonementStatus] = None
+
+
+class AbonementResponse(AbonementBase):
+    id: int
+    status: AbonementStatus
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Student schemas
 class StudentBase(BaseModel):
     full_name: str
@@ -82,20 +120,24 @@ class StudentBase(BaseModel):
 
 class StudentCreate(StudentBase):
     parent_id: Optional[int] = None
+    abonement_id: Optional[int] = None
 
 
 class StudentUpdate(BaseModel):
     full_name: Optional[str] = None
     parent_id: Optional[int] = None
     status: Optional[StudentStatus] = None
+    abonement_id: Optional[int] = None
 
 
 class StudentResponse(StudentBase):
     id: int
     parent_id: Optional[int] = None
+    abonement_id: Optional[int] = None
     status: StudentStatus
     created_at: datetime
     parent: Optional[UserResponse] = None
+    abonement: Optional[AbonementResponse] = None
     programs: Optional[List["ProgramSummaryResponse"]] = []
 
     class Config:

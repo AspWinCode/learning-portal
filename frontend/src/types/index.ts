@@ -11,10 +11,21 @@ export interface Student {
   id: number;
   full_name: string;
   parent_id?: number | null;
+  abonement_id?: number | null;
   status: 'active' | 'archived';
   created_at: string;
   parent?: User;
+  abonement?: Abonement;
   programs?: ProgramSummary[];
+}
+
+export interface Abonement {
+  id: number;
+  name: string;
+  discount_type: 'none' | 'amount' | 'percent';
+  discount_value: number;
+  status: 'active' | 'archived';
+  created_at: string;
 }
 
 export interface Group {

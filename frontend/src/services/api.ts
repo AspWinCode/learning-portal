@@ -9,6 +9,7 @@ import {
   Characteristic,
   CharacteristicTemplate,
   CharacteristicField,
+  Abonement,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -314,6 +315,30 @@ export const settingsApi = {
   setLogo: async (data_url: string): Promise<{ data_url: string | null }> => {
     const response = await api.post('/api/settings/logo', { data_url });
     return response.data;
+  },
+};
+
+export const abonementsApi = {
+  getAll: async (params?: any): Promise<Abonement[]> => {
+    const response = await api.get('/api/abonements/', { params });
+    return response.data;
+  },
+  create: async (data: Partial<Abonement>): Promise<Abonement> => {
+    const response = await api.post('/api/abonements/', data);
+    return response.data;
+  },
+  update: async (id: number, data: Partial<Abonement>): Promise<Abonement> => {
+    const response = await api.put(`/api/abonements/${id}`, data);
+    return response.data;
+  },
+  archive: async (id: number): Promise<void> => {
+    await api.post(`/api/abonements/${id}/archive`);
+  },
+  unarchive: async (id: number): Promise<void> => {
+    await api.post(`/api/abonements/${id}/unarchive`);
+  },
+  remove: async (id: number): Promise<void> => {
+    await api.delete(`/api/abonements/${id}`);
   },
 };
 

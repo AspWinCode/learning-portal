@@ -23,8 +23,8 @@ import {
   InputLabel,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
-import { studentsApi, usersApi, groupsApi, programsApi } from '../services/api';
-import { Student, User, Group, Program } from '../types';
+import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi } from '../services/api';
+import { Student, User, Group, Program, Abonement } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const StudentsPage: React.FC = () => {
@@ -42,6 +42,7 @@ const StudentsPage: React.FC = () => {
     trainer_id: '',
     group_id: '',
     program_id: '',
+    abonement_id: '',
   });
   const [newParent, setNewParent] = useState({
     full_name: '',
@@ -57,8 +58,10 @@ const StudentsPage: React.FC = () => {
   const [trainers, setTrainers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [abonements, setAbonements] = useState<Abonement[]>([]);
   const { user } = useAuth();
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
+  const isOwner = user?.role === 'owner';
 
   useEffect(() => {
     loadStudents();
@@ -67,6 +70,9 @@ const StudentsPage: React.FC = () => {
       loadTrainers();
       loadGroups();
       loadPrograms();
+      if (isOwner) {
+        loadAbonements();
+      }
     }
   }, [user, statusFilter]);
 
@@ -130,6 +136,15 @@ const StudentsPage: React.FC = () => {
     }
   };
 
+  const loadAbonements = async () => {
+    try {
+      const data = await abonementsApi.getAll();
+      setAbonements(data);
+    } catch (err) {
+      console.error('Ошибка загрузки абонементов', err);
+    }
+  };
+
   const handleCreate = async () => {
     if (!newStudent.full_name.trim()) {
       setError('Заполните ФИО ученика');
@@ -146,6 +161,13 @@ const StudentsPage: React.FC = () => {
         const parentId = parseInt(newStudent.parent_id);
         if (!isNaN(parentId)) {
           studentData.parent_id = parentId;
+        }
+      }
+
+      if (isOwner && newStudent.abonement_id && newStudent.abonement_id.trim() !== '') {
+        const abonementId = parseInt(newStudent.abonement_id);
+        if (!isNaN(abonementId)) {
+          studentData.abonement_id = abonementId;
         }
       }
 
@@ -184,7 +206,7 @@ const StudentsPage: React.FC = () => {
       }
 
       setOpen(false);
-      setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '' });
+      setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
       loadStudents();
       loadGroups(); // Перезагружаем группы для обновления списка
     } catch (err: any) {
@@ -204,6 +226,7 @@ const StudentsPage: React.FC = () => {
       trainer_id: '',
       group_id: studentGroup?.id?.toString() || '',
       program_id: '',
+      abonement_id: student.abonement_id?.toString() || '',
     });
     setEditOpen(true);
   };
@@ -223,6 +246,14 @@ const StudentsPage: React.FC = () => {
         updateData.parent_id = parseInt(newStudent.parent_id);
       } else {
         updateData.parent_id = null;
+      }
+
+      if (isOwner) {
+        if (newStudent.abonement_id) {
+          updateData.abonement_id = parseInt(newStudent.abonement_id);
+        } else {
+          updateData.abonement_id = null;
+        }
       }
 
       await studentsApi.update(editingStudent.id, updateData);
@@ -266,7 +297,7 @@ const StudentsPage: React.FC = () => {
 
       setEditOpen(false);
       setEditingStudent(null);
-      setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '' });
+      setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
       loadStudents();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка обновления');
@@ -292,7 +323,18 @@ const StudentsPage: React.FC = () => {
     return '-';
   };
 
-  if (user?.role !== 'admin') {
+  const handleAbonementAssign = async (studentId: number, abonementId: string) => {
+    try {
+      await studentsApi.update(studentId, {
+        abonement_id: abonementId ? parseInt(abonementId) : null,
+      });
+      loadStudents();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка назначения абонемента');
+    }
+  };
+
+  if (!isAdminLike) {
     return (
       <Layout>
         <Typography variant="h4" gutterBottom>
@@ -364,7 +406,7 @@ const StudentsPage: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => {
               setOpen(true);
-              setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '' });
+              setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
             }}
           >
             Добавить ученика
@@ -389,6 +431,7 @@ const StudentsPage: React.FC = () => {
               <TableCell>Родитель</TableCell>
               <TableCell>Группа</TableCell>
               <TableCell>Программа</TableCell>
+              {isOwner && <TableCell>Абонемент</TableCell>}
               <TableCell>Статус</TableCell>
               <TableCell>Действия</TableCell>
             </TableRow>
@@ -402,6 +445,29 @@ const StudentsPage: React.FC = () => {
                   <TableCell>{student.parent?.full_name || '-'}</TableCell>
                   <TableCell>{studentGroup?.name || '-'}</TableCell>
                   <TableCell>{getStudentProgramLabel(student)}</TableCell>
+                  {isOwner && (
+                    <TableCell>
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>Абонемент</InputLabel>
+                        <Select
+                          label="Абонемент"
+                          value={student.abonement_id?.toString() || ''}
+                          onChange={(e) => handleAbonementAssign(student.id, e.target.value)}
+                        >
+                          <MenuItem value="">
+                            <em>Не выбран</em>
+                          </MenuItem>
+                          {abonements
+                            .filter((a) => a.status === 'active')
+                            .map((a) => (
+                              <MenuItem key={a.id} value={a.id.toString()}>
+                                {a.name}
+                              </MenuItem>
+                            ))}
+                        </Select>
+                      </FormControl>
+                    </TableCell>
+                  )}
                   <TableCell>{student.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>
                   <TableCell>
                     <Button
@@ -564,6 +630,27 @@ const StudentsPage: React.FC = () => {
               ))}
             </Select>
           </FormControl>
+          {isOwner && (
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Абонемент</InputLabel>
+              <Select
+                value={newStudent.abonement_id}
+                label="Абонемент"
+                onChange={(e) => setNewStudent({ ...newStudent, abonement_id: e.target.value })}
+              >
+                <MenuItem value="">
+                  <em>Не выбран</em>
+                </MenuItem>
+                {abonements
+                  .filter((a) => a.status === 'active')
+                  .map((a) => (
+                    <MenuItem key={a.id} value={a.id.toString()}>
+                      {a.name}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Отмена</Button>
@@ -636,6 +723,27 @@ const StudentsPage: React.FC = () => {
               ))}
             </Select>
           </FormControl>
+          {isOwner && (
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Абонемент</InputLabel>
+              <Select
+                value={newStudent.abonement_id}
+                label="Абонемент"
+                onChange={(e) => setNewStudent({ ...newStudent, abonement_id: e.target.value })}
+              >
+                <MenuItem value="">
+                  <em>Не выбран</em>
+                </MenuItem>
+                {abonements
+                  .filter((a) => a.status === 'active')
+                  .map((a) => (
+                    <MenuItem key={a.id} value={a.id.toString()}>
+                      {a.name}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditOpen(false)}>Отмена</Button>

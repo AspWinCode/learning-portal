@@ -40,6 +40,17 @@ class CharacteristicStatus(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
 
+
+class AbonementStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class DiscountType(str, enum.Enum):
+    NONE = "none"
+    AMOUNT = "amount"
+    PERCENT = "percent"
+
 def _enum_values(enum_cls):
     """
     Persist Python Enum values (e.g. "admin") instead of names (e.g. "ADMIN").
@@ -79,6 +90,7 @@ class Student(Base):
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
     parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True)
     status = Column(SQLEnum(StudentStatus, name="studentstatus", values_callable=_enum_values), default=StudentStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -91,6 +103,30 @@ class Student(Base):
     programs = relationship("Program", secondary="student_programs", viewonly=True)
     grades = relationship("Grade", back_populates="student")
     characteristics = relationship("Characteristic", back_populates="student")
+    abonement = relationship("Abonement", back_populates="students")
+
+
+class Abonement(Base):
+    __tablename__ = "abonements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    discount_type = Column(
+        SQLEnum(DiscountType, name="discounttype", values_callable=_enum_values),
+        default=DiscountType.NONE,
+        nullable=False
+    )
+    discount_value = Column(Float, default=0.0, nullable=False)
+    status = Column(
+        SQLEnum(AbonementStatus, name="abonementstatus", values_callable=_enum_values),
+        default=AbonementStatus.ACTIVE,
+        nullable=False
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    students = relationship("Student", back_populates="abonement")
 
 
 class Group(Base):

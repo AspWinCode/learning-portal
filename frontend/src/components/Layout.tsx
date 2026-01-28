@@ -32,6 +32,7 @@ import {
   Description,
   Assessment,
   AccountBalance,
+  LocalOffer,
   Home,
   ExitToApp,
   Telegram as TelegramIcon,
@@ -174,7 +175,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     ];
 
     if (isAdminLike) items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
-    if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
+    if (role === 'owner') {
+      items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
+      items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
+    }
     return items;
   })();
 

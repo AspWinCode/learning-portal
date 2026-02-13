@@ -198,6 +198,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Мероприятия', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'Инвойсы', icon: <ReceiptLong />, path: '/sales/invoices' },
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
+        { text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' },
       ];
 
     const items = [
@@ -211,17 +212,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     if (isAdminLike) items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
     if (isAdminLike) items.push({ text: 'Продажи: На сегодня', icon: <Dashboard />, path: '/sales/dashboard' });
-    if (isAdminLike) items.push({ text: 'Продажи: Воронка', icon: <Dashboard />, path: '/sales/pipeline' });
-    if (isAdminLike) items.push({ text: 'Продажи: Лиды', icon: <WorkOutline />, path: '/sales/leads' });
-    if (isAdminLike) items.push({ text: 'Продажи: Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' });
-    if (isAdminLike) items.push({ text: 'Продажи: Мероприятия', icon: <EventAvailable />, path: '/sales/events' });
-    if (isAdminLike) items.push({ text: 'Продажи: Инвойсы', icon: <ReceiptLong />, path: '/sales/invoices' });
-    if (isAdminLike) items.push({ text: 'Продажи: Отчёты', icon: <Assessment />, path: '/sales/reports' });
     if (isAdminLike) items.push({ text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {
       items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
-      items.push({ text: 'Sales менеджеры', icon: <WorkOutline />, path: '/sales-managers' });
       items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     }
     return items;

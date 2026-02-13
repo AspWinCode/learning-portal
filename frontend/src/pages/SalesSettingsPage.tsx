@@ -15,12 +15,17 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { Add as AddIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { LeadInfoTemplate, LeadSource, LeadTaskStatusOption, LeadTaskTemplate } from '../types';
 
 const SalesSettingsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [error, setError] = useState('');
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [templates, setTemplates] = useState<LeadTaskTemplate[]>([]);
@@ -66,7 +71,18 @@ const SalesSettingsPage: React.FC = () => {
 
   return (
     <Layout>
-      <Typography variant="h4" mb={2}>Справочники Sales</Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
+        <Typography variant="h4">Справочники Sales</Typography>
+        {(user?.role === 'admin' || user?.role === 'owner') && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => navigate('/sales-managers')}
+          >
+            Создать sales менеджера
+          </Button>
+        )}
+      </Stack>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}

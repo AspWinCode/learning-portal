@@ -98,7 +98,7 @@ function App() {
             <Route
               path="/sales/leads"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['sales']}>
                   <SalesLeadsPage />
                 </PrivateRoute>
               }
@@ -106,7 +106,7 @@ function App() {
             <Route
               path="/sales/pipeline"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['sales']}>
                   <SalesLeadsPage />
                 </PrivateRoute>
               }
@@ -114,7 +114,7 @@ function App() {
             <Route
               path="/sales/events"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['sales']}>
                   <SalesEventsPage />
                 </PrivateRoute>
               }
@@ -122,7 +122,7 @@ function App() {
             <Route
               path="/sales/invoices"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['sales']}>
                   <SalesInvoicesPage />
                 </PrivateRoute>
               }
@@ -130,7 +130,7 @@ function App() {
             <Route
               path="/sales/follow-ups"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['sales']}>
                   <SalesFollowUpsPage />
                 </PrivateRoute>
               }
@@ -138,7 +138,7 @@ function App() {
             <Route
               path="/sales/reports"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['sales']}>
                   <SalesReportsPage />
                 </PrivateRoute>
               }
@@ -194,7 +194,7 @@ function App() {
             <Route
               path="/sales-managers"
               element={
-                <PrivateRoute allowedRoles={['owner']}>
+                <PrivateRoute allowedRoles={['admin', 'owner']}>
                   <SalesManagersPage />
                 </PrivateRoute>
               }
@@ -202,7 +202,7 @@ function App() {
             <Route
               path="/sales/settings"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesSettingsPage />
                 </PrivateRoute>
               }

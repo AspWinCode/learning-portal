@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, ForeignKey, Text, Float, Enum as SQLEnum, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, ForeignKey, Text, Float, Enum as SQLEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -12,6 +12,7 @@ class UserRole(str, enum.Enum):
     TRAINER = "trainer"
     PARENT = "parent"
     GUEST = "guest"
+    SALES = "sales"
 
 
 class StudentStatus(str, enum.Enum):
@@ -130,6 +131,243 @@ class Abonement(Base):
 
     # Relationships
     students = relationship("Student", back_populates="abonement")
+
+
+# --- Sales domain ---
+
+
+class LeadStatus(str, enum.Enum):
+    NEW = "new"
+    CONTACTED = "contacted"
+    DEMO = "demo"
+    INVOICE_SENT = "invoice_sent"
+    WON = "won"
+    LOST = "lost"
+
+
+class Lead(Base):
+    __tablename__ = "leads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    contact_name = Column(String, nullable=False)
+    phone = Column(String, nullable=False)
+    parent_full_name = Column(String, nullable=True)
+    child_full_name = Column(String, nullable=True)
+    parent_phone = Column(String, nullable=True)
+    child_phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    school_name = Column(String, nullable=True, index=True)
+    school_class = Column(String, nullable=True, index=True)
+    outreach_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    outreach_minutes = Column(Integer, nullable=True)
+    status = Column(
+        SQLEnum(LeadStatus, name="leadstatus", values_callable=_enum_values),
+        default=LeadStatus.NEW,
+        nullable=False,
+        index=True,
+    )
+    source = Column(String, nullable=True)
+    source_id = Column(Integer, ForeignKey("lead_sources.id"), nullable=True, index=True)
+    referral_name = Column(String, nullable=True)
+    tags = Column(JSON, nullable=True)
+    abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True)
+    desired_slot = Column(String, nullable=True)
+    comment = Column(Text, nullable=True)
+    next_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    pause_reason = Column(String, nullable=True)
+    lost_reason = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    owner = relationship("User")
+    abonement = relationship("Abonement")
+    source_ref = relationship("LeadSource")
+    tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
+    invoices = relationship("Invoice", back_populates="lead", cascade="all, delete-orphan")
+    communications = relationship("LeadCommunication", back_populates="lead", cascade="all, delete-orphan")
+
+
+class LeadTaskStatus(str, enum.Enum):
+    OPEN = "open"
+    DONE = "done"
+
+
+class LeadTask(Base):
+    __tablename__ = "lead_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    template_id = Column(Integer, ForeignKey("lead_task_templates.id"), nullable=True, index=True)
+    status_option_id = Column(Integer, ForeignKey("lead_task_statuses.id"), nullable=True, index=True)
+    due_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    status = Column(
+        SQLEnum(LeadTaskStatus, name="leadtaskstatus", values_callable=_enum_values),
+        default=LeadTaskStatus.OPEN,
+        nullable=False,
+        index=True,
+    )
+    note = Column(Text, nullable=True)
+    channel = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    lead = relationship("Lead", back_populates="tasks")
+    owner = relationship("User")
+    template = relationship("LeadTaskTemplate")
+    status_option = relationship("LeadTaskStatusOption")
+
+
+class LeadSource(Base):
+    __tablename__ = "lead_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LeadTaskTemplate(Base):
+    __tablename__ = "lead_task_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LeadTaskStatusOption(Base):
+    __tablename__ = "lead_task_statuses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    is_closed = Column(Boolean, default=False, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LeadInfoTemplate(Base):
+    __tablename__ = "lead_info_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    body = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LeadCommunication(Base):
+    __tablename__ = "lead_communications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    sent_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    template_id = Column(Integer, ForeignKey("lead_info_templates.id"), nullable=True, index=True)
+    channel = Column(String, nullable=False, default="messenger")
+    message = Column(Text, nullable=False)
+    pause_reason = Column(String, nullable=True)
+    follow_up_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    lead = relationship("Lead", back_populates="communications")
+    sender = relationship("User")
+    template = relationship("LeadInfoTemplate")
+
+
+class InvoiceStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SENT = "sent"
+    PAID = "paid"
+    OVERDUE = "overdue"
+    CANCELLED = "cancelled"
+
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, default="RUB", nullable=False)
+    status = Column(
+        SQLEnum(InvoiceStatus, name="invoicestatus", values_callable=_enum_values),
+        default=InvoiceStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    email_to = Column(String, nullable=True)
+    link = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    lead = relationship("Lead", back_populates="invoices")
+    abonement = relationship("Abonement")
+
+
+class EventStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class EventRegistrationStatus(str, enum.Enum):
+    REGISTERED = "registered"
+    CANCELLED = "cancelled"
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    starts_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    ends_at = Column(DateTime(timezone=True), nullable=True)
+    location = Column(String, nullable=True)
+    capacity = Column(Integer, nullable=True)
+    status = Column(
+        SQLEnum(EventStatus, name="eventstatus", values_callable=_enum_values),
+        default=EventStatus.ACTIVE,
+        nullable=False,
+        index=True,
+    )
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    registrations = relationship("EventRegistration", back_populates="event", cascade="all, delete-orphan")
+    creator = relationship("User")
+
+
+class EventRegistration(Base):
+    __tablename__ = "event_registrations"
+    __table_args__ = (
+        UniqueConstraint("event_id", "lead_id", name="uq_event_lead_registration"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(
+        SQLEnum(EventRegistrationStatus, name="eventregistrationstatus", values_callable=_enum_values),
+        default=EventRegistrationStatus.REGISTERED,
+        nullable=False,
+        index=True,
+    )
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    event = relationship("Event", back_populates="registrations")
+    lead = relationship("Lead")
+    owner = relationship("User")
 
 
 class Group(Base):

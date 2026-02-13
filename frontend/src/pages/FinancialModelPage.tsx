@@ -73,6 +73,35 @@ type Teacher = {
   bonusPerStudent: number;
 };
 
+type GroupModelRow = {
+  groupId: number;
+  groupName: string;
+  groupDirection: string;
+  teacherId: number;
+  studentsCount: number;
+  avgCheck: number;
+  revenue: number;
+  trainerSalaryCost: number;
+  directCosts: number;
+  sharedCosts: number;
+  totalCosts: number;
+  profit: number;
+  marginPercent: number;
+  breakEvenStudents: number;
+};
+
+type TrainerModelRow = {
+  teacherId: number;
+  teacherName: string;
+  groupsCount: number;
+  studentsCount: number;
+  revenue: number;
+  totalCosts: number;
+  profit: number;
+  marginPercent: number;
+  avgGroupProfit: number;
+};
+
 type RevenueRow = {
   month: string;
   groupId: number;
@@ -208,6 +237,8 @@ const FinancialModelPage: React.FC = () => {
     }
   });
   const [dashboardMonth, setDashboardMonth] = useState<string>('2026-01');
+  const [trainerModelTrainerFilter, setTrainerModelTrainerFilter] = useState<number | 'all'>('all');
+  const [trainerModelDirectionFilter, setTrainerModelDirectionFilter] = useState<string>('all');
   const [globalTrainers, setGlobalTrainers] = useState<User[]>([]);
   const [dbGroups, setDbGroups] = useState<ApiGroup[]>([]);
   const [entryDate, setEntryDate] = useState<string>(() => {
@@ -221,9 +252,6 @@ const FinancialModelPage: React.FC = () => {
   const [entryCategory, setEntryCategory] = useState<string>('');
   const [entryAmount, setEntryAmount] = useState<number>(0);
   const [entryCategoryType, setEntryCategoryType] = useState<'Variable' | 'Fixed'>('Fixed');
-  const [entryGroupId, setEntryGroupId] = useState<number | ''>('');
-  const [entryTeacherId, setEntryTeacherId] = useState<number | ''>('');
-  const [entryDirection, setEntryDirection] = useState<string>('');
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -293,8 +321,8 @@ const FinancialModelPage: React.FC = () => {
           ...prev.revenue,
           {
             month: monthKey,
-            groupId: typeof entryGroupId === 'number' ? entryGroupId : 0,
-            direction: entryDirection,
+            groupId: 0,
+            direction: '',
             discount: prev.inputs.defaultDiscount,
             category: entryCategory,
             manualAmount: entryAmount,
@@ -311,8 +339,8 @@ const FinancialModelPage: React.FC = () => {
             category: entryCategoryType,
             subcategory: entryCategory,
             amount: entryAmount,
-            groupId: typeof entryGroupId === 'number' ? entryGroupId : undefined,
-            teacherId: typeof entryTeacherId === 'number' ? entryTeacherId : undefined,
+            groupId: undefined,
+            teacherId: undefined,
           },
         ],
       }));
@@ -320,19 +348,7 @@ const FinancialModelPage: React.FC = () => {
 
     setEntryCategory('');
     setEntryAmount(0);
-    setEntryGroupId('');
-    setEntryTeacherId('');
-    setEntryDirection('');
   };
-
-  const groupCurrentStudents = useMemo(() => {
-    const counts = new Map<number, number>();
-    data.students.forEach((student) => {
-      if (student.status !== 'Active') return;
-      counts.set(student.groupId, (counts.get(student.groupId) || 0) + 1);
-    });
-    return counts;
-  }, [data.students]);
 
   const dbStudents: Student[] = useMemo(() => {
     if (!dbGroups.length) return [];
@@ -564,7 +580,186 @@ const FinancialModelPage: React.FC = () => {
     });
   }, [data.students, data.groups, revenueComputed, dashboardMonth, data.inputs.defaultRetention]);
 
-  const monthsList = Array.from(new Set(data.revenue.map((r) => r.month))).filter(Boolean);
+  const teacherNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    globalTrainers.forEach((t) => map.set(t.id, t.full_name));
+    return map;
+  }, [globalTrainers]);
+
+  const groupModelRows = useMemo<GroupModelRow[]>(() => {
+    const activeGroups = dbGroups.filter((g) => (g.status || '').toLowerCase() !== 'archived');
+
+    const totalSharedCosts = data.costs
+      .filter(
+        (c) =>
+          c.month === dashboardMonth &&
+          (c.groupId === undefined || c.groupId === null) &&
+          (c.teacherId === undefined || c.teacherId === null)
+      )
+      .reduce((sum, c) => sum + toNumber(c.amount), 0);
+
+    const sharedPerGroup = activeGroups.length ? totalSharedCosts / activeGroups.length : 0;
+
+    const teacherMonthlyPay = globalTrainers.reduce<Record<number, number>>((acc, trainer) => {
+      const rate = trainer.trainer_rate ?? 0;
+      const lessons = trainer.trainer_lessons ?? 0;
+      acc[trainer.id] = rate * lessons;
+      return acc;
+    }, {});
+
+    const groupsPerTeacher = new Map<number, number>();
+    activeGroups.forEach((g) => {
+      const teacherId = g.trainer_id;
+      groupsPerTeacher.set(teacherId, (groupsPerTeacher.get(teacherId) || 0) + 1);
+    });
+
+    return activeGroups.map((group) => {
+      const groupId = group.id;
+      const teacherId = group.trainer_id;
+      const groupName = group.name || `Группа #${groupId}`;
+      const groupDirection = group.programs?.[0]?.name || 'Без направления';
+      const activeStudents = (group.students || []).filter((s: ApiStudent) => s.status === 'active');
+      const studentsCount = activeStudents.length;
+      const revenue = activeStudents.reduce((sum: number, s: ApiStudent) => sum + (s.abonement?.price || 0), 0);
+      const avgCheck = studentsCount ? revenue / studentsCount : 0;
+
+      const directCosts = data.costs
+        .filter((c) => c.month === dashboardMonth && c.groupId === groupId)
+        .reduce((sum, c) => sum + toNumber(c.amount), 0);
+
+      const teacherOnlyCosts = data.costs
+        .filter(
+          (c) =>
+            c.month === dashboardMonth &&
+            c.teacherId === teacherId &&
+            (c.groupId === undefined || c.groupId === null)
+        )
+        .reduce((sum, c) => sum + toNumber(c.amount), 0);
+
+      const teacherGroupsCount = groupsPerTeacher.get(teacherId) || 1;
+      const trainerSalaryCost = (teacherMonthlyPay[teacherId] || 0) / teacherGroupsCount;
+      const teacherCostShare = teacherOnlyCosts / teacherGroupsCount;
+      const totalCosts = trainerSalaryCost + directCosts + teacherCostShare + sharedPerGroup;
+      const profit = revenue - totalCosts;
+      const marginPercent = revenue > 0 ? (profit / revenue) * 100 : 0;
+      const breakEvenStudents = avgCheck > 0 ? Math.ceil(totalCosts / avgCheck) : 0;
+
+      return {
+        groupId,
+        groupName,
+        groupDirection,
+        teacherId,
+        studentsCount,
+        avgCheck,
+        revenue,
+        trainerSalaryCost,
+        directCosts: directCosts + teacherCostShare,
+        sharedCosts: sharedPerGroup,
+        totalCosts,
+        profit,
+        marginPercent,
+        breakEvenStudents,
+      };
+    });
+  }, [dashboardMonth, data.costs, dbGroups, globalTrainers]);
+
+  const trainerModelRows = useMemo<TrainerModelRow[]>(() => {
+    const byTeacher = new Map<number, GroupModelRow[]>();
+    groupModelRows.forEach((row) => {
+      const list = byTeacher.get(row.teacherId) || [];
+      list.push(row);
+      byTeacher.set(row.teacherId, list);
+    });
+
+    const teacherIds = new Set<number>([
+      ...globalTrainers.map((t) => t.id),
+      ...Array.from(byTeacher.keys()),
+    ]);
+
+    return Array.from(teacherIds).map((teacherId) => {
+      const rows = byTeacher.get(teacherId) || [];
+      const revenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+      const totalCosts = rows.reduce((sum, row) => sum + row.totalCosts, 0);
+      const profit = rows.reduce((sum, row) => sum + row.profit, 0);
+      const studentsCount = rows.reduce((sum, row) => sum + row.studentsCount, 0);
+      const avgGroupProfit = rows.length ? profit / rows.length : 0;
+      return {
+        teacherId,
+        teacherName: teacherNameMap.get(teacherId) || `Тренер #${teacherId}`,
+        groupsCount: rows.length,
+        studentsCount,
+        revenue,
+        totalCosts,
+        profit,
+        marginPercent: revenue > 0 ? (profit / revenue) * 100 : 0,
+        avgGroupProfit,
+      };
+    });
+  }, [globalTrainers, groupModelRows, teacherNameMap]);
+
+  const trainerFilterOptions = useMemo(
+    () => trainerModelRows.map((row) => ({ teacherId: row.teacherId, teacherName: row.teacherName })),
+    [trainerModelRows]
+  );
+
+  const directionFilterOptions = useMemo(
+    () => Array.from(new Set(groupModelRows.map((row) => row.groupDirection))).sort((a, b) => a.localeCompare(b, 'ru')),
+    [groupModelRows]
+  );
+
+  const filteredGroupModelRows = useMemo(() => {
+    return groupModelRows.filter((row) => {
+      if (trainerModelTrainerFilter !== 'all' && row.teacherId !== trainerModelTrainerFilter) return false;
+      if (trainerModelDirectionFilter !== 'all' && row.groupDirection !== trainerModelDirectionFilter) return false;
+      return true;
+    });
+  }, [groupModelRows, trainerModelDirectionFilter, trainerModelTrainerFilter]);
+
+  const filteredTrainerModelRows = useMemo(() => {
+    const grouped = new Map<number, GroupModelRow[]>();
+    filteredGroupModelRows.forEach((row) => {
+      const list = grouped.get(row.teacherId) || [];
+      list.push(row);
+      grouped.set(row.teacherId, list);
+    });
+    return Array.from(grouped.entries()).map(([teacherId, rows]) => {
+      const revenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+      const totalCosts = rows.reduce((sum, row) => sum + row.totalCosts, 0);
+      const profit = rows.reduce((sum, row) => sum + row.profit, 0);
+      const studentsCount = rows.reduce((sum, row) => sum + row.studentsCount, 0);
+      return {
+        teacherId,
+        teacherName: teacherNameMap.get(teacherId) || `Тренер #${teacherId}`,
+        groupsCount: rows.length,
+        studentsCount,
+        revenue,
+        totalCosts,
+        profit,
+        marginPercent: revenue > 0 ? (profit / revenue) * 100 : 0,
+        avgGroupProfit: rows.length ? profit / rows.length : 0,
+      };
+    });
+  }, [filteredGroupModelRows, teacherNameMap]);
+
+  const trainerModelSummary = useMemo(() => {
+    const totalRevenue = filteredTrainerModelRows.reduce((sum, row) => sum + row.revenue, 0);
+    const totalProfit = filteredTrainerModelRows.reduce((sum, row) => sum + row.profit, 0);
+    const activeGroups = filteredGroupModelRows.length;
+    const avgGroupSize = activeGroups
+      ? filteredGroupModelRows.reduce((sum, row) => sum + row.studentsCount, 0) / activeGroups
+      : 0;
+    return {
+      totalRevenue,
+      totalProfit,
+      avgMargin: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0,
+      avgGroupSize,
+      activeGroups,
+    };
+  }, [filteredGroupModelRows, filteredTrainerModelRows]);
+
+  const monthsList = Array.from(
+    new Set([...data.revenue.map((r) => r.month), ...data.costs.map((c) => c.month)])
+  ).filter(Boolean);
 
   return (
     <Layout>
@@ -618,8 +813,8 @@ const FinancialModelPage: React.FC = () => {
                     value={entryCategoryType}
                     onChange={(e) => setEntryCategoryType(e.target.value as 'Variable' | 'Fixed')}
                   >
-                    <MenuItem value="Variable">Variable</MenuItem>
-                    <MenuItem value="Fixed">Fixed</MenuItem>
+                    <MenuItem value="Variable">Переменные</MenuItem>
+                    <MenuItem value="Fixed">Постоянные</MenuItem>
                   </Select>
                 </FormControl>
               )}
@@ -642,26 +837,6 @@ const FinancialModelPage: React.FC = () => {
                 value={entryAmount}
                 onChange={(e) => setEntryAmount(toNumber(e.target.value))}
               />
-              <TextField
-                label="GroupID"
-                size="small"
-                type="number"
-                value={entryGroupId}
-                onChange={(e) => setEntryGroupId(e.target.value === '' ? '' : toNumber(e.target.value))}
-              />
-              <TextField
-                label="TeacherID"
-                size="small"
-                type="number"
-                value={entryTeacherId}
-                onChange={(e) => setEntryTeacherId(e.target.value === '' ? '' : toNumber(e.target.value))}
-              />
-              <TextField
-                label="Direction"
-                size="small"
-                value={entryDirection}
-                onChange={(e) => setEntryDirection(e.target.value)}
-              />
               <Button variant="contained" onClick={handleAddEntry}>
                 Добавить
               </Button>
@@ -671,31 +846,38 @@ const FinancialModelPage: React.FC = () => {
 
         <Paper sx={{ p: 2, mb: 2 }}>
           <Tabs value={sheetIndex} onChange={(_, v) => setSheetIndex(v)} variant="scrollable">
-            {['Inputs', 'TaxRates', 'Статьи', 'Students', 'Groups', 'Teachers', 'Revenue', 'Costs', 'P&L', 'Dashboard'].map(
-              (label) => (
-                <Tab key={label} label={label} />
-              )
-            )}
+            {[
+              'Параметры',
+              'Ставки налогов',
+              'Статьи',
+              'Выручка',
+              'Затраты',
+              'Прибыли и убытки',
+              'Дашборд',
+              'Финансовая модель по тренерам',
+            ].map((label) => (
+              <Tab key={label} label={label} />
+            ))}
           </Tabs>
         </Paper>
 
         {sheetIndex === 0 && (
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              Inputs
+              Параметры
             </Typography>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>SelectedTax</TableCell>
-                  <TableCell>AcquiringPercent</TableCell>
-                  <TableCell>AcquiringFixed</TableCell>
-                  <TableCell>DefaultAbonementLessons</TableCell>
-                  <TableCell>DefaultLessonHours</TableCell>
-                  <TableCell>DefaultRetention</TableCell>
-                  <TableCell>DefaultDiscount</TableCell>
-                  <TableCell>SelectedTaxRate</TableCell>
-                  <TableCell>SelectedTaxFixed</TableCell>
+                  <TableCell>Налоговый режим</TableCell>
+                  <TableCell>Эквайринг, %</TableCell>
+                  <TableCell>Эквайринг, фикс</TableCell>
+                  <TableCell>Уроков в абонементе</TableCell>
+                  <TableCell>Длительность урока (ч)</TableCell>
+                  <TableCell>Коэффициент удержания</TableCell>
+                  <TableCell>Скидка по умолчанию</TableCell>
+                  <TableCell>Ставка налога</TableCell>
+                  <TableCell>Фикс. налог в месяц</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -753,7 +935,7 @@ const FinancialModelPage: React.FC = () => {
 
             <Divider sx={{ my: 2 }} />
             <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              SeasonalityMultiplier
+              Сезонный коэффициент
             </Typography>
             <Table size="small">
               <TableHead>
@@ -790,7 +972,7 @@ const FinancialModelPage: React.FC = () => {
         {sheetIndex === 1 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">TaxRates</Typography>
+              <Typography variant="h6">Ставки налогов</Typography>
               <Button
                 startIcon={<Add />}
                 onClick={() =>
@@ -806,9 +988,9 @@ const FinancialModelPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>TaxName</TableCell>
-                  <TableCell>TaxPercent</TableCell>
-                  <TableCell>TaxFixedMonthly</TableCell>
+                  <TableCell>Режим</TableCell>
+                  <TableCell>Ставка (%)</TableCell>
+                  <TableCell>Фикс. сумма в месяц</TableCell>
                   <TableCell />
                 </TableRow>
               </TableHead>
@@ -958,309 +1140,7 @@ const FinancialModelPage: React.FC = () => {
         {sheetIndex === 3 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Students</Typography>
-              <Button
-                startIcon={<Add />}
-                onClick={() =>
-                  setData((prev) => ({
-                    ...prev,
-                    students: [
-                      ...prev.students,
-                      {
-                        studentId: Date.now(),
-                        startDate: '',
-                        direction: '',
-                        groupId: 0,
-                        teacherId: 0,
-                        monthlyPrice: 0,
-                        discountPercent: 0,
-                        status: 'Active',
-                        paymentMonths: 1,
-                        isAnnual: false,
-                      },
-                    ],
-                  }))
-                }
-              >
-                Добавить
-              </Button>
-            </Stack>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>StudentID</TableCell>
-                  <TableCell>StartDate</TableCell>
-                  <TableCell>Direction</TableCell>
-                  <TableCell>GroupID</TableCell>
-                  <TableCell>TeacherID</TableCell>
-                  <TableCell>MonthlyPrice</TableCell>
-                  <TableCell>DiscountPercent</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>PaymentMonths</TableCell>
-                  <TableCell>IsAnnual</TableCell>
-                  <TableCell />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.students.map((student, idx) => (
-                  <TableRow key={student.studentId}>
-                    {(
-                      [
-                        ['studentId', student.studentId],
-                        ['startDate', student.startDate],
-                        ['direction', student.direction],
-                        ['groupId', student.groupId],
-                        ['teacherId', student.teacherId],
-                        ['monthlyPrice', student.monthlyPrice],
-                        ['discountPercent', student.discountPercent],
-                        ['status', student.status],
-                        ['paymentMonths', student.paymentMonths],
-                        ['isAnnual', student.isAnnual ? 'true' : 'false'],
-                      ] as Array<[keyof Student, string | number | boolean]>
-                    ).map(([key, value]) => (
-                      <TableCell key={key}>
-                        <TextField
-                          size="small"
-                          value={value}
-                          onChange={(e) =>
-                            setData((prev) => {
-                              const students = [...prev.students];
-                              const raw = e.target.value;
-                              const nextValue =
-                                key === 'isAnnual'
-                                  ? raw === 'true' || raw === '1'
-                                  : ['studentId', 'groupId', 'teacherId', 'monthlyPrice', 'discountPercent', 'paymentMonths'].includes(
-                                      key
-                                    )
-                                  ? toNumber(raw)
-                                  : raw;
-                              students[idx] = { ...students[idx], [key]: nextValue } as Student;
-                              return { ...prev, students };
-                            })
-                          }
-                        />
-                      </TableCell>
-                    ))}
-                    <TableCell>
-                      <IconButton
-                        color="error"
-                        onClick={() =>
-                          setData((prev) => ({
-                            ...prev,
-                            students: prev.students.filter((_, i) => i !== idx),
-                          }))
-                        }
-                      >
-                        <Delete />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Paper>
-        )}
-
-        {sheetIndex === 4 && (
-          <Paper sx={{ p: 2 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Groups</Typography>
-              <Button
-                startIcon={<Add />}
-                onClick={() =>
-                  setData((prev) => ({
-                    ...prev,
-                    groups: [
-                      ...prev.groups,
-                      {
-                        groupId: Date.now(),
-                        direction: '',
-                        teacherId: 0,
-                        lessonHours: data.inputs.defaultLessonHours,
-                        lessonsPerMonth: data.inputs.defaultAbonementLessons,
-                        maxCapacity: 0,
-                        groupStatus: 'Active',
-                      },
-                    ],
-                  }))
-                }
-              >
-                Добавить
-              </Button>
-            </Stack>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>GroupID</TableCell>
-                  <TableCell>Direction</TableCell>
-                  <TableCell>TeacherID</TableCell>
-                  <TableCell>LessonHours</TableCell>
-                  <TableCell>LessonsPerMonth</TableCell>
-                  <TableCell>MaxCapacity</TableCell>
-                  <TableCell>CurrentStudents</TableCell>
-                  <TableCell>GroupStatus</TableCell>
-                  <TableCell />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.groups.map((group, idx) => (
-                  <TableRow key={group.groupId}>
-                    <TableCell>{group.groupId}</TableCell>
-                    {(
-                      [
-                        ['direction', group.direction],
-                        ['teacherId', group.teacherId],
-                        ['lessonHours', group.lessonHours],
-                        ['lessonsPerMonth', group.lessonsPerMonth],
-                        ['maxCapacity', group.maxCapacity],
-                      ] as Array<[keyof Group, string | number]>
-                    ).map(([key, value]) => (
-                      <TableCell key={key}>
-                        <TextField
-                          size="small"
-                          value={value}
-                          onChange={(e) =>
-                            setData((prev) => {
-                              const groups = [...prev.groups];
-                              const nextValue = ['teacherId', 'lessonHours', 'lessonsPerMonth', 'maxCapacity'].includes(key)
-                                ? toNumber(e.target.value)
-                                : e.target.value;
-                              groups[idx] = { ...groups[idx], [key]: nextValue } as Group;
-                              return { ...prev, groups };
-                            })
-                          }
-                        />
-                      </TableCell>
-                    ))}
-                    <TableCell>{groupCurrentStudents.get(group.groupId) || 0}</TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        value={group.groupStatus}
-                        onChange={(e) =>
-                          setData((prev) => {
-                            const groups = [...prev.groups];
-                            groups[idx] = { ...groups[idx], groupStatus: e.target.value };
-                            return { ...prev, groups };
-                          })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <IconButton
-                        color="error"
-                        onClick={() =>
-                          setData((prev) => ({
-                            ...prev,
-                            groups: prev.groups.filter((_, i) => i !== idx),
-                          }))
-                        }
-                      >
-                        <Delete />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Paper>
-        )}
-
-        {sheetIndex === 5 && (
-          <Paper sx={{ p: 2 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Teachers</Typography>
-              <Button
-                startIcon={<Add />}
-                onClick={() =>
-                  setData((prev) => ({
-                    ...prev,
-                    teachers: [...prev.teachers, { teacherId: Date.now(), grade: '', ratePerHour: 0, bonusPerStudent: 0 }],
-                  }))
-                }
-              >
-                Добавить
-              </Button>
-            </Stack>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>TeacherID</TableCell>
-                  <TableCell>Grade</TableCell>
-                  <TableCell>RatePerHour</TableCell>
-                  <TableCell>BonusPerStudent</TableCell>
-                  <TableCell />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.teachers.map((teacher, idx) => (
-                  <TableRow key={teacher.teacherId}>
-                    <TableCell>{teacher.teacherId}</TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        value={teacher.grade}
-                        onChange={(e) =>
-                          setData((prev) => {
-                            const teachers = [...prev.teachers];
-                            teachers[idx] = { ...teachers[idx], grade: e.target.value };
-                            return { ...prev, teachers };
-                          })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={teacher.ratePerHour}
-                        onChange={(e) =>
-                          setData((prev) => {
-                            const teachers = [...prev.teachers];
-                            teachers[idx] = { ...teachers[idx], ratePerHour: toNumber(e.target.value) };
-                            return { ...prev, teachers };
-                          })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={teacher.bonusPerStudent}
-                        onChange={(e) =>
-                          setData((prev) => {
-                            const teachers = [...prev.teachers];
-                            teachers[idx] = { ...teachers[idx], bonusPerStudent: toNumber(e.target.value) };
-                            return { ...prev, teachers };
-                          })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <IconButton
-                        color="error"
-                        onClick={() =>
-                          setData((prev) => ({
-                            ...prev,
-                            teachers: prev.teachers.filter((_, i) => i !== idx),
-                          }))
-                        }
-                      >
-                        <Delete />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Paper>
-        )}
-
-        {sheetIndex === 6 && (
-          <Paper sx={{ p: 2 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Revenue</Typography>
+              <Typography variant="h6">Выручка</Typography>
               <Button
                 startIcon={<Add />}
                 onClick={() =>
@@ -1276,16 +1156,16 @@ const FinancialModelPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Month</TableCell>
-                  <TableCell>GroupID</TableCell>
-                  <TableCell>Direction</TableCell>
-                  <TableCell>Category</TableCell>
-                  <TableCell>ActiveStudents</TableCell>
-                  <TableCell>PricePerStudent</TableCell>
-                  <TableCell>Discount</TableCell>
-                  <TableCell>ManualAmount</TableCell>
-                  <TableCell>GrossRevenue</TableCell>
-                  <TableCell>NetRevenue</TableCell>
+                  <TableCell>Месяц</TableCell>
+                  <TableCell>ID группы</TableCell>
+                  <TableCell>Направление</TableCell>
+                  <TableCell>Статья</TableCell>
+                  <TableCell>Активных учеников</TableCell>
+                  <TableCell>Цена за ученика</TableCell>
+                  <TableCell>Скидка</TableCell>
+                  <TableCell>Сумма вручную</TableCell>
+                  <TableCell>Выручка (gross)</TableCell>
+                  <TableCell>Выручка (net)</TableCell>
                   <TableCell />
                 </TableRow>
               </TableHead>
@@ -1399,10 +1279,10 @@ const FinancialModelPage: React.FC = () => {
           </Paper>
         )}
 
-        {sheetIndex === 7 && (
+        {sheetIndex === 4 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Costs</Typography>
+              <Typography variant="h6">Затраты</Typography>
               <Button
                 startIcon={<Add />}
                 onClick={() =>
@@ -1421,12 +1301,12 @@ const FinancialModelPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Month</TableCell>
-                  <TableCell>Category</TableCell>
-                  <TableCell>Subcategory</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>GroupID</TableCell>
-                  <TableCell>TeacherID</TableCell>
+                  <TableCell>Месяц</TableCell>
+                  <TableCell>Категория</TableCell>
+                  <TableCell>Подкатегория</TableCell>
+                  <TableCell>Сумма</TableCell>
+                  <TableCell>ID группы</TableCell>
+                  <TableCell>ID тренера</TableCell>
                   <TableCell />
                 </TableRow>
               </TableHead>
@@ -1459,8 +1339,8 @@ const FinancialModelPage: React.FC = () => {
                           })
                         }
                       >
-                        <MenuItem value="Variable">Variable</MenuItem>
-                        <MenuItem value="Fixed">Fixed</MenuItem>
+                        <MenuItem value="Variable">Переменные</MenuItem>
+                        <MenuItem value="Fixed">Постоянные</MenuItem>
                       </Select>
                     </TableCell>
                     <TableCell>
@@ -1538,22 +1418,22 @@ const FinancialModelPage: React.FC = () => {
           </Paper>
         )}
 
-        {sheetIndex === 8 && (
+        {sheetIndex === 5 && (
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              P&amp;L
+              Прибыли и убытки (P&L)
             </Typography>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Month</TableCell>
-                  <TableCell>Revenue</TableCell>
-                  <TableCell>COGS</TableCell>
-                  <TableCell>Gross Profit</TableCell>
-                  <TableCell>Opex</TableCell>
+                  <TableCell>Месяц</TableCell>
+                  <TableCell>Выручка</TableCell>
+                  <TableCell>Себестоимость (COGS)</TableCell>
+                  <TableCell>Валовая прибыль</TableCell>
+                  <TableCell>Операционные расходы (Opex)</TableCell>
                   <TableCell>EBITDA</TableCell>
-                  <TableCell>Taxes</TableCell>
-                  <TableCell>Net Profit</TableCell>
+                  <TableCell>Налоги</TableCell>
+                  <TableCell>Чистая прибыль</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1577,7 +1457,7 @@ const FinancialModelPage: React.FC = () => {
         {sheetIndex === 9 && (
           <Paper sx={{ p: 2 }}>
             <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Dashboard</Typography>
+              <Typography variant="h6">Дашборд</Typography>
               <FormControl size="small">
                 <InputLabel>Месяц</InputLabel>
                 <Select
@@ -1595,15 +1475,15 @@ const FinancialModelPage: React.FC = () => {
             </Stack>
 
             <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              Summary
+              Сводка
             </Typography>
             <Table size="small" sx={{ mb: 2 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Revenue</TableCell>
-                  <TableCell>COGS</TableCell>
-                  <TableCell>Opex</TableCell>
-                  <TableCell>Net Profit</TableCell>
+                  <TableCell>Выручка</TableCell>
+                  <TableCell>Себестоимость (COGS)</TableCell>
+                  <TableCell>Операционные расходы (Opex)</TableCell>
+                  <TableCell>Чистая прибыль</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1619,14 +1499,18 @@ const FinancialModelPage: React.FC = () => {
             <Typography variant="subtitle1" sx={{ mb: 1 }}>
               По группам
             </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Формулы: Прямые затраты = расходы из `Затраты` по `groupId` + доля расходов по `teacherId` (если без `groupId`).
+              Доля общих затрат = расходы из `Затраты` без `groupId` и `teacherId`, распределенные поровну на активные группы.
+            </Typography>
             <Table size="small" sx={{ mb: 2 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>GroupID</TableCell>
-                  <TableCell>Revenue</TableCell>
-                  <TableCell>TeacherCost</TableCell>
-                  <TableCell>GroupVariableCosts</TableCell>
-                  <TableCell>GroupProfit</TableCell>
+                  <TableCell>ID группы</TableCell>
+                  <TableCell>Выручка</TableCell>
+                  <TableCell>Затраты тренера</TableCell>
+                  <TableCell>Переменные затраты группы</TableCell>
+                  <TableCell>Прибыль группы</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1689,10 +1573,10 @@ const FinancialModelPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Direction</TableCell>
-                  <TableCell>Revenue</TableCell>
-                  <TableCell>AvgCheck</TableCell>
-                  <TableCell>Retention</TableCell>
+                  <TableCell>Направление</TableCell>
+                  <TableCell>Выручка</TableCell>
+                  <TableCell>Средний чек</TableCell>
+                  <TableCell>Коэф. удержания</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1706,6 +1590,173 @@ const FinancialModelPage: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
+          </Paper>
+        )}
+
+        {sheetIndex === 7 && (
+          <Paper sx={{ p: 2 }}>
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+              <Typography variant="h6">Финансовая модель по тренерам</Typography>
+              <FormControl size="small">
+                <InputLabel>Месяц</InputLabel>
+                <Select
+                  label="Месяц"
+                  value={dashboardMonth}
+                  onChange={(e) => setDashboardMonth(String(e.target.value))}
+                >
+                  {monthsList.map((month) => (
+                    <MenuItem key={month} value={month}>
+                      {month}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 240 }}>
+                <InputLabel>Тренер</InputLabel>
+                <Select
+                  label="Тренер"
+                  value={trainerModelTrainerFilter}
+                  onChange={(e) => setTrainerModelTrainerFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                >
+                  <MenuItem value="all">Все тренеры</MenuItem>
+                  {trainerFilterOptions.map((trainer) => (
+                    <MenuItem key={trainer.teacherId} value={trainer.teacherId}>
+                      {trainer.teacherName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <InputLabel>Направление</InputLabel>
+                <Select
+                  label="Направление"
+                  value={trainerModelDirectionFilter}
+                  onChange={(e) => setTrainerModelDirectionFilter(String(e.target.value))}
+                >
+                  <MenuItem value="all">Все направления</MenuItem>
+                  {directionFilterOptions.map((direction) => (
+                    <MenuItem key={direction} value={direction}>
+                      {direction}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              Ключевые показатели
+            </Typography>
+            <Table size="small" sx={{ mb: 2 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Активных групп</TableCell>
+                  <TableCell>Средний размер группы</TableCell>
+                  <TableCell>Общая выручка</TableCell>
+                  <TableCell>Общая прибыль</TableCell>
+                  <TableCell>Средняя маржинальность</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell>{trainerModelSummary.activeGroups}</TableCell>
+                  <TableCell>{trainerModelSummary.avgGroupSize.toFixed(1)}</TableCell>
+                  <TableCell>{trainerModelSummary.totalRevenue.toFixed(2)} ₽</TableCell>
+                  <TableCell>{trainerModelSummary.totalProfit.toFixed(2)} ₽</TableCell>
+                  <TableCell>{trainerModelSummary.avgMargin.toFixed(1)}%</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              По группам
+            </Typography>
+            <Table size="small" sx={{ mb: 2 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Группа</TableCell>
+                  <TableCell>Направление</TableCell>
+                  <TableCell>Тренер</TableCell>
+                  <TableCell>Учеников</TableCell>
+                  <TableCell>Средний чек</TableCell>
+                  <TableCell>Выручка</TableCell>
+                  <TableCell>Зарплата тренера</TableCell>
+                  <TableCell>Прямые затраты</TableCell>
+                  <TableCell>Доля общих затрат</TableCell>
+                  <TableCell>Прибыль группы</TableCell>
+                  <TableCell>Маржинальность</TableCell>
+                  <TableCell>Точка безубыт. (учеников)</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredGroupModelRows.map((row) => (
+                  <TableRow key={row.groupId}>
+                    <TableCell>{row.groupName}</TableCell>
+                    <TableCell>{row.groupDirection}</TableCell>
+                    <TableCell>{teacherNameMap.get(row.teacherId) || row.teacherId}</TableCell>
+                    <TableCell>{row.studentsCount}</TableCell>
+                    <TableCell>{row.avgCheck.toFixed(2)} ₽</TableCell>
+                    <TableCell>{row.revenue.toFixed(2)} ₽</TableCell>
+                    <TableCell>{row.trainerSalaryCost.toFixed(2)} ₽</TableCell>
+                    <TableCell>{row.directCosts.toFixed(2)} ₽</TableCell>
+                    <TableCell>{row.sharedCosts.toFixed(2)} ₽</TableCell>
+                    <TableCell sx={{ color: row.profit >= 0 ? 'success.main' : 'error.main', fontWeight: 600 }}>
+                      {row.profit.toFixed(2)} ₽
+                    </TableCell>
+                    <TableCell>{row.marginPercent.toFixed(1)}%</TableCell>
+                    <TableCell>{row.breakEvenStudents}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              По тренерам
+            </Typography>
+            <Table size="small" sx={{ mb: 2 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Тренер</TableCell>
+                  <TableCell>Групп</TableCell>
+                  <TableCell>Учеников</TableCell>
+                  <TableCell>Выручка</TableCell>
+                  <TableCell>Затраты</TableCell>
+                  <TableCell>Прибыль тренера</TableCell>
+                  <TableCell>Маржинальность</TableCell>
+                  <TableCell>Средняя прибыль на группу</TableCell>
+                  <TableCell>Статус</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredTrainerModelRows.map((row) => (
+                  <TableRow key={row.teacherId}>
+                    <TableCell>{row.teacherName}</TableCell>
+                    <TableCell>{row.groupsCount}</TableCell>
+                    <TableCell>{row.studentsCount}</TableCell>
+                    <TableCell>{row.revenue.toFixed(2)} ₽</TableCell>
+                    <TableCell>{row.totalCosts.toFixed(2)} ₽</TableCell>
+                    <TableCell sx={{ color: row.profit >= 0 ? 'success.main' : 'error.main', fontWeight: 600 }}>
+                      {row.profit.toFixed(2)} ₽
+                    </TableCell>
+                    <TableCell>{row.marginPercent.toFixed(1)}%</TableCell>
+                    <TableCell>{row.avgGroupProfit.toFixed(2)} ₽</TableCell>
+                    <TableCell
+                      sx={{
+                        color:
+                          row.marginPercent >= 50 ? 'success.main' : row.marginPercent >= 40 ? 'warning.main' : 'error.main',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {row.marginPercent >= 50 ? 'Отлично' : row.marginPercent >= 40 ? 'Норма' : 'Риск'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            <Typography variant="body2" color="text.secondary">
+              Управленческий ориентир: маржинальность ниже 40% требует оптимизации (цены, загрузка, затраты).
+              Диапазон 50-60% считается здоровым, 70%+ указывает на хорошо масштабируемую модель.
+            </Typography>
           </Paper>
         )}
       </Box>

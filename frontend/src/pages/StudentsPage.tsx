@@ -325,6 +325,21 @@ const StudentsPage: React.FC = () => {
     return '-';
   };
 
+  const getAbonementForStudent = (student: Student): Abonement | undefined =>
+    student.abonement || (student.abonement_id ? abonements.find((a) => a.id === student.abonement_id) : undefined);
+
+  const getDiscountLabel = (ab: Abonement): string => {
+    if (ab.discount_type === 'none') return '—';
+    if (ab.discount_type === 'percent') return `${ab.discount_value}%`;
+    return `${ab.discount_value} ₽`;
+  };
+
+  const getPriceWithDiscount = (ab: Abonement): number => {
+    if (ab.discount_type === 'none') return ab.price;
+    if (ab.discount_type === 'percent') return Math.round(ab.price * (1 - ab.discount_value / 100) * 100) / 100;
+    return Math.max(0, ab.price - ab.discount_value);
+  };
+
   const handleAbonementAssign = async (studentId: number, abonementId: string) => {
     try {
       await studentsApi.update(studentId, {
@@ -436,6 +451,8 @@ const StudentsPage: React.FC = () => {
               <TableCell>Группа</TableCell>
               <TableCell>Программа</TableCell>
               {isOwner && <TableCell>Абонемент</TableCell>}
+              {isOwner && <TableCell>Скидка</TableCell>}
+              {isOwner && <TableCell>Итого со скидкой</TableCell>}
               <TableCell>Статус</TableCell>
               <TableCell>Действия</TableCell>
             </TableRow>
@@ -443,6 +460,7 @@ const StudentsPage: React.FC = () => {
           <TableBody>
             {students.map((student) => {
               const studentGroup = getStudentGroup(student);
+              const abonement = getAbonementForStudent(student);
               return (
                 <TableRow key={student.id}>
                   <TableCell>{student.full_name}</TableCell>
@@ -470,6 +488,14 @@ const StudentsPage: React.FC = () => {
                             ))}
                         </Select>
                       </FormControl>
+                    </TableCell>
+                  )}
+                  {isOwner && (
+                    <TableCell>{abonement ? getDiscountLabel(abonement) : '—'}</TableCell>
+                  )}
+                  {isOwner && (
+                    <TableCell>
+                      {abonement ? `${getPriceWithDiscount(abonement).toFixed(2)} ₽` : '—'}
                     </TableCell>
                   )}
                   <TableCell>{student.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>

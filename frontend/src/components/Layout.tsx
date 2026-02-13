@@ -211,7 +211,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     ];
 
     if (isAdminLike) items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
-    if (isAdminLike) items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
+    if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     if (isAdminLike) items.push({ text: 'Продажи: На сегодня', icon: <Dashboard />, path: '/sales/dashboard' });
     if (isAdminLike) items.push({ text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {

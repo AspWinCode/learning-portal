@@ -16,7 +16,8 @@ const DashboardPage: React.FC = () => {
           Роль: {user?.role === 'admin' ? 'Администратор' :
                  user?.role === 'owner' ? 'Владелец' :
                  user?.role === 'trainer' ? 'Тренер' :
-                 user?.role === 'parent' ? 'Родитель' : 'Гость'}
+                 user?.role === 'parent' ? 'Родитель' :
+                 user?.role === 'sales' ? 'Sales менеджер' : 'Гость'}
         </Typography>
         <Grid container spacing={3} sx={{ mt: 2 }}>
           <Grid item xs={12} md={4}>

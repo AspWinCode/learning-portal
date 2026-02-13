@@ -21,6 +21,9 @@ import {
   Button,
   Alert,
   TextField,
+  Badge,
+  InputBase,
+  Tooltip,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -36,9 +39,17 @@ import {
   Home,
   ExitToApp,
   Telegram as TelegramIcon,
+  WorkOutline,
+  EventAvailable,
+  ReceiptLong,
+  Settings,
+  PendingActions,
+  Add,
+  NotificationsNone,
+  Search,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { settingsApi, telegramApi } from '../services/api';
+import { salesApi, settingsApi, telegramApi } from '../services/api';
 
 const drawerWidth = 240;
 
@@ -59,6 +70,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [logoError, setLogoError] = useState('');
   const [logoPreview, setLogoPreview] = useState<string>('');
   const [logoSaving, setLogoSaving] = useState(false);
+  const [salesSearch, setSalesSearch] = useState('');
+  const [salesAlertsCount, setSalesAlertsCount] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -73,6 +86,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       }
     })();
   }, []);
+
+  React.useEffect(() => {
+    if (user?.role !== 'sales') return;
+    (async () => {
+      try {
+        const d = await salesApi.getSalesDashboard();
+        setSalesAlertsCount((d.kpi_need_push_overdue || 0) + (d.kpi_need_push_urgent || 0));
+      } catch {
+        // ignore topbar alerts errors
+      }
+    })();
+  }, [user?.role]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -164,6 +189,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Оценки', icon: <Grade />, path: '/grades' },
         { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
       ];
+    if (role === 'sales')
+      return [
+        { text: 'На сегодня', icon: <Dashboard />, path: '/sales/dashboard' },
+        { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
+        { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
+        { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
+        { text: 'Мероприятия', icon: <EventAvailable />, path: '/sales/events' },
+        { text: 'Инвойсы', icon: <ReceiptLong />, path: '/sales/invoices' },
+        { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
+      ];
 
     const items = [
       { text: 'Дашборд', icon: <Dashboard />, path: '/dashboard' },
@@ -175,9 +210,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     ];
 
     if (isAdminLike) items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
+    if (isAdminLike) items.push({ text: 'Продажи: На сегодня', icon: <Dashboard />, path: '/sales/dashboard' });
+    if (isAdminLike) items.push({ text: 'Продажи: Воронка', icon: <Dashboard />, path: '/sales/pipeline' });
+    if (isAdminLike) items.push({ text: 'Продажи: Лиды', icon: <WorkOutline />, path: '/sales/leads' });
+    if (isAdminLike) items.push({ text: 'Продажи: Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' });
+    if (isAdminLike) items.push({ text: 'Продажи: Мероприятия', icon: <EventAvailable />, path: '/sales/events' });
+    if (isAdminLike) items.push({ text: 'Продажи: Инвойсы', icon: <ReceiptLong />, path: '/sales/invoices' });
+    if (isAdminLike) items.push({ text: 'Продажи: Отчёты', icon: <Assessment />, path: '/sales/reports' });
+    if (isAdminLike) items.push({ text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {
       items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+      items.push({ text: 'Sales менеджеры', icon: <WorkOutline />, path: '/sales-managers' });
       items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     }
     return items;
@@ -273,6 +317,44 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 800 }}>
             {effectiveMenuItems.find((item) => item.path === location.pathname)?.text || 'Портал обучения'}
           </Typography>
+          {role === 'sales' && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  px: 1,
+                  borderRadius: 2,
+                  bgcolor: 'rgba(255,255,255,0.15)',
+                }}
+              >
+                <Search fontSize="small" />
+                <InputBase
+                  placeholder="Поиск лида..."
+                  value={salesSearch}
+                  onChange={(e) => setSalesSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      navigate(`/sales/leads?q=${encodeURIComponent(salesSearch.trim())}`);
+                    }
+                  }}
+                  sx={{ ml: 1, color: '#fff', minWidth: 180 }}
+                />
+              </Box>
+              <Tooltip title="+ Лид">
+                <IconButton color="inherit" onClick={() => navigate('/sales/leads?create=1')}>
+                  <Add />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Просрочки и срочные задачи">
+                <IconButton color="inherit" onClick={() => navigate('/sales/follow-ups?period=overdue')}>
+                  <Badge badgeContent={salesAlertsCount} color="error">
+                    <NotificationsNone />
+                  </Badge>
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Typography variant="body2" color="text.secondary">
               {user?.full_name}

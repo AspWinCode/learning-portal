@@ -1,0 +1,69 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: learning_portal
+      POSTGRES_USER: learning_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_strong_password}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learning_user -d learning_portal"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY:-change_me_min_32_chars_change_me_min_32_chars}
+      DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://example.com}
+      # Telegram (optional)
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_BOT_USERNAME: ""
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  telegram_bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "telegram_bot_polling.py"]
+    restart: unless-stopped
+    profiles: ["telegram"]
+
+  web:
+    build:
+      context: .
+      dockerfile: ./frontend/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-example.com}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:
+
+

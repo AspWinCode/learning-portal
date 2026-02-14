@@ -1,0 +1,24 @@
+{
+	# Email is optional but recommended for Let's Encrypt rate-limit recovery:
+	# email you@example.com
+}
+
+http://{$DOMAIN} https://{$DOMAIN} {
+	encode gzip zstd
+
+	# Backend API
+	# IMPORTANT: use `handle` (not `handle_path`) so we don't strip `/api` prefix.
+	# Backend routes are mounted under `/api/*`.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Frontend (static SPA)
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+

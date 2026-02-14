@@ -1,0 +1,25 @@
+#!/bin/bash
+# Simple webhook listener for deployment
+# Install: npm install -g webhook
+# Run: webhook -hooks /path/to/hooks.json -verbose
+
+# Place this on your server at: /root/learning-portal/hooks.json
+
+[
+  {
+    "id": "learning-portal-deploy",
+    "execute-command": "/root/learning-portal/deploy.sh",
+    "command-working-directory": "/root/learning-portal",
+    "response-message": "Deployment started",
+    "trigger-rule": {
+      "match": {
+        "type": "payload-hash-sha1",
+        "secret": "YOUR_WEBHOOK_SECRET_HERE",
+        "parameter": {
+          "source": "header",
+          "name": "X-Hub-Signature"
+        }
+      }
+    }
+  }
+]

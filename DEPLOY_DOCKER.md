@@ -30,17 +30,20 @@ git clone YOUR_REPO_URL learning-portal
 cd learning-portal
 ```
 
-Откройте `docker-compose.yml` и обязательно замените:
-- `POSTGRES_PASSWORD`
-- `SECRET_KEY`
-- `CORS_ORIGINS`
-- `DOMAIN`
+Создайте `.env` из примера и задайте переменные (обязательно замените на свои значения):
+
+```bash
+cp .env.example .env
+# Отредактируйте .env: POSTGRES_PASSWORD, SECRET_KEY, CORS_ORIGINS, DOMAIN
+```
 
 Запуск:
 
 ```bash
 docker compose up -d --build
 ```
+
+На Windows (PowerShell): после настройки `.env` можно запустить `.\deploy.ps1`.
 
 Проверка:
 - Frontend: `https://example.com`

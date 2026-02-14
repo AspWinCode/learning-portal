@@ -1,11 +1,11 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import or_
 from app.database import get_db
 from app import auth
 from app.schemas import StudentCreate, StudentResponse, StudentUpdate, ProgramSummaryResponse
-from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus
+from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus
 from app.routers.action_log import log_action
 
 router = APIRouter()
@@ -79,6 +79,9 @@ async def read_students(
         if status_filter:
             query = query.filter(Student.status == status_filter)
     
+    query = query.options(
+        selectinload(Student.student_programs).joinedload(StudentProgram.program)
+    )
     students = query.offset(skip).limit(limit).all()
     return students
 
@@ -90,7 +93,12 @@ async def read_student(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение ученика по ID"""
-    student = db.query(Student).filter(Student.id == student_id).first()
+    student = (
+        db.query(Student)
+        .options(selectinload(Student.student_programs).joinedload(StudentProgram.program))
+        .filter(Student.id == student_id)
+        .first()
+    )
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
     
@@ -137,7 +145,10 @@ async def get_student_program_options(
     from app.models import StudentProgram, GroupProgram, GroupStudent, Program
 
     program_ids = set()
-    direct = db.query(StudentProgram.program_id).filter(StudentProgram.student_id == student_id).all()
+    direct = db.query(StudentProgram.program_id).filter(
+        StudentProgram.student_id == student_id,
+        StudentProgram.status == StudentProgramLinkStatus.ACTIVE,
+    ).all()
     for (pid,) in direct:
         if pid:
             program_ids.add(pid)
@@ -156,6 +167,28 @@ async def get_student_program_options(
     # Sort by name then version desc for nicer UX
     programs.sort(key=lambda p: (p.name or "", -(p.version or 0)))
     return programs
+
+
+@router.delete("/{student_id}/programs/{program_id}")
+async def unassign_program_from_student(
+    student_id: int,
+    program_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin"]))
+):
+    """Архивировать назначение программы ученику (логика данных сохраняется)."""
+    link = db.query(StudentProgram).filter(
+        StudentProgram.student_id == student_id,
+        StudentProgram.program_id == program_id,
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Program not assigned to this student")
+    if link.status == StudentProgramLinkStatus.ARCHIVED:
+        return {"message": "Program assignment already archived"}
+    link.status = StudentProgramLinkStatus.ARCHIVED
+    db.commit()
+    log_action(db, current_user.id, "unassign_program", "student", student_id, {"program_id": program_id})
+    return {"message": "Program unassigned from student (archived)"}
 
 
 @router.put("/{student_id}", response_model=StudentResponse)

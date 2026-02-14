@@ -6,7 +6,8 @@ from app import auth
 from app.schemas import GradeCreate, GradeResponse, GradeUpdate
 from app.models import (
     Grade, User, UserRole, Topic, TopicStatus, Student, StudentStatus, GroupStudent, Group,
-    ProgramTrainer, StudentProgram, GroupProgram, Program, ProgramStatus, Module
+    ProgramTrainer, StudentProgram, GroupProgram, Program, ProgramStatus, Module,
+    StudentProgramLinkStatus,
 )
 from app.routers.action_log import log_action
 from app.services.telegram import notify_user
@@ -70,7 +71,8 @@ async def create_grade(
     # Проверка: тема относится к программе, назначенной ученику (напрямую или через группу тренера)
     has_direct_program = db.query(StudentProgram).filter(
         StudentProgram.student_id == grade.student_id,
-        StudentProgram.program_id == program_id
+        StudentProgram.program_id == program_id,
+        StudentProgram.status == StudentProgramLinkStatus.ACTIVE,
     ).first()
 
     has_group_program = db.query(GroupProgram).join(Group).join(GroupStudent).filter(
@@ -279,7 +281,8 @@ async def get_student_progress(
         ).filter(Program.id == program_id).first()
     else:
         student_program = db.query(StudentProgram).filter(
-            StudentProgram.student_id == student_id
+            StudentProgram.student_id == student_id,
+            StudentProgram.status == StudentProgramLinkStatus.ACTIVE,
         ).first()
         if student_program:
             # Загружаем программу с модулями и темами
@@ -326,8 +329,9 @@ async def get_student_progress(
             else:  # PARENT
                 has_access = db.query(StudentProgram).join(Student).filter(
                     StudentProgram.program_id == program.id,
+                    StudentProgram.status == StudentProgramLinkStatus.ACTIVE,
                     Student.parent_id == current_user.id,
-                    Student.status == StudentStatus.ACTIVE
+                    Student.status == StudentStatus.ACTIVE,
                 ).first()
                 if not has_access:
                     has_access = db.query(GroupProgram).join(GroupStudent).join(Student).filter(

@@ -21,6 +21,8 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Chip,
+  Stack,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi } from '../services/api';
@@ -285,18 +287,6 @@ const StudentsPage: React.FC = () => {
       // Перезагружаем группы для обновления списка
       loadGroups();
 
-      // Назначаем программу, если выбрана
-      if (newStudent.program_id && newStudent.program_id.trim() !== '') {
-        try {
-          const programId = parseInt(newStudent.program_id);
-          if (!isNaN(programId)) {
-            await programsApi.assignToStudent(programId, editingStudent.id);
-          }
-        } catch (err: any) {
-          setError(err.response?.data?.detail || 'Ошибка назначения программы');
-        }
-      }
-
       setEditOpen(false);
       setEditingStudent(null);
       setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
@@ -314,15 +304,32 @@ const StudentsPage: React.FC = () => {
   const getStudentProgramLabel = (student: Student): string => {
     const direct = (student.programs || []).filter((p) => p.status === 'active');
     if (direct.length) {
-      return `${direct[0].name} (v${direct[0].version})${direct.length > 1 ? ` +${direct.length - 1}` : ''}`;
+      return direct.map((p) => `${p.name} (v${p.version})`).join(', ');
     }
-    // Фолбэк: программа группы (если ученик в группе с программой)
     const g = getStudentGroup(student);
     const gp = (g?.programs || []).filter((p) => p.status === 'active');
     if (gp.length) {
-      return `${gp[0].name} (v${gp[0].version})${gp.length > 1 ? ` +${gp.length - 1}` : ''}`;
+      return gp.map((p) => `${p.name} (v${p.version})`).join(', ') + ' (из группы)';
     }
-    return '-';
+    return '—';
+  };
+
+  const handleAddProgramToStudent = async (studentId: number, programId: number) => {
+    try {
+      await programsApi.assignToStudent(programId, studentId);
+      loadStudents();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка назначения программы');
+    }
+  };
+
+  const handleRemoveProgramFromStudent = async (studentId: number, programId: number) => {
+    try {
+      await studentsApi.removeProgram(studentId, programId);
+      loadStudents();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка снятия программы');
+    }
   };
 
   const getAbonementForStudent = (student: Student): Abonement | undefined =>
@@ -466,7 +473,54 @@ const StudentsPage: React.FC = () => {
                   <TableCell>{student.full_name}</TableCell>
                   <TableCell>{student.parent?.full_name || '-'}</TableCell>
                   <TableCell>{studentGroup?.name || '-'}</TableCell>
-                  <TableCell>{getStudentProgramLabel(student)}</TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                      {(student.programs || []).filter((p) => p.status === 'active').map((p) => (
+                        <Chip
+                          key={p.id}
+                          size="small"
+                          label={`${p.name} (v${p.version})`}
+                          onDelete={() => handleRemoveProgramFromStudent(student.id, p.id)}
+                        />
+                      ))}
+                      {(student.programs || []).filter((p) => p.status === 'active').length === 0 && (() => {
+                        const g = getStudentGroup(student);
+                        const gp = (g?.programs || []).filter((p) => p.status === 'active');
+                        if (gp.length) {
+                          return (
+                            <Typography variant="body2" color="text.secondary">
+                              {gp.map((p) => `${p.name} (v${p.version})`).join(', ')} (из группы)
+                            </Typography>
+                          );
+                        }
+                        return <Typography variant="body2" color="text.secondary">—</Typography>;
+                      })()}
+                      <FormControl size="small" sx={{ minWidth: 140 }}>
+                        <Select
+                          displayEmpty
+                          value=""
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v !== '') {
+                              handleAddProgramToStudent(student.id, parseInt(v as string));
+                            }
+                          }}
+                          renderValue={() => 'Добавить программу'}
+                        >
+                          <MenuItem value="">
+                            <em>Добавить программу</em>
+                          </MenuItem>
+                          {programs
+                            .filter((p) => p.status === 'active' && !(student.programs || []).some((sp) => sp.id === p.id))
+                            .map((p) => (
+                              <MenuItem key={p.id} value={p.id.toString()}>
+                                {p.name} (версия {p.version})
+                              </MenuItem>
+                            ))}
+                        </Select>
+                      </FormControl>
+                    </Stack>
+                  </TableCell>
                   {isOwner && (
                     <TableCell>
                       <FormControl size="small" fullWidth>
@@ -740,21 +794,51 @@ const StudentsPage: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Программа</InputLabel>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Программы ученика</Typography>
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+            {((students.find((s) => s.id === editingStudent?.id) || editingStudent)?.programs || [])
+              .filter((p) => p.status === 'active')
+              .map((p) => (
+                <Chip
+                  key={p.id}
+                  size="small"
+                  label={`${p.name} (v${p.version})`}
+                  onDelete={() => {
+                    if (editingStudent) {
+                      handleRemoveProgramFromStudent(editingStudent.id, p.id);
+                    }
+                  }}
+                />
+              ))}
+          </Stack>
+          <FormControl size="small" fullWidth sx={{ mt: 0 }}>
+            <InputLabel>Добавить программу</InputLabel>
             <Select
-              value={newStudent.program_id}
-              label="Программа"
-              onChange={(e) => setNewStudent({ ...newStudent, program_id: e.target.value })}
+              value=""
+              label="Добавить программу"
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v !== '' && editingStudent) {
+                  handleAddProgramToStudent(editingStudent.id, parseInt(v as string));
+                }
+              }}
             >
               <MenuItem value="">
-                <em>Не выбрана</em>
+                <em>Выберите программу</em>
               </MenuItem>
-              {programs.map((program) => (
-                <MenuItem key={program.id} value={program.id.toString()}>
-                  {program.name} (версия {program.version})
-                </MenuItem>
-              ))}
+              {programs
+                .filter(
+                  (p) =>
+                    p.status === 'active' &&
+                    !((students.find((s) => s.id === editingStudent?.id) || editingStudent)?.programs || []).some(
+                      (sp) => sp.id === p.id
+                    )
+                )
+                .map((p) => (
+                  <MenuItem key={p.id} value={p.id.toString()}>
+                    {p.name} (версия {p.version})
+                  </MenuItem>
+                ))}
             </Select>
           </FormControl>
           {isOwner && (

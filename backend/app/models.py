@@ -47,6 +47,11 @@ class AbonementStatus(str, enum.Enum):
     ARCHIVED = "archived"
 
 
+class StudentProgramLinkStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
 class DiscountType(str, enum.Enum):
     NONE = "none"
     AMOUNT = "amount"
@@ -102,11 +107,19 @@ class Student(Base):
     parent = relationship("User", back_populates="students", foreign_keys=[parent_id])
     group_students = relationship("GroupStudent", back_populates="student")
     student_programs = relationship("StudentProgram", back_populates="student")
-    # Удобная связь для сериализации назначенных программ ученика
-    programs = relationship("Program", secondary="student_programs", viewonly=True)
+    # Активные назначения программ (сериализуются в programs через property ниже)
     grades = relationship("Grade", back_populates="student")
     characteristics = relationship("Characteristic", back_populates="student")
     abonement = relationship("Abonement", back_populates="students")
+
+    @property
+    def programs(self):
+        """Список активных программ ученика (назначения со status=active)."""
+        from app.models import StudentProgramLinkStatus
+        return [
+            sp.program for sp in self.student_programs
+            if getattr(sp, "status", StudentProgramLinkStatus.ACTIVE) == StudentProgramLinkStatus.ACTIVE
+        ]
 
 
 class Abonement(Base):
@@ -485,6 +498,11 @@ class StudentProgram(Base):
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
     program_id = Column(Integer, ForeignKey("programs.id"), nullable=False)
+    status = Column(
+        SQLEnum(StudentProgramLinkStatus, name="studentprogramlinkstatus", values_callable=_enum_values),
+        default=StudentProgramLinkStatus.ACTIVE,
+        nullable=False,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

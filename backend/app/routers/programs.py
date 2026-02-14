@@ -8,7 +8,8 @@ from app.schemas import ProgramCreate, ProgramResponse, ProgramUpdate
 from app.models import (
     Program, Module, Topic, User, ProgramStatus, TopicStatus,
     ProgramTrainer, GroupProgram, StudentProgram, Grade, UserRole,
-    Student, StudentStatus, GroupStudent, Group, GroupStatus
+    Student, StudentStatus, GroupStudent, Group, GroupStatus,
+    StudentProgramLinkStatus,
 )
 from app.routers.action_log import log_action
 
@@ -216,8 +217,9 @@ async def read_program(
     if current_user.role == UserRole.PARENT:
         has_direct = db.query(StudentProgram).join(Student).filter(
             StudentProgram.program_id == program_id,
+            StudentProgram.status == StudentProgramLinkStatus.ACTIVE,
             Student.parent_id == current_user.id,
-            Student.status == StudentStatus.ACTIVE
+            Student.status == StudentStatus.ACTIVE,
         ).first()
         has_group = db.query(GroupProgram).join(GroupStudent, GroupStudent.group_id == GroupProgram.group_id).join(Student).filter(
             GroupProgram.program_id == program_id,
@@ -311,9 +313,10 @@ async def update_program(
             db.query(GroupProgram).filter(GroupProgram.program_id.in_(family_ids)).update(
                 {"program_id": new_program.id}, synchronize_session=False
             )
-            db.query(StudentProgram).filter(StudentProgram.program_id.in_(family_ids)).update(
-                {"program_id": new_program.id}, synchronize_session=False
-            )
+            db.query(StudentProgram).filter(
+                StudentProgram.program_id.in_(family_ids),
+                StudentProgram.status == StudentProgramLinkStatus.ACTIVE,
+            ).update({"program_id": new_program.id}, synchronize_session=False)
 
             # Переносим видимость для тренеров: копируем привязки ProgramTrainer со всех старых версий на новую
             old_trainer_ids = db.query(ProgramTrainer.trainer_id).filter(
@@ -498,7 +501,7 @@ async def assign_program_to_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin"]))
 ):
-    """Назначение программы ученику"""
+    """Добавление программы ученику (у одного ученика может быть несколько программ)"""
     program = db.query(Program).filter(Program.id == program_id).first()
     from app.models import Student
     student = db.query(Student).filter(Student.id == student_id).first()
@@ -506,8 +509,18 @@ async def assign_program_to_student(
     if not program or not student:
         raise HTTPException(status_code=404, detail="Program or student not found")
     
-    # Заменяем назначение (явное переключение версии)
-    db.query(StudentProgram).filter(StudentProgram.student_id == student_id).delete()
+    existing = db.query(StudentProgram).filter(
+        StudentProgram.student_id == student_id,
+        StudentProgram.program_id == program_id,
+    ).first()
+    if existing:
+        if existing.status == StudentProgramLinkStatus.ACTIVE:
+            return {"message": "Program already assigned to student"}
+        # Реактивация архивированной связи
+        existing.status = StudentProgramLinkStatus.ACTIVE
+        db.commit()
+        log_action(db, current_user.id, "add_program", "student", student_id, {"program_id": program_id})
+        return {"message": "Program added to student (reactivated)"}
     
     student_program = StudentProgram(student_id=student_id, program_id=program_id)
     db.add(student_program)
@@ -522,6 +535,6 @@ async def assign_program_to_student(
             ensure_program_trainer(db, program_id, tid)
     db.commit()
     
-    log_action(db, current_user.id, "set_program", "student", student_id, {"program_id": program_id})
-    return {"message": "Program set for student"}
+    log_action(db, current_user.id, "add_program", "student", student_id, {"program_id": program_id})
+    return {"message": "Program added to student"}
 

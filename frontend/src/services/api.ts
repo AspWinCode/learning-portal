@@ -138,6 +138,9 @@ export const studentsApi = {
   archive: async (id: number): Promise<void> => {
     await api.delete(`/api/students/${id}`);
   },
+  removeProgram: async (studentId: number, programId: number): Promise<void> => {
+    await api.delete(`/api/students/${studentId}/programs/${programId}`);
+  },
 };
 
 export const groupsApi = {

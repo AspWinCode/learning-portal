@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
@@ -71,6 +71,18 @@ from app.schemas import (
 from app.routers.action_log import log_action
 
 router = APIRouter()
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _to_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:
@@ -774,7 +786,7 @@ async def create_lead_communication(
     if channel not in {"messenger", "call", "email"}:
         raise HTTPException(status_code=400, detail="Unsupported channel")
     message = (payload.message or "").strip() or f"[quick-{channel}]"
-    follow_up_at = payload.follow_up_at or datetime.utcnow()
+    follow_up_at = _to_utc(payload.follow_up_at) or _utcnow()
 
     comm = LeadCommunication(
         lead_id=lead.id,
@@ -786,8 +798,8 @@ async def create_lead_communication(
         follow_up_at=follow_up_at,
     )
     db.add(comm)
-    if payload.follow_up_at:
-        lead.next_contact_at = payload.follow_up_at
+    if follow_up_at:
+        lead.next_contact_at = follow_up_at
     if lead.status == LeadStatus.NEW:
         lead.status = LeadStatus.CONTACTED
     db.commit()
@@ -818,7 +830,10 @@ async def send_info_for_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
 
-    if payload.follow_up_at <= datetime.utcnow():
+    follow_up_at = _to_utc(payload.follow_up_at)
+    if follow_up_at is None:
+        raise HTTPException(status_code=400, detail="follow_up_at is required")
+    if follow_up_at <= _utcnow():
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
     message = (payload.message or "").strip()
     if not message:
@@ -839,7 +854,7 @@ async def send_info_for_lead(
         channel=(payload.channel or "messenger").strip(),
         message=message,
         pause_reason=payload.pause_reason,
-        follow_up_at=payload.follow_up_at,
+        follow_up_at=follow_up_at,
     )
     db.add(comm)
 
@@ -848,11 +863,11 @@ async def send_info_for_lead(
         owner_id=current_user.id,
         note=f"[auto-follow-up] {payload.pause_reason or 'без причины'}",
         channel=(payload.channel or "messenger").strip(),
-        due_at=payload.follow_up_at,
+        due_at=follow_up_at,
         status=LeadTaskStatus.OPEN,
     )
     db.add(auto_task)
-    lead.next_contact_at = payload.follow_up_at
+    lead.next_contact_at = follow_up_at
     lead.pause_reason = payload.pause_reason
     if lead.status == LeadStatus.NEW:
         lead.status = LeadStatus.CONTACTED
@@ -867,7 +882,7 @@ async def send_info_for_lead(
         {
             "template_id": template_id,
             "channel": payload.channel,
-            "follow_up_at": payload.follow_up_at.isoformat(),
+            "follow_up_at": follow_up_at.isoformat(),
             "pause_reason": payload.pause_reason,
         },
     )
@@ -890,9 +905,10 @@ async def save_lead_contact_result(
     if outcome not in {"connected", "no_answer", "callback"}:
         raise HTTPException(status_code=400, detail="Unsupported contact outcome")
 
-    if outcome in {"no_answer", "callback"} and payload.follow_up_at is None:
+    follow_up_at = _to_utc(payload.follow_up_at)
+    if outcome in {"no_answer", "callback"} and follow_up_at is None:
         raise HTTPException(status_code=400, detail="follow_up_at is required for this outcome")
-    if payload.follow_up_at and payload.follow_up_at <= datetime.utcnow():
+    if follow_up_at and follow_up_at <= _utcnow():
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
 
     label_map = {
@@ -911,21 +927,21 @@ async def save_lead_contact_result(
         channel="call",
         message=message,
         pause_reason=None,
-        follow_up_at=payload.follow_up_at or datetime.utcnow(),
+        follow_up_at=follow_up_at or _utcnow(),
     )
     db.add(comm)
 
-    if outcome in {"no_answer", "callback"} and payload.follow_up_at:
+    if outcome in {"no_answer", "callback"} and follow_up_at:
         auto_task = LeadTask(
             lead_id=lead.id,
             owner_id=current_user.id,
             note=f"[auto-follow-up] {label_map[outcome]}",
             channel="call",
-            due_at=payload.follow_up_at,
+            due_at=follow_up_at,
             status=LeadTaskStatus.OPEN,
         )
         db.add(auto_task)
-        lead.next_contact_at = payload.follow_up_at
+        lead.next_contact_at = follow_up_at
 
     if outcome in {"connected", "callback"} and lead.status == LeadStatus.NEW:
         lead.status = LeadStatus.CONTACTED
@@ -940,7 +956,7 @@ async def save_lead_contact_result(
         lead.id,
         {
             "outcome": outcome,
-            "follow_up_at": payload.follow_up_at.isoformat() if payload.follow_up_at else None,
+            "follow_up_at": follow_up_at.isoformat() if follow_up_at else None,
         },
     )
     return comm

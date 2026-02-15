@@ -237,6 +237,7 @@ class Lead(Base):
     )
     source = Column(String, nullable=True)
     communication_channel = Column(String, nullable=True)
+    status_option_id = Column(Integer, ForeignKey("lead_statuses.id"), nullable=True, index=True)
     source_id = Column(Integer, ForeignKey("lead_sources.id"), nullable=True, index=True)
     referral_name = Column(String, nullable=True)
     tags = Column(JSON, nullable=True)
@@ -253,6 +254,7 @@ class Lead(Base):
     owner = relationship("User")
     abonement = relationship("Abonement")
     source_ref = relationship("LeadSource")
+    status_option = relationship("LeadStatusOption")
     tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="lead", cascade="all, delete-orphan")
     communications = relationship("LeadCommunication", back_populates="lead", cascade="all, delete-orphan")
@@ -314,6 +316,16 @@ class LeadTaskStatusOption(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True)
     is_closed = Column(Boolean, default=False, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LeadStatusOption(Base):
+    __tablename__ = "lead_statuses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    base_status = Column(String, nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -59,6 +59,7 @@ import {
   LeadInfoTemplate,
   LeadSource,
   LeadStatus,
+  LeadStatusOption,
   LeadTask,
   LeadTaskStatusOption,
   LeadTaskTemplate,
@@ -131,6 +132,7 @@ const SalesLeadsPage: React.FC = () => {
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [taskTemplates, setTaskTemplates] = useState<LeadTaskTemplate[]>([]);
   const [taskStatusOptions, setTaskStatusOptions] = useState<LeadTaskStatusOption[]>([]);
+  const [leadStatusOptions, setLeadStatusOptions] = useState<LeadStatusOption[]>([]);
   const [infoTemplates, setInfoTemplates] = useState<LeadInfoTemplate[]>([]);
   const [communications, setCommunications] = useState<LeadCommunication[]>([]);
   const [sendInfoOpen, setSendInfoOpen] = useState(false);
@@ -234,14 +236,16 @@ const SalesLeadsPage: React.FC = () => {
 
   const loadSalesMeta = useCallback(async () => {
     try {
-      const [sources, templates, statuses] = await Promise.all([
+      const [sources, templates, statuses, leadStatuses] = await Promise.all([
         salesApi.listLeadSources(true),
         salesApi.listLeadTaskTemplates(true),
         salesApi.listLeadTaskStatuses(true),
+        salesApi.listLeadStatuses(true),
       ]);
       setLeadSources(sources);
       setTaskTemplates(templates);
       setTaskStatusOptions(statuses);
+      setLeadStatusOptions(leadStatuses);
       const defaultOpen = statuses.find((s) => !s.is_closed);
       if (defaultOpen) {
         setTaskStatusOptionId(defaultOpen.id);
@@ -476,7 +480,7 @@ const SalesLeadsPage: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (lead: Lead, newStatus: LeadStatus) => {
+  const handleStatusChange = async (lead: Lead, newStatus: LeadStatus, statusOptionId?: number) => {
     if (lead.status === newStatus) return;
     if (newStatus === 'won') {
       const ok = window.confirm('Подтвердить перевод лида в "Успешно"?');
@@ -491,12 +495,36 @@ const SalesLeadsPage: React.FC = () => {
     setActionLoadingId(lead.id);
     setError(null);
     try {
-      await salesApi.updateLead(lead.id, { status: newStatus });
+      await salesApi.updateLead(lead.id, { status: newStatus, status_option_id: statusOptionId });
       await loadLeads();
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось обновить статус лида'));
     } finally {
       setActionLoadingId(null);
+    }
+  };
+
+  const getLeadStatusMenuValue = (lead: Lead): string => {
+    if (lead.status_option_id) return `option:${lead.status_option_id}`;
+    return `base:${lead.status}`;
+  };
+
+  const getLeadStatusDisplay = (lead: Lead): string => {
+    const selected = leadStatusOptions.find((s) => s.id === lead.status_option_id);
+    return selected?.name || statusLabels[lead.status];
+  };
+
+  const handleLeadStatusSelectChange = async (lead: Lead, value: string) => {
+    if (value.startsWith('option:')) {
+      const optionId = Number(value.replace('option:', ''));
+      const option = leadStatusOptions.find((s) => s.id === optionId);
+      if (!option) return;
+      await handleStatusChange(lead, option.base_status, option.id);
+      return;
+    }
+    if (value.startsWith('base:')) {
+      const baseStatus = value.replace('base:', '') as LeadStatus;
+      await handleStatusChange(lead, baseStatus, undefined);
     }
   };
 
@@ -1736,15 +1764,30 @@ const SalesLeadsPage: React.FC = () => {
               <TableCell>
                 <FormControl size="small" sx={{ minWidth: 160 }}>
                   <Select
-                    value={lead.status}
-                    onChange={(e) => handleStatusChange(lead, e.target.value as LeadStatus)}
+                    value={getLeadStatusMenuValue(lead)}
+                    onChange={(e) => void handleLeadStatusSelectChange(lead, e.target.value as string)}
+                    renderValue={() => getLeadStatusDisplay(lead)}
                     disabled={actionLoadingId === lead.id}
                   >
-                    {statusOptions.map((st) => (
-                      <MenuItem key={st} value={st}>
-                        <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
-                      </MenuItem>
-                    ))}
+                    {leadStatusOptions.length > 0
+                      ? leadStatusOptions.map((st) => (
+                          <MenuItem key={st.id} value={`option:${st.id}`}>
+                            <Chip
+                              size="small"
+                              label={st.name}
+                              color={badgeColor(st.base_status)}
+                              sx={{ mr: 1 }}
+                            />
+                            <Typography variant="caption" color="text.secondary">
+                              {statusLabels[st.base_status]}
+                            </Typography>
+                          </MenuItem>
+                        ))
+                      : statusOptions.map((st) => (
+                          <MenuItem key={st} value={`base:${st}`}>
+                            <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
+                          </MenuItem>
+                        ))}
                   </Select>
                 </FormControl>
               </TableCell>

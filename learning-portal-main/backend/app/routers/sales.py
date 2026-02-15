@@ -18,6 +18,7 @@ from app.models import (
     LeadSource,
     LeadTaskTemplate,
     LeadTaskStatusOption as LeadTaskStatusOptionModel,
+    LeadStatusOption as LeadStatusOptionModel,
     LeadInfoTemplate,
     LeadCommunication,
     Invoice,
@@ -53,6 +54,9 @@ from app.schemas import (
     LeadTaskStatusOptionCreate,
     LeadTaskStatusOptionResponse,
     LeadTaskStatusOptionUpdate,
+    LeadStatusOptionCreate,
+    LeadStatusOptionResponse,
+    LeadStatusOptionUpdate,
     LeadImportResponse,
     LeadInfoTemplateCreate,
     LeadInfoTemplateResponse,
@@ -163,6 +167,19 @@ def _get_default_open_status_option_id(db: Session) -> Optional[int]:
         .first()
     )
     return default_open.id if default_open else None
+
+
+def _get_default_lead_status_option_id(db: Session, base_status: LeadStatus) -> Optional[int]:
+    option = (
+        db.query(LeadStatusOptionModel)
+        .filter(
+            LeadStatusOptionModel.is_active.is_(True),
+            LeadStatusOptionModel.base_status == base_status.value,
+        )
+        .order_by(LeadStatusOptionModel.id.asc())
+        .first()
+    )
+    return option.id if option else None
 
 
 def _create_auto_event_task(
@@ -688,6 +705,82 @@ async def update_lead_task_status(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "update", "lead_task_status", item.id, data)
+    return item
+
+
+@router.get("/lead-statuses", response_model=List[LeadStatusOptionResponse])
+async def list_lead_statuses(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    query = db.query(LeadStatusOptionModel).order_by(LeadStatusOptionModel.id.asc())
+    if active_only:
+        query = query.filter(LeadStatusOptionModel.is_active.is_(True))
+    return query.all()
+
+
+@router.post("/lead-statuses", response_model=LeadStatusOptionResponse, status_code=status.HTTP_201_CREATED)
+async def create_lead_status(
+    payload: LeadStatusOptionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    name = _normalize_source_name(payload.name)
+    if not name:
+        raise HTTPException(status_code=400, detail="Lead status name is required")
+    exists = db.query(LeadStatusOptionModel).filter(cast(LeadStatusOptionModel.name, Text).ilike(name)).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Lead status already exists")
+    item = LeadStatusOptionModel(name=name, base_status=payload.base_status.value, is_active=True)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(
+        db,
+        current_user.id,
+        "create",
+        "lead_status",
+        item.id,
+        {"name": name, "base_status": payload.base_status.value},
+    )
+    return item
+
+
+@router.put("/lead-statuses/{status_id}", response_model=LeadStatusOptionResponse)
+async def update_lead_status(
+    status_id: int,
+    payload: LeadStatusOptionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    item = db.query(LeadStatusOptionModel).filter(LeadStatusOptionModel.id == status_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Lead status not found")
+    data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        name = _normalize_source_name(data["name"])
+        if not name:
+            raise HTTPException(status_code=400, detail="Lead status name is required")
+        item.name = name
+    if "base_status" in data and data["base_status"] is not None:
+        item.base_status = data["base_status"].value
+    if "is_active" in data:
+        item.is_active = data["is_active"]
+    db.commit()
+    db.refresh(item)
+    log_action(
+        db,
+        current_user.id,
+        "update",
+        "lead_status",
+        item.id,
+        {
+            "name": item.name,
+            "base_status": item.base_status,
+            "is_active": item.is_active,
+        },
+    )
     return item
 
 
@@ -1236,6 +1329,13 @@ async def create_lead(
     communication_channel = (payload.communication_channel or "").strip().lower() or None
     if communication_channel and communication_channel not in ALLOWED_LEAD_COMMUNICATION_CHANNELS:
         raise HTTPException(status_code=400, detail="Unsupported communication channel")
+    status_option_id = payload.status_option_id
+    if status_option_id:
+        option = db.query(LeadStatusOptionModel).filter(LeadStatusOptionModel.id == status_option_id).first()
+        if not option:
+            raise HTTPException(status_code=404, detail="Lead status option not found")
+    else:
+        status_option_id = _get_default_lead_status_option_id(db, LeadStatus.NEW)
     source_id, source_name = _resolve_source(db, payload.source_id, payload.source)
     if _is_referral_source(source_name) and not (payload.referral_name or "").strip():
         raise HTTPException(status_code=400, detail="Для источника 'рекомендация' укажите, кто пригласил")
@@ -1262,6 +1362,7 @@ async def create_lead(
         outreach_minutes=payload.outreach_minutes,
         source=source_name,
         communication_channel=communication_channel,
+        status_option_id=status_option_id,
         source_id=source_id,
         referral_name=payload.referral_name,
         tags=payload.tags,
@@ -1308,8 +1409,28 @@ async def update_lead(
     # Prevent sales from changing owner/status to restricted values
     if "status" in update_data and update_data["status"] is not None:
         lead.status = update_data["status"]
+        if "status_option_id" not in update_data:
+            current_option = None
+            if lead.status_option_id:
+                current_option = (
+                    db.query(LeadStatusOptionModel)
+                    .filter(LeadStatusOptionModel.id == lead.status_option_id)
+                    .first()
+                )
+            if not current_option or current_option.base_status != lead.status.value:
+                lead.status_option_id = _get_default_lead_status_option_id(db, lead.status)
     if "lost_reason" in update_data:
         lead.lost_reason = update_data["lost_reason"]
+    if "status_option_id" in update_data:
+        status_option_id = update_data["status_option_id"]
+        if status_option_id is None:
+            lead.status_option_id = None
+        else:
+            option = db.query(LeadStatusOptionModel).filter(LeadStatusOptionModel.id == status_option_id).first()
+            if not option:
+                raise HTTPException(status_code=404, detail="Lead status option not found")
+            lead.status_option_id = option.id
+            lead.status = LeadStatus(option.base_status)
 
     if "source_id" in update_data or "source" in update_data:
         source_id, source_name = _resolve_source(db, update_data.get("source_id"), update_data.get("source"))
@@ -1344,6 +1465,7 @@ async def update_lead(
         "comment",
         "next_contact_at",
         "pause_reason",
+        "status_option_id",
     ]:
         if field in update_data:
             setattr(lead, field, update_data[field])

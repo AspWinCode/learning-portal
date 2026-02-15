@@ -213,6 +213,7 @@ class LeadBase(BaseModel):
 
 class LeadCreate(LeadBase):
     owner_id: Optional[int] = None  # admin may set; sales defaults to self
+    status_option_id: Optional[int] = None
 
 
 class LeadUpdate(BaseModel):
@@ -239,13 +240,41 @@ class LeadUpdate(BaseModel):
     next_contact_at: Optional[datetime] = None
     pause_reason: Optional[str] = None
     status: Optional[LeadStatus] = None
+    status_option_id: Optional[int] = None
     lost_reason: Optional[str] = None
+
+
+class LeadStatusOptionBase(BaseModel):
+    name: str
+    base_status: LeadStatus
+    is_active: bool = True
+
+
+class LeadStatusOptionCreate(BaseModel):
+    name: str
+    base_status: LeadStatus
+
+
+class LeadStatusOptionUpdate(BaseModel):
+    name: Optional[str] = None
+    base_status: Optional[LeadStatus] = None
+    is_active: Optional[bool] = None
+
+
+class LeadStatusOptionResponse(LeadStatusOptionBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class LeadResponse(LeadBase):
     id: int
     owner_id: int
     status: LeadStatus
+    status_option_id: Optional[int] = None
+    status_option: Optional[LeadStatusOptionResponse] = None
     pause_reason: Optional[str] = None
     lost_reason: Optional[str] = None
     created_at: datetime

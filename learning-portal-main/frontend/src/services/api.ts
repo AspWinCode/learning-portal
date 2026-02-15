@@ -20,6 +20,7 @@ import {
   EventStatus,
   LeadSource,
   LeadTaskTemplate,
+  LeadStatusOption,
   LeadTaskStatusOption,
   SalesDashboardData,
   FollowUpItem,
@@ -409,6 +410,7 @@ export const salesApi = {
       comment?: string;
       next_contact_at?: string;
       status?: LeadStatus;
+      status_option_id?: number;
       lost_reason?: string;
     }
   ): Promise<Lead> => {
@@ -552,6 +554,21 @@ export const salesApi = {
     payload: { name?: string; is_closed?: boolean; is_active?: boolean }
   ): Promise<LeadTaskStatusOption> => {
     const response = await api.put(`/api/lead-task-statuses/${id}`, payload);
+    return response.data;
+  },
+  listLeadStatuses: async (active_only = true): Promise<LeadStatusOption[]> => {
+    const response = await api.get('/api/lead-statuses', { params: { active_only } });
+    return response.data;
+  },
+  createLeadStatus: async (payload: { name: string; base_status: LeadStatus }): Promise<LeadStatusOption> => {
+    const response = await api.post('/api/lead-statuses', payload);
+    return response.data;
+  },
+  updateLeadStatus: async (
+    id: number,
+    payload: { name?: string; base_status?: LeadStatus; is_active?: boolean }
+  ): Promise<LeadStatusOption> => {
+    const response = await api.put(`/api/lead-statuses/${id}`, payload);
     return response.data;
   },
   listLeadInfoTemplates: async (active_only = true): Promise<LeadInfoTemplate[]> => {

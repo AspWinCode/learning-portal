@@ -3,8 +3,12 @@ import {
   Alert,
   Box,
   Button,
+  FormControl,
   FormControlLabel,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Stack,
   Switch,
   Table,
@@ -21,7 +25,16 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import { LeadInfoTemplate, LeadSource, LeadTaskStatusOption, LeadTaskTemplate } from '../types';
+import { LeadInfoTemplate, LeadSource, LeadStatus, LeadStatusOption, LeadTaskStatusOption, LeadTaskTemplate } from '../types';
+
+const leadStatusLabels: Record<LeadStatus, string> = {
+  new: 'Новый',
+  contacted: 'Связались',
+  demo: 'Демо',
+  invoice_sent: 'Инвойс отправлен',
+  won: 'Успешно',
+  lost: 'Закрыт',
+};
 
 const SalesSettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -30,26 +43,31 @@ const SalesSettingsPage: React.FC = () => {
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [templates, setTemplates] = useState<LeadTaskTemplate[]>([]);
   const [statuses, setStatuses] = useState<LeadTaskStatusOption[]>([]);
+  const [leadStatuses, setLeadStatuses] = useState<LeadStatusOption[]>([]);
   const [infoTemplates, setInfoTemplates] = useState<LeadInfoTemplate[]>([]);
   const [newSource, setNewSource] = useState('');
   const [newTemplate, setNewTemplate] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [newStatusClosed, setNewStatusClosed] = useState(false);
+  const [newLeadStatus, setNewLeadStatus] = useState('');
+  const [newLeadStatusBase, setNewLeadStatusBase] = useState<LeadStatus>('new');
   const [newInfoTemplateName, setNewInfoTemplateName] = useState('');
   const [newInfoTemplateBody, setNewInfoTemplateBody] = useState('');
 
   const loadData = async () => {
     try {
-      const [info, src, tpl, st] = await Promise.all([
+      const [info, src, tpl, st, leadSt] = await Promise.all([
         salesApi.listLeadInfoTemplates(false),
         salesApi.listLeadSources(false),
         salesApi.listLeadTaskTemplates(false),
         salesApi.listLeadTaskStatuses(false),
+        salesApi.listLeadStatuses(false),
       ]);
       setInfoTemplates(info);
       setSources(src);
       setTemplates(tpl);
       setStatuses(st);
+      setLeadStatuses(leadSt);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить справочники'));
     }
@@ -218,6 +236,67 @@ const SalesSettingsPage: React.FC = () => {
                     <Switch
                       checked={st.is_active}
                       onChange={(e) => safeAction(() => salesApi.updateLeadTaskStatus(st.id, { is_active: e.target.checked }))}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Статусы лида</Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              label="Новый статус лида"
+              value={newLeadStatus}
+              onChange={(e) => setNewLeadStatus(e.target.value)}
+            />
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel id="new-lead-status-base-label">Базовая стадия</InputLabel>
+              <Select
+                labelId="new-lead-status-base-label"
+                label="Базовая стадия"
+                value={newLeadStatusBase}
+                onChange={(e) => setNewLeadStatusBase(e.target.value as LeadStatus)}
+              >
+                {(Object.keys(leadStatusLabels) as LeadStatus[]).map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {leadStatusLabels[status]}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button
+              variant="contained"
+              onClick={() => safeAction(async () => {
+                if (!newLeadStatus.trim()) return;
+                await salesApi.createLeadStatus({ name: newLeadStatus.trim(), base_status: newLeadStatusBase });
+                setNewLeadStatus('');
+                setNewLeadStatusBase('new');
+              })}
+            >
+              Добавить
+            </Button>
+          </Box>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Базовая стадия</TableCell>
+                <TableCell>Активен</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {leadStatuses.map((st) => (
+                <TableRow key={st.id}>
+                  <TableCell>{st.name}</TableCell>
+                  <TableCell>{leadStatusLabels[st.base_status]}</TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={st.is_active}
+                      onChange={(e) => safeAction(() => salesApi.updateLeadStatus(st.id, { is_active: e.target.checked }))}
                     />
                   </TableCell>
                 </TableRow>

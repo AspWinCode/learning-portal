@@ -201,6 +201,7 @@ class LeadBase(BaseModel):
     outreach_at: Optional[datetime] = None
     outreach_minutes: Optional[int] = None
     source: Optional[str] = None
+    communication_channel: Optional[str] = None
     source_id: Optional[int] = None
     referral_name: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -228,6 +229,7 @@ class LeadUpdate(BaseModel):
     outreach_at: Optional[datetime] = None
     outreach_minutes: Optional[int] = None
     source: Optional[str] = None
+    communication_channel: Optional[str] = None
     source_id: Optional[int] = None
     referral_name: Optional[str] = None
     tags: Optional[List[str]] = None

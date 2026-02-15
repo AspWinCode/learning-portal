@@ -236,6 +236,7 @@ class Lead(Base):
         index=True,
     )
     source = Column(String, nullable=True)
+    communication_channel = Column(String, nullable=True)
     source_id = Column(Integer, ForeignKey("lead_sources.id"), nullable=True, index=True)
     referral_name = Column(String, nullable=True)
     tags = Column(JSON, nullable=True)

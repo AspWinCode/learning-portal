@@ -13,9 +13,6 @@ import {
   FormControl,
   Grid,
   InputLabel,
-  List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Select,
   Stack,
@@ -58,6 +55,7 @@ import {
   Invoice,
   Lead,
   LeadCommunication,
+  LeadCommunicationChannel,
   LeadInfoTemplate,
   LeadSource,
   LeadStatus,
@@ -74,6 +72,13 @@ const statusLabels: Record<LeadStatus, string> = {
   invoice_sent: 'Инвойс отправлен',
   won: 'Успешно',
   lost: 'Закрыт',
+};
+
+const leadCommunicationChannelLabels: Record<LeadCommunicationChannel, string> = {
+  max: 'MAX',
+  email: 'почта',
+  sms: 'смс',
+  telegram: 'telegram',
 };
 
 const DEFAULT_CITY_OPTIONS = [
@@ -179,6 +184,17 @@ const SalesLeadsPage: React.FC = () => {
   const [leadHeaderSaving, setLeadHeaderSaving] = useState(false);
   const [leadCardTab, setLeadCardTab] = useState<'overview' | 'push'>('overview');
   const [leadPushStatsMap, setLeadPushStatsMap] = useState<Record<number, LeadPushStats>>({});
+  const [leadInfoSaving, setLeadInfoSaving] = useState(false);
+  const [leadInfoDraft, setLeadInfoDraft] = useState({
+    parent_full_name: '',
+    parent_phone: '',
+    child_full_name: '',
+    child_phone: '',
+    email: '',
+    communication_channel: '' as '' | LeadCommunicationChannel,
+    source: '',
+    referral_name: '',
+  });
 
   const [form, setForm] = useState({
     parent_full_name: '',
@@ -484,6 +500,45 @@ const SalesLeadsPage: React.FC = () => {
     }
   };
 
+  const handleCommunicationChannelChange = async (
+    lead: Lead,
+    channel: '' | LeadCommunicationChannel
+  ) => {
+    const nextChannel = channel || undefined;
+    if ((lead.communication_channel || undefined) === nextChannel) return;
+    setActionLoadingId(lead.id);
+    setError(null);
+    try {
+      const updated = await salesApi.updateLead(lead.id, {
+        communication_channel: nextChannel,
+      });
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === updated.id
+            ? {
+                ...l,
+                communication_channel: updated.communication_channel,
+              }
+            : l
+        )
+      );
+      if (selectedLead?.id === updated.id) {
+        setSelectedLead((prev) =>
+          prev
+            ? {
+                ...prev,
+                communication_channel: updated.communication_channel,
+              }
+            : prev
+        );
+      }
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось обновить канал общения'));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const handleConfirmLost = async () => {
     if (!pendingLostLead) return;
     if (!lostReason.trim()) {
@@ -540,6 +595,16 @@ const SalesLeadsPage: React.FC = () => {
         ? format(new Date(lead.next_contact_at), "yyyy-MM-dd'T'HH:mm")
         : ''
     );
+    setLeadInfoDraft({
+      parent_full_name: lead.parent_full_name || '',
+      parent_phone: lead.parent_phone || '',
+      child_full_name: lead.child_full_name || '',
+      child_phone: lead.child_phone || '',
+      email: lead.email || '',
+      communication_channel: (lead.communication_channel as LeadCommunicationChannel | null) || '',
+      source: lead.source || '',
+      referral_name: lead.referral_name || '',
+    });
     await loadLeadDetails(lead);
   };
 
@@ -916,6 +981,20 @@ const SalesLeadsPage: React.FC = () => {
 
   useEffect(() => {
     if (!selectedLead) return;
+    setLeadInfoDraft({
+      parent_full_name: selectedLead.parent_full_name || '',
+      parent_phone: selectedLead.parent_phone || '',
+      child_full_name: selectedLead.child_full_name || '',
+      child_phone: selectedLead.child_phone || '',
+      email: selectedLead.email || '',
+      communication_channel: (selectedLead.communication_channel as LeadCommunicationChannel | null) || '',
+      source: selectedLead.source || '',
+      referral_name: selectedLead.referral_name || '',
+    });
+  }, [selectedLead?.id]);
+
+  useEffect(() => {
+    if (!selectedLead) return;
     setLeadHeaderStatusDraft(selectedLead.status);
     setLeadHeaderNextStepDraft(selectedLead.desired_slot || '');
     setLeadHeaderNextContactDraft(
@@ -1004,6 +1083,30 @@ const SalesLeadsPage: React.FC = () => {
     }, 700);
     return () => window.clearTimeout(timer);
   }, [leadHeaderStatusDraft, leadHeaderNextStepDraft, leadHeaderNextContactDraft, selectedLead]);
+
+  const handleSaveLeadInfo = async () => {
+    if (!selectedLead) return;
+    try {
+      setLeadInfoSaving(true);
+      const updated = await salesApi.updateLead(selectedLead.id, {
+        parent_full_name: leadInfoDraft.parent_full_name.trim() || undefined,
+        parent_phone: normalizeRuPhone(leadInfoDraft.parent_phone) || undefined,
+        child_full_name: leadInfoDraft.child_full_name.trim() || undefined,
+        child_phone: normalizeRuPhone(leadInfoDraft.child_phone) || undefined,
+        email: leadInfoDraft.email.trim() || undefined,
+        communication_channel: leadInfoDraft.communication_channel || undefined,
+        source: leadInfoDraft.source.trim() || undefined,
+        referral_name: leadInfoDraft.referral_name.trim() || undefined,
+      });
+      setSelectedLead(updated);
+      setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+      setToast({ open: true, message: 'Информация лида обновлена', severity: 'success' });
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось сохранить информацию лида'));
+    } finally {
+      setLeadInfoSaving(false);
+    }
+  };
 
   const handleTemplateChange = (templateIdStr: string) => {
     const tpl = infoTemplates.find((t) => String(t.id) === templateIdStr);
@@ -1557,6 +1660,7 @@ const SalesLeadsPage: React.FC = () => {
             <TableCell>Контакты</TableCell>
             <TableCell>Статус</TableCell>
             <TableCell>Источник</TableCell>
+            <TableCell>Канал общения</TableCell>
             <TableCell sortDirection={tableSortField === 'school_class' ? tableSortOrder : false}>
               <TableSortLabel
                 active={tableSortField === 'school_class'}
@@ -1645,6 +1749,30 @@ const SalesLeadsPage: React.FC = () => {
                 </FormControl>
               </TableCell>
               <TableCell>{lead.source || '—'}</TableCell>
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <Select
+                    value={lead.communication_channel || ''}
+                    displayEmpty
+                    onChange={(e) =>
+                      void handleCommunicationChannelChange(
+                        lead,
+                        (e.target.value as '' | LeadCommunicationChannel) || ''
+                      )
+                    }
+                    disabled={actionLoadingId === lead.id}
+                  >
+                    <MenuItem value="">
+                      <em>Не задан</em>
+                    </MenuItem>
+                    {Object.entries(leadCommunicationChannelLabels).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </TableCell>
               <TableCell>{lead.school_class || '—'}</TableCell>
               <TableCell>{lead.school_name || '—'}</TableCell>
               <TableCell>{lead.city || '—'}</TableCell>
@@ -2067,28 +2195,110 @@ const SalesLeadsPage: React.FC = () => {
                   </Grid>
                   <Grid item xs={12} xl={4}>
                     <Typography variant="subtitle2">Клиент</Typography>
-                    <List dense disablePadding>
-                      <ListItem disableGutters>
-                        <ListItemText primary="Родитель" secondary={selectedLead.parent_full_name || '—'} />
-                      </ListItem>
-                      <ListItem disableGutters>
-                        <ListItemText primary="Телефон родителя" secondary={selectedLead.parent_phone || '—'} />
-                      </ListItem>
-                      <ListItem disableGutters>
-                        <ListItemText primary="Ребенок" secondary={selectedLead.child_full_name || '—'} />
-                      </ListItem>
-                      <ListItem disableGutters>
-                        <ListItemText primary="Телефон школьника" secondary={selectedLead.child_phone || '—'} />
-                      </ListItem>
-                    </List>
-                    <Typography color="text.secondary">{selectedLead.email || 'email не указан'}</Typography>
-                    <Typography color="text.secondary">Источник: {selectedLead.source || '—'}</Typography>
+                    <Grid container spacing={1} sx={{ mt: 0.25 }}>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Родитель"
+                          value={leadInfoDraft.parent_full_name}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, parent_full_name: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Телефон родителя"
+                          value={leadInfoDraft.parent_phone}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, parent_phone: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Ребенок"
+                          value={leadInfoDraft.child_full_name}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, child_full_name: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Телефон школьника"
+                          value={leadInfoDraft.child_phone}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, child_phone: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Email"
+                          value={leadInfoDraft.email}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, email: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel id="lead-communication-channel-label">Канал общения</InputLabel>
+                          <Select
+                            labelId="lead-communication-channel-label"
+                            label="Канал общения"
+                            value={leadInfoDraft.communication_channel}
+                            onChange={(e) =>
+                              setLeadInfoDraft((s) => ({
+                                ...s,
+                                communication_channel: (e.target.value as '' | LeadCommunicationChannel) || '',
+                              }))
+                            }
+                          >
+                            <MenuItem value="">
+                              <em>Не задан</em>
+                            </MenuItem>
+                            {Object.entries(leadCommunicationChannelLabels).map(([value, label]) => (
+                              <MenuItem key={value} value={value}>
+                                {label}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Источник"
+                          value={leadInfoDraft.source}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, source: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Кто пригласил"
+                          value={leadInfoDraft.referral_name}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, referral_name: e.target.value }))}
+                        />
+                      </Grid>
+                    </Grid>
                     {selectedLead.pause_reason && (
-                      <Typography color="text.secondary">Пауза: {selectedLead.pause_reason}</Typography>
+                      <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                        Пауза: {selectedLead.pause_reason}
+                      </Typography>
                     )}
-                    {selectedLead.referral_name && (
-                      <Typography color="text.secondary">Кто пригласил: {selectedLead.referral_name}</Typography>
-                    )}
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => void handleSaveLeadInfo()}
+                      disabled={leadInfoSaving}
+                      sx={{ mt: 1 }}
+                    >
+                      {leadInfoSaving ? 'Сохраняем...' : 'Сохранить информацию'}
+                    </Button>
                     <TextField
                       fullWidth
                       multiline

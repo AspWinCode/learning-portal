@@ -125,6 +125,7 @@ export interface CharacteristicTemplate {
 // --- Sales ---
 
 export type LeadStatus = 'new' | 'contacted' | 'demo' | 'invoice_sent' | 'won' | 'lost';
+export type LeadCommunicationChannel = 'max' | 'email' | 'sms' | 'telegram';
 
 export interface Lead {
   id: number;
@@ -142,6 +143,7 @@ export interface Lead {
   outreach_at?: string | null;
   outreach_minutes?: number | null;
   source?: string | null;
+  communication_channel?: LeadCommunicationChannel | null;
   source_id?: number | null;
   referral_name?: string | null;
   tags?: string[] | null;

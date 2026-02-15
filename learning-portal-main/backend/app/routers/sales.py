@@ -72,6 +72,8 @@ from app.routers.action_log import log_action
 
 router = APIRouter()
 
+ALLOWED_LEAD_COMMUNICATION_CHANNELS = {"max", "email", "sms", "telegram"}
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -1231,6 +1233,9 @@ async def create_lead(
     current_user: User = Depends(auth.require_role(["admin", "sales"])),
 ):
     owner_id = payload.owner_id if (current_user.role in (UserRole.ADMIN, UserRole.OWNER) and payload.owner_id) else current_user.id
+    communication_channel = (payload.communication_channel or "").strip().lower() or None
+    if communication_channel and communication_channel not in ALLOWED_LEAD_COMMUNICATION_CHANNELS:
+        raise HTTPException(status_code=400, detail="Unsupported communication channel")
     source_id, source_name = _resolve_source(db, payload.source_id, payload.source)
     if _is_referral_source(source_name) and not (payload.referral_name or "").strip():
         raise HTTPException(status_code=400, detail="Для источника 'рекомендация' укажите, кто пригласил")
@@ -1256,6 +1261,7 @@ async def create_lead(
         outreach_at=payload.outreach_at,
         outreach_minutes=payload.outreach_minutes,
         source=source_name,
+        communication_channel=communication_channel,
         source_id=source_id,
         referral_name=payload.referral_name,
         tags=payload.tags,
@@ -1311,6 +1317,11 @@ async def update_lead(
             raise HTTPException(status_code=400, detail="Для источника 'рекомендация' укажите, кто пригласил")
         lead.source_id = source_id
         lead.source = source_name
+    if "communication_channel" in update_data:
+        normalized_channel = (update_data.get("communication_channel") or "").strip().lower() or None
+        if normalized_channel and normalized_channel not in ALLOWED_LEAD_COMMUNICATION_CHANNELS:
+            raise HTTPException(status_code=400, detail="Unsupported communication channel")
+        update_data["communication_channel"] = normalized_channel
 
     for field in [
         "contact_name",
@@ -1325,6 +1336,7 @@ async def update_lead(
         "school_class",
         "outreach_at",
         "outreach_minutes",
+        "communication_channel",
         "referral_name",
         "tags",
         "abonement_id",

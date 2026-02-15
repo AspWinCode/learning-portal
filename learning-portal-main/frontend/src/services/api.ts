@@ -11,6 +11,7 @@ import {
   CharacteristicField,
   Abonement,
   Lead,
+  LeadCommunicationChannel,
   LeadTask,
   Invoice,
   LeadStatus,
@@ -371,6 +372,7 @@ export const salesApi = {
     outreach_at?: string;
     outreach_minutes?: number;
     source?: string;
+    communication_channel?: LeadCommunicationChannel;
     source_id?: number;
     referral_name?: string;
     tags?: string[];
@@ -398,6 +400,7 @@ export const salesApi = {
       outreach_at?: string;
       outreach_minutes?: number;
       source?: string;
+      communication_channel?: LeadCommunicationChannel;
       source_id?: number;
       referral_name?: string;
       tags?: string[];

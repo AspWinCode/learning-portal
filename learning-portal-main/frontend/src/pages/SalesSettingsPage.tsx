@@ -30,6 +30,7 @@ import { LeadInfoTemplate, LeadSource, LeadStatus, LeadStatusOption, LeadTaskSta
 const leadStatusLabels: Record<LeadStatus, string> = {
   new: 'Новый',
   contacted: 'Связались',
+  no_answer: 'Недозвон',
   demo: 'Демо',
   invoice_sent: 'Инвойс отправлен',
   won: 'Успешно',

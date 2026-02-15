@@ -255,7 +255,7 @@ async def get_sales_dashboard(
         tasks_q = tasks_q.filter(Lead.owner_id == current_user.id)
         regs_q = regs_q.filter(Lead.owner_id == current_user.id)
 
-    active_lead_statuses = [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT]
+    active_lead_statuses = [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.NO_ANSWER, LeadStatus.DEMO, LeadStatus.INVOICE_SENT]
     connected_statuses = [LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT, LeadStatus.WON]
 
     kpi_new_leads = leads_q.filter(Lead.created_at >= start_today, Lead.created_at < end_today).count()
@@ -1038,8 +1038,12 @@ async def save_lead_contact_result(
         db.add(auto_task)
         lead.next_contact_at = follow_up_at
 
-    if outcome in {"connected", "callback"} and lead.status == LeadStatus.NEW:
+    if outcome == "no_answer":
+        lead.status = LeadStatus.NO_ANSWER
+        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.NO_ANSWER)
+    elif outcome in {"connected", "callback"} and lead.status == LeadStatus.NEW:
         lead.status = LeadStatus.CONTACTED
+        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.CONTACTED)
 
     db.commit()
     db.refresh(comm)

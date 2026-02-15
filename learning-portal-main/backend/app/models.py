@@ -206,6 +206,7 @@ class Abonement(Base):
 class LeadStatus(str, enum.Enum):
     NEW = "new"
     CONTACTED = "contacted"
+    NO_ANSWER = "no_answer"
     DEMO = "demo"
     INVOICE_SENT = "invoice_sent"
     WON = "won"

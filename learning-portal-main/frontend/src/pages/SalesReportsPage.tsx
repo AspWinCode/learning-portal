@@ -139,7 +139,7 @@ const SalesReportsPage: React.FC = () => {
   );
 
   const stageCounts = useMemo(() => {
-    const base = { new: 0, contacted: 0, demo: 0, invoice_sent: 0, won: 0, lost: 0 };
+    const base = { new: 0, contacted: 0, no_answer: 0, demo: 0, invoice_sent: 0, won: 0, lost: 0 };
     filteredLeads.forEach((l) => {
       base[l.status] += 1;
     });
@@ -284,6 +284,7 @@ const SalesReportsPage: React.FC = () => {
       ['kpi', 'outreach_minutes_total', String(outreachSummary.totalMinutes)],
       ['stages', 'new', String(stageCounts.new)],
       ['stages', 'contacted', String(stageCounts.contacted)],
+      ['stages', 'no_answer', String(stageCounts.no_answer)],
       ['stages', 'demo', String(stageCounts.demo)],
       ['stages', 'invoice_sent', String(stageCounts.invoice_sent)],
       ['stages', 'won', String(stageCounts.won)],
@@ -461,6 +462,7 @@ const SalesReportsPage: React.FC = () => {
                 <TableBody>
                   <TableRow><TableCell>Новый</TableCell><TableCell align="right">{stageCounts.new}</TableCell></TableRow>
                   <TableRow><TableCell>Связались</TableCell><TableCell align="right">{stageCounts.contacted}</TableCell></TableRow>
+                  <TableRow><TableCell>Недозвон</TableCell><TableCell align="right">{stageCounts.no_answer}</TableCell></TableRow>
                   <TableRow><TableCell>Демо</TableCell><TableCell align="right">{stageCounts.demo}</TableCell></TableRow>
                   <TableRow><TableCell>Инвойс</TableCell><TableCell align="right">{stageCounts.invoice_sent}</TableCell></TableRow>
                   <TableRow><TableCell>Оплатил</TableCell><TableCell align="right">{stageCounts.won}</TableCell></TableRow>

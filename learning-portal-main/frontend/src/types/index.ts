@@ -124,7 +124,7 @@ export interface CharacteristicTemplate {
 
 // --- Sales ---
 
-export type LeadStatus = 'new' | 'contacted' | 'demo' | 'invoice_sent' | 'won' | 'lost';
+export type LeadStatus = 'new' | 'contacted' | 'no_answer' | 'demo' | 'invoice_sent' | 'won' | 'lost';
 export type LeadCommunicationChannel = 'max' | 'email' | 'sms' | 'telegram';
 
 export interface LeadStatusOption {

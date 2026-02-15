@@ -69,6 +69,7 @@ import {
 const statusLabels: Record<LeadStatus, string> = {
   new: 'Новый',
   contacted: 'Связались',
+  no_answer: 'Недозвон',
   demo: 'Демо',
   invoice_sent: 'Инвойс отправлен',
   won: 'Успешно',
@@ -1345,6 +1346,7 @@ const SalesLeadsPage: React.FC = () => {
         return 'default';
       case 'invoice_sent':
         return 'info';
+      case 'no_answer':
       case 'demo':
         return 'warning';
       default:
@@ -1377,13 +1379,14 @@ const SalesLeadsPage: React.FC = () => {
     const byStatus: Record<LeadStatus, number> = {
       new: 0,
       contacted: 30,
+      no_answer: 40,
       demo: 55,
       invoice_sent: 80,
       won: 100,
       lost: 100,
     };
     const base = byStatus[lead.status] ?? 0;
-    if (lead.status === 'contacted' || lead.status === 'demo' || lead.status === 'invoice_sent') {
+    if (lead.status === 'contacted' || lead.status === 'no_answer' || lead.status === 'demo' || lead.status === 'invoice_sent') {
       if (!lead.next_contact_at) {
         return { percent: Math.max(base - 10, 0), label: 'без follow-up' };
       }
@@ -1394,7 +1397,7 @@ const SalesLeadsPage: React.FC = () => {
   };
 
   const requiresFollowUpOnDrop = (status: LeadStatus) =>
-    status === 'contacted' || status === 'demo' || status === 'invoice_sent';
+    status === 'contacted' || status === 'no_answer' || status === 'demo' || status === 'invoice_sent';
 
   const handleKanbanDrop = (targetStatus: LeadStatus) => {
     if (!draggedLeadId) return;

@@ -322,15 +322,22 @@ const SalesLeadsPage: React.FC = () => {
   }, [leads]);
 
   useEffect(() => {
-    const leadIdParam = new URLSearchParams(location.search).get('leadId');
+    const params = new URLSearchParams(location.search);
+    const leadIdParam = params.get('open') || params.get('leadId');
     const leadId = leadIdParam ? Number(leadIdParam) : NaN;
-    if (!leadIdParam || Number.isNaN(leadId) || leads.length === 0) return;
-    const targetLead = leads.find((lead) => lead.id === leadId);
-    if (!targetLead) return;
-    setSelectedLead(targetLead);
-    setDetailsOpen(true);
-    void loadLeadDetails(targetLead);
-    navigate('/sales/leads', { replace: true });
+    if (!leadIdParam || Number.isNaN(leadId)) return;
+    const targetLead = leads.find((l) => l.id === leadId);
+    if (targetLead) {
+      setSelectedLead(targetLead);
+      setDetailsOpen(true);
+      void loadLeadDetails(targetLead);
+      return;
+    }
+    salesApi.getLead(leadId).then((lead) => {
+      setSelectedLead(lead);
+      setDetailsOpen(true);
+      void loadLeadDetails(lead);
+    }).catch(() => {});
   }, [location.search, leads, navigate]);
 
   const cityOptions = useMemo(() => {
@@ -1674,7 +1681,7 @@ const SalesLeadsPage: React.FC = () => {
       )}
 
       <Grid container spacing={2}>
-        <Grid item xs={12} lg={detailsOpen ? 7 : 12}>
+        <Grid item xs={12}>
       {viewMode === 'table' ? (
       <TableContainer sx={{ overflowX: 'auto' }}>
       <Table size="small" sx={{ minWidth: 1280 }}>
@@ -2049,13 +2056,21 @@ const SalesLeadsPage: React.FC = () => {
       )}
         </Grid>
 
+        <Dialog
+          open={detailsOpen && !!selectedLead}
+          onClose={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}
+          maxWidth="xl"
+          fullWidth
+          scroll="paper"
+          PaperProps={{ sx: { maxHeight: '95vh' } }}
+        >
+          <DialogContent sx={{ p: 0 }}>
         {detailsOpen && selectedLead && (
-          <Grid item xs={12} lg={5}>
-            <Card variant="outlined" sx={{ position: { lg: 'sticky' }, top: { lg: 88 }, maxHeight: { lg: 'calc(100vh - 110px)' }, overflow: 'auto' }}>
+            <Card variant="outlined" sx={{ boxShadow: 'none' }}>
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
                   <Typography variant="h6">Карточка лида</Typography>
-                  <Button size="small" onClick={() => setDetailsOpen(false)}>Скрыть</Button>
+                  <Button size="small" onClick={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}>Закрыть</Button>
                 </Stack>
                 <Grid container spacing={2} sx={{ mt: 0.5 }}>
                   <Grid item xs={12}>
@@ -2550,8 +2565,9 @@ const SalesLeadsPage: React.FC = () => {
                 </Grid>
               </CardContent>
             </Card>
-          </Grid>
         )}
+          </DialogContent>
+        </Dialog>
       </Grid>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>

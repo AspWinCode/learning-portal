@@ -44,6 +44,7 @@ import {
   ReceiptLong,
   Settings,
   PendingActions,
+  HowToReg,
   Add,
   NotificationsNone,
   Search,
@@ -196,6 +197,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
         { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
         { text: 'Мероприятия', icon: <EventAvailable />, path: '/sales/events' },
+        { text: 'После визита', icon: <HowToReg />, path: '/sales/post-visit' },
+        { text: 'Анкета ученика', icon: <Description />, path: '/sales/agreed' },
         { text: 'Инвойсы', icon: <ReceiptLong />, path: '/sales/invoices' },
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' },
@@ -217,6 +220,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'owner') {
       items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+      items.push({ text: 'B2B (школы)', icon: <Group />, path: '/b2b-schools' });
+      items.push({ text: 'Создать школу (B2B)', icon: <Add />, path: '/b2b-schools/new' });
     }
     return items;
   })();

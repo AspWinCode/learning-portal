@@ -248,6 +248,8 @@ class Lead(Base):
     next_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)
     pause_reason = Column(String, nullable=True)
     lost_reason = Column(String, nullable=True)
+    questionnaire_filled = Column(Boolean, default=False, nullable=False, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -256,6 +258,7 @@ class Lead(Base):
     abonement = relationship("Abonement")
     source_ref = relationship("LeadSource")
     status_option = relationship("LeadStatusOption")
+    b2b_school = relationship("B2BSchool", back_populates="leads")
     tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="lead", cascade="all, delete-orphan")
     communications = relationship("LeadCommunication", back_populates="lead", cascade="all, delete-orphan")
@@ -647,5 +650,78 @@ class AppSetting(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String, unique=True, index=True, nullable=False)
     value = Column(Text, nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# B2B Schools pipeline
+class B2BSchoolPipelineStage(str, enum.Enum):
+    NEW = "new"
+    CONTACT_FOUND = "contact_found"
+    LETTER_SENT = "letter_sent"
+    MEETING_SCHEDULED = "meeting_scheduled"
+    MEETING_HELD = "meeting_held"
+    PERMISSION_RECEIVED = "permission_received"
+    WALKTHROUGH_SCHEDULED = "walkthrough_scheduled"
+    WALKTHROUGH_DONE = "walkthrough_done"
+    LEADS_RECEIVED = "leads_received"
+
+
+class B2BSchoolFriendshipDegree(str, enum.Enum):
+    UNKNOWN = "unknown"           # не знаем друг друга
+    INDIRECT = "indirect"         # знаем косвенно
+    FRIENDS = "friends"           # дружим
+    ENEMIES = "enemies"           # враги
+
+
+class B2BSchool(Base):
+    __tablename__ = "b2b_schools"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    director = Column(String, nullable=True)
+    address = Column(Text, nullable=True)
+    city = Column(String, nullable=True, index=True)
+    student_count = Column(Integer, nullable=True)
+    friendship_degree = Column(String(32), nullable=True, index=True)  # B2BSchoolFriendshipDegree.value
+    pipeline_stage = Column(
+        String(32),
+        nullable=False,
+        default=B2BSchoolPipelineStage.NEW.value,
+        index=True,
+    )
+    event_dates = Column(JSON, nullable=True)
+    meeting_scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    meeting_outcomes = Column(Text, nullable=True)
+    walkthrough_scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    leads = relationship("Lead", back_populates="b2b_school", foreign_keys="Lead.b2b_school_id")
+    school_contacts = relationship("B2BSchoolContact", back_populates="school", cascade="all, delete-orphan")
+
+
+class B2BSchoolContact(Base):
+    __tablename__ = "b2b_school_contacts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=False, index=True)
+    full_name = Column(String, nullable=False)
+    position = Column(String, nullable=True)
+    phone = Column(String, nullable=False)
+    phone_extra = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    school = relationship("B2BSchool", back_populates="school_contacts")
+
+
+class B2BProject(Base):
+    __tablename__ = "b2b_projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    location = Column(String, nullable=True)
+    main_city = Column(String, nullable=True, index=True)
+    cities = Column(JSON, nullable=True)  # список городов, которые входят в проект
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

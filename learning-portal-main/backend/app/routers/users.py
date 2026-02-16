@@ -14,7 +14,7 @@ router = APIRouter()
 async def create_user(
     user: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner"]))
 ):
     """Создание пользователя (только администратор)"""
     db_user = auth.get_user_by_email(db, email=user.email)
@@ -42,7 +42,7 @@ async def read_users(
     limit: int = 100,
     role: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner"]))
 ):
     """Получение списка пользователей (только администратор)"""
     query = db.query(User)
@@ -73,7 +73,7 @@ async def update_user(
     user_id: int,
     user_update: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner"]))
 ):
     """Обновление пользователя (только администратор)"""
     db_user = db.query(User).filter(User.id == user_id).first()
@@ -95,7 +95,7 @@ async def update_user(
 async def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner"]))
 ):
     """Деактивация пользователя (удаление запрещено)"""
     db_user = db.query(User).filter(User.id == user_id).first()

@@ -40,7 +40,7 @@ const TrainersPage: React.FC = () => {
   const [trainerRates, setTrainerRates] = useState<Record<number, number>>({});
   const [trainerLessons, setTrainerLessons] = useState<Record<number, number>>({});
   const { user } = useAuth();
-  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
+  const isAdminLike = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
 
   const loadTrainers = async () => {
     try {

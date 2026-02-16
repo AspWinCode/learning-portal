@@ -27,6 +27,10 @@ import {
   LeadInfoTemplate,
   LeadCommunication,
   LeadPushStats,
+  B2BSchool,
+  B2BSchoolPipelineStage,
+  B2BSchoolContact,
+  B2BProject,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -347,6 +351,7 @@ export const settingsApi = {
 export const salesApi = {
   listLeads: async (params?: {
     status_filter?: LeadStatus;
+    questionnaire_filled?: boolean;
     q?: string;
     source?: string;
     tag?: string;
@@ -385,6 +390,13 @@ export const salesApi = {
     const response = await api.post('/api/leads', payload);
     return response.data;
   },
+  postVisitOutcome: async (
+    leadId: number,
+    payload: { outcome: 'agreed' | 'thinking' | 'declined'; follow_up_at?: string; lost_reason?: string }
+  ): Promise<Lead> => {
+    const response = await api.post(`/api/leads/${leadId}/post-visit-outcome`, payload);
+    return response.data;
+  },
   updateLead: async (
     id: number,
     payload: {
@@ -412,9 +424,14 @@ export const salesApi = {
       status?: LeadStatus;
       status_option_id?: number;
       lost_reason?: string;
+      questionnaire_filled?: boolean;
     }
   ): Promise<Lead> => {
     const response = await api.put(`/api/leads/${id}`, payload);
+    return response.data;
+  },
+  getLead: async (leadId: number): Promise<Lead> => {
+    const response = await api.get(`/api/leads/${leadId}`);
     return response.data;
   },
   listTasks: async (leadId: number): Promise<LeadTask[]> => {
@@ -654,6 +671,93 @@ export const abonementsApi = {
   },
   remove: async (id: number): Promise<void> => {
     await api.delete(`/api/abonements/${id}`);
+  },
+};
+
+export const b2bApi = {
+  listSchools: async (opts?: { pipeline_stage?: string; project_id?: number }): Promise<B2BSchool[]> => {
+    const params: any = {};
+    if (opts?.pipeline_stage) params.pipeline_stage = opts.pipeline_stage;
+    if (opts?.project_id) params.project_id = opts.project_id;
+    const response = await api.get('/api/b2b-schools', { params });
+    return response.data;
+  },
+  getSchool: async (id: number): Promise<B2BSchool> => {
+    const response = await api.get(`/api/b2b-schools/${id}`);
+    return response.data;
+  },
+  createSchool: async (payload: {
+    name: string;
+    director?: string;
+    city?: string;
+    address?: string;
+    student_count?: number;
+    friendship_degree?: string;
+    pipeline_stage?: B2BSchoolPipelineStage;
+    event_dates?: string[];
+    meeting_scheduled_at?: string | null;
+    meeting_outcomes?: string | null;
+    walkthrough_scheduled_at?: string | null;
+  }): Promise<B2BSchool> => {
+    const response = await api.post('/api/b2b-schools', payload);
+    return response.data;
+  },
+  updateSchool: async (
+    id: number,
+    payload: Partial<{
+      name: string;
+      director: string;
+      city: string;
+      address: string;
+      student_count: number;
+      friendship_degree: string;
+      pipeline_stage: B2BSchoolPipelineStage;
+      event_dates: string[];
+      meeting_scheduled_at: string | null;
+      meeting_outcomes: string | null;
+      walkthrough_scheduled_at: string | null;
+    }>
+  ): Promise<B2BSchool> => {
+    const response = await api.put(`/api/b2b-schools/${id}`, payload);
+    return response.data;
+  },
+  deleteSchool: async (id: number): Promise<void> => {
+    await api.delete(`/api/b2b-schools/${id}`);
+  },
+  listContacts: async (schoolId: number): Promise<B2BSchoolContact[]> => {
+    const response = await api.get(`/api/b2b-schools/${schoolId}/contacts`);
+    return response.data;
+  },
+  createContact: async (
+    schoolId: number,
+    payload: { full_name: string; position?: string; phone: string; phone_extra?: string }
+  ): Promise<B2BSchoolContact> => {
+    const response = await api.post(`/api/b2b-schools/${schoolId}/contacts`, payload);
+    return response.data;
+  },
+  updateContact: async (
+    schoolId: number,
+    contactId: number,
+    payload: Partial<{ full_name: string; position: string; phone: string; phone_extra: string }>
+  ): Promise<B2BSchoolContact> => {
+    const response = await api.put(`/api/b2b-schools/${schoolId}/contacts/${contactId}`, payload);
+    return response.data;
+  },
+  deleteContact: async (schoolId: number, contactId: number): Promise<void> => {
+    await api.delete(`/api/b2b-schools/${schoolId}/contacts/${contactId}`);
+  },
+  listProjects: async (): Promise<B2BProject[]> => {
+    const response = await api.get('/api/b2b-projects');
+    return response.data;
+  },
+  createProject: async (payload: {
+    name: string;
+    location?: string;
+    main_city?: string;
+    cities?: string[];
+  }): Promise<B2BProject> => {
+    const response = await api.post('/api/b2b-projects', payload);
+    return response.data;
   },
 };
 

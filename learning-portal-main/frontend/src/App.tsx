@@ -16,6 +16,8 @@ import ReportsPage from './pages/ReportsPage';
 import FinancialModelPage from './pages/FinancialModelPage';
 import AbonementsPage from './pages/AbonementsPage';
 import TrainersPage from './pages/TrainersPage';
+import B2BSchoolsPage from './pages/B2BSchoolsPage';
+import B2BSchoolCreatePage from './pages/B2BSchoolCreatePage';
 import ParentDashboardPage from './pages/ParentDashboardPage';
 import SalesLeadsPage from './pages/SalesLeadsPage';
 import SalesManagersPage from './pages/SalesManagersPage';
@@ -24,6 +26,8 @@ import SalesInvoicesPage from './pages/SalesInvoicesPage';
 import SalesSettingsPage from './pages/SalesSettingsPage';
 import SalesDashboardPage from './pages/SalesDashboardPage';
 import SalesFollowUpsPage from './pages/SalesFollowUpsPage';
+import SalesPostVisitPage from './pages/SalesPostVisitPage';
+import SalesAgreedPage from './pages/SalesAgreedPage';
 import SalesReportsPage from './pages/SalesReportsPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
@@ -120,6 +124,22 @@ function App() {
               }
             />
             <Route
+              path="/sales/post-visit"
+              element={
+                <PrivateRoute allowedRoles={['sales']}>
+                  <SalesPostVisitPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/agreed"
+              element={
+                <PrivateRoute allowedRoles={['sales']}>
+                  <SalesAgreedPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/sales/invoices"
               element={
                 <PrivateRoute allowedRoles={['sales']}>
@@ -188,6 +208,22 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']}>
                   <TrainersPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/b2b-schools"
+              element={
+                <PrivateRoute allowedRoles={['owner']}>
+                  <B2BSchoolsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/b2b-schools/new"
+              element={
+                <PrivateRoute allowedRoles={['owner']}>
+                  <B2BSchoolCreatePage />
                 </PrivateRoute>
               }
             />

@@ -164,6 +164,7 @@ export interface Lead {
   pause_reason?: string | null;
   status: LeadStatus;
   lost_reason?: string | null;
+  questionnaire_filled?: boolean;
   created_at: string;
   updated_at?: string | null;
   abonement?: Abonement | null;
@@ -336,5 +337,59 @@ export interface EventRegistration {
   created_at: string;
   updated_at?: string | null;
   lead?: Lead;
+}
+
+// B2B Schools pipeline
+export type B2BSchoolPipelineStage =
+  | 'new'
+  | 'contact_found'
+  | 'letter_sent'
+  | 'meeting_scheduled'
+  | 'meeting_held'
+  | 'permission_received'
+  | 'walkthrough_scheduled'
+  | 'walkthrough_done'
+  | 'leads_received';
+
+export type B2BSchoolFriendshipDegree = 'unknown' | 'indirect' | 'friends' | 'enemies';
+
+export interface B2BSchoolContact {
+  id: number;
+  b2b_school_id: number;
+  full_name: string;
+  position?: string | null;
+  phone: string;
+  phone_extra?: string | null;
+  created_at: string;
+}
+
+export interface B2BSchool {
+  id: number;
+  name: string;
+  director?: string | null;
+  city?: string | null;
+  address?: string | null;
+  student_count?: number | null;
+  friendship_degree?: string | null;
+  pipeline_stage: string;
+  event_dates?: string[] | null;
+  meeting_scheduled_at?: string | null;
+  meeting_outcomes?: string | null;
+  walkthrough_scheduled_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  leads_count?: number | null;
+  conversion_percent?: number | null;
+  contacts?: B2BSchoolContact[] | null;
+}
+
+export interface B2BProject {
+  id: number;
+  name: string;
+  location?: string | null;
+  main_city?: string | null;
+  cities?: string[] | null;
+  created_at: string;
+  updated_at?: string | null;
 }
 

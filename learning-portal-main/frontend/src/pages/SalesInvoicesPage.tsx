@@ -49,10 +49,15 @@ const getInvoiceStatusChipColor = (
   }
 };
 
+const leadDisplayName = (l: Lead) =>
+  [l.parent_full_name || l.contact_name, l.child_full_name].filter(Boolean).join(' / ') || l.phone || `Лид #${l.id}`;
+const leadPhone = (l: Lead) => l.parent_phone || l.phone || '—';
+
 const SalesInvoicesPage: React.FC = () => {
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [leadsToPay, setLeadsToPay] = useState<Lead[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'' | Invoice['status']>('');
   const [leadFilter, setLeadFilter] = useState<number | ''>('');
@@ -81,7 +86,7 @@ const SalesInvoicesPage: React.FC = () => {
   const loadData = useCallback(async () => {
     setError(null);
     try {
-      const [invoiceData, leadData] = await Promise.all([
+      const [invoiceData, leadData, toPayData] = await Promise.all([
         salesApi.listAllInvoices({
           status_filter: statusFilter || undefined,
           lead_id: leadFilter || undefined,
@@ -89,9 +94,11 @@ const SalesInvoicesPage: React.FC = () => {
           created_to: toDate ? new Date(toDate).toISOString() : undefined,
         }),
         salesApi.listLeads(),
+        salesApi.listLeads({ questionnaire_filled: true, status_filter: 'invoice_sent' }),
       ]);
       setInvoices(invoiceData);
       setLeads(leadData);
+      setLeadsToPay(toPayData);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить инвойсы'));
     }
@@ -107,6 +114,43 @@ const SalesInvoicesPage: React.FC = () => {
         <Typography variant="h4">Инвойсы</Typography>
         <Button variant="outlined" onClick={loadData}>Обновить</Button>
       </Stack>
+
+      {leadsToPay.length > 0 && (
+        <Card variant="outlined" sx={{ mb: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>Лиды к оплате</Typography>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+              Анкета заполнена — можно выставить счёт и перейти к оплате.
+            </Typography>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Лид</TableCell>
+                  <TableCell>Телефон</TableCell>
+                  <TableCell align="right">Действие</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {leadsToPay.map((lead) => (
+                  <TableRow key={lead.id}>
+                    <TableCell>{leadDisplayName(lead)}</TableCell>
+                    <TableCell>{leadPhone(lead)}</TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => navigate('/sales/leads?open=' + lead.id)}
+                      >
+                        К лиду
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Stack direction="row" spacing={1.5} mb={2} flexWrap="wrap">
         <Card variant="outlined" sx={{ minWidth: 180 }}>
@@ -261,7 +305,7 @@ const SalesInvoicesPage: React.FC = () => {
                 <Button
                   size="small"
                   variant="text"
-                  onClick={() => navigate(`/sales/leads?leadId=${inv.lead_id}`)}
+                  onClick={() => navigate('/sales/leads?open=' + inv.lead_id)}
                 >
                   К лиду
                 </Button>

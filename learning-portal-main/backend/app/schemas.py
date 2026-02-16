@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -210,6 +210,7 @@ class LeadBase(BaseModel):
     desired_slot: Optional[str] = None
     comment: Optional[str] = None
     next_contact_at: Optional[datetime] = None
+    questionnaire_filled: Optional[bool] = None
 
 
 class LeadCreate(LeadBase):
@@ -243,6 +244,7 @@ class LeadUpdate(BaseModel):
     status: Optional[LeadStatus] = None
     status_option_id: Optional[int] = None
     lost_reason: Optional[str] = None
+    questionnaire_filled: Optional[bool] = None
 
 
 class LeadStatusOptionBase(BaseModel):
@@ -278,6 +280,7 @@ class LeadResponse(LeadBase):
     status_option: Optional[LeadStatusOptionResponse] = None
     pause_reason: Optional[str] = None
     lost_reason: Optional[str] = None
+    questionnaire_filled: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     abonement: Optional[AbonementResponse] = None
@@ -432,6 +435,12 @@ class LeadContactResultRequest(BaseModel):
     outcome: str
     note: Optional[str] = None
     follow_up_at: Optional[datetime] = None
+
+
+class LeadPostVisitOutcomeRequest(BaseModel):
+    outcome: Literal["agreed", "thinking", "declined"]
+    follow_up_at: Optional[datetime] = None
+    lost_reason: Optional[str] = None
 
 
 class LeadCommunicationResponse(BaseModel):
@@ -819,4 +828,133 @@ class ReportRequest(BaseModel):
     student_ids: Optional[List[int]] = None
     trainer_ids: Optional[List[int]] = None
     format: str = "xlsx"  # xlsx or csv
+
+
+# B2B Schools
+class B2BSchoolPipelineStage(str, Enum):
+    NEW = "new"
+    CONTACT_FOUND = "contact_found"
+    LETTER_SENT = "letter_sent"
+    MEETING_SCHEDULED = "meeting_scheduled"
+    MEETING_HELD = "meeting_held"
+    PERMISSION_RECEIVED = "permission_received"
+    WALKTHROUGH_SCHEDULED = "walkthrough_scheduled"
+    WALKTHROUGH_DONE = "walkthrough_done"
+    LEADS_RECEIVED = "leads_received"
+
+
+class B2BSchoolFriendshipDegree(str, Enum):
+    UNKNOWN = "unknown"
+    INDIRECT = "indirect"
+    FRIENDS = "friends"
+    ENEMIES = "enemies"
+
+
+class B2BSchoolContactCreate(BaseModel):
+    full_name: str
+    position: Optional[str] = None
+    phone: str
+    phone_extra: Optional[str] = None
+
+
+class B2BSchoolContactUpdate(BaseModel):
+    full_name: Optional[str] = None
+    position: Optional[str] = None
+    phone: Optional[str] = None
+    phone_extra: Optional[str] = None
+
+
+class B2BSchoolContactResponse(BaseModel):
+    id: int
+    b2b_school_id: int
+    full_name: str
+    position: Optional[str] = None
+    phone: str
+    phone_extra: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class B2BSchoolCreate(BaseModel):
+    name: str
+    director: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    student_count: Optional[int] = None
+    friendship_degree: Optional[B2BSchoolFriendshipDegree] = None
+    pipeline_stage: B2BSchoolPipelineStage = B2BSchoolPipelineStage.NEW
+    event_dates: Optional[List[str]] = None
+    meeting_scheduled_at: Optional[datetime] = None
+    meeting_outcomes: Optional[str] = None
+    walkthrough_scheduled_at: Optional[datetime] = None
+
+
+class B2BSchoolUpdate(BaseModel):
+    name: Optional[str] = None
+    director: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    student_count: Optional[int] = None
+    friendship_degree: Optional[B2BSchoolFriendshipDegree] = None
+    pipeline_stage: Optional[B2BSchoolPipelineStage] = None
+    event_dates: Optional[List[str]] = None
+    meeting_scheduled_at: Optional[datetime] = None
+    meeting_outcomes: Optional[str] = None
+    walkthrough_scheduled_at: Optional[datetime] = None
+
+
+class B2BSchoolResponse(BaseModel):
+    id: int
+    name: str
+    director: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    student_count: Optional[int] = None
+    friendship_degree: Optional[str] = None
+    pipeline_stage: str
+    event_dates: Optional[List[str]] = None
+    meeting_scheduled_at: Optional[datetime] = None
+    meeting_outcomes: Optional[str] = None
+    walkthrough_scheduled_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    leads_count: Optional[int] = None
+    conversion_percent: Optional[float] = None
+    contacts: Optional[List[B2BSchoolContactResponse]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class B2BProjectBase(BaseModel):
+    name: str
+    location: Optional[str] = None
+    main_city: Optional[str] = None
+    cities: Optional[List[str]] = None
+
+
+class B2BProjectCreate(B2BProjectBase):
+    pass
+
+
+class B2BProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    main_city: Optional[str] = None
+    cities: Optional[List[str]] = None
+
+
+class B2BProjectResponse(BaseModel):
+    id: int
+    name: str
+    location: Optional[str] = None
+    main_city: Optional[str] = None
+    cities: Optional[List[str]] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 

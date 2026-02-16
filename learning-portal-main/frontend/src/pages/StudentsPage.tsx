@@ -63,7 +63,7 @@ const StudentsPage: React.FC = () => {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [abonements, setAbonements] = useState<Abonement[]>([]);
   const { user } = useAuth();
-  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
+  const isAdminLike = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
   const isOwner = user?.role === 'owner';
 
   useEffect(() => {

@@ -64,6 +64,7 @@ from app.schemas import (
     LeadSendInfoRequest,
     LeadQuickCommunicationCreate,
     LeadContactResultRequest,
+    LeadPostVisitOutcomeRequest,
     LeadCommunicationResponse,
     SalesDashboardResponse,
     SalesSchoolConversionItem,
@@ -1281,6 +1282,7 @@ async def list_leads(
     created_to: Optional[datetime] = Query(default=None),
     next_contact_from: Optional[datetime] = Query(default=None),
     next_contact_to: Optional[datetime] = Query(default=None),
+    questionnaire_filled: Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -1290,6 +1292,8 @@ async def list_leads(
     query = _filter_query_by_role(db.query(Lead).order_by(Lead.created_at.desc()), current_user)
     if status_filter:
         query = query.filter(Lead.status == status_filter)
+    if questionnaire_filled is not None:
+        query = query.filter(Lead.questionnaire_filled == questionnaire_filled)
     if q:
         search = f"%{q.strip()}%"
         query = query.filter(
@@ -1470,6 +1474,7 @@ async def update_lead(
         "next_contact_at",
         "pause_reason",
         "status_option_id",
+        "questionnaire_filled",
     ]:
         if field in update_data:
             setattr(lead, field, update_data[field])
@@ -1940,9 +1945,11 @@ async def mark_event_registration_came(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
     reg.note = _append_note_tag(reg.note, "[came]")
+    lead.status = LeadStatus.DEMO
+    lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.DEMO)
     # UX automation: after attendance create follow-up "offer course".
     if not _has_open_task_like(db, lead.id, "[auto_attended_offer]"):
-        due_at = datetime.utcnow() + timedelta(hours=24)
+        due_at = _utcnow() + timedelta(hours=24)
         auto_task = _create_auto_event_task(
             db,
             lead=lead,
@@ -1988,7 +1995,7 @@ async def mark_event_registration_no_show(
     reg.note = _append_note_tag(reg.note, "[no-show]")
     # UX automation: after no-show create reactivation follow-up.
     if not _has_open_task_like(db, lead.id, "[auto_no_show_reactivate]"):
-        due_at = datetime.utcnow() + timedelta(hours=24)
+        due_at = _utcnow() + timedelta(hours=24)
         auto_task = _create_auto_event_task(
             db,
             lead=lead,
@@ -2012,6 +2019,79 @@ async def mark_event_registration_no_show(
     db.refresh(reg)
     log_action(db, current_user.id, "mark_no_show", "event_registration", reg.id, {"event_id": event_id, "lead_id": reg.lead_id})
     return reg
+
+
+@router.post("/leads/{lead_id}/post-visit-outcome", response_model=LeadResponse)
+async def post_visit_outcome(
+    lead_id: int,
+    payload: LeadPostVisitOutcomeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+):
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+    if lead.status != LeadStatus.DEMO:
+        raise HTTPException(
+            status_code=400,
+            detail="Исход после визита доступен только для лидов со статусом «Пришел на пробное»",
+        )
+    outcome = payload.outcome
+    if outcome == "agreed":
+        lead.status = LeadStatus.INVOICE_SENT
+        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.INVOICE_SENT)
+        if not _has_open_task_like(db, lead.id, "[auto_post_visit_agreed]"):
+            due_at = _utcnow() + timedelta(hours=48)
+            auto_task = _create_auto_event_task(
+                db,
+                lead=lead,
+                owner_id=lead.owner_id,
+                note="[auto_post_visit_agreed] Контроль оплаты",
+                due_at=due_at,
+                preferred_template_keywords=["оплат", "контроль", "дожим"],
+            )
+            db.flush()
+            log_action(db, current_user.id, "create", "lead_task", auto_task.id, {"lead_id": lead.id, "type": "auto_post_visit_agreed"})
+            if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
+                lead.next_contact_at = auto_task.due_at
+    elif outcome == "thinking":
+        follow_up_at = _to_utc(payload.follow_up_at)
+        if not follow_up_at:
+            raise HTTPException(status_code=400, detail="Укажите дату повторного контакта")
+        if follow_up_at <= _utcnow():
+            raise HTTPException(status_code=400, detail="Дата повторного контакта должна быть в будущем")
+        lead.status = LeadStatus.CONTACTED
+        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.CONTACTED)
+        lead.next_contact_at = follow_up_at
+        if not _has_open_task_like(db, lead.id, "[auto_post_visit_thinking]"):
+            auto_task = _create_auto_event_task(
+                db,
+                lead=lead,
+                owner_id=lead.owner_id,
+                note="[auto_post_visit_thinking] Повторный контакт после пробного",
+                due_at=follow_up_at,
+                preferred_template_keywords=["повтор", "контакт", "дожим", "пробн"],
+            )
+            db.flush()
+            log_action(db, current_user.id, "create", "lead_task", auto_task.id, {"lead_id": lead.id, "type": "auto_post_visit_thinking"})
+    else:
+        if not (payload.lost_reason or "").strip():
+            raise HTTPException(status_code=400, detail="Укажите причину отказа")
+        lead.status = LeadStatus.LOST
+        lead.lost_reason = (payload.lost_reason or "").strip()
+        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.LOST)
+    db.commit()
+    db.refresh(lead)
+    log_action(
+        db,
+        current_user.id,
+        "post_visit_outcome",
+        "lead",
+        lead.id,
+        {"outcome": outcome, "follow_up_at": payload.follow_up_at.isoformat() if payload.follow_up_at else None, "lost_reason": payload.lost_reason},
+    )
+    return lead
 
 
 @router.get("/leads/{lead_id}/event-registrations", response_model=List[EventRegistrationResponse])

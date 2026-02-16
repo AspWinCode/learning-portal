@@ -5,8 +5,43 @@
 
 ## 0) Данные проекта
 - Репозиторий: `https://github.com/AspWinCode/learning-portal`
-- VPS IP: `80.87.201.25`
+- VPS (FirstVDS): `80.87.201.25`
 - Домен: `tirskix.space`
+
+---
+
+## 0.1) Деплой на FirstVDS (после push в GitHub)
+
+Код уже запушен в `main`. Осталось обновить сервер.
+
+**Вариант А — из PowerShell одной командой (подставится пароль по запросу):**
+```powershell
+ssh root@80.87.201.25 "cd ~/learning-portal || cd /root/learning-portal; git pull origin main; docker compose run --rm backend python -m alembic upgrade head; docker compose up -d --build; docker compose ps"
+```
+
+**Вариант Б — по шагам:**
+
+1. Подключиться к VPS:
+```powershell
+ssh root@80.87.201.25
+```
+
+2. На сервере выполнить:
+```bash
+cd ~/learning-portal
+# или: cd /root/learning-portal
+
+git pull origin main
+
+# Применить миграции БД (новые таблицы/поля B2B и т.д.)
+docker compose run --rm backend python -m alembic upgrade head
+
+# Пересобрать и запустить контейнеры
+docker compose up -d --build
+docker compose ps
+```
+
+3. Проверить: https://tirskix.space/api/health и открыть сайт в браузере.
 
 ---
 

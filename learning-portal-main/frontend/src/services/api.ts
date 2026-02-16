@@ -69,11 +69,12 @@ api.interceptors.response.use(
 
 export const authApi = {
   login: async (email: string, password: string) => {
-    const formData = new FormData();
-    formData.append('username', email);
-    formData.append('password', password);
-    const response = await api.post('/api/auth/login', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    // OAuth2 / FastAPI OAuth2PasswordRequestForm ожидает application/x-www-form-urlencoded
+    const params = new URLSearchParams();
+    params.append('username', email);
+    params.append('password', password);
+    const response = await api.post('/api/auth/login', params, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     return response.data;
   },

@@ -165,7 +165,7 @@ const SalesDashboardPage: React.FC = () => {
             <Grid item xs={12} md={2}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/follow-ups?period=overdue')}><CardContent><Typography variant="caption">Дожим просрочено</Typography><Typography variant="h5">{data.kpi_need_push_overdue}</Typography></CardContent></Card></Grid>
             <Grid item xs={12} md={3}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/events')}><CardContent><Typography variant="caption">Записано на мероприятие</Typography><Typography variant="h5">{data.kpi_registered_event}</Typography></CardContent></Card></Grid>
             <Grid item xs={12} md={3}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/events')}><CardContent><Typography variant="caption">Пришло</Typography><Typography variant="h5">{data.kpi_came_count}</Typography></CardContent></Card></Grid>
-            <Grid item xs={12} md={3}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/events')}><CardContent><Typography variant="caption">No-show</Typography><Typography variant="h5">{data.kpi_no_show_count}</Typography></CardContent></Card></Grid>
+            <Grid item xs={12} md={3}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/events')}><CardContent><Typography variant="caption">Неявка</Typography><Typography variant="h5">{data.kpi_no_show_count}</Typography></CardContent></Card></Grid>
           </Grid>
 
           <Card variant="outlined" sx={{ mb: 2 }}>

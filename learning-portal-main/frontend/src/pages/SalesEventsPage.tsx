@@ -248,7 +248,7 @@ const SalesEventsPage: React.FC = () => {
       await salesApi.markEventRegistrationNoShow(Number(selectedEventId), reg.id);
       await loadRegistrations(Number(selectedEventId));
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось отметить "no-show"'));
+      setError(extractApiError(err, 'Не удалось отметить неявку'));
     }
   };
 
@@ -411,7 +411,7 @@ const SalesEventsPage: React.FC = () => {
               <Grid item xs={6} md={4}>
                 <Card variant="outlined">
                   <CardContent>
-                    <Typography variant="caption">No-show</Typography>
+                    <Typography variant="caption">Неявка</Typography>
                     <Typography variant="h6">{conversion.noShow}</Typography>
                     <Chip
                       size="small"
@@ -471,7 +471,7 @@ const SalesEventsPage: React.FC = () => {
                 onClick={() => runBulkAction('no-show')}
                 disabled={selectedRegistrationIds.length === 0 || bulkBusy}
               >
-                No-show ({selectedRegistrationIds.length})
+                Неявка ({selectedRegistrationIds.length})
               </Button>
               <Button
                 size="small"
@@ -525,7 +525,7 @@ const SalesEventsPage: React.FC = () => {
                             Пришел
                           </Button>
                           <Button size="small" color="warning" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleMarkNoShow(reg)}>
-                            No-show
+                            Неявка
                           </Button>
                           <Button size="small" color="error" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleCancelRegistration(reg)}>
                             Отменить

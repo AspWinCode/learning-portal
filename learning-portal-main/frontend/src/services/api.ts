@@ -19,6 +19,8 @@ import {
   EventRegistration,
   EventStatus,
   LeadSource,
+  SalesCity,
+  SalesSchool,
   LeadTaskTemplate,
   LeadStatusOption,
   LeadTaskStatusOption,
@@ -422,6 +424,7 @@ export const salesApi = {
       desired_slot?: string;
       comment?: string;
       next_contact_at?: string;
+      no_answer_attempt?: number;
       status?: LeadStatus;
       status_option_id?: number;
       lost_reason?: string;
@@ -545,6 +548,30 @@ export const salesApi = {
   },
   updateLeadSource: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<LeadSource> => {
     const response = await api.put(`/api/lead-sources/${id}`, payload);
+    return response.data;
+  },
+  listSalesCities: async (active_only = true): Promise<SalesCity[]> => {
+    const response = await api.get('/api/cities', { params: { active_only } });
+    return response.data;
+  },
+  createSalesCity: async (name: string): Promise<SalesCity> => {
+    const response = await api.post('/api/cities', { name });
+    return response.data;
+  },
+  updateSalesCity: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesCity> => {
+    const response = await api.put(`/api/cities/${id}`, payload);
+    return response.data;
+  },
+  listSalesSchools: async (active_only = true): Promise<SalesSchool[]> => {
+    const response = await api.get('/api/schools', { params: { active_only } });
+    return response.data;
+  },
+  createSalesSchool: async (name: string): Promise<SalesSchool> => {
+    const response = await api.post('/api/schools', { name });
+    return response.data;
+  },
+  updateSalesSchool: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesSchool> => {
+    const response = await api.put(`/api/schools/${id}`, payload);
     return response.data;
   },
   listLeadTaskTemplates: async (active_only = true): Promise<LeadTaskTemplate[]> => {

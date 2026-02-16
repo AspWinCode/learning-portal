@@ -22,7 +22,7 @@ import {
 import { isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import { salesApi, usersApi } from '../services/api';
-import { EventItem, EventRegistration, FollowUpItem, Lead, User } from '../types';
+import { EventItem, EventRegistration, FollowUpItem, Lead, LeadStatus, User } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 
 type Preset = '7d' | '14d' | '30d' | 'custom';
@@ -139,9 +139,22 @@ const SalesReportsPage: React.FC = () => {
   );
 
   const stageCounts = useMemo(() => {
-    const base = { new: 0, contacted: 0, no_answer: 0, demo: 0, invoice_sent: 0, won: 0, lost: 0 };
+    const base: Record<LeadStatus, number> = {
+      new: 0,
+      contacted: 0,
+      no_answer: 0,
+      demo: 0,
+      invoice_sent: 0,
+      won: 0,
+      lost: 0,
+      thinking: 0,
+      refused: 0,
+      trial_scheduled: 0,
+      event_registered: 0,
+      decided_immediately: 0,
+    };
     filteredLeads.forEach((l) => {
-      base[l.status] += 1;
+      if (base[l.status] !== undefined) base[l.status] += 1;
     });
     return base;
   }, [filteredLeads]);
@@ -482,7 +495,7 @@ const SalesReportsPage: React.FC = () => {
                   <TableRow><TableCell>Зарегистрировано</TableCell><TableCell align="right">{conversion.registered}</TableCell></TableRow>
                   <TableRow><TableCell>Подтверждено</TableCell><TableCell align="right">{conversion.confirmed} ({pct(conversion.confirmed, conversion.registered)}%)</TableCell></TableRow>
                   <TableRow><TableCell>Пришли</TableCell><TableCell align="right">{conversion.came} ({pct(conversion.came, conversion.confirmed || conversion.registered)}%)</TableCell></TableRow>
-                  <TableRow><TableCell>No-show</TableCell><TableCell align="right">{conversion.noShow} ({pct(conversion.noShow, conversion.registered)}%)</TableCell></TableRow>
+                  <TableRow><TableCell>Неявка</TableCell><TableCell align="right">{conversion.noShow} ({pct(conversion.noShow, conversion.registered)}%)</TableCell></TableRow>
                   <TableRow><TableCell>Оффер</TableCell><TableCell align="right">{conversion.offer} ({pct(conversion.offer, conversion.came || conversion.registered)}%)</TableCell></TableRow>
                   <TableRow><TableCell>Оплата</TableCell><TableCell align="right">{conversion.paid} ({pct(conversion.paid, conversion.offer || conversion.came || conversion.registered)}%)</TableCell></TableRow>
                 </TableBody>

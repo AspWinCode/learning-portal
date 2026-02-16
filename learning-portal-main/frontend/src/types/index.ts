@@ -124,7 +124,19 @@ export interface CharacteristicTemplate {
 
 // --- Sales ---
 
-export type LeadStatus = 'new' | 'contacted' | 'no_answer' | 'demo' | 'invoice_sent' | 'won' | 'lost';
+export type LeadStatus =
+  | 'new'
+  | 'contacted'
+  | 'no_answer'
+  | 'demo'
+  | 'invoice_sent'
+  | 'won'
+  | 'lost'
+  | 'thinking'
+  | 'refused'
+  | 'trial_scheduled'
+  | 'event_registered'
+  | 'decided_immediately';
 export type LeadCommunicationChannel = 'max' | 'email' | 'sms' | 'telegram';
 
 export interface LeadStatusOption {
@@ -161,6 +173,7 @@ export interface Lead {
   desired_slot?: string | null;
   comment?: string | null;
   next_contact_at?: string | null;
+  no_answer_attempt?: number | null;
   pause_reason?: string | null;
   status: LeadStatus;
   lost_reason?: string | null;
@@ -187,6 +200,20 @@ export interface LeadTask {
 }
 
 export interface LeadSource {
+  id: number;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SalesCity {
+  id: number;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SalesSchool {
   id: number;
   name: string;
   is_active: boolean;

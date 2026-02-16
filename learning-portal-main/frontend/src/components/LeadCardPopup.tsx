@@ -140,13 +140,6 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                   <Chip size="small" label={statusLabels[lead.status] ?? lead.status} />
-                  {lead.next_contact_at && (
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label={`След. контакт: ${format(parseISO(lead.next_contact_at), 'dd.MM.yyyy HH:mm')}`}
-                    />
-                  )}
                 </Stack>
                 {lead.comment && (
                   <Typography variant="body2" sx={{ mt: 1 }}>{lead.comment}</Typography>

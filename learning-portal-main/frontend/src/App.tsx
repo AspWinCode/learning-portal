@@ -27,6 +27,7 @@ import SalesSettingsPage from './pages/SalesSettingsPage';
 import SalesDashboardPage from './pages/SalesDashboardPage';
 import SalesFollowUpsPage from './pages/SalesFollowUpsPage';
 import SalesPostVisitPage from './pages/SalesPostVisitPage';
+import SalesReinviteEventPage from './pages/SalesReinviteEventPage';
 import SalesAgreedPage from './pages/SalesAgreedPage';
 import SalesReportsPage from './pages/SalesReportsPage';
 import { appTheme } from './theme';
@@ -128,6 +129,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['sales']}>
                   <SalesPostVisitPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/reinvite-event"
+              element={
+                <PrivateRoute allowedRoles={['sales']}>
+                  <SalesReinviteEventPage />
                 </PrivateRoute>
               }
             />

@@ -52,11 +52,11 @@ const SalesAgreedPage: React.FC = () => {
 
   const loadLeads = useCallback(async () => {
     try {
-      const data = await salesApi.listLeads({
-        status_filter: 'invoice_sent',
-        questionnaire_filled: false,
-      });
-      setLeads(data);
+      const [inv, decided] = await Promise.all([
+        salesApi.listLeads({ status_filter: 'invoice_sent', questionnaire_filled: false }),
+        salesApi.listLeads({ status_filter: 'decided_immediately', questionnaire_filled: false }),
+      ]);
+      setLeads([...inv, ...decided]);
       setError(null);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить список'));

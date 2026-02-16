@@ -16,6 +16,8 @@ from app.models import (
     LeadTask,
     LeadTaskStatus,
     LeadSource,
+    SalesCity,
+    SalesSchool,
     LeadTaskTemplate,
     LeadTaskStatusOption as LeadTaskStatusOptionModel,
     LeadStatusOption as LeadStatusOptionModel,
@@ -48,6 +50,12 @@ from app.schemas import (
     LeadSourceCreate,
     LeadSourceResponse,
     LeadSourceUpdate,
+    SalesCityCreate,
+    SalesCityResponse,
+    SalesCityUpdate,
+    SalesSchoolCreate,
+    SalesSchoolResponse,
+    SalesSchoolUpdate,
     LeadTaskTemplateCreate,
     LeadTaskTemplateResponse,
     LeadTaskTemplateUpdate,
@@ -593,6 +601,120 @@ async def update_lead_source(
     db.refresh(source)
     log_action(db, current_user.id, "update", "lead_source", source.id, data)
     return source
+
+
+# ---- Sales cities (reference) ----
+@router.get("/cities", response_model=List[SalesCityResponse])
+async def list_sales_cities(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    query = db.query(SalesCity).order_by(SalesCity.name.asc())
+    if active_only:
+        query = query.filter(SalesCity.is_active.is_(True))
+    return query.all()
+
+
+@router.post("/cities", response_model=SalesCityResponse, status_code=status.HTTP_201_CREATED)
+async def create_sales_city(
+    payload: SalesCityCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="City name is required")
+    exists = db.query(SalesCity).filter(cast(SalesCity.name, Text).ilike(name)).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="City already exists")
+    city = SalesCity(name=name, is_active=True)
+    db.add(city)
+    db.commit()
+    db.refresh(city)
+    log_action(db, current_user.id, "create", "sales_city", city.id, {"name": name})
+    return city
+
+
+@router.put("/cities/{city_id}", response_model=SalesCityResponse)
+async def update_sales_city(
+    city_id: int,
+    payload: SalesCityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    city = db.query(SalesCity).filter(SalesCity.id == city_id).first()
+    if not city:
+        raise HTTPException(status_code=404, detail="City not found")
+    data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="City name is required")
+        city.name = name
+    if "is_active" in data:
+        city.is_active = data["is_active"]
+    db.commit()
+    db.refresh(city)
+    log_action(db, current_user.id, "update", "sales_city", city.id, data)
+    return city
+
+
+# ---- Sales schools (reference) ----
+@router.get("/schools", response_model=List[SalesSchoolResponse])
+async def list_sales_schools(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    query = db.query(SalesSchool).order_by(SalesSchool.name.asc())
+    if active_only:
+        query = query.filter(SalesSchool.is_active.is_(True))
+    return query.all()
+
+
+@router.post("/schools", response_model=SalesSchoolResponse, status_code=status.HTTP_201_CREATED)
+async def create_sales_school(
+    payload: SalesSchoolCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="School name is required")
+    exists = db.query(SalesSchool).filter(cast(SalesSchool.name, Text).ilike(name)).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="School already exists")
+    school = SalesSchool(name=name, is_active=True)
+    db.add(school)
+    db.commit()
+    db.refresh(school)
+    log_action(db, current_user.id, "create", "sales_school", school.id, {"name": name})
+    return school
+
+
+@router.put("/schools/{school_id}", response_model=SalesSchoolResponse)
+async def update_sales_school(
+    school_id: int,
+    payload: SalesSchoolUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    school = db.query(SalesSchool).filter(SalesSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="School name is required")
+        school.name = name
+    if "is_active" in data:
+        school.is_active = data["is_active"]
+    db.commit()
+    db.refresh(school)
+    log_action(db, current_user.id, "update", "sales_school", school.id, data)
+    return school
 
 
 @router.get("/lead-task-templates", response_model=List[LeadTaskTemplateResponse])
@@ -1472,6 +1594,7 @@ async def update_lead(
         "desired_slot",
         "comment",
         "next_contact_at",
+        "no_answer_attempt",
         "pause_reason",
         "status_option_id",
         "questionnaire_filled",

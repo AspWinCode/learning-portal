@@ -25,7 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import { LeadInfoTemplate, LeadSource, LeadStatus, LeadStatusOption, LeadTaskStatusOption, LeadTaskTemplate } from '../types';
+import { LeadInfoTemplate, LeadSource, LeadStatus, LeadStatusOption, LeadTaskStatusOption, LeadTaskTemplate, SalesCity, SalesSchool } from '../types';
 
 const leadStatusLabels: Record<LeadStatus, string> = {
   new: 'Новый',
@@ -35,6 +35,11 @@ const leadStatusLabels: Record<LeadStatus, string> = {
   invoice_sent: 'Инвойс отправлен',
   won: 'Успешно',
   lost: 'Закрыт',
+  thinking: 'Подумают',
+  refused: 'Отказался',
+  trial_scheduled: 'Записался на пробное',
+  event_registered: 'Записался на мероприятие',
+  decided_immediately: 'Решил заниматься сразу',
 };
 
 const SalesSettingsPage: React.FC = () => {
@@ -54,21 +59,29 @@ const SalesSettingsPage: React.FC = () => {
   const [newLeadStatusBase, setNewLeadStatusBase] = useState<LeadStatus>('new');
   const [newInfoTemplateName, setNewInfoTemplateName] = useState('');
   const [newInfoTemplateBody, setNewInfoTemplateBody] = useState('');
+  const [cities, setCities] = useState<SalesCity[]>([]);
+  const [newCity, setNewCity] = useState('');
+  const [schools, setSchools] = useState<SalesSchool[]>([]);
+  const [newSchool, setNewSchool] = useState('');
 
   const loadData = async () => {
     try {
-      const [info, src, tpl, st, leadSt] = await Promise.all([
+      const [info, src, tpl, st, leadSt, citiesList, schoolsList] = await Promise.all([
         salesApi.listLeadInfoTemplates(false),
         salesApi.listLeadSources(false),
         salesApi.listLeadTaskTemplates(false),
         salesApi.listLeadTaskStatuses(false),
         salesApi.listLeadStatuses(false),
+        salesApi.listSalesCities(false),
+        salesApi.listSalesSchools(false),
       ]);
       setInfoTemplates(info);
       setSources(src);
       setTemplates(tpl);
       setStatuses(st);
       setLeadStatuses(leadSt);
+      setCities(citiesList);
+      setSchools(schoolsList);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить справочники'));
     }
@@ -109,6 +122,92 @@ const SalesSettingsPage: React.FC = () => {
       )}
 
       <Stack spacing={2}>
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Города</Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+            <TextField
+              size="small"
+              label="Новый город"
+              value={newCity}
+              onChange={(e) => setNewCity(e.target.value)}
+            />
+            <Button
+              variant="contained"
+              onClick={() => safeAction(async () => {
+                if (!newCity.trim()) return;
+                await salesApi.createSalesCity(newCity.trim());
+                setNewCity('');
+              })}
+            >
+              Добавить
+            </Button>
+          </Box>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Активен</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {cities.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell>{c.name}</TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={c.is_active}
+                      onChange={(e) => safeAction(() => salesApi.updateSalesCity(c.id, { is_active: e.target.checked }))}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Школы</Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+            <TextField
+              size="small"
+              label="Новая школа"
+              value={newSchool}
+              onChange={(e) => setNewSchool(e.target.value)}
+            />
+            <Button
+              variant="contained"
+              onClick={() => safeAction(async () => {
+                if (!newSchool.trim()) return;
+                await salesApi.createSalesSchool(newSchool.trim());
+                setNewSchool('');
+              })}
+            >
+              Добавить
+            </Button>
+          </Box>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Активна</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {schools.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell>{s.name}</TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={s.is_active}
+                      onChange={(e) => safeAction(() => salesApi.updateSalesSchool(s.id, { is_active: e.target.checked }))}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
+
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" mb={1}>Источники лида</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>

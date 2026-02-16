@@ -47,6 +47,7 @@ import {
   HowToReg,
   Add,
   NotificationsNone,
+  Replay,
   Search,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -193,15 +194,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'sales')
       return [
         { text: 'На сегодня', icon: <Dashboard />, path: '/sales/dashboard' },
-        { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
+        { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
         { text: 'Мероприятия', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'После визита', icon: <HowToReg />, path: '/sales/post-visit' },
+        { text: 'Позвать еще раз на мероприятие', icon: <Replay />, path: '/sales/reinvite-event' },
         { text: 'Анкета ученика', icon: <Description />, path: '/sales/agreed' },
-        { text: 'Инвойсы', icon: <ReceiptLong />, path: '/sales/invoices' },
-        { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
-        { text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' },
+        { text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/invoices' },
       ];
 
     const items = [

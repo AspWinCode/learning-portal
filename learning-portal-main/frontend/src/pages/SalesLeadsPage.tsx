@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
+  Box,
   Button,
   Card,
   CardContent,
@@ -74,7 +75,44 @@ const statusLabels: Record<LeadStatus, string> = {
   invoice_sent: 'Инвойс отправлен',
   won: 'Успешно',
   lost: 'Закрыт',
+  thinking: 'Подумают',
+  refused: 'Отказался',
+  trial_scheduled: 'Записался на пробное',
+  event_registered: 'Записался на мероприятие',
+  decided_immediately: 'Решил заниматься сразу',
 };
+
+/** Статусы воронки продаж — единый список для лидов и воронки */
+const PIPELINE_STATUSES: LeadStatus[] = [
+  'new',
+  'thinking',
+  'no_answer',
+  'refused',
+  'trial_scheduled',
+  'event_registered',
+  'decided_immediately',
+];
+
+/** Статусы лида отображаются в колонке воронки (для старых статусов — маппинг) */
+function getPipelineColumnForStatus(status: LeadStatus): LeadStatus {
+  const map: Partial<Record<LeadStatus, LeadStatus>> = {
+    contacted: 'thinking',
+    demo: 'trial_scheduled',
+    invoice_sent: 'trial_scheduled',
+    won: 'decided_immediately',
+    lost: 'refused',
+  };
+  return map[status] ?? status;
+}
+
+const REFUSED_REASONS = [
+  'Нет времени',
+  'Дорого',
+  'Не подходит расписание',
+  'Уже занимается elsewhere',
+  'Передумал',
+  'Другое',
+];
 
 const leadCommunicationChannelLabels: Record<LeadCommunicationChannel, string> = {
   max: 'MAX',
@@ -173,17 +211,24 @@ const SalesLeadsPage: React.FC = () => {
   const [batchSendChannel, setBatchSendChannel] = useState('messenger');
   const [batchSendFollowUpAt, setBatchSendFollowUpAt] = useState('');
   const [draggedLeadId, setDraggedLeadId] = useState<number | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
+  const [showArchiveColumn, setShowArchiveColumn] = useState(false);
+  const [noShowLeadIds, setNoShowLeadIds] = useState<Set<number>>(new Set());
   const [dropConfirmOpen, setDropConfirmOpen] = useState(false);
   const [dropTargetStatus, setDropTargetStatus] = useState<LeadStatus | null>(null);
   const [dropLeadId, setDropLeadId] = useState<number | null>(null);
   const [dropFollowUpAt, setDropFollowUpAt] = useState('');
+  const [dropCallbackAt, setDropCallbackAt] = useState('');
+  const [dropRefusedReason, setDropRefusedReason] = useState('');
+  const [dropTrialAt, setDropTrialAt] = useState('');
   const [dropEventId, setDropEventId] = useState<number | ''>('');
   const [dropEventNote, setDropEventNote] = useState('');
+  const [noAnswerArchiveConfirmOpen, setNoAnswerArchiveConfirmOpen] = useState(false);
+  const [pendingNoAnswerArchiveLead, setPendingNoAnswerArchiveLead] = useState<Lead | null>(null);
   const [leadCommentDraft, setLeadCommentDraft] = useState('');
   const [leadCommentSaving, setLeadCommentSaving] = useState(false);
   const [leadHeaderStatusDraft, setLeadHeaderStatusDraft] = useState<LeadStatus>('new');
   const [leadHeaderNextStepDraft, setLeadHeaderNextStepDraft] = useState('');
-  const [leadHeaderNextContactDraft, setLeadHeaderNextContactDraft] = useState('');
   const [leadHeaderSaving, setLeadHeaderSaving] = useState(false);
   const [leadCardTab, setLeadCardTab] = useState<'overview' | 'push'>('overview');
   const [leadPushStatsMap, setLeadPushStatsMap] = useState<Record<number, LeadPushStats>>({});
@@ -213,7 +258,6 @@ const SalesLeadsPage: React.FC = () => {
     referral_name: '',
     tags: '',
     comment: '',
-    next_contact_at: '',
   });
 
   const loadLeads = useCallback(async () => {
@@ -264,6 +308,38 @@ const SalesLeadsPage: React.FC = () => {
     loadLeads();
     loadSalesMeta();
   }, [loadLeads, loadSalesMeta]);
+
+  // Лиды с неявкой на мероприятие — для колонки «След мероприятие» и вкладки «Позвать еще раз»
+  useEffect(() => {
+    if (viewMode !== 'kanban') return;
+    let cancelled = false;
+    const hasNoShowTag = (note: string | null | undefined) => {
+      const lower = (note || '').toLowerCase();
+      return lower.includes('[no-show]') || lower.includes('no-show');
+    };
+    salesApi
+      .listEvents()
+      .then((eventList) => {
+        if (cancelled || !eventList.length) return;
+        return Promise.allSettled(eventList.map((e) => salesApi.listEventRegistrations(e.id)));
+      })
+      .then((results) => {
+        if (cancelled || !results) return;
+        const ids = new Set<number>();
+        results.forEach((r) => {
+          if (r.status === 'fulfilled') {
+            r.value.forEach((reg) => {
+              if (reg.status === 'registered' && hasNoShowTag(reg.note)) ids.add(reg.lead_id);
+            });
+          }
+        });
+        if (!cancelled) setNoShowLeadIds(ids);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -426,13 +502,28 @@ const SalesLeadsPage: React.FC = () => {
       referral_name: '',
       tags: '',
       comment: '',
-      next_contact_at: '',
     });
     setCreateOpen(true);
   };
 
   const handleCreate = async () => {
     setError(null);
+    if (!form.parent_full_name.trim()) {
+      setError('Укажите ФИО родителя');
+      return;
+    }
+    if (!form.parent_phone.trim()) {
+      setError('Укажите телефон родителя');
+      return;
+    }
+    if (!form.city.trim()) {
+      setError('Выберите город');
+      return;
+    }
+    if (!form.source_id) {
+      setError('Выберите источник');
+      return;
+    }
     try {
       const sourceIdNumber = form.source_id ? Number(form.source_id) : undefined;
       const selectedSource = leadSources.find((s) => s.id === sourceIdNumber);
@@ -440,7 +531,7 @@ const SalesLeadsPage: React.FC = () => {
         setError('Для источника "рекомендация" укажите, кто пригласил');
         return;
       }
-      if (form.parent_phone.trim() && !isValidRuPhone(form.parent_phone)) {
+      if (!isValidRuPhone(form.parent_phone)) {
         setError('Телефон родителя должен быть в формате +7XXXXXXXXXX');
         return;
       }
@@ -455,12 +546,12 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.createLead({
         contact_name: contactName,
         phone,
-        parent_full_name: form.parent_full_name || undefined,
+        parent_full_name: form.parent_full_name.trim(),
         child_full_name: form.child_full_name || undefined,
-        parent_phone: normalizedParentPhone || undefined,
+        parent_phone: normalizedParentPhone,
         child_phone: normalizedChildPhone || undefined,
         email: form.email || undefined,
-        city: form.city || undefined,
+        city: form.city.trim(),
         school_name: form.school_name || undefined,
         school_class: form.school_class || undefined,
         outreach_at: form.outreach_at
@@ -474,12 +565,6 @@ const SalesLeadsPage: React.FC = () => {
         referral_name: form.referral_name || undefined,
         tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
         comment: form.comment || undefined,
-        next_contact_at: form.next_contact_at
-          ? (() => {
-              const d = new Date(form.next_contact_at);
-              return isValid(d) ? d.toISOString() : undefined;
-            })()
-          : undefined,
       });
       setCreateOpen(false);
       await loadLeads();
@@ -513,13 +598,11 @@ const SalesLeadsPage: React.FC = () => {
   };
 
   const getLeadStatusMenuValue = (lead: Lead): string => {
-    if (lead.status_option_id) return `option:${lead.status_option_id}`;
-    return `base:${lead.status}`;
+    return `base:${getPipelineColumnForStatus(lead.status)}`;
   };
 
   const getLeadStatusDisplay = (lead: Lead): string => {
-    const selected = leadStatusOptions.find((s) => s.id === lead.status_option_id);
-    return selected?.name || statusLabels[lead.status];
+    return statusLabels[getPipelineColumnForStatus(lead.status)];
   };
 
   const handleLeadStatusSelectChange = async (lead: Lead, value: string) => {
@@ -624,13 +707,8 @@ const SalesLeadsPage: React.FC = () => {
     setContactNote('');
     setContactFollowUpAt('');
     setLeadCommentDraft(lead.comment || '');
-    setLeadHeaderStatusDraft(lead.status);
+    setLeadHeaderStatusDraft(getPipelineColumnForStatus(lead.status));
     setLeadHeaderNextStepDraft(lead.desired_slot || '');
-    setLeadHeaderNextContactDraft(
-      lead.next_contact_at
-        ? format(new Date(lead.next_contact_at), "yyyy-MM-dd'T'HH:mm")
-        : ''
-    );
     setLeadInfoDraft({
       parent_full_name: lead.parent_full_name || '',
       parent_phone: lead.parent_phone || '',
@@ -1031,13 +1109,8 @@ const SalesLeadsPage: React.FC = () => {
 
   useEffect(() => {
     if (!selectedLead) return;
-    setLeadHeaderStatusDraft(selectedLead.status);
+    setLeadHeaderStatusDraft(getPipelineColumnForStatus(selectedLead.status));
     setLeadHeaderNextStepDraft(selectedLead.desired_slot || '');
-    setLeadHeaderNextContactDraft(
-      selectedLead.next_contact_at
-        ? format(new Date(selectedLead.next_contact_at), "yyyy-MM-dd'T'HH:mm")
-        : ''
-    );
   }, [selectedLead?.id]);
 
   useEffect(() => {
@@ -1062,53 +1135,25 @@ const SalesLeadsPage: React.FC = () => {
 
   useEffect(() => {
     if (!selectedLead) return;
-    const currentNextContactLocal = selectedLead.next_contact_at
-      ? format(new Date(selectedLead.next_contact_at), "yyyy-MM-dd'T'HH:mm")
-      : '';
     if (
-      selectedLead.status === leadHeaderStatusDraft &&
-      (selectedLead.desired_slot || '') === leadHeaderNextStepDraft &&
-      currentNextContactLocal === leadHeaderNextContactDraft
+      getPipelineColumnForStatus(selectedLead.status) === leadHeaderStatusDraft &&
+      (selectedLead.desired_slot || '') === leadHeaderNextStepDraft
     ) {
       return;
     }
     const timer = window.setTimeout(async () => {
       try {
         setLeadHeaderSaving(true);
-        let nextContactIso: string | undefined;
-        if (leadHeaderNextContactDraft) {
-          const d = new Date(leadHeaderNextContactDraft);
-          if (!isValid(d)) {
-            setError('Неверная дата next contact');
-            return;
-          }
-          nextContactIso = d.toISOString();
-        }
         const updated = await salesApi.updateLead(selectedLead.id, {
           status: leadHeaderStatusDraft,
           desired_slot: leadHeaderNextStepDraft.trim() || undefined,
-          next_contact_at: nextContactIso,
         });
         setSelectedLead((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: updated.status,
-                desired_slot: updated.desired_slot,
-                next_contact_at: updated.next_contact_at,
-              }
-            : prev
+          prev ? { ...prev, status: updated.status, desired_slot: updated.desired_slot } : prev
         );
         setLeads((prev) =>
           prev.map((l) =>
-            l.id === updated.id
-              ? {
-                  ...l,
-                  status: updated.status,
-                  desired_slot: updated.desired_slot,
-                  next_contact_at: updated.next_contact_at,
-                }
-              : l
+            l.id === updated.id ? { ...l, status: updated.status, desired_slot: updated.desired_slot } : l
           )
         );
       } catch (err: any) {
@@ -1118,7 +1163,7 @@ const SalesLeadsPage: React.FC = () => {
       }
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [leadHeaderStatusDraft, leadHeaderNextStepDraft, leadHeaderNextContactDraft, selectedLead]);
+  }, [leadHeaderStatusDraft, leadHeaderNextStepDraft, selectedLead]);
 
   const handleSaveLeadInfo = async () => {
     if (!selectedLead) return;
@@ -1391,6 +1436,11 @@ const SalesLeadsPage: React.FC = () => {
       invoice_sent: 80,
       won: 100,
       lost: 100,
+      thinking: 25,
+      refused: 100,
+      trial_scheduled: 50,
+      event_registered: 60,
+      decided_immediately: 100,
     };
     const base = byStatus[lead.status] ?? 0;
     if (lead.status === 'contacted' || lead.status === 'no_answer' || lead.status === 'demo' || lead.status === 'invoice_sent') {
@@ -1406,17 +1456,80 @@ const SalesLeadsPage: React.FC = () => {
   const requiresFollowUpOnDrop = (status: LeadStatus) =>
     status === 'contacted' || status === 'no_answer' || status === 'demo' || status === 'invoice_sent';
 
-  const handleKanbanDrop = (targetStatus: LeadStatus) => {
-    if (!draggedLeadId) return;
-    const lead = leads.find((l) => l.id === draggedLeadId);
+  const handleKanbanDragStart = (e: React.DragEvent, leadId: number) => {
+    const target = e.target as HTMLElement;
+    if (target.closest?.('button, a, [role="button"]')) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(leadId));
+    e.dataTransfer.setData('application/lead-id', String(leadId));
+    setDraggedLeadId(leadId);
+  };
+
+  const handleKanbanDragEnd = () => {
     setDraggedLeadId(null);
+    setDragOverColumn(null);
+  };
+
+  const handleKanbanDrop = async (e: React.DragEvent, targetStatus: LeadStatus) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverColumn(null);
+    const leadId = draggedLeadId ?? (e.dataTransfer.getData('application/lead-id') || e.dataTransfer.getData('text/plain'));
+    const id = leadId ? Number(leadId) : null;
+    setDraggedLeadId(null);
+    if (!id) return;
+    const lead = leads.find((l) => l.id === id);
     if (!lead || lead.status === targetStatus) return;
+
+    if (targetStatus === 'no_answer') {
+      try {
+        await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1 });
+        await loadLeads();
+        setToast({ open: true, message: `Лид "${lead.contact_name}" — Недозвон 1`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось обновить'));
+      }
+      return;
+    }
+    if (targetStatus === 'decided_immediately') {
+      try {
+        await salesApi.updateLead(lead.id, { status: 'decided_immediately', questionnaire_filled: false });
+        await loadLeads();
+        setToast({ open: true, message: `Лид "${lead.contact_name}" перенесён в Анкету ученика`, severity: 'success' });
+        navigate('/sales/agreed');
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось обновить'));
+      }
+      return;
+    }
+
     setDropLeadId(lead.id);
     setDropTargetStatus(targetStatus);
     setDropFollowUpAt('');
+    setDropCallbackAt('');
+    setDropRefusedReason('');
+    setDropTrialAt('');
     setDropEventId('');
     setDropEventNote('');
     setDropConfirmOpen(true);
+  };
+
+  const handleKanbanDragOver = (e: React.DragEvent, columnStatus: LeadStatus) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverColumn(columnStatus);
+  };
+
+  const handleKanbanDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+      setDragOverColumn(null);
+    }
   };
 
   const handleConfirmKanbanDrop = async () => {
@@ -1424,6 +1537,96 @@ const SalesLeadsPage: React.FC = () => {
     const lead = leads.find((l) => l.id === dropLeadId);
     if (!lead) {
       setDropConfirmOpen(false);
+      return;
+    }
+    setError('');
+    if (dropTargetStatus === 'thinking') {
+      if (!dropCallbackAt) {
+        setError('Укажите дату перезвона');
+        return;
+      }
+      const d = new Date(dropCallbackAt);
+      if (!isValid(d)) {
+        setError('Неверная дата');
+        return;
+      }
+      try {
+        await salesApi.updateLead(lead.id, { status: 'thinking', next_contact_at: d.toISOString() });
+        await loadLeads();
+        if (selectedLead?.id === lead.id) setSelectedLead((p) => (p ? { ...p, status: 'thinking', next_contact_at: d.toISOString() } : p));
+        setDropConfirmOpen(false);
+        setDropLeadId(null);
+        setDropTargetStatus(null);
+        setDropCallbackAt('');
+        setToast({ open: true, message: `Дата перезвона сохранена для "${lead.contact_name}"`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось сохранить'));
+      }
+      return;
+    }
+    if (dropTargetStatus === 'refused') {
+      if (!dropRefusedReason.trim()) {
+        setError('Выберите причину отказа');
+        return;
+      }
+      try {
+        await salesApi.updateLead(lead.id, { status: 'lost', lost_reason: dropRefusedReason.trim() });
+        await loadLeads();
+        setDropConfirmOpen(false);
+        setDropLeadId(null);
+        setDropTargetStatus(null);
+        setDropRefusedReason('');
+        setToast({ open: true, message: `Лид "${lead.contact_name}" отправлен в архив`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось обновить'));
+      }
+      return;
+    }
+    if (dropTargetStatus === 'trial_scheduled') {
+      if (!dropTrialAt) {
+        setError('Укажите дату и время пробного');
+        return;
+      }
+      const d = new Date(dropTrialAt);
+      if (!isValid(d)) {
+        setError('Неверная дата');
+        return;
+      }
+      try {
+        await salesApi.updateLead(lead.id, {
+          status: 'trial_scheduled',
+          desired_slot: format(d, 'dd.MM.yyyy HH:mm'),
+        });
+        await loadLeads();
+        if (selectedLead?.id === lead.id) setSelectedLead((p) => (p ? { ...p, status: 'trial_scheduled', desired_slot: format(d, 'dd.MM.yyyy HH:mm') } : p));
+        setDropConfirmOpen(false);
+        setDropLeadId(null);
+        setDropTargetStatus(null);
+        setDropTrialAt('');
+        setToast({ open: true, message: `Пробное запланировано для "${lead.contact_name}"`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось сохранить'));
+      }
+      return;
+    }
+    if (dropTargetStatus === 'event_registered') {
+      if (!dropEventId) {
+        setError('Выберите мероприятие');
+        return;
+      }
+      try {
+        await salesApi.registerLeadToEvent(Number(dropEventId), { lead_id: lead.id, note: dropEventNote || undefined });
+        await salesApi.updateLead(lead.id, { status: 'event_registered' });
+        await loadLeads();
+        setDropConfirmOpen(false);
+        setDropLeadId(null);
+        setDropTargetStatus(null);
+        setDropEventId('');
+        setDropEventNote('');
+        setToast({ open: true, message: `Лид "${lead.contact_name}" записан на мероприятие`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось записать'));
+      }
       return;
     }
     let nextContactAtIso: string | undefined;
@@ -1444,34 +1647,18 @@ const SalesLeadsPage: React.FC = () => {
         status: dropTargetStatus,
         next_contact_at: nextContactAtIso,
       });
-      
-      // Если переносим в "demo" и выбрано мероприятие — записываем на него
       if (dropTargetStatus === 'demo' && dropEventId) {
         try {
-          await salesApi.registerLeadToEvent(Number(dropEventId), {
-            lead_id: lead.id,
-            note: dropEventNote || undefined,
-          });
-          setToast({
-            open: true,
-            message: `Лид "${lead.contact_name}" записан на пробное занятие`,
-            severity: 'success',
-          });
+          await salesApi.registerLeadToEvent(Number(dropEventId), { lead_id: lead.id, note: dropEventNote || undefined });
+          setToast({ open: true, message: `Лид "${lead.contact_name}" записан на пробное занятие`, severity: 'success' });
         } catch (regErr: any) {
           setError(extractApiError(regErr, 'Не удалось записать на мероприятие'));
         }
       }
-      
       await loadLeads();
       if (selectedLead?.id === lead.id) {
         setSelectedLead((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: dropTargetStatus,
-                next_contact_at: nextContactAtIso || prev.next_contact_at,
-              }
-            : prev
+          prev ? { ...prev, status: dropTargetStatus, next_contact_at: nextContactAtIso || prev.next_contact_at } : prev
         );
       }
       setDropConfirmOpen(false);
@@ -1480,26 +1667,102 @@ const SalesLeadsPage: React.FC = () => {
       setDropFollowUpAt('');
       setDropEventId('');
       setDropEventNote('');
-      setToast({
-        open: true,
-        message: `Лид "${lead.contact_name}" перенесен в "${statusLabels[dropTargetStatus]}"`,
-        severity: 'success',
-      });
+      setToast({ open: true, message: `Лид "${lead.contact_name}" перенесен в "${statusLabels[dropTargetStatus]}"`, severity: 'success' });
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось перенести лид в стадию'));
     }
   };
 
-  const statusOptions = useMemo(() => Object.keys(statusLabels) as LeadStatus[], []);
-  const kanbanColumns = useMemo(
+  const statusOptions = PIPELINE_STATUSES;
+  const pipelineLeads = useMemo(
     () =>
-      statusOptions.map((st) => ({
-        status: st,
-        title: statusLabels[st],
-        leads: leads.filter((l) => l.status === st),
-      })),
-    [leads, statusOptions]
+      isPipelineRoute
+        ? leads.filter((l) => !['event_registered', 'decided_immediately'].includes(l.status))
+        : leads,
+    [leads, isPipelineRoute]
   );
+  const kanbanColumns = useMemo(
+    () => {
+      const source = isPipelineRoute ? pipelineLeads : leads;
+      // Когда архив скрыт — лиды со статусом «Закрыт» не показываем в воронке вообще
+      const visibleSource = showArchiveColumn ? source : source.filter((l) => l.status !== 'lost');
+      // Лиды с неявкой показываем только в колонке «След мероприятие», из остальных колонок убираем
+      const notNoShow = (l: Lead) => !noShowLeadIds.has(l.id);
+      const base = PIPELINE_STATUSES.map((st) => ({
+        status: st as LeadStatus | 'archive' | 'next_event',
+        title: statusLabels[st],
+        leads:
+          st === 'refused' && showArchiveColumn
+            ? source.filter((l) => l.status === 'refused' && notNoShow(l))
+            : visibleSource.filter((l) => getPipelineColumnForStatus(l.status) === st && notNoShow(l)),
+      }));
+      base.push({
+        status: 'next_event',
+        title: 'След мероприятие',
+        leads: source.filter((l) => noShowLeadIds.has(l.id)),
+      });
+      if (showArchiveColumn) {
+        base.push({
+          status: 'archive',
+          title: 'Архив',
+          leads: source.filter((l) => l.status === 'lost'),
+        });
+      }
+      return base;
+    },
+    [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds]
+  );
+  const handleNoAnswerAttemptClick = async (attempt: 1 | 2 | 3) => {
+    if (!selectedLead) return;
+    if (attempt === 3) {
+      setPendingNoAnswerArchiveLead(null);
+      setNoAnswerArchiveConfirmOpen(true);
+      return;
+    }
+    try {
+      await salesApi.updateLead(selectedLead.id, { no_answer_attempt: attempt });
+      await loadLeads();
+      setSelectedLead((p) => (p ? { ...p, no_answer_attempt: attempt } : p));
+      setToast({ open: true, message: `Недозвон ${attempt}`, severity: 'info' });
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось обновить'));
+    }
+  };
+
+  const handleWidgetNoAnswerAttempt = async (lead: Lead, attempt: 1 | 2 | 3) => {
+    if (attempt === 3) {
+      setPendingNoAnswerArchiveLead(lead);
+      setNoAnswerArchiveConfirmOpen(true);
+      return;
+    }
+    try {
+      setActionLoadingId(lead.id);
+      await salesApi.updateLead(lead.id, { no_answer_attempt: attempt });
+      await loadLeads();
+      setToast({ open: true, message: `Недозвон ${attempt}`, severity: 'info' });
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось обновить'));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleNoAnswerArchiveConfirm = async () => {
+    const lead = selectedLead ?? pendingNoAnswerArchiveLead;
+    if (!lead) return;
+    try {
+      await salesApi.updateLead(lead.id, { status: 'lost' });
+      setNoAnswerArchiveConfirmOpen(false);
+      setPendingNoAnswerArchiveLead(null);
+      await loadLeads();
+      setSelectedLead(null);
+      setDetailsOpen(false);
+      setToast({ open: true, message: 'Лид отправлен в архив', severity: 'success' });
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось отправить в архив'));
+    }
+  };
+
   const isValidEmail = (email?: string | null) => !!email && /\S+@\S+\.\S+/.test(email);
   const pushTasks = useMemo(
     () =>
@@ -1574,25 +1837,42 @@ const SalesLeadsPage: React.FC = () => {
           <Button variant={overdueOnly ? 'contained' : 'outlined'} size="small" onClick={() => setOverdueOnly((v) => !v)}>
             Просроченные
           </Button>
-          <Button size="small" variant="contained" onClick={handleOpenCreate} sx={{ whiteSpace: 'nowrap' }}>
-            Новый лид
-          </Button>
-          <Button size="small" variant="outlined" component="label" sx={{ whiteSpace: 'nowrap' }}>
-            Импорт из Excel
-            <input
-              type="file"
-              hidden
-              accept=".xlsx"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                void handleImportLeads(file);
-                e.currentTarget.value = '';
-              }}
-            />
-          </Button>
-          <Button size="small" variant="text" onClick={handleDownloadTemplate} sx={{ whiteSpace: 'nowrap' }}>
-            Шаблон Excel
-          </Button>
+          {viewMode === 'kanban' && (
+            <Stack direction="row" alignItems="center">
+              <Checkbox
+                id="show-archive-column"
+                checked={showArchiveColumn}
+                onChange={(e) => setShowArchiveColumn(e.target.checked)}
+                size="small"
+              />
+              <Typography component="label" htmlFor="show-archive-column" variant="body2" sx={{ cursor: 'pointer' }}>
+                Показать колонку «Архив»
+              </Typography>
+            </Stack>
+          )}
+          {!isPipelineRoute && (
+            <>
+              <Button size="small" variant="contained" onClick={handleOpenCreate} sx={{ whiteSpace: 'nowrap' }}>
+                Новый лид
+              </Button>
+              <Button size="small" variant="outlined" component="label" sx={{ whiteSpace: 'nowrap' }}>
+                Импорт из Excel
+                <input
+                  type="file"
+                  hidden
+                  accept=".xlsx"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    void handleImportLeads(file);
+                    e.currentTarget.value = '';
+                  }}
+                />
+              </Button>
+              <Button size="small" variant="text" onClick={handleDownloadTemplate} sx={{ whiteSpace: 'nowrap' }}>
+                Шаблон Excel
+              </Button>
+            </>
+          )}
         </Stack>
       </Stack>
 
@@ -1726,7 +2006,6 @@ const SalesLeadsPage: React.FC = () => {
                 Город
               </TableSortLabel>
             </TableCell>
-            <TableCell>След. контакт</TableCell>
             <TableCell sortDirection={tableSortField === 'created_at' ? tableSortOrder : false}>
               <TableSortLabel
                 active={tableSortField === 'created_at'}
@@ -1736,7 +2015,6 @@ const SalesLeadsPage: React.FC = () => {
                 Создан
               </TableSortLabel>
             </TableCell>
-            <TableCell align="right">Действия</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -1761,16 +2039,7 @@ const SalesLeadsPage: React.FC = () => {
                   <Typography variant="subtitle2">{lead.contact_name}</Typography>
                 </Stack>
               </TableCell>
-              <TableCell>
-                <Stack spacing={0.5}>
-                  <Typography variant="body2">{lead.phone}</Typography>
-                  {lead.email && (
-                    <Typography variant="caption" color="text.secondary">
-                      {lead.email}
-                    </Typography>
-                  )}
-                </Stack>
-              </TableCell>
+              <TableCell>{lead.phone || '—'}</TableCell>
               <TableCell>
                 <FormControl size="small" sx={{ minWidth: 160 }}>
                   <Select
@@ -1779,186 +2048,34 @@ const SalesLeadsPage: React.FC = () => {
                     renderValue={() => getLeadStatusDisplay(lead)}
                     disabled={actionLoadingId === lead.id}
                   >
-                    {leadStatusOptions.length > 0
-                      ? leadStatusOptions.map((st) => (
-                          <MenuItem key={st.id} value={`option:${st.id}`}>
-                            <Chip
-                              size="small"
-                              label={st.name}
-                              color={badgeColor(st.base_status)}
-                              sx={{ mr: 1 }}
-                            />
-                            <Typography variant="caption" color="text.secondary">
-                              {statusLabels[st.base_status]}
-                            </Typography>
-                          </MenuItem>
-                        ))
-                      : statusOptions.map((st) => (
-                          <MenuItem key={st} value={`base:${st}`}>
-                            <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
-                          </MenuItem>
-                        ))}
-                  </Select>
-                </FormControl>
-              </TableCell>
-              <TableCell>{lead.source || '—'}</TableCell>
-              <TableCell onClick={(e) => e.stopPropagation()}>
-                <FormControl size="small" sx={{ minWidth: 150 }}>
-                  <Select
-                    value={lead.communication_channel || ''}
-                    displayEmpty
-                    onChange={(e) =>
-                      void handleCommunicationChannelChange(
-                        lead,
-                        (e.target.value as '' | LeadCommunicationChannel) || ''
-                      )
-                    }
-                    disabled={actionLoadingId === lead.id}
-                  >
-                    <MenuItem value="">
-                      <em>Не задан</em>
-                    </MenuItem>
-                    {Object.entries(leadCommunicationChannelLabels).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>
-                        {label}
+                    {statusOptions.map((st) => (
+                      <MenuItem key={st} value={`base:${st}`}>
+                        <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </TableCell>
+              <TableCell>{lead.source || '—'}</TableCell>
+              <TableCell>
+                {lead.communication_channel
+                  ? (leadCommunicationChannelLabels[lead.communication_channel as LeadCommunicationChannel] ?? lead.communication_channel)
+                  : '—'}
+              </TableCell>
               <TableCell>{lead.school_class || '—'}</TableCell>
               <TableCell>{lead.school_name || '—'}</TableCell>
               <TableCell>{lead.city || '—'}</TableCell>
-              <TableCell>
-                {lead.next_contact_at
-                  ? (() => {
-                      const d = parseISO(lead.next_contact_at);
-                      return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : lead.next_contact_at;
-                    })()
-                  : '—'}
-              </TableCell>
               <TableCell>
                 {(() => {
                   const d = parseISO(lead.created_at);
                   return isValid(d) ? format(d, 'dd.MM.yyyy') : lead.created_at;
                 })()}
               </TableCell>
-              <TableCell align="right">
-                <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                  <Tooltip title="Позвонить">
-                    <IconButton
-                      size="small"
-                      color="success"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRowQuickCall(lead);
-                      }}
-                    >
-                      <CallIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Написать">
-                    <IconButton
-                      size="small"
-                      color="info"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRowQuickMessage(lead);
-                      }}
-                    >
-                      <ChatIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Отправить инфо">
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRowQuickSendInfo(lead);
-                      }}
-                    >
-                      <SendIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Назначить follow-up">
-                    <IconButton
-                      size="small"
-                      color="warning"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRowQuickFollowUp(lead);
-                      }}
-                    >
-                      <FollowUpIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Закрыть лид">
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRowQuickCloseLead(lead);
-                      }}
-                    >
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Открыть карточку">
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenDetails(lead);
-                      }}
-                    >
-                      <VisibilityIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Инвойс + Email">
-                    <IconButton
-                      size="small"
-                      color="secondary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCreateAndSendInvoice(lead);
-                      }}
-                      disabled={actionLoadingId === lead.id}
-                    >
-                      {actionLoadingId === lead.id ? <CircularProgress size={14} /> : <ReceiptLongIcon fontSize="small" />}
-                    </IconButton>
-                  </Tooltip>
-                  {/* Keep row compact: full buttons moved to lead card */}
-                  {/* <Button
-                    size="small"
-                    variant="text"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenDetails(lead);
-                    }}
-                  >
-                    Карточка
-                  </Button> */}
-                  {/* <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCreateAndSendInvoice(lead);
-                    }}
-                    disabled={actionLoadingId === lead.id}
-                  >
-                    {actionLoadingId === lead.id ? <CircularProgress size={16} /> : 'Инвойс + Email'}
-                  </Button> */}
-                </Stack>
-              </TableCell>
             </TableRow>
           ))}
           {!loading && filteredSortedLeads.length === 0 && (
             <TableRow>
-              <TableCell colSpan={11}>
+              <TableCell colSpan={10}>
                 <Typography color="text.secondary">Лидов нет</Typography>
               </TableCell>
             </TableRow>
@@ -1967,14 +2084,37 @@ const SalesLeadsPage: React.FC = () => {
       </Table>
       </TableContainer>
       ) : (
-        <Grid container spacing={2}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'nowrap',
+            gap: 2,
+            overflowX: 'auto',
+            pb: 1,
+            minHeight: 400,
+          }}
+        >
           {kanbanColumns.map((col) => (
-            <Grid item xs={12} md={6} lg={4} xl={2} key={col.status}>
+            <Box
+              key={col.status}
+              sx={{
+                flex: '0 0 auto',
+                width: 280,
+                minWidth: 280,
+              }}
+            >
               <Card
                 variant="outlined"
-                sx={{ height: '100%' }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => void handleKanbanDrop(col.status)}
+                sx={{
+                  height: '100%',
+                  transition: 'background-color 0.15s, box-shadow 0.15s',
+                  ...((col.status !== 'archive' && col.status !== 'next_event') && dragOverColumn === col.status && draggedLeadId
+                    ? { bgcolor: 'action.hover', boxShadow: 2 }
+                    : {}),
+                }}
+                onDragOver={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus)}
+                onDragLeave={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragLeave}
+                onDrop={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus)}
               >
                 <CardContent>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
@@ -1986,8 +2126,12 @@ const SalesLeadsPage: React.FC = () => {
                       <Card
                         key={lead.id}
                         variant="outlined"
-                        draggable
-                        onDragStart={() => setDraggedLeadId(lead.id)}
+                        draggable={col.status !== 'archive' && col.status !== 'next_event'}
+                        onDragStart={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragStart(e, lead.id)}
+                        onDragEnd={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragEnd}
+                        onDragOver={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus)}
+                        onDragLeave={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragLeave}
+                        onDrop={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus)}
                         sx={{
                           borderRadius: 2,
                           borderColor:
@@ -1995,6 +2139,9 @@ const SalesLeadsPage: React.FC = () => {
                               ? 'primary.main'
                               : getKanbanBorderColor(lead.next_contact_at),
                           borderWidth: 2,
+                          opacity: draggedLeadId === lead.id ? 0.6 : 1,
+                          cursor: draggedLeadId === lead.id ? 'grabbing' : 'grab',
+                          userSelect: 'none',
                         }}
                       >
                         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -2004,6 +2151,28 @@ const SalesLeadsPage: React.FC = () => {
                             <Typography variant="caption" display="block" color="text.secondary">
                               Источник: {lead.source}
                             </Typography>
+                          )}
+                          {lead.status === 'thinking' && lead.next_contact_at && (
+                            <Typography variant="caption" display="block" color="primary">
+                              Перезвон: {format(parseISO(lead.next_contact_at), 'dd.MM HH:mm')}
+                            </Typography>
+                          )}
+                          {lead.status === 'no_answer' && (
+                            <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                              {([1, 2, 3] as const).map((n) => (
+                                <Button
+                                  key={n}
+                                  size="small"
+                                  variant={(lead.no_answer_attempt ?? 1) >= n ? 'contained' : 'outlined'}
+                                  color={(lead.no_answer_attempt ?? 1) === n ? 'warning' : 'inherit'}
+                                  sx={{ minWidth: 0, px: 0.75, fontSize: '0.7rem' }}
+                                  disabled={actionLoadingId === lead.id}
+                                  onClick={() => void handleWidgetNoAnswerAttempt(lead, n)}
+                                >
+                                  Нед. {n}
+                                </Button>
+                              ))}
+                            </Stack>
                           )}
                           {(() => {
                             const p = getKanbanPushProgressEstimate(lead);
@@ -2030,14 +2199,6 @@ const SalesLeadsPage: React.FC = () => {
                             <Button size="small" onClick={() => handleOpenDetails(lead)}>
                               Карточка
                             </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => handleCreateAndSendInvoice(lead)}
-                              disabled={actionLoadingId === lead.id}
-                            >
-                              Инвойс
-                            </Button>
                           </Stack>
                         </CardContent>
                       </Card>
@@ -2050,9 +2211,9 @@ const SalesLeadsPage: React.FC = () => {
                   </Stack>
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
         </Grid>
 
@@ -2073,188 +2234,7 @@ const SalesLeadsPage: React.FC = () => {
                   <Button size="small" onClick={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}>Закрыть</Button>
                 </Stack>
                 <Grid container spacing={2} sx={{ mt: 0.5 }}>
-                  <Grid item xs={12}>
-                    <Tabs
-                      value={leadCardTab}
-                      onChange={(_, v) => setLeadCardTab(v)}
-                      sx={{ mb: 1 }}
-                    >
-                      <Tab label="Обзор" value="overview" />
-                      <Tab label="Дожим" value="push" />
-                    </Tabs>
-                    <Card variant="outlined" sx={{ mb: 1 }}>
-                      <CardContent sx={{ py: 1.5 }}>
-                        <Typography variant="subtitle2">Шапка лида</Typography>
-                        <Grid container spacing={1} sx={{ mt: 1 }}>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              size="small"
-                              label="Имя"
-                              value={selectedLead.contact_name}
-                              InputProps={{ readOnly: true }}
-                              fullWidth
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              size="small"
-                              label="Телефон"
-                              value={selectedLead.phone}
-                              InputProps={{ readOnly: true }}
-                              fullWidth
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <FormControl size="small" fullWidth>
-                              <InputLabel id="header-status-label">Стадия</InputLabel>
-                              <Select
-                                labelId="header-status-label"
-                                label="Стадия"
-                                value={leadHeaderStatusDraft}
-                                onChange={(e) => setLeadHeaderStatusDraft(e.target.value as LeadStatus)}
-                              >
-                                {statusOptions.map((st) => (
-                                  <MenuItem key={st} value={st}>
-                                    {statusLabels[st]}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              size="small"
-                              label="Следующий шаг"
-                              value={leadHeaderNextStepDraft}
-                              onChange={(e) => setLeadHeaderNextStepDraft(e.target.value)}
-                              fullWidth
-                            />
-                          </Grid>
-                          <Grid item xs={12}>
-                            <TextField
-                              size="small"
-                              type="datetime-local"
-                              label="Следующий контакт"
-                              InputLabelProps={{ shrink: true }}
-                              value={leadHeaderNextContactDraft}
-                              onChange={(e) => setLeadHeaderNextContactDraft(e.target.value)}
-                              fullWidth
-                            />
-                          </Grid>
-                        </Grid>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                          {leadHeaderSaving ? 'Сохраняем шапку...' : 'Шапка сохраняется автоматически'}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                    <Card
-                      variant="outlined"
-                      sx={{
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 2,
-                        borderColor: 'rgba(15, 23, 42, 0.12)',
-                        bgcolor: 'background.paper',
-                      }}
-                    >
-                      <CardContent sx={{ py: 1.5 }}>
-                        <Typography variant="subtitle2">Действия</Typography>
-                        <Grid container spacing={1} sx={{ mt: 1 }}>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="contained" onClick={() => void handleQuickCommunication('call')}>
-                              Позвонить
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="contained" color="secondary" onClick={() => void handleQuickCommunication('messenger')}>
-                              Написать
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="outlined" onClick={handleOpenSendInfo}>
-                              Отправить инфо
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="outlined" onClick={handleAssignPush}>
-                              Назначить дожим
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="outlined" onClick={handleOpenRegisterEvent}>
-                              Записать на пробное
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="text" onClick={handleQuickRegisterToNearestEvent}>
-                              Ближайший ивент
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12}>
-                            <Button fullWidth size="small" color="warning" variant="contained" onClick={handleQuickCloseLead}>
-                              Закрыть лид
-                            </Button>
-                          </Grid>
-                        </Grid>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
-                          Быстрые результаты звонка
-                        </Typography>
-                        <Grid container spacing={1} sx={{ mt: 0.25 }}>
-                          <Grid item xs={12} sm={4}>
-                            <Button fullWidth size="small" color="success" variant="contained" onClick={() => void submitOneClickContactResult('connected')}>
-                              Дозвон (1)
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={4}>
-                            <Button fullWidth size="small" color="warning" variant="contained" onClick={() => void submitOneClickContactResult('no_answer')}>
-                              Не дозвон (2)
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={4}>
-                            <Button fullWidth size="small" color="info" variant="contained" onClick={() => void submitOneClickContactResult('callback')}>
-                              Перезвон (3)
-                            </Button>
-                          </Grid>
-                        </Grid>
-                        <Stack spacing={1} sx={{ mt: 1 }}>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel id="contact-result-label">Результат звонка</InputLabel>
-                            <Select
-                              labelId="contact-result-label"
-                              label="Результат звонка"
-                              value={contactOutcome}
-                              onChange={(e) => setContactOutcome(e.target.value as 'connected' | 'no_answer' | 'callback')}
-                            >
-                              <MenuItem value="connected">Дозвон</MenuItem>
-                              <MenuItem value="no_answer">Не дозвонились</MenuItem>
-                              <MenuItem value="callback">Перезвонить</MenuItem>
-                            </Select>
-                          </FormControl>
-                          <TextField
-                            size="small"
-                            label="Комментарий"
-                            value={contactNote}
-                            onChange={(e) => setContactNote(e.target.value)}
-                            fullWidth
-                          />
-                          <TextField
-                            size="small"
-                            type="datetime-local"
-                            label="Дата follow-up"
-                            InputLabelProps={{ shrink: true }}
-                            value={contactFollowUpAt}
-                            onChange={(e) => setContactFollowUpAt(e.target.value)}
-                            required={contactOutcome === 'no_answer' || contactOutcome === 'callback'}
-                            fullWidth
-                          />
-                          <Button size="small" variant="outlined" onClick={handleSaveContactResult} sx={{ alignSelf: 'flex-start' }}>
-                            Сохранить результат
-                          </Button>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} xl={4}>
+                  <Grid item xs={12} md={6}>
                     <Typography variant="subtitle2">Клиент</Typography>
                     <Grid container spacing={1} sx={{ mt: 0.25 }}>
                       <Grid item xs={12}>
@@ -2346,11 +2326,6 @@ const SalesLeadsPage: React.FC = () => {
                         />
                       </Grid>
                     </Grid>
-                    {selectedLead.pause_reason && (
-                      <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                        Пауза: {selectedLead.pause_reason}
-                      </Typography>
-                    )}
                     <Button
                       size="small"
                       variant="outlined"
@@ -2366,201 +2341,16 @@ const SalesLeadsPage: React.FC = () => {
                       minRows={2}
                       size="small"
                       sx={{ mt: 1 }}
-                      label="Заметка (автосохранение)"
+                      label="Комментарий"
                       value={leadCommentDraft}
                       onChange={(e) => setLeadCommentDraft(e.target.value)}
                       helperText={leadCommentSaving ? 'Сохраняем...' : 'Сохраняется автоматически'}
                     />
-                    <Typography variant="subtitle2" sx={{ mt: 1 }}>Таймлайн коммуникаций</Typography>
-                    <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                      {communications.map((c) => (
-                        <Card key={c.id} variant="outlined" sx={{ p: 1 }}>
-                          <Stack direction="row" spacing={0.5} mb={0.5}>
-                            <Chip size="small" label={c.channel} />
-                            {c.pause_reason && <Chip size="small" color="warning" label={c.pause_reason} />}
-                          </Stack>
-                          <Typography variant="caption" display="block">{c.message}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {(() => {
-                              const d = parseISO(c.created_at);
-                              return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : c.created_at;
-                            })()}
-                            {' • follow-up: '}
-                            {(() => {
-                              const d = parseISO(c.follow_up_at);
-                              return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : c.follow_up_at;
-                            })()}
-                          </Typography>
-                        </Card>
-                      ))}
-                      {communications.length === 0 && (
-                        <Typography color="text.secondary" variant="caption">Коммуникаций пока нет</Typography>
-                      )}
-                    </Stack>
                     {selectedLead.lost_reason && (
                       <Alert severity="warning" sx={{ mt: 1 }}>
                         Причина закрытия: {selectedLead.lost_reason}
                       </Alert>
                     )}
-                  </Grid>
-                  <Grid item xs={12} xl={4}>
-                    <Typography variant="subtitle2">Задачи</Typography>
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      {leadCardTab === 'overview' ? (
-                        <>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel id="task-template-label">Задача</InputLabel>
-                            <Select
-                              labelId="task-template-label"
-                              label="Задача"
-                              value={taskTemplateId}
-                              onChange={(e) => setTaskTemplateId((e.target.value as number) || '')}
-                            >
-                              <MenuItem value="">
-                                <em>Выберите задачу</em>
-                              </MenuItem>
-                              {taskTemplates.map((tpl) => (
-                                <MenuItem key={tpl.id} value={tpl.id}>
-                                  {tpl.name}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel id="task-status-option-label">Статус</InputLabel>
-                            <Select
-                              labelId="task-status-option-label"
-                              label="Статус"
-                              value={taskStatusOptionId}
-                              onChange={(e) => setTaskStatusOptionId((e.target.value as number) || '')}
-                            >
-                              {taskStatusOptions.map((st) => (
-                                <MenuItem key={st.id} value={st.id}>
-                                  {st.name}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          <TextField
-                            size="small"
-                            label="Комментарий к задаче"
-                            value={taskNote}
-                            onChange={(e) => setTaskNote(e.target.value)}
-                          />
-                          <TextField
-                            size="small"
-                            type="datetime-local"
-                            label="Срок"
-                            InputLabelProps={{ shrink: true }}
-                            value={taskDueAt}
-                            onChange={(e) => setTaskDueAt(e.target.value)}
-                          />
-                          <Button variant="outlined" onClick={handleCreateTask}>
-                            Добавить задачу
-                          </Button>
-                          {tasks.map((task) => (
-                            <Stack key={task.id} direction="row" justifyContent="space-between" alignItems="center">
-                              <Typography variant="body2">
-                                {taskTemplates.find((tpl) => tpl.id === task.template_id)?.name || 'Задача'}: {task.note || 'Без комментария'} (
-                                {taskStatusOptions.find((st) => st.id === task.status_option_id)?.name || task.status})
-                              </Typography>
-                              {task.status === 'open' && (
-                                <Button size="small" onClick={() => handleCloseTask(task)}>
-                                  Закрыть
-                                </Button>
-                              )}
-                            </Stack>
-                          ))}
-                          {tasks.length === 0 && <Typography color="text.secondary">Задач пока нет</Typography>}
-                        </>
-                      ) : (
-                        <>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <Chip
-                              size="small"
-                              color={pushProgressPercent >= 70 ? 'success' : pushProgressPercent >= 30 ? 'warning' : 'default'}
-                              label={`${pushDoneCount}/${pushTasks.length} шагов`}
-                            />
-                            <Typography variant="caption" color="text.secondary">
-                              Прогресс дожима: {pushProgressPercent}%
-                            </Typography>
-                          </Stack>
-                          <LinearProgress
-                            variant="determinate"
-                            value={pushProgressPercent}
-                            sx={{ borderRadius: 1, height: 8 }}
-                          />
-                          <Typography variant="body2" color="text.secondary">
-                            Чеклист касаний по дожиму
-                          </Typography>
-                          <Stack direction="row" spacing={1} flexWrap="wrap">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => void handleAssignPushTemplateStep('first')}
-                            >
-                              1-й контакт
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => void handleAssignPushTemplateStep('second')}
-                            >
-                              2-й контакт
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => void handleAssignPushTemplateStep('final')}
-                            >
-                              Финальный
-                            </Button>
-                            <Button size="small" variant="text" onClick={handleAssignPush}>
-                              + произвольный
-                            </Button>
-                          </Stack>
-                          {pushTasks.map((task) => {
-                            const dueLabel = task.due_at && isValid(parseISO(task.due_at))
-                              ? format(parseISO(task.due_at), 'dd.MM.yyyy HH:mm')
-                              : 'без срока';
-                            return (
-                              <Stack key={task.id} direction="row" spacing={1} alignItems="center">
-                                <Checkbox checked={task.status === 'done'} disabled />
-                                <Typography variant="body2">
-                                  {task.note || 'Шаг дожима'} ({dueLabel})
-                                </Typography>
-                              </Stack>
-                            );
-                          })}
-                          {pushTasks.length === 0 && (
-                            <Typography color="text.secondary">Шагов дожима пока нет</Typography>
-                          )}
-                        </>
-                      )}
-                    </Stack>
-                  </Grid>
-                  <Grid item xs={12} xl={4}>
-                    <Typography variant="subtitle2">Инвойсы</Typography>
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      <Button
-                        variant="outlined"
-                        onClick={() => handleCreateAndSendInvoice(selectedLead)}
-                        disabled={!selectedLead.abonement_id || !isValidEmail(selectedLead.email)}
-                      >
-                        Инвойс + Email
-                      </Button>
-                      {!isValidEmail(selectedLead.email) && (
-                        <Typography color="warning.main" variant="caption">
-                          Нужен корректный email для отправки
-                        </Typography>
-                      )}
-                      {invoices.map((inv) => (
-                        <Typography key={inv.id} variant="body2">
-                          #{inv.id} — {inv.amount} {inv.currency} ({inv.status})
-                        </Typography>
-                      ))}
-                      {invoices.length === 0 && <Typography color="text.secondary">Инвойсов пока нет</Typography>}
-                    </Stack>
                   </Grid>
                 </Grid>
               </CardContent>
@@ -2576,8 +2366,9 @@ const SalesLeadsPage: React.FC = () => {
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} md={6}>
               <TextField
-                label="ФИО родителя"
+                label="ФИО родителя *"
                 fullWidth
+                required
                 value={form.parent_full_name}
                 onChange={(e) => setForm((s) => ({ ...s, parent_full_name: e.target.value }))}
               />
@@ -2592,8 +2383,9 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="Телефон родителя"
+                label="Телефон родителя *"
                 fullWidth
+                required
                 value={form.parent_phone}
                 onChange={(e) => setForm((s) => ({ ...s, parent_phone: e.target.value }))}
                 onBlur={() => setForm((s) => ({ ...s, parent_phone: normalizeRuPhone(s.parent_phone) }))}
@@ -2619,11 +2411,11 @@ const SalesLeadsPage: React.FC = () => {
               />
             </Grid>
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel id="lead-city-label">Город</InputLabel>
+              <FormControl fullWidth required>
+                <InputLabel id="lead-city-label">Город *</InputLabel>
                 <Select
                   labelId="lead-city-label"
-                  label="Город"
+                  label="Город *"
                   value={form.city}
                   onChange={(e) => setForm((s) => ({ ...s, city: e.target.value as string }))}
                 >
@@ -2666,11 +2458,11 @@ const SalesLeadsPage: React.FC = () => {
               />
             </Grid>
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel id="lead-source-label">Источник</InputLabel>
+              <FormControl fullWidth required>
+                <InputLabel id="lead-source-label">Источник *</InputLabel>
                 <Select
                   labelId="lead-source-label"
-                  label="Источник"
+                  label="Источник *"
                   value={form.source_id}
                   onChange={(e) => setForm((s) => ({ ...s, source_id: e.target.value as string }))}
                 >
@@ -2713,16 +2505,6 @@ const SalesLeadsPage: React.FC = () => {
                 onChange={(e) => setForm((s) => ({ ...s, comment: e.target.value }))}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Следующий контакт"
-                type="datetime-local"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={form.next_contact_at}
-                onChange={(e) => setForm((s) => ({ ...s, next_contact_at: e.target.value }))}
-              />
-            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -2730,10 +2512,7 @@ const SalesLeadsPage: React.FC = () => {
           <Button
             variant="contained"
             onClick={handleCreate}
-            disabled={
-              (!form.parent_full_name.trim() && !form.child_full_name.trim()) ||
-              (!form.parent_phone.trim() && !form.child_phone.trim())
-            }
+            disabled={!form.parent_full_name.trim() || !form.parent_phone.trim() || !form.city.trim() || !form.source_id}
           >
             Создать
           </Button>
@@ -2957,27 +2736,84 @@ const SalesLeadsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
       <Dialog open={dropConfirmOpen} onClose={() => setDropConfirmOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Подтвердить перенос стадии</DialogTitle>
+        <DialogTitle>
+          {dropTargetStatus === 'thinking' && 'Подумают — дата перезвона'}
+          {dropTargetStatus === 'refused' && 'Отказался — причина'}
+          {dropTargetStatus === 'trial_scheduled' && 'Записался на пробное'}
+          {dropTargetStatus === 'event_registered' && 'Записался на мероприятие'}
+          {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && 'Подтвердить перенос стадии'}
+        </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Новая стадия: {dropTargetStatus ? statusLabels[dropTargetStatus] : '—'}
-          </Typography>
-          {(() => {
-            const lead = dropLeadId ? leads.find((l) => l.id === dropLeadId) : null;
-            const requireFollowUp = !!dropTargetStatus && requiresFollowUpOnDrop(dropTargetStatus) && !lead?.next_contact_at;
-            if (!requireFollowUp) return null;
-            return (
-              <TextField
-                fullWidth
-                type="datetime-local"
-                label="Follow-up (обязательно)"
-                InputLabelProps={{ shrink: true }}
-                sx={{ mt: 2 }}
-                value={dropFollowUpAt}
-                onChange={(e) => setDropFollowUpAt(e.target.value)}
-              />
-            );
-          })()}
+          {dropTargetStatus === 'thinking' && (
+            <TextField
+              fullWidth
+              type="datetime-local"
+              label="Дата и время перезвона"
+              InputLabelProps={{ shrink: true }}
+              sx={{ mt: 2 }}
+              value={dropCallbackAt}
+              onChange={(e) => setDropCallbackAt(e.target.value)}
+            />
+          )}
+          {dropTargetStatus === 'refused' && (
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel id="drop-refused-label">Причина отказа</InputLabel>
+              <Select labelId="drop-refused-label" label="Причина отказа" value={dropRefusedReason} onChange={(e) => setDropRefusedReason(e.target.value)}>
+                <MenuItem value=""><em>Выберите</em></MenuItem>
+                {REFUSED_REASONS.map((r) => (
+                  <MenuItem key={r} value={r}>{r}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          {dropTargetStatus === 'trial_scheduled' && (
+            <TextField
+              fullWidth
+              type="datetime-local"
+              label="Дата и время пробного"
+              InputLabelProps={{ shrink: true }}
+              sx={{ mt: 2 }}
+              value={dropTrialAt}
+              onChange={(e) => setDropTrialAt(e.target.value)}
+            />
+          )}
+          {dropTargetStatus === 'event_registered' && (
+            <>
+              <FormControl fullWidth sx={{ mt: 2 }}>
+                <InputLabel id="drop-event-reg-label">Мероприятие</InputLabel>
+                <Select labelId="drop-event-reg-label" label="Мероприятие" value={dropEventId} onChange={(e) => setDropEventId((e.target.value as number) || '')}>
+                  <MenuItem value=""><em>Выберите</em></MenuItem>
+                  {events.map((ev) => (
+                    <MenuItem key={ev.id} value={ev.id}>{formatEventOptionLabel(ev)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {dropEventId && (
+                <TextField fullWidth multiline minRows={2} label="Комментарий к записи" sx={{ mt: 2 }} value={dropEventNote} onChange={(e) => setDropEventNote(e.target.value)} />
+              )}
+            </>
+          )}
+          {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Новая стадия: {dropTargetStatus ? statusLabels[dropTargetStatus] : '—'}
+              </Typography>
+              {(() => {
+                const lead = dropLeadId ? leads.find((l) => l.id === dropLeadId) : null;
+                const requireFollowUp = !!dropTargetStatus && requiresFollowUpOnDrop(dropTargetStatus) && !lead?.next_contact_at;
+                if (!requireFollowUp) return null;
+                return (
+                  <TextField
+                    fullWidth
+                    type="datetime-local"
+                    label="Follow-up (обязательно)"
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ mt: 2 }}
+                    value={dropFollowUpAt}
+                    onChange={(e) => setDropFollowUpAt(e.target.value)}
+                  />
+                );
+              })()}
           {dropTargetStatus === 'demo' && (
             <>
               <FormControl fullWidth sx={{ mt: 2 }}>
@@ -3011,11 +2847,25 @@ const SalesLeadsPage: React.FC = () => {
               )}
             </>
           )}
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDropConfirmOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleConfirmKanbanDrop()}>
-            Перенести
+            {dropTargetStatus === 'refused' ? 'В архив' : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={noAnswerArchiveConfirmOpen} onClose={() => { setNoAnswerArchiveConfirmOpen(false); setPendingNoAnswerArchiveLead(null); }}>
+        <DialogTitle>Отправить в архив?</DialogTitle>
+        <DialogContent>
+          <Typography>После недозвона 3 лид будет отправлен в архив.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setNoAnswerArchiveConfirmOpen(false); setPendingNoAnswerArchiveLead(null); }}>Отмена</Button>
+          <Button variant="contained" color="error" onClick={() => void handleNoAnswerArchiveConfirm()}>
+            В архив
           </Button>
         </DialogActions>
       </Dialog>

@@ -111,7 +111,7 @@ const SalesInvoicesPage: React.FC = () => {
   return (
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4">Инвойсы</Typography>
+        <Typography variant="h4">Оплаты</Typography>
         <Button variant="outlined" onClick={loadData}>Обновить</Button>
       </Stack>
 

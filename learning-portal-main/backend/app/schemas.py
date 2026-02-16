@@ -45,6 +45,11 @@ class LeadStatus(str, Enum):
     INVOICE_SENT = "invoice_sent"
     WON = "won"
     LOST = "lost"
+    THINKING = "thinking"
+    REFUSED = "refused"
+    TRIAL_SCHEDULED = "trial_scheduled"
+    EVENT_REGISTERED = "event_registered"
+    DECIDED_IMMEDIATELY = "decided_immediately"
 
 
 class LeadTaskStatus(str, Enum):
@@ -191,12 +196,12 @@ class StudentResponse(StudentBase):
 class LeadBase(BaseModel):
     contact_name: str
     phone: str
-    parent_full_name: Optional[str] = None
+    parent_full_name: str = Field(..., min_length=1)  # ФИО родителя — обязательно
+    parent_phone: str = Field(..., min_length=1)  # Телефон родителя — обязателен
     child_full_name: Optional[str] = None
-    parent_phone: Optional[str] = None
     child_phone: Optional[str] = None
     email: Optional[EmailStr] = None
-    city: Optional[str] = None
+    city: str = Field(..., min_length=1)  # Город — обязателен
     school_name: Optional[str] = None
     school_class: Optional[str] = None
     outreach_at: Optional[datetime] = None
@@ -240,6 +245,7 @@ class LeadUpdate(BaseModel):
     desired_slot: Optional[str] = None
     comment: Optional[str] = None
     next_contact_at: Optional[datetime] = None
+    no_answer_attempt: Optional[int] = None
     pause_reason: Optional[str] = None
     status: Optional[LeadStatus] = None
     status_option_id: Optional[int] = None
@@ -272,15 +278,38 @@ class LeadStatusOptionResponse(LeadStatusOptionBase):
         from_attributes = True
 
 
-class LeadResponse(LeadBase):
+class LeadResponse(BaseModel):
+    """Схема ответа по лиду: все поля контакта допускают None для старых записей в БД."""
     id: int
     owner_id: int
+    contact_name: str
+    phone: str
+    parent_full_name: Optional[str] = None
+    child_full_name: Optional[str] = None
+    parent_phone: Optional[str] = None
+    child_phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    city: Optional[str] = None
+    school_name: Optional[str] = None
+    school_class: Optional[str] = None
+    outreach_at: Optional[datetime] = None
+    outreach_minutes: Optional[int] = None
+    source: Optional[str] = None
+    communication_channel: Optional[str] = None
+    source_id: Optional[int] = None
+    referral_name: Optional[str] = None
+    tags: Optional[List[str]] = None
+    abonement_id: Optional[int] = None
+    desired_slot: Optional[str] = None
+    comment: Optional[str] = None
+    next_contact_at: Optional[datetime] = None
+    no_answer_attempt: Optional[int] = None
+    questionnaire_filled: bool = False
     status: LeadStatus
     status_option_id: Optional[int] = None
     status_option: Optional[LeadStatusOptionResponse] = None
     pause_reason: Optional[str] = None
     lost_reason: Optional[str] = None
-    questionnaire_filled: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     abonement: Optional[AbonementResponse] = None
@@ -335,6 +364,50 @@ class LeadSourceUpdate(BaseModel):
 
 
 class LeadSourceResponse(LeadSourceBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SalesCityBase(BaseModel):
+    name: str
+    is_active: bool = True
+
+
+class SalesCityCreate(BaseModel):
+    name: str
+
+
+class SalesCityUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SalesCityResponse(SalesCityBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SalesSchoolBase(BaseModel):
+    name: str
+    is_active: bool = True
+
+
+class SalesSchoolCreate(BaseModel):
+    name: str
+
+
+class SalesSchoolUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SalesSchoolResponse(SalesSchoolBase):
     id: int
     created_at: datetime
 

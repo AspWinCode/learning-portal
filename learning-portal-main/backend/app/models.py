@@ -211,6 +211,12 @@ class LeadStatus(str, enum.Enum):
     INVOICE_SENT = "invoice_sent"
     WON = "won"
     LOST = "lost"
+    # Воронка продаж (новая)
+    THINKING = "thinking"  # Подумают
+    REFUSED = "refused"  # Отказался
+    TRIAL_SCHEDULED = "trial_scheduled"  # Записался на пробное
+    EVENT_REGISTERED = "event_registered"  # Записался на мероприятие
+    DECIDED_IMMEDIATELY = "decided_immediately"  # Решил заниматься сразу
 
 
 class Lead(Base):
@@ -246,6 +252,7 @@ class Lead(Base):
     desired_slot = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
     next_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    no_answer_attempt = Column(Integer, nullable=True, index=True)  # 1, 2 или 3 для колонки Недозвон
     pause_reason = Column(String, nullable=True)
     lost_reason = Column(String, nullable=True)
     questionnaire_filled = Column(Boolean, default=False, nullable=False, index=True)
@@ -298,6 +305,24 @@ class LeadTask(Base):
 
 class LeadSource(Base):
     __tablename__ = "lead_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SalesCity(Base):
+    __tablename__ = "sales_cities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SalesSchool(Base):
+    __tablename__ = "sales_schools"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True)

@@ -1,5 +1,6 @@
 import hmac
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,6 +13,7 @@ from app.models import User
 from app.services.telegram import notify_user
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/login", response_model=Token)
@@ -19,13 +21,22 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
+    # Трассировка: что пришло (пароль не логируем)
+    username = getattr(form_data, "username", None) or ""
+    has_pass = bool(getattr(form_data, "password", None))
+    logger.info(
+        "login attempt username=%r len_username=%s has_password=%s",
+        username, len(username), has_pass
+    )
     user = auth.authenticate_user(db, form_data.username, form_data.password)
     if not user:
+        logger.warning("login failed for username=%r (user not found or bad password)", username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    logger.info("login success username=%r role=%s", user.email, user.role.value)
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
         data={"sub": user.email, "role": user.role.value}, expires_delta=access_token_expires

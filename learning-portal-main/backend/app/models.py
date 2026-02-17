@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, ForeignKey, Text, Float, Enum as SQLEnum, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, Time, ForeignKey, Text, Float, Enum as SQLEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
@@ -112,7 +112,7 @@ def _lowercase_enum_type(enum_cls, size=20, use_uppercase_for_pg=False):
 
 
 _StudentStatusType = _lowercase_enum_type(StudentStatus, use_uppercase_for_pg=False)
-_GroupStatusType = _lowercase_enum_type(GroupStatus, use_uppercase_for_pg=False)
+_GroupStatusType = _lowercase_enum_type(GroupStatus, use_uppercase_for_pg=True)
 _ProgramStatusType = _lowercase_enum_type(ProgramStatus, use_uppercase_for_pg=False)
 _TopicStatusType = _lowercase_enum_type(TopicStatus, use_uppercase_for_pg=False)
 _CharacteristicStatusType = _lowercase_enum_type(CharacteristicStatus, use_uppercase_for_pg=False)
@@ -161,6 +161,7 @@ class Student(Base):
     parent = relationship("User", back_populates="students", foreign_keys=[parent_id])
     group_students = relationship("GroupStudent", back_populates="student")
     student_programs = relationship("StudentProgram", back_populates="student")
+    lesson_attendances = relationship("LessonAttendance", back_populates="student", cascade="all, delete-orphan")
     # Активные назначения программ (сериализуются в programs через property ниже)
     grades = relationship("Grade", back_populates="student")
     characteristics = relationship("Characteristic", back_populates="student")
@@ -495,6 +496,8 @@ class Group(Base):
     # Удобная связь "многие-ко-многим" для сериализации в GroupResponse.students
     students = relationship("Student", secondary="group_students", viewonly=True)
     group_programs = relationship("GroupProgram", back_populates="group")
+    group_schedules = relationship("GroupSchedule", back_populates="group", cascade="all, delete-orphan")
+    lesson_attendances = relationship("LessonAttendance", back_populates="group", cascade="all, delete-orphan")
     # Удобная связь для сериализации назначенных программ группы
     programs = relationship("Program", secondary="group_programs", viewonly=True)
 
@@ -510,6 +513,36 @@ class GroupStudent(Base):
     # Relationships
     group = relationship("Group", back_populates="group_students")
     student = relationship("Student", back_populates="group_students")
+
+
+class GroupSchedule(Base):
+    """Расписание занятий группы: день недели и время (0=Пн, 6=Вс)."""
+    __tablename__ = "group_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    day_of_week = Column(Integer, nullable=False)  # 0=Monday, 6=Sunday
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("Group", back_populates="group_schedules")
+
+
+class LessonAttendance(Base):
+    """Посещаемость: кто был на занятии (группа + дата)."""
+    __tablename__ = "lesson_attendance"
+    __table_args__ = (UniqueConstraint("group_id", "lesson_date", "student_id", name="uq_lesson_attendance_group_date_student"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    lesson_date = Column(Date, nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    attended = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("Group", back_populates="lesson_attendances")
+    student = relationship("Student", back_populates="lesson_attendances")
 
 
 class Program(Base):
@@ -747,6 +780,78 @@ class B2BProject(Base):
     location = Column(String, nullable=True)
     main_city = Column(String, nullable=True, index=True)
     cities = Column(JSON, nullable=True)  # список городов, которые входят в проект
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# Воронки для роли owner: типы и этапы заданы в коде (owner_funnels router)
+OWNER_FUNNEL_SUPPORT_LETTERS = "support_letters"   # Получить письма поддержки
+OWNER_FUNNEL_THANK_YOU_LETTERS = "thank_you_letters"  # Письма благодарности
+OWNER_FUNNEL_EVENTS = "events"  # Мероприятия
+
+# Этапы по типам воронок (value для БД -> label для UI)
+OWNER_FUNNEL_STAGES = {
+    OWNER_FUNNEL_SUPPORT_LETTERS: [
+        ("new", "Новое"),
+        ("letter_created", "Создал письмо"),
+        ("letter_sent", "Отправил письмо"),
+        ("letter_received", "Получил письмо"),
+    ],
+    OWNER_FUNNEL_THANK_YOU_LETTERS: [
+        ("new", "Новое"),
+        ("thank_you_formed", "Сформировали благодарность"),
+        ("thank_you_sent", "Отправили благодарность"),
+        ("school_received", "Получила школа"),
+    ],
+    OWNER_FUNNEL_EVENTS: [
+        ("new", "Новые"),
+        ("contact_found", "Контакт найден"),
+        ("letter_sent", "Отправили письмо"),
+        ("reply_received", "Получили ответное письмо"),
+        ("reached_by_phone", "Дозвонились"),
+        ("not_reached", "Недозвонились"),
+        ("meeting_agreed", "Договорились на встречу"),
+        ("agreement_sent", "Отправили соглашение на согласование"),
+        ("agreement_approved", "Согласовали соглашение"),
+        ("agreement_signed", "Подписали соглашение"),
+        ("trip_agreed", "Договорились на поход"),
+        ("info_sent_to_parents", "Отправили информацию в чаты родителей"),
+        ("leads_collected", "Собрали лидов"),
+        ("rejected", "Отказали"),
+    ],
+}
+
+# Этапы воронки «Мероприятия», при переходе на которые показывается popup и сохраняются данные в card_data
+OWNER_FUNNEL_EVENTS_POPUP_STAGES = {
+    "contact_found": ["contact_fio", "contact_phone", "contact_comment"],
+    "reply_received": ["reply_comment"],
+    "meeting_agreed": ["meeting_date"],
+    "trip_agreed": ["trip_date"],
+    "leads_collected": ["leads_count"],
+}
+
+
+class OwnerFunnelEvent(Base):
+    """Мероприятие — сама воронка (доска с этапами). Карточки в колонках — элементы owner_funnel_items с event_id."""
+    __tablename__ = "owner_funnel_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_name = Column(String(512), nullable=False)
+    event_dates = Column(String(256), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class OwnerFunnelItem(Base):
+    """Элемент воронки owner (письма поддержки, благодарности; для мероприятий — карточка внутри воронки мероприятия)."""
+    __tablename__ = "owner_funnel_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    funnel_type = Column(String(64), nullable=False, index=True)  # support_letters | thank_you_letters | events
+    event_id = Column(Integer, ForeignKey("owner_funnel_events.id", ondelete="CASCADE"), nullable=True, index=True)  # только для events
+    stage = Column(String(64), nullable=False, index=True)
+    title = Column(String(512), nullable=True)
+    comment = Column(Text, nullable=True)
+    card_data = Column(JSON, nullable=True)  # для events: контакт, даты этапов и т.д. (event_name/event_dates — у мероприятия)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

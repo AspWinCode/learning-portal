@@ -41,6 +41,7 @@ import {
   Telegram as TelegramIcon,
   WorkOutline,
   EventAvailable,
+  EventNote,
   ReceiptLong,
   Settings,
   PendingActions,
@@ -208,6 +209,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       { text: 'Дашборд', icon: <Dashboard />, path: '/dashboard' },
       { text: 'Ученики', icon: <People />, path: '/students' },
       { text: 'Группы', icon: <Group />, path: '/groups' },
+      ...(role === 'trainer' ? [{ text: 'Уроки', icon: <EventNote />, path: '/lessons' }] : []),
       { text: 'Программы', icon: <Book />, path: '/programs' },
       { text: 'Оценки', icon: <Grade />, path: '/grades' },
       { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
@@ -220,6 +222,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'owner') {
       items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+      items.push({ text: 'Воронки', icon: <PendingActions />, path: '/owner-funnels' });
       items.push({ text: 'B2B (школы)', icon: <Group />, path: '/b2b-schools' });
       items.push({ text: 'Создать школу (B2B)', icon: <Add />, path: '/b2b-schools/new' });
     }

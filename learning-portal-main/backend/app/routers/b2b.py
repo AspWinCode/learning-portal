@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import distinct
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -67,10 +68,21 @@ def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
     )
 
 
+@router.get("/b2b-schools/cities", response_model=List[str])
+async def list_b2b_school_cities(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Список городов, в которых есть B2B школы (для выбора при добавлении школ в воронку)."""
+    rows = db.query(distinct(B2BSchool.city)).filter(B2BSchool.city.isnot(None)).filter(B2BSchool.city != "").order_by(B2BSchool.city).all()
+    return [r[0] for r in rows if r[0] and r[0].strip()]
+
+
 @router.get("/b2b-schools", response_model=List[B2BSchoolResponse])
 async def list_b2b_schools(
     pipeline_stage: Optional[str] = Query(default=None),
     project_id: Optional[int] = Query(default=None),
+    city: Optional[str] = Query(default=None, description="Фильтр по городу"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
@@ -88,6 +100,8 @@ async def list_b2b_schools(
         cities = [c.strip() for c in cities if c and isinstance(c, str)]
         if cities:
             query = query.filter(B2BSchool.city.in_(cities))
+    if city is not None and city.strip():
+        query = query.filter(B2BSchool.city == city.strip())
     if pipeline_stage is not None:
         query = query.filter(B2BSchool.pipeline_stage == pipeline_stage)
     schools = query.all()

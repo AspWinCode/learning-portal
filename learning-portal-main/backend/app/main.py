@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, b2b
+from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, b2b, trainer_lessons, owner_funnels
 import os
 import traceback
 
@@ -51,6 +51,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(students.router, prefix="/api/students", tags=["students"])
 app.include_router(groups.router, prefix="/api/groups", tags=["groups"])
+app.include_router(trainer_lessons.router, prefix="/api/trainer-lessons", tags=["trainer-lessons"])
 app.include_router(programs.router, prefix="/api/programs", tags=["programs"])
 app.include_router(grades.router, prefix="/api/grades", tags=["grades"])
 app.include_router(characteristics.router, prefix="/api/characteristics", tags=["characteristics"])
@@ -61,6 +62,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(abonements.router, prefix="/api/abonements", tags=["abonements"])
 app.include_router(sales.router, prefix="/api", tags=["sales"])
 app.include_router(b2b.router, prefix="/api", tags=["b2b"])
+app.include_router(owner_funnels.router, prefix="/api", tags=["owner-funnels"])
 
 
 @app.exception_handler(Exception)

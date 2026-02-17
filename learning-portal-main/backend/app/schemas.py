@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List, Dict, Any, Literal
-from datetime import datetime
+from datetime import datetime, date, time
 from enum import Enum
 
 
@@ -704,6 +704,51 @@ class GroupResponse(GroupBase):
         from_attributes = True
 
 
+# Group schedule (расписание занятий группы)
+class GroupScheduleCreate(BaseModel):
+    day_of_week: int  # 0=Пн, 6=Вс
+    start_time: time
+    end_time: time
+
+
+class GroupScheduleResponse(BaseModel):
+    id: int
+    group_id: int
+    day_of_week: int
+    start_time: time
+    end_time: time
+
+    class Config:
+        from_attributes = True
+
+
+# Посещаемость занятия
+class LessonAttendanceItem(BaseModel):
+    student_id: int
+    attended: bool
+
+
+class LessonAttendanceSave(BaseModel):
+    group_id: int
+    lesson_date: date
+    attendances: List[LessonAttendanceItem]
+
+
+# Занятие для календаря тренера (группа + слот по расписанию + ученики и отметки)
+class TrainerLessonSlotResponse(BaseModel):
+    group_id: int
+    group_name: str
+    program_name: Optional[str] = None
+    day_of_week: int
+    start_time: time
+    end_time: time
+    lesson_date: date
+    students: List[Dict[str, Any]]  # [{ id, full_name, attended: bool | None }]
+
+    class Config:
+        from_attributes = True
+
+
 # Program schemas
 class ProgramSummaryResponse(BaseModel):
     id: int
@@ -1025,6 +1070,68 @@ class B2BProjectResponse(BaseModel):
     location: Optional[str] = None
     main_city: Optional[str] = None
     cities: Optional[List[str]] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Owner funnels (support letters, thank you letters, events)
+class OwnerFunnelTypeInfo(BaseModel):
+    """Тип воронки: id и этапы для выбора в UI."""
+    id: str
+    label: str
+    stages: List[dict]  # [{"value": "new", "label": "Новое"}, ...]
+
+
+class OwnerFunnelEventCreate(BaseModel):
+    event_name: str
+    event_dates: Optional[str] = None
+
+
+class OwnerFunnelEventResponse(BaseModel):
+    id: int
+    event_name: str
+    event_dates: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerFunnelItemCreate(BaseModel):
+    funnel_type: str
+    stage: str = "new"
+    title: Optional[str] = None
+    comment: Optional[str] = None
+    event_id: Optional[int] = None  # для воронки Мероприятия — обязательно
+    card_data: Optional[dict] = None
+
+
+class OwnerFunnelItemUpdate(BaseModel):
+    stage: Optional[str] = None
+    title: Optional[str] = None
+    comment: Optional[str] = None
+    card_data: Optional[dict] = None
+    # поля popup для воронки Мероприятия (мержатся в card_data при смене этапа)
+    contact_fio: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_comment: Optional[str] = None
+    reply_comment: Optional[str] = None
+    meeting_date: Optional[str] = None  # ISO date
+    trip_date: Optional[str] = None
+    leads_count: Optional[int] = None
+
+
+class OwnerFunnelItemResponse(BaseModel):
+    id: int
+    funnel_type: str
+    event_id: Optional[int] = None
+    stage: str
+    title: Optional[str] = None
+    comment: Optional[str] = None
+    card_data: Optional[dict] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

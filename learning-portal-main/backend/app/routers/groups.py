@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
 from app.schemas import GroupCreate, GroupResponse, GroupUpdate
-from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus
+from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule
+from app.schemas import GroupScheduleCreate, GroupScheduleResponse
 from app.routers.action_log import log_action
 
 router = APIRouter()
@@ -72,7 +73,7 @@ async def read_groups(
             .filter(
                 Student.parent_id == current_user.id,
                 Student.status == StudentStatus.ACTIVE,
-                Group.status == GroupStatus.ACTIVE,
+                Group.status == 'ACTIVE',
             )
             .distinct()
         )
@@ -216,6 +217,74 @@ async def remove_student_from_group(
     
     log_action(db, current_user.id, "remove_student", "group", group_id, {"student_id": student_id})
     return {"message": "Student removed from group"}
+
+
+@router.get("/{group_id}/schedules", response_model=List[GroupScheduleResponse])
+async def list_group_schedules(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Расписание занятий группы. Админ, owner или тренер этой группы (просмотр)."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if current_user.role == UserRole.TRAINER and group.trainer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your group")
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.TRAINER):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    schedules = db.query(GroupSchedule).filter(GroupSchedule.group_id == group_id).order_by(
+        GroupSchedule.day_of_week, GroupSchedule.start_time
+    ).all()
+    return schedules
+
+
+@router.post("/{group_id}/schedules", response_model=GroupScheduleResponse, status_code=status.HTTP_201_CREATED)
+async def add_group_schedule(
+    group_id: int,
+    payload: GroupScheduleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Добавить слот расписания (день недели + время). Только админ или owner."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER):
+        raise HTTPException(status_code=403, detail="Only admin or owner can add schedule")
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if not (0 <= payload.day_of_week <= 6):
+        raise HTTPException(status_code=400, detail="day_of_week must be 0-6 (Mon-Sun)")
+    sched = GroupSchedule(
+        group_id=group_id,
+        day_of_week=payload.day_of_week,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+    )
+    db.add(sched)
+    db.commit()
+    db.refresh(sched)
+    return sched
+
+
+@router.delete("/{group_id}/schedules/{schedule_id}")
+async def delete_group_schedule(
+    group_id: int,
+    schedule_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Удалить слот расписания. Только админ или owner."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER):
+        raise HTTPException(status_code=403, detail="Only admin or owner can delete schedule")
+    sched = db.query(GroupSchedule).filter(
+        GroupSchedule.id == schedule_id,
+        GroupSchedule.group_id == group_id,
+    ).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    db.delete(sched)
+    db.commit()
+    return {"message": "Schedule deleted"}
 
 
 @router.delete("/{group_id}")

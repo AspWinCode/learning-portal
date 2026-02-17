@@ -86,7 +86,7 @@ async def global_search(
             .filter(
                 Student.parent_id == current_user.id,
                 Student.status == StudentStatus.ACTIVE,
-                Group.status == GroupStatus.ACTIVE,
+                Group.status == 'ACTIVE',
                 Group.name.ilike(search_term),
             )
             .distinct()

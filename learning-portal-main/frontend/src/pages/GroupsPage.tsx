@@ -21,10 +21,11 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Stack,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon, Book as BookIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon, Book as BookIcon, Schedule as ScheduleIcon } from '@mui/icons-material';
 import { groupsApi, usersApi, studentsApi, programsApi } from '../services/api';
-import { Group, User, Student, Program } from '../types';
+import { Group, User, Student, Program, GroupSchedule } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const GroupsPage: React.FC = () => {
@@ -40,12 +41,24 @@ const GroupsPage: React.FC = () => {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [programOpen, setProgramOpen] = useState(false);
   const [programToAssignId, setProgramToAssignId] = useState('');
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [schedules, setSchedules] = useState<GroupSchedule[]>([]);
+  const [newSchedule, setNewSchedule] = useState({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
   const [error, setError] = useState('');
   const [newGroup, setNewGroup] = useState({
     name: '',
     trainer_id: '',
   });
   const { user } = useAuth();
+  const WEEKDAY_OPTIONS = [
+    { value: 0, label: 'Понедельник' },
+    { value: 1, label: 'Вторник' },
+    { value: 2, label: 'Среда' },
+    { value: 3, label: 'Четверг' },
+    { value: 4, label: 'Пятница' },
+    { value: 5, label: 'Суббота' },
+    { value: 6, label: 'Воскресенье' },
+  ];
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
 
   useEffect(() => {
@@ -114,6 +127,47 @@ const GroupsPage: React.FC = () => {
       trainer_id: group.trainer_id?.toString?.() || '',
     });
     setEditOpen(true);
+  };
+
+  const openScheduleDialog = async (group: Group) => {
+    setSelectedGroup(group);
+    setScheduleOpen(true);
+    setError('');
+    try {
+      const data = await groupsApi.getSchedules(group.id);
+      setSchedules(data);
+    } catch (err) {
+      setError('Не удалось загрузить расписание');
+      setSchedules([]);
+    }
+  };
+
+  const handleAddSchedule = async () => {
+    if (!selectedGroup) return;
+    setError('');
+    try {
+      await groupsApi.addSchedule(selectedGroup.id, {
+        day_of_week: newSchedule.day_of_week,
+        start_time: newSchedule.start_time.length === 5 ? newSchedule.start_time + ':00' : newSchedule.start_time,
+        end_time: newSchedule.end_time.length === 5 ? newSchedule.end_time + ':00' : newSchedule.end_time,
+      });
+      const data = await groupsApi.getSchedules(selectedGroup.id);
+      setSchedules(data);
+      setNewSchedule({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
+    } catch (err) {
+      setError('Не удалось добавить слот расписания');
+    }
+  };
+
+  const handleRemoveSchedule = async (scheduleId: number) => {
+    if (!selectedGroup) return;
+    setError('');
+    try {
+      await groupsApi.removeSchedule(selectedGroup.id, scheduleId);
+      setSchedules((prev) => prev.filter((s) => s.id !== scheduleId));
+    } catch (err) {
+      setError('Не удалось удалить слот');
+    }
   };
 
   const openMembersDialog = async (group: Group) => {
@@ -298,6 +352,16 @@ const GroupsPage: React.FC = () => {
                     >
                       Состав
                     </Button>
+                    {isAdminLike && (
+                      <Button
+                        size="small"
+                        startIcon={<ScheduleIcon />}
+                        onClick={() => openScheduleDialog(group)}
+                        sx={{ mr: 1 }}
+                      >
+                        Расписание
+                      </Button>
+                    )}
                     {isAdminLike && (
                       <Button
                         size="small"
@@ -498,6 +562,95 @@ const GroupsPage: React.FC = () => {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setMembersOpen(false)}>Закрыть</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Диалог расписания группы — только админ/owner могут добавлять и удалять слоты */}
+      {isAdminLike && (
+        <Dialog open={scheduleOpen} onClose={() => setScheduleOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Расписание: {selectedGroup?.name}</DialogTitle>
+          <DialogContent>
+            {error && (
+              <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError('')}>
+                {error}
+              </Alert>
+            )}
+            <Typography variant="subtitle2" sx={{ mt: 1 }}>
+              Слоты расписания (день недели и время). Занятия появятся во вкладке «Уроки» у тренера.
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }} useFlexGap flexWrap="wrap">
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel>День</InputLabel>
+                <Select
+                  value={newSchedule.day_of_week}
+                  label="День"
+                  onChange={(e) => setNewSchedule({ ...newSchedule, day_of_week: Number(e.target.value) })}
+                >
+                  {WEEKDAY_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                size="small"
+                label="Начало"
+                type="time"
+                InputLabelProps={{ shrink: true }}
+                value={newSchedule.start_time}
+                onChange={(e) => setNewSchedule({ ...newSchedule, start_time: e.target.value })}
+                sx={{ width: 120 }}
+              />
+              <TextField
+                size="small"
+                label="Конец"
+                type="time"
+                InputLabelProps={{ shrink: true }}
+                value={newSchedule.end_time}
+                onChange={(e) => setNewSchedule({ ...newSchedule, end_time: e.target.value })}
+                sx={{ width: 120 }}
+              />
+              <Button variant="outlined" onClick={handleAddSchedule}>
+                Добавить
+              </Button>
+            </Stack>
+            <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+              Текущие слоты
+            </Typography>
+            {schedules.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Нет слотов. Добавьте слот выше.
+              </Typography>
+            ) : (
+              <Stack spacing={0.5}>
+                {schedules.map((s) => (
+                  <Box
+                    key={s.id}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      p: 1,
+                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {WEEKDAY_OPTIONS.find((o) => o.value === s.day_of_week)?.label ?? s.day_of_week} — {s.start_time?.slice(0, 5)}–{s.end_time?.slice(0, 5)}
+                    </Typography>
+                    <Button size="small" color="error" onClick={() => handleRemoveSchedule(s.id)}>
+                      Удалить
+                    </Button>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setScheduleOpen(false)}>Закрыть</Button>
           </DialogActions>
         </Dialog>
       )}

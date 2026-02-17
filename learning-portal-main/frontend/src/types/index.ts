@@ -42,6 +42,25 @@ export interface Group {
   programs?: ProgramSummary[];
 }
 
+export interface GroupSchedule {
+  id: number;
+  group_id: number;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
+
+export interface TrainerLessonSlot {
+  group_id: number;
+  group_name: string;
+  program_name?: string | null;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  lesson_date: string;
+  students: Array<{ id: number; full_name: string; attended: boolean | null }>;
+}
+
 export interface Topic {
   id: number;
   name: string;
@@ -418,5 +437,53 @@ export interface B2BProject {
   cities?: string[] | null;
   created_at: string;
   updated_at?: string | null;
+}
+
+// Owner funnels (support letters, thank you letters)
+export interface OwnerFunnelStageOption {
+  value: string;
+  label: string;
+}
+
+export interface OwnerFunnelTypeInfo {
+  id: string;
+  label: string;
+  stages: OwnerFunnelStageOption[];
+}
+
+/** Мероприятие — сама воронка (доска с этапами). Карточки в колонках — элементы с event_id. */
+export interface OwnerFunnelEvent {
+  id: number;
+  event_name: string;
+  event_dates?: string | null;
+  created_at: string;
+}
+
+export interface OwnerFunnelItem {
+  id: number;
+  funnel_type: string;
+  event_id?: number | null;
+  stage: string;
+  title?: string | null;
+  comment?: string | null;
+  card_data?: OwnerFunnelCardData | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+/** Данные карточки воронки «Мероприятия» */
+export interface OwnerFunnelCardData {
+  event_name?: string;
+  event_dates?: string;
+  contact_fio?: string;
+  contact_phone?: string;
+  contact_comment?: string;
+  letter_sent_at?: string;
+  reply_comment?: string;
+  reply_at?: string;
+  meeting_date?: string;
+  trip_date?: string;
+  leads_count?: number;
+  stage_dates?: Record<string, string>;
 }
 

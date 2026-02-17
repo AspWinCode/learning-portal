@@ -33,6 +33,9 @@ import {
   B2BSchoolPipelineStage,
   B2BSchoolContact,
   B2BProject,
+  OwnerFunnelTypeInfo,
+  OwnerFunnelEvent,
+  OwnerFunnelItem,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -174,6 +177,31 @@ export const groupsApi = {
   },
   removeStudent: async (groupId: number, studentId: number): Promise<void> => {
     await api.delete(`/api/groups/${groupId}/students/${studentId}`);
+  },
+  getSchedules: async (groupId: number): Promise<import('../types').GroupSchedule[]> => {
+    const response = await api.get(`/api/groups/${groupId}/schedules`);
+    return response.data;
+  },
+  addSchedule: async (groupId: number, data: { day_of_week: number; start_time: string; end_time: string }): Promise<import('../types').GroupSchedule> => {
+    const response = await api.post(`/api/groups/${groupId}/schedules`, data);
+    return response.data;
+  },
+  removeSchedule: async (groupId: number, scheduleId: number): Promise<void> => {
+    await api.delete(`/api/groups/${groupId}/schedules/${scheduleId}`);
+  },
+};
+
+export const trainerLessonsApi = {
+  getForDate: async (lessonDate: string): Promise<import('../types').TrainerLessonSlot[]> => {
+    const response = await api.get('/api/trainer-lessons/', { params: { lesson_date: lessonDate } });
+    return response.data;
+  },
+  saveAttendance: async (data: {
+    group_id: number;
+    lesson_date: string;
+    attendances: Array<{ student_id: number; attended: boolean }>;
+  }): Promise<void> => {
+    await api.post('/api/trainer-lessons/attendance', data);
   },
 };
 
@@ -703,10 +731,15 @@ export const abonementsApi = {
 };
 
 export const b2bApi = {
-  listSchools: async (opts?: { pipeline_stage?: string; project_id?: number }): Promise<B2BSchool[]> => {
+  listCities: async (): Promise<string[]> => {
+    const response = await api.get('/api/b2b-schools/cities');
+    return response.data;
+  },
+  listSchools: async (opts?: { pipeline_stage?: string; project_id?: number; city?: string }): Promise<B2BSchool[]> => {
     const params: any = {};
     if (opts?.pipeline_stage) params.pipeline_stage = opts.pipeline_stage;
     if (opts?.project_id) params.project_id = opts.project_id;
+    if (opts?.city) params.city = opts.city;
     const response = await api.get('/api/b2b-schools', { params });
     return response.data;
   },
@@ -785,6 +818,69 @@ export const b2bApi = {
     cities?: string[];
   }): Promise<B2BProject> => {
     const response = await api.post('/api/b2b-projects', payload);
+    return response.data;
+  },
+};
+
+export const ownerFunnelsApi = {
+  listTypes: async (): Promise<OwnerFunnelTypeInfo[]> => {
+    const response = await api.get('/api/owner-funnels/types');
+    return response.data;
+  },
+  listEvents: async (): Promise<OwnerFunnelEvent[]> => {
+    const response = await api.get('/api/owner-funnels/events');
+    return response.data;
+  },
+  createEvent: async (payload: { event_name: string; event_dates?: string | null }): Promise<OwnerFunnelEvent> => {
+    const response = await api.post('/api/owner-funnels/events', payload);
+    return response.data;
+  },
+  listItems: async (funnelType: string, options?: { eventId?: number; stage?: string }): Promise<OwnerFunnelItem[]> => {
+    const params: { funnel_type: string; event_id?: number; stage?: string } = { funnel_type: funnelType };
+    if (options?.eventId != null) params.event_id = options.eventId;
+    if (options?.stage) params.stage = options.stage;
+    const response = await api.get('/api/owner-funnels/items', { params });
+    return response.data;
+  },
+  createItem: async (payload: {
+    funnel_type: string;
+    stage?: string;
+    title?: string | null;
+    comment?: string | null;
+    event_id?: number | null;
+    card_data?: Record<string, unknown> | null;
+  }): Promise<OwnerFunnelItem> => {
+    const response = await api.post('/api/owner-funnels/items', payload);
+    return response.data;
+  },
+  getItem: async (id: number): Promise<OwnerFunnelItem> => {
+    const response = await api.get(`/api/owner-funnels/items/${id}`);
+    return response.data;
+  },
+  updateItem: async (
+    id: number,
+    payload: {
+      stage?: string;
+      title?: string | null;
+      comment?: string | null;
+      card_data?: Record<string, unknown> | null;
+      contact_fio?: string | null;
+      contact_phone?: string | null;
+      contact_comment?: string | null;
+      reply_comment?: string | null;
+      meeting_date?: string | null;
+      trip_date?: string | null;
+      leads_count?: number | null;
+    }
+  ): Promise<OwnerFunnelItem> => {
+    const response = await api.patch(`/api/owner-funnels/items/${id}`, payload);
+    return response.data;
+  },
+  deleteItem: async (id: number): Promise<void> => {
+    await api.delete(`/api/owner-funnels/items/${id}`);
+  },
+  addSchoolsByCity: async (eventId: number, city: string): Promise<{ added: number; total_in_city: number }> => {
+    const response = await api.post(`/api/owner-funnels/events/${eventId}/add-schools-by-city`, { city });
     return response.data;
   },
 };

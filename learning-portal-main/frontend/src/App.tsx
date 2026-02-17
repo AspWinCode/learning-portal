@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import StudentsPage from './pages/StudentsPage';
 import GroupsPage from './pages/GroupsPage';
+import TrainerLessonsPage from './pages/TrainerLessonsPage';
 import ProgramsPage from './pages/ProgramsPage';
 import GuestProgramsPage from './pages/GuestProgramsPage';
 import GradesPage from './pages/GradesPage';
@@ -18,6 +19,7 @@ import AbonementsPage from './pages/AbonementsPage';
 import TrainersPage from './pages/TrainersPage';
 import B2BSchoolsPage from './pages/B2BSchoolsPage';
 import B2BSchoolCreatePage from './pages/B2BSchoolCreatePage';
+import OwnerFunnelsPage from './pages/OwnerFunnelsPage';
 import ParentDashboardPage from './pages/ParentDashboardPage';
 import SalesLeadsPage from './pages/SalesLeadsPage';
 import SalesManagersPage from './pages/SalesManagersPage';
@@ -81,6 +83,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'trainer']}>
                   <GroupsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lessons"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'trainer']}>
+                  <TrainerLessonsPage />
                 </PrivateRoute>
               }
             />
@@ -217,6 +227,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']}>
                   <TrainersPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-funnels"
+              element={
+                <PrivateRoute allowedRoles={['owner']}>
+                  <OwnerFunnelsPage />
                 </PrivateRoute>
               }
             />

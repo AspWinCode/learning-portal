@@ -136,7 +136,7 @@ async def read_programs(
         program_ids_from_groups = (
             db.query(GroupProgram.program_id)
             .join(Group, Group.id == GroupProgram.group_id)
-            .filter(Group.trainer_id == current_user.id, Group.status == GroupStatus.ACTIVE)
+            .filter(Group.trainer_id == current_user.id, Group.status == 'ACTIVE')
             .subquery()
         )
         program_ids_from_links = (

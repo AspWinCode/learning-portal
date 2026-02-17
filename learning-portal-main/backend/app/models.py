@@ -112,7 +112,7 @@ def _lowercase_enum_type(enum_cls, size=20, use_uppercase_for_pg=False):
 
 
 _StudentStatusType = _lowercase_enum_type(StudentStatus, use_uppercase_for_pg=False)
-_GroupStatusType = _lowercase_enum_type(GroupStatus, use_uppercase_for_pg=True)
+_GroupStatusType = _lowercase_enum_type(GroupStatus, use_uppercase_for_pg=False)
 _ProgramStatusType = _lowercase_enum_type(ProgramStatus, use_uppercase_for_pg=False)
 _TopicStatusType = _lowercase_enum_type(TopicStatus, use_uppercase_for_pg=False)
 _CharacteristicStatusType = _lowercase_enum_type(CharacteristicStatus, use_uppercase_for_pg=False)

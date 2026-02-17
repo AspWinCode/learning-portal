@@ -1,20 +1,12 @@
-{
-	# Email is optional but recommended for Let's Encrypt rate-limit recovery:
-	# email you@example.com
-}
-
-# Один блок на домен — и HTTP, и HTTPS (Caddy сам редиректит на HTTPS)
-{$DOMAIN} {
+# Один сайт — только https://... (Caddy сам поднимет :80 и редирект на HTTPS)
+# "ambiguous site definition" бывает, если один домен в двух блоках — здесь блок один.
+https://{$DOMAIN} {
 	encode gzip zstd
 
-	# Backend API
-	# IMPORTANT: use `handle` (not `handle_path`) so we don't strip `/api` prefix.
-	# Backend routes are mounted under `/api/*`.
 	handle /api/* {
 		reverse_proxy backend:8000
 	}
 
-	# Frontend (static SPA)
 	handle {
 		root * /srv
 		try_files {path} /index.html

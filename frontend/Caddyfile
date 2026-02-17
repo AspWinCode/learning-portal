@@ -1,17 +1,29 @@
-# Один сайт — только https://... (Caddy сам поднимет :80 и редирект на HTTPS)
-# "ambiguous site definition" бывает, если один домен в двух блоках — здесь блок один.
 https://{$DOMAIN} {
-	encode gzip zstd
+    encode gzip zstd
 
-	handle /api/* {
-		reverse_proxy backend:8000
-	}
+    # Backend API
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
 
-	handle {
-		root * /srv
-		try_files {path} /index.html
-		file_server
-	}
+    # Frontend (static SPA)
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
 }
 
+gdevelop.tirskix.space {
+    encode gzip zstd
 
+    # Наш сервер загрузки ресурсов
+    handle_path /gdevelop-resources/* {
+        reverse_proxy gdevelop-resources:3000
+    }
+
+    # Сам редактор GDevelop (как и раньше по пути /gdevelop)
+    handle_path /gdevelop/* {
+        reverse_proxy gdevelop-web:80
+    }
+}

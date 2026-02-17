@@ -49,7 +49,7 @@ async def characteristics_compliance_report(
         .join(GroupStudent, GroupStudent.group_id == Group.id)
         .join(Student, Student.id == GroupStudent.student_id)
         .filter(
-            Group.status == 'ACTIVE',
+            Group.status == GroupStatus.ACTIVE,
             Student.status == StudentStatus.ACTIVE,
         )
         .distinct()

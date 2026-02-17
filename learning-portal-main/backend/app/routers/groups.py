@@ -73,7 +73,7 @@ async def read_groups(
             .filter(
                 Student.parent_id == current_user.id,
                 Student.status == StudentStatus.ACTIVE,
-                Group.status == 'ACTIVE',
+                Group.status == GroupStatus.ACTIVE,
             )
             .distinct()
         )

@@ -95,6 +95,23 @@ const TrainerLessonsPage: React.FC = () => {
   })() : '';
   const displayWeekday = viewDate ? WEEKDAY_NAMES[(new Date(viewDate + 'T12:00:00').getDay() + 6) % 7] : '';
 
+  // Занятие считается заполненным, если у всех учеников проставлена посещаемость
+  const isSlotFilled = (slot: TrainerLessonSlot) =>
+    slot.students.length > 0 && slot.students.every((s) => s.attended !== null && s.attended !== undefined);
+  // Ближайшее к заполнению — первое по времени среди незаполненных за день
+  const slotsNeedingFill = slots.filter((s) => !isSlotFilled(s));
+  const nearestToFillSlot =
+    slotsNeedingFill.length > 0
+      ? slotsNeedingFill.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))[0]
+      : null;
+  const getSlotCardVariant = (slot: TrainerLessonSlot) => {
+    const key = `${slot.group_id}-${slot.start_time}`;
+    if (nearestToFillSlot && `${nearestToFillSlot.group_id}-${nearestToFillSlot.start_time}` === key)
+      return 'nearestToFill';
+    if (isSlotFilled(slot)) return 'filled';
+    return 'default';
+  };
+
   return (
     <Layout>
       <Stack spacing={2}>
@@ -114,20 +131,47 @@ const TrainerLessonsPage: React.FC = () => {
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {slots.map((slot) => (
+            {slots.map((slot) => {
+              const variant = getSlotCardVariant(slot);
+              const slotKey = `${slot.group_id}-${slot.start_time}`;
+              const isNearestToFill = variant === 'nearestToFill';
+              const isFilled = variant === 'filled';
+              return (
               <Card
-                key={`${slot.group_id}-${slot.start_time}`}
+                key={slotKey}
                 variant="outlined"
                 sx={{
                   cursor: 'pointer',
-                  '&:hover': { bgcolor: 'action.hover' },
                   borderLeft: '4px solid',
-                  borderLeftColor: 'primary.main',
+                  ...(isNearestToFill && {
+                    borderLeftColor: 'warning.main',
+                    bgcolor: (t) => (t.palette.mode === 'light' ? 'rgba(255, 167, 38, 0.12)' : 'rgba(255, 167, 38, 0.15)'),
+                    '&:hover': { bgcolor: (t) => (t.palette.mode === 'light' ? 'rgba(255, 167, 38, 0.18)' : 'rgba(255, 167, 38, 0.22)' ) },
+                  }),
+                  ...(isFilled && {
+                    borderLeftColor: 'success.main',
+                    bgcolor: (t) => t.palette.mode === 'light' ? 'rgba(46, 125, 50, 0.06)' : 'rgba(102, 187, 106, 0.12)',
+                    '&:hover': { bgcolor: (t) => t.palette.mode === 'light' ? 'rgba(46, 125, 50, 0.1)' : 'rgba(102, 187, 106, 0.18)' },
+                  }),
+                  ...(!isNearestToFill && !isFilled && {
+                    borderLeftColor: 'primary.main',
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }),
                 }}
                 onClick={() => openPopup(slot)}
               >
                 <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                   <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                    {isNearestToFill && (
+                      <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600 }}>
+                        Нужно заполнить
+                      </Typography>
+                    )}
+                    {isFilled && (
+                      <Typography variant="caption" sx={{ color: 'success.dark', fontWeight: 600 }}>
+                        Заполнено
+                      </Typography>
+                    )}
                     <Typography variant="subtitle2" color="primary">
                       {(slot.start_time || '').slice(0, 5)} – {(slot.end_time || '').slice(0, 5)}
                     </Typography>
@@ -156,7 +200,8 @@ const TrainerLessonsPage: React.FC = () => {
                   )}
                 </CardContent>
               </Card>
-            ))}
+            );
+            })}
           </Box>
         )}
       </Stack>

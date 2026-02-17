@@ -3,7 +3,8 @@
 	# email you@example.com
 }
 
-http://{$DOMAIN} https://{$DOMAIN} {
+# Один блок на домен — и HTTP, и HTTPS (Caddy сам редиректит на HTTPS)
+{$DOMAIN} {
 	encode gzip zstd
 
 	# Backend API

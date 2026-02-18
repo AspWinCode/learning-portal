@@ -604,6 +604,7 @@ const StudentsPage: React.FC = () => {
               <TableCell>Email</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Количество учеников</TableCell>
+              <TableCell>Действия</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -615,6 +616,39 @@ const StudentsPage: React.FC = () => {
                   <TableCell>{parent.email}</TableCell>
                   <TableCell>{parent.is_active ? 'Активен' : 'Неактивен'}</TableCell>
                   <TableCell>{studentsCount}</TableCell>
+                  <TableCell>
+                    {parent.is_active ? (
+                      <Button
+                        size="small"
+                        color="warning"
+                        onClick={async () => {
+                          try {
+                            await usersApi.update(parent.id, { is_active: false });
+                            loadParents();
+                          } catch (err: any) {
+                            setError(err.response?.data?.detail || 'Ошибка изменения статуса родителя');
+                          }
+                        }}
+                      >
+                        Архивировать
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        color="success"
+                        onClick={async () => {
+                          try {
+                            await usersApi.update(parent.id, { is_active: true });
+                            loadParents();
+                          } catch (err: any) {
+                            setError(err.response?.data?.detail || 'Ошибка изменения статуса родителя');
+                          }
+                        }}
+                      >
+                        Разархивировать
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -635,6 +669,7 @@ const StudentsPage: React.FC = () => {
                   <TableCell>Email</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell>Количество групп</TableCell>
+                  <TableCell>Действия</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -646,6 +681,39 @@ const StudentsPage: React.FC = () => {
                       <TableCell>{trainer.email}</TableCell>
                       <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
                       <TableCell>{groupsCount}</TableCell>
+                      <TableCell>
+                        {trainer.is_active ? (
+                          <Button
+                            size="small"
+                            color="warning"
+                            onClick={async () => {
+                              try {
+                                await usersApi.update(trainer.id, { is_active: false });
+                                loadTrainers();
+                              } catch (err: any) {
+                                setError(err.response?.data?.detail || 'Ошибка изменения статуса тренера');
+                              }
+                            }}
+                          >
+                            Архивировать
+                          </Button>
+                        ) : (
+                          <Button
+                            size="small"
+                            color="success"
+                            onClick={async () => {
+                              try {
+                                await usersApi.update(trainer.id, { is_active: true });
+                                loadTrainers();
+                              } catch (err: any) {
+                                setError(err.response?.data?.detail || 'Ошибка изменения статуса тренера');
+                              }
+                            }}
+                          >
+                            Разархивировать
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   );
                 })}

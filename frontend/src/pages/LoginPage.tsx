@@ -41,7 +41,10 @@ const LoginPage: React.FC = () => {
       await login(email, password);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка входа');
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((x: any) => x?.msg || x).join(', ') : null;
+      const fallback = err.response?.status === 401 ? 'Неверный email или пароль' : err.message || 'Ошибка входа. Проверьте, что сервер доступен.';
+      setError(msg || fallback);
     } finally {
       setLoading(false);
     }

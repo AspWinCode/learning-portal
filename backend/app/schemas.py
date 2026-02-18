@@ -40,10 +40,16 @@ class DiscountType(str, Enum):
 class LeadStatus(str, Enum):
     NEW = "new"
     CONTACTED = "contacted"
+    NO_ANSWER = "no_answer"
     DEMO = "demo"
     INVOICE_SENT = "invoice_sent"
     WON = "won"
     LOST = "lost"
+    THINKING = "thinking"
+    REFUSED = "refused"
+    TRIAL_SCHEDULED = "trial_scheduled"
+    EVENT_REGISTERED = "event_registered"
+    DECIDED_IMMEDIATELY = "decided_immediately"
 
 
 class LeadTaskStatus(str, Enum):

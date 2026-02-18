@@ -22,7 +22,7 @@ import {
 import { isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import { salesApi, usersApi } from '../services/api';
-import { EventItem, EventRegistration, FollowUpItem, Lead, User } from '../types';
+import { EventItem, EventRegistration, FollowUpItem, Lead, LeadStatus, User } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 
 type Preset = '7d' | '14d' | '30d' | 'custom';
@@ -139,9 +139,10 @@ const SalesReportsPage: React.FC = () => {
   );
 
   const stageCounts = useMemo(() => {
-    const base = { new: 0, contacted: 0, demo: 0, invoice_sent: 0, won: 0, lost: 0 };
+    const statuses: LeadStatus[] = ['new', 'contacted', 'no_answer', 'demo', 'invoice_sent', 'won', 'lost', 'thinking', 'refused', 'trial_scheduled', 'event_registered', 'decided_immediately'];
+    const base = statuses.reduce<Record<LeadStatus, number>>((acc, s) => ({ ...acc, [s]: 0 }), {} as Record<LeadStatus, number>);
     filteredLeads.forEach((l) => {
-      base[l.status] += 1;
+      base[l.status] = (base[l.status] ?? 0) + 1;
     });
     return base;
   }, [filteredLeads]);

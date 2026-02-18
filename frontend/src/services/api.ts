@@ -637,5 +637,42 @@ export const abonementsApi = {
   },
 };
 
+export const tasksApi = {
+  listTemplates: async (): Promise<import('../types').TaskTemplateResponse[]> => {
+    const response = await api.get('/api/task-templates');
+    return response.data;
+  },
+  createTemplate: async (payload: { name: string; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<import('../types').TaskTemplateResponse> => {
+    const response = await api.post('/api/task-templates', payload);
+    return response.data;
+  },
+  updateTemplate: async (id: number, payload: { name?: string; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<import('../types').TaskTemplateResponse> => {
+    const response = await api.put(`/api/task-templates/${id}`, payload);
+    return response.data;
+  },
+  deleteTemplate: async (id: number): Promise<void> => {
+    await api.delete(`/api/task-templates/${id}`);
+  },
+  listTasks: async (statusFilter?: string): Promise<import('../types').TaskResponse[]> => {
+    const response = await api.get('/api/tasks', { params: statusFilter != null ? { status_filter: statusFilter } : {} });
+    return response.data;
+  },
+  createTask: async (payload: { title?: string; template_id?: number; assigned_to_id?: number; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<import('../types').TaskResponse> => {
+    const response = await api.post('/api/tasks', payload);
+    return response.data;
+  },
+  updateTask: async (id: number, payload: { title?: string; status?: string; assigned_to_id?: number; student_ids?: number[] }): Promise<import('../types').TaskResponse> => {
+    const response = await api.put(`/api/tasks/${id}`, payload);
+    return response.data;
+  },
+  deleteTask: async (id: number): Promise<void> => {
+    await api.delete(`/api/tasks/${id}`);
+  },
+  updateSubtask: async (taskId: number, subtaskId: number, payload: { completed?: boolean }): Promise<import('../types').TaskSubtaskResponse> => {
+    const response = await api.patch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, payload);
+    return response.data;
+  },
+};
+
 export default api;
 

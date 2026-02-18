@@ -25,6 +25,7 @@ import SalesSettingsPage from './pages/SalesSettingsPage';
 import SalesDashboardPage from './pages/SalesDashboardPage';
 import SalesFollowUpsPage from './pages/SalesFollowUpsPage';
 import SalesReportsPage from './pages/SalesReportsPage';
+import TasksPage from './pages/TasksPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
 
@@ -204,6 +205,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesSettingsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/tasks"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <TasksPage />
                 </PrivateRoute>
               }
             />

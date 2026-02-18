@@ -44,6 +44,7 @@ import {
   ReceiptLong,
   Settings,
   PendingActions,
+  Assignment,
   Add,
   NotificationsNone,
   Search,
@@ -198,6 +199,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Мероприятия', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'Инвойсы', icon: <ReceiptLong />, path: '/sales/invoices' },
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
+        { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' },
       ];
 
@@ -213,6 +215,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (isAdminLike) items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     if (isAdminLike) items.push({ text: 'Продажи: На сегодня', icon: <Dashboard />, path: '/sales/dashboard' });
+    if (isAdminLike) items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     if (isAdminLike) items.push({ text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {
       items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, b2b, trainer_lessons, owner_funnels
+from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, b2b, trainer_lessons, owner_funnels, tasks
 import os
 import traceback
 
@@ -63,6 +63,7 @@ app.include_router(abonements.router, prefix="/api/abonements", tags=["abonement
 app.include_router(sales.router, prefix="/api", tags=["sales"])
 app.include_router(b2b.router, prefix="/api", tags=["b2b"])
 app.include_router(owner_funnels.router, prefix="/api", tags=["owner-funnels"])
+app.include_router(tasks.router, prefix="/api", tags=["tasks"])
 
 
 @app.exception_handler(Exception)

@@ -855,3 +855,86 @@ class OwnerFunnelItem(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+
+# --- Task manager (admin/owner: templates + tasks; sales: view + close subtasks) ---
+
+
+class TaskStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class TaskTemplate(Base):
+    __tablename__ = "task_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(512), nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    created_by = relationship("User")
+    subtasks = relationship("TaskTemplateSubtask", back_populates="template", cascade="all, delete-orphan", order_by="TaskTemplateSubtask.order")
+    students = relationship("TaskTemplateStudent", back_populates="template", cascade="all, delete-orphan")
+
+
+class TaskTemplateSubtask(Base):
+    __tablename__ = "task_template_subtasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("task_templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    text = Column(String(1024), nullable=False)
+    order = Column(Integer, nullable=False, server_default="0")
+
+    template = relationship("TaskTemplate", back_populates="subtasks")
+
+
+class TaskTemplateStudent(Base):
+    __tablename__ = "task_template_students"
+
+    template_id = Column(Integer, ForeignKey("task_templates.id", ondelete="CASCADE"), primary_key=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), primary_key=True)
+
+    template = relationship("TaskTemplate", back_populates="students")
+    student = relationship("Student")
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(512), nullable=False)
+    template_id = Column(Integer, ForeignKey("task_templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_to_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(20), nullable=False, server_default="active", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+    template = relationship("TaskTemplate")
+    subtasks = relationship("TaskSubtask", back_populates="task", cascade="all, delete-orphan", order_by="TaskSubtask.order")
+    students = relationship("TaskStudent", back_populates="task", cascade="all, delete-orphan")
+
+
+class TaskSubtask(Base):
+    __tablename__ = "task_subtasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    text = Column(String(1024), nullable=False)
+    completed = Column(Boolean, nullable=False, server_default="false")
+    order = Column(Integer, nullable=False, server_default="0")
+
+    task = relationship("Task", back_populates="subtasks")
+
+
+class TaskStudent(Base):
+    __tablename__ = "task_students"
+
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), primary_key=True)
+
+    task = relationship("Task", back_populates="students")
+    student = relationship("Student")
+

@@ -437,6 +437,105 @@ class LeadTaskTemplateResponse(LeadTaskTemplateBase):
         from_attributes = True
 
 
+# --- Task manager (admin/owner: templates + tasks; sales: view + close subtasks) ---
+
+
+class TaskStatus(str, Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class TaskTemplateSubtaskItem(BaseModel):
+    text: str
+    order: Optional[int] = None
+
+
+class TaskTemplateCreate(BaseModel):
+    name: str
+    subtasks: Optional[List[TaskTemplateSubtaskItem]] = None
+    student_ids: Optional[List[int]] = None
+
+
+class TaskTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    subtasks: Optional[List[TaskTemplateSubtaskItem]] = None
+    student_ids: Optional[List[int]] = None
+
+
+class TaskTemplateSubtaskResponse(BaseModel):
+    id: int
+    template_id: int
+    text: str
+    order: int
+
+    class Config:
+        from_attributes = True
+
+
+class TaskTemplateResponse(BaseModel):
+    id: int
+    name: str
+    created_by_id: int
+    created_at: datetime
+    subtasks: List[TaskTemplateSubtaskResponse]
+    student_ids: List[int]
+
+    class Config:
+        from_attributes = True
+
+
+class TaskSubtaskItem(BaseModel):
+    text: str
+    order: Optional[int] = None
+
+
+class TaskCreate(BaseModel):
+    title: Optional[str] = None
+    template_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
+    subtasks: Optional[List[TaskSubtaskItem]] = None
+    student_ids: Optional[List[int]] = None
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    status: Optional[TaskStatus] = None
+    assigned_to_id: Optional[int] = None
+    student_ids: Optional[List[int]] = None
+
+
+class TaskSubtaskResponse(BaseModel):
+    id: int
+    task_id: int
+    text: str
+    completed: bool
+    order: int
+
+    class Config:
+        from_attributes = True
+
+
+class TaskSubtaskUpdate(BaseModel):
+    completed: Optional[bool] = None
+
+
+class TaskResponse(BaseModel):
+    id: int
+    title: str
+    template_id: Optional[int] = None
+    created_by_id: int
+    assigned_to_id: Optional[int] = None
+    status: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    subtasks: List[TaskSubtaskResponse]
+    student_ids: List[int]
+    progress: float
+
+    class Config:
+        from_attributes = True
+
+
 class LeadTaskStatusOptionBase(BaseModel):
     name: str
     is_closed: bool = False

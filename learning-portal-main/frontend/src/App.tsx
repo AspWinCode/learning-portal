@@ -32,6 +32,7 @@ import SalesPostVisitPage from './pages/SalesPostVisitPage';
 import SalesReinviteEventPage from './pages/SalesReinviteEventPage';
 import SalesAgreedPage from './pages/SalesAgreedPage';
 import SalesReportsPage from './pages/SalesReportsPage';
+import TasksPage from './pages/TasksPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
 
@@ -267,6 +268,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesSettingsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/tasks"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <TasksPage />
                 </PrivateRoute>
               }
             />

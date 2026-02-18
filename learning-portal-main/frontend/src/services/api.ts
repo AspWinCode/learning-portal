@@ -36,6 +36,9 @@ import {
   OwnerFunnelTypeInfo,
   OwnerFunnelEvent,
   OwnerFunnelItem,
+  TaskTemplateResponse,
+  TaskResponse,
+  TaskSubtaskResponse,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -881,6 +884,52 @@ export const ownerFunnelsApi = {
   },
   addSchoolsByCity: async (eventId: number, city: string): Promise<{ added: number; total_in_city: number }> => {
     const response = await api.post(`/api/owner-funnels/events/${eventId}/add-schools-by-city`, { city });
+    return response.data;
+  },
+};
+
+// Task manager (admin/owner: templates + tasks; sales: view + close subtasks)
+export const tasksApi = {
+  listTemplates: async (): Promise<TaskTemplateResponse[]> => {
+    const response = await api.get('/api/task-templates');
+    return response.data;
+  },
+  getTemplate: async (id: number): Promise<TaskTemplateResponse> => {
+    const response = await api.get(`/api/task-templates/${id}`);
+    return response.data;
+  },
+  createTemplate: async (payload: { name: string; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<TaskTemplateResponse> => {
+    const response = await api.post('/api/task-templates', payload);
+    return response.data;
+  },
+  updateTemplate: async (id: number, payload: { name?: string; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<TaskTemplateResponse> => {
+    const response = await api.put(`/api/task-templates/${id}`, payload);
+    return response.data;
+  },
+  deleteTemplate: async (id: number): Promise<void> => {
+    await api.delete(`/api/task-templates/${id}`);
+  },
+  listTasks: async (status_filter?: 'active' | 'archived'): Promise<TaskResponse[]> => {
+    const response = await api.get('/api/tasks', { params: status_filter ? { status_filter } : {} });
+    return response.data;
+  },
+  getTask: async (id: number): Promise<TaskResponse> => {
+    const response = await api.get(`/api/tasks/${id}`);
+    return response.data;
+  },
+  createTask: async (payload: { title?: string; template_id?: number; assigned_to_id?: number; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<TaskResponse> => {
+    const response = await api.post('/api/tasks', payload);
+    return response.data;
+  },
+  updateTask: async (id: number, payload: { title?: string; status?: string; assigned_to_id?: number; student_ids?: number[] }): Promise<TaskResponse> => {
+    const response = await api.put(`/api/tasks/${id}`, payload);
+    return response.data;
+  },
+  deleteTask: async (id: number): Promise<void> => {
+    await api.delete(`/api/tasks/${id}`);
+  },
+  updateSubtask: async (taskId: number, subtaskId: number, payload: { completed?: boolean }): Promise<TaskSubtaskResponse> => {
+    const response = await api.patch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, payload);
     return response.data;
   },
 };

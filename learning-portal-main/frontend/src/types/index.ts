@@ -487,3 +487,48 @@ export interface OwnerFunnelCardData {
   stage_dates?: Record<string, string>;
 }
 
+// --- Task manager (admin/owner: templates + tasks; sales: view + close subtasks) ---
+
+export interface TaskTemplateSubtaskItem {
+  text: string;
+  order?: number;
+}
+
+export interface TaskTemplateSubtaskResponse {
+  id: number;
+  template_id: number;
+  text: string;
+  order: number;
+}
+
+export interface TaskTemplateResponse {
+  id: number;
+  name: string;
+  created_by_id: number;
+  created_at: string;
+  subtasks: TaskTemplateSubtaskResponse[];
+  student_ids: number[];
+}
+
+export interface TaskSubtaskResponse {
+  id: number;
+  task_id: number;
+  text: string;
+  completed: boolean;
+  order: number;
+}
+
+export interface TaskResponse {
+  id: number;
+  title: string;
+  template_id?: number | null;
+  created_by_id: number;
+  assigned_to_id?: number | null;
+  status: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  subtasks: TaskSubtaskResponse[];
+  student_ids: number[];
+  progress: number;
+}
+

@@ -47,6 +47,7 @@ import {
   PendingActions,
   HowToReg,
   Add,
+  Assignment,
   NotificationsNone,
   Replay,
   Search,
@@ -197,6 +198,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'На сегодня', icon: <Dashboard />, path: '/sales/dashboard' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
         { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
+        { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
         { text: 'Мероприятия', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'После визита', icon: <HowToReg />, path: '/sales/post-visit' },
@@ -216,6 +218,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     ];
 
     if (isAdminLike) items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
+    if (isAdminLike) items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     if (isAdminLike) items.push({ text: 'Продажи: На сегодня', icon: <Dashboard />, path: '/sales/dashboard' });
     if (isAdminLike) items.push({ text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' });

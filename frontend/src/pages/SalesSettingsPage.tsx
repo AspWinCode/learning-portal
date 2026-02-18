@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -28,16 +28,16 @@ import { extractApiError } from '../utils/extractApiError';
 import { LeadInfoTemplate, LeadSource, LeadStatus, LeadStatusOption, LeadTaskStatusOption, LeadTaskTemplate, SalesCity, SalesSchool } from '../types';
 
 const leadStatusLabels: Record<LeadStatus, string> = {
-  new: '╨Э╨╛╨▓╤Л╨╣',
-  contacted: '╨б╨▓╤П╨╖╨░╨╗╨╕╤Б╤М',
-  no_answer: '╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜',
-  demo: '╨Ф╨╡╨╝╨╛',
-  invoice_sent: '╨Ш╨╜╨▓╨╛╨╣╤Б ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜',
-  won: '╨г╤Б╨┐╨╡╤И╨╜╨╛',
+  new: 'Новый',
+  contacted: 'Связались',
+  no_answer: 'Недозвон',
+  demo: 'Демо',
+  invoice_sent: 'Инвойс отправлен',
+  won: 'Успешно',
   lost: '╨Ч╨░╨║╤А╤Л╤В',
-  thinking: '╨Я╨╛╨┤╤Г╨╝╨░╤О╤В',
-  refused: '╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П',
-  trial_scheduled: '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡',
+  thinking: 'Подумают',
+  refused: 'Отказали',
+  trial_scheduled: 'Записали на пробное',
   event_registered: '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡',
   decided_immediately: '╨а╨╡╤И╨╕╨╗ ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П ╤Б╤А╨░╨╖╤Г',
 };
@@ -83,7 +83,7 @@ const SalesSettingsPage: React.FC = () => {
       setCities(citiesList);
       setSchools(schoolsList);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨╕'));
+      setError(extractApiError(err, 'Не удалось загрузить настройки'));
     }
   };
 
@@ -97,14 +97,14 @@ const SalesSettingsPage: React.FC = () => {
       setError('');
       await loadData();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Ю╤И╨╕╨▒╨║╨░ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜╨╕╤П'));
+      setError(extractApiError(err, 'Ошибка сохранения'));
     }
   };
 
   return (
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
-        <Typography variant="h4">╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨╕ Sales</Typography>
+        <Typography variant="h4">Настройки Sales</Typography>
         {(user?.role === 'admin' || user?.role === 'owner') && (
           <Button
             variant="contained"

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import {
   Typography,
@@ -51,13 +51,13 @@ const GroupsPage: React.FC = () => {
   });
   const { user } = useAuth();
   const WEEKDAY_OPTIONS = [
-    { value: 0, label: '╨Я╨╛╨╜╨╡╨┤╨╡╨╗╤М╨╜╨╕╨║' },
-    { value: 1, label: '╨Т╤В╨╛╤А╨╜╨╕╨║' },
-    { value: 2, label: '╨б╤А╨╡╨┤╨░' },
-    { value: 3, label: '╨з╨╡╤В╨▓╨╡╤А╨│' },
-    { value: 4, label: '╨Я╤П╤В╨╜╨╕╤Ж╨░' },
-    { value: 5, label: '╨б╤Г╨▒╨▒╨╛╤В╨░' },
-    { value: 6, label: '╨Т╨╛╤Б╨║╤А╨╡╤Б╨╡╨╜╤М╨╡' },
+    { value: 0, label: 'Понедельник' },
+    { value: 1, label: 'Вторник' },
+    { value: 2, label: 'Среда' },
+    { value: 3, label: 'Четверг' },
+    { value: 4, label: 'Пятница' },
+    { value: 5, label: 'Суббота' },
+    { value: 6, label: 'Воскресенье' },
   ];
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
 
@@ -73,7 +73,7 @@ const GroupsPage: React.FC = () => {
   const loadGroups = async () => {
     try {
       const data = await groupsApi.getAll();
-      // ╨Ф╨╗╤П ╤В╤А╨╡╨╜╨╡╤А╨░ ╨┐╨╛╨┤╤В╤П╨│╨╕╨▓╨░╨╡╨╝ ╨┐╨╛╨╗╨╜╤Л╨╡ ╨┤╨░╨╜╨╜╤Л╨╡ ╨│╤А╤Г╨┐╨┐╤Л (╨▓╨║╨╗╤О╤З╨░╤П ╤Г╤З╨╡╨╜╨╕╨║╨╛╨▓), ╤З╤В╨╛╨▒╤Л ╨┐╨╛╨║╨░╨╖╨░╤В╤М ╤Б╤З╨╡╤В╤З╨╕╨║ ╨╕ ╤Б╨╛╤Б╤В╨░╨▓
+      // ╨Ф╨╗╤П ╤В╤А╨╡╨╜╨╡╤А╨░ ╨┐╨╛╨┤╤В╤П╨│╨╕╨▓╨░╨╡╨╝ ╨┐╨╛╨╗╨╜╤Л╨╡ ╨┤╨░╨╜╨╜╤Л╨╡ группы (╨▓╨║╨╗╤О╤З╨░╤П учеников), ╤З╤В╨╛╨▒╤Л ╨┐╨╛╨║╨░╨╖╨░╤В╤М ╤Б╤З╨╡╤В╤З╨╕╨║ ╨╕ ╤Б╨╛╤Б╤В╨░╨▓
       if (user?.role === 'trainer') {
         const fullGroups = await Promise.all(
           data.map(async (g) => {
@@ -89,7 +89,7 @@ const GroupsPage: React.FC = () => {
         setGroups(data);
       }
     } catch (err) {
-      console.error('╨Ю╤И╨╕╨▒╨║╨░ ╨╖╨░╨│╤А╤Г╨╖╨║╨╕ ╨│╤А╤Г╨┐╨┐', err);
+      console.error('Ошибка загрузки групп', err);
     }
   };
 
@@ -98,7 +98,7 @@ const GroupsPage: React.FC = () => {
       const data = await usersApi.getAll('trainer');
       setTrainers(data.filter(t => t.is_active));
     } catch (err) {
-      console.error('╨Ю╤И╨╕╨▒╨║╨░ ╨╖╨░╨│╤А╤Г╨╖╨║╨╕ ╤В╤А╨╡╨╜╨╡╤А╨╛╨▓', err);
+      console.error('Ошибка загрузки ╤В╤А╨╡╨╜╨╡╤А╨╛╨▓', err);
     }
   };
 
@@ -107,7 +107,7 @@ const GroupsPage: React.FC = () => {
       const data = await studentsApi.getAll({ status: 'active' });
       setStudents(data);
     } catch (err) {
-      console.error('╨Ю╤И╨╕╨▒╨║╨░ ╨╖╨░╨│╤А╤Г╨╖╨║╨╕ ╤Г╤З╨╡╨╜╨╕╨║╨╛╨▓', err);
+      console.error('Ошибка загрузки учеников', err);
     }
   };
 
@@ -116,7 +116,7 @@ const GroupsPage: React.FC = () => {
       const data = await programsApi.getAll();
       setPrograms(data.filter((p) => p.status === 'active'));
     } catch (err) {
-      console.error('╨Ю╤И╨╕╨▒╨║╨░ ╨╖╨░╨│╤А╤Г╨╖╨║╨╕ ╨┐╤А╨╛╨│╤А╨░╨╝╨╝', err);
+      console.error('Ошибка загрузки программ', err);
     }
   };
 
@@ -137,7 +137,7 @@ const GroupsPage: React.FC = () => {
       const data = await groupsApi.getSchedules(group.id);
       setSchedules(data);
     } catch (err) {
-      setError('╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡');
+      setError('Не удалось загрузить расписание');
       setSchedules([]);
     }
   };
@@ -155,7 +155,7 @@ const GroupsPage: React.FC = () => {
       setSchedules(data);
       setNewSchedule({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
     } catch (err) {
-      setError('╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┤╨╛╨▒╨░╨▓╨╕╤В╤М ╤Б╨╗╨╛╤В ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤П');
+      setError('Не удалось добавить слот расписания');
     }
   };
 
@@ -166,7 +166,7 @@ const GroupsPage: React.FC = () => {
       await groupsApi.removeSchedule(selectedGroup.id, scheduleId);
       setSchedules((prev) => prev.filter((s) => s.id !== scheduleId));
     } catch (err) {
-      setError('╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Г╨┤╨░╨╗╨╕╤В╤М ╤Б╨╗╨╛╤В');
+      setError('Не удалось удалить слот');
     }
   };
 
@@ -178,7 +178,7 @@ const GroupsPage: React.FC = () => {
       setGroupDetails(fullGroup);
       setMembersOpen(true);
     } catch (err: any) {
-      setError(err.response?.data?.detail || '╨Ю╤И╨╕╨▒╨║╨░ ╨╖╨░╨│╤А╤Г╨╖╨║╨╕ ╨│╤А╤Г╨┐╨┐╤Л');
+      setError(err.response?.data?.detail || 'Ошибка загрузки группы');
     }
   };
 
@@ -190,13 +190,13 @@ const GroupsPage: React.FC = () => {
       setGroupDetails(fullGroup);
       setProgramOpen(true);
     } catch (err: any) {
-      setError(err.response?.data?.detail || '╨Ю╤И╨╕╨▒╨║╨░ ╨╖╨░╨│╤А╤Г╨╖╨║╨╕ ╨│╤А╤Г╨┐╨┐╤Л');
+      setError(err.response?.data?.detail || 'Ошибка загрузки группы');
     }
   };
 
   const handleCreate = async () => {
     if (!newGroup.name.trim()) {
-      setError('╨Ч╨░╨┐╨╛╨╗╨╜╨╕╤В╨╡ ╨╜╨░╨╖╨▓╨░╨╜╨╕╨╡ ╨│╤А╤Г╨┐╨┐╤Л');
+      setError('Заполните название группы');
       return;
     }
     if (!newGroup.trainer_id) {
@@ -214,14 +214,14 @@ const GroupsPage: React.FC = () => {
       setError('');
       loadGroups();
     } catch (err: any) {
-      setError(err.response?.data?.detail || '╨Ю╤И╨╕╨▒╨║╨░ ╤Б╨╛╨╖╨┤╨░╨╜╨╕╤П ╨│╤А╤Г╨┐╨┐╤Л');
+      setError(err.response?.data?.detail || 'Ошибка ╤Б╨╛╨╖╨┤╨░╨╜╨╕╤П группы');
     }
   };
 
   const handleUpdate = async () => {
     if (!selectedGroup) return;
     if (!newGroup.name.trim()) {
-      setError('╨Ч╨░╨┐╨╛╨╗╨╜╨╕╤В╨╡ ╨╜╨░╨╖╨▓╨░╨╜╨╕╨╡ ╨│╤А╤Г╨┐╨┐╤Л');
+      setError('Заполните название группы');
       return;
     }
     if (!newGroup.trainer_id) {
@@ -240,7 +240,7 @@ const GroupsPage: React.FC = () => {
       setError('');
       loadGroups();
     } catch (err: any) {
-      setError(err.response?.data?.detail || '╨Ю╤И╨╕╨▒╨║╨░ ╨╛╨▒╨╜╨╛╨▓╨╗╨╡╨╜╨╕╤П ╨│╤А╤Г╨┐╨┐╤Л');
+      setError(err.response?.data?.detail || 'Ошибка обновления группы');
     }
   };
 
@@ -250,7 +250,7 @@ const GroupsPage: React.FC = () => {
       await groupsApi.update(group.id, { status: nextStatus } as any);
       loadGroups();
     } catch (err: any) {
-      setError(err.response?.data?.detail || '╨Ю╤И╨╕╨▒╨║╨░ ╨╕╨╖╨╝╨╡╨╜╨╡╨╜╨╕╤П ╤Б╤В╨░╤В╤Г╤Б╨░ ╨│╤А╤Г╨┐╨┐╤Л');
+      setError(err.response?.data?.detail || 'Ошибка изменения статуса группы');
     }
   };
 
@@ -262,7 +262,7 @@ const GroupsPage: React.FC = () => {
       setGroupDetails(fullGroup);
       setStudentToAddId('');
     } catch (err: any) {
-      setError(err.response?.data?.detail || '╨Ю╤И╨╕╨▒╨║╨░ ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╤П ╤Г╤З╨╡╨╜╨╕╨║╨░ ╨▓ ╨│╤А╤Г╨┐╨┐╤Г');
+      setError(err.response?.data?.detail || 'Ошибка добавления ученика в группу');
     }
   };
 
@@ -273,7 +273,7 @@ const GroupsPage: React.FC = () => {
       const fullGroup = await groupsApi.getById(selectedGroup.id);
       setGroupDetails(fullGroup);
     } catch (err: any) {
-      setError(err.response?.data?.detail || '╨Ю╤И╨╕╨▒╨║╨░ ╤Г╨┤╨░╨╗╨╡╨╜╨╕╤П ╤Г╤З╨╡╨╜╨╕╨║╨░ ╨╕╨╖ ╨│╤А╤Г╨┐╨┐╤Л');
+      setError(err.response?.data?.detail || 'Ошибка удаления ученика из группы');
     }
   };
 
@@ -287,7 +287,7 @@ const GroupsPage: React.FC = () => {
       setProgramOpen(false);
       loadGroups();
     } catch (err: any) {
-      setError(err.response?.data?.detail || '╨Ю╤И╨╕╨▒╨║╨░ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨┐╤А╨╛╨│╤А╨░╨╝╨╝╤Л ╨│╤А╤Г╨┐╨┐╨╡');
+      setError(err.response?.data?.detail || 'Ошибка назначения программы группы');
     }
   };
 
@@ -301,7 +301,7 @@ const GroupsPage: React.FC = () => {
   return (
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
-        <Typography variant="h4">╨У╤А╤Г╨┐╨┐╤Л</Typography>
+        <Typography variant="h4">Группы</Typography>
         {isAdminLike && (
           <Button
             variant="contained"
@@ -311,7 +311,7 @@ const GroupsPage: React.FC = () => {
               setNewGroup({ name: '', trainer_id: '' });
             }}
           >
-            ╨б╨╛╨╖╨┤╨░╤В╤М ╨│╤А╤Г╨┐╨┐╤Г
+            Создать группу
           </Button>
         )}
       </Box>
@@ -326,12 +326,12 @@ const GroupsPage: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-              <TableCell>╨в╤А╨╡╨╜╨╡╤А</TableCell>
-              <TableCell>╨г╤З╨╡╨╜╨╕╨║╨╕</TableCell>
-              <TableCell>╨Я╤А╨╛╨│╤А╨░╨╝╨╝╨░</TableCell>
-              <TableCell>╨б╤В╨░╤В╤Г╤Б</TableCell>
-              {(isAdminLike || user?.role === 'trainer') && <TableCell>╨Ф╨╡╨╣╤Б╤В╨▓╨╕╤П</TableCell>}
+              <TableCell>Название</TableCell>
+              <TableCell>Тренер</TableCell>
+              <TableCell>Ученики</TableCell>
+              <TableCell>Программа</TableCell>
+              <TableCell>Статус</TableCell>
+              {(isAdminLike || user?.role === 'trainer') && <TableCell>Действия</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -341,7 +341,7 @@ const GroupsPage: React.FC = () => {
                 <TableCell>{group.trainer?.full_name || '-'}</TableCell>
                 <TableCell>{group.students?.length ?? '-'}</TableCell>
                 <TableCell>{renderPrograms(group)}</TableCell>
-                <TableCell>{group.status === 'active' ? '╨Р╨║╤В╨╕╨▓╨╜╨░' : '╨Р╤А╤Е╨╕╨▓╨╕╤А╨╛╨▓╨░╨╜╨░'}</TableCell>
+                <TableCell>{group.status === 'active' ? 'Активна' : 'В архиве'}</TableCell>
                 {(isAdminLike || user?.role === 'trainer') && (
                   <TableCell>
                     <Button
@@ -350,7 +350,7 @@ const GroupsPage: React.FC = () => {
                       onClick={() => openMembersDialog(group)}
                       sx={{ mr: 1 }}
                     >
-                      ╨б╨╛╤Б╤В╨░╨▓
+                      Состав
                     </Button>
                     {isAdminLike && (
                       <Button
@@ -359,7 +359,7 @@ const GroupsPage: React.FC = () => {
                         onClick={() => openScheduleDialog(group)}
                         sx={{ mr: 1 }}
                       >
-                        ╨а╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡
+                        Расписание
                       </Button>
                     )}
                     {isAdminLike && (
@@ -369,7 +369,7 @@ const GroupsPage: React.FC = () => {
                         onClick={() => openProgramDialog(group)}
                         sx={{ mr: 1 }}
                       >
-                        ╨Я╤А╨╛╨│╤А╨░╨╝╨╝╨░
+                        Программа
                       </Button>
                     )}
                     {isAdminLike && (
@@ -399,29 +399,29 @@ const GroupsPage: React.FC = () => {
         </Table>
       </TableContainer>
 
-      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╤Б╨╛╨╖╨┤╨░╨╜╨╕╤П ╨│╤А╤Г╨┐╨┐╤Л */}
+      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╤Б╨╛╨╖╨┤╨░╨╜╨╕╤П группы */}
       {isAdminLike && (
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>╨б╨╛╨╖╨┤╨░╤В╤М ╨│╤А╤Г╨┐╨┐╤Г</DialogTitle>
+          <DialogTitle>Создать группу</DialogTitle>
           <DialogContent>
             <TextField
               fullWidth
-              label="╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡ ╨│╤А╤Г╨┐╨┐╤Л *"
+              label="Название группы *"
               value={newGroup.name}
               onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })}
               sx={{ mt: 2 }}
               required
             />
             <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>╨в╤А╨╡╨╜╨╡╤А *</InputLabel>
+              <InputLabel>Тренер *</InputLabel>
               <Select
                 value={newGroup.trainer_id}
-                label="╨в╤А╨╡╨╜╨╡╤А"
+                label="Тренер"
                 onChange={(e) => setNewGroup({ ...newGroup, trainer_id: e.target.value })}
                 required
               >
                 <MenuItem value="">
-                  <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜</em>
+                  <em>Не выбран</em>
                 </MenuItem>
                 {trainers.map((trainer) => (
                   <MenuItem key={trainer.id} value={trainer.id.toString()}>
@@ -432,37 +432,37 @@ const GroupsPage: React.FC = () => {
             </FormControl>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+            <Button onClick={() => setOpen(false)}>Отмена</Button>
             <Button onClick={handleCreate} variant="contained">
-              ╨б╨╛╨╖╨┤╨░╤В╤М
+              Создать
             </Button>
           </DialogActions>
         </Dialog>
       )}
 
-      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╤А╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╨╜╨╕╤П ╨│╤А╤Г╨┐╨┐╤Л */}
+      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╤А╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╨╜╨╕╤П группы */}
       {isAdminLike && (
         <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>╨а╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╤В╤М ╨│╤А╤Г╨┐╨┐╤Г</DialogTitle>
+          <DialogTitle>╨а╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╤В╤М группу</DialogTitle>
           <DialogContent>
             <TextField
               fullWidth
-              label="╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡ ╨│╤А╤Г╨┐╨┐╤Л *"
+              label="Название группы *"
               value={newGroup.name}
               onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })}
               sx={{ mt: 2 }}
               required
             />
             <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>╨в╤А╨╡╨╜╨╡╤А *</InputLabel>
+              <InputLabel>Тренер *</InputLabel>
               <Select
                 value={newGroup.trainer_id}
-                label="╨в╤А╨╡╨╜╨╡╤А"
+                label="Тренер"
                 onChange={(e) => setNewGroup({ ...newGroup, trainer_id: e.target.value })}
                 required
               >
                 <MenuItem value="">
-                  <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜</em>
+                  <em>Не выбран</em>
                 </MenuItem>
                 {trainers.map((trainer) => (
                   <MenuItem key={trainer.id} value={trainer.id.toString()}>
@@ -473,30 +473,30 @@ const GroupsPage: React.FC = () => {
             </FormControl>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setEditOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+            <Button onClick={() => setEditOpen(false)}>Отмена</Button>
             <Button onClick={handleUpdate} variant="contained">
-              ╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М
+              Сохранить
             </Button>
           </DialogActions>
         </Dialog>
       )}
 
-      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╤Б╨╛╤Б╤В╨░╨▓╨░ ╨│╤А╤Г╨┐╨┐╤Л */}
+      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╤Б╨╛╤Б╤В╨░╨▓╨░ группы */}
       {(isAdminLike || user?.role === 'trainer') && (
         <Dialog open={membersOpen} onClose={() => setMembersOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>╨б╨╛╤Б╤В╨░╨▓ ╨│╤А╤Г╨┐╨┐╤Л: {groupDetails?.name || selectedGroup?.name}</DialogTitle>
+          <DialogTitle>Состав группы: {groupDetails?.name || selectedGroup?.name}</DialogTitle>
           <DialogContent>
             {isAdminLike && (
               <>
                 <FormControl fullWidth sx={{ mt: 2 }}>
-                  <InputLabel>╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╤Г╤З╨╡╨╜╨╕╨║╨░</InputLabel>
+                  <InputLabel>Добавить ученика</InputLabel>
                   <Select
                     value={studentToAddId}
-                    label="╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╤Г╤З╨╡╨╜╨╕╨║╨░"
+                    label="Добавить ученика"
                     onChange={(e) => setStudentToAddId(e.target.value)}
                   >
                     <MenuItem value="">
-                      <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜</em>
+                      <em>Не выбран</em>
                     </MenuItem>
                     {students
                       .filter((s) => !(groupDetails?.students || []).some((gs) => gs.id === s.id))
@@ -513,17 +513,17 @@ const GroupsPage: React.FC = () => {
                   disabled={!studentToAddId}
                   onClick={handleAddStudentToGroup}
                 >
-                  ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╨▓ ╨│╤А╤Г╨┐╨┐╤Г
+                  Добавить в группу
                 </Button>
               </>
             )}
 
             <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
-              ╨г╤З╨╡╨╜╨╕╨║╨╕ ╨▓ ╨│╤А╤Г╨┐╨┐╨╡
+              Ученики в группе
             </Typography>
             {(groupDetails?.students || []).length === 0 ? (
               <Typography variant="body2" color="text.secondary">
-                ╨Т ╨│╤А╤Г╨┐╨┐╨╡ ╨┐╨╛╨║╨░ ╨╜╨╡╤В ╤Г╤З╨╡╨╜╨╕╨║╨╛╨▓.
+                ╨Т группе ╨┐╨╛╨║╨░ ╨╜╨╡╤В учеников.
               </Typography>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -543,7 +543,7 @@ const GroupsPage: React.FC = () => {
                     <Box>
                       <Typography variant="body2">{s.full_name}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {s.status === 'active' ? '╨Р╨║╤В╨╕╨▓╨╡╨╜' : '╨Р╤А╤Е╨╕╨▓╨╕╤А╨╛╨▓╨░╨╜'}
+                        {s.status === 'active' ? 'Активен' : '╨Р╤А╤Е╨╕╨▓╨╕╤А╨╛╨▓╨░╨╜'}
                       </Typography>
                     </Box>
                     {isAdminLike && (
@@ -552,7 +552,7 @@ const GroupsPage: React.FC = () => {
                         color="error"
                         onClick={() => handleRemoveStudentFromGroup(s.id)}
                       >
-                        ╨г╨┤╨░╨╗╨╕╤В╤М
+                        Удалить
                       </Button>
                     )}
                   </Box>
@@ -561,15 +561,15 @@ const GroupsPage: React.FC = () => {
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setMembersOpen(false)}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
+            <Button onClick={() => setMembersOpen(false)}>Закрыть</Button>
           </DialogActions>
         </Dialog>
       )}
 
-      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤П ╨│╤А╤Г╨┐╨┐╤Л тАФ ╤В╨╛╨╗╤М╨║╨╛ ╨░╨┤╨╝╨╕╨╜/owner ╨╝╨╛╨│╤Г╤В ╨┤╨╛╨▒╨░╨▓╨╗╤П╤В╤М ╨╕ ╤Г╨┤╨░╨╗╤П╤В╤М ╤Б╨╗╨╛╤В╤Л */}
+      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤П группы тАФ ╤В╨╛╨╗╤М╨║╨╛ ╨░╨┤╨╝╨╕╨╜/owner ╨╝╨╛╨│╤Г╤В ╨┤╨╛╨▒╨░╨▓╨╗╤П╤В╤М ╨╕ ╤Г╨┤╨░╨╗╤П╤В╤М ╤Б╨╗╨╛╤В╤Л */}
       {isAdminLike && (
         <Dialog open={scheduleOpen} onClose={() => setScheduleOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>╨а╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡: {selectedGroup?.name}</DialogTitle>
+          <DialogTitle>Расписание: {selectedGroup?.name}</DialogTitle>
           <DialogContent>
             {error && (
               <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError('')}>
@@ -581,10 +581,10 @@ const GroupsPage: React.FC = () => {
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }} useFlexGap flexWrap="wrap">
               <FormControl size="small" sx={{ minWidth: 160 }}>
-                <InputLabel>╨Ф╨╡╨╜╤М</InputLabel>
+                <InputLabel>День</InputLabel>
                 <Select
                   value={newSchedule.day_of_week}
-                  label="╨Ф╨╡╨╜╤М"
+                  label="День"
                   onChange={(e) => setNewSchedule({ ...newSchedule, day_of_week: Number(e.target.value) })}
                 >
                   {WEEKDAY_OPTIONS.map((opt) => (
@@ -596,7 +596,7 @@ const GroupsPage: React.FC = () => {
               </FormControl>
               <TextField
                 size="small"
-                label="╨Э╨░╤З╨░╨╗╨╛"
+                label="Начало"
                 type="time"
                 InputLabelProps={{ shrink: true }}
                 value={newSchedule.start_time}
@@ -605,7 +605,7 @@ const GroupsPage: React.FC = () => {
               />
               <TextField
                 size="small"
-                label="╨Ъ╨╛╨╜╨╡╤Ж"
+                label="Конец"
                 type="time"
                 InputLabelProps={{ shrink: true }}
                 value={newSchedule.end_time}
@@ -617,11 +617,11 @@ const GroupsPage: React.FC = () => {
               </Button>
             </Stack>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
-              ╨в╨╡╨║╤Г╤Й╨╕╨╡ ╤Б╨╗╨╛╤В╤Л
+              Текущие слоты
             </Typography>
             {schedules.length === 0 ? (
               <Typography variant="body2" color="text.secondary">
-                ╨Э╨╡╤В ╤Б╨╗╨╛╤В╨╛╨▓. ╨Ф╨╛╨▒╨░╨▓╤М╤В╨╡ ╤Б╨╗╨╛╤В ╨▓╤Л╤И╨╡.
+                Нет слотов. Добавьте слот выше.
               </Typography>
             ) : (
               <Stack spacing={0.5}>
@@ -642,7 +642,7 @@ const GroupsPage: React.FC = () => {
                       {WEEKDAY_OPTIONS.find((o) => o.value === s.day_of_week)?.label ?? s.day_of_week} тАФ {s.start_time?.slice(0, 5)}тАУ{s.end_time?.slice(0, 5)}
                     </Typography>
                     <Button size="small" color="error" onClick={() => handleRemoveSchedule(s.id)}>
-                      ╨г╨┤╨░╨╗╨╕╤В╤М
+                      Удалить
                     </Button>
                   </Box>
                 ))}
@@ -650,18 +650,18 @@ const GroupsPage: React.FC = () => {
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setScheduleOpen(false)}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
+            <Button onClick={() => setScheduleOpen(false)}>Закрыть</Button>
           </DialogActions>
         </Dialog>
       )}
 
-      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨┐╤А╨╛╨│╤А╨░╨╝╨╝╤Л ╨│╤А╤Г╨┐╨┐╨╡ */}
+      {/* ╨Ф╨╕╨░╨╗╨╛╨│ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П программы группе */}
       {isAdminLike && (
         <Dialog open={programOpen} onClose={() => setProgramOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>╨Я╤А╨╛╨│╤А╨░╨╝╨╝╨░ ╨┤╨╗╤П ╨│╤А╤Г╨┐╨┐╤Л: {groupDetails?.name || selectedGroup?.name}</DialogTitle>
+          <DialogTitle>Программа для группы: {groupDetails?.name || selectedGroup?.name}</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              ╨Э╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╨╡ ╨┐╤А╨╛╨│╤А╨░╨╝╨╝╤Л:
+              Назначенные программы:
             </Typography>
             <Typography variant="body2" sx={{ mt: 0.5 }}>
               {(groupDetails?.programs || []).length
@@ -672,14 +672,14 @@ const GroupsPage: React.FC = () => {
             </Typography>
 
             <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>╨Э╨░╨╖╨╜╨░╤З╨╕╤В╤М ╨┐╤А╨╛╨│╤А╨░╨╝╨╝╤Г</InputLabel>
+              <InputLabel>╨Э╨░╨╖╨╜╨░╤З╨╕╤В╤М программу</InputLabel>
               <Select
                 value={programToAssignId}
-                label="╨Э╨░╨╖╨╜╨░╤З╨╕╤В╤М ╨┐╤А╨╛╨│╤А╨░╨╝╨╝╤Г"
+                label="╨Э╨░╨╖╨╜╨░╤З╨╕╤В╤М программу"
                 onChange={(e) => setProgramToAssignId(e.target.value)}
               >
                 <MenuItem value="">
-                  <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜╨░</em>
+                  <em>Не выбрана</em>
                 </MenuItem>
                 {programs.map((p) => (
                   <MenuItem key={p.id} value={p.id.toString()}>
@@ -690,7 +690,7 @@ const GroupsPage: React.FC = () => {
             </FormControl>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setProgramOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+            <Button onClick={() => setProgramOpen(false)}>Отмена</Button>
             <Button variant="contained" disabled={!programToAssignId} onClick={handleAssignProgramToGroup}>
               ╨Э╨░╨╖╨╜╨░╤З╨╕╤В╤М
             </Button>

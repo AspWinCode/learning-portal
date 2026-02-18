@@ -127,7 +127,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setTgExpiresAt(data.expires_at);
       setTgLink(data.deep_link_url || null);
     } catch (err: any) {
-      setTgError(err.response?.data?.detail || '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┐╨╛╨╗╤Г╤З╨╕╤В╤М ╨║╨╛╨┤ ╨┤╨╗╤П Telegram');
+      setTgError(err.response?.data?.detail || 'Не удалось получить ссылку для привязки Telegram');
     }
   };
 
@@ -141,12 +141,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleLogoFile = (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      setLogoError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╤Д╨░╨╣╨╗ ╨╕╨╖╨╛╨▒╤А╨░╨╢╨╡╨╜╨╕╤П (png/jpg/webp)');
+      setLogoError('Нужен файл изображения (png/jpg/webp)');
       return;
     }
-    // ╨Ю╨│╤А╨░╨╜╨╕╤З╨╡╨╜╨╕╨╡ ~200KB ╨┤╨╗╤П ╤Г╨┤╨╛╨▒╤Б╤В╨▓╨░ (╨▓ base64 ╨▒╤Г╨┤╨╡╤В ╨▒╨╛╨╗╤М╤И╨╡)
+    // ограничим размер ~200KB, чтобы base64 не был слишком большим
     if (file.size > 180 * 1024) {
-      setLogoError('╨д╨░╨╣╨╗ ╤Б╨╗╨╕╤И╨║╨╛╨╝ ╨▒╨╛╨╗╤М╤И╨╛╨╣. ╨а╨╡╨║╨╛╨╝╨╡╨╜╨┤╤Г╨╡╨╝╤Л╨╣ ╤А╨░╨╖╨╝╨╡╤А ╨┤╨╛ 180KB.');
+      setLogoError('Файл слишком большой. Пожалуйста, загрузите логотип до 180KB.');
       return;
     }
     const reader = new FileReader();
@@ -160,7 +160,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleLogoSave = async () => {
     setLogoError('');
     if (!logoPreview || !logoPreview.startsWith('data:image/')) {
-      setLogoError('╨б╨╜╨░╤З╨░╨╗╨░ ╨▓╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╕╨╖╨╛╨▒╤А╨░╨╢╨╡╨╜╨╕╨╡');
+      setLogoError('Пожалуйста, выберите изображение логотипа');
       return;
     }
     setLogoSaving(true);
@@ -169,7 +169,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setLogoUrl(res.data_url || null);
       setLogoOpen(false);
     } catch (err: any) {
-      setLogoError(err.response?.data?.detail || '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╗╨╛╨│╨╛╤В╨╕╨┐');
+      setLogoError(err.response?.data?.detail || 'Не удалось сохранить логотип школы');
     } finally {
       setLogoSaving(false);
     }
@@ -184,47 +184,47 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const isAdminLike = role === 'admin' || role === 'owner';
 
   const effectiveMenuItems = (() => {
-    if (role === 'guest') return [{ text: '╨Я╤А╨╛╨│╤А╨░╨╝╨╝╤Л', icon: <Book />, path: '/programs' }];
+    if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
     if (role === 'parent')
       return [
-        { text: '╨Ь╨╛╨╣ ╨┤╨░╤И╨▒╨╛╤А╨┤', icon: <Home />, path: '/parent-dashboard' },
-        { text: '╨Я╤А╨╛╨│╤А╨░╨╝╨╝╤Л', icon: <Book />, path: '/programs' },
-        { text: '╨Ю╤Ж╨╡╨╜╨║╨╕', icon: <Grade />, path: '/grades' },
-        { text: '╨е╨░╤А╨░╨║╤В╨╡╤А╨╕╤Б╤В╨╕╨║╨╕', icon: <Description />, path: '/characteristics' },
+        { text: 'Главная', icon: <Home />, path: '/parent-dashboard' },
+        { text: 'Программы', icon: <Book />, path: '/programs' },
+        { text: 'Оценки', icon: <Grade />, path: '/grades' },
+        { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
       ];
     if (role === 'sales')
       return [
-        { text: '╨Э╨░ ╤Б╨╡╨│╨╛╨┤╨╜╤П', icon: <Dashboard />, path: '/sales/dashboard' },
-        { text: '╨Т╨╛╤А╨╛╨╜╨║╨░', icon: <Dashboard />, path: '/sales/pipeline' },
-        { text: '╨Ы╨╕╨┤╤Л', icon: <WorkOutline />, path: '/sales/leads' },
-        { text: '╨д╨╛╨╗╨╗╨╛╤Г-╨░╨┐╤Л', icon: <PendingActions />, path: '/sales/follow-ups' },
-        { text: '╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П', icon: <EventAvailable />, path: '/sales/events' },
-        { text: '╨Ш╨╜╨▓╨╛╨╣╤Б╤Л', icon: <ReceiptLong />, path: '/sales/invoices' },
-        { text: '╨Ю╤В╤З╤С╤В╤Л', icon: <Assessment />, path: '/sales/reports' },
-        { text: '╨Ч╨░╨┤╨░╤З╨╕', icon: <Assignment />, path: '/tasks' },
-        { text: '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨╕ Sales', icon: <Settings />, path: '/sales/settings' },
+        { text: 'Дашборд продаж', icon: <Dashboard />, path: '/sales/dashboard' },
+        { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
+        { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
+        { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
+        { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
+        { text: 'Счета', icon: <ReceiptLong />, path: '/sales/invoices' },
+        { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
+        { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
+        { text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' },
       ];
 
     const items = [
-      { text: '╨Ф╨░╤И╨▒╨╛╤А╨┤', icon: <Dashboard />, path: '/dashboard' },
-      { text: '╨г╤З╨╡╨╜╨╕╨║╨╕', icon: <People />, path: '/students' },
-      { text: '╨У╤А╤Г╨┐╨┐╤Л', icon: <Group />, path: '/groups' },
-      { text: '╨Я╤А╨╛╨│╤А╨░╨╝╨╝╤Л', icon: <Book />, path: '/programs' },
-      { text: '╨Ю╤Ж╨╡╨╜╨║╨╕', icon: <Grade />, path: '/grades' },
-      { text: '╨е╨░╤А╨░╨║╤В╨╡╤А╨╕╤Б╤В╨╕╨║╨╕', icon: <Description />, path: '/characteristics' },
+      { text: 'Главная', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Ученики', icon: <People />, path: '/students' },
+      { text: 'Группы', icon: <Group />, path: '/groups' },
+      { text: 'Программы', icon: <Book />, path: '/programs' },
+      { text: 'Оценки', icon: <Grade />, path: '/grades' },
+      { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
     ];
 
-    if (isAdminLike) items.push({ text: '╨Ю╤В╤З╨╡╤В╤Л', icon: <Assessment />, path: '/reports' });
-    if (role === 'owner') items.push({ text: '╨д╨╕╨╜╨░╨╜╤Б╨╛╨▓╨░╤П ╨╝╨╛╨┤╨╡╨╗╤М', icon: <AccountBalance />, path: '/financial-model' });
-    if (isAdminLike) items.push({ text: '╨Я╤А╨╛╨┤╨░╨╢╨╕: ╨Э╨░ ╤Б╨╡╨│╨╛╨┤╨╜╤П', icon: <Dashboard />, path: '/sales/dashboard' });
-    if (isAdminLike) items.push({ text: '╨Ч╨░╨┤╨░╤З╨╕', icon: <Assignment />, path: '/tasks' });
-    if (isAdminLike) items.push({ text: '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨╕ Sales', icon: <Settings />, path: '/sales/settings' });
+    if (isAdminLike) items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
+    if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
+    if (isAdminLike) items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
+    if (isAdminLike) items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
+    if (isAdminLike) items.push({ text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {
-      items.push({ text: '╨Т╨╛╤А╨╛╨╜╨║╨╕', icon: <FilterList />, path: '/owner-funnels' });
-      items.push({ text: 'B2B (╤И╨║╨╛╨╗╤Л)', icon: <School />, path: '/b2b-schools' });
-      items.push({ text: '╨б╨╛╨╖╨┤╨░╤В╤М ╤И╨║╨╛╨╗╤Г (B2B)', icon: <Add />, path: '/b2b-schools/new' });
-      items.push({ text: '╨Р╨▒╨╛╨╜╨╡╨╝╨╡╨╜╤В╤Л', icon: <LocalOffer />, path: '/abonements' });
-      items.push({ text: '╨в╤А╨╡╨╜╨╡╤Р╤Л', icon: <People />, path: '/trainers' });
+      items.push({ text: 'Воронки', icon: <FilterList />, path: '/owner-funnels' });
+      items.push({ text: 'B2B (школы)', icon: <School />, path: '/b2b-schools' });
+      items.push({ text: 'Новая B2B-школа', icon: <Add />, path: '/b2b-schools/new' });
+      items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
+      items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
     }
     return items;
   })();
@@ -237,7 +237,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <Box
               component="img"
               src={logoUrl}
-              alt="╨Ы╨╛╨│╨╛╤В╨╕╨┐"
+              alt="Логотип школы"
               sx={{
                 width: 34,
                 height: 34,
@@ -261,7 +261,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
           <Box>
             <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, letterSpacing: -0.2 }}>
-              ╨Я╨╛╤А╤В╨░╨╗ ╨╛╨▒╤Г╤З╨╡╨╜╨╕╤П
+              Портал управления обучением
             </Typography>
             <Typography variant="caption" color="text.secondary" noWrap>
               Learning Portal
@@ -317,7 +317,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 800 }}>
-            {effectiveMenuItems.find((item) => item.path === location.pathname)?.text || '╨Я╨╛╤А╤В╨░╨╗ ╨╛╨▒╤Г╤З╨╡╨╜╨╕╤П'}
+            {effectiveMenuItems.find((item) => item.path === location.pathname)?.text || 'Портал управления обучением'}
           </Typography>
           {role === 'sales' && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
@@ -332,7 +332,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               >
                 <Search fontSize="small" />
                 <InputBase
-                  placeholder="╨Я╨╛╨╕╤Б╨║ ╨╗╨╕╨┤╨░..."
+                  placeholder="Поиск лидов..."
                   value={salesSearch}
                   onChange={(e) => setSalesSearch(e.target.value)}
                   onKeyDown={(e) => {
@@ -343,12 +343,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   sx={{ ml: 1, color: '#fff', minWidth: 180 }}
                 />
               </Box>
-              <Tooltip title="+ ╨Ы╨╕╨┤">
+              <Tooltip title="+ Лид">
                 <IconButton color="inherit" onClick={() => navigate('/sales/leads?create=1')}>
                   <Add />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="╨Я╤А╨╛╤Б╤А╨╛╤З╨║╨╕ ╨╕ ╤Б╤А╨╛╤З╨╜╤Л╨╡ ╨╖╨░╨┤╨░╤З╨╕">
+              <Tooltip title="Задачи и напоминания по лидам">
                 <IconButton color="inherit" onClick={() => navigate('/sales/follow-ups?period=overdue')}>
                   <Badge badgeContent={salesAlertsCount} color="error">
                     <NotificationsNone />
@@ -380,7 +380,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             >
               {isAdminLike && (
                 <MenuItem onClick={handleLogoOpen}>
-                  <ListItemText>╨Ы╨╛╨│╨╛╤В╨╕╨┐ ╤Б╨░╨╣╤В╨░</ListItemText>
+                  <ListItemText>Логотип школы</ListItemText>
                 </MenuItem>
               )}
               {user?.role !== 'guest' && (
@@ -388,15 +388,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <ListItemIcon>
                     <TelegramIcon fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText>Telegram: ╨┐╤А╨╕╨▓╤П╨╖╨░╤В╤М</ListItemText>
+                  <ListItemText>Telegram: привязать</ListItemText>
                 </MenuItem>
               )}
-              <MenuItem onClick={handleLogout}>
-                <ListItemIcon>
-                  <ExitToApp fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>╨Т╤Л╤Е╨╛╨┤</ListItemText>
-              </MenuItem>
+                <MenuItem onClick={handleLogout}>
+                  <ListItemIcon>
+                    <ExitToApp fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Выход</ListItemText>
+                </MenuItem>
             </Menu>
           </Box>
         </Toolbar>

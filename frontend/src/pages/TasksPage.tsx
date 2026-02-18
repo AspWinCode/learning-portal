@@ -23,6 +23,12 @@ import {
   Tabs,
   TextField,
   Typography,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  RadioGroup,
+  Radio,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -36,8 +42,10 @@ import Layout from '../components/Layout';
 import { tasksApi, studentsApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { extractApiError } from '../utils/extractApiError';
-import type { TaskTemplateResponse, TaskResponse, TaskSubtaskResponse } from '../types';
+import type { TaskTemplateResponse, TaskResponse, TaskSubtaskResponse, RepeatFrequency, RepeatEndType } from '../types';
 import type { Student } from '../types';
+
+const WEEKDAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
 const TasksPage: React.FC = () => {
   const { user } = useAuth();
@@ -58,6 +66,12 @@ const TasksPage: React.FC = () => {
   const [templateName, setTemplateName] = useState('');
   const [templateSubtasks, setTemplateSubtasks] = useState<{ text: string; order: number }[]>([]);
   const [templateStudentIds, setTemplateStudentIds] = useState<number[]>([]);
+  const [templateRepeatEnabled, setTemplateRepeatEnabled] = useState(false);
+  const [templateRepeatFrequency, setTemplateRepeatFrequency] = useState<RepeatFrequency | ''>('');
+  const [templateRepeatDays, setTemplateRepeatDays] = useState<number[]>([]);
+  const [templateRepeatEndType, setTemplateRepeatEndType] = useState<RepeatEndType>('never');
+  const [templateRepeatEndAfterCount, setTemplateRepeatEndAfterCount] = useState<number>(1);
+  const [templateRepeatEndUntil, setTemplateRepeatEndUntil] = useState<string>('');
   const [templateSaving, setTemplateSaving] = useState(false);
 
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
@@ -66,6 +80,12 @@ const TasksPage: React.FC = () => {
   const [taskTemplateId, setTaskTemplateId] = useState<number | ''>('');
   const [taskSubtasks, setTaskSubtasks] = useState<{ text: string; order: number }[]>([]);
   const [taskStudentIds, setTaskStudentIds] = useState<number[]>([]);
+  const [taskRepeatEnabled, setTaskRepeatEnabled] = useState(false);
+  const [taskRepeatFrequency, setTaskRepeatFrequency] = useState<RepeatFrequency | ''>('');
+  const [taskRepeatDays, setTaskRepeatDays] = useState<number[]>([]);
+  const [taskRepeatEndType, setTaskRepeatEndType] = useState<RepeatEndType>('never');
+  const [taskRepeatEndAfterCount, setTaskRepeatEndAfterCount] = useState<number>(1);
+  const [taskRepeatEndUntil, setTaskRepeatEndUntil] = useState<string>('');
   const [taskSaving, setTaskSaving] = useState(false);
 
   const loadTemplates = useCallback(async () => {
@@ -121,6 +141,12 @@ const TasksPage: React.FC = () => {
     setTemplateName(t?.name ?? '');
     setTemplateSubtasks(t?.subtasks?.map((s) => ({ text: s.text, order: s.order })) ?? [{ text: '', order: 0 }]);
     setTemplateStudentIds(t?.student_ids ?? []);
+    setTemplateRepeatEnabled(t?.repeat_enabled ?? false);
+    setTemplateRepeatFrequency((t?.repeat_frequency as RepeatFrequency) ?? '');
+    setTemplateRepeatDays(t?.repeat_days ?? []);
+    setTemplateRepeatEndType((t?.repeat_end_type as RepeatEndType) ?? 'never');
+    setTemplateRepeatEndAfterCount(t?.repeat_end_after_count ?? 1);
+    setTemplateRepeatEndUntil(t?.repeat_end_until ? t.repeat_end_until.slice(0, 10) : '');
     setTemplateDialogOpen(true);
   };
 
@@ -129,17 +155,27 @@ const TasksPage: React.FC = () => {
     setError(null);
     try {
       const subtasks = templateSubtasks.filter((s) => s.text.trim());
+      const repeatPayload = {
+        repeat_enabled: templateRepeatEnabled,
+        repeat_frequency: templateRepeatEnabled && templateRepeatFrequency ? templateRepeatFrequency : undefined,
+        repeat_days: templateRepeatEnabled && templateRepeatDays.length > 0 ? templateRepeatDays : undefined,
+        repeat_end_type: templateRepeatEnabled ? templateRepeatEndType : undefined,
+        repeat_end_after_count: templateRepeatEnabled && templateRepeatEndType === 'after_count' ? templateRepeatEndAfterCount : undefined,
+        repeat_end_until: templateRepeatEnabled && templateRepeatEndType === 'until_date' && templateRepeatEndUntil ? templateRepeatEndUntil : undefined,
+      };
       if (templateEditId) {
         await tasksApi.updateTemplate(templateEditId, {
           name: templateName.trim(),
           subtasks: subtasks.map((s, i) => ({ text: s.text.trim(), order: i })),
           student_ids: templateStudentIds,
+          ...repeatPayload,
         });
       } else {
         await tasksApi.createTemplate({
           name: templateName.trim(),
           subtasks: subtasks.map((s, i) => ({ text: s.text.trim(), order: i })),
           student_ids: templateStudentIds,
+          ...repeatPayload,
         });
       }
       setTemplateDialogOpen(false);
@@ -167,6 +203,12 @@ const TasksPage: React.FC = () => {
     setTaskTemplateId(task?.template_id ?? templateId ?? '');
     setTaskSubtasks(task?.subtasks?.map((s) => ({ text: s.text, order: s.order })) ?? []);
     setTaskStudentIds(task?.student_ids ?? []);
+    setTaskRepeatEnabled(task?.repeat_enabled ?? false);
+    setTaskRepeatFrequency((task?.repeat_frequency as RepeatFrequency) ?? '');
+    setTaskRepeatDays(task?.repeat_days ?? []);
+    setTaskRepeatEndType((task?.repeat_end_type as RepeatEndType) ?? 'never');
+    setTaskRepeatEndAfterCount(task?.repeat_end_after_count ?? 1);
+    setTaskRepeatEndUntil(task?.repeat_end_until ? task.repeat_end_until.slice(0, 10) : '');
     setTaskDialogOpen(true);
   };
 
@@ -175,10 +217,19 @@ const TasksPage: React.FC = () => {
     setError(null);
     try {
       const subtasks = taskSubtasks.filter((s) => s.text.trim());
+      const taskRepeatPayload = {
+        repeat_enabled: taskRepeatEnabled,
+        repeat_frequency: taskRepeatEnabled && taskRepeatFrequency ? taskRepeatFrequency : undefined,
+        repeat_days: taskRepeatEnabled && taskRepeatDays.length > 0 ? taskRepeatDays : undefined,
+        repeat_end_type: taskRepeatEnabled ? taskRepeatEndType : undefined,
+        repeat_end_after_count: taskRepeatEnabled && taskRepeatEndType === 'after_count' ? taskRepeatEndAfterCount : undefined,
+        repeat_end_until: taskRepeatEnabled && taskRepeatEndType === 'until_date' && taskRepeatEndUntil ? taskRepeatEndUntil : undefined,
+      };
       if (taskEditId) {
         await tasksApi.updateTask(taskEditId, {
           title: taskTitle.trim(),
           student_ids: taskStudentIds,
+          ...taskRepeatPayload,
         });
       } else {
         await tasksApi.createTask({
@@ -186,6 +237,7 @@ const TasksPage: React.FC = () => {
           template_id: taskTemplateId || undefined,
           subtasks: taskTemplateId ? undefined : (subtasks.length ? subtasks.map((s, i) => ({ text: s.text.trim(), order: i })) : undefined),
           student_ids: taskStudentIds,
+          ...taskRepeatPayload,
         });
       }
       setTaskDialogOpen(false);
@@ -226,6 +278,12 @@ const TasksPage: React.FC = () => {
       setTaskTitle(t.name);
       setTaskStudentIds(t.student_ids ?? []);
       setTaskSubtasks(t.subtasks?.map((s) => ({ text: s.text, order: s.order })) ?? []);
+      setTaskRepeatEnabled(t.repeat_enabled ?? false);
+      setTaskRepeatFrequency((t.repeat_frequency as RepeatFrequency) ?? '');
+      setTaskRepeatDays(t.repeat_days ?? []);
+      setTaskRepeatEndType((t.repeat_end_type as RepeatEndType) ?? 'never');
+      setTaskRepeatEndAfterCount(t.repeat_end_after_count ?? 1);
+      setTaskRepeatEndUntil(t.repeat_end_until ? t.repeat_end_until.slice(0, 10) : '');
     }
   }, [taskTemplateId, taskDialogOpen, taskEditId, templates]);
 
@@ -404,6 +462,65 @@ const TasksPage: React.FC = () => {
             />
           ))}
           <Button size="small" onClick={addTemplateSubtask} sx={{ mt: 0.5 }}>+ Подзадача</Button>
+
+          <FormControlLabel
+            control={<Checkbox checked={templateRepeatEnabled} onChange={(e) => setTemplateRepeatEnabled(e.target.checked)} />}
+            label="Повторять"
+            sx={{ mt: 2, display: 'block' }}
+          />
+          {templateRepeatEnabled && (
+            <Stack spacing={1.5} sx={{ mt: 1, pl: 2, borderLeft: '2px solid', borderColor: 'divider' }}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Период</InputLabel>
+                <Select
+                  value={templateRepeatFrequency}
+                  label="Период"
+                  onChange={(e) => setTemplateRepeatFrequency(e.target.value as RepeatFrequency | '')}
+                >
+                  <MenuItem value="daily">Ежедневно</MenuItem>
+                  <MenuItem value="weekly">Еженедельно</MenuItem>
+                  <MenuItem value="monthly">Раз в месяц</MenuItem>
+                </Select>
+              </FormControl>
+              {templateRepeatFrequency === 'weekly' && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary" display="block">Дни недели</Typography>
+                  <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+                    {WEEKDAY_LABELS.map((label, i) => (
+                      <FormControlLabel
+                        key={i}
+                        control={<Checkbox size="small" checked={templateRepeatDays.includes(i)} onChange={(e) => setTemplateRepeatDays(e.target.checked ? [...templateRepeatDays, i].sort((a, b) => a - b) : templateRepeatDays.filter((d) => d !== i))} />}
+                        label={label}
+                      />
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+              {templateRepeatFrequency === 'monthly' && (
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Дни месяца (через запятую, 1–31)"
+                  placeholder="1, 15, 30"
+                  value={templateRepeatDays.join(', ')}
+                  onChange={(e) => setTemplateRepeatDays(e.target.value.split(',').map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n) && n >= 1 && n <= 31))}
+                />
+              )}
+              <Typography variant="caption" color="text.secondary">Завершить повторение</Typography>
+              <RadioGroup row value={templateRepeatEndType} onChange={(e) => setTemplateRepeatEndType(e.target.value as RepeatEndType)}>
+                <FormControlLabel value="never" control={<Radio size="small" />} label="Бессрочно" />
+                <FormControlLabel value="after_count" control={<Radio size="small" />} label="После" />
+                {templateRepeatEndType === 'after_count' && (
+                  <TextField type="number" size="small" sx={{ width: 64 }} value={templateRepeatEndAfterCount} onChange={(e) => setTemplateRepeatEndAfterCount(parseInt(e.target.value, 10) || 1)} inputProps={{ min: 1 }} />
+                )}
+                <FormControlLabel value="until_date" control={<Radio size="small" />} label="До даты" />
+                {templateRepeatEndType === 'until_date' && (
+                  <TextField type="date" size="small" sx={{ width: 160 }} value={templateRepeatEndUntil} onChange={(e) => setTemplateRepeatEndUntil(e.target.value)} InputLabelProps={{ shrink: true }} />
+                )}
+              </RadioGroup>
+            </Stack>
+          )}
+
           <Typography variant="subtitle2" sx={{ mt: 2 }}>Ученики (ID через запятую)</Typography>
           <TextField
             fullWidth
@@ -463,6 +580,65 @@ const TasksPage: React.FC = () => {
               <Button size="small" onClick={addTaskSubtask} sx={{ mt: 0.5 }}>+ Подзадача</Button>
             </>
           )}
+
+          <FormControlLabel
+            control={<Checkbox checked={taskRepeatEnabled} onChange={(e) => setTaskRepeatEnabled(e.target.checked)} />}
+            label="Повторять"
+            sx={{ mt: 2, display: 'block' }}
+          />
+          {taskRepeatEnabled && (
+            <Stack spacing={1.5} sx={{ mt: 1, pl: 2, borderLeft: '2px solid', borderColor: 'divider' }}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Период</InputLabel>
+                <Select
+                  value={taskRepeatFrequency}
+                  label="Период"
+                  onChange={(e) => setTaskRepeatFrequency(e.target.value as RepeatFrequency | '')}
+                >
+                  <MenuItem value="daily">Ежедневно</MenuItem>
+                  <MenuItem value="weekly">Еженедельно</MenuItem>
+                  <MenuItem value="monthly">Раз в месяц</MenuItem>
+                </Select>
+              </FormControl>
+              {taskRepeatFrequency === 'weekly' && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary" display="block">Дни недели</Typography>
+                  <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+                    {WEEKDAY_LABELS.map((label, i) => (
+                      <FormControlLabel
+                        key={i}
+                        control={<Checkbox size="small" checked={taskRepeatDays.includes(i)} onChange={(e) => setTaskRepeatDays(e.target.checked ? [...taskRepeatDays, i].sort((a, b) => a - b) : taskRepeatDays.filter((d) => d !== i))} />}
+                        label={label}
+                      />
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+              {taskRepeatFrequency === 'monthly' && (
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Дни месяца (через запятую, 1–31)"
+                  placeholder="1, 15, 30"
+                  value={taskRepeatDays.join(', ')}
+                  onChange={(e) => setTaskRepeatDays(e.target.value.split(',').map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n) && n >= 1 && n <= 31))}
+                />
+              )}
+              <Typography variant="caption" color="text.secondary">Завершить повторение</Typography>
+              <RadioGroup row value={taskRepeatEndType} onChange={(e) => setTaskRepeatEndType(e.target.value as RepeatEndType)}>
+                <FormControlLabel value="never" control={<Radio size="small" />} label="Бессрочно" />
+                <FormControlLabel value="after_count" control={<Radio size="small" />} label="После" />
+                {taskRepeatEndType === 'after_count' && (
+                  <TextField type="number" size="small" sx={{ width: 64 }} value={taskRepeatEndAfterCount} onChange={(e) => setTaskRepeatEndAfterCount(parseInt(e.target.value, 10) || 1)} inputProps={{ min: 1 }} />
+                )}
+                <FormControlLabel value="until_date" control={<Radio size="small" />} label="До даты" />
+                {taskRepeatEndType === 'until_date' && (
+                  <TextField type="date" size="small" sx={{ width: 160 }} value={taskRepeatEndUntil} onChange={(e) => setTaskRepeatEndUntil(e.target.value)} InputLabelProps={{ shrink: true }} />
+                )}
+              </RadioGroup>
+            </Stack>
+          )}
+
           <Typography variant="subtitle2" sx={{ mt: 2 }}>Ученики (ID через запятую)</Typography>
           <TextField
             fullWidth

@@ -42,6 +42,25 @@ export interface Group {
   programs?: ProgramSummary[];
 }
 
+export interface GroupSchedule {
+  id: number;
+  group_id: number;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
+
+export interface TrainerLessonSlot {
+  group_id: number;
+  group_name: string;
+  program_name?: string | null;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  lesson_date: string;
+  students: Array<{ id: number; full_name: string; attended: boolean | null }>;
+}
+
 export interface Topic {
   id: number;
   name: string;
@@ -124,7 +143,28 @@ export interface CharacteristicTemplate {
 
 // --- Sales ---
 
-export type LeadStatus = 'new' | 'contacted' | 'demo' | 'invoice_sent' | 'won' | 'lost';
+export type LeadStatus =
+  | 'new'
+  | 'contacted'
+  | 'no_answer'
+  | 'demo'
+  | 'invoice_sent'
+  | 'won'
+  | 'lost'
+  | 'thinking'
+  | 'refused'
+  | 'trial_scheduled'
+  | 'event_registered'
+  | 'decided_immediately';
+export type LeadCommunicationChannel = 'max' | 'email' | 'sms' | 'telegram';
+
+export interface LeadStatusOption {
+  id: number;
+  name: string;
+  base_status: LeadStatus;
+  is_active: boolean;
+  created_at: string;
+}
 
 export interface Lead {
   id: number;
@@ -142,6 +182,9 @@ export interface Lead {
   outreach_at?: string | null;
   outreach_minutes?: number | null;
   source?: string | null;
+  communication_channel?: LeadCommunicationChannel | null;
+  status_option_id?: number | null;
+  status_option?: LeadStatusOption | null;
   source_id?: number | null;
   referral_name?: string | null;
   tags?: string[] | null;
@@ -149,9 +192,11 @@ export interface Lead {
   desired_slot?: string | null;
   comment?: string | null;
   next_contact_at?: string | null;
+  no_answer_attempt?: number | null;
   pause_reason?: string | null;
   status: LeadStatus;
   lost_reason?: string | null;
+  questionnaire_filled?: boolean;
   created_at: string;
   updated_at?: string | null;
   abonement?: Abonement | null;
@@ -174,6 +219,20 @@ export interface LeadTask {
 }
 
 export interface LeadSource {
+  id: number;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SalesCity {
+  id: number;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SalesSchool {
   id: number;
   name: string;
   is_active: boolean;
@@ -326,6 +385,108 @@ export interface EventRegistration {
   lead?: Lead;
 }
 
+// B2B Schools pipeline
+export type B2BSchoolPipelineStage =
+  | 'new'
+  | 'contact_found'
+  | 'letter_sent'
+  | 'meeting_scheduled'
+  | 'meeting_held'
+  | 'permission_received'
+  | 'walkthrough_scheduled'
+  | 'walkthrough_done'
+  | 'leads_received';
+
+export type B2BSchoolFriendshipDegree = 'unknown' | 'indirect' | 'friends' | 'enemies';
+
+export interface B2BSchoolContact {
+  id: number;
+  b2b_school_id: number;
+  full_name: string;
+  position?: string | null;
+  phone: string;
+  phone_extra?: string | null;
+  created_at: string;
+}
+
+export interface B2BSchool {
+  id: number;
+  name: string;
+  director?: string | null;
+  city?: string | null;
+  address?: string | null;
+  student_count?: number | null;
+  friendship_degree?: string | null;
+  pipeline_stage: string;
+  event_dates?: string[] | null;
+  meeting_scheduled_at?: string | null;
+  meeting_outcomes?: string | null;
+  walkthrough_scheduled_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  leads_count?: number | null;
+  conversion_percent?: number | null;
+  contacts?: B2BSchoolContact[] | null;
+}
+
+export interface B2BProject {
+  id: number;
+  name: string;
+  location?: string | null;
+  main_city?: string | null;
+  cities?: string[] | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+// Owner funnels (support letters, thank you letters)
+export interface OwnerFunnelStageOption {
+  value: string;
+  label: string;
+}
+
+export interface OwnerFunnelTypeInfo {
+  id: string;
+  label: string;
+  stages: OwnerFunnelStageOption[];
+}
+
+/** ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ тАФ ╤Б╨░╨╝╨░ ╨▓╨╛╤А╨╛╨╜╨║╨░ (╨┤╨╛╤Б╨║╨░ ╤Б ╤Н╤В╨░╨┐╨░╨╝╨╕). ╨Ъ╨░╤А╤В╨╛╤З╨║╨╕ ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨░╤Е тАФ ╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л ╤Б event_id. */
+export interface OwnerFunnelEvent {
+  id: number;
+  event_name: string;
+  event_dates?: string | null;
+  created_at: string;
+}
+
+export interface OwnerFunnelItem {
+  id: number;
+  funnel_type: string;
+  event_id?: number | null;
+  stage: string;
+  title?: string | null;
+  comment?: string | null;
+  card_data?: OwnerFunnelCardData | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+/** ╨Ф╨░╨╜╨╜╤Л╨╡ ╨║╨░╤А╤В╨╛╤З╨║╨╕ ╨▓╨╛╤А╨╛╨╜╨║╨╕ ┬л╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П┬╗ */
+export interface OwnerFunnelCardData {
+  event_name?: string;
+  event_dates?: string;
+  contact_fio?: string;
+  contact_phone?: string;
+  contact_comment?: string;
+  letter_sent_at?: string;
+  reply_comment?: string;
+  reply_at?: string;
+  meeting_date?: string;
+  trip_date?: string;
+  leads_count?: number;
+  stage_dates?: Record<string, string>;
+}
+
 // Task manager (admin/owner/sales)
 export interface TaskTemplateSubtaskResponse {
   id: number;
@@ -333,6 +494,9 @@ export interface TaskTemplateSubtaskResponse {
   text: string;
   order: number;
 }
+export type RepeatFrequency = 'daily' | 'weekly' | 'monthly';
+export type RepeatEndType = 'never' | 'after_count' | 'until_date';
+
 export interface TaskTemplateResponse {
   id: number;
   name: string;
@@ -340,6 +504,12 @@ export interface TaskTemplateResponse {
   created_at: string;
   subtasks: TaskTemplateSubtaskResponse[];
   student_ids: number[];
+  repeat_enabled?: boolean;
+  repeat_frequency?: RepeatFrequency | null;
+  repeat_days?: number[] | null;
+  repeat_end_type?: RepeatEndType | null;
+  repeat_end_after_count?: number | null;
+  repeat_end_until?: string | null;
 }
 export interface TaskSubtaskResponse {
   id: number;
@@ -360,5 +530,11 @@ export interface TaskResponse {
   subtasks: TaskSubtaskResponse[];
   student_ids: number[];
   progress: number;
+  repeat_enabled?: boolean;
+  repeat_frequency?: RepeatFrequency | null;
+  repeat_days?: number[] | null;
+  repeat_end_type?: RepeatEndType | null;
+  repeat_end_after_count?: number | null;
+  repeat_end_until?: string | null;
 }
 

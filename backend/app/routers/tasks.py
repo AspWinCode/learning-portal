@@ -51,6 +51,12 @@ def _task_to_response(task: Task) -> TaskResponse:
         subtasks=subtasks,
         student_ids=student_ids,
         progress=progress,
+        repeat_enabled=getattr(task, "repeat_enabled", False),
+        repeat_frequency=getattr(task, "repeat_frequency", None),
+        repeat_days=getattr(task, "repeat_days", None),
+        repeat_end_type=getattr(task, "repeat_end_type", None),
+        repeat_end_after_count=getattr(task, "repeat_end_after_count", None),
+        repeat_end_until=getattr(task, "repeat_end_until", None),
     )
 
 
@@ -81,6 +87,12 @@ async def list_task_templates(
                     for s in t.subtasks
                 ],
                 student_ids=student_ids,
+                repeat_enabled=getattr(t, "repeat_enabled", False),
+                repeat_frequency=getattr(t, "repeat_frequency", None),
+                repeat_days=getattr(t, "repeat_days", None),
+                repeat_end_type=getattr(t, "repeat_end_type", None),
+                repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
+                repeat_end_until=getattr(t, "repeat_end_until", None),
             )
         )
     return out
@@ -92,7 +104,16 @@ async def create_task_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner"])),
 ):
-    t = TaskTemplate(name=payload.name.strip(), created_by_id=current_user.id)
+    t = TaskTemplate(
+        name=payload.name.strip(),
+        created_by_id=current_user.id,
+        repeat_enabled=payload.repeat_enabled or False,
+        repeat_frequency=payload.repeat_frequency,
+        repeat_days=payload.repeat_days,
+        repeat_end_type=payload.repeat_end_type,
+        repeat_end_after_count=payload.repeat_end_after_count,
+        repeat_end_until=payload.repeat_end_until,
+    )
     db.add(t)
     db.flush()
     for i, st in enumerate(payload.subtasks or []):
@@ -125,6 +146,12 @@ async def create_task_template(
             for s in t.subtasks
         ],
         student_ids=student_ids,
+        repeat_enabled=getattr(t, "repeat_enabled", False),
+        repeat_frequency=getattr(t, "repeat_frequency", None),
+        repeat_days=getattr(t, "repeat_days", None),
+        repeat_end_type=getattr(t, "repeat_end_type", None),
+        repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
+        repeat_end_until=getattr(t, "repeat_end_until", None),
     )
 
 
@@ -153,6 +180,12 @@ async def get_task_template(
             for s in t.subtasks
         ],
         student_ids=student_ids,
+        repeat_enabled=getattr(t, "repeat_enabled", False),
+        repeat_frequency=getattr(t, "repeat_frequency", None),
+        repeat_days=getattr(t, "repeat_days", None),
+        repeat_end_type=getattr(t, "repeat_end_type", None),
+        repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
+        repeat_end_until=getattr(t, "repeat_end_until", None),
     )
 
 
@@ -173,6 +206,18 @@ async def update_task_template(
         raise HTTPException(status_code=404, detail="Template not found")
     if payload.name is not None:
         t.name = payload.name.strip()
+    if payload.repeat_enabled is not None:
+        t.repeat_enabled = payload.repeat_enabled
+    if payload.repeat_frequency is not None:
+        t.repeat_frequency = payload.repeat_frequency
+    if payload.repeat_days is not None:
+        t.repeat_days = payload.repeat_days
+    if payload.repeat_end_type is not None:
+        t.repeat_end_type = payload.repeat_end_type
+    if payload.repeat_end_after_count is not None:
+        t.repeat_end_after_count = payload.repeat_end_after_count
+    if payload.repeat_end_until is not None:
+        t.repeat_end_until = payload.repeat_end_until
     if payload.subtasks is not None:
         for s in t.subtasks:
             db.delete(s)
@@ -208,6 +253,12 @@ async def update_task_template(
             for s in t.subtasks
         ],
         student_ids=student_ids,
+        repeat_enabled=getattr(t, "repeat_enabled", False),
+        repeat_frequency=getattr(t, "repeat_frequency", None),
+        repeat_days=getattr(t, "repeat_days", None),
+        repeat_end_type=getattr(t, "repeat_end_type", None),
+        repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
+        repeat_end_until=getattr(t, "repeat_end_until", None),
     )
 
 
@@ -261,12 +312,24 @@ async def create_task(
         if not template:
             raise HTTPException(status_code=404, detail="Template not found")
     title = (payload.title or "").strip() or (template.name if template else "Задача")
+    repeat_enabled = payload.repeat_enabled if payload.repeat_enabled is not None else (getattr(template, "repeat_enabled", False) if template else False)
+    repeat_frequency = payload.repeat_frequency if payload.repeat_frequency is not None else (getattr(template, "repeat_frequency", None) if template else None)
+    repeat_days = payload.repeat_days if payload.repeat_days is not None else (getattr(template, "repeat_days", None) if template else None)
+    repeat_end_type = payload.repeat_end_type if payload.repeat_end_type is not None else (getattr(template, "repeat_end_type", None) if template else None)
+    repeat_end_after_count = payload.repeat_end_after_count if payload.repeat_end_after_count is not None else (getattr(template, "repeat_end_after_count", None) if template else None)
+    repeat_end_until = payload.repeat_end_until if payload.repeat_end_until is not None else (getattr(template, "repeat_end_until", None) if template else None)
     task = Task(
         title=title,
         template_id=payload.template_id,
         created_by_id=current_user.id,
         assigned_to_id=payload.assigned_to_id,
         status=TaskStatus.ACTIVE.value,
+        repeat_enabled=repeat_enabled,
+        repeat_frequency=repeat_frequency,
+        repeat_days=repeat_days,
+        repeat_end_type=repeat_end_type,
+        repeat_end_after_count=repeat_end_after_count,
+        repeat_end_until=repeat_end_until,
     )
     db.add(task)
     db.flush()
@@ -344,6 +407,18 @@ async def update_task(
         task.status = getattr(payload.status, "value", payload.status) or "active"
     if payload.assigned_to_id is not None:
         task.assigned_to_id = payload.assigned_to_id
+    if payload.repeat_enabled is not None:
+        task.repeat_enabled = payload.repeat_enabled
+    if payload.repeat_frequency is not None:
+        task.repeat_frequency = payload.repeat_frequency
+    if payload.repeat_days is not None:
+        task.repeat_days = payload.repeat_days
+    if payload.repeat_end_type is not None:
+        task.repeat_end_type = payload.repeat_end_type
+    if payload.repeat_end_after_count is not None:
+        task.repeat_end_after_count = payload.repeat_end_after_count
+    if payload.repeat_end_until is not None:
+        task.repeat_end_until = payload.repeat_end_until
     if payload.student_ids is not None:
         db.query(TaskStudent).filter(TaskStudent.task_id == task_id).delete()
         for sid in payload.student_ids:

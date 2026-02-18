@@ -11,6 +11,7 @@ import {
   CharacteristicField,
   Abonement,
   Lead,
+  LeadCommunicationChannel,
   LeadTask,
   Invoice,
   LeadStatus,
@@ -18,13 +19,23 @@ import {
   EventRegistration,
   EventStatus,
   LeadSource,
+  SalesCity,
+  SalesSchool,
   LeadTaskTemplate,
+  LeadStatusOption,
   LeadTaskStatusOption,
   SalesDashboardData,
   FollowUpItem,
   LeadInfoTemplate,
   LeadCommunication,
   LeadPushStats,
+  B2BSchool,
+  B2BSchoolPipelineStage,
+  B2BSchoolContact,
+  B2BProject,
+  OwnerFunnelTypeInfo,
+  OwnerFunnelEvent,
+  OwnerFunnelItem,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -40,7 +51,7 @@ const api = axios.create({
   timeout: 15000,
 });
 
-// Interceptor для добавления токена
+// Interceptor ╨┤╨╗╤П ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╤П ╤В╨╛╨║╨╡╨╜╨░
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -49,7 +60,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor для обработки ошибок
+// Interceptor ╨┤╨╗╤П ╨╛╨▒╤А╨░╨▒╨╛╤В╨║╨╕ ╨╛╤И╨╕╨▒╨╛╨║
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -63,11 +74,12 @@ api.interceptors.response.use(
 
 export const authApi = {
   login: async (email: string, password: string) => {
-    const formData = new FormData();
-    formData.append('username', email);
-    formData.append('password', password);
-    const response = await api.post('/api/auth/login', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    // OAuth2 / FastAPI OAuth2PasswordRequestForm ╨╛╨╢╨╕╨┤╨░╨╡╤В ╤А╨╛╨▓╨╜╨╛ application/x-www-form-urlencoded
+    const body = new URLSearchParams();
+    body.append('username', email);
+    body.append('password', password);
+    const response = await api.post('/api/auth/login', body.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     return response.data;
   },
@@ -165,6 +177,31 @@ export const groupsApi = {
   },
   removeStudent: async (groupId: number, studentId: number): Promise<void> => {
     await api.delete(`/api/groups/${groupId}/students/${studentId}`);
+  },
+  getSchedules: async (groupId: number): Promise<import('../types').GroupSchedule[]> => {
+    const response = await api.get(`/api/groups/${groupId}/schedules`);
+    return response.data;
+  },
+  addSchedule: async (groupId: number, data: { day_of_week: number; start_time: string; end_time: string }): Promise<import('../types').GroupSchedule> => {
+    const response = await api.post(`/api/groups/${groupId}/schedules`, data);
+    return response.data;
+  },
+  removeSchedule: async (groupId: number, scheduleId: number): Promise<void> => {
+    await api.delete(`/api/groups/${groupId}/schedules/${scheduleId}`);
+  },
+};
+
+export const trainerLessonsApi = {
+  getForDate: async (lessonDate: string): Promise<import('../types').TrainerLessonSlot[]> => {
+    const response = await api.get('/api/trainer-lessons/', { params: { lesson_date: lessonDate } });
+    return response.data;
+  },
+  saveAttendance: async (data: {
+    group_id: number;
+    lesson_date: string;
+    attendances: Array<{ student_id: number; attended: boolean }>;
+  }): Promise<void> => {
+    await api.post('/api/trainer-lessons/attendance', data);
   },
 };
 
@@ -345,6 +382,7 @@ export const settingsApi = {
 export const salesApi = {
   listLeads: async (params?: {
     status_filter?: LeadStatus;
+    questionnaire_filled?: boolean;
     q?: string;
     source?: string;
     tag?: string;
@@ -371,6 +409,7 @@ export const salesApi = {
     outreach_at?: string;
     outreach_minutes?: number;
     source?: string;
+    communication_channel?: LeadCommunicationChannel;
     source_id?: number;
     referral_name?: string;
     tags?: string[];
@@ -380,6 +419,13 @@ export const salesApi = {
     next_contact_at?: string;
   }): Promise<Lead> => {
     const response = await api.post('/api/leads', payload);
+    return response.data;
+  },
+  postVisitOutcome: async (
+    leadId: number,
+    payload: { outcome: 'agreed' | 'thinking' | 'declined'; follow_up_at?: string; lost_reason?: string }
+  ): Promise<Lead> => {
+    const response = await api.post(`/api/leads/${leadId}/post-visit-outcome`, payload);
     return response.data;
   },
   updateLead: async (
@@ -398,6 +444,7 @@ export const salesApi = {
       outreach_at?: string;
       outreach_minutes?: number;
       source?: string;
+      communication_channel?: LeadCommunicationChannel;
       source_id?: number;
       referral_name?: string;
       tags?: string[];
@@ -405,11 +452,18 @@ export const salesApi = {
       desired_slot?: string;
       comment?: string;
       next_contact_at?: string;
+      no_answer_attempt?: number;
       status?: LeadStatus;
+      status_option_id?: number;
       lost_reason?: string;
+      questionnaire_filled?: boolean;
     }
   ): Promise<Lead> => {
     const response = await api.put(`/api/leads/${id}`, payload);
+    return response.data;
+  },
+  getLead: async (leadId: number): Promise<Lead> => {
+    const response = await api.get(`/api/leads/${leadId}`);
     return response.data;
   },
   listTasks: async (leadId: number): Promise<LeadTask[]> => {
@@ -524,6 +578,30 @@ export const salesApi = {
     const response = await api.put(`/api/lead-sources/${id}`, payload);
     return response.data;
   },
+  listSalesCities: async (active_only = true): Promise<SalesCity[]> => {
+    const response = await api.get('/api/cities', { params: { active_only } });
+    return response.data;
+  },
+  createSalesCity: async (name: string): Promise<SalesCity> => {
+    const response = await api.post('/api/cities', { name });
+    return response.data;
+  },
+  updateSalesCity: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesCity> => {
+    const response = await api.put(`/api/cities/${id}`, payload);
+    return response.data;
+  },
+  listSalesSchools: async (active_only = true): Promise<SalesSchool[]> => {
+    const response = await api.get('/api/schools', { params: { active_only } });
+    return response.data;
+  },
+  createSalesSchool: async (name: string): Promise<SalesSchool> => {
+    const response = await api.post('/api/schools', { name });
+    return response.data;
+  },
+  updateSalesSchool: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesSchool> => {
+    const response = await api.put(`/api/schools/${id}`, payload);
+    return response.data;
+  },
   listLeadTaskTemplates: async (active_only = true): Promise<LeadTaskTemplate[]> => {
     const response = await api.get('/api/lead-task-templates', { params: { active_only } });
     return response.data;
@@ -549,6 +627,21 @@ export const salesApi = {
     payload: { name?: string; is_closed?: boolean; is_active?: boolean }
   ): Promise<LeadTaskStatusOption> => {
     const response = await api.put(`/api/lead-task-statuses/${id}`, payload);
+    return response.data;
+  },
+  listLeadStatuses: async (active_only = true): Promise<LeadStatusOption[]> => {
+    const response = await api.get('/api/lead-statuses', { params: { active_only } });
+    return response.data;
+  },
+  createLeadStatus: async (payload: { name: string; base_status: LeadStatus }): Promise<LeadStatusOption> => {
+    const response = await api.post('/api/lead-statuses', payload);
+    return response.data;
+  },
+  updateLeadStatus: async (
+    id: number,
+    payload: { name?: string; base_status?: LeadStatus; is_active?: boolean }
+  ): Promise<LeadStatusOption> => {
+    const response = await api.put(`/api/lead-statuses/${id}`, payload);
     return response.data;
   },
   listLeadInfoTemplates: async (active_only = true): Promise<LeadInfoTemplate[]> => {
@@ -637,16 +730,191 @@ export const abonementsApi = {
   },
 };
 
+export const b2bApi = {
+  listCities: async (): Promise<string[]> => {
+    const response = await api.get('/api/b2b-schools/cities');
+    return response.data;
+  },
+  listSchools: async (opts?: { pipeline_stage?: string; project_id?: number; city?: string }): Promise<B2BSchool[]> => {
+    const params: any = {};
+    if (opts?.pipeline_stage) params.pipeline_stage = opts.pipeline_stage;
+    if (opts?.project_id) params.project_id = opts.project_id;
+    if (opts?.city) params.city = opts.city;
+    const response = await api.get('/api/b2b-schools', { params });
+    return response.data;
+  },
+  getSchool: async (id: number): Promise<B2BSchool> => {
+    const response = await api.get(`/api/b2b-schools/${id}`);
+    return response.data;
+  },
+  createSchool: async (payload: {
+    name: string;
+    director?: string;
+    city?: string;
+    address?: string;
+    student_count?: number;
+    friendship_degree?: string;
+    pipeline_stage?: B2BSchoolPipelineStage;
+    event_dates?: string[];
+    meeting_scheduled_at?: string | null;
+    meeting_outcomes?: string | null;
+    walkthrough_scheduled_at?: string | null;
+  }): Promise<B2BSchool> => {
+    const response = await api.post('/api/b2b-schools', payload);
+    return response.data;
+  },
+  updateSchool: async (
+    id: number,
+    payload: Partial<{
+      name: string;
+      director: string;
+      city: string;
+      address: string;
+      student_count: number;
+      friendship_degree: string;
+      pipeline_stage: B2BSchoolPipelineStage;
+      event_dates: string[];
+      meeting_scheduled_at: string | null;
+      meeting_outcomes: string | null;
+      walkthrough_scheduled_at: string | null;
+    }>
+  ): Promise<B2BSchool> => {
+    const response = await api.put(`/api/b2b-schools/${id}`, payload);
+    return response.data;
+  },
+  deleteSchool: async (id: number): Promise<void> => {
+    await api.delete(`/api/b2b-schools/${id}`);
+  },
+  listContacts: async (schoolId: number): Promise<B2BSchoolContact[]> => {
+    const response = await api.get(`/api/b2b-schools/${schoolId}/contacts`);
+    return response.data;
+  },
+  createContact: async (
+    schoolId: number,
+    payload: { full_name: string; position?: string; phone: string; phone_extra?: string }
+  ): Promise<B2BSchoolContact> => {
+    const response = await api.post(`/api/b2b-schools/${schoolId}/contacts`, payload);
+    return response.data;
+  },
+  updateContact: async (
+    schoolId: number,
+    contactId: number,
+    payload: Partial<{ full_name: string; position: string; phone: string; phone_extra: string }>
+  ): Promise<B2BSchoolContact> => {
+    const response = await api.put(`/api/b2b-schools/${schoolId}/contacts/${contactId}`, payload);
+    return response.data;
+  },
+  deleteContact: async (schoolId: number, contactId: number): Promise<void> => {
+    await api.delete(`/api/b2b-schools/${schoolId}/contacts/${contactId}`);
+  },
+  listProjects: async (): Promise<B2BProject[]> => {
+    const response = await api.get('/api/b2b-projects');
+    return response.data;
+  },
+  createProject: async (payload: {
+    name: string;
+    location?: string;
+    main_city?: string;
+    cities?: string[];
+  }): Promise<B2BProject> => {
+    const response = await api.post('/api/b2b-projects', payload);
+    return response.data;
+  },
+};
+
+export const ownerFunnelsApi = {
+  listTypes: async (): Promise<OwnerFunnelTypeInfo[]> => {
+    const response = await api.get('/api/owner-funnels/types');
+    return response.data;
+  },
+  listEvents: async (): Promise<OwnerFunnelEvent[]> => {
+    const response = await api.get('/api/owner-funnels/events');
+    return response.data;
+  },
+  createEvent: async (payload: { event_name: string; event_dates?: string | null }): Promise<OwnerFunnelEvent> => {
+    const response = await api.post('/api/owner-funnels/events', payload);
+    return response.data;
+  },
+  listItems: async (funnelType: string, options?: { eventId?: number; stage?: string }): Promise<OwnerFunnelItem[]> => {
+    const params: { funnel_type: string; event_id?: number; stage?: string } = { funnel_type: funnelType };
+    if (options?.eventId != null) params.event_id = options.eventId;
+    if (options?.stage) params.stage = options.stage;
+    const response = await api.get('/api/owner-funnels/items', { params });
+    return response.data;
+  },
+  createItem: async (payload: {
+    funnel_type: string;
+    stage?: string;
+    title?: string | null;
+    comment?: string | null;
+    event_id?: number | null;
+    card_data?: Record<string, unknown> | null;
+  }): Promise<OwnerFunnelItem> => {
+    const response = await api.post('/api/owner-funnels/items', payload);
+    return response.data;
+  },
+  getItem: async (id: number): Promise<OwnerFunnelItem> => {
+    const response = await api.get(`/api/owner-funnels/items/${id}`);
+    return response.data;
+  },
+  updateItem: async (
+    id: number,
+    payload: {
+      stage?: string;
+      title?: string | null;
+      comment?: string | null;
+      card_data?: Record<string, unknown> | null;
+      contact_fio?: string | null;
+      contact_phone?: string | null;
+      contact_comment?: string | null;
+      reply_comment?: string | null;
+      meeting_date?: string | null;
+      trip_date?: string | null;
+      leads_count?: number | null;
+    }
+  ): Promise<OwnerFunnelItem> => {
+    const response = await api.patch(`/api/owner-funnels/items/${id}`, payload);
+    return response.data;
+  },
+  deleteItem: async (id: number): Promise<void> => {
+    await api.delete(`/api/owner-funnels/items/${id}`);
+  },
+  addSchoolsByCity: async (eventId: number, city: string): Promise<{ added: number; total_in_city: number }> => {
+    const response = await api.post(`/api/owner-funnels/events/${eventId}/add-schools-by-city`, { city });
+    return response.data;
+  },
+};
+
 export const tasksApi = {
   listTemplates: async (): Promise<import('../types').TaskTemplateResponse[]> => {
     const response = await api.get('/api/task-templates');
     return response.data;
   },
-  createTemplate: async (payload: { name: string; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<import('../types').TaskTemplateResponse> => {
+  createTemplate: async (payload: {
+    name: string;
+    subtasks?: { text: string; order?: number }[];
+    student_ids?: number[];
+    repeat_enabled?: boolean;
+    repeat_frequency?: 'daily' | 'weekly' | 'monthly';
+    repeat_days?: number[];
+    repeat_end_type?: 'never' | 'after_count' | 'until_date';
+    repeat_end_after_count?: number;
+    repeat_end_until?: string;
+  }): Promise<import('../types').TaskTemplateResponse> => {
     const response = await api.post('/api/task-templates', payload);
     return response.data;
   },
-  updateTemplate: async (id: number, payload: { name?: string; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<import('../types').TaskTemplateResponse> => {
+  updateTemplate: async (id: number, payload: {
+    name?: string;
+    subtasks?: { text: string; order?: number }[];
+    student_ids?: number[];
+    repeat_enabled?: boolean;
+    repeat_frequency?: 'daily' | 'weekly' | 'monthly';
+    repeat_days?: number[];
+    repeat_end_type?: 'never' | 'after_count' | 'until_date';
+    repeat_end_after_count?: number;
+    repeat_end_until?: string;
+  }): Promise<import('../types').TaskTemplateResponse> => {
     const response = await api.put(`/api/task-templates/${id}`, payload);
     return response.data;
   },
@@ -657,11 +925,34 @@ export const tasksApi = {
     const response = await api.get('/api/tasks', { params: statusFilter != null ? { status_filter: statusFilter } : {} });
     return response.data;
   },
-  createTask: async (payload: { title?: string; template_id?: number; assigned_to_id?: number; subtasks?: { text: string; order?: number }[]; student_ids?: number[] }): Promise<import('../types').TaskResponse> => {
+  createTask: async (payload: {
+    title?: string;
+    template_id?: number;
+    assigned_to_id?: number;
+    subtasks?: { text: string; order?: number }[];
+    student_ids?: number[];
+    repeat_enabled?: boolean;
+    repeat_frequency?: 'daily' | 'weekly' | 'monthly';
+    repeat_days?: number[];
+    repeat_end_type?: 'never' | 'after_count' | 'until_date';
+    repeat_end_after_count?: number;
+    repeat_end_until?: string;
+  }): Promise<import('../types').TaskResponse> => {
     const response = await api.post('/api/tasks', payload);
     return response.data;
   },
-  updateTask: async (id: number, payload: { title?: string; status?: string; assigned_to_id?: number; student_ids?: number[] }): Promise<import('../types').TaskResponse> => {
+  updateTask: async (id: number, payload: {
+    title?: string;
+    status?: string;
+    assigned_to_id?: number | null;
+    student_ids?: number[];
+    repeat_enabled?: boolean;
+    repeat_frequency?: 'daily' | 'weekly' | 'monthly';
+    repeat_days?: number[];
+    repeat_end_type?: 'never' | 'after_count' | 'until_date';
+    repeat_end_after_count?: number;
+    repeat_end_until?: string;
+  }): Promise<import('../types').TaskResponse> => {
     const response = await api.put(`/api/tasks/${id}`, payload);
     return response.data;
   },

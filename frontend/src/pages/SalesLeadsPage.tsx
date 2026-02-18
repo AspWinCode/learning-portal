@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
+  Box,
   Button,
   Card,
   CardContent,
@@ -13,9 +14,6 @@ import {
   FormControl,
   Grid,
   InputLabel,
-  List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Select,
   Stack,
@@ -58,9 +56,11 @@ import {
   Invoice,
   Lead,
   LeadCommunication,
+  LeadCommunicationChannel,
   LeadInfoTemplate,
   LeadSource,
   LeadStatus,
+  LeadStatusOption,
   LeadTask,
   LeadTaskStatusOption,
   LeadTaskTemplate,
@@ -68,23 +68,68 @@ import {
 } from '../types';
 
 const statusLabels: Record<LeadStatus, string> = {
-  new: 'Новый',
-  contacted: 'Связались',
-  demo: 'Демо',
-  invoice_sent: 'Инвойс отправлен',
-  won: 'Успешно',
-  lost: 'Закрыт',
+  new: '╨Э╨╛╨▓╤Л╨╣',
+  contacted: '╨б╨▓╤П╨╖╨░╨╗╨╕╤Б╤М',
+  no_answer: '╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜',
+  demo: '╨Ф╨╡╨╝╨╛',
+  invoice_sent: '╨Ш╨╜╨▓╨╛╨╣╤Б ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜',
+  won: '╨г╤Б╨┐╨╡╤И╨╜╨╛',
+  lost: '╨Ч╨░╨║╤А╤Л╤В',
+  thinking: '╨Я╨╛╨┤╤Г╨╝╨░╤О╤В',
+  refused: '╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П',
+  trial_scheduled: '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡',
+  event_registered: '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡',
+  decided_immediately: '╨а╨╡╤И╨╕╨╗ ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П ╤Б╤А╨░╨╖╤Г',
+};
+
+/** ╨б╤В╨░╤В╤Г╤Б╤Л ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨┐╤А╨╛╨┤╨░╨╢ тАФ ╨╡╨┤╨╕╨╜╤Л╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╨┤╨╗╤П ╨╗╨╕╨┤╨╛╨▓ ╨╕ ╨▓╨╛╤А╨╛╨╜╨║╨╕ */
+const PIPELINE_STATUSES: LeadStatus[] = [
+  'new',
+  'thinking',
+  'no_answer',
+  'refused',
+  'trial_scheduled',
+  'event_registered',
+  'decided_immediately',
+];
+
+/** ╨б╤В╨░╤В╤Г╤Б╤Л ╨╗╨╕╨┤╨░ ╨╛╤В╨╛╨▒╤А╨░╨╢╨░╤О╤В╤Б╤П ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨╡ ╨▓╨╛╤А╨╛╨╜╨║╨╕ (╨┤╨╗╤П ╤Б╤В╨░╤А╤Л╤Е ╤Б╤В╨░╤В╤Г╤Б╨╛╨▓ тАФ ╨╝╨░╨┐╨┐╨╕╨╜╨│) */
+function getPipelineColumnForStatus(status: LeadStatus): LeadStatus {
+  const map: Partial<Record<LeadStatus, LeadStatus>> = {
+    contacted: 'thinking',
+    demo: 'trial_scheduled',
+    invoice_sent: 'trial_scheduled',
+    won: 'decided_immediately',
+    lost: 'refused',
+  };
+  return map[status] ?? status;
+}
+
+const REFUSED_REASONS = [
+  '╨Э╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕',
+  '╨Ф╨╛╤А╨╛╨│╨╛',
+  '╨Э╨╡ ╨┐╨╛╨┤╤Е╨╛╨┤╨╕╤В ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡',
+  '╨г╨╢╨╡ ╨╖╨░╨╜╨╕╨╝╨░╨╡╤В╤Б╤П elsewhere',
+  '╨Я╨╡╤А╨╡╨┤╤Г╨╝╨░╨╗',
+  '╨Ф╤А╤Г╨│╨╛╨╡',
+];
+
+const leadCommunicationChannelLabels: Record<LeadCommunicationChannel, string> = {
+  max: 'MAX',
+  email: '╨┐╨╛╤З╤В╨░',
+  sms: '╤Б╨╝╤Б',
+  telegram: 'telegram',
 };
 
 const DEFAULT_CITY_OPTIONS = [
-  'Алматы',
-  'Астана',
-  'Шымкент',
-  'Караганда',
-  'Актобе',
-  'Павлодар',
-  'Семей',
-  'Усть-Каменогорск',
+  '╨Р╨╗╨╝╨░╤В╤Л',
+  '╨Р╤Б╤В╨░╨╜╨░',
+  '╨и╤Л╨╝╨║╨╡╨╜╤В',
+  '╨Ъ╨░╤А╨░╨│╨░╨╜╨┤╨░',
+  '╨Р╨║╤В╨╛╨▒╨╡',
+  '╨Я╨░╨▓╨╗╨╛╨┤╨░╤А',
+  '╨б╨╡╨╝╨╡╨╣',
+  '╨г╤Б╤В╤М-╨Ъ╨░╨╝╨╡╨╜╨╛╨│╨╛╤А╤Б╨║',
 ];
 
 const normalizeRuPhone = (raw: string): string => {
@@ -126,6 +171,7 @@ const SalesLeadsPage: React.FC = () => {
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [taskTemplates, setTaskTemplates] = useState<LeadTaskTemplate[]>([]);
   const [taskStatusOptions, setTaskStatusOptions] = useState<LeadTaskStatusOption[]>([]);
+  const [leadStatusOptions, setLeadStatusOptions] = useState<LeadStatusOption[]>([]);
   const [infoTemplates, setInfoTemplates] = useState<LeadInfoTemplate[]>([]);
   const [communications, setCommunications] = useState<LeadCommunication[]>([]);
   const [sendInfoOpen, setSendInfoOpen] = useState(false);
@@ -165,18 +211,38 @@ const SalesLeadsPage: React.FC = () => {
   const [batchSendChannel, setBatchSendChannel] = useState('messenger');
   const [batchSendFollowUpAt, setBatchSendFollowUpAt] = useState('');
   const [draggedLeadId, setDraggedLeadId] = useState<number | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
+  const [showArchiveColumn, setShowArchiveColumn] = useState(false);
+  const [noShowLeadIds, setNoShowLeadIds] = useState<Set<number>>(new Set());
   const [dropConfirmOpen, setDropConfirmOpen] = useState(false);
   const [dropTargetStatus, setDropTargetStatus] = useState<LeadStatus | null>(null);
   const [dropLeadId, setDropLeadId] = useState<number | null>(null);
   const [dropFollowUpAt, setDropFollowUpAt] = useState('');
+  const [dropCallbackAt, setDropCallbackAt] = useState('');
+  const [dropRefusedReason, setDropRefusedReason] = useState('');
+  const [dropTrialAt, setDropTrialAt] = useState('');
+  const [dropEventId, setDropEventId] = useState<number | ''>('');
+  const [dropEventNote, setDropEventNote] = useState('');
+  const [noAnswerArchiveConfirmOpen, setNoAnswerArchiveConfirmOpen] = useState(false);
+  const [pendingNoAnswerArchiveLead, setPendingNoAnswerArchiveLead] = useState<Lead | null>(null);
   const [leadCommentDraft, setLeadCommentDraft] = useState('');
   const [leadCommentSaving, setLeadCommentSaving] = useState(false);
   const [leadHeaderStatusDraft, setLeadHeaderStatusDraft] = useState<LeadStatus>('new');
   const [leadHeaderNextStepDraft, setLeadHeaderNextStepDraft] = useState('');
-  const [leadHeaderNextContactDraft, setLeadHeaderNextContactDraft] = useState('');
   const [leadHeaderSaving, setLeadHeaderSaving] = useState(false);
   const [leadCardTab, setLeadCardTab] = useState<'overview' | 'push'>('overview');
   const [leadPushStatsMap, setLeadPushStatsMap] = useState<Record<number, LeadPushStats>>({});
+  const [leadInfoSaving, setLeadInfoSaving] = useState(false);
+  const [leadInfoDraft, setLeadInfoDraft] = useState({
+    parent_full_name: '',
+    parent_phone: '',
+    child_full_name: '',
+    child_phone: '',
+    email: '',
+    communication_channel: '' as '' | LeadCommunicationChannel,
+    source: '',
+    referral_name: '',
+  });
 
   const [form, setForm] = useState({
     parent_full_name: '',
@@ -192,7 +258,6 @@ const SalesLeadsPage: React.FC = () => {
     referral_name: '',
     tags: '',
     comment: '',
-    next_contact_at: '',
   });
 
   const loadLeads = useCallback(async () => {
@@ -208,7 +273,7 @@ const SalesLeadsPage: React.FC = () => {
       });
       setLeads(data);
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось загрузить лиды'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨╗╨╕╨┤╤Л'));
     } finally {
       setLoading(false);
     }
@@ -216,14 +281,16 @@ const SalesLeadsPage: React.FC = () => {
 
   const loadSalesMeta = useCallback(async () => {
     try {
-      const [sources, templates, statuses] = await Promise.all([
+      const [sources, templates, statuses, leadStatuses] = await Promise.all([
         salesApi.listLeadSources(true),
         salesApi.listLeadTaskTemplates(true),
         salesApi.listLeadTaskStatuses(true),
+        salesApi.listLeadStatuses(true),
       ]);
       setLeadSources(sources);
       setTaskTemplates(templates);
       setTaskStatusOptions(statuses);
+      setLeadStatusOptions(leadStatuses);
       const defaultOpen = statuses.find((s) => !s.is_closed);
       if (defaultOpen) {
         setTaskStatusOptionId(defaultOpen.id);
@@ -241,6 +308,38 @@ const SalesLeadsPage: React.FC = () => {
     loadLeads();
     loadSalesMeta();
   }, [loadLeads, loadSalesMeta]);
+
+  // ╨Ы╨╕╨┤╤Л ╤Б ╨╜╨╡╤П╨▓╨║╨╛╨╣ ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ тАФ ╨┤╨╗╤П ╨║╨╛╨╗╨╛╨╜╨║╨╕ ┬л╨б╨╗╨╡╨┤ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡┬╗ ╨╕ ╨▓╨║╨╗╨░╨┤╨║╨╕ ┬л╨Я╨╛╨╖╨▓╨░╤В╤М ╨╡╤Й╨╡ ╤А╨░╨╖┬╗
+  useEffect(() => {
+    if (viewMode !== 'kanban') return;
+    let cancelled = false;
+    const hasNoShowTag = (note: string | null | undefined) => {
+      const lower = (note || '').toLowerCase();
+      return lower.includes('[no-show]') || lower.includes('no-show');
+    };
+    salesApi
+      .listEvents()
+      .then((eventList) => {
+        if (cancelled || !eventList.length) return;
+        return Promise.allSettled(eventList.map((e) => salesApi.listEventRegistrations(e.id)));
+      })
+      .then((results) => {
+        if (cancelled || !results) return;
+        const ids = new Set<number>();
+        results.forEach((r) => {
+          if (r.status === 'fulfilled') {
+            r.value.forEach((reg) => {
+              if (reg.status === 'registered' && hasNoShowTag(reg.note)) ids.add(reg.lead_id);
+            });
+          }
+        });
+        if (!cancelled) setNoShowLeadIds(ids);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -299,15 +398,22 @@ const SalesLeadsPage: React.FC = () => {
   }, [leads]);
 
   useEffect(() => {
-    const leadIdParam = new URLSearchParams(location.search).get('leadId');
+    const params = new URLSearchParams(location.search);
+    const leadIdParam = params.get('open') || params.get('leadId');
     const leadId = leadIdParam ? Number(leadIdParam) : NaN;
-    if (!leadIdParam || Number.isNaN(leadId) || leads.length === 0) return;
-    const targetLead = leads.find((lead) => lead.id === leadId);
-    if (!targetLead) return;
-    setSelectedLead(targetLead);
-    setDetailsOpen(true);
-    void loadLeadDetails(targetLead);
-    navigate('/sales/leads', { replace: true });
+    if (!leadIdParam || Number.isNaN(leadId)) return;
+    const targetLead = leads.find((l) => l.id === leadId);
+    if (targetLead) {
+      setSelectedLead(targetLead);
+      setDetailsOpen(true);
+      void loadLeadDetails(targetLead);
+      return;
+    }
+    salesApi.getLead(leadId).then((lead) => {
+      setSelectedLead(lead);
+      setDetailsOpen(true);
+      void loadLeadDetails(lead);
+    }).catch(() => {});
   }, [location.search, leads, navigate]);
 
   const cityOptions = useMemo(() => {
@@ -396,41 +502,56 @@ const SalesLeadsPage: React.FC = () => {
       referral_name: '',
       tags: '',
       comment: '',
-      next_contact_at: '',
     });
     setCreateOpen(true);
   };
 
   const handleCreate = async () => {
     setError(null);
+    if (!form.parent_full_name.trim()) {
+      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨д╨Ш╨Ю ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П');
+      return;
+    }
+    if (!form.parent_phone.trim()) {
+      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╤В╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П');
+      return;
+    }
+    if (!form.city.trim()) {
+      setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨│╨╛╤А╨╛╨┤');
+      return;
+    }
+    if (!form.source_id) {
+      setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╕╤Б╤В╨╛╤З╨╜╨╕╨║');
+      return;
+    }
     try {
       const sourceIdNumber = form.source_id ? Number(form.source_id) : undefined;
       const selectedSource = leadSources.find((s) => s.id === sourceIdNumber);
-      if (selectedSource?.name.toLowerCase() === 'рекомендация' && !form.referral_name.trim()) {
-        setError('Для источника "рекомендация" укажите, кто пригласил');
+      if (selectedSource?.name.toLowerCase() === '╤А╨╡╨║╨╛╨╝╨╡╨╜╨┤╨░╤Ж╨╕╤П' && !form.referral_name.trim()) {
+        setError('╨Ф╨╗╤П ╨╕╤Б╤В╨╛╤З╨╜╨╕╨║╨░ "╤А╨╡╨║╨╛╨╝╨╡╨╜╨┤╨░╤Ж╨╕╤П" ╤Г╨║╨░╨╢╨╕╤В╨╡, ╨║╤В╨╛ ╨┐╤А╨╕╨│╨╗╨░╤Б╨╕╨╗');
         return;
       }
-      if (form.parent_phone.trim() && !isValidRuPhone(form.parent_phone)) {
-        setError('Телефон родителя должен быть в формате +7XXXXXXXXXX');
+      if (!isValidRuPhone(form.parent_phone)) {
+        setError('╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╨▓ ╤Д╨╛╤А╨╝╨░╤В╨╡ +7XXXXXXXXXX');
         return;
       }
       if (form.child_phone.trim() && !isValidRuPhone(form.child_phone)) {
-        setError('Телефон школьника должен быть в формате +7XXXXXXXXXX');
+        setError('╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤И╨║╨╛╨╗╤М╨╜╨╕╨║╨░ ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╨▓ ╤Д╨╛╤А╨╝╨░╤В╨╡ +7XXXXXXXXXX');
         return;
       }
       const normalizedParentPhone = normalizeRuPhone(form.parent_phone);
       const normalizedChildPhone = normalizeRuPhone(form.child_phone);
-      const contactName = form.parent_full_name || form.child_full_name || 'Без имени';
-      const phone = normalizedParentPhone || normalizedChildPhone || 'не указан';
+      const contactName = form.parent_full_name || form.child_full_name || '╨С╨╡╨╖ ╨╕╨╝╨╡╨╜╨╕';
+      const phone = normalizedParentPhone || normalizedChildPhone || '╨╜╨╡ ╤Г╨║╨░╨╖╨░╨╜';
       await salesApi.createLead({
         contact_name: contactName,
         phone,
-        parent_full_name: form.parent_full_name || undefined,
+        parent_full_name: form.parent_full_name.trim(),
         child_full_name: form.child_full_name || undefined,
-        parent_phone: normalizedParentPhone || undefined,
+        parent_phone: normalizedParentPhone,
         child_phone: normalizedChildPhone || undefined,
         email: form.email || undefined,
-        city: form.city || undefined,
+        city: form.city.trim(),
         school_name: form.school_name || undefined,
         school_class: form.school_class || undefined,
         outreach_at: form.outreach_at
@@ -444,24 +565,18 @@ const SalesLeadsPage: React.FC = () => {
         referral_name: form.referral_name || undefined,
         tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
         comment: form.comment || undefined,
-        next_contact_at: form.next_contact_at
-          ? (() => {
-              const d = new Date(form.next_contact_at);
-              return isValid(d) ? d.toISOString() : undefined;
-            })()
-          : undefined,
       });
       setCreateOpen(false);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось создать лид'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╨╖╨┤╨░╤В╤М ╨╗╨╕╨┤'));
     }
   };
 
-  const handleStatusChange = async (lead: Lead, newStatus: LeadStatus) => {
+  const handleStatusChange = async (lead: Lead, newStatus: LeadStatus, statusOptionId?: number) => {
     if (lead.status === newStatus) return;
     if (newStatus === 'won') {
-      const ok = window.confirm('Подтвердить перевод лида в "Успешно"?');
+      const ok = window.confirm('╨Я╨╛╨┤╤В╨▓╨╡╤А╨┤╨╕╤В╤М ╨┐╨╡╤А╨╡╨▓╨╛╨┤ ╨╗╨╕╨┤╨░ ╨▓ "╨г╤Б╨┐╨╡╤И╨╜╨╛"?');
       if (!ok) return;
     }
     if (newStatus === 'lost') {
@@ -473,10 +588,71 @@ const SalesLeadsPage: React.FC = () => {
     setActionLoadingId(lead.id);
     setError(null);
     try {
-      await salesApi.updateLead(lead.id, { status: newStatus });
+      await salesApi.updateLead(lead.id, { status: newStatus, status_option_id: statusOptionId });
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось обновить статус лида'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М ╤Б╤В╨░╤В╤Г╤Б ╨╗╨╕╨┤╨░'));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const getLeadStatusMenuValue = (lead: Lead): string => {
+    return `base:${getPipelineColumnForStatus(lead.status)}`;
+  };
+
+  const getLeadStatusDisplay = (lead: Lead): string => {
+    return statusLabels[getPipelineColumnForStatus(lead.status)];
+  };
+
+  const handleLeadStatusSelectChange = async (lead: Lead, value: string) => {
+    if (value.startsWith('option:')) {
+      const optionId = Number(value.replace('option:', ''));
+      const option = leadStatusOptions.find((s) => s.id === optionId);
+      if (!option) return;
+      await handleStatusChange(lead, option.base_status, option.id);
+      return;
+    }
+    if (value.startsWith('base:')) {
+      const baseStatus = value.replace('base:', '') as LeadStatus;
+      await handleStatusChange(lead, baseStatus, undefined);
+    }
+  };
+
+  const handleCommunicationChannelChange = async (
+    lead: Lead,
+    channel: '' | LeadCommunicationChannel
+  ) => {
+    const nextChannel = channel || undefined;
+    if ((lead.communication_channel || undefined) === nextChannel) return;
+    setActionLoadingId(lead.id);
+    setError(null);
+    try {
+      const updated = await salesApi.updateLead(lead.id, {
+        communication_channel: nextChannel,
+      });
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === updated.id
+            ? {
+                ...l,
+                communication_channel: updated.communication_channel,
+              }
+            : l
+        )
+      );
+      if (selectedLead?.id === updated.id) {
+        setSelectedLead((prev) =>
+          prev
+            ? {
+                ...prev,
+                communication_channel: updated.communication_channel,
+              }
+            : prev
+        );
+      }
+    } catch (err: any) {
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М ╨║╨░╨╜╨░╨╗ ╨╛╨▒╤Й╨╡╨╜╨╕╤П'));
     } finally {
       setActionLoadingId(null);
     }
@@ -485,7 +661,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleConfirmLost = async () => {
     if (!pendingLostLead) return;
     if (!lostReason.trim()) {
-      setError('Укажите причину закрытия лида');
+      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┐╤А╨╕╤З╨╕╨╜╤Г ╨╖╨░╨║╤А╤Л╤В╨╕╤П ╨╗╨╕╨┤╨░');
       return;
     }
     setActionLoadingId(pendingLostLead.id);
@@ -501,7 +677,7 @@ const SalesLeadsPage: React.FC = () => {
         setSelectedLead({ ...selectedLead, status: 'lost', lost_reason: lostReason.trim() });
       }
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось закрыть лид'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨║╤А╤Л╤В╤М ╨╗╨╕╨┤'));
     } finally {
       setActionLoadingId(null);
       setPendingLostLead(null);
@@ -520,7 +696,7 @@ const SalesLeadsPage: React.FC = () => {
       setInvoices(invoicesData);
       setCommunications(commData);
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось загрузить карточку лида'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨║╨░╤А╤В╨╛╤З╨║╤Г ╨╗╨╕╨┤╨░'));
     }
   };
 
@@ -531,20 +707,25 @@ const SalesLeadsPage: React.FC = () => {
     setContactNote('');
     setContactFollowUpAt('');
     setLeadCommentDraft(lead.comment || '');
-    setLeadHeaderStatusDraft(lead.status);
+    setLeadHeaderStatusDraft(getPipelineColumnForStatus(lead.status));
     setLeadHeaderNextStepDraft(lead.desired_slot || '');
-    setLeadHeaderNextContactDraft(
-      lead.next_contact_at
-        ? format(new Date(lead.next_contact_at), "yyyy-MM-dd'T'HH:mm")
-        : ''
-    );
+    setLeadInfoDraft({
+      parent_full_name: lead.parent_full_name || '',
+      parent_phone: lead.parent_phone || '',
+      child_full_name: lead.child_full_name || '',
+      child_phone: lead.child_phone || '',
+      email: lead.email || '',
+      communication_channel: (lead.communication_channel as LeadCommunicationChannel | null) || '',
+      source: lead.source || '',
+      referral_name: lead.referral_name || '',
+    });
     await loadLeadDetails(lead);
   };
 
   const handleCreateTask = async () => {
     if (!selectedLead) return;
     if (!taskTemplateId) {
-      setError('Выберите задачу из списка');
+      setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╖╨░╨┤╨░╤З╤Г ╨╕╨╖ ╤Б╨┐╨╕╤Б╨║╨░');
       return;
     }
     try {
@@ -559,7 +740,7 @@ const SalesLeadsPage: React.FC = () => {
       setTaskDueAt('');
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось создать задачу'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╨╖╨┤╨░╤В╤М ╨╖╨░╨┤╨░╤З╤Г'));
     }
   };
 
@@ -569,7 +750,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.closeTask(selectedLead.id, task.id);
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось закрыть задачу'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨║╤А╤Л╤В╤М ╨╖╨░╨┤╨░╤З╤Г'));
     }
   };
 
@@ -578,7 +759,7 @@ const SalesLeadsPage: React.FC = () => {
     setError(null);
     try {
       if (!lead.abonement_id) {
-        setError('Для создания инвойса у лида должен быть выбран абонемент');
+        setError('╨Ф╨╗╤П ╤Б╨╛╨╖╨┤╨░╨╜╨╕╤П ╨╕╨╜╨▓╨╛╨╣╤Б╨░ ╤Г ╨╗╨╕╨┤╨░ ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╨▓╤Л╨▒╤А╨░╨╜ ╨░╨▒╨╛╨╜╨╡╨╝╨╡╨╜╤В');
         return;
       }
       const invoice = await salesApi.createInvoice(lead.id, {
@@ -588,7 +769,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.sendInvoiceEmail(invoice.id);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось создать/отправить инвойс'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╨╖╨┤╨░╤В╤М/╨╛╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨╕╨╜╨▓╨╛╨╣╤Б'));
     } finally {
       setActionLoadingId(null);
     }
@@ -610,12 +791,12 @@ const SalesLeadsPage: React.FC = () => {
     try {
       await salesApi.logLeadCommunication(selectedLead.id, {
         channel,
-        message: channel === 'call' ? '[quick-call] Быстрый звонок' : '[quick-messenger] Быстрое сообщение',
+        message: channel === 'call' ? '[quick-call] ╨С╤Л╤Б╤В╤А╤Л╨╣ ╨╖╨▓╨╛╨╜╨╛╨║' : '[quick-messenger] ╨С╤Л╤Б╤В╤А╨╛╨╡ ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡',
       });
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось зафиксировать коммуникацию'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╤В╤М ╨║╨╛╨╝╨╝╤Г╨╜╨╕╨║╨░╤Ж╨╕╤О'));
     }
   };
 
@@ -629,9 +810,9 @@ const SalesLeadsPage: React.FC = () => {
       if (selectedLead?.id === lead.id) {
         await loadLeadDetails(lead);
       }
-      setToast({ open: true, message: 'Звонок зафиксирован', severity: 'success' });
+      setToast({ open: true, message: '╨Ч╨▓╨╛╨╜╨╛╨║ ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╨╜', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось зафиксировать звонок'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╤В╤М ╨╖╨▓╨╛╨╜╨╛╨║'));
     }
   };
 
@@ -645,16 +826,16 @@ const SalesLeadsPage: React.FC = () => {
       if (selectedLead?.id === lead.id) {
         await loadLeadDetails(lead);
       }
-      setToast({ open: true, message: 'Сообщение зафиксировано', severity: 'info' });
+      setToast({ open: true, message: '╨б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡ ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╨╜╨╛', severity: 'info' });
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось зафиксировать сообщение'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╤В╤М ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡'));
     }
   };
 
   const handleRowQuickFollowUp = async (lead: Lead) => {
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('дожим')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('╨┤╨╛╨╢╨╕╨╝')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('Сначала добавьте шаблон задачи в справочниках');
+      setError('╨б╨╜╨░╤З╨░╨╗╨░ ╨┤╨╛╨▒╨░╨▓╤М╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜ ╨╖╨░╨┤╨░╤З╨╕ ╨▓ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨░╤Е');
       return;
     }
     const due = new Date();
@@ -673,11 +854,11 @@ const SalesLeadsPage: React.FC = () => {
       }
       setToast({
         open: true,
-        message: `Follow-up назначен: ${format(due, 'dd.MM.yyyy HH:mm')}`,
+        message: `Follow-up ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜: ${format(due, 'dd.MM.yyyy HH:mm')}`,
         severity: 'warning',
       });
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось назначить follow-up'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╜╨░╨╖╨╜╨░╤З╨╕╤В╤М follow-up'));
     }
   };
 
@@ -720,12 +901,12 @@ const SalesLeadsPage: React.FC = () => {
 
   const handleBatchAssignFollowUp = async () => {
     if (!batchFollowUpAt) {
-      setError('Укажите дату follow-up');
+      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┤╨░╤В╤Г follow-up');
       return;
     }
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('дожим')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('╨┤╨╛╨╢╨╕╨╝')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('Сначала добавьте шаблон задачи в справочниках');
+      setError('╨б╨╜╨░╤З╨░╨╗╨░ ╨┤╨╛╨▒╨░╨▓╤М╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜ ╨╖╨░╨┤╨░╤З╨╕ ╨▓ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨░╤Е');
       return;
     }
     const dueIso = new Date(batchFollowUpAt).toISOString();
@@ -758,8 +939,8 @@ const SalesLeadsPage: React.FC = () => {
     setToast({
       open: true,
       message: failed
-        ? `Follow-up назначен: ${success}, ошибок: ${failed}. ${failedNames.length ? `Проблемные лиды: ${failedNames.join(', ')}` : ''}`
-        : `Follow-up назначен: ${success}`,
+        ? `Follow-up ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜: ${success}, ╨╛╤И╨╕╨▒╨╛╨║: ${failed}. ${failedNames.length ? `╨Я╤А╨╛╨▒╨╗╨╡╨╝╨╜╤Л╨╡ ╨╗╨╕╨┤╤Л: ${failedNames.join(', ')}` : ''}`
+        : `Follow-up ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜: ${success}`,
       severity: failed ? 'warning' : 'success',
     });
   };
@@ -774,11 +955,11 @@ const SalesLeadsPage: React.FC = () => {
 
   const handleBatchSendTemplate = async () => {
     if (!batchSendMessage.trim()) {
-      setError('Введите сообщение или выберите шаблон');
+      setError('╨Т╨▓╨╡╨┤╨╕╤В╨╡ ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡ ╨╕╨╗╨╕ ╨▓╤Л╨▒╨╡╤А╨╕╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜');
       return;
     }
     if (!batchSendFollowUpAt) {
-      setError('Укажите follow-up дату');
+      setError('╨г╨║╨░╨╢╨╕╤В╨╡ follow-up ╨┤╨░╤В╤Г');
       return;
     }
     const followUpIso = new Date(batchSendFollowUpAt).toISOString();
@@ -812,8 +993,8 @@ const SalesLeadsPage: React.FC = () => {
     setToast({
       open: true,
       message: failed
-        ? `Инфо отправлено: ${success}, ошибок: ${failed}. ${failedNames.length ? `Проблемные лиды: ${failedNames.join(', ')}` : ''}`
-        : `Инфо отправлено: ${success}`,
+        ? `╨Ш╨╜╤Д╨╛ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╨╛: ${success}, ╨╛╤И╨╕╨▒╨╛╨║: ${failed}. ${failedNames.length ? `╨Я╤А╨╛╨▒╨╗╨╡╨╝╨╜╤Л╨╡ ╨╗╨╕╨┤╤Л: ${failedNames.join(', ')}` : ''}`
+        : `╨Ш╨╜╤Д╨╛ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╨╛: ${success}`,
       severity: failed ? 'warning' : 'success',
     });
   };
@@ -821,7 +1002,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleSaveContactResult = async () => {
     if (!selectedLead) return;
     if ((contactOutcome === 'no_answer' || contactOutcome === 'callback') && !contactFollowUpAt) {
-      setError('Для "Не дозвон" и "Перезвонить" укажите follow-up дату');
+      setError('╨Ф╨╗╤П "╨Э╨╡ ╨┤╨╛╨╖╨▓╨╛╨╜" ╨╕ "╨Я╨╡╤А╨╡╨╖╨▓╨╛╨╜╨╕╤В╤М" ╤Г╨║╨░╨╢╨╕╤В╨╡ follow-up ╨┤╨░╤В╤Г');
       return;
     }
     try {
@@ -835,7 +1016,7 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось сохранить результат контакта'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В ╨║╨╛╨╜╤В╨░╨║╤В╨░'));
     }
   };
 
@@ -861,22 +1042,22 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
       if (outcome === 'connected') {
-        setToast({ open: true, message: 'Дозвон сохранен', severity: 'success' });
+        setToast({ open: true, message: '╨Ф╨╛╨╖╨▓╨╛╨╜ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜', severity: 'success' });
       } else if (outcome === 'no_answer') {
         setToast({
           open: true,
-          message: `Не дозвон сохранен, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
+          message: `╨Э╨╡ ╨┤╨╛╨╖╨▓╨╛╨╜ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
           severity: 'warning',
         });
       } else {
         setToast({
           open: true,
-          message: `Перезвон сохранен, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
+          message: `╨Я╨╡╤А╨╡╨╖╨▓╨╛╨╜ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
           severity: 'info',
         });
       }
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось сохранить быстрый результат'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨▒╤Л╤Б╤В╤А╤Л╨╣ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В'));
     }
   };
 
@@ -914,13 +1095,22 @@ const SalesLeadsPage: React.FC = () => {
 
   useEffect(() => {
     if (!selectedLead) return;
-    setLeadHeaderStatusDraft(selectedLead.status);
+    setLeadInfoDraft({
+      parent_full_name: selectedLead.parent_full_name || '',
+      parent_phone: selectedLead.parent_phone || '',
+      child_full_name: selectedLead.child_full_name || '',
+      child_phone: selectedLead.child_phone || '',
+      email: selectedLead.email || '',
+      communication_channel: (selectedLead.communication_channel as LeadCommunicationChannel | null) || '',
+      source: selectedLead.source || '',
+      referral_name: selectedLead.referral_name || '',
+    });
+  }, [selectedLead?.id]);
+
+  useEffect(() => {
+    if (!selectedLead) return;
+    setLeadHeaderStatusDraft(getPipelineColumnForStatus(selectedLead.status));
     setLeadHeaderNextStepDraft(selectedLead.desired_slot || '');
-    setLeadHeaderNextContactDraft(
-      selectedLead.next_contact_at
-        ? format(new Date(selectedLead.next_contact_at), "yyyy-MM-dd'T'HH:mm")
-        : ''
-    );
   }, [selectedLead?.id]);
 
   useEffect(() => {
@@ -935,7 +1125,7 @@ const SalesLeadsPage: React.FC = () => {
         setSelectedLead((prev) => (prev ? { ...prev, comment: updated.comment } : prev));
         setLeads((prev) => prev.map((l) => (l.id === updated.id ? { ...l, comment: updated.comment } : l)));
       } catch (err: any) {
-        setError(extractApiError(err, 'Не удалось автосохранить заметку'));
+        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨░╨▓╤В╨╛╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╖╨░╨╝╨╡╤В╨║╤Г'));
       } finally {
         setLeadCommentSaving(false);
       }
@@ -945,63 +1135,59 @@ const SalesLeadsPage: React.FC = () => {
 
   useEffect(() => {
     if (!selectedLead) return;
-    const currentNextContactLocal = selectedLead.next_contact_at
-      ? format(new Date(selectedLead.next_contact_at), "yyyy-MM-dd'T'HH:mm")
-      : '';
     if (
-      selectedLead.status === leadHeaderStatusDraft &&
-      (selectedLead.desired_slot || '') === leadHeaderNextStepDraft &&
-      currentNextContactLocal === leadHeaderNextContactDraft
+      getPipelineColumnForStatus(selectedLead.status) === leadHeaderStatusDraft &&
+      (selectedLead.desired_slot || '') === leadHeaderNextStepDraft
     ) {
       return;
     }
     const timer = window.setTimeout(async () => {
       try {
         setLeadHeaderSaving(true);
-        let nextContactIso: string | undefined;
-        if (leadHeaderNextContactDraft) {
-          const d = new Date(leadHeaderNextContactDraft);
-          if (!isValid(d)) {
-            setError('Неверная дата next contact');
-            return;
-          }
-          nextContactIso = d.toISOString();
-        }
         const updated = await salesApi.updateLead(selectedLead.id, {
           status: leadHeaderStatusDraft,
           desired_slot: leadHeaderNextStepDraft.trim() || undefined,
-          next_contact_at: nextContactIso,
         });
         setSelectedLead((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: updated.status,
-                desired_slot: updated.desired_slot,
-                next_contact_at: updated.next_contact_at,
-              }
-            : prev
+          prev ? { ...prev, status: updated.status, desired_slot: updated.desired_slot } : prev
         );
         setLeads((prev) =>
           prev.map((l) =>
-            l.id === updated.id
-              ? {
-                  ...l,
-                  status: updated.status,
-                  desired_slot: updated.desired_slot,
-                  next_contact_at: updated.next_contact_at,
-                }
-              : l
+            l.id === updated.id ? { ...l, status: updated.status, desired_slot: updated.desired_slot } : l
           )
         );
       } catch (err: any) {
-        setError(extractApiError(err, 'Не удалось автосохранить шапку лида'));
+        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨░╨▓╤В╨╛╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╤И╨░╨┐╨║╤Г ╨╗╨╕╨┤╨░'));
       } finally {
         setLeadHeaderSaving(false);
       }
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [leadHeaderStatusDraft, leadHeaderNextStepDraft, leadHeaderNextContactDraft, selectedLead]);
+  }, [leadHeaderStatusDraft, leadHeaderNextStepDraft, selectedLead]);
+
+  const handleSaveLeadInfo = async () => {
+    if (!selectedLead) return;
+    try {
+      setLeadInfoSaving(true);
+      const updated = await salesApi.updateLead(selectedLead.id, {
+        parent_full_name: leadInfoDraft.parent_full_name.trim() || undefined,
+        parent_phone: normalizeRuPhone(leadInfoDraft.parent_phone) || undefined,
+        child_full_name: leadInfoDraft.child_full_name.trim() || undefined,
+        child_phone: normalizeRuPhone(leadInfoDraft.child_phone) || undefined,
+        email: leadInfoDraft.email.trim() || undefined,
+        communication_channel: leadInfoDraft.communication_channel || undefined,
+        source: leadInfoDraft.source.trim() || undefined,
+        referral_name: leadInfoDraft.referral_name.trim() || undefined,
+      });
+      setSelectedLead(updated);
+      setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+      setToast({ open: true, message: '╨Ш╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤П ╨╗╨╕╨┤╨░ ╨╛╨▒╨╜╨╛╨▓╨╗╨╡╨╜╨░', severity: 'success' });
+    } catch (err: any) {
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤О ╨╗╨╕╨┤╨░'));
+    } finally {
+      setLeadInfoSaving(false);
+    }
+  };
 
   const handleTemplateChange = (templateIdStr: string) => {
     const tpl = infoTemplates.find((t) => String(t.id) === templateIdStr);
@@ -1015,15 +1201,15 @@ const SalesLeadsPage: React.FC = () => {
   const handleSendInfo = async () => {
     if (!selectedLead) return;
     if (!sendInfoForm.message.trim()) {
-      setError('Введите текст отправки');
+      setError('╨Т╨▓╨╡╨┤╨╕╤В╨╡ ╤В╨╡╨║╤Б╤В ╨╛╤В╨┐╤А╨░╨▓╨║╨╕');
       return;
     }
     if (!sendInfoForm.follow_up_at) {
-      setError('Укажите обязательный follow-up');
+      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╤Л╨╣ follow-up');
       return;
     }
-    if (sendInfoForm.pause_reason && !['ждём ответ', 'подумать', 'нет времени'].includes(sendInfoForm.pause_reason)) {
-      setError('Недопустимая причина паузы');
+    if (sendInfoForm.pause_reason && !['╨╢╨┤╤С╨╝ ╨╛╤В╨▓╨╡╤В', '╨┐╨╛╨┤╤Г╨╝╨░╤В╤М', '╨╜╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕'].includes(sendInfoForm.pause_reason)) {
+      setError('╨Э╨╡╨┤╨╛╨┐╤Г╤Б╤В╨╕╨╝╨░╤П ╨┐╤А╨╕╤З╨╕╨╜╨░ ╨┐╨░╤Г╨╖╤Л');
       return;
     }
     try {
@@ -1038,15 +1224,15 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось отправить инфо'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨╕╨╜╤Д╨╛'));
     }
   };
 
   const handleAssignPush = async () => {
     if (!selectedLead) return;
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('дожим')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('╨┤╨╛╨╢╨╕╨╝')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('Сначала добавьте шаблон задачи в справочниках');
+      setError('╨б╨╜╨░╤З╨░╨╗╨░ ╨┤╨╛╨▒╨░╨▓╤М╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜ ╨╖╨░╨┤╨░╤З╨╕ ╨▓ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨░╤Е');
       return;
     }
     const due = new Date();
@@ -1055,34 +1241,34 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.createTask(selectedLead.id, {
         template_id: pushTemplate.id,
         status_option_id: taskStatusOptionId ? Number(taskStatusOptionId) : undefined,
-        note: 'Быстрый дожим',
+        note: '╨С╤Л╤Б╤В╤А╤Л╨╣ ╨┤╨╛╨╢╨╕╨╝',
         channel: 'call',
         due_at: due.toISOString(),
       });
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось назначить дожим'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╜╨░╨╖╨╜╨░╤З╨╕╤В╤М ╨┤╨╛╨╢╨╕╨╝'));
     }
   };
 
   const handleAssignPushTemplateStep = async (step: 'first' | 'second' | 'final') => {
     if (!selectedLead) return;
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('дожим')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('╨┤╨╛╨╢╨╕╨╝')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('Сначала добавьте шаблон задачи в справочниках');
+      setError('╨б╨╜╨░╤З╨░╨╗╨░ ╨┤╨╛╨▒╨░╨▓╤М╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜ ╨╖╨░╨┤╨░╤З╨╕ ╨▓ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨░╤Е');
       return;
     }
     const due = new Date();
     let note = '';
     if (step === 'first') {
       due.setHours(due.getHours() + 24);
-      note = 'Дожим: 1-й контакт';
+      note = '╨Ф╨╛╨╢╨╕╨╝: 1-╨╣ ╨║╨╛╨╜╤В╨░╨║╤В';
     } else if (step === 'second') {
       due.setHours(due.getHours() + 48);
-      note = 'Дожим: 2-й контакт';
+      note = '╨Ф╨╛╨╢╨╕╨╝: 2-╨╣ ╨║╨╛╨╜╤В╨░╨║╤В';
     } else {
       due.setHours(due.getHours() + 72);
-      note = 'Дожим: финальный контакт';
+      note = '╨Ф╨╛╨╢╨╕╨╝: ╤Д╨╕╨╜╨░╨╗╤М╨╜╤Л╨╣ ╨║╨╛╨╜╤В╨░╨║╤В';
     }
     try {
       await salesApi.createTask(selectedLead.id, {
@@ -1095,11 +1281,11 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       setToast({
         open: true,
-        message: `${note} добавлен`,
+        message: `${note} ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜`,
         severity: 'success',
       });
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось добавить шаг дожима'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┤╨╛╨▒╨░╨▓╨╕╤В╤М ╤И╨░╨│ ╨┤╨╛╨╢╨╕╨╝╨░'));
     }
   };
 
@@ -1119,13 +1305,13 @@ const SalesLeadsPage: React.FC = () => {
   const formatEventOptionLabel = (ev: EventItem) => {
     const d = parseISO(ev.starts_at);
     const dateLabel = isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : ev.starts_at;
-    return `${ev.title} — ${dateLabel}`;
+    return `${ev.title} тАФ ${dateLabel}`;
   };
 
   const handleRegisterToEvent = async () => {
     if (!selectedLead) return;
     if (!registerEventId) {
-      setError('Выберите мероприятие');
+      setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡');
       return;
     }
     try {
@@ -1134,9 +1320,9 @@ const SalesLeadsPage: React.FC = () => {
         note: registerEventNote.trim() || undefined,
       });
       setRegisterEventOpen(false);
-      setToast({ open: true, message: 'Лид записан на мероприятие', severity: 'success' });
+      setToast({ open: true, message: '╨Ы╨╕╨┤ ╨╖╨░╨┐╨╕╤Б╨░╨╜ ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось записать на мероприятие'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'));
     }
   };
 
@@ -1150,18 +1336,18 @@ const SalesLeadsPage: React.FC = () => {
       })
       .sort((a, b) => parseISO(a.starts_at).getTime() - parseISO(b.starts_at).getTime())[0];
     if (!nearest) {
-      setError('Нет ближайших активных мероприятий');
+      setError('╨Э╨╡╤В ╨▒╨╗╨╕╨╢╨░╨╣╤И╨╕╤Е ╨░╨║╤В╨╕╨▓╨╜╤Л╤Е ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣');
       return;
     }
     try {
       await salesApi.registerLeadToEvent(nearest.id, { lead_id: selectedLead.id });
       setToast({
         open: true,
-        message: `Лид записан: ${formatEventOptionLabel(nearest)}`,
+        message: `╨Ы╨╕╨┤ ╨╖╨░╨┐╨╕╤Б╨░╨╜: ${formatEventOptionLabel(nearest)}`,
         severity: 'success',
       });
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось записать на ближайшее мероприятие'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨▒╨╗╨╕╨╢╨░╨╣╤И╨╡╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'));
     }
   };
 
@@ -1179,12 +1365,12 @@ const SalesLeadsPage: React.FC = () => {
       const result = await salesApi.importLeadsXlsx(file);
       await loadLeads();
       if (result.errors?.length) {
-        setError(`Импорт завершен: создано ${result.created}, пропущено ${result.skipped}. Ошибки: ${result.errors.join('; ')}`);
+        setError(`╨Ш╨╝╨┐╨╛╤А╤В ╨╖╨░╨▓╨╡╤А╤И╨╡╨╜: ╤Б╨╛╨╖╨┤╨░╨╜╨╛ ${result.created}, ╨┐╤А╨╛╨┐╤Г╤Й╨╡╨╜╨╛ ${result.skipped}. ╨Ю╤И╨╕╨▒╨║╨╕: ${result.errors.join('; ')}`);
       } else {
-        setError(`Импорт завершен: создано ${result.created}, пропущено ${result.skipped}`);
+        setError(`╨Ш╨╝╨┐╨╛╤А╤В ╨╖╨░╨▓╨╡╤А╤И╨╡╨╜: ╤Б╨╛╨╖╨┤╨░╨╜╨╛ ${result.created}, ╨┐╤А╨╛╨┐╤Г╤Й╨╡╨╜╨╛ ${result.skipped}`);
       }
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось импортировать Excel'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╕╨╝╨┐╨╛╤А╤В╨╕╤А╨╛╨▓╨░╤В╤М Excel'));
     }
   };
 
@@ -1200,7 +1386,7 @@ const SalesLeadsPage: React.FC = () => {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось скачать шаблон Excel'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨║╨░╤З╨░╤В╤М ╤И╨░╨▒╨╗╨╛╨╜ Excel'));
     }
   };
 
@@ -1212,6 +1398,7 @@ const SalesLeadsPage: React.FC = () => {
         return 'default';
       case 'invoice_sent':
         return 'info';
+      case 'no_answer':
       case 'demo':
         return 'warning';
       default:
@@ -1234,44 +1421,115 @@ const SalesLeadsPage: React.FC = () => {
       if (real.total_steps > 0) {
         return {
           percent: real.progress_percent,
-          label: `${real.done_steps}/${real.total_steps} шагов`,
+          label: `${real.done_steps}/${real.total_steps} ╤И╨░╨│╨╛╨▓`,
         };
       }
-      if (lead.status === 'won') return { percent: 100, label: 'оплачено' };
-      if (lead.status === 'lost') return { percent: 100, label: 'закрыто' };
-      return { percent: 0, label: 'нет шагов' };
+      if (lead.status === 'won') return { percent: 100, label: '╨╛╨┐╨╗╨░╤З╨╡╨╜╨╛' };
+      if (lead.status === 'lost') return { percent: 100, label: '╨╖╨░╨║╤А╤Л╤В╨╛' };
+      return { percent: 0, label: '╨╜╨╡╤В ╤И╨░╨│╨╛╨▓' };
     }
     const byStatus: Record<LeadStatus, number> = {
       new: 0,
       contacted: 30,
+      no_answer: 40,
       demo: 55,
       invoice_sent: 80,
       won: 100,
       lost: 100,
+      thinking: 25,
+      refused: 100,
+      trial_scheduled: 50,
+      event_registered: 60,
+      decided_immediately: 100,
     };
     const base = byStatus[lead.status] ?? 0;
-    if (lead.status === 'contacted' || lead.status === 'demo' || lead.status === 'invoice_sent') {
+    if (lead.status === 'contacted' || lead.status === 'no_answer' || lead.status === 'demo' || lead.status === 'invoice_sent') {
       if (!lead.next_contact_at) {
-        return { percent: Math.max(base - 10, 0), label: 'без follow-up' };
+        return { percent: Math.max(base - 10, 0), label: '╨▒╨╡╨╖ follow-up' };
       }
     }
-    if (lead.status === 'won') return { percent: 100, label: 'оплачено' };
-    if (lead.status === 'lost') return { percent: 100, label: 'закрыто' };
-    return { percent: base, label: 'дожим' };
+    if (lead.status === 'won') return { percent: 100, label: '╨╛╨┐╨╗╨░╤З╨╡╨╜╨╛' };
+    if (lead.status === 'lost') return { percent: 100, label: '╨╖╨░╨║╤А╤Л╤В╨╛' };
+    return { percent: base, label: '╨┤╨╛╨╢╨╕╨╝' };
   };
 
   const requiresFollowUpOnDrop = (status: LeadStatus) =>
-    status === 'contacted' || status === 'demo' || status === 'invoice_sent';
+    status === 'contacted' || status === 'no_answer' || status === 'demo' || status === 'invoice_sent';
 
-  const handleKanbanDrop = (targetStatus: LeadStatus) => {
-    if (!draggedLeadId) return;
-    const lead = leads.find((l) => l.id === draggedLeadId);
+  const handleKanbanDragStart = (e: React.DragEvent, leadId: number) => {
+    const target = e.target as HTMLElement;
+    if (target.closest?.('button, a, [role="button"]')) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(leadId));
+    e.dataTransfer.setData('application/lead-id', String(leadId));
+    setDraggedLeadId(leadId);
+  };
+
+  const handleKanbanDragEnd = () => {
     setDraggedLeadId(null);
+    setDragOverColumn(null);
+  };
+
+  const handleKanbanDrop = async (e: React.DragEvent, targetStatus: LeadStatus) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverColumn(null);
+    const leadId = draggedLeadId ?? (e.dataTransfer.getData('application/lead-id') || e.dataTransfer.getData('text/plain'));
+    const id = leadId ? Number(leadId) : null;
+    setDraggedLeadId(null);
+    if (!id) return;
+    const lead = leads.find((l) => l.id === id);
     if (!lead || lead.status === targetStatus) return;
+
+    if (targetStatus === 'no_answer') {
+      try {
+        await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1 });
+        await loadLeads();
+        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" тАФ ╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜ 1`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+      }
+      return;
+    }
+    if (targetStatus === 'decided_immediately') {
+      try {
+        await salesApi.updateLead(lead.id, { status: 'decided_immediately', questionnaire_filled: false });
+        await loadLeads();
+        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨┐╨╡╤А╨╡╨╜╨╡╤Б╤С╨╜ ╨▓ ╨Р╨╜╨║╨╡╤В╤Г ╤Г╤З╨╡╨╜╨╕╨║╨░`, severity: 'success' });
+        navigate('/sales/agreed');
+      } catch (err: any) {
+        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+      }
+      return;
+    }
+
     setDropLeadId(lead.id);
     setDropTargetStatus(targetStatus);
     setDropFollowUpAt('');
+    setDropCallbackAt('');
+    setDropRefusedReason('');
+    setDropTrialAt('');
+    setDropEventId('');
+    setDropEventNote('');
     setDropConfirmOpen(true);
+  };
+
+  const handleKanbanDragOver = (e: React.DragEvent, columnStatus: LeadStatus) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverColumn(columnStatus);
+  };
+
+  const handleKanbanDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+      setDragOverColumn(null);
+    }
   };
 
   const handleConfirmKanbanDrop = async () => {
@@ -1281,15 +1539,105 @@ const SalesLeadsPage: React.FC = () => {
       setDropConfirmOpen(false);
       return;
     }
+    setError('');
+    if (dropTargetStatus === 'thinking') {
+      if (!dropCallbackAt) {
+        setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┤╨░╤В╤Г ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░');
+        return;
+      }
+      const d = new Date(dropCallbackAt);
+      if (!isValid(d)) {
+        setError('╨Э╨╡╨▓╨╡╤А╨╜╨░╤П ╨┤╨░╤В╨░');
+        return;
+      }
+      try {
+        await salesApi.updateLead(lead.id, { status: 'thinking', next_contact_at: d.toISOString() });
+        await loadLeads();
+        if (selectedLead?.id === lead.id) setSelectedLead((p) => (p ? { ...p, status: 'thinking', next_contact_at: d.toISOString() } : p));
+        setDropConfirmOpen(false);
+        setDropLeadId(null);
+        setDropTargetStatus(null);
+        setDropCallbackAt('');
+        setToast({ open: true, message: `╨Ф╨░╤В╨░ ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜╨░ ╨┤╨╗╤П "${lead.contact_name}"`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'));
+      }
+      return;
+    }
+    if (dropTargetStatus === 'refused') {
+      if (!dropRefusedReason.trim()) {
+        setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨┐╤А╨╕╤З╨╕╨╜╤Г ╨╛╤В╨║╨░╨╖╨░');
+        return;
+      }
+      try {
+        await salesApi.updateLead(lead.id, { status: 'lost', lost_reason: dropRefusedReason.trim() });
+        await loadLeads();
+        setDropConfirmOpen(false);
+        setDropLeadId(null);
+        setDropTargetStatus(null);
+        setDropRefusedReason('');
+        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜ ╨▓ ╨░╤А╤Е╨╕╨▓`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+      }
+      return;
+    }
+    if (dropTargetStatus === 'trial_scheduled') {
+      if (!dropTrialAt) {
+        setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┤╨░╤В╤Г ╨╕ ╨▓╤А╨╡╨╝╤П ╨┐╤А╨╛╨▒╨╜╨╛╨│╨╛');
+        return;
+      }
+      const d = new Date(dropTrialAt);
+      if (!isValid(d)) {
+        setError('╨Э╨╡╨▓╨╡╤А╨╜╨░╤П ╨┤╨░╤В╨░');
+        return;
+      }
+      try {
+        await salesApi.updateLead(lead.id, {
+          status: 'trial_scheduled',
+          desired_slot: format(d, 'dd.MM.yyyy HH:mm'),
+        });
+        await loadLeads();
+        if (selectedLead?.id === lead.id) setSelectedLead((p) => (p ? { ...p, status: 'trial_scheduled', desired_slot: format(d, 'dd.MM.yyyy HH:mm') } : p));
+        setDropConfirmOpen(false);
+        setDropLeadId(null);
+        setDropTargetStatus(null);
+        setDropTrialAt('');
+        setToast({ open: true, message: `╨Я╤А╨╛╨▒╨╜╨╛╨╡ ╨╖╨░╨┐╨╗╨░╨╜╨╕╤А╨╛╨▓╨░╨╜╨╛ ╨┤╨╗╤П "${lead.contact_name}"`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'));
+      }
+      return;
+    }
+    if (dropTargetStatus === 'event_registered') {
+      if (!dropEventId) {
+        setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡');
+        return;
+      }
+      try {
+        await salesApi.registerLeadToEvent(Number(dropEventId), { lead_id: lead.id, note: dropEventNote || undefined });
+        await salesApi.updateLead(lead.id, { status: 'event_registered' });
+        await loadLeads();
+        setDropConfirmOpen(false);
+        setDropLeadId(null);
+        setDropTargetStatus(null);
+        setDropEventId('');
+        setDropEventNote('');
+        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨╖╨░╨┐╨╕╤Б╨░╨╜ ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡`, severity: 'success' });
+      } catch (err: any) {
+        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╨╕╤Б╨░╤В╤М'));
+      }
+      return;
+    }
     let nextContactAtIso: string | undefined;
     if (requiresFollowUpOnDrop(dropTargetStatus) && !lead.next_contact_at) {
       if (!dropFollowUpAt) {
-        setError('Для этой стадии укажите follow-up');
+        setError('╨Ф╨╗╤П ╤Н╤В╨╛╨╣ ╤Б╤В╨░╨┤╨╕╨╕ ╤Г╨║╨░╨╢╨╕╤В╨╡ follow-up');
         return;
       }
       const d = new Date(dropFollowUpAt);
       if (!isValid(d)) {
-        setError('Неверная дата follow-up');
+        setError('╨Э╨╡╨▓╨╡╤А╨╜╨░╤П ╨┤╨░╤В╨░ follow-up');
         return;
       }
       nextContactAtIso = d.toISOString();
@@ -1299,49 +1647,129 @@ const SalesLeadsPage: React.FC = () => {
         status: dropTargetStatus,
         next_contact_at: nextContactAtIso,
       });
+      if (dropTargetStatus === 'demo' && dropEventId) {
+        try {
+          await salesApi.registerLeadToEvent(Number(dropEventId), { lead_id: lead.id, note: dropEventNote || undefined });
+          setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨╖╨░╨┐╨╕╤Б╨░╨╜ ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╡`, severity: 'success' });
+        } catch (regErr: any) {
+          setError(extractApiError(regErr, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'));
+        }
+      }
       await loadLeads();
       if (selectedLead?.id === lead.id) {
         setSelectedLead((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: dropTargetStatus,
-                next_contact_at: nextContactAtIso || prev.next_contact_at,
-              }
-            : prev
+          prev ? { ...prev, status: dropTargetStatus, next_contact_at: nextContactAtIso || prev.next_contact_at } : prev
         );
       }
       setDropConfirmOpen(false);
       setDropLeadId(null);
       setDropTargetStatus(null);
       setDropFollowUpAt('');
-      setToast({
-        open: true,
-        message: `Лид "${lead.contact_name}" перенесен в "${statusLabels[dropTargetStatus]}"`,
-        severity: 'success',
-      });
+      setDropEventId('');
+      setDropEventNote('');
+      setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨┐╨╡╤А╨╡╨╜╨╡╤Б╨╡╨╜ ╨▓ "${statusLabels[dropTargetStatus]}"`, severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось перенести лид в стадию'));
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┐╨╡╤А╨╡╨╜╨╡╤Б╤В╨╕ ╨╗╨╕╨┤ ╨▓ ╤Б╤В╨░╨┤╨╕╤О'));
     }
   };
 
-  const statusOptions = useMemo(() => Object.keys(statusLabels) as LeadStatus[], []);
-  const kanbanColumns = useMemo(
+  const statusOptions = PIPELINE_STATUSES;
+  const pipelineLeads = useMemo(
     () =>
-      statusOptions.map((st) => ({
-        status: st,
-        title: statusLabels[st],
-        leads: leads.filter((l) => l.status === st),
-      })),
-    [leads, statusOptions]
+      isPipelineRoute
+        ? leads.filter((l) => !['event_registered', 'decided_immediately'].includes(l.status))
+        : leads,
+    [leads, isPipelineRoute]
   );
+  const kanbanColumns = useMemo(
+    () => {
+      const source = isPipelineRoute ? pipelineLeads : leads;
+      // ╨Ъ╨╛╨│╨┤╨░ ╨░╤А╤Е╨╕╨▓ ╤Б╨║╤А╤Л╤В тАФ ╨╗╨╕╨┤╤Л ╤Б╨╛ ╤Б╤В╨░╤В╤Г╤Б╨╛╨╝ ┬л╨Ч╨░╨║╤А╤Л╤В┬╗ ╨╜╨╡ ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╨╝ ╨▓ ╨▓╨╛╤А╨╛╨╜╨║╨╡ ╨▓╨╛╨╛╨▒╤Й╨╡
+      const visibleSource = showArchiveColumn ? source : source.filter((l) => l.status !== 'lost');
+      // ╨Ы╨╕╨┤╤Л ╤Б ╨╜╨╡╤П╨▓╨║╨╛╨╣ ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╨╝ ╤В╨╛╨╗╤М╨║╨╛ ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨╡ ┬л╨б╨╗╨╡╨┤ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡┬╗, ╨╕╨╖ ╨╛╤Б╤В╨░╨╗╤М╨╜╤Л╤Е ╨║╨╛╨╗╨╛╨╜╨╛╨║ ╤Г╨▒╨╕╤А╨░╨╡╨╝
+      const notNoShow = (l: Lead) => !noShowLeadIds.has(l.id);
+      const base = PIPELINE_STATUSES.map((st) => ({
+        status: st as LeadStatus | 'archive' | 'next_event',
+        title: statusLabels[st],
+        leads:
+          st === 'refused' && showArchiveColumn
+            ? source.filter((l) => l.status === 'refused' && notNoShow(l))
+            : visibleSource.filter((l) => getPipelineColumnForStatus(l.status) === st && notNoShow(l)),
+      }));
+      base.push({
+        status: 'next_event',
+        title: '╨б╨╗╨╡╨┤ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡',
+        leads: source.filter((l) => noShowLeadIds.has(l.id)),
+      });
+      if (showArchiveColumn) {
+        base.push({
+          status: 'archive',
+          title: '╨Р╤А╤Е╨╕╨▓',
+          leads: source.filter((l) => l.status === 'lost'),
+        });
+      }
+      return base;
+    },
+    [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds]
+  );
+  const handleNoAnswerAttemptClick = async (attempt: 1 | 2 | 3) => {
+    if (!selectedLead) return;
+    if (attempt === 3) {
+      setPendingNoAnswerArchiveLead(null);
+      setNoAnswerArchiveConfirmOpen(true);
+      return;
+    }
+    try {
+      await salesApi.updateLead(selectedLead.id, { no_answer_attempt: attempt });
+      await loadLeads();
+      setSelectedLead((p) => (p ? { ...p, no_answer_attempt: attempt } : p));
+      setToast({ open: true, message: `╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜ ${attempt}`, severity: 'info' });
+    } catch (err: any) {
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+    }
+  };
+
+  const handleWidgetNoAnswerAttempt = async (lead: Lead, attempt: 1 | 2 | 3) => {
+    if (attempt === 3) {
+      setPendingNoAnswerArchiveLead(lead);
+      setNoAnswerArchiveConfirmOpen(true);
+      return;
+    }
+    try {
+      setActionLoadingId(lead.id);
+      await salesApi.updateLead(lead.id, { no_answer_attempt: attempt });
+      await loadLeads();
+      setToast({ open: true, message: `╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜ ${attempt}`, severity: 'info' });
+    } catch (err: any) {
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleNoAnswerArchiveConfirm = async () => {
+    const lead = selectedLead ?? pendingNoAnswerArchiveLead;
+    if (!lead) return;
+    try {
+      await salesApi.updateLead(lead.id, { status: 'lost' });
+      setNoAnswerArchiveConfirmOpen(false);
+      setPendingNoAnswerArchiveLead(null);
+      await loadLeads();
+      setSelectedLead(null);
+      setDetailsOpen(false);
+      setToast({ open: true, message: '╨Ы╨╕╨┤ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜ ╨▓ ╨░╤А╤Е╨╕╨▓', severity: 'success' });
+    } catch (err: any) {
+      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨▓ ╨░╤А╤Е╨╕╨▓'));
+    }
+  };
+
   const isValidEmail = (email?: string | null) => !!email && /\S+@\S+\.\S+/.test(email);
   const pushTasks = useMemo(
     () =>
       tasks.filter((t) => {
         const templateName = taskTemplates.find((tpl) => tpl.id === t.template_id)?.name?.toLowerCase() || '';
         const note = (t.note || '').toLowerCase();
-        return templateName.includes('дожим') || note.includes('дожим') || note.includes('push');
+        return templateName.includes('╨┤╨╛╨╢╨╕╨╝') || note.includes('╨┤╨╛╨╢╨╕╨╝') || note.includes('push');
       }),
     [tasks, taskTemplates]
   );
@@ -1357,7 +1785,7 @@ const SalesLeadsPage: React.FC = () => {
   return (
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1.5}>
-        <Typography variant="h4">{isPipelineRoute ? 'Воронка' : 'Лиды'}</Typography>
+        <Typography variant="h4">{isPipelineRoute ? '╨Т╨╛╤А╨╛╨╜╨║╨░' : '╨Ы╨╕╨┤╤Л'}</Typography>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           {!isPipelineRoute && (
             <ToggleButtonGroup
@@ -1368,19 +1796,19 @@ const SalesLeadsPage: React.FC = () => {
                 if (v) setViewMode(v);
               }}
             >
-              <ToggleButton value="table">Таблица</ToggleButton>
-              <ToggleButton value="kanban">Воронка</ToggleButton>
+              <ToggleButton value="table">╨в╨░╨▒╨╗╨╕╤Ж╨░</ToggleButton>
+              <ToggleButton value="kanban">╨Т╨╛╤А╨╛╨╜╨║╨░</ToggleButton>
             </ToggleButtonGroup>
           )}
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel id="status-filter-label">Статус</InputLabel>
+            <InputLabel id="status-filter-label">╨б╤В╨░╤В╤Г╤Б</InputLabel>
             <Select
               labelId="status-filter-label"
-              label="Статус"
+              label="╨б╤В╨░╤В╤Г╤Б"
               value={statusFilter}
               onChange={(e) => setStatusFilter((e.target.value as LeadStatus) || '')}
             >
-              <MenuItem value="">Все</MenuItem>
+              <MenuItem value="">╨Т╤Б╨╡</MenuItem>
               {statusOptions.map((st) => (
                 <MenuItem key={st} value={st}>
                   {statusLabels[st]}
@@ -1390,58 +1818,75 @@ const SalesLeadsPage: React.FC = () => {
           </FormControl>
           <TextField
             size="small"
-            label="Поиск"
+            label="╨Я╨╛╨╕╤Б╨║"
             value={qFilter}
             onChange={(e) => setQFilter(e.target.value)}
           />
           <TextField
             size="small"
-            label="Источник"
+            label="╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║"
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
           />
           <TextField
             size="small"
-            label="Тег"
+            label="╨в╨╡╨│"
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
           />
           <Button variant={overdueOnly ? 'contained' : 'outlined'} size="small" onClick={() => setOverdueOnly((v) => !v)}>
-            Просроченные
+            ╨Я╤А╨╛╤Б╤А╨╛╤З╨╡╨╜╨╜╤Л╨╡
           </Button>
-          <Button size="small" variant="contained" onClick={handleOpenCreate} sx={{ whiteSpace: 'nowrap' }}>
-            Новый лид
-          </Button>
-          <Button size="small" variant="outlined" component="label" sx={{ whiteSpace: 'nowrap' }}>
-            Импорт из Excel
-            <input
-              type="file"
-              hidden
-              accept=".xlsx"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                void handleImportLeads(file);
-                e.currentTarget.value = '';
-              }}
-            />
-          </Button>
-          <Button size="small" variant="text" onClick={handleDownloadTemplate} sx={{ whiteSpace: 'nowrap' }}>
-            Шаблон Excel
-          </Button>
+          {viewMode === 'kanban' && (
+            <Stack direction="row" alignItems="center">
+              <Checkbox
+                id="show-archive-column"
+                checked={showArchiveColumn}
+                onChange={(e) => setShowArchiveColumn(e.target.checked)}
+                size="small"
+              />
+              <Typography component="label" htmlFor="show-archive-column" variant="body2" sx={{ cursor: 'pointer' }}>
+                ╨Я╨╛╨║╨░╨╖╨░╤В╤М ╨║╨╛╨╗╨╛╨╜╨║╤Г ┬л╨Р╤А╤Е╨╕╨▓┬╗
+              </Typography>
+            </Stack>
+          )}
+          {!isPipelineRoute && (
+            <>
+              <Button size="small" variant="contained" onClick={handleOpenCreate} sx={{ whiteSpace: 'nowrap' }}>
+                ╨Э╨╛╨▓╤Л╨╣ ╨╗╨╕╨┤
+              </Button>
+              <Button size="small" variant="outlined" component="label" sx={{ whiteSpace: 'nowrap' }}>
+                ╨Ш╨╝╨┐╨╛╤А╤В ╨╕╨╖ Excel
+                <input
+                  type="file"
+                  hidden
+                  accept=".xlsx"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    void handleImportLeads(file);
+                    e.currentTarget.value = '';
+                  }}
+                />
+              </Button>
+              <Button size="small" variant="text" onClick={handleDownloadTemplate} sx={{ whiteSpace: 'nowrap' }}>
+                ╨и╨░╨▒╨╗╨╛╨╜ Excel
+              </Button>
+            </>
+          )}
         </Stack>
       </Stack>
 
       {viewMode === 'table' && (
         <Stack direction="row" spacing={1} mb={1.25} flexWrap="wrap" useFlexGap>
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel id="table-city-filter-label">Город (быстрый)</InputLabel>
+            <InputLabel id="table-city-filter-label">╨У╨╛╤А╨╛╨┤ (╨▒╤Л╤Б╤В╤А╤Л╨╣)</InputLabel>
             <Select
               labelId="table-city-filter-label"
-              label="Город (быстрый)"
+              label="╨У╨╛╤А╨╛╨┤ (╨▒╤Л╤Б╤В╤А╤Л╨╣)"
               value={tableCityFilter}
               onChange={(e) => setTableCityFilter(e.target.value as string)}
             >
-              <MenuItem value="">Все города</MenuItem>
+              <MenuItem value="">╨Т╤Б╨╡ ╨│╨╛╤А╨╛╨┤╨░</MenuItem>
               {cityOptions.map((city) => (
                 <MenuItem key={city} value={city}>
                   {city}
@@ -1450,14 +1895,14 @@ const SalesLeadsPage: React.FC = () => {
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel id="table-class-filter-label">Класс (быстрый)</InputLabel>
+            <InputLabel id="table-class-filter-label">╨Ъ╨╗╨░╤Б╤Б (╨▒╤Л╤Б╤В╤А╤Л╨╣)</InputLabel>
             <Select
               labelId="table-class-filter-label"
-              label="Класс (быстрый)"
+              label="╨Ъ╨╗╨░╤Б╤Б (╨▒╤Л╤Б╤В╤А╤Л╨╣)"
               value={tableClassFilter}
               onChange={(e) => setTableClassFilter(e.target.value as string)}
             >
-              <MenuItem value="">Все классы</MenuItem>
+              <MenuItem value="">╨Т╤Б╨╡ ╨║╨╗╨░╤Б╤Б╤Л</MenuItem>
               {classOptions.map((schoolClass) => (
                 <MenuItem key={schoolClass} value={schoolClass}>
                   {schoolClass}
@@ -1472,7 +1917,7 @@ const SalesLeadsPage: React.FC = () => {
             onChange={(_, value) => setTableSchoolFilter(value || '')}
             onInputChange={(_, value) => setTableSchoolFilter(value)}
             sx={{ minWidth: 250 }}
-            renderInput={(params) => <TextField {...params} size="small" label="Школа (быстрый поиск)" />}
+            renderInput={(params) => <TextField {...params} size="small" label="╨и╨║╨╛╨╗╨░ (╨▒╤Л╤Б╤В╤А╤Л╨╣ ╨┐╨╛╨╕╤Б╨║)" />}
           />
           <Button
             size="small"
@@ -1483,7 +1928,7 @@ const SalesLeadsPage: React.FC = () => {
               setTableSchoolFilter('');
             }}
           >
-            Сбросить быстрые фильтры
+            ╨б╨▒╤А╨╛╤Б╨╕╤В╤М ╨▒╤Л╤Б╤В╤А╤Л╨╡ ╤Д╨╕╨╗╤М╤В╤А╤Л
           </Button>
         </Stack>
       )}
@@ -1496,7 +1941,7 @@ const SalesLeadsPage: React.FC = () => {
             disabled={selectedLeadIds.length === 0}
             onClick={() => setBatchFollowUpOpen(true)}
           >
-            Массовый follow-up ({selectedLeadIds.length})
+            ╨Ь╨░╤Б╤Б╨╛╨▓╤Л╨╣ follow-up ({selectedLeadIds.length})
           </Button>
           <Button
             size="small"
@@ -1504,7 +1949,7 @@ const SalesLeadsPage: React.FC = () => {
             disabled={selectedLeadIds.length === 0}
             onClick={() => setBatchSendOpen(true)}
           >
-            Массовая отправка шаблона
+            ╨Ь╨░╤Б╤Б╨╛╨▓╨░╤П ╨╛╤В╨┐╤А╨░╨▓╨║╨░ ╤И╨░╨▒╨╗╨╛╨╜╨░
           </Button>
         </Stack>
       )}
@@ -1516,7 +1961,7 @@ const SalesLeadsPage: React.FC = () => {
       )}
 
       <Grid container spacing={2}>
-        <Grid item xs={12} lg={detailsOpen ? 7 : 12}>
+        <Grid item xs={12}>
       {viewMode === 'table' ? (
       <TableContainer sx={{ overflowX: 'auto' }}>
       <Table size="small" sx={{ minWidth: 1280 }}>
@@ -1529,17 +1974,18 @@ const SalesLeadsPage: React.FC = () => {
                 onChange={(e) => handleSelectAllVisible(e.target.checked)}
               />
             </TableCell>
-            <TableCell>Клиент</TableCell>
-            <TableCell>Контакты</TableCell>
-            <TableCell>Статус</TableCell>
-            <TableCell>Источник</TableCell>
+            <TableCell>╨Ъ╨╗╨╕╨╡╨╜╤В</TableCell>
+            <TableCell>╨Ъ╨╛╨╜╤В╨░╨║╤В╤Л</TableCell>
+            <TableCell>╨б╤В╨░╤В╤Г╤Б</TableCell>
+            <TableCell>╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║</TableCell>
+            <TableCell>╨Ъ╨░╨╜╨░╨╗ ╨╛╨▒╤Й╨╡╨╜╨╕╤П</TableCell>
             <TableCell sortDirection={tableSortField === 'school_class' ? tableSortOrder : false}>
               <TableSortLabel
                 active={tableSortField === 'school_class'}
                 direction={tableSortField === 'school_class' ? tableSortOrder : 'asc'}
                 onClick={() => handleTableSort('school_class')}
               >
-                Класс
+                ╨Ъ╨╗╨░╤Б╤Б
               </TableSortLabel>
             </TableCell>
             <TableCell sortDirection={tableSortField === 'school_name' ? tableSortOrder : false}>
@@ -1548,7 +1994,7 @@ const SalesLeadsPage: React.FC = () => {
                 direction={tableSortField === 'school_name' ? tableSortOrder : 'asc'}
                 onClick={() => handleTableSort('school_name')}
               >
-                Школа
+                ╨и╨║╨╛╨╗╨░
               </TableSortLabel>
             </TableCell>
             <TableCell sortDirection={tableSortField === 'city' ? tableSortOrder : false}>
@@ -1557,20 +2003,18 @@ const SalesLeadsPage: React.FC = () => {
                 direction={tableSortField === 'city' ? tableSortOrder : 'asc'}
                 onClick={() => handleTableSort('city')}
               >
-                Город
+                ╨У╨╛╤А╨╛╨┤
               </TableSortLabel>
             </TableCell>
-            <TableCell>След. контакт</TableCell>
             <TableCell sortDirection={tableSortField === 'created_at' ? tableSortOrder : false}>
               <TableSortLabel
                 active={tableSortField === 'created_at'}
                 direction={tableSortField === 'created_at' ? tableSortOrder : 'desc'}
                 onClick={() => handleTableSort('created_at')}
               >
-                Создан
+                ╨б╨╛╨╖╨┤╨░╨╜
               </TableSortLabel>
             </TableCell>
-            <TableCell align="right">Действия</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -1595,166 +2039,44 @@ const SalesLeadsPage: React.FC = () => {
                   <Typography variant="subtitle2">{lead.contact_name}</Typography>
                 </Stack>
               </TableCell>
-              <TableCell>
-                <Stack spacing={0.5}>
-                  <Typography variant="body2">{lead.phone}</Typography>
-                  {lead.email && (
-                    <Typography variant="caption" color="text.secondary">
-                      {lead.email}
-                    </Typography>
-                  )}
-                </Stack>
-              </TableCell>
+              <TableCell>{lead.phone || 'тАФ'}</TableCell>
               <TableCell>
                 <FormControl size="small" sx={{ minWidth: 160 }}>
                   <Select
-                    value={lead.status}
-                    onChange={(e) => handleStatusChange(lead, e.target.value as LeadStatus)}
+                    value={getLeadStatusMenuValue(lead)}
+                    onChange={(e) => void handleLeadStatusSelectChange(lead, e.target.value as string)}
+                    renderValue={() => getLeadStatusDisplay(lead)}
                     disabled={actionLoadingId === lead.id}
                   >
                     {statusOptions.map((st) => (
-                      <MenuItem key={st} value={st}>
+                      <MenuItem key={st} value={`base:${st}`}>
                         <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </TableCell>
-              <TableCell>{lead.source || '—'}</TableCell>
-              <TableCell>{lead.school_class || '—'}</TableCell>
-              <TableCell>{lead.school_name || '—'}</TableCell>
-              <TableCell>{lead.city || '—'}</TableCell>
+              <TableCell>{lead.source || 'тАФ'}</TableCell>
               <TableCell>
-                {lead.next_contact_at
-                  ? (() => {
-                      const d = parseISO(lead.next_contact_at);
-                      return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : lead.next_contact_at;
-                    })()
-                  : '—'}
+                {lead.communication_channel
+                  ? (leadCommunicationChannelLabels[lead.communication_channel as LeadCommunicationChannel] ?? lead.communication_channel)
+                  : 'тАФ'}
               </TableCell>
+              <TableCell>{lead.school_class || 'тАФ'}</TableCell>
+              <TableCell>{lead.school_name || 'тАФ'}</TableCell>
+              <TableCell>{lead.city || 'тАФ'}</TableCell>
               <TableCell>
                 {(() => {
                   const d = parseISO(lead.created_at);
                   return isValid(d) ? format(d, 'dd.MM.yyyy') : lead.created_at;
                 })()}
               </TableCell>
-              <TableCell align="right">
-                <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                  <Tooltip title="Позвонить">
-                    <IconButton
-                      size="small"
-                      color="success"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRowQuickCall(lead);
-                      }}
-                    >
-                      <CallIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Написать">
-                    <IconButton
-                      size="small"
-                      color="info"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRowQuickMessage(lead);
-                      }}
-                    >
-                      <ChatIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Отправить инфо">
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRowQuickSendInfo(lead);
-                      }}
-                    >
-                      <SendIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Назначить follow-up">
-                    <IconButton
-                      size="small"
-                      color="warning"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRowQuickFollowUp(lead);
-                      }}
-                    >
-                      <FollowUpIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Закрыть лид">
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRowQuickCloseLead(lead);
-                      }}
-                    >
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Открыть карточку">
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenDetails(lead);
-                      }}
-                    >
-                      <VisibilityIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Инвойс + Email">
-                    <IconButton
-                      size="small"
-                      color="secondary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCreateAndSendInvoice(lead);
-                      }}
-                      disabled={actionLoadingId === lead.id}
-                    >
-                      {actionLoadingId === lead.id ? <CircularProgress size={14} /> : <ReceiptLongIcon fontSize="small" />}
-                    </IconButton>
-                  </Tooltip>
-                  {/* Keep row compact: full buttons moved to lead card */}
-                  {/* <Button
-                    size="small"
-                    variant="text"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenDetails(lead);
-                    }}
-                  >
-                    Карточка
-                  </Button> */}
-                  {/* <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCreateAndSendInvoice(lead);
-                    }}
-                    disabled={actionLoadingId === lead.id}
-                  >
-                    {actionLoadingId === lead.id ? <CircularProgress size={16} /> : 'Инвойс + Email'}
-                  </Button> */}
-                </Stack>
-              </TableCell>
             </TableRow>
           ))}
           {!loading && filteredSortedLeads.length === 0 && (
             <TableRow>
-              <TableCell colSpan={11}>
-                <Typography color="text.secondary">Лидов нет</Typography>
+              <TableCell colSpan={10}>
+                <Typography color="text.secondary">╨Ы╨╕╨┤╨╛╨▓ ╨╜╨╡╤В</Typography>
               </TableCell>
             </TableRow>
           )}
@@ -1762,14 +2084,37 @@ const SalesLeadsPage: React.FC = () => {
       </Table>
       </TableContainer>
       ) : (
-        <Grid container spacing={2}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'nowrap',
+            gap: 2,
+            overflowX: 'auto',
+            pb: 1,
+            minHeight: 400,
+          }}
+        >
           {kanbanColumns.map((col) => (
-            <Grid item xs={12} md={6} lg={4} xl={2} key={col.status}>
+            <Box
+              key={col.status}
+              sx={{
+                flex: '0 0 auto',
+                width: 280,
+                minWidth: 280,
+              }}
+            >
               <Card
                 variant="outlined"
-                sx={{ height: '100%' }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => void handleKanbanDrop(col.status)}
+                sx={{
+                  height: '100%',
+                  transition: 'background-color 0.15s, box-shadow 0.15s',
+                  ...((col.status !== 'archive' && col.status !== 'next_event') && dragOverColumn === col.status && draggedLeadId
+                    ? { bgcolor: 'action.hover', boxShadow: 2 }
+                    : {}),
+                }}
+                onDragOver={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus)}
+                onDragLeave={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragLeave}
+                onDrop={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus)}
               >
                 <CardContent>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
@@ -1781,8 +2126,12 @@ const SalesLeadsPage: React.FC = () => {
                       <Card
                         key={lead.id}
                         variant="outlined"
-                        draggable
-                        onDragStart={() => setDraggedLeadId(lead.id)}
+                        draggable={col.status !== 'archive' && col.status !== 'next_event'}
+                        onDragStart={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragStart(e, lead.id)}
+                        onDragEnd={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragEnd}
+                        onDragOver={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus)}
+                        onDragLeave={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragLeave}
+                        onDrop={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus)}
                         sx={{
                           borderRadius: 2,
                           borderColor:
@@ -1790,6 +2139,9 @@ const SalesLeadsPage: React.FC = () => {
                               ? 'primary.main'
                               : getKanbanBorderColor(lead.next_contact_at),
                           borderWidth: 2,
+                          opacity: draggedLeadId === lead.id ? 0.6 : 1,
+                          cursor: draggedLeadId === lead.id ? 'grabbing' : 'grab',
+                          userSelect: 'none',
                         }}
                       >
                         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -1797,8 +2149,30 @@ const SalesLeadsPage: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">{lead.phone}</Typography>
                           {lead.source && (
                             <Typography variant="caption" display="block" color="text.secondary">
-                              Источник: {lead.source}
+                              ╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║: {lead.source}
                             </Typography>
+                          )}
+                          {lead.status === 'thinking' && lead.next_contact_at && (
+                            <Typography variant="caption" display="block" color="primary">
+                              ╨Я╨╡╤А╨╡╨╖╨▓╨╛╨╜: {format(parseISO(lead.next_contact_at), 'dd.MM HH:mm')}
+                            </Typography>
+                          )}
+                          {lead.status === 'no_answer' && (
+                            <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                              {([1, 2, 3] as const).map((n) => (
+                                <Button
+                                  key={n}
+                                  size="small"
+                                  variant={(lead.no_answer_attempt ?? 1) >= n ? 'contained' : 'outlined'}
+                                  color={(lead.no_answer_attempt ?? 1) === n ? 'warning' : 'inherit'}
+                                  sx={{ minWidth: 0, px: 0.75, fontSize: '0.7rem' }}
+                                  disabled={actionLoadingId === lead.id}
+                                  onClick={() => void handleWidgetNoAnswerAttempt(lead, n)}
+                                >
+                                  ╨Э╨╡╨┤. {n}
+                                </Button>
+                              ))}
+                            </Stack>
                           )}
                           {(() => {
                             const p = getKanbanPushProgressEstimate(lead);
@@ -1806,7 +2180,7 @@ const SalesLeadsPage: React.FC = () => {
                               <Stack spacing={0.5} mt={1}>
                                 <Stack direction="row" justifyContent="space-between">
                                   <Typography variant="caption" color="text.secondary">
-                                    Прогресс: {p.label}
+                                    ╨Я╤А╨╛╨│╤А╨╡╤Б╤Б: {p.label}
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary">
                                     {p.percent}%
@@ -1823,15 +2197,7 @@ const SalesLeadsPage: React.FC = () => {
                           })()}
                           <Stack direction="row" spacing={1} mt={1}>
                             <Button size="small" onClick={() => handleOpenDetails(lead)}>
-                              Карточка
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => handleCreateAndSendInvoice(lead)}
-                              disabled={actionLoadingId === lead.id}
-                            >
-                              Инвойс
+                              ╨Ъ╨░╤А╤В╨╛╤З╨║╨░
                             </Button>
                           </Stack>
                         </CardContent>
@@ -1839,456 +2205,177 @@ const SalesLeadsPage: React.FC = () => {
                     ))}
                     {col.leads.length === 0 && (
                       <Typography variant="caption" color="text.secondary">
-                        Пусто
+                        ╨Я╤Г╤Б╤В╨╛
                       </Typography>
                     )}
                   </Stack>
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
         </Grid>
 
+        <Dialog
+          open={detailsOpen && !!selectedLead}
+          onClose={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}
+          maxWidth="xl"
+          fullWidth
+          scroll="paper"
+          PaperProps={{ sx: { maxHeight: '95vh' } }}
+        >
+          <DialogContent sx={{ p: 0 }}>
         {detailsOpen && selectedLead && (
-          <Grid item xs={12} lg={5}>
-            <Card variant="outlined" sx={{ position: { lg: 'sticky' }, top: { lg: 88 }, maxHeight: { lg: 'calc(100vh - 110px)' }, overflow: 'auto' }}>
+            <Card variant="outlined" sx={{ boxShadow: 'none' }}>
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                  <Typography variant="h6">Карточка лида</Typography>
-                  <Button size="small" onClick={() => setDetailsOpen(false)}>Скрыть</Button>
+                  <Typography variant="h6">╨Ъ╨░╤А╤В╨╛╤З╨║╨░ ╨╗╨╕╨┤╨░</Typography>
+                  <Button size="small" onClick={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
                 </Stack>
                 <Grid container spacing={2} sx={{ mt: 0.5 }}>
-                  <Grid item xs={12}>
-                    <Tabs
-                      value={leadCardTab}
-                      onChange={(_, v) => setLeadCardTab(v)}
-                      sx={{ mb: 1 }}
-                    >
-                      <Tab label="Обзор" value="overview" />
-                      <Tab label="Дожим" value="push" />
-                    </Tabs>
-                    <Card variant="outlined" sx={{ mb: 1 }}>
-                      <CardContent sx={{ py: 1.5 }}>
-                        <Typography variant="subtitle2">Шапка лида</Typography>
-                        <Grid container spacing={1} sx={{ mt: 1 }}>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              size="small"
-                              label="Имя"
-                              value={selectedLead.contact_name}
-                              InputProps={{ readOnly: true }}
-                              fullWidth
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              size="small"
-                              label="Телефон"
-                              value={selectedLead.phone}
-                              InputProps={{ readOnly: true }}
-                              fullWidth
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <FormControl size="small" fullWidth>
-                              <InputLabel id="header-status-label">Стадия</InputLabel>
-                              <Select
-                                labelId="header-status-label"
-                                label="Стадия"
-                                value={leadHeaderStatusDraft}
-                                onChange={(e) => setLeadHeaderStatusDraft(e.target.value as LeadStatus)}
-                              >
-                                {statusOptions.map((st) => (
-                                  <MenuItem key={st} value={st}>
-                                    {statusLabels[st]}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              size="small"
-                              label="Следующий шаг"
-                              value={leadHeaderNextStepDraft}
-                              onChange={(e) => setLeadHeaderNextStepDraft(e.target.value)}
-                              fullWidth
-                            />
-                          </Grid>
-                          <Grid item xs={12}>
-                            <TextField
-                              size="small"
-                              type="datetime-local"
-                              label="Следующий контакт"
-                              InputLabelProps={{ shrink: true }}
-                              value={leadHeaderNextContactDraft}
-                              onChange={(e) => setLeadHeaderNextContactDraft(e.target.value)}
-                              fullWidth
-                            />
-                          </Grid>
-                        </Grid>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                          {leadHeaderSaving ? 'Сохраняем шапку...' : 'Шапка сохраняется автоматически'}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                    <Card
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2">╨Ъ╨╗╨╕╨╡╨╜╤В</Typography>
+                    <Grid container spacing={1} sx={{ mt: 0.25 }}>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="╨а╨╛╨┤╨╕╤В╨╡╨╗╤М"
+                          value={leadInfoDraft.parent_full_name}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, parent_full_name: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П"
+                          value={leadInfoDraft.parent_phone}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, parent_phone: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="╨а╨╡╨▒╨╡╨╜╨╛╨║"
+                          value={leadInfoDraft.child_full_name}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, child_full_name: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤И╨║╨╛╨╗╤М╨╜╨╕╨║╨░"
+                          value={leadInfoDraft.child_phone}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, child_phone: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Email"
+                          value={leadInfoDraft.email}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, email: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel id="lead-communication-channel-label">╨Ъ╨░╨╜╨░╨╗ ╨╛╨▒╤Й╨╡╨╜╨╕╤П</InputLabel>
+                          <Select
+                            labelId="lead-communication-channel-label"
+                            label="╨Ъ╨░╨╜╨░╨╗ ╨╛╨▒╤Й╨╡╨╜╨╕╤П"
+                            value={leadInfoDraft.communication_channel}
+                            onChange={(e) =>
+                              setLeadInfoDraft((s) => ({
+                                ...s,
+                                communication_channel: (e.target.value as '' | LeadCommunicationChannel) || '',
+                              }))
+                            }
+                          >
+                            <MenuItem value="">
+                              <em>╨Э╨╡ ╨╖╨░╨┤╨░╨╜</em>
+                            </MenuItem>
+                            {Object.entries(leadCommunicationChannelLabels).map(([value, label]) => (
+                              <MenuItem key={value} value={value}>
+                                {label}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║"
+                          value={leadInfoDraft.source}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, source: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="╨Ъ╤В╨╛ ╨┐╤А╨╕╨│╨╗╨░╤Б╨╕╨╗"
+                          value={leadInfoDraft.referral_name}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, referral_name: e.target.value }))}
+                        />
+                      </Grid>
+                    </Grid>
+                    <Button
+                      size="small"
                       variant="outlined"
-                      sx={{
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 2,
-                        borderColor: 'rgba(15, 23, 42, 0.12)',
-                        bgcolor: 'background.paper',
-                      }}
+                      onClick={() => void handleSaveLeadInfo()}
+                      disabled={leadInfoSaving}
+                      sx={{ mt: 1 }}
                     >
-                      <CardContent sx={{ py: 1.5 }}>
-                        <Typography variant="subtitle2">Действия</Typography>
-                        <Grid container spacing={1} sx={{ mt: 1 }}>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="contained" onClick={() => void handleQuickCommunication('call')}>
-                              Позвонить
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="contained" color="secondary" onClick={() => void handleQuickCommunication('messenger')}>
-                              Написать
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="outlined" onClick={handleOpenSendInfo}>
-                              Отправить инфо
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="outlined" onClick={handleAssignPush}>
-                              Назначить дожим
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="outlined" onClick={handleOpenRegisterEvent}>
-                              Записать на ивент
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <Button fullWidth size="small" variant="text" onClick={handleQuickRegisterToNearestEvent}>
-                              Ближайший ивент
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12}>
-                            <Button fullWidth size="small" color="warning" variant="contained" onClick={handleQuickCloseLead}>
-                              Закрыть лид
-                            </Button>
-                          </Grid>
-                        </Grid>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
-                          Быстрые результаты звонка
-                        </Typography>
-                        <Grid container spacing={1} sx={{ mt: 0.25 }}>
-                          <Grid item xs={12} sm={4}>
-                            <Button fullWidth size="small" color="success" variant="contained" onClick={() => void submitOneClickContactResult('connected')}>
-                              Дозвон (1)
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={4}>
-                            <Button fullWidth size="small" color="warning" variant="contained" onClick={() => void submitOneClickContactResult('no_answer')}>
-                              Не дозвон (2)
-                            </Button>
-                          </Grid>
-                          <Grid item xs={12} sm={4}>
-                            <Button fullWidth size="small" color="info" variant="contained" onClick={() => void submitOneClickContactResult('callback')}>
-                              Перезвон (3)
-                            </Button>
-                          </Grid>
-                        </Grid>
-                        <Stack spacing={1} sx={{ mt: 1 }}>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel id="contact-result-label">Результат звонка</InputLabel>
-                            <Select
-                              labelId="contact-result-label"
-                              label="Результат звонка"
-                              value={contactOutcome}
-                              onChange={(e) => setContactOutcome(e.target.value as 'connected' | 'no_answer' | 'callback')}
-                            >
-                              <MenuItem value="connected">Дозвон</MenuItem>
-                              <MenuItem value="no_answer">Не дозвонились</MenuItem>
-                              <MenuItem value="callback">Перезвонить</MenuItem>
-                            </Select>
-                          </FormControl>
-                          <TextField
-                            size="small"
-                            label="Комментарий"
-                            value={contactNote}
-                            onChange={(e) => setContactNote(e.target.value)}
-                            fullWidth
-                          />
-                          <TextField
-                            size="small"
-                            type="datetime-local"
-                            label="Дата follow-up"
-                            InputLabelProps={{ shrink: true }}
-                            value={contactFollowUpAt}
-                            onChange={(e) => setContactFollowUpAt(e.target.value)}
-                            required={contactOutcome === 'no_answer' || contactOutcome === 'callback'}
-                            fullWidth
-                          />
-                          <Button size="small" variant="outlined" onClick={handleSaveContactResult} sx={{ alignSelf: 'flex-start' }}>
-                            Сохранить результат
-                          </Button>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} xl={4}>
-                    <Typography variant="subtitle2">Клиент</Typography>
-                    <List dense disablePadding>
-                      <ListItem disableGutters>
-                        <ListItemText primary="Родитель" secondary={selectedLead.parent_full_name || '—'} />
-                      </ListItem>
-                      <ListItem disableGutters>
-                        <ListItemText primary="Телефон родителя" secondary={selectedLead.parent_phone || '—'} />
-                      </ListItem>
-                      <ListItem disableGutters>
-                        <ListItemText primary="Ребенок" secondary={selectedLead.child_full_name || '—'} />
-                      </ListItem>
-                      <ListItem disableGutters>
-                        <ListItemText primary="Телефон школьника" secondary={selectedLead.child_phone || '—'} />
-                      </ListItem>
-                    </List>
-                    <Typography color="text.secondary">{selectedLead.email || 'email не указан'}</Typography>
-                    <Typography color="text.secondary">Источник: {selectedLead.source || '—'}</Typography>
-                    {selectedLead.pause_reason && (
-                      <Typography color="text.secondary">Пауза: {selectedLead.pause_reason}</Typography>
-                    )}
-                    {selectedLead.referral_name && (
-                      <Typography color="text.secondary">Кто пригласил: {selectedLead.referral_name}</Typography>
-                    )}
+                      {leadInfoSaving ? '╨б╨╛╤Е╤А╨░╨╜╤П╨╡╨╝...' : '╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤О'}
+                    </Button>
                     <TextField
                       fullWidth
                       multiline
                       minRows={2}
                       size="small"
                       sx={{ mt: 1 }}
-                      label="Заметка (автосохранение)"
+                      label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
                       value={leadCommentDraft}
                       onChange={(e) => setLeadCommentDraft(e.target.value)}
-                      helperText={leadCommentSaving ? 'Сохраняем...' : 'Сохраняется автоматически'}
+                      helperText={leadCommentSaving ? '╨б╨╛╤Е╤А╨░╨╜╤П╨╡╨╝...' : '╨б╨╛╤Е╤А╨░╨╜╤П╨╡╤В╤Б╤П ╨░╨▓╤В╨╛╨╝╨░╤В╨╕╤З╨╡╤Б╨║╨╕'}
                     />
-                    <Typography variant="subtitle2" sx={{ mt: 1 }}>Таймлайн коммуникаций</Typography>
-                    <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                      {communications.map((c) => (
-                        <Card key={c.id} variant="outlined" sx={{ p: 1 }}>
-                          <Stack direction="row" spacing={0.5} mb={0.5}>
-                            <Chip size="small" label={c.channel} />
-                            {c.pause_reason && <Chip size="small" color="warning" label={c.pause_reason} />}
-                          </Stack>
-                          <Typography variant="caption" display="block">{c.message}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {(() => {
-                              const d = parseISO(c.created_at);
-                              return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : c.created_at;
-                            })()}
-                            {' • follow-up: '}
-                            {(() => {
-                              const d = parseISO(c.follow_up_at);
-                              return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : c.follow_up_at;
-                            })()}
-                          </Typography>
-                        </Card>
-                      ))}
-                      {communications.length === 0 && (
-                        <Typography color="text.secondary" variant="caption">Коммуникаций пока нет</Typography>
-                      )}
-                    </Stack>
                     {selectedLead.lost_reason && (
                       <Alert severity="warning" sx={{ mt: 1 }}>
-                        Причина закрытия: {selectedLead.lost_reason}
+                        ╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╖╨░╨║╤А╤Л╤В╨╕╤П: {selectedLead.lost_reason}
                       </Alert>
                     )}
-                  </Grid>
-                  <Grid item xs={12} xl={4}>
-                    <Typography variant="subtitle2">Задачи</Typography>
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      {leadCardTab === 'overview' ? (
-                        <>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel id="task-template-label">Задача</InputLabel>
-                            <Select
-                              labelId="task-template-label"
-                              label="Задача"
-                              value={taskTemplateId}
-                              onChange={(e) => setTaskTemplateId((e.target.value as number) || '')}
-                            >
-                              <MenuItem value="">
-                                <em>Выберите задачу</em>
-                              </MenuItem>
-                              {taskTemplates.map((tpl) => (
-                                <MenuItem key={tpl.id} value={tpl.id}>
-                                  {tpl.name}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel id="task-status-option-label">Статус</InputLabel>
-                            <Select
-                              labelId="task-status-option-label"
-                              label="Статус"
-                              value={taskStatusOptionId}
-                              onChange={(e) => setTaskStatusOptionId((e.target.value as number) || '')}
-                            >
-                              {taskStatusOptions.map((st) => (
-                                <MenuItem key={st.id} value={st.id}>
-                                  {st.name}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          <TextField
-                            size="small"
-                            label="Комментарий к задаче"
-                            value={taskNote}
-                            onChange={(e) => setTaskNote(e.target.value)}
-                          />
-                          <TextField
-                            size="small"
-                            type="datetime-local"
-                            label="Срок"
-                            InputLabelProps={{ shrink: true }}
-                            value={taskDueAt}
-                            onChange={(e) => setTaskDueAt(e.target.value)}
-                          />
-                          <Button variant="outlined" onClick={handleCreateTask}>
-                            Добавить задачу
-                          </Button>
-                          {tasks.map((task) => (
-                            <Stack key={task.id} direction="row" justifyContent="space-between" alignItems="center">
-                              <Typography variant="body2">
-                                {taskTemplates.find((tpl) => tpl.id === task.template_id)?.name || 'Задача'}: {task.note || 'Без комментария'} (
-                                {taskStatusOptions.find((st) => st.id === task.status_option_id)?.name || task.status})
-                              </Typography>
-                              {task.status === 'open' && (
-                                <Button size="small" onClick={() => handleCloseTask(task)}>
-                                  Закрыть
-                                </Button>
-                              )}
-                            </Stack>
-                          ))}
-                          {tasks.length === 0 && <Typography color="text.secondary">Задач пока нет</Typography>}
-                        </>
-                      ) : (
-                        <>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <Chip
-                              size="small"
-                              color={pushProgressPercent >= 70 ? 'success' : pushProgressPercent >= 30 ? 'warning' : 'default'}
-                              label={`${pushDoneCount}/${pushTasks.length} шагов`}
-                            />
-                            <Typography variant="caption" color="text.secondary">
-                              Прогресс дожима: {pushProgressPercent}%
-                            </Typography>
-                          </Stack>
-                          <LinearProgress
-                            variant="determinate"
-                            value={pushProgressPercent}
-                            sx={{ borderRadius: 1, height: 8 }}
-                          />
-                          <Typography variant="body2" color="text.secondary">
-                            Чеклист касаний по дожиму
-                          </Typography>
-                          <Stack direction="row" spacing={1} flexWrap="wrap">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => void handleAssignPushTemplateStep('first')}
-                            >
-                              1-й контакт
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => void handleAssignPushTemplateStep('second')}
-                            >
-                              2-й контакт
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => void handleAssignPushTemplateStep('final')}
-                            >
-                              Финальный
-                            </Button>
-                            <Button size="small" variant="text" onClick={handleAssignPush}>
-                              + произвольный
-                            </Button>
-                          </Stack>
-                          {pushTasks.map((task) => {
-                            const dueLabel = task.due_at && isValid(parseISO(task.due_at))
-                              ? format(parseISO(task.due_at), 'dd.MM.yyyy HH:mm')
-                              : 'без срока';
-                            return (
-                              <Stack key={task.id} direction="row" spacing={1} alignItems="center">
-                                <Checkbox checked={task.status === 'done'} disabled />
-                                <Typography variant="body2">
-                                  {task.note || 'Шаг дожима'} ({dueLabel})
-                                </Typography>
-                              </Stack>
-                            );
-                          })}
-                          {pushTasks.length === 0 && (
-                            <Typography color="text.secondary">Шагов дожима пока нет</Typography>
-                          )}
-                        </>
-                      )}
-                    </Stack>
-                  </Grid>
-                  <Grid item xs={12} xl={4}>
-                    <Typography variant="subtitle2">Инвойсы</Typography>
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      <Button
-                        variant="outlined"
-                        onClick={() => handleCreateAndSendInvoice(selectedLead)}
-                        disabled={!selectedLead.abonement_id || !isValidEmail(selectedLead.email)}
-                      >
-                        Инвойс + Email
-                      </Button>
-                      {!isValidEmail(selectedLead.email) && (
-                        <Typography color="warning.main" variant="caption">
-                          Нужен корректный email для отправки
-                        </Typography>
-                      )}
-                      {invoices.map((inv) => (
-                        <Typography key={inv.id} variant="body2">
-                          #{inv.id} — {inv.amount} {inv.currency} ({inv.status})
-                        </Typography>
-                      ))}
-                      {invoices.length === 0 && <Typography color="text.secondary">Инвойсов пока нет</Typography>}
-                    </Stack>
                   </Grid>
                 </Grid>
               </CardContent>
             </Card>
-          </Grid>
         )}
+          </DialogContent>
+        </Dialog>
       </Grid>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Заполнить лид</DialogTitle>
+        <DialogTitle>╨Ч╨░╨┐╨╛╨╗╨╜╨╕╤В╤М ╨╗╨╕╨┤</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} md={6}>
               <TextField
-                label="ФИО родителя"
+                label="╨д╨Ш╨Ю ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П *"
                 fullWidth
+                required
                 value={form.parent_full_name}
                 onChange={(e) => setForm((s) => ({ ...s, parent_full_name: e.target.value }))}
               />
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="ФИО ребенка"
+                label="╨д╨Ш╨Ю ╤А╨╡╨▒╨╡╨╜╨║╨░"
                 fullWidth
                 value={form.child_full_name}
                 onChange={(e) => setForm((s) => ({ ...s, child_full_name: e.target.value }))}
@@ -2296,22 +2383,23 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="Телефон родителя"
+                label="╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П *"
                 fullWidth
+                required
                 value={form.parent_phone}
                 onChange={(e) => setForm((s) => ({ ...s, parent_phone: e.target.value }))}
                 onBlur={() => setForm((s) => ({ ...s, parent_phone: normalizeRuPhone(s.parent_phone) }))}
-                helperText="Формат: +7XXXXXXXXXX"
+                helperText="╨д╨╛╤А╨╝╨░╤В: +7XXXXXXXXXX"
               />
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="Телефон школьника"
+                label="╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤И╨║╨╛╨╗╤М╨╜╨╕╨║╨░"
                 fullWidth
                 value={form.child_phone}
                 onChange={(e) => setForm((s) => ({ ...s, child_phone: e.target.value }))}
                 onBlur={() => setForm((s) => ({ ...s, child_phone: normalizeRuPhone(s.child_phone) }))}
-                helperText="Формат: +7XXXXXXXXXX"
+                helperText="╨д╨╛╤А╨╝╨░╤В: +7XXXXXXXXXX"
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -2323,16 +2411,16 @@ const SalesLeadsPage: React.FC = () => {
               />
             </Grid>
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel id="lead-city-label">Город</InputLabel>
+              <FormControl fullWidth required>
+                <InputLabel id="lead-city-label">╨У╨╛╤А╨╛╨┤ *</InputLabel>
                 <Select
                   labelId="lead-city-label"
-                  label="Город"
+                  label="╨У╨╛╤А╨╛╨┤ *"
                   value={form.city}
                   onChange={(e) => setForm((s) => ({ ...s, city: e.target.value as string }))}
                 >
                   <MenuItem value="">
-                    <em>Не выбран</em>
+                    <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜</em>
                   </MenuItem>
                   {cityOptions.map((city) => (
                     <MenuItem key={city} value={city}>
@@ -2348,12 +2436,12 @@ const SalesLeadsPage: React.FC = () => {
                 options={schoolOptions}
                 inputValue={form.school_name}
                 onInputChange={(_, value) => setForm((s) => ({ ...s, school_name: value }))}
-                renderInput={(params) => <TextField {...params} label="Школа" fullWidth helperText="Можно выбрать из списка или найти через поиск" />}
+                renderInput={(params) => <TextField {...params} label="╨и╨║╨╛╨╗╨░" fullWidth helperText="╨Ь╨╛╨╢╨╜╨╛ ╨▓╤Л╨▒╤А╨░╤В╤М ╨╕╨╖ ╤Б╨┐╨╕╤Б╨║╨░ ╨╕╨╗╨╕ ╨╜╨░╨╣╤В╨╕ ╤З╨╡╤А╨╡╨╖ ╨┐╨╛╨╕╤Б╨║" />}
               />
             </Grid>
             <Grid item xs={12} md={3}>
               <TextField
-                label="Класс"
+                label="╨Ъ╨╗╨░╤Б╤Б"
                 fullWidth
                 value={form.school_class}
                 onChange={(e) => setForm((s) => ({ ...s, school_class: e.target.value }))}
@@ -2361,7 +2449,7 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="Дата обхода"
+                label="╨Ф╨░╤В╨░ ╨╛╨▒╤Е╨╛╨┤╨░"
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
@@ -2370,16 +2458,16 @@ const SalesLeadsPage: React.FC = () => {
               />
             </Grid>
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel id="lead-source-label">Источник</InputLabel>
+              <FormControl fullWidth required>
+                <InputLabel id="lead-source-label">╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║ *</InputLabel>
                 <Select
                   labelId="lead-source-label"
-                  label="Источник"
+                  label="╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║ *"
                   value={form.source_id}
                   onChange={(e) => setForm((s) => ({ ...s, source_id: e.target.value as string }))}
                 >
                   <MenuItem value="">
-                    <em>Не выбран</em>
+                    <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜</em>
                   </MenuItem>
                   {leadSources.map((src) => (
                     <MenuItem key={src.id} value={src.id}>
@@ -2389,10 +2477,10 @@ const SalesLeadsPage: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            {leadSources.find((s) => String(s.id) === String(form.source_id))?.name.toLowerCase() === 'рекомендация' && (
+            {leadSources.find((s) => String(s.id) === String(form.source_id))?.name.toLowerCase() === '╤А╨╡╨║╨╛╨╝╨╡╨╜╨┤╨░╤Ж╨╕╤П' && (
               <Grid item xs={12} md={6}>
                 <TextField
-                  label="Кто пригласил"
+                  label="╨Ъ╤В╨╛ ╨┐╤А╨╕╨│╨╗╨░╤Б╨╕╨╗"
                   fullWidth
                   value={form.referral_name}
                   onChange={(e) => setForm((s) => ({ ...s, referral_name: e.target.value }))}
@@ -2401,7 +2489,7 @@ const SalesLeadsPage: React.FC = () => {
             )}
             <Grid item xs={12} md={6}>
               <TextField
-                label="Теги (через запятую)"
+                label="╨в╨╡╨│╨╕ (╤З╨╡╤А╨╡╨╖ ╨╖╨░╨┐╤П╤В╤Г╤О)"
                 fullWidth
                 value={form.tags}
                 onChange={(e) => setForm((s) => ({ ...s, tags: e.target.value }))}
@@ -2409,7 +2497,7 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={12}>
               <TextField
-                label="Комментарий"
+                label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
                 fullWidth
                 multiline
                 minRows={2}
@@ -2417,46 +2505,33 @@ const SalesLeadsPage: React.FC = () => {
                 onChange={(e) => setForm((s) => ({ ...s, comment: e.target.value }))}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Следующий контакт"
-                type="datetime-local"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={form.next_contact_at}
-                onChange={(e) => setForm((s) => ({ ...s, next_contact_at: e.target.value }))}
-              />
-            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Отмена</Button>
+          <Button onClick={() => setCreateOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
-            disabled={
-              (!form.parent_full_name.trim() && !form.child_full_name.trim()) ||
-              (!form.parent_phone.trim() && !form.child_phone.trim())
-            }
+            disabled={!form.parent_full_name.trim() || !form.parent_phone.trim() || !form.city.trim() || !form.source_id}
           >
-            Создать
+            ╨б╨╛╨╖╨┤╨░╤В╤М
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={sendInfoOpen} onClose={() => setSendInfoOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Отправить инфо</DialogTitle>
+        <DialogTitle>╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨╕╨╜╤Д╨╛</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 1 }}>
-            <InputLabel id="info-template-label">Шаблон</InputLabel>
+            <InputLabel id="info-template-label">╨и╨░╨▒╨╗╨╛╨╜</InputLabel>
             <Select
               labelId="info-template-label"
-              label="Шаблон"
+              label="╨и╨░╨▒╨╗╨╛╨╜"
               value={sendInfoForm.template_id}
               onChange={(e) => handleTemplateChange(String(e.target.value))}
             >
               <MenuItem value="">
-                <em>Без шаблона</em>
+                <em>╨С╨╡╨╖ ╤И╨░╨▒╨╗╨╛╨╜╨░</em>
               </MenuItem>
               {infoTemplates.map((tpl) => (
                 <MenuItem key={tpl.id} value={tpl.id}>{tpl.name}</MenuItem>
@@ -2464,10 +2539,10 @@ const SalesLeadsPage: React.FC = () => {
             </Select>
           </FormControl>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="info-channel-label">Канал</InputLabel>
+            <InputLabel id="info-channel-label">╨Ъ╨░╨╜╨░╨╗</InputLabel>
             <Select
               labelId="info-channel-label"
-              label="Канал"
+              label="╨Ъ╨░╨╜╨░╨╗"
               value={sendInfoForm.channel}
               onChange={(e) => setSendInfoForm((s) => ({ ...s, channel: String(e.target.value) }))}
             >
@@ -2480,31 +2555,31 @@ const SalesLeadsPage: React.FC = () => {
             fullWidth
             multiline
             minRows={3}
-            label="Текст"
+            label="╨в╨╡╨║╤Б╤В"
             sx={{ mt: 2 }}
             value={sendInfoForm.message}
             onChange={(e) => setSendInfoForm((s) => ({ ...s, message: e.target.value }))}
           />
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="pause-reason-label">Причина паузы</InputLabel>
+            <InputLabel id="pause-reason-label">╨Я╤А╨╕╤З╨╕╨╜╨░ ╨┐╨░╤Г╨╖╤Л</InputLabel>
             <Select
               labelId="pause-reason-label"
-              label="Причина паузы"
+              label="╨Я╤А╨╕╤З╨╕╨╜╨░ ╨┐╨░╤Г╨╖╤Л"
               value={sendInfoForm.pause_reason}
               onChange={(e) => setSendInfoForm((s) => ({ ...s, pause_reason: String(e.target.value) }))}
             >
               <MenuItem value="">
-                <em>Без паузы</em>
+                <em>╨С╨╡╨╖ ╨┐╨░╤Г╨╖╤Л</em>
               </MenuItem>
-              <MenuItem value="ждём ответ">ждём ответ</MenuItem>
-              <MenuItem value="подумать">подумать</MenuItem>
-              <MenuItem value="нет времени">нет времени</MenuItem>
+              <MenuItem value="╨╢╨┤╤С╨╝ ╨╛╤В╨▓╨╡╤В">╨╢╨┤╤С╨╝ ╨╛╤В╨▓╨╡╤В</MenuItem>
+              <MenuItem value="╨┐╨╛╨┤╤Г╨╝╨░╤В╤М">╨┐╨╛╨┤╤Г╨╝╨░╤В╤М</MenuItem>
+              <MenuItem value="╨╜╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕">╨╜╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕</MenuItem>
             </Select>
           </FormControl>
           <TextField
             fullWidth
             type="datetime-local"
-            label="Follow-up (обязательно)"
+            label="Follow-up (╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛)"
             InputLabelProps={{ shrink: true }}
             sx={{ mt: 2 }}
             value={sendInfoForm.follow_up_at}
@@ -2512,24 +2587,24 @@ const SalesLeadsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSendInfoOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={handleSendInfo}>Отправить</Button>
+          <Button onClick={() => setSendInfoOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button variant="contained" onClick={handleSendInfo}>╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={registerEventOpen} onClose={() => setRegisterEventOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Записать на мероприятие</DialogTitle>
+        <DialogTitle>╨Ч╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 1 }}>
-            <InputLabel id="quick-event-label">Мероприятие</InputLabel>
+            <InputLabel id="quick-event-label">╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</InputLabel>
             <Select
               labelId="quick-event-label"
-              label="Мероприятие"
+              label="╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡"
               value={registerEventId}
               onChange={(e) => setRegisterEventId((e.target.value as number) || '')}
             >
               <MenuItem value="">
-                <em>Выберите мероприятие</em>
+                <em>╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</em>
               </MenuItem>
               {events.map((ev) => (
                 <MenuItem key={ev.id} value={ev.id}>
@@ -2542,23 +2617,23 @@ const SalesLeadsPage: React.FC = () => {
             fullWidth
             multiline
             minRows={2}
-            label="Комментарий"
+            label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
             sx={{ mt: 2 }}
             value={registerEventNote}
             onChange={(e) => setRegisterEventNote(e.target.value)}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRegisterEventOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={handleRegisterToEvent}>Записать</Button>
+          <Button onClick={() => setRegisterEventOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button variant="contained" onClick={handleRegisterToEvent}>╨Ч╨░╨┐╨╕╤Б╨░╤В╤М</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={lostDialogOpen} onClose={() => setLostDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Закрыть лид</DialogTitle>
+        <DialogTitle>╨Ч╨░╨║╤А╤Л╤В╤М ╨╗╨╕╨┤</DialogTitle>
         <DialogContent>
           <TextField
-            label="Причина закрытия"
+            label="╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╖╨░╨║╤А╤Л╤В╨╕╤П"
             fullWidth
             multiline
             minRows={3}
@@ -2568,22 +2643,22 @@ const SalesLeadsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setLostDialogOpen(false)}>Отмена</Button>
+          <Button onClick={() => setLostDialogOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
           <Button variant="contained" color="warning" onClick={handleConfirmLost}>
-            Подтвердить
+            ╨Я╨╛╨┤╤В╨▓╨╡╤А╨┤╨╕╤В╤М
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={batchFollowUpOpen} onClose={() => setBatchFollowUpOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Массовый follow-up</DialogTitle>
+        <DialogTitle>╨Ь╨░╤Б╤Б╨╛╨▓╤Л╨╣ follow-up</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Выбрано лидов: {selectedLeadIds.length}
+            ╨Т╤Л╨▒╤А╨░╨╜╨╛ ╨╗╨╕╨┤╨╛╨▓: {selectedLeadIds.length}
           </Typography>
           <TextField
             fullWidth
             type="datetime-local"
-            label="Дата и время follow-up"
+            label="╨Ф╨░╤В╨░ ╨╕ ╨▓╤А╨╡╨╝╤П follow-up"
             InputLabelProps={{ shrink: true }}
             sx={{ mt: 2 }}
             value={batchFollowUpAt}
@@ -2591,28 +2666,28 @@ const SalesLeadsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBatchFollowUpOpen(false)}>Отмена</Button>
+          <Button onClick={() => setBatchFollowUpOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
           <Button variant="contained" onClick={() => void handleBatchAssignFollowUp()}>
-            Назначить
+            ╨Э╨░╨╖╨╜╨░╤З╨╕╤В╤М
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={batchSendOpen} onClose={() => setBatchSendOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Массовая отправка шаблона</DialogTitle>
+        <DialogTitle>╨Ь╨░╤Б╤Б╨╛╨▓╨░╤П ╨╛╤В╨┐╤А╨░╨▓╨║╨░ ╤И╨░╨▒╨╗╨╛╨╜╨░</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Выбрано лидов: {selectedLeadIds.length}
+            ╨Т╤Л╨▒╤А╨░╨╜╨╛ ╨╗╨╕╨┤╨╛╨▓: {selectedLeadIds.length}
           </Typography>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="batch-template-label">Шаблон</InputLabel>
+            <InputLabel id="batch-template-label">╨и╨░╨▒╨╗╨╛╨╜</InputLabel>
             <Select
               labelId="batch-template-label"
-              label="Шаблон"
+              label="╨и╨░╨▒╨╗╨╛╨╜"
               value={batchTemplateId}
               onChange={(e) => handleBatchTemplateChange((e.target.value as number) || '')}
             >
               <MenuItem value="">
-                <em>Без шаблона</em>
+                <em>╨С╨╡╨╖ ╤И╨░╨▒╨╗╨╛╨╜╨░</em>
               </MenuItem>
               {infoTemplates.map((tpl) => (
                 <MenuItem key={tpl.id} value={tpl.id}>
@@ -2622,10 +2697,10 @@ const SalesLeadsPage: React.FC = () => {
             </Select>
           </FormControl>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="batch-channel-label">Канал</InputLabel>
+            <InputLabel id="batch-channel-label">╨Ъ╨░╨╜╨░╨╗</InputLabel>
             <Select
               labelId="batch-channel-label"
-              label="Канал"
+              label="╨Ъ╨░╨╜╨░╨╗"
               value={batchSendChannel}
               onChange={(e) => setBatchSendChannel(String(e.target.value))}
             >
@@ -2638,7 +2713,7 @@ const SalesLeadsPage: React.FC = () => {
             fullWidth
             multiline
             minRows={3}
-            label="Сообщение"
+            label="╨б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡"
             sx={{ mt: 2 }}
             value={batchSendMessage}
             onChange={(e) => setBatchSendMessage(e.target.value)}
@@ -2646,7 +2721,7 @@ const SalesLeadsPage: React.FC = () => {
           <TextField
             fullWidth
             type="datetime-local"
-            label="Follow-up (обязательно)"
+            label="Follow-up (╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛)"
             InputLabelProps={{ shrink: true }}
             sx={{ mt: 2 }}
             value={batchSendFollowUpAt}
@@ -2654,39 +2729,143 @@ const SalesLeadsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBatchSendOpen(false)}>Отмена</Button>
+          <Button onClick={() => setBatchSendOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
           <Button variant="contained" onClick={() => void handleBatchSendTemplate()}>
-            Отправить
+            ╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={dropConfirmOpen} onClose={() => setDropConfirmOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Подтвердить перенос стадии</DialogTitle>
+        <DialogTitle>
+          {dropTargetStatus === 'thinking' && '╨Я╨╛╨┤╤Г╨╝╨░╤О╤В тАФ ╨┤╨░╤В╨░ ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░'}
+          {dropTargetStatus === 'refused' && '╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П тАФ ╨┐╤А╨╕╤З╨╕╨╜╨░'}
+          {dropTargetStatus === 'trial_scheduled' && '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡'}
+          {dropTargetStatus === 'event_registered' && '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'}
+          {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && '╨Я╨╛╨┤╤В╨▓╨╡╤А╨┤╨╕╤В╤М ╨┐╨╡╤А╨╡╨╜╨╛╤Б ╤Б╤В╨░╨┤╨╕╨╕'}
+        </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Новая стадия: {dropTargetStatus ? statusLabels[dropTargetStatus] : '—'}
-          </Typography>
-          {(() => {
-            const lead = dropLeadId ? leads.find((l) => l.id === dropLeadId) : null;
-            const requireFollowUp = !!dropTargetStatus && requiresFollowUpOnDrop(dropTargetStatus) && !lead?.next_contact_at;
-            if (!requireFollowUp) return null;
-            return (
-              <TextField
-                fullWidth
-                type="datetime-local"
-                label="Follow-up (обязательно)"
-                InputLabelProps={{ shrink: true }}
-                sx={{ mt: 2 }}
-                value={dropFollowUpAt}
-                onChange={(e) => setDropFollowUpAt(e.target.value)}
-              />
-            );
-          })()}
+          {dropTargetStatus === 'thinking' && (
+            <TextField
+              fullWidth
+              type="datetime-local"
+              label="╨Ф╨░╤В╨░ ╨╕ ╨▓╤А╨╡╨╝╤П ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░"
+              InputLabelProps={{ shrink: true }}
+              sx={{ mt: 2 }}
+              value={dropCallbackAt}
+              onChange={(e) => setDropCallbackAt(e.target.value)}
+            />
+          )}
+          {dropTargetStatus === 'refused' && (
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel id="drop-refused-label">╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╛╤В╨║╨░╨╖╨░</InputLabel>
+              <Select labelId="drop-refused-label" label="╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╛╤В╨║╨░╨╖╨░" value={dropRefusedReason} onChange={(e) => setDropRefusedReason(e.target.value)}>
+                <MenuItem value=""><em>╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡</em></MenuItem>
+                {REFUSED_REASONS.map((r) => (
+                  <MenuItem key={r} value={r}>{r}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          {dropTargetStatus === 'trial_scheduled' && (
+            <TextField
+              fullWidth
+              type="datetime-local"
+              label="╨Ф╨░╤В╨░ ╨╕ ╨▓╤А╨╡╨╝╤П ╨┐╤А╨╛╨▒╨╜╨╛╨│╨╛"
+              InputLabelProps={{ shrink: true }}
+              sx={{ mt: 2 }}
+              value={dropTrialAt}
+              onChange={(e) => setDropTrialAt(e.target.value)}
+            />
+          )}
+          {dropTargetStatus === 'event_registered' && (
+            <>
+              <FormControl fullWidth sx={{ mt: 2 }}>
+                <InputLabel id="drop-event-reg-label">╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</InputLabel>
+                <Select labelId="drop-event-reg-label" label="╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡" value={dropEventId} onChange={(e) => setDropEventId((e.target.value as number) || '')}>
+                  <MenuItem value=""><em>╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡</em></MenuItem>
+                  {events.map((ev) => (
+                    <MenuItem key={ev.id} value={ev.id}>{formatEventOptionLabel(ev)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {dropEventId && (
+                <TextField fullWidth multiline minRows={2} label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣ ╨║ ╨╖╨░╨┐╨╕╤Б╨╕" sx={{ mt: 2 }} value={dropEventNote} onChange={(e) => setDropEventNote(e.target.value)} />
+              )}
+            </>
+          )}
+          {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                ╨Э╨╛╨▓╨░╤П ╤Б╤В╨░╨┤╨╕╤П: {dropTargetStatus ? statusLabels[dropTargetStatus] : 'тАФ'}
+              </Typography>
+              {(() => {
+                const lead = dropLeadId ? leads.find((l) => l.id === dropLeadId) : null;
+                const requireFollowUp = !!dropTargetStatus && requiresFollowUpOnDrop(dropTargetStatus) && !lead?.next_contact_at;
+                if (!requireFollowUp) return null;
+                return (
+                  <TextField
+                    fullWidth
+                    type="datetime-local"
+                    label="Follow-up (╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛)"
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ mt: 2 }}
+                    value={dropFollowUpAt}
+                    onChange={(e) => setDropFollowUpAt(e.target.value)}
+                  />
+                );
+              })()}
+          {dropTargetStatus === 'demo' && (
+            <>
+              <FormControl fullWidth sx={{ mt: 2 }}>
+                <InputLabel id="drop-event-label">╨Я╤А╨╛╨▒╨╜╨╛╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╡ (╨╛╨┐╤Ж╨╕╨╛╨╜╨░╨╗╤М╨╜╨╛)</InputLabel>
+                <Select
+                  labelId="drop-event-label"
+                  label="╨Я╤А╨╛╨▒╨╜╨╛╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╡ (╨╛╨┐╤Ж╨╕╨╛╨╜╨░╨╗╤М╨╜╨╛)"
+                  value={dropEventId}
+                  onChange={(e) => setDropEventId((e.target.value as number) || '')}
+                >
+                  <MenuItem value="">
+                    <em>╨Э╨╡ ╨╖╨░╨┐╨╕╤Б╤Л╨▓╨░╤В╤М</em>
+                  </MenuItem>
+                  {events.map((ev) => (
+                    <MenuItem key={ev.id} value={ev.id}>
+                      {formatEventOptionLabel(ev)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {dropEventId && (
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣ ╨║ ╨╖╨░╨┐╨╕╤Б╨╕"
+                  sx={{ mt: 2 }}
+                  value={dropEventNote}
+                  onChange={(e) => setDropEventNote(e.target.value)}
+                />
+              )}
+            </>
+          )}
+            </>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDropConfirmOpen(false)}>Отмена</Button>
+          <Button onClick={() => setDropConfirmOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
           <Button variant="contained" onClick={() => void handleConfirmKanbanDrop()}>
-            Перенести
+            {dropTargetStatus === 'refused' ? '╨Т ╨░╤А╤Е╨╕╨▓' : '╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={noAnswerArchiveConfirmOpen} onClose={() => { setNoAnswerArchiveConfirmOpen(false); setPendingNoAnswerArchiveLead(null); }}>
+        <DialogTitle>╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨▓ ╨░╤А╤Е╨╕╨▓?</DialogTitle>
+        <DialogContent>
+          <Typography>╨Я╨╛╤Б╨╗╨╡ ╨╜╨╡╨┤╨╛╨╖╨▓╨╛╨╜╨░ 3 ╨╗╨╕╨┤ ╨▒╤Г╨┤╨╡╤В ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜ ╨▓ ╨░╤А╤Е╨╕╨▓.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setNoAnswerArchiveConfirmOpen(false); setPendingNoAnswerArchiveLead(null); }}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button variant="contained" color="error" onClick={() => void handleNoAnswerArchiveConfirm()}>
+            ╨Т ╨░╤А╤Е╨╕╨▓
           </Button>
         </DialogActions>
       </Dialog>

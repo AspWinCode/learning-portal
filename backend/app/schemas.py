@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Optional, List, Dict, Any, Literal
+from datetime import datetime, date, time
 from enum import Enum
 
 
@@ -196,17 +196,18 @@ class StudentResponse(StudentBase):
 class LeadBase(BaseModel):
     contact_name: str
     phone: str
-    parent_full_name: Optional[str] = None
+    parent_full_name: str = Field(..., min_length=1)  # ╨д╨Ш╨Ю ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П тАФ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛
+    parent_phone: str = Field(..., min_length=1)  # ╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П тАФ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜
     child_full_name: Optional[str] = None
-    parent_phone: Optional[str] = None
     child_phone: Optional[str] = None
     email: Optional[EmailStr] = None
-    city: Optional[str] = None
+    city: str = Field(..., min_length=1)  # ╨У╨╛╤А╨╛╨┤ тАФ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜
     school_name: Optional[str] = None
     school_class: Optional[str] = None
     outreach_at: Optional[datetime] = None
     outreach_minutes: Optional[int] = None
     source: Optional[str] = None
+    communication_channel: Optional[str] = None
     source_id: Optional[int] = None
     referral_name: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -214,10 +215,12 @@ class LeadBase(BaseModel):
     desired_slot: Optional[str] = None
     comment: Optional[str] = None
     next_contact_at: Optional[datetime] = None
+    questionnaire_filled: Optional[bool] = None
 
 
 class LeadCreate(LeadBase):
     owner_id: Optional[int] = None  # admin may set; sales defaults to self
+    status_option_id: Optional[int] = None
 
 
 class LeadUpdate(BaseModel):
@@ -234,6 +237,7 @@ class LeadUpdate(BaseModel):
     outreach_at: Optional[datetime] = None
     outreach_minutes: Optional[int] = None
     source: Optional[str] = None
+    communication_channel: Optional[str] = None
     source_id: Optional[int] = None
     referral_name: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -241,15 +245,69 @@ class LeadUpdate(BaseModel):
     desired_slot: Optional[str] = None
     comment: Optional[str] = None
     next_contact_at: Optional[datetime] = None
+    no_answer_attempt: Optional[int] = None
     pause_reason: Optional[str] = None
     status: Optional[LeadStatus] = None
+    status_option_id: Optional[int] = None
     lost_reason: Optional[str] = None
+    questionnaire_filled: Optional[bool] = None
 
 
-class LeadResponse(LeadBase):
+class LeadStatusOptionBase(BaseModel):
+    name: str
+    base_status: LeadStatus
+    is_active: bool = True
+
+
+class LeadStatusOptionCreate(BaseModel):
+    name: str
+    base_status: LeadStatus
+
+
+class LeadStatusOptionUpdate(BaseModel):
+    name: Optional[str] = None
+    base_status: Optional[LeadStatus] = None
+    is_active: Optional[bool] = None
+
+
+class LeadStatusOptionResponse(LeadStatusOptionBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class LeadResponse(BaseModel):
+    """╨б╤Е╨╡╨╝╨░ ╨╛╤В╨▓╨╡╤В╨░ ╨┐╨╛ ╨╗╨╕╨┤╤Г: ╨▓╤Б╨╡ ╨┐╨╛╨╗╤П ╨║╨╛╨╜╤В╨░╨║╤В╨░ ╨┤╨╛╨┐╤Г╤Б╨║╨░╤О╤В None ╨┤╨╗╤П ╤Б╤В╨░╤А╤Л╤Е ╨╖╨░╨┐╨╕╤Б╨╡╨╣ ╨▓ ╨С╨Ф."""
     id: int
     owner_id: int
+    contact_name: str
+    phone: str
+    parent_full_name: Optional[str] = None
+    child_full_name: Optional[str] = None
+    parent_phone: Optional[str] = None
+    child_phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    city: Optional[str] = None
+    school_name: Optional[str] = None
+    school_class: Optional[str] = None
+    outreach_at: Optional[datetime] = None
+    outreach_minutes: Optional[int] = None
+    source: Optional[str] = None
+    communication_channel: Optional[str] = None
+    source_id: Optional[int] = None
+    referral_name: Optional[str] = None
+    tags: Optional[List[str]] = None
+    abonement_id: Optional[int] = None
+    desired_slot: Optional[str] = None
+    comment: Optional[str] = None
+    next_contact_at: Optional[datetime] = None
+    no_answer_attempt: Optional[int] = None
+    questionnaire_filled: bool = False
     status: LeadStatus
+    status_option_id: Optional[int] = None
+    status_option: Optional[LeadStatusOptionResponse] = None
     pause_reason: Optional[str] = None
     lost_reason: Optional[str] = None
     created_at: datetime
@@ -306,6 +364,50 @@ class LeadSourceUpdate(BaseModel):
 
 
 class LeadSourceResponse(LeadSourceBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SalesCityBase(BaseModel):
+    name: str
+    is_active: bool = True
+
+
+class SalesCityCreate(BaseModel):
+    name: str
+
+
+class SalesCityUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SalesCityResponse(SalesCityBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SalesSchoolBase(BaseModel):
+    name: str
+    is_active: bool = True
+
+
+class SalesSchoolCreate(BaseModel):
+    name: str
+
+
+class SalesSchoolUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SalesSchoolResponse(SalesSchoolBase):
     id: int
     created_at: datetime
 
@@ -406,6 +508,12 @@ class LeadContactResultRequest(BaseModel):
     outcome: str
     note: Optional[str] = None
     follow_up_at: Optional[datetime] = None
+
+
+class LeadPostVisitOutcomeRequest(BaseModel):
+    outcome: Literal["agreed", "thinking", "declined"]
+    follow_up_at: Optional[datetime] = None
+    lost_reason: Optional[str] = None
 
 
 class LeadCommunicationResponse(BaseModel):
@@ -591,6 +699,51 @@ class GroupResponse(GroupBase):
     trainer: Optional[UserResponse] = None
     students: Optional[List[StudentResponse]] = []
     programs: Optional[List["ProgramSummaryResponse"]] = []
+
+    class Config:
+        from_attributes = True
+
+
+# Group schedule (╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╣ ╨│╤А╤Г╨┐╨┐╤Л)
+class GroupScheduleCreate(BaseModel):
+    day_of_week: int  # 0=╨Я╨╜, 6=╨Т╤Б
+    start_time: time
+    end_time: time
+
+
+class GroupScheduleResponse(BaseModel):
+    id: int
+    group_id: int
+    day_of_week: int
+    start_time: time
+    end_time: time
+
+    class Config:
+        from_attributes = True
+
+
+# ╨Я╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М ╨╖╨░╨╜╤П╤В╨╕╤П
+class LessonAttendanceItem(BaseModel):
+    student_id: int
+    attended: bool
+
+
+class LessonAttendanceSave(BaseModel):
+    group_id: int
+    lesson_date: date
+    attendances: List[LessonAttendanceItem]
+
+
+# ╨Ч╨░╨╜╤П╤В╨╕╨╡ ╨┤╨╗╤П ╨║╨░╨╗╨╡╨╜╨┤╨░╤А╤П ╤В╤А╨╡╨╜╨╡╤А╨░ (╨│╤А╤Г╨┐╨┐╨░ + ╤Б╨╗╨╛╤В ╨┐╨╛ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤О + ╤Г╤З╨╡╨╜╨╕╨║╨╕ ╨╕ ╨╛╤В╨╝╨╡╤В╨║╨╕)
+class TrainerLessonSlotResponse(BaseModel):
+    group_id: int
+    group_name: str
+    program_name: Optional[str] = None
+    day_of_week: int
+    start_time: time
+    end_time: time
+    lesson_date: date
+    students: List[Dict[str, Any]]  # [{ id, full_name, attended: bool | None }]
 
     class Config:
         from_attributes = True
@@ -795,29 +948,136 @@ class ReportRequest(BaseModel):
     format: str = "xlsx"  # xlsx or csv
 
 
-# --- Task manager schemas ---
-class TaskStatus(str, Enum):
-    ACTIVE = "active"
-    ARCHIVED = "archived"
+# B2B Schools
+class B2BSchoolPipelineStage(str, Enum):
+    NEW = "new"
+    CONTACT_FOUND = "contact_found"
+    LETTER_SENT = "letter_sent"
+    MEETING_SCHEDULED = "meeting_scheduled"
+    MEETING_HELD = "meeting_held"
+    PERMISSION_RECEIVED = "permission_received"
+    WALKTHROUGH_SCHEDULED = "walkthrough_scheduled"
+    WALKTHROUGH_DONE = "walkthrough_done"
+    LEADS_RECEIVED = "leads_received"
 
 
-class TaskTemplateSubtaskItem(BaseModel):
-    text: str
-    order: Optional[int] = None
+class B2BSchoolFriendshipDegree(str, Enum):
+    UNKNOWN = "unknown"
+    INDIRECT = "indirect"
+    FRIENDS = "friends"
+    ENEMIES = "enemies"
 
 
-class TaskTemplateCreate(BaseModel):
+class B2BSchoolContactCreate(BaseModel):
+    full_name: str
+    position: Optional[str] = None
+    phone: str
+    phone_extra: Optional[str] = None
+
+
+class B2BSchoolContactUpdate(BaseModel):
+    full_name: Optional[str] = None
+    position: Optional[str] = None
+    phone: Optional[str] = None
+    phone_extra: Optional[str] = None
+
+
+class B2BSchoolContactResponse(BaseModel):
+    id: int
+    b2b_school_id: int
+    full_name: str
+    position: Optional[str] = None
+    phone: str
+    phone_extra: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class B2BSchoolCreate(BaseModel):
     name: str
-    subtasks: Optional[List[TaskTemplateSubtaskItem]] = None
-    student_ids: Optional[List[int]] = None
+    director: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    student_count: Optional[int] = None
+    friendship_degree: Optional[B2BSchoolFriendshipDegree] = None
+    pipeline_stage: B2BSchoolPipelineStage = B2BSchoolPipelineStage.NEW
+    event_dates: Optional[List[str]] = None
+    meeting_scheduled_at: Optional[datetime] = None
+    meeting_outcomes: Optional[str] = None
+    walkthrough_scheduled_at: Optional[datetime] = None
 
 
-class TaskTemplateUpdate(BaseModel):
+class B2BSchoolUpdate(BaseModel):
     name: Optional[str] = None
-    subtasks: Optional[List[TaskTemplateSubtaskItem]] = None
-    student_ids: Optional[List[int]] = None
+    director: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    student_count: Optional[int] = None
+    friendship_degree: Optional[B2BSchoolFriendshipDegree] = None
+    pipeline_stage: Optional[B2BSchoolPipelineStage] = None
+    event_dates: Optional[List[str]] = None
+    meeting_scheduled_at: Optional[datetime] = None
+    meeting_outcomes: Optional[str] = None
+    walkthrough_scheduled_at: Optional[datetime] = None
 
 
+class B2BSchoolResponse(BaseModel):
+    id: int
+    name: str
+    director: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    student_count: Optional[int] = None
+    friendship_degree: Optional[str] = None
+    pipeline_stage: str
+    event_dates: Optional[List[str]] = None
+    meeting_scheduled_at: Optional[datetime] = None
+    meeting_outcomes: Optional[str] = None
+    walkthrough_scheduled_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    leads_count: Optional[int] = None
+    conversion_percent: Optional[float] = None
+    contacts: Optional[List[B2BSchoolContactResponse]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class B2BProjectBase(BaseModel):
+    name: str
+    location: Optional[str] = None
+    main_city: Optional[str] = None
+    cities: Optional[List[str]] = None
+
+
+class B2BProjectCreate(B2BProjectBase):
+    pass
+
+
+class B2BProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    main_city: Optional[str] = None
+    cities: Optional[List[str]] = None
+
+
+class B2BProjectResponse(BaseModel):
+    id: int
+    name: str
+    location: Optional[str] = None
+    main_city: Optional[str] = None
+    cities: Optional[List[str]] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# --- Task manager (admin/owner/sales) ---
 class TaskTemplateSubtaskResponse(BaseModel):
     id: int
     template_id: int
@@ -828,6 +1088,30 @@ class TaskTemplateSubtaskResponse(BaseModel):
         from_attributes = True
 
 
+class TaskTemplateCreate(BaseModel):
+    name: str
+    subtasks: Optional[List[dict]] = None  # [{"text": str, "order": int}]
+    student_ids: Optional[List[int]] = None
+    repeat_enabled: Optional[bool] = False
+    repeat_frequency: Optional[Literal["daily", "weekly", "monthly"]] = None
+    repeat_days: Optional[List[int]] = None  # weekdays 0-6 or month days 1-31
+    repeat_end_type: Optional[Literal["never", "after_count", "until_date"]] = None
+    repeat_end_after_count: Optional[int] = None
+    repeat_end_until: Optional[date] = None
+
+
+class TaskTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    subtasks: Optional[List[dict]] = None
+    student_ids: Optional[List[int]] = None
+    repeat_enabled: Optional[bool] = None
+    repeat_frequency: Optional[Literal["daily", "weekly", "monthly"]] = None
+    repeat_days: Optional[List[int]] = None
+    repeat_end_type: Optional[Literal["never", "after_count", "until_date"]] = None
+    repeat_end_after_count: Optional[int] = None
+    repeat_end_until: Optional[date] = None
+
+
 class TaskTemplateResponse(BaseModel):
     id: int
     name: str
@@ -835,29 +1119,15 @@ class TaskTemplateResponse(BaseModel):
     created_at: datetime
     subtasks: List[TaskTemplateSubtaskResponse]
     student_ids: List[int]
+    repeat_enabled: bool = False
+    repeat_frequency: Optional[str] = None
+    repeat_days: Optional[List[int]] = None
+    repeat_end_type: Optional[str] = None
+    repeat_end_after_count: Optional[int] = None
+    repeat_end_until: Optional[date] = None
 
     class Config:
         from_attributes = True
-
-
-class TaskSubtaskItem(BaseModel):
-    text: str
-    order: Optional[int] = None
-
-
-class TaskCreate(BaseModel):
-    title: Optional[str] = None
-    template_id: Optional[int] = None
-    assigned_to_id: Optional[int] = None
-    subtasks: Optional[List[TaskSubtaskItem]] = None
-    student_ids: Optional[List[int]] = None
-
-
-class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    status: Optional[TaskStatus] = None
-    assigned_to_id: Optional[int] = None
-    student_ids: Optional[List[int]] = None
 
 
 class TaskSubtaskResponse(BaseModel):
@@ -875,6 +1145,33 @@ class TaskSubtaskUpdate(BaseModel):
     completed: Optional[bool] = None
 
 
+class TaskCreate(BaseModel):
+    title: Optional[str] = None
+    template_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
+    subtasks: Optional[List[dict]] = None
+    student_ids: Optional[List[int]] = None
+    repeat_enabled: Optional[bool] = False
+    repeat_frequency: Optional[Literal["daily", "weekly", "monthly"]] = None
+    repeat_days: Optional[List[int]] = None
+    repeat_end_type: Optional[Literal["never", "after_count", "until_date"]] = None
+    repeat_end_after_count: Optional[int] = None
+    repeat_end_until: Optional[date] = None
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    status: Optional[str] = None
+    assigned_to_id: Optional[int] = None
+    student_ids: Optional[List[int]] = None
+    repeat_enabled: Optional[bool] = None
+    repeat_frequency: Optional[Literal["daily", "weekly", "monthly"]] = None
+    repeat_days: Optional[List[int]] = None
+    repeat_end_type: Optional[Literal["never", "after_count", "until_date"]] = None
+    repeat_end_after_count: Optional[int] = None
+    repeat_end_until: Optional[date] = None
+
+
 class TaskResponse(BaseModel):
     id: int
     title: str
@@ -887,6 +1184,74 @@ class TaskResponse(BaseModel):
     subtasks: List[TaskSubtaskResponse]
     student_ids: List[int]
     progress: float
+    repeat_enabled: bool = False
+    repeat_frequency: Optional[str] = None
+    repeat_days: Optional[List[int]] = None
+    repeat_end_type: Optional[str] = None
+    repeat_end_after_count: Optional[int] = None
+    repeat_end_until: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Owner funnels (support letters, thank you letters, events)
+class OwnerFunnelTypeInfo(BaseModel):
+    """╨в╨╕╨┐ ╨▓╨╛╤А╨╛╨╜╨║╨╕: id ╨╕ ╤Н╤В╨░╨┐╤Л ╨┤╨╗╤П ╨▓╤Л╨▒╨╛╤А╨░ ╨▓ UI."""
+    id: str
+    label: str
+    stages: List[dict]  # [{"value": "new", "label": "╨Э╨╛╨▓╨╛╨╡"}, ...]
+
+
+class OwnerFunnelEventCreate(BaseModel):
+    event_name: str
+    event_dates: Optional[str] = None
+
+
+class OwnerFunnelEventResponse(BaseModel):
+    id: int
+    event_name: str
+    event_dates: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerFunnelItemCreate(BaseModel):
+    funnel_type: str
+    stage: str = "new"
+    title: Optional[str] = None
+    comment: Optional[str] = None
+    event_id: Optional[int] = None  # ╨┤╨╗╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П тАФ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛
+    card_data: Optional[dict] = None
+
+
+class OwnerFunnelItemUpdate(BaseModel):
+    stage: Optional[str] = None
+    title: Optional[str] = None
+    comment: Optional[str] = None
+    card_data: Optional[dict] = None
+    # ╨┐╨╛╨╗╤П popup ╨┤╨╗╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П (╨╝╨╡╤А╨╢╨░╤В╤Б╤П ╨▓ card_data ╨┐╤А╨╕ ╤Б╨╝╨╡╨╜╨╡ ╤Н╤В╨░╨┐╨░)
+    contact_fio: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_comment: Optional[str] = None
+    reply_comment: Optional[str] = None
+    meeting_date: Optional[str] = None  # ISO date
+    trip_date: Optional[str] = None
+    leads_count: Optional[int] = None
+
+
+class OwnerFunnelItemResponse(BaseModel):
+    id: int
+    funnel_type: str
+    event_id: Optional[int] = None
+    stage: str
+    title: Optional[str] = None
+    comment: Optional[str] = None
+    card_data: Optional[dict] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

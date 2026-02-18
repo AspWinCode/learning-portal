@@ -1,9 +1,14 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, ForeignKey, Text, Float, Enum as SQLEnum, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, Time, ForeignKey, Text, Float, Enum as SQLEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.types import TypeDecorator
 from datetime import datetime
+import os
 import enum
 from app.database import Base
+
+# ╨Я╤А╨╕ ╨╖╨░╨┐╨╕╤Б╨╕ ╨▓ PostgreSQL ╨▓╤Б╨╡╨│╨┤╨░ ╨╛╤В╨┐╤А╨░╨▓╨╗╤П╨╡╨╝ lowercase (value), ╤В.╨║. ╨╝╨╕╨│╤А╨░╤Ж╨╕╨╕ ╤Б╨╛╨╖╨┤╨░╤О╤В enum ╤Б 'active', 'archived'.
+# ╨Я╤А╨╕ ╤З╤В╨╡╨╜╨╕╨╕ ╨┤╤А╨░╨╣╨▓╨╡╤А ╨╝╨╛╨╢╨╡╤В ╨▓╨╡╤А╨╜╤Г╤В╤М 'ACTIVE' тАФ ╨╜╨╛╤А╨╝╨░╨╗╨╕╨╖╤Г╨╡╨╝ ╨▓ TypeDecorator.
 
 
 class UserRole(str, enum.Enum):
@@ -65,6 +70,55 @@ def _enum_values(enum_cls):
     return [e.value for e in enum_cls]
 
 
+def _lowercase_enum_type(enum_cls, size=20, use_uppercase_for_pg=False):
+    """TypeDecorator: ╨┐╤А╨╕ ╨╖╨░╨┐╨╕╤Б╨╕ ╨▓ PostgreSQL (╨╡╤Б╨╗╨╕ use_uppercase_for_pg=True) тАФ ╨╕╨╝╤П (ACTIVE), ╨╕╨╜╨░╤З╨╡ value (active);
+    ╨┐╤А╨╕ ╤З╤В╨╡╨╜╨╕╨╕ ╨┐╤А╨╕╨╜╨╕╨╝╨░╨╡╤В ╨╗╤О╨▒╨╛╨╣ ╤А╨╡╨│╨╕╤Б╤В╤А."""
+    enum_map = {e.value.lower(): e for e in enum_cls}
+    name_to_enum = {e.name.upper(): e for e in enum_cls}
+
+    class _Type(TypeDecorator):
+        impl = String(size)
+        cache_ok = False
+
+        def process_bind_param(self, value, dialect):
+            if value is None:
+                return None
+            if isinstance(value, enum_cls):
+                if use_uppercase_for_pg and dialect and dialect.name in ("postgresql", "postgres"):
+                    return value.name  # ACTIVE
+                return value.value  # active
+            if isinstance(value, str):
+                v = value.strip().lower() if value else None
+                if v and v in enum_map:
+                    e = enum_map[v]
+                    if use_uppercase_for_pg and dialect and dialect.name in ("postgresql", "postgres"):
+                        return e.name
+                    return e.value
+                return value
+            return value
+
+        def process_result_value(self, value, dialect):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                v = value.strip()
+                if v.lower() in enum_map:
+                    return enum_map[v.lower()]
+                if v.upper() in name_to_enum:
+                    return name_to_enum[v.upper()]
+            return value
+
+    return _Type
+
+
+_StudentStatusType = _lowercase_enum_type(StudentStatus, use_uppercase_for_pg=False)
+_GroupStatusType = _lowercase_enum_type(GroupStatus, use_uppercase_for_pg=True)
+_ProgramStatusType = _lowercase_enum_type(ProgramStatus, use_uppercase_for_pg=False)
+_TopicStatusType = _lowercase_enum_type(TopicStatus, use_uppercase_for_pg=False)
+_CharacteristicStatusType = _lowercase_enum_type(CharacteristicStatus, use_uppercase_for_pg=False)
+_StudentProgramLinkStatusType = _lowercase_enum_type(StudentProgramLinkStatus, use_uppercase_for_pg=False)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -99,7 +153,7 @@ class Student(Base):
     full_name = Column(String, nullable=False)
     parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True)
-    status = Column(SQLEnum(StudentStatus, name="studentstatus", values_callable=_enum_values), default=StudentStatus.ACTIVE)
+    status = Column(_StudentStatusType(), default=StudentStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -107,14 +161,15 @@ class Student(Base):
     parent = relationship("User", back_populates="students", foreign_keys=[parent_id])
     group_students = relationship("GroupStudent", back_populates="student")
     student_programs = relationship("StudentProgram", back_populates="student")
-    # Активные назначения программ (сериализуются в programs через property ниже)
+    lesson_attendances = relationship("LessonAttendance", back_populates="student", cascade="all, delete-orphan")
+    # ╨Р╨║╤В╨╕╨▓╨╜╤Л╨╡ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ (╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╤Г╤О╤В╤Б╤П ╨▓ programs ╤З╨╡╤А╨╡╨╖ property ╨╜╨╕╨╢╨╡)
     grades = relationship("Grade", back_populates="student")
     characteristics = relationship("Characteristic", back_populates="student")
     abonement = relationship("Abonement", back_populates="students")
 
     @property
     def programs(self):
-        """Список активных программ ученика (назначения со status=active)."""
+        """╨б╨┐╨╕╤Б╨╛╨║ ╨░╨║╤В╨╕╨▓╨╜╤Л╤Е ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ ╤Г╤З╨╡╨╜╨╕╨║╨░ (╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╤Б╨╛ status=active)."""
         from app.models import StudentProgramLinkStatus
         return [
             sp.program for sp in self.student_programs
@@ -157,11 +212,12 @@ class LeadStatus(str, enum.Enum):
     INVOICE_SENT = "invoice_sent"
     WON = "won"
     LOST = "lost"
-    THINKING = "thinking"
-    REFUSED = "refused"
-    TRIAL_SCHEDULED = "trial_scheduled"
-    EVENT_REGISTERED = "event_registered"
-    DECIDED_IMMEDIATELY = "decided_immediately"
+    # ╨Т╨╛╤А╨╛╨╜╨║╨░ ╨┐╤А╨╛╨┤╨░╨╢ (╨╜╨╛╨▓╨░╤П)
+    THINKING = "thinking"  # ╨Я╨╛╨┤╤Г╨╝╨░╤О╤В
+    REFUSED = "refused"  # ╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П
+    TRIAL_SCHEDULED = "trial_scheduled"  # ╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡
+    EVENT_REGISTERED = "event_registered"  # ╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡
+    DECIDED_IMMEDIATELY = "decided_immediately"  # ╨а╨╡╤И╨╕╨╗ ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П ╤Б╤А╨░╨╖╤Г
 
 
 class Lead(Base):
@@ -188,6 +244,8 @@ class Lead(Base):
         index=True,
     )
     source = Column(String, nullable=True)
+    communication_channel = Column(String, nullable=True)
+    status_option_id = Column(Integer, ForeignKey("lead_statuses.id"), nullable=True, index=True)
     source_id = Column(Integer, ForeignKey("lead_sources.id"), nullable=True, index=True)
     referral_name = Column(String, nullable=True)
     tags = Column(JSON, nullable=True)
@@ -195,8 +253,11 @@ class Lead(Base):
     desired_slot = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
     next_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    no_answer_attempt = Column(Integer, nullable=True, index=True)  # 1, 2 ╨╕╨╗╨╕ 3 ╨┤╨╗╤П ╨║╨╛╨╗╨╛╨╜╨║╨╕ ╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜
     pause_reason = Column(String, nullable=True)
     lost_reason = Column(String, nullable=True)
+    questionnaire_filled = Column(Boolean, default=False, nullable=False, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -204,6 +265,8 @@ class Lead(Base):
     owner = relationship("User")
     abonement = relationship("Abonement")
     source_ref = relationship("LeadSource")
+    status_option = relationship("LeadStatusOption")
+    b2b_school = relationship("B2BSchool", back_populates="leads")
     tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="lead", cascade="all, delete-orphan")
     communications = relationship("LeadCommunication", back_populates="lead", cascade="all, delete-orphan")
@@ -250,6 +313,24 @@ class LeadSource(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class SalesCity(Base):
+    __tablename__ = "sales_cities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SalesSchool(Base):
+    __tablename__ = "sales_schools"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class LeadTaskTemplate(Base):
     __tablename__ = "lead_task_templates"
 
@@ -265,6 +346,16 @@ class LeadTaskStatusOption(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True)
     is_closed = Column(Boolean, default=False, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LeadStatusOption(Base):
+    __tablename__ = "lead_statuses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    base_status = Column(String, nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -395,17 +486,19 @@ class Group(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    status = Column(SQLEnum(GroupStatus, name="groupstatus", values_callable=_enum_values), default=GroupStatus.ACTIVE)
+    status = Column(_GroupStatusType(), default=GroupStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
     trainer = relationship("User", back_populates="trainer_groups", foreign_keys=[trainer_id])
     group_students = relationship("GroupStudent", back_populates="group")
-    # Удобная связь "многие-ко-многим" для сериализации в GroupResponse.students
+    # ╨г╨┤╨╛╨▒╨╜╨░╤П ╤Б╨▓╤П╨╖╤М "╨╝╨╜╨╛╨│╨╕╨╡-╨║╨╛-╨╝╨╜╨╛╨│╨╕╨╝" ╨┤╨╗╤П ╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕ ╨▓ GroupResponse.students
     students = relationship("Student", secondary="group_students", viewonly=True)
     group_programs = relationship("GroupProgram", back_populates="group")
-    # Удобная связь для сериализации назначенных программ группы
+    group_schedules = relationship("GroupSchedule", back_populates="group", cascade="all, delete-orphan")
+    lesson_attendances = relationship("LessonAttendance", back_populates="group", cascade="all, delete-orphan")
+    # ╨г╨┤╨╛╨▒╨╜╨░╤П ╤Б╨▓╤П╨╖╤М ╨┤╨╗╤П ╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╤Е ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ ╨│╤А╤Г╨┐╨┐╤Л
     programs = relationship("Program", secondary="group_programs", viewonly=True)
 
 
@@ -422,6 +515,36 @@ class GroupStudent(Base):
     student = relationship("Student", back_populates="group_students")
 
 
+class GroupSchedule(Base):
+    """╨а╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╣ ╨│╤А╤Г╨┐╨┐╤Л: ╨┤╨╡╨╜╤М ╨╜╨╡╨┤╨╡╨╗╨╕ ╨╕ ╨▓╤А╨╡╨╝╤П (0=╨Я╨╜, 6=╨Т╤Б)."""
+    __tablename__ = "group_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    day_of_week = Column(Integer, nullable=False)  # 0=Monday, 6=Sunday
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("Group", back_populates="group_schedules")
+
+
+class LessonAttendance(Base):
+    """╨Я╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М: ╨║╤В╨╛ ╨▒╤Л╨╗ ╨╜╨░ ╨╖╨░╨╜╤П╤В╨╕╨╕ (╨│╤А╤Г╨┐╨┐╨░ + ╨┤╨░╤В╨░)."""
+    __tablename__ = "lesson_attendance"
+    __table_args__ = (UniqueConstraint("group_id", "lesson_date", "student_id", name="uq_lesson_attendance_group_date_student"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    lesson_date = Column(Date, nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    attended = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("Group", back_populates="lesson_attendances")
+    student = relationship("Student", back_populates="lesson_attendances")
+
+
 class Program(Base):
     __tablename__ = "programs"
 
@@ -429,7 +552,7 @@ class Program(Base):
     name = Column(String, nullable=False)
     version = Column(Integer, default=1)
     parent_program_id = Column(Integer, ForeignKey("programs.id"), nullable=True)
-    status = Column(SQLEnum(ProgramStatus, name="programstatus", values_callable=_enum_values), default=ProgramStatus.ACTIVE)
+    status = Column(_ProgramStatusType(), default=ProgramStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -447,7 +570,7 @@ class Module(Base):
     program_id = Column(Integer, ForeignKey("programs.id"), nullable=False)
     name = Column(String, nullable=False)
     order = Column(Integer, default=0)
-    status = Column(SQLEnum(ProgramStatus, name="programstatus", values_callable=_enum_values), default=ProgramStatus.ACTIVE)
+    status = Column(_ProgramStatusType(), default=ProgramStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
@@ -462,9 +585,9 @@ class Topic(Base):
     module_id = Column(Integer, ForeignKey("modules.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    final_result = Column(Text, nullable=True)  # Итог темы для ученика
+    final_result = Column(Text, nullable=True)  # ╨Ш╤В╨╛╨│ ╤В╨╡╨╝╤Л ╨┤╨╗╤П ╤Г╤З╨╡╨╜╨╕╨║╨░
     order = Column(Integer, default=0)
-    status = Column(SQLEnum(TopicStatus, name="topicstatus", values_callable=_enum_values), default=TopicStatus.ACTIVE)
+    status = Column(_TopicStatusType(), default=TopicStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
@@ -505,7 +628,7 @@ class StudentProgram(Base):
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
     program_id = Column(Integer, ForeignKey("programs.id"), nullable=False)
     status = Column(
-        SQLEnum(StudentProgramLinkStatus, name="studentprogramlinkstatus", values_callable=_enum_values),
+        _StudentProgramLinkStatusType(),
         default=StudentProgramLinkStatus.ACTIVE,
         nullable=False,
     )
@@ -542,8 +665,8 @@ class Characteristic(Base):
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     month = Column(Integer, nullable=False)  # 1-12
     year = Column(Integer, nullable=False)
-    data = Column(JSON, nullable=False)  # Динамические поля формы
-    status = Column(SQLEnum(CharacteristicStatus, name="characteristicstatus", values_callable=_enum_values), default=CharacteristicStatus.DRAFT)
+    data = Column(JSON, nullable=False)  # ╨Ф╨╕╨╜╨░╨╝╨╕╤З╨╡╤Б╨║╨╕╨╡ ╨┐╨╛╨╗╤П ╤Д╨╛╤А╨╝╤Л
+    status = Column(_CharacteristicStatusType(), default=CharacteristicStatus.DRAFT)
     admin_comment = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -559,7 +682,7 @@ class CharacteristicTemplate(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    fields = Column(JSON, nullable=False)  # Схема полей формы
+    fields = Column(JSON, nullable=False)  # ╨б╤Е╨╡╨╝╨░ ╨┐╨╛╨╗╨╡╨╣ ╤Д╨╛╤А╨╝╤Л
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -588,9 +711,80 @@ class AppSetting(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
-# --- Task manager (admin/owner: templates + tasks; sales: view + complete subtasks) ---
+# B2B Schools pipeline
+class B2BSchoolPipelineStage(str, enum.Enum):
+    NEW = "new"
+    CONTACT_FOUND = "contact_found"
+    LETTER_SENT = "letter_sent"
+    MEETING_SCHEDULED = "meeting_scheduled"
+    MEETING_HELD = "meeting_held"
+    PERMISSION_RECEIVED = "permission_received"
+    WALKTHROUGH_SCHEDULED = "walkthrough_scheduled"
+    WALKTHROUGH_DONE = "walkthrough_done"
+    LEADS_RECEIVED = "leads_received"
 
 
+class B2BSchoolFriendshipDegree(str, enum.Enum):
+    UNKNOWN = "unknown"           # ╨╜╨╡ ╨╖╨╜╨░╨╡╨╝ ╨┤╤А╤Г╨│ ╨┤╤А╤Г╨│╨░
+    INDIRECT = "indirect"         # ╨╖╨╜╨░╨╡╨╝ ╨║╨╛╤Б╨▓╨╡╨╜╨╜╨╛
+    FRIENDS = "friends"           # ╨┤╤А╤Г╨╢╨╕╨╝
+    ENEMIES = "enemies"           # ╨▓╤А╨░╨│╨╕
+
+
+class B2BSchool(Base):
+    __tablename__ = "b2b_schools"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    director = Column(String, nullable=True)
+    address = Column(Text, nullable=True)
+    city = Column(String, nullable=True, index=True)
+    student_count = Column(Integer, nullable=True)
+    friendship_degree = Column(String(32), nullable=True, index=True)  # B2BSchoolFriendshipDegree.value
+    pipeline_stage = Column(
+        String(32),
+        nullable=False,
+        default=B2BSchoolPipelineStage.NEW.value,
+        index=True,
+    )
+    event_dates = Column(JSON, nullable=True)
+    meeting_scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    meeting_outcomes = Column(Text, nullable=True)
+    walkthrough_scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    leads = relationship("Lead", back_populates="b2b_school", foreign_keys="Lead.b2b_school_id")
+    school_contacts = relationship("B2BSchoolContact", back_populates="school", cascade="all, delete-orphan")
+
+
+class B2BSchoolContact(Base):
+    __tablename__ = "b2b_school_contacts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=False, index=True)
+    full_name = Column(String, nullable=False)
+    position = Column(String, nullable=True)
+    phone = Column(String, nullable=False)
+    phone_extra = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    school = relationship("B2BSchool", back_populates="school_contacts")
+
+
+class B2BProject(Base):
+    __tablename__ = "b2b_projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    location = Column(String, nullable=True)
+    main_city = Column(String, nullable=True, index=True)
+    cities = Column(JSON, nullable=True)  # ╤Б╨┐╨╕╤Б╨╛╨║ ╨│╨╛╤А╨╛╨┤╨╛╨▓, ╨║╨╛╤В╨╛╤А╤Л╨╡ ╨▓╤Е╨╛╨┤╤П╤В ╨▓ ╨┐╤А╨╛╨╡╨║╤В
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# ╨Т╨╛╤А╨╛╨╜╨║╨╕ ╨┤╨╗╤П ╤А╨╛╨╗╨╕ owner: ╤В╨╕╨┐╤Л ╨╕ ╤Н╤В╨░╨┐╤Л ╨╖╨░╨┤╨░╨╜╤Л ╨▓ ╨║╨╛╨┤╨╡ (owner_funnels router)
 class TaskStatus(str, enum.Enum):
     ACTIVE = "active"
     ARCHIVED = "archived"
@@ -603,9 +797,14 @@ class TaskTemplate(Base):
     name = Column(String(512), nullable=False)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    repeat_enabled = Column(Boolean, nullable=False, server_default="false")
+    repeat_frequency = Column(String(20), nullable=True)
+    repeat_days = Column(JSON, nullable=True)
+    repeat_end_type = Column(String(20), nullable=True)
+    repeat_end_after_count = Column(Integer, nullable=True)
+    repeat_end_until = Column(Date, nullable=True)
 
-    created_by = relationship("User")
-    subtasks = relationship("TaskTemplateSubtask", back_populates="template", cascade="all, delete-orphan", order_by="TaskTemplateSubtask.order")
+    subtasks = relationship("TaskTemplateSubtask", back_populates="template", cascade="all, delete-orphan")
     students = relationship("TaskTemplateStudent", back_populates="template", cascade="all, delete-orphan")
 
 
@@ -627,7 +826,6 @@ class TaskTemplateStudent(Base):
     student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), primary_key=True)
 
     template = relationship("TaskTemplate", back_populates="students")
-    student = relationship("Student")
 
 
 class Task(Base):
@@ -641,11 +839,14 @@ class Task(Base):
     status = Column(String(20), nullable=False, server_default="active", index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    repeat_enabled = Column(Boolean, nullable=False, server_default="false")
+    repeat_frequency = Column(String(20), nullable=True)
+    repeat_days = Column(JSON, nullable=True)
+    repeat_end_type = Column(String(20), nullable=True)
+    repeat_end_after_count = Column(Integer, nullable=True)
+    repeat_end_until = Column(Date, nullable=True)
 
-    created_by = relationship("User", foreign_keys=[created_by_id])
-    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
-    template = relationship("TaskTemplate")
-    subtasks = relationship("TaskSubtask", back_populates="task", cascade="all, delete-orphan", order_by="TaskSubtask.order")
+    subtasks = relationship("TaskSubtask", back_populates="task", cascade="all, delete-orphan")
     students = relationship("TaskStudent", back_populates="task", cascade="all, delete-orphan")
 
 
@@ -668,5 +869,76 @@ class TaskStudent(Base):
     student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), primary_key=True)
 
     task = relationship("Task", back_populates="students")
-    student = relationship("Student")
+
+
+# Owner funnel constants (owner_funnels router)
+OWNER_FUNNEL_SUPPORT_LETTERS = "support_letters"   # ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕ ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕
+OWNER_FUNNEL_THANK_YOU_LETTERS = "thank_you_letters"  # ╨Я╨╕╤Б╤М╨╝╨░ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕
+OWNER_FUNNEL_EVENTS = "events"  # ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П
+
+# ╨н╤В╨░╨┐╤Л ╨┐╨╛ ╤В╨╕╨┐╨░╨╝ ╨▓╨╛╤А╨╛╨╜╨╛╨║ (value ╨┤╨╗╤П ╨С╨Ф -> label ╨┤╨╗╤П UI)
+OWNER_FUNNEL_STAGES = {
+    OWNER_FUNNEL_SUPPORT_LETTERS: [
+        ("new", "╨Э╨╛╨▓╨╛╨╡"),
+        ("letter_created", "╨б╨╛╨╖╨┤╨░╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("letter_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("letter_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
+    ],
+    OWNER_FUNNEL_THANK_YOU_LETTERS: [
+        ("new", "╨Э╨╛╨▓╨╛╨╡"),
+        ("thank_you_formed", "╨б╤Д╨╛╤А╨╝╨╕╤А╨╛╨▓╨░╨╗╨╕ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╤М"),
+        ("thank_you_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╤М"),
+        ("school_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨░ ╤И╨║╨╛╨╗╨░"),
+    ],
+    OWNER_FUNNEL_EVENTS: [
+        ("new", "╨Э╨╛╨▓╤Л╨╡"),
+        ("contact_found", "╨Ъ╨╛╨╜╤В╨░╨║╤В ╨╜╨░╨╣╨┤╨╡╨╜"),
+        ("letter_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("reply_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨╕ ╨╛╤В╨▓╨╡╤В╨╜╨╛╨╡ ╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("reached_by_phone", "╨Ф╨╛╨╖╨▓╨╛╨╜╨╕╨╗╨╕╤Б╤М"),
+        ("not_reached", "╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜╨╕╨╗╨╕╤Б╤М"),
+        ("meeting_agreed", "╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М ╨╜╨░ ╨▓╤Б╤В╤А╨╡╤З╤Г"),
+        ("agreement_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡ ╨╜╨░ ╤Б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╜╨╕╨╡"),
+        ("agreement_approved", "╨б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡"),
+        ("agreement_signed", "╨Я╨╛╨┤╨┐╨╕╤Б╨░╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡"),
+        ("trip_agreed", "╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М ╨╜╨░ ╨┐╨╛╤Е╨╛╨┤"),
+        ("info_sent_to_parents", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤О ╨▓ ╤З╨░╤В╤Л ╤А╨╛╨┤╨╕╤В╨╡╨╗╨╡╨╣"),
+        ("leads_collected", "╨б╨╛╨▒╤А╨░╨╗╨╕ ╨╗╨╕╨┤╨╛╨▓"),
+        ("rejected", "╨Ю╤В╨║╨░╨╖╨░╨╗╨╕"),
+    ],
+}
+
+# ╨н╤В╨░╨┐╤Л ╨▓╨╛╤А╨╛╨╜╨║╨╕ ┬л╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П┬╗, ╨┐╤А╨╕ ╨┐╨╡╤А╨╡╤Е╨╛╨┤╨╡ ╨╜╨░ ╨║╨╛╤В╨╛╤А╤Л╨╡ ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╤В╤Б╤П popup ╨╕ ╤Б╨╛╤Е╤А╨░╨╜╤П╤О╤В╤Б╤П ╨┤╨░╨╜╨╜╤Л╨╡ ╨▓ card_data
+OWNER_FUNNEL_EVENTS_POPUP_STAGES = {
+    "contact_found": ["contact_fio", "contact_phone", "contact_comment"],
+    "reply_received": ["reply_comment"],
+    "meeting_agreed": ["meeting_date"],
+    "trip_agreed": ["trip_date"],
+    "leads_collected": ["leads_count"],
+}
+
+
+class OwnerFunnelEvent(Base):
+    """╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ тАФ ╤Б╨░╨╝╨░ ╨▓╨╛╤А╨╛╨╜╨║╨░ (╨┤╨╛╤Б╨║╨░ ╤Б ╤Н╤В╨░╨┐╨░╨╝╨╕). ╨Ъ╨░╤А╤В╨╛╤З╨║╨╕ ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨░╤Е тАФ ╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л owner_funnel_items ╤Б event_id."""
+    __tablename__ = "owner_funnel_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_name = Column(String(512), nullable=False)
+    event_dates = Column(String(256), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class OwnerFunnelItem(Base):
+    """╨н╨╗╨╡╨╝╨╡╨╜╤В ╨▓╨╛╤А╨╛╨╜╨║╨╕ owner (╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕, ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕; ╨┤╨╗╤П ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣ тАФ ╨║╨░╤А╤В╨╛╤З╨║╨░ ╨▓╨╜╤Г╤В╤А╨╕ ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П)."""
+    __tablename__ = "owner_funnel_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    funnel_type = Column(String(64), nullable=False, index=True)  # support_letters | thank_you_letters | events
+    event_id = Column(Integer, ForeignKey("owner_funnel_events.id", ondelete="CASCADE"), nullable=True, index=True)  # ╤В╨╛╨╗╤М╨║╨╛ ╨┤╨╗╤П events
+    stage = Column(String(64), nullable=False, index=True)
+    title = Column(String(512), nullable=True)
+    comment = Column(Text, nullable=True)
+    card_data = Column(JSON, nullable=True)  # ╨┤╨╗╤П events: ╨║╨╛╨╜╤В╨░╨║╤В, ╨┤╨░╤В╤Л ╤Н╤В╨░╨┐╨╛╨▓ ╨╕ ╤В.╨┤. (event_name/event_dates тАФ ╤Г ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

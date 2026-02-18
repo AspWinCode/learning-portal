@@ -48,6 +48,8 @@ import {
   Add,
   NotificationsNone,
   Search,
+  FilterList,
+  School,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
@@ -125,7 +127,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setTgExpiresAt(data.expires_at);
       setTgLink(data.deep_link_url || null);
     } catch (err: any) {
-      setTgError(err.response?.data?.detail || 'Не удалось получить код для Telegram');
+      setTgError(err.response?.data?.detail || '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┐╨╛╨╗╤Г╤З╨╕╤В╤М ╨║╨╛╨┤ ╨┤╨╗╤П Telegram');
     }
   };
 
@@ -139,12 +141,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleLogoFile = (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      setLogoError('Выберите файл изображения (png/jpg/webp)');
+      setLogoError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╤Д╨░╨╣╨╗ ╨╕╨╖╨╛╨▒╤А╨░╨╢╨╡╨╜╨╕╤П (png/jpg/webp)');
       return;
     }
-    // Ограничение ~200KB для удобства (в base64 будет больше)
+    // ╨Ю╨│╤А╨░╨╜╨╕╤З╨╡╨╜╨╕╨╡ ~200KB ╨┤╨╗╤П ╤Г╨┤╨╛╨▒╤Б╤В╨▓╨░ (╨▓ base64 ╨▒╤Г╨┤╨╡╤В ╨▒╨╛╨╗╤М╤И╨╡)
     if (file.size > 180 * 1024) {
-      setLogoError('Файл слишком большой. Рекомендуемый размер до 180KB.');
+      setLogoError('╨д╨░╨╣╨╗ ╤Б╨╗╨╕╤И╨║╨╛╨╝ ╨▒╨╛╨╗╤М╤И╨╛╨╣. ╨а╨╡╨║╨╛╨╝╨╡╨╜╨┤╤Г╨╡╨╝╤Л╨╣ ╤А╨░╨╖╨╝╨╡╤А ╨┤╨╛ 180KB.');
       return;
     }
     const reader = new FileReader();
@@ -158,7 +160,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleLogoSave = async () => {
     setLogoError('');
     if (!logoPreview || !logoPreview.startsWith('data:image/')) {
-      setLogoError('Сначала выберите изображение');
+      setLogoError('╨б╨╜╨░╤З╨░╨╗╨░ ╨▓╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╕╨╖╨╛╨▒╤А╨░╨╢╨╡╨╜╨╕╨╡');
       return;
     }
     setLogoSaving(true);
@@ -167,7 +169,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setLogoUrl(res.data_url || null);
       setLogoOpen(false);
     } catch (err: any) {
-      setLogoError(err.response?.data?.detail || 'Не удалось сохранить логотип');
+      setLogoError(err.response?.data?.detail || '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╗╨╛╨│╨╛╤В╨╕╨┐');
     } finally {
       setLogoSaving(false);
     }
@@ -182,44 +184,47 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const isAdminLike = role === 'admin' || role === 'owner';
 
   const effectiveMenuItems = (() => {
-    if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
+    if (role === 'guest') return [{ text: '╨Я╤А╨╛╨│╤А╨░╨╝╨╝╤Л', icon: <Book />, path: '/programs' }];
     if (role === 'parent')
       return [
-        { text: 'Мой дашборд', icon: <Home />, path: '/parent-dashboard' },
-        { text: 'Программы', icon: <Book />, path: '/programs' },
-        { text: 'Оценки', icon: <Grade />, path: '/grades' },
-        { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
+        { text: '╨Ь╨╛╨╣ ╨┤╨░╤И╨▒╨╛╤А╨┤', icon: <Home />, path: '/parent-dashboard' },
+        { text: '╨Я╤А╨╛╨│╤А╨░╨╝╨╝╤Л', icon: <Book />, path: '/programs' },
+        { text: '╨Ю╤Ж╨╡╨╜╨║╨╕', icon: <Grade />, path: '/grades' },
+        { text: '╨е╨░╤А╨░╨║╤В╨╡╤А╨╕╤Б╤В╨╕╨║╨╕', icon: <Description />, path: '/characteristics' },
       ];
     if (role === 'sales')
       return [
-        { text: 'На сегодня', icon: <Dashboard />, path: '/sales/dashboard' },
-        { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
-        { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
-        { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
-        { text: 'Мероприятия', icon: <EventAvailable />, path: '/sales/events' },
-        { text: 'Инвойсы', icon: <ReceiptLong />, path: '/sales/invoices' },
-        { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
-        { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
-        { text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' },
+        { text: '╨Э╨░ ╤Б╨╡╨│╨╛╨┤╨╜╤П', icon: <Dashboard />, path: '/sales/dashboard' },
+        { text: '╨Т╨╛╤А╨╛╨╜╨║╨░', icon: <Dashboard />, path: '/sales/pipeline' },
+        { text: '╨Ы╨╕╨┤╤Л', icon: <WorkOutline />, path: '/sales/leads' },
+        { text: '╨д╨╛╨╗╨╗╨╛╤Г-╨░╨┐╤Л', icon: <PendingActions />, path: '/sales/follow-ups' },
+        { text: '╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П', icon: <EventAvailable />, path: '/sales/events' },
+        { text: '╨Ш╨╜╨▓╨╛╨╣╤Б╤Л', icon: <ReceiptLong />, path: '/sales/invoices' },
+        { text: '╨Ю╤В╤З╤С╤В╤Л', icon: <Assessment />, path: '/sales/reports' },
+        { text: '╨Ч╨░╨┤╨░╤З╨╕', icon: <Assignment />, path: '/tasks' },
+        { text: '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨╕ Sales', icon: <Settings />, path: '/sales/settings' },
       ];
 
     const items = [
-      { text: 'Дашборд', icon: <Dashboard />, path: '/dashboard' },
-      { text: 'Ученики', icon: <People />, path: '/students' },
-      { text: 'Группы', icon: <Group />, path: '/groups' },
-      { text: 'Программы', icon: <Book />, path: '/programs' },
-      { text: 'Оценки', icon: <Grade />, path: '/grades' },
-      { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
+      { text: '╨Ф╨░╤И╨▒╨╛╤А╨┤', icon: <Dashboard />, path: '/dashboard' },
+      { text: '╨г╤З╨╡╨╜╨╕╨║╨╕', icon: <People />, path: '/students' },
+      { text: '╨У╤А╤Г╨┐╨┐╤Л', icon: <Group />, path: '/groups' },
+      { text: '╨Я╤А╨╛╨│╤А╨░╨╝╨╝╤Л', icon: <Book />, path: '/programs' },
+      { text: '╨Ю╤Ж╨╡╨╜╨║╨╕', icon: <Grade />, path: '/grades' },
+      { text: '╨е╨░╤А╨░╨║╤В╨╡╤А╨╕╤Б╤В╨╕╨║╨╕', icon: <Description />, path: '/characteristics' },
     ];
 
-    if (isAdminLike) items.push({ text: 'Отчеты', icon: <Assessment />, path: '/reports' });
-    if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
-    if (isAdminLike) items.push({ text: 'Продажи: На сегодня', icon: <Dashboard />, path: '/sales/dashboard' });
-    if (isAdminLike) items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
-    if (isAdminLike) items.push({ text: 'Справочники Sales', icon: <Settings />, path: '/sales/settings' });
+    if (isAdminLike) items.push({ text: '╨Ю╤В╤З╨╡╤В╤Л', icon: <Assessment />, path: '/reports' });
+    if (role === 'owner') items.push({ text: '╨д╨╕╨╜╨░╨╜╤Б╨╛╨▓╨░╤П ╨╝╨╛╨┤╨╡╨╗╤М', icon: <AccountBalance />, path: '/financial-model' });
+    if (isAdminLike) items.push({ text: '╨Я╤А╨╛╨┤╨░╨╢╨╕: ╨Э╨░ ╤Б╨╡╨│╨╛╨┤╨╜╤П', icon: <Dashboard />, path: '/sales/dashboard' });
+    if (isAdminLike) items.push({ text: '╨Ч╨░╨┤╨░╤З╨╕', icon: <Assignment />, path: '/tasks' });
+    if (isAdminLike) items.push({ text: '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨╕ Sales', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {
-      items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
-      items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+      items.push({ text: '╨Т╨╛╤А╨╛╨╜╨║╨╕', icon: <FilterList />, path: '/owner-funnels' });
+      items.push({ text: 'B2B (╤И╨║╨╛╨╗╤Л)', icon: <School />, path: '/b2b-schools' });
+      items.push({ text: '╨б╨╛╨╖╨┤╨░╤В╤М ╤И╨║╨╛╨╗╤Г (B2B)', icon: <Add />, path: '/b2b-schools/new' });
+      items.push({ text: '╨Р╨▒╨╛╨╜╨╡╨╝╨╡╨╜╤В╤Л', icon: <LocalOffer />, path: '/abonements' });
+      items.push({ text: '╨в╤А╨╡╨╜╨╡╤Р╤Л', icon: <People />, path: '/trainers' });
     }
     return items;
   })();
@@ -232,7 +237,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <Box
               component="img"
               src={logoUrl}
-              alt="Логотип"
+              alt="╨Ы╨╛╨│╨╛╤В╨╕╨┐"
               sx={{
                 width: 34,
                 height: 34,
@@ -256,7 +261,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
           <Box>
             <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, letterSpacing: -0.2 }}>
-              Портал обучения
+              ╨Я╨╛╤А╤В╨░╨╗ ╨╛╨▒╤Г╤З╨╡╨╜╨╕╤П
             </Typography>
             <Typography variant="caption" color="text.secondary" noWrap>
               Learning Portal
@@ -312,7 +317,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 800 }}>
-            {effectiveMenuItems.find((item) => item.path === location.pathname)?.text || 'Портал обучения'}
+            {effectiveMenuItems.find((item) => item.path === location.pathname)?.text || '╨Я╨╛╤А╤В╨░╨╗ ╨╛╨▒╤Г╤З╨╡╨╜╨╕╤П'}
           </Typography>
           {role === 'sales' && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
@@ -327,7 +332,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               >
                 <Search fontSize="small" />
                 <InputBase
-                  placeholder="Поиск лида..."
+                  placeholder="╨Я╨╛╨╕╤Б╨║ ╨╗╨╕╨┤╨░..."
                   value={salesSearch}
                   onChange={(e) => setSalesSearch(e.target.value)}
                   onKeyDown={(e) => {
@@ -338,12 +343,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   sx={{ ml: 1, color: '#fff', minWidth: 180 }}
                 />
               </Box>
-              <Tooltip title="+ Лид">
+              <Tooltip title="+ ╨Ы╨╕╨┤">
                 <IconButton color="inherit" onClick={() => navigate('/sales/leads?create=1')}>
                   <Add />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Просрочки и срочные задачи">
+              <Tooltip title="╨Я╤А╨╛╤Б╤А╨╛╤З╨║╨╕ ╨╕ ╤Б╤А╨╛╤З╨╜╤Л╨╡ ╨╖╨░╨┤╨░╤З╨╕">
                 <IconButton color="inherit" onClick={() => navigate('/sales/follow-ups?period=overdue')}>
                   <Badge badgeContent={salesAlertsCount} color="error">
                     <NotificationsNone />
@@ -375,7 +380,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             >
               {isAdminLike && (
                 <MenuItem onClick={handleLogoOpen}>
-                  <ListItemText>Логотип сайта</ListItemText>
+                  <ListItemText>╨Ы╨╛╨│╨╛╤В╨╕╨┐ ╤Б╨░╨╣╤В╨░</ListItemText>
                 </MenuItem>
               )}
               {user?.role !== 'guest' && (
@@ -383,14 +388,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <ListItemIcon>
                     <TelegramIcon fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText>Telegram: привязать</ListItemText>
+                  <ListItemText>Telegram: ╨┐╤А╨╕╨▓╤П╨╖╨░╤В╤М</ListItemText>
                 </MenuItem>
               )}
               <MenuItem onClick={handleLogout}>
                 <ListItemIcon>
                   <ExitToApp fontSize="small" />
                 </ListItemIcon>
-                <ListItemText>Выход</ListItemText>
+                <ListItemText>╨Т╤Л╤Е╨╛╨┤</ListItemText>
               </MenuItem>
             </Menu>
           </Box>
@@ -446,7 +451,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </Box>
 
       <Dialog open={tgOpen} onClose={() => setTgOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Привязка Telegram</DialogTitle>
+        <DialogTitle>╨Я╤А╨╕╨▓╤П╨╖╨║╨░ Telegram</DialogTitle>
         <DialogContent>
           {tgError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setTgError('')}>
@@ -454,29 +459,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Alert>
           )}
           <Typography variant="body2" color="text.secondary">
-            Напишите боту команду:
+            ╨Э╨░╨┐╨╕╤И╨╕╤В╨╡ ╨▒╨╛╤В╤Г ╨║╨╛╨╝╨░╨╜╨┤╤Г:
           </Typography>
           <Typography variant="body1" sx={{ mt: 1, fontWeight: 700 }}>
             /start {tgCode || '...'}
           </Typography>
           {tgLink && (
             <Typography variant="body2" sx={{ mt: 1 }}>
-              Либо откройте ссылку: <code>{tgLink}</code>
+              ╨Ы╨╕╨▒╨╛ ╨╛╤В╨║╤А╨╛╨╣╤В╨╡ ╤Б╤Б╤Л╨╗╨║╤Г: <code>{tgLink}</code>
             </Typography>
           )}
           {tgExpiresAt && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-              Код действует до: {new Date(tgExpiresAt).toLocaleString('ru-RU')}
+              ╨Ъ╨╛╨┤ ╨┤╨╡╨╣╤Б╤В╨▓╤Г╨╡╤В ╨┤╨╛: {new Date(tgExpiresAt).toLocaleString('ru-RU')}
             </Typography>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTgOpen(false)}>Закрыть</Button>
+          <Button onClick={() => setTgOpen(false)}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={logoOpen} onClose={() => setLogoOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Логотип сайта</DialogTitle>
+        <DialogTitle>╨Ы╨╛╨│╨╛╤В╨╕╨┐ ╤Б╨░╨╣╤В╨░</DialogTitle>
         <DialogContent>
           {logoError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLogoError('')}>
@@ -484,12 +489,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Alert>
           )}
           <Typography variant="body2" color="text.secondary">
-            Загрузите логотип (PNG/JPG/WebP). Рекомендуемый размер: квадрат, до ~180KB.
+            ╨Ч╨░╨│╤А╤Г╨╖╨╕╤В╨╡ ╨╗╨╛╨│╨╛╤В╨╕╨┐ (PNG/JPG/WebP). ╨а╨╡╨║╨╛╨╝╨╡╨╜╨┤╤Г╨╡╨╝╤Л╨╣ ╤А╨░╨╖╨╝╨╡╤А: ╨║╨▓╨░╨┤╤А╨░╤В, ╨┤╨╛ ~180KB.
           </Typography>
 
           <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
             <Button variant="outlined" component="label">
-              Выбрать файл
+              ╨Т╤Л╨▒╤А╨░╤В╤М ╤Д╨░╨╣╨╗
               <input
                 type="file"
                 accept="image/*"
@@ -502,19 +507,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               onClick={handleLogoSave}
               disabled={logoSaving || !logoPreview}
             >
-              {logoSaving ? 'Сохранение...' : 'Сохранить'}
+              {logoSaving ? '╨б╨╛╤Е╤А╨░╨╜╨╡╨╜╨╕╨╡...' : '╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'}
             </Button>
           </Box>
 
           {logoPreview && (
             <Box sx={{ mt: 2 }}>
               <Typography variant="caption" color="text.secondary">
-                Превью:
+                ╨Я╤А╨╡╨▓╤М╤О:
               </Typography>
               <Box
                 component="img"
                 src={logoPreview}
-                alt="Превью логотипа"
+                alt="╨Я╤А╨╡╨▓╤М╤О ╨╗╨╛╨│╨╛╤В╨╕╨┐╨░"
                 sx={{
                   display: 'block',
                   mt: 1,
@@ -531,7 +536,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <TextField
             fullWidth
             sx={{ mt: 2 }}
-            label="Текущий логотип (data URL)"
+            label="╨в╨╡╨║╤Г╤Й╨╕╨╣ ╨╗╨╛╨│╨╛╤В╨╕╨┐ (data URL)"
             value={logoUrl || ''}
             InputProps={{ readOnly: true }}
             multiline
@@ -539,7 +544,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setLogoOpen(false)}>Закрыть</Button>
+          <Button onClick={() => setLogoOpen(false)}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
         </DialogActions>
       </Dialog>
     </Box>

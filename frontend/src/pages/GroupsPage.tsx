@@ -23,9 +23,9 @@ import {
   InputLabel,
   Stack,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon, Book as BookIcon } from '@mui/icons-material';
-import { groupsApi, usersApi, studentsApi, programsApi } from '../services/api';
-import { Group, User, Student, Program, GroupSchedule } from '../types';
+import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon } from '@mui/icons-material';
+import { groupsApi, usersApi, studentsApi } from '../services/api';
+import { Group, User, Student, GroupSchedule } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const GroupsPage: React.FC = () => {
@@ -38,9 +38,6 @@ const GroupsPage: React.FC = () => {
   const [groupDetails, setGroupDetails] = useState<Group | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [studentToAddId, setStudentToAddId] = useState('');
-  const [programs, setPrograms] = useState<Program[]>([]);
-  const [programOpen, setProgramOpen] = useState(false);
-  const [programToAssignId, setProgramToAssignId] = useState('');
   const [newSchedule, setNewSchedule] = useState({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
   const [error, setError] = useState('');
   const [newGroup, setNewGroup] = useState({
@@ -76,7 +73,6 @@ const GroupsPage: React.FC = () => {
     if (isAdminLike) {
       loadTrainers();
       loadStudents();
-      loadPrograms();
     }
   }, [user]);
 
@@ -121,15 +117,6 @@ const GroupsPage: React.FC = () => {
     }
   };
 
-  const loadPrograms = async () => {
-    try {
-      const data = await programsApi.getAll();
-      setPrograms(data.filter((p) => p.status === 'active'));
-    } catch (err) {
-      console.error('Ошибка загрузки программ', err);
-    }
-  };
-
   const openEditDialog = async (group: Group) => {
     setSelectedGroup(group);
     setError('');
@@ -160,18 +147,6 @@ const GroupsPage: React.FC = () => {
       const fullGroup = await groupsApi.getById(group.id);
       setGroupDetails(fullGroup);
       setMembersOpen(true);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка загрузки группы');
-    }
-  };
-
-  const openProgramDialog = async (group: Group) => {
-    setSelectedGroup(group);
-    setProgramToAssignId('');
-    try {
-      const fullGroup = await groupsApi.getById(group.id);
-      setGroupDetails(fullGroup);
-      setProgramOpen(true);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка загрузки группы');
     }
@@ -276,27 +251,6 @@ const GroupsPage: React.FC = () => {
     }
   };
 
-  const handleAssignProgramToGroup = async () => {
-    if (!selectedGroup || !programToAssignId) return;
-    try {
-      await programsApi.assignToGroup(parseInt(programToAssignId), selectedGroup.id);
-      const fullGroup = await groupsApi.getById(selectedGroup.id);
-      setGroupDetails(fullGroup);
-      setProgramToAssignId('');
-      setProgramOpen(false);
-      loadGroups();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка назначения программы группы');
-    }
-  };
-
-  const renderPrograms = (g: Group) => {
-    const list = (g.programs || []).filter((p) => p.status === 'active');
-    if (!list.length) return '-';
-    if (list.length === 1) return `${list[0].name} (v${list[0].version})`;
-    return `${list[0].name} (v${list[0].version}) +${list.length - 1}`;
-  };
-
   return (
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
@@ -330,7 +284,6 @@ const GroupsPage: React.FC = () => {
               <TableCell>Направление</TableCell>
               <TableCell>Тренер</TableCell>
               <TableCell>Ученики</TableCell>
-              <TableCell>Программа</TableCell>
               <TableCell>Статус</TableCell>
               {(isAdminLike || user?.role === 'trainer') && <TableCell>Действия</TableCell>}
             </TableRow>
@@ -342,7 +295,6 @@ const GroupsPage: React.FC = () => {
                 <TableCell>{DIRECTION_OPTIONS.find((o) => o.value === group.direction)?.label ?? group.direction ?? '-'}</TableCell>
                 <TableCell>{group.trainer?.full_name || '-'}</TableCell>
                 <TableCell>{group.students?.length ?? '-'}</TableCell>
-                <TableCell>{renderPrograms(group)}</TableCell>
                 <TableCell>{group.status === 'active' ? 'Активна' : 'В архиве'}</TableCell>
                 {(isAdminLike || user?.role === 'trainer') && (
                   <TableCell>
@@ -354,16 +306,6 @@ const GroupsPage: React.FC = () => {
                     >
                       Состав
                     </Button>
-                    {isAdminLike && (
-                      <Button
-                        size="small"
-                        startIcon={<BookIcon />}
-                        onClick={() => openProgramDialog(group)}
-                        sx={{ mr: 1 }}
-                      >
-                        Программа
-                      </Button>
-                    )}
                     {isAdminLike && (
                       <>
                         <Button
@@ -748,48 +690,6 @@ const GroupsPage: React.FC = () => {
         </Dialog>
       )}
 
-      {/* Диалог назначения программы группе */}
-      {isAdminLike && (
-        <Dialog open={programOpen} onClose={() => setProgramOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Программа для группы: {groupDetails?.name || selectedGroup?.name}</DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Назначенные программы:
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5 }}>
-              {(groupDetails?.programs || []).length
-                ? (groupDetails?.programs || [])
-                    .map((p) => `${p.name} (v${p.version})`)
-                    .join(', ')
-                : '—'}
-            </Typography>
-
-            <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>Назначить программу</InputLabel>
-              <Select
-                value={programToAssignId}
-                label="Назначить программу"
-                onChange={(e) => setProgramToAssignId(e.target.value)}
-              >
-                <MenuItem value="">
-                  <em>Не выбрана</em>
-                </MenuItem>
-                {programs.map((p) => (
-                  <MenuItem key={p.id} value={p.id.toString()}>
-                    {p.name} (v{p.version})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setProgramOpen(false)}>Отмена</Button>
-            <Button variant="contained" disabled={!programToAssignId} onClick={handleAssignProgramToGroup}>
-              Назначить
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
     </Layout>
   );
 };

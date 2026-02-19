@@ -28,7 +28,7 @@ import {
   TableHead,
   TableRow,
 } from '@mui/material';
-import { studentCardsApi, abonementsApi } from '../services/api';
+import { studentCardsApi, abonementsApi, salesApi } from '../services/api';
 import { StudentCard as StudentCardType, Abonement } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -72,6 +72,8 @@ const StudentCardsPage: React.FC = () => {
   const [abonementId, setAbonementId] = useState<number | ''>('');
   const [discountType, setDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
   const [discountValue, setDiscountValue] = useState('');
+  const [studentId, setStudentId] = useState<number | ''>('');
+  const [studentsForCards, setStudentsForCards] = useState<{ id: number; full_name: string }[]>([]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -97,6 +99,7 @@ const StudentCardsPage: React.FC = () => {
     setAbonementId('');
     setDiscountType('none');
     setDiscountValue('');
+    setStudentId('');
   };
 
   const loadCards = async () => {
@@ -136,11 +139,14 @@ const StudentCardsPage: React.FC = () => {
   const openCreate = () => {
     resetForm();
     setDialogOpen(true);
+    salesApi.getStudentsForCards().then(setStudentsForCards).catch(() => setStudentsForCards([]));
   };
 
   const openEdit = (card: StudentCardType) => {
     setEditingId(card.id);
+    setStudentId(card.student_id ?? '');
     setStudentFullName(card.student_full_name || '');
+    salesApi.getStudentsForCards().then(setStudentsForCards).catch(() => setStudentsForCards([]));
     setBirthDate(card.birth_date ? card.birth_date.slice(0, 10) : '');
     setStudentPhone(card.student_phone || '');
     setTelegram(card.telegram || '');
@@ -175,6 +181,7 @@ const StudentCardsPage: React.FC = () => {
     setError(null);
     try {
       const payload = {
+        student_id: studentId ? Number(studentId) : null,
         student_full_name: name,
         birth_date: birthDate || null,
         student_phone: studentPhone.trim() || null,
@@ -362,6 +369,15 @@ const StudentCardsPage: React.FC = () => {
           <DialogContent>
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Typography variant="subtitle2" color="primary">Обучающийся</Typography>
+              <FormControl fullWidth>
+                <InputLabel>Ученик (привязка карточки)</InputLabel>
+                <Select value={studentId === '' ? '' : studentId} label="Ученик (привязка карточки)" onChange={(e) => setStudentId(e.target.value === '' ? '' : Number(e.target.value))}>
+                  <MenuItem value="">— не привязана</MenuItem>
+                  {studentsForCards.map((s) => (
+                    <MenuItem key={s.id} value={s.id}>{s.full_name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField label="ФИО ученика" value={studentFullName} onChange={(e) => setStudentFullName(e.target.value)} fullWidth required />
               <TextField label="Дата рождения" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} fullWidth InputLabelProps={{ shrink: true }} />
               <TextField label="Мобильный телефон ученика" value={studentPhone} onChange={(e) => setStudentPhone(e.target.value)} fullWidth />

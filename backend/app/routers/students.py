@@ -7,6 +7,7 @@ from app import auth
 from app.schemas import StudentCreate, StudentResponse, StudentUpdate, ProgramSummaryResponse, StudentAccountCreate, StudentAccountResponse
 from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount
 from app.routers.action_log import log_action
+from app.student_display import get_student_display_name, get_students_display_names
 
 router = APIRouter()
 
@@ -83,7 +84,15 @@ async def read_students(
         selectinload(Student.student_programs).joinedload(StudentProgram.program)
     )
     students = query.offset(skip).limit(limit).all()
-    return students
+    if not students:
+        return []
+    display_names = get_students_display_names(db, [s.id for s in students])
+    return [
+        StudentResponse(
+            **{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)}
+        )
+        for s in students
+    ]
 
 
 @router.get("/{student_id}", response_model=StudentResponse)
@@ -114,8 +123,10 @@ async def read_student(
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    return student
+    display_name = get_student_display_name(db, student)
+    return StudentResponse(
+        **{**StudentResponse.model_validate(student).model_dump(), "full_name": display_name}
+    )
 
 
 @router.get("/{student_id}/program-options", response_model=List[ProgramSummaryResponse])

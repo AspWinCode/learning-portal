@@ -285,6 +285,7 @@ export interface SalesInstruction {
 
 export interface StudentCard {
   id: number;
+  student_id?: number | null;
   student_full_name: string;
   birth_date?: string | null;
   student_phone?: string | null;

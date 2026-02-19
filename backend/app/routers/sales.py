@@ -10,9 +10,11 @@ from openpyxl import Workbook, load_workbook
 
 from app import auth
 from app.database import get_db
+from app.student_display import get_student_display_name, get_students_display_names
 from app.models import (
     Lead,
     LeadStatus,
+    StudentStatus,
     LeadTask,
     LeadTaskStatus,
     LeadSource,
@@ -263,6 +265,7 @@ def _student_card_response(card: StudentCard, user: User) -> StudentCardResponse
     """Собирает ответ по карточке; поля абонемента/скидки только для owner."""
     data = {
         "id": card.id,
+        "student_id": getattr(card, "student_id", None),
         "student_full_name": card.student_full_name,
         "birth_date": card.birth_date,
         "student_phone": card.student_phone,
@@ -337,6 +340,10 @@ async def create_student_card(
         ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
         if not ab:
             raise HTTPException(status_code=404, detail="Абонемент не найден")
+    if data.get("student_id") is not None:
+        st = db.query(Student).filter(Student.id == data["student_id"]).first()
+        if not st:
+            raise HTTPException(status_code=404, detail="Ученик не найден")
     card = StudentCard(**data)
     db.add(card)
     db.commit()
@@ -587,6 +594,10 @@ async def update_student_card(
         ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
         if not ab:
             raise HTTPException(status_code=404, detail="Абонемент не найден")
+    if "student_id" in data and data["student_id"] is not None:
+        st = db.query(Student).filter(Student.id == data["student_id"]).first()
+        if not st:
+            raise HTTPException(status_code=404, detail="Ученик не найден")
     for k, v in data.items():
         setattr(card, k, v)
     db.commit()
@@ -624,6 +635,20 @@ async def unarchive_student_card(
     return {"archived": False}
 
 
+@router.get("/students-for-cards", response_model=List[Dict])
+async def list_students_for_cards(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Список учеников (id, full_name) для привязки к карточке. ФИО из карточки, если привязана."""
+    _require_sales_admin_owner(current_user)
+    students = db.query(Student).filter(Student.status == StudentStatus.ACTIVE).order_by(Student.full_name).all()
+    if not students:
+        return []
+    display_names = get_students_display_names(db, [s.id for s in students])
+    return [{"id": s.id, "full_name": display_names.get(s.id, s.full_name)} for s in students]
+
+
 @router.get("/absences", response_model=List[AbsenceFollowUpResponse])
 async def list_absences(
     stage: Optional[str] = Query(None, description="Фильтр по этапу: missed, assigned, made_up, missed_makeup"),
@@ -648,7 +673,7 @@ async def list_absences(
             stage=a.stage,
             created_at=a.created_at,
             updated_at=a.updated_at,
-            student_name=student.full_name if student else None,
+            student_name=get_student_display_name(db, student) if student else None,
             group_name=group.name if group else None,
         ))
     return result
@@ -682,7 +707,7 @@ async def update_absence_stage(
         stage=absence.stage,
         created_at=absence.created_at,
         updated_at=absence.updated_at,
-        student_name=student.full_name if student else None,
+        student_name=get_student_display_name(db, student) if student else None,
         group_name=group.name if group else None,
     )
 

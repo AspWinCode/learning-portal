@@ -15,6 +15,6 @@ COPY . /app
 # Default command: run migrations then start API.
 # `--proxy-headers` is required behind reverse proxies (Caddy/Nginx) to respect X-Forwarded-Proto/For.
 # Use explicit revision to avoid "Multiple head revisions" when repo has nested migration folders
-CMD ["sh", "-c", "alembic upgrade 0014_task_manager && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
 
 

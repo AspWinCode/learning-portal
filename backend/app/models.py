@@ -403,7 +403,8 @@ class StudentCard(Base):
     __tablename__ = "student_cards"
 
     id = Column(Integer, primary_key=True, index=True)
-    # Обучающийся
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True, unique=True)
+    # Обучающийся (ФИО из карточки — используется для отображения везде, если карточка привязана)
     student_full_name = Column(String, nullable=False, index=True)
     birth_date = Column(Date, nullable=True)
     student_phone = Column(String, nullable=True)
@@ -437,6 +438,7 @@ class StudentCard(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     abonement = relationship("Abonement")
+    student = relationship("Student", backref="student_card")
 
 
 class LeadTaskTemplate(Base):

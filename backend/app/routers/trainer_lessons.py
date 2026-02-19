@@ -22,6 +22,7 @@ from app.models import (
     AbsenceFollowUp,
 )
 from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave
+from app.student_display import get_students_display_names
 
 router = APIRouter()
 
@@ -61,6 +62,8 @@ async def get_lessons_for_date(
             program_name = None
             if group.programs:
                 program_name = group.programs[0].name if group.programs else None
+            student_ids = [gs.student_id for gs in students_in_group if gs.student_id]
+            display_names = get_students_display_names(db, student_ids)
             students_data = []
             for gs in students_in_group:
                 student = gs.student
@@ -69,7 +72,7 @@ async def get_lessons_for_date(
                 attended = attendance_map.get(student.id)
                 students_data.append({
                     "id": student.id,
-                    "full_name": student.full_name,
+                    "full_name": display_names.get(student.id, student.full_name),
                     "attended": attended,
                 })
             result.append(TrainerLessonSlotResponse(

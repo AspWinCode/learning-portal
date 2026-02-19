@@ -583,6 +583,7 @@ class SalesInstructionResponse(SalesInstructionBase):
 
 # Student cards (личные карточки ученика)
 class StudentCardBase(BaseModel):
+    student_id: Optional[int] = None  # привязка к ученику — ФИО из карточки показывается везде
     student_full_name: str
     birth_date: Optional[date] = None
     student_phone: Optional[str] = None
@@ -612,6 +613,7 @@ class StudentCardCreate(StudentCardBase):
 
 
 class StudentCardUpdate(BaseModel):
+    student_id: Optional[int] = None
     student_full_name: Optional[str] = None
     birth_date: Optional[date] = None
     student_phone: Optional[str] = None

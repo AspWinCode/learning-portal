@@ -31,35 +31,35 @@ router = APIRouter()
 
 # ╨б╨┐╨╕╤Б╨╛╨║ ╨▓╨╛╤А╨╛╨╜╨╛╨║ ╨┤╨╗╤П ╨▓╤Л╨▒╨╛╤А╨░ (id, label, stages)
 
-# Русские подписи для воронок и этапов (без кракозябр)
+# Russian labels as Unicode escapes (no file encoding issues)
 FUNNEL_TYPE_LABELS = {
-    OWNER_FUNNEL_SUPPORT_LETTERS: "Получить письма поддержки",
-    OWNER_FUNNEL_THANK_YOU_LETTERS: "Письма благодарности",
-    OWNER_FUNNEL_EVENTS: "Мероприятия",
+    OWNER_FUNNEL_SUPPORT_LETTERS: "\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u043f\u0438\u0441\u044c\u043c\u0430 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0438",
+    OWNER_FUNNEL_THANK_YOU_LETTERS: "\u041f\u0438\u0441\u044c\u043c\u0430 \u0431\u043b\u0430\u0433\u043e\u0434\u0430\u0440\u043d\u043e\u0441\u0442\u0438",
+    OWNER_FUNNEL_EVENTS: "\u041c\u0435\u0440\u043e\u043f\u0440\u0438\u044f\u0442\u0438\u044f",
 }
 STAGE_LABELS = {
-    (OWNER_FUNNEL_SUPPORT_LETTERS, "new"): "Новые",
-    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_created"): "Создал письмо",
-    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_sent"): "Отправил письмо",
-    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_received"): "Получил письмо",
-    (OWNER_FUNNEL_THANK_YOU_LETTERS, "new"): "Новые",
-    (OWNER_FUNNEL_THANK_YOU_LETTERS, "thank_you_formed"): "Сформировали благодарность",
-    (OWNER_FUNNEL_THANK_YOU_LETTERS, "thank_you_sent"): "Отправили благодарность",
-    (OWNER_FUNNEL_THANK_YOU_LETTERS, "school_received"): "Получила школа",
-    (OWNER_FUNNEL_EVENTS, "new"): "Новые",
-    (OWNER_FUNNEL_EVENTS, "contact_found"): "Контакт найден",
-    (OWNER_FUNNEL_EVENTS, "letter_sent"): "Отправили письмо",
-    (OWNER_FUNNEL_EVENTS, "reply_received"): "Получили ответное письмо",
-    (OWNER_FUNNEL_EVENTS, "reached_by_phone"): "Дозвонились",
-    (OWNER_FUNNEL_EVENTS, "not_reached"): "Недозвонились",
-    (OWNER_FUNNEL_EVENTS, "meeting_agreed"): "Договорились на встречу",
-    (OWNER_FUNNEL_EVENTS, "agreement_sent"): "Отправили согласование",
-    (OWNER_FUNNEL_EVENTS, "agreement_approved"): "Согласовали соглашение",
-    (OWNER_FUNNEL_EVENTS, "agreement_signed"): "Подписали соглашение",
-    (OWNER_FUNNEL_EVENTS, "trip_agreed"): "Договорились на поход",
-    (OWNER_FUNNEL_EVENTS, "info_sent_to_parents"): "Отправили информацию в чат родителям",
-    (OWNER_FUNNEL_EVENTS, "leads_collected"): "Собрали лидов",
-    (OWNER_FUNNEL_EVENTS, "rejected"): "Отказали",
+    (OWNER_FUNNEL_SUPPORT_LETTERS, "new"): "\u041d\u043e\u0432\u044b\u0435",
+    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_created"): "\u0421\u043e\u0437\u0434\u0430\u043b \u043f\u0438\u0441\u044c\u043c\u043e",
+    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_sent"): "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u043b \u043f\u0438\u0441\u044c\u043c\u043e",
+    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_received"): "\u041f\u043e\u043b\u0443\u0447\u0438\u043b \u043f\u0438\u0441\u044c\u043c\u043e",
+    (OWNER_FUNNEL_THANK_YOU_LETTERS, "new"): "\u041d\u043e\u0432\u044b\u0435",
+    (OWNER_FUNNEL_THANK_YOU_LETTERS, "thank_you_formed"): "\u0421\u0444\u043e\u0440\u043c\u0438\u0440\u043e\u0432\u0430\u043b\u0438 \u0431\u043b\u0430\u0433\u043e\u0434\u0430\u0440\u043d\u043e\u0441\u0442\u044c",
+    (OWNER_FUNNEL_THANK_YOU_LETTERS, "thank_you_sent"): "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0438 \u0431\u043b\u0430\u0433\u043e\u0434\u0430\u0440\u043d\u043e\u0441\u0442\u044c",
+    (OWNER_FUNNEL_THANK_YOU_LETTERS, "school_received"): "\u041f\u043e\u043b\u0443\u0447\u0438\u043b\u0430 \u0448\u043a\u043e\u043b\u0430",
+    (OWNER_FUNNEL_EVENTS, "new"): "\u041d\u043e\u0432\u044b\u0435",
+    (OWNER_FUNNEL_EVENTS, "contact_found"): "\u041a\u043e\u043d\u0442\u0430\u043a\u0442 \u043d\u0430\u0439\u0434\u0435\u043d",
+    (OWNER_FUNNEL_EVENTS, "letter_sent"): "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0438 \u043f\u0438\u0441\u044c\u043c\u043e",
+    (OWNER_FUNNEL_EVENTS, "reply_received"): "\u041f\u043e\u043b\u0443\u0447\u0438\u043b\u0438 \u043e\u0442\u0432\u0435\u0442\u043d\u043e\u0435 \u043f\u0438\u0441\u044c\u043c\u043e",
+    (OWNER_FUNNEL_EVENTS, "reached_by_phone"): "\u0414\u043e\u0437\u0432\u043e\u043d\u0438\u043b\u0438\u0441\u044c",
+    (OWNER_FUNNEL_EVENTS, "not_reached"): "\u041d\u0435\u0434\u043e\u0437\u0432\u043e\u043d\u0438\u043b\u0438\u0441\u044c",
+    (OWNER_FUNNEL_EVENTS, "meeting_agreed"): "\u0414\u043e\u0433\u043e\u0432\u043e\u0440\u0438\u043b\u0438\u0441\u044c \u043d\u0430 \u0432\u0441\u0442\u0440\u0435\u0447\u0443",
+    (OWNER_FUNNEL_EVENTS, "agreement_sent"): "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0438 \u0441\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u0438\u0435",
+    (OWNER_FUNNEL_EVENTS, "agreement_approved"): "\u0421\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043b\u0438 \u0441\u043e\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435",
+    (OWNER_FUNNEL_EVENTS, "agreement_signed"): "\u041f\u043e\u0434\u043f\u0438\u0441\u0430\u043b\u0438 \u0441\u043e\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435",
+    (OWNER_FUNNEL_EVENTS, "trip_agreed"): "\u0414\u043e\u0433\u043e\u0432\u043e\u0440\u0438\u043b\u0438\u0441\u044c \u043d\u0430 \u043f\u043e\u0445\u043e\u0434",
+    (OWNER_FUNNEL_EVENTS, "info_sent_to_parents"): "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0438 \u0438\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u044e \u0432 \u0447\u0430\u0442 \u0440\u043e\u0434\u0438\u0442\u0435\u043b\u044f\u043c",
+    (OWNER_FUNNEL_EVENTS, "leads_collected"): "\u0421\u043e\u0431\u0440\u0430\u043b\u0438 \u043b\u0438\u0434\u043e\u0432",
+    (OWNER_FUNNEL_EVENTS, "rejected"): "\u041e\u0442\u043a\u0430\u0437\u0430\u043b\u0438",
 }
 
 

@@ -808,6 +808,10 @@ export const salesApi = {
     });
     return response.data;
   },
+  getStudentsForCards: async (): Promise<{ id: number; full_name: string }[]> => {
+    const response = await api.get('/api/sales/students-for-cards');
+    return response.data;
+  },
   getAbsences: async (stage?: string): Promise<AbsenceFollowUp[]> => {
     const response = await api.get('/api/sales/absences', { params: stage ? { stage } : {} });
     return response.data;

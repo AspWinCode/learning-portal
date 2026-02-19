@@ -3,9 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
-from app.schemas import GroupCreate, GroupResponse, GroupUpdate
+from app.schemas import GroupCreate, GroupResponse, GroupUpdate, StudentResponse
 from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus
 from app.routers.action_log import log_action
+from app.student_display import get_students_display_names
 
 router = APIRouter()
 
@@ -85,9 +86,19 @@ async def read_groups(
             try:
                 g.students = [s for s in (g.students or []) if s.parent_id == current_user.id and s.status == StudentStatus.ACTIVE]
             except Exception:
-                # безопасный фолбэк: если relationship не загрузился/не доступен
                 g.students = []
-    return groups
+
+    # ФИО учеников из карточек (где привязана карточка)
+    all_student_ids = [s.id for g in groups for s in (g.students or [])]
+    display_names = get_students_display_names(db, all_student_ids)
+    result = []
+    for g in groups:
+        students_out = [
+            StudentResponse(**{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)})
+            for s in (g.students or [])
+        ]
+        result.append(GroupResponse(**{**GroupResponse.model_validate(g).model_dump(), "students": students_out}))
+    return result
 
 
 @router.get("/{group_id}", response_model=GroupResponse)
@@ -120,7 +131,16 @@ async def read_group(
             group.students = [s for s in (group.students or []) if s.parent_id == current_user.id and s.status == StudentStatus.ACTIVE]
         except Exception:
             group.students = []
-    
+
+    # ФИО учеников из карточек (где привязана карточка)
+    student_list = group.students or []
+    if student_list:
+        display_names = get_students_display_names(db, [s.id for s in student_list])
+        students_out = [
+            StudentResponse(**{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)})
+            for s in student_list
+        ]
+        return GroupResponse(**{**GroupResponse.model_validate(group).model_dump(), "students": students_out})
     return group
 
 

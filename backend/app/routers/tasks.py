@@ -1,4 +1,5 @@
 """Task manager: templates (admin/owner), tasks CRUD (admin/owner), sales: view tasks + complete subtasks."""
+from datetime import date, datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
@@ -28,6 +29,36 @@ from app.schemas import (
 )
 
 router = APIRouter()
+
+
+def _norm_date(v):
+    """Normalize to date for Pydantic (schema expects date, DB may return datetime)."""
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    return v
+
+
+def _template_to_response(t: TaskTemplate) -> TaskTemplateResponse:
+    subtasks_sorted = sorted(t.subtasks or [], key=lambda s: (s.order, s.id))
+    return TaskTemplateResponse(
+        id=t.id,
+        name=t.name,
+        created_by_id=t.created_by_id,
+        created_at=t.created_at,
+        subtasks=[
+            TaskTemplateSubtaskResponse(id=s.id, template_id=s.template_id, text=s.text, order=s.order)
+            for s in subtasks_sorted
+        ],
+        student_ids=[ts.student_id for ts in (t.students or [])],
+        repeat_enabled=getattr(t, "repeat_enabled", False),
+        repeat_frequency=getattr(t, "repeat_frequency", None),
+        repeat_days=getattr(t, "repeat_days", None),
+        repeat_end_type=getattr(t, "repeat_end_type", None),
+        repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
+        repeat_end_until=_norm_date(getattr(t, "repeat_end_until", None)),
+    )
 
 
 def _task_to_response(task: Task) -> TaskResponse:
@@ -73,29 +104,7 @@ async def list_task_templates(
         .order_by(TaskTemplate.created_at.desc())
         .all()
     )
-    out = []
-    for t in rows:
-        student_ids = [ts.student_id for ts in t.students]
-        out.append(
-            TaskTemplateResponse(
-                id=t.id,
-                name=t.name,
-                created_by_id=t.created_by_id,
-                created_at=t.created_at,
-                subtasks=[
-                    TaskTemplateSubtaskResponse(id=s.id, template_id=s.template_id, text=s.text, order=s.order)
-                    for s in t.subtasks
-                ],
-                student_ids=student_ids,
-                repeat_enabled=getattr(t, "repeat_enabled", False),
-                repeat_frequency=getattr(t, "repeat_frequency", None),
-                repeat_days=getattr(t, "repeat_days", None),
-                repeat_end_type=getattr(t, "repeat_end_type", None),
-                repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
-                repeat_end_until=getattr(t, "repeat_end_until", None),
-            )
-        )
-    return out
+    return [_template_to_response(t) for t in rows]
 
 
 @router.post("/task-templates", response_model=TaskTemplateResponse, status_code=status.HTTP_201_CREATED)
@@ -135,24 +144,7 @@ async def create_task_template(
         .filter(TaskTemplate.id == t.id)
         .first()
     )
-    student_ids = [ts.student_id for ts in t.students]
-    return TaskTemplateResponse(
-        id=t.id,
-        name=t.name,
-        created_by_id=t.created_by_id,
-        created_at=t.created_at,
-        subtasks=[
-            TaskTemplateSubtaskResponse(id=s.id, template_id=s.template_id, text=s.text, order=s.order)
-            for s in t.subtasks
-        ],
-        student_ids=student_ids,
-        repeat_enabled=getattr(t, "repeat_enabled", False),
-        repeat_frequency=getattr(t, "repeat_frequency", None),
-        repeat_days=getattr(t, "repeat_days", None),
-        repeat_end_type=getattr(t, "repeat_end_type", None),
-        repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
-        repeat_end_until=getattr(t, "repeat_end_until", None),
-    )
+    return _template_to_response(t)
 
 
 @router.get("/task-templates/{template_id}", response_model=TaskTemplateResponse)
@@ -169,24 +161,7 @@ async def get_task_template(
     )
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
-    student_ids = [ts.student_id for ts in t.students]
-    return TaskTemplateResponse(
-        id=t.id,
-        name=t.name,
-        created_by_id=t.created_by_id,
-        created_at=t.created_at,
-        subtasks=[
-            TaskTemplateSubtaskResponse(id=s.id, template_id=s.template_id, text=s.text, order=s.order)
-            for s in t.subtasks
-        ],
-        student_ids=student_ids,
-        repeat_enabled=getattr(t, "repeat_enabled", False),
-        repeat_frequency=getattr(t, "repeat_frequency", None),
-        repeat_days=getattr(t, "repeat_days", None),
-        repeat_end_type=getattr(t, "repeat_end_type", None),
-        repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
-        repeat_end_until=getattr(t, "repeat_end_until", None),
-    )
+    return _template_to_response(t)
 
 
 @router.put("/task-templates/{template_id}", response_model=TaskTemplateResponse)
@@ -242,24 +217,7 @@ async def update_task_template(
         .filter(TaskTemplate.id == template_id)
         .first()
     )
-    student_ids = [ts.student_id for ts in t.students]
-    return TaskTemplateResponse(
-        id=t.id,
-        name=t.name,
-        created_by_id=t.created_by_id,
-        created_at=t.created_at,
-        subtasks=[
-            TaskTemplateSubtaskResponse(id=s.id, template_id=s.template_id, text=s.text, order=s.order)
-            for s in t.subtasks
-        ],
-        student_ids=student_ids,
-        repeat_enabled=getattr(t, "repeat_enabled", False),
-        repeat_frequency=getattr(t, "repeat_frequency", None),
-        repeat_days=getattr(t, "repeat_days", None),
-        repeat_end_type=getattr(t, "repeat_end_type", None),
-        repeat_end_after_count=getattr(t, "repeat_end_after_count", None),
-        repeat_end_until=getattr(t, "repeat_end_until", None),
-    )
+    return _template_to_response(t)
 
 
 @router.delete("/task-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)

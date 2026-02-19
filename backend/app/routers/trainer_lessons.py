@@ -1,4 +1,4 @@
-﻿"""API ╨┤╨╗╤П ╤В╤А╨╡╨╜╨╡╤А╨░: ╨╖╨░╨╜╤П╤В╨╕╤П ╨┐╨╛ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤О ╨╕ ╨┐╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М."""
+"""API для тренера: занятия по расписанию и посещаемость."""
 from datetime import date, time, datetime
 from typing import List
 
@@ -7,7 +7,20 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import auth
-from app.models import User, Group, GroupSchedule, GroupStudent, LessonAttendance, UserRole
+from app.models import (
+    User,
+    Group,
+    GroupSchedule,
+    GroupStudent,
+    LessonAttendance,
+    UserRole,
+    Student,
+    Abonement,
+    StudentAccount,
+    StudentAccountTransaction,
+    StudentAccountTransactionKind,
+    AbsenceFollowUp,
+)
 from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave
 
 router = APIRouter()
@@ -103,5 +116,67 @@ async def save_attendance(
                 attended=item.attended,
             )
             db.add(att)
+    db.commit()
+
+    # Списание за занятие с счёта ученика (пропорционально абонементу) и создание записи пропуска при отсутствии
+    attendances_saved = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.lesson_date,
+    ).all()
+    default_lessons = 8
+    for att in attendances_saved:
+        # Уже списывали за это занятие?
+        existing_tx = db.query(StudentAccountTransaction).filter(
+            StudentAccountTransaction.lesson_attendance_id == att.id,
+        ).first()
+        if existing_tx:
+            if not att.attended:
+                # Обеспечиваем запись в воронку пропусков
+                absence = db.query(AbsenceFollowUp).filter(
+                    AbsenceFollowUp.lesson_attendance_id == att.id,
+                ).first()
+                if not absence:
+                    db.add(AbsenceFollowUp(
+                        lesson_attendance_id=att.id,
+                        student_id=att.student_id,
+                        group_id=att.group_id,
+                        lesson_date=att.lesson_date,
+                        stage="missed",
+                    ))
+            continue
+
+        student = db.query(Student).filter(Student.id == att.student_id).first()
+        if not student:
+            continue
+        abonement = student.abonement
+        if not abonement:
+            abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
+        amount_per_lesson = 0.0
+        if abonement and abonement.price is not None and (abonement.lessons_count or default_lessons) > 0:
+            amount_per_lesson = float(abonement.price) / (abonement.lessons_count or default_lessons)
+
+        account = db.query(StudentAccount).filter(StudentAccount.student_id == att.student_id).order_by(StudentAccount.id).first()
+        if account and amount_per_lesson > 0 and account.balance >= amount_per_lesson:
+            account.balance -= amount_per_lesson
+            db.add(StudentAccountTransaction(
+                account_id=account.id,
+                amount=-amount_per_lesson,
+                kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
+                note=f"Занятие {att.lesson_date}",
+                lesson_attendance_id=att.id,
+            ))
+
+        if not att.attended:
+            absence = db.query(AbsenceFollowUp).filter(
+                AbsenceFollowUp.lesson_attendance_id == att.id,
+            ).first()
+            if not absence:
+                db.add(AbsenceFollowUp(
+                    lesson_attendance_id=att.id,
+                    student_id=att.student_id,
+                    group_id=att.group_id,
+                    lesson_date=att.lesson_date,
+                    stage="missed",
+                ))
     db.commit()
     return {"ok": True}

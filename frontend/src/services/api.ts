@@ -40,6 +40,7 @@ import {
   OwnerFunnelItem,
   SalesInstruction,
   StudentCard,
+  AbsenceFollowUp,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -374,6 +375,14 @@ export const studentCardsApi = {
     const response = await api.post('/api/sales/student-cards/import-xlsx', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return response.data;
+  },
+  getAbsences: async (stage?: string): Promise<AbsenceFollowUp[]> => {
+    const response = await api.get('/api/sales/absences', { params: stage ? { stage } : {} });
+    return response.data;
+  },
+  updateAbsenceStage: async (absenceId: number, stage: string): Promise<AbsenceFollowUp> => {
+    const response = await api.patch(`/api/sales/absences/${absenceId}`, { stage });
     return response.data;
   },
 };

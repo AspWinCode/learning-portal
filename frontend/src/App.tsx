@@ -34,6 +34,7 @@ import SalesAgreedPage from './pages/SalesAgreedPage';
 import SalesReportsPage from './pages/SalesReportsPage';
 import SalesInstructionsPage from './pages/SalesInstructionsPage';
 import StudentCardsPage from './pages/StudentCardsPage';
+import SalesAbsencesPage from './pages/SalesAbsencesPage';
 import TasksPage from './pages/TasksPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
@@ -198,6 +199,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <StudentCardsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/absences"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <SalesAbsencesPage />
                 </PrivateRoute>
               }
             />

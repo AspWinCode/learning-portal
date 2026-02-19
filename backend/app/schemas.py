@@ -236,6 +236,27 @@ class StudentAccountDeductRequest(BaseModel):
     lesson_attendance_id: Optional[int] = None
 
 
+# Пропуски (воронка для sales)
+class AbsenceFollowUpResponse(BaseModel):
+    id: int
+    lesson_attendance_id: int
+    student_id: int
+    group_id: int
+    lesson_date: date
+    stage: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    student_name: Optional[str] = None
+    group_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AbsenceFollowUpStageUpdate(BaseModel):
+    stage: str  # missed / assigned / made_up / missed_makeup
+
+
 # --- Sales schemas ---
 
 

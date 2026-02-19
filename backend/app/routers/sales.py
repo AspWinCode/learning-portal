@@ -36,6 +36,9 @@ from app.models import (
     SalesInstructionImage,
     StudentCard,
     DiscountType,
+    AbsenceFollowUp,
+    Student,
+    Group,
 )
 from app.schemas import (
     LeadCreate,
@@ -91,6 +94,8 @@ from app.schemas import (
     StudentCardResponse,
     StudentCardImportResponse,
     AbonementResponse,
+    AbsenceFollowUpResponse,
+    AbsenceFollowUpStageUpdate,
 )
 from app.routers.action_log import log_action
 
@@ -617,6 +622,69 @@ async def unarchive_student_card(
     card.archived = False
     db.commit()
     return {"archived": False}
+
+
+@router.get("/absences", response_model=List[AbsenceFollowUpResponse])
+async def list_absences(
+    stage: Optional[str] = Query(None, description="Фильтр по этапу: missed, assigned, made_up, missed_makeup"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_sales_admin_owner(current_user)
+    query = db.query(AbsenceFollowUp).order_by(AbsenceFollowUp.lesson_date.desc(), AbsenceFollowUp.id.desc())
+    if stage:
+        query = query.filter(AbsenceFollowUp.stage == stage)
+    items = query.all()
+    result = []
+    for a in items:
+        student = db.query(Student).filter(Student.id == a.student_id).first()
+        group = db.query(Group).filter(Group.id == a.group_id).first()
+        result.append(AbsenceFollowUpResponse(
+            id=a.id,
+            lesson_attendance_id=a.lesson_attendance_id,
+            student_id=a.student_id,
+            group_id=a.group_id,
+            lesson_date=a.lesson_date,
+            stage=a.stage,
+            created_at=a.created_at,
+            updated_at=a.updated_at,
+            student_name=student.full_name if student else None,
+            group_name=group.name if group else None,
+        ))
+    return result
+
+
+@router.patch("/absences/{absence_id}", response_model=AbsenceFollowUpResponse)
+async def update_absence_stage(
+    absence_id: int,
+    payload: AbsenceFollowUpStageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_sales_admin_owner(current_user)
+    valid_stages = ("missed", "assigned", "made_up", "missed_makeup")
+    if payload.stage not in valid_stages:
+        raise HTTPException(status_code=400, detail=f"stage должен быть один из: {valid_stages}")
+    absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
+    if not absence:
+        raise HTTPException(status_code=404, detail="Пропуск не найден")
+    absence.stage = payload.stage
+    db.commit()
+    db.refresh(absence)
+    student = db.query(Student).filter(Student.id == absence.student_id).first()
+    group = db.query(Group).filter(Group.id == absence.group_id).first()
+    return AbsenceFollowUpResponse(
+        id=absence.id,
+        lesson_attendance_id=absence.lesson_attendance_id,
+        student_id=absence.student_id,
+        group_id=absence.group_id,
+        lesson_date=absence.lesson_date,
+        stage=absence.stage,
+        created_at=absence.created_at,
+        updated_at=absence.updated_at,
+        student_name=student.full_name if student else None,
+        group_name=group.name if group else None,
+    )
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:

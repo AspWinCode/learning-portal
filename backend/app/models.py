@@ -227,6 +227,7 @@ class Abonement(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     price = Column(Float, default=0.0, nullable=False)
+    lessons_count = Column(Integer, nullable=True)  # число занятий в абонементе (для расчёта списания за занятие); по умолчанию 8
     discount_type = Column(
         SQLEnum(DiscountType, name="discounttype", values_callable=_enum_values),
         default=DiscountType.NONE,
@@ -650,6 +651,31 @@ class LessonAttendance(Base):
 
     group = relationship("Group", back_populates="lesson_attendances")
     student = relationship("Student", back_populates="lesson_attendances")
+
+
+class AbsenceFollowUpStage(str, enum.Enum):
+    MISSED = "missed"           # Пропустил
+    ASSIGNED = "assigned"       # Назначили отработку
+    MADE_UP = "made_up"         # Отработал
+    MISSED_MAKEUP = "missed_makeup"  # Пропустил отработку
+
+
+class AbsenceFollowUp(Base):
+    """Пропуск занятия: воронка для sales — Пропустил → Назначили → Отработал → Пропустил отработку."""
+    __tablename__ = "absence_follow_ups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=False, unique=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    lesson_date = Column(Date, nullable=False, index=True)
+    stage = Column(String, nullable=False, index=True, server_default="missed")  # missed / assigned / made_up / missed_makeup
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    lesson_attendance = relationship("LessonAttendance")
+    student = relationship("Student")
+    group = relationship("Group")
 
 
 class Program(Base):

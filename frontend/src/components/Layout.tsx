@@ -203,6 +203,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
         { text: 'Карточки учеников', icon: <People />, path: '/sales/student-cards' },
+        { text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' },
       ];
@@ -222,6 +223,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
       items.push({ text: 'Продажи: инструкции', icon: <Description />, path: '/sales/instructions' });
       items.push({ text: 'Продажи: карточки учеников', icon: <People />, path: '/sales/student-cards' });
+      items.push({ text: 'Продажи: пропуски', icon: <PendingActions />, path: '/sales/absences' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     }
     if (isAdminLike) items.push({ text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' });

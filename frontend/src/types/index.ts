@@ -62,6 +62,21 @@ export interface Group {
   programs?: ProgramSummary[];
 }
 
+export type AbsenceFollowUpStage = 'missed' | 'assigned' | 'made_up' | 'missed_makeup';
+
+export interface AbsenceFollowUp {
+  id: number;
+  lesson_attendance_id: number;
+  student_id: number;
+  group_id: number;
+  lesson_date: string;
+  stage: AbsenceFollowUpStage;
+  created_at: string;
+  updated_at?: string | null;
+  student_name?: string | null;
+  group_name?: string | null;
+}
+
 export interface GroupSchedule {
   id: number;
   group_id: number;

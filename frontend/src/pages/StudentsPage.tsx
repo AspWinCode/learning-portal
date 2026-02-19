@@ -1057,7 +1057,6 @@ const StudentsPage: React.FC = () => {
                 fullWidth
                 size="small"
                 value={inviteLink}
-                readOnly
                 sx={{ mt: 1, mb: 1 }}
                 InputProps={{ readOnly: true }}
               />

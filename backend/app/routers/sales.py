@@ -89,6 +89,7 @@ from app.schemas import (
     StudentCardCreate,
     StudentCardUpdate,
     StudentCardResponse,
+    StudentCardImportResponse,
     AbonementResponse,
 )
 from app.routers.action_log import log_action
@@ -275,6 +276,7 @@ def _student_card_response(card: StudentCard, user: User) -> StudentCardResponse
         "student_email": getattr(card, "student_email", None),
         "preferred_messenger": getattr(card, "preferred_messenger", None),
         "comment": getattr(card, "comment", None),
+        "source": getattr(card, "source", None),
         "archived": card.archived,
         "created_at": card.created_at,
         "updated_at": card.updated_at,
@@ -405,6 +407,216 @@ async def unarchive_student_card(
     card.archived = False
     db.commit()
     return {"archived": False}
+
+
+@router.get("/student-cards/import-template")
+async def download_student_cards_import_template(
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_sales_admin_owner(current_user)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Карточки учеников"
+    headers = [
+        "ФИО ученика",
+        "Дата рождения",
+        "Телефон ученика",
+        "Телеграм ученика",
+        "Пол",
+        "На гранте",
+        "Формат",
+        "Город",
+        "Образовательное учреждение",
+        "Класс",
+        "Email ученика",
+        "ФИО родителя",
+        "Телефон родителя",
+        "Второй телефон родителя",
+        "Телеграм родителя",
+        "Email родителя",
+        "Удобный мессенджер",
+        "Комментарий",
+        "Откуда пришел",
+    ]
+    ws.append(headers)
+    ws.append(
+        [
+            "Иванов Петр Сергеевич",
+            "2015-03-15",
+            "+7 999 111-22-33",
+            "@petr_ivanov",
+            "м",
+            "нет",
+            "группа",
+            "Москва",
+            "Школа №12",
+            "3",
+            "petr@example.com",
+            "Иванова Анна Петровна",
+            "+7 999 111-22-34",
+            "+7 900 111-22-44",
+            "@anna_ivanova",
+            "anna@example.com",
+            "Telegram",
+            "Записан на пробное занятие",
+            "рекомендация",
+        ]
+    )
+    ws.freeze_panes = "A2"
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    filename = "student_cards_import_template.xlsx"
+    headers_resp = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers_resp,
+    )
+
+
+@router.post("/student-cards/import-xlsx", response_model=StudentCardImportResponse)
+async def import_student_cards_from_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_sales_admin_owner(current_user)
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Поддерживается только формат .xlsx")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    wb = load_workbook(filename=BytesIO(data), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return StudentCardImportResponse(created=0, skipped=0, errors=["Пустой лист"])
+    headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
+    header_map = {name: idx for idx, name in enumerate(headers)}
+
+    def val(row, key_variants: List[str]) -> Optional[str]:
+        for key in key_variants:
+            idx = header_map.get(key)
+            if idx is None or idx >= len(row):
+                continue
+            raw = row[idx]
+            if raw is None:
+                continue
+            txt = str(raw).strip()
+            if txt:
+                return txt
+        return None
+
+    def parse_date(raw_value) -> Optional[datetime]:
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, datetime):
+            return raw_value.date() if hasattr(raw_value, "date") else raw_value
+        text = str(raw_value).strip()
+        if not text:
+            return None
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(text, fmt).date()
+            except ValueError:
+                continue
+        try:
+            return datetime.fromisoformat(text[:10]).date()
+        except (ValueError, TypeError):
+            return None
+
+    created = 0
+    skipped = 0
+    errors: List[str] = []
+    for i, row in enumerate(rows[1:], start=2):
+        row = list(row) if row else []
+        student_full_name = val(row, ["фио ученика", "ученик", "student_full_name"])
+        if not student_full_name:
+            skipped += 1
+            continue
+        birth_date_raw = val(row, ["дата рождения", "birth_date"])
+        birth_date = parse_date(birth_date_raw) if birth_date_raw else None
+        student_phone = val(row, ["телефон ученика", "student_phone"])
+        telegram = val(row, ["телеграм ученика", "telegram"])
+        gender_raw = val(row, ["пол", "gender"])
+        gender = gender_raw.lower() if gender_raw and gender_raw.lower() in ("м", "ж", "m", "f", "male", "female") else (gender_raw or None)
+        on_grant_raw = val(row, ["на гранте", "on_grant"])
+        on_grant = str(on_grant_raw).strip().lower() in ("да", "yes", "1", "true", "+")
+        format_raw = val(row, ["формат", "format_type"])
+        format_type = None
+        if format_raw:
+            f = format_raw.lower()
+            if "групп" in f or f == "group":
+                format_type = "group"
+            elif "индивид" in f or f == "individual":
+                format_type = "individual"
+            else:
+                format_type = format_raw
+        city = val(row, ["город", "city"])
+        school = val(row, ["образовательное учреждение", "школа", "school"])
+        grade = val(row, ["класс", "grade"])
+        student_email = val(row, ["email ученика", "student_email"])
+        parent_full_name = val(row, ["фио родителя", "родитель", "parent_full_name"])
+        parent_phone = val(row, ["телефон родителя", "parent_phone"])
+        parent_phone_2 = val(row, ["второй телефон родителя", "parent_phone_2"])
+        parent_telegram = val(row, ["телеграм родителя", "parent_telegram"])
+        parent_email = val(row, ["email родителя", "parent_email"])
+        preferred_raw = val(row, ["удобный мессенджер", "preferred_messenger"])
+        preferred_messenger = None
+        if preferred_raw:
+            p = preferred_raw.lower()
+            if "max" in p or p == "max":
+                preferred_messenger = "max"
+            elif "telegram" in p or "телеграм" in p or p == "tg":
+                preferred_messenger = "telegram"
+            elif "sms" in p:
+                preferred_messenger = "sms"
+            else:
+                preferred_messenger = preferred_raw
+        comment = val(row, ["комментарий", "comment"])
+        source = val(row, ["откуда пришел", "источник", "source"])
+        abonement_id = None
+        discount_type = DiscountType.NONE
+        discount_value = 0.0
+        if current_user.role == UserRole.OWNER:
+            ab_id_raw = val(row, ["абонемент", "abonement_id"])
+            if ab_id_raw:
+                try:
+                    abonement_id = int(float(ab_id_raw))
+                except (ValueError, TypeError):
+                    pass
+        card = StudentCard(
+            student_full_name=student_full_name,
+            birth_date=birth_date,
+            student_phone=student_phone or None,
+            telegram=telegram or None,
+            gender=gender,
+            on_grant=on_grant,
+            format_type=format_type,
+            city=city or None,
+            school=school or None,
+            grade=grade or None,
+            parent_full_name=parent_full_name or None,
+            parent_phone=parent_phone or None,
+            parent_phone_2=parent_phone_2 or None,
+            parent_telegram=parent_telegram or None,
+            parent_email=parent_email or None,
+            student_email=student_email or None,
+            preferred_messenger=preferred_messenger,
+            comment=comment or None,
+            source=source or None,
+            abonement_id=abonement_id,
+            discount_type=discount_type,
+            discount_value=discount_value,
+            archived=False,
+        )
+        db.add(card)
+        created += 1
+    db.commit()
+    log_action(db, current_user.id, "import", "student_card", None, {"created": created, "skipped": skipped})
+    return StudentCardImportResponse(created=created, skipped=skipped, errors=errors)
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:

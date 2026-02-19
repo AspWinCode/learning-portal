@@ -47,6 +47,8 @@ const StudentCardsPage: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
 
   const [studentFullName, setStudentFullName] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -66,6 +68,7 @@ const StudentCardsPage: React.FC = () => {
   const [studentEmail, setStudentEmail] = useState('');
   const [preferredMessenger, setPreferredMessenger] = useState('');
   const [comment, setComment] = useState('');
+  const [source, setSource] = useState('');
   const [abonementId, setAbonementId] = useState<number | ''>('');
   const [discountType, setDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
   const [discountValue, setDiscountValue] = useState('');
@@ -90,6 +93,7 @@ const StudentCardsPage: React.FC = () => {
     setStudentEmail('');
     setPreferredMessenger('');
     setComment('');
+    setSource('');
     setAbonementId('');
     setDiscountType('none');
     setDiscountValue('');
@@ -154,6 +158,7 @@ const StudentCardsPage: React.FC = () => {
     setStudentEmail(card.student_email || '');
     setPreferredMessenger(card.preferred_messenger || '');
     setComment(card.comment || '');
+    setSource(card.source || '');
     setAbonementId(card.abonement_id ?? '');
     setDiscountType(card.discount_type || 'none');
     setDiscountValue(String(card.discount_value ?? ''));
@@ -188,6 +193,7 @@ const StudentCardsPage: React.FC = () => {
         student_email: studentEmail.trim() || null,
         preferred_messenger: preferredMessenger.trim() || null,
         comment: comment.trim() || null,
+        source: source.trim() || null,
         abonement_id: isOwner && abonementId ? Number(abonementId) : null,
         discount_type: isOwner ? discountType : 'none',
         discount_value: isOwner ? parseFloat(discountValue) || 0 : 0,
@@ -204,6 +210,43 @@ const StudentCardsPage: React.FC = () => {
       setError(err.response?.data?.detail || 'Не удалось сохранить карточку');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    setError(null);
+    try {
+      const blob = await studentCardsApi.downloadImportTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'student_cards_import_template.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Не удалось скачать шаблон');
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      setError('Поддерживается только формат .xlsx');
+      return;
+    }
+    setImporting(true);
+    setError(null);
+    setImportResult(null);
+    try {
+      const result = await studentCardsApi.importXlsx(file);
+      setImportResult(result);
+      await loadCards();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка импорта');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -231,7 +274,18 @@ const StudentCardsPage: React.FC = () => {
           </Alert>
         )}
 
-        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+        {importResult && (
+          <Alert severity="info" onClose={() => setImportResult(null)} sx={{ mb: 2 }}>
+            Импорт: создано {importResult.created}, пропущено {importResult.skipped}.
+            {importResult.errors.length > 0 && (
+              <Box component="span" display="block" sx={{ mt: 1 }}>
+                Ошибки: {importResult.errors.join('; ')}
+              </Box>
+            )}
+          </Alert>
+        )}
+
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }} flexWrap="wrap">
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
             <Tab label="Активные" value="active" />
             <Tab label="В архиве" value="archived" />
@@ -239,6 +293,13 @@ const StudentCardsPage: React.FC = () => {
           </Tabs>
           <Button variant="contained" onClick={openCreate}>
             Новая карточка
+          </Button>
+          <Button variant="outlined" onClick={handleDownloadTemplate} disabled={importing}>
+            Скачать шаблон Excel
+          </Button>
+          <Button variant="outlined" component="label" disabled={importing}>
+            {importing ? 'Импорт...' : 'Импорт из Excel'}
+            <input type="file" hidden accept=".xlsx" onChange={handleImportFile} />
           </Button>
         </Stack>
 
@@ -266,6 +327,7 @@ const StudentCardsPage: React.FC = () => {
                 <TableCell>Класс</TableCell>
                 <TableCell>Формат</TableCell>
                 <TableCell>На гранте</TableCell>
+                <TableCell>Откуда пришел</TableCell>
                 {isOwner && <TableCell>Абонемент</TableCell>}
                 <TableCell align="right">Действия</TableCell>
               </TableRow>
@@ -279,6 +341,7 @@ const StudentCardsPage: React.FC = () => {
                   <TableCell>{card.grade || '—'}</TableCell>
                   <TableCell>{card.format_type === 'group' ? 'Группа' : card.format_type === 'individual' ? 'Индивидуальное' : '—'}</TableCell>
                   <TableCell>{card.on_grant ? 'Да' : 'Нет'}</TableCell>
+                  <TableCell>{card.source || '—'}</TableCell>
                   {isOwner && <TableCell>{card.abonement?.name ?? '—'}</TableCell>}
                   <TableCell align="right">
                     <Button size="small" onClick={() => openEdit(card)}>Редактировать</Button>
@@ -341,6 +404,7 @@ const StudentCardsPage: React.FC = () => {
                 </Select>
               </FormControl>
               <TextField label="Комментарий" value={comment} onChange={(e) => setComment(e.target.value)} fullWidth multiline minRows={2} />
+              <TextField label="Откуда пришел" value={source} onChange={(e) => setSource(e.target.value)} fullWidth placeholder="например: рекомендация, сайт, соцсети" />
 
               {isOwner && (
                 <>

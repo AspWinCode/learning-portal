@@ -378,6 +378,7 @@ class StudentCard(Base):
     student_email = Column(String, nullable=True)
     preferred_messenger = Column(String, nullable=True)  # max / telegram / sms
     comment = Column(Text, nullable=True)
+    source = Column(String, nullable=True)  # откуда пришел
     # Только owner: абонемент и скидка
     abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True, index=True)
     discount_type = Column(

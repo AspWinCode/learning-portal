@@ -268,6 +268,7 @@ export interface StudentCard {
   student_email?: string | null;
   preferred_messenger?: string | null; // max | telegram | sms
   comment?: string | null;
+  source?: string | null; // откуда пришел
   abonement_id?: number | null;
   discount_type: 'none' | 'amount' | 'percent';
   discount_value: number;

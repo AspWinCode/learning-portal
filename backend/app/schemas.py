@@ -534,6 +534,7 @@ class StudentCardBase(BaseModel):
     student_email: Optional[str] = None
     preferred_messenger: Optional[str] = None  # max / telegram / sms
     comment: Optional[str] = None
+    source: Optional[str] = None  # откуда пришел
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
@@ -562,6 +563,7 @@ class StudentCardUpdate(BaseModel):
     student_email: Optional[str] = None
     preferred_messenger: Optional[str] = None
     comment: Optional[str] = None
+    source: Optional[str] = None
     abonement_id: Optional[int] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
@@ -576,6 +578,12 @@ class StudentCardResponse(StudentCardBase):
 
     class Config:
         from_attributes = True
+
+
+class StudentCardImportResponse(BaseModel):
+    created: int
+    skipped: int
+    errors: List[str] = []
 
 
 class LeadSendInfoRequest(BaseModel):

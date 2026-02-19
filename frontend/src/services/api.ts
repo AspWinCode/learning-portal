@@ -329,6 +329,20 @@ export const studentCardsApi = {
   unarchive: async (id: number): Promise<void> => {
     await api.post(`/api/sales/student-cards/${id}/unarchive`);
   },
+  downloadImportTemplate: async (): Promise<Blob> => {
+    const response = await api.get('/api/sales/student-cards/import-template', {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+  importXlsx: async (file: File): Promise<{ created: number; skipped: number; errors: string[] }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/api/sales/student-cards/import-xlsx', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
 };
 
 export const characteristicsApi = {

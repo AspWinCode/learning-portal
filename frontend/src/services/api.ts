@@ -385,6 +385,10 @@ export const studentCardsApi = {
     });
     return response.data;
   },
+  openParentCabinet: async (cardId: number): Promise<{ already_open: boolean; student_id: number; parent_id: number; invite_link?: string }> => {
+    const response = await api.post(`/api/sales/student-cards/${cardId}/open-parent-cabinet`);
+    return response.data;
+  },
 };
 
 export const characteristicsApi = {

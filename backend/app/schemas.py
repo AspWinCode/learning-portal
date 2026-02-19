@@ -658,12 +658,20 @@ class StudentCardUpdate(BaseModel):
 class StudentCardResponse(StudentCardBase):
     id: int
     archived: bool
+    parent_cabinet_open: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     abonement: Optional["AbonementResponse"] = None
 
     class Config:
         from_attributes = True
+
+
+class OpenParentCabinetResponse(BaseModel):
+    already_open: bool = False
+    student_id: int
+    parent_id: int
+    invite_link: Optional[str] = None
 
 
 class StudentCardImportResponse(BaseModel):

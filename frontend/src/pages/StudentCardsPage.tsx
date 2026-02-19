@@ -74,6 +74,8 @@ const StudentCardsPage: React.FC = () => {
   const [discountValue, setDiscountValue] = useState('');
   const [studentId, setStudentId] = useState<number | ''>('');
   const [studentsForCards, setStudentsForCards] = useState<{ id: number; full_name: string }[]>([]);
+  const [cabinetInviteLink, setCabinetInviteLink] = useState<string | null>(null);
+  const [cabinetOpening, setCabinetOpening] = useState(false);
 
   const resetForm = () => {
     setEditingId(null);
@@ -220,6 +222,33 @@ const StudentCardsPage: React.FC = () => {
     }
   };
 
+  const handleOpenParentCabinet = async (card: StudentCardType) => {
+    const email = (card.parent_email || '').trim();
+    if (!email) {
+      setError('Укажите email родителя в карточке (поле «Email родителя»), затем нажмите «Открыть кабинет» снова.');
+      return;
+    }
+    setError(null);
+    setCabinetOpening(true);
+    try {
+      const res = await studentCardsApi.openParentCabinet(card.id);
+      if (res.already_open) {
+        setError('');
+        alert('Кабинет родителя уже открыт для этого ученика.');
+      } else if (res.invite_link) {
+        setCabinetInviteLink(res.invite_link);
+      } else {
+        setError('');
+        alert('Кабинет родителя открыт (родитель уже был в системе).');
+      }
+      await loadCards();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Не удалось открыть кабинет родителя');
+    } finally {
+      setCabinetOpening(false);
+    }
+  };
+
   const handleDownloadTemplate = async () => {
     setError(null);
     try {
@@ -335,6 +364,7 @@ const StudentCardsPage: React.FC = () => {
                 <TableCell>Формат</TableCell>
                 <TableCell>На гранте</TableCell>
                 <TableCell>Откуда пришел</TableCell>
+                <TableCell>Кабинет родителя</TableCell>
                 {isOwner && <TableCell>Абонемент</TableCell>}
                 <TableCell align="right">Действия</TableCell>
               </TableRow>
@@ -349,6 +379,15 @@ const StudentCardsPage: React.FC = () => {
                   <TableCell>{card.format_type === 'group' ? 'Группа' : card.format_type === 'individual' ? 'Индивидуальное' : '—'}</TableCell>
                   <TableCell>{card.on_grant ? 'Да' : 'Нет'}</TableCell>
                   <TableCell>{card.source || '—'}</TableCell>
+                  <TableCell>
+                    {card.parent_cabinet_open ? (
+                      <Typography variant="body2" color="success.main">Открыт</Typography>
+                    ) : (
+                      <Button size="small" variant="outlined" disabled={cabinetOpening} onClick={() => handleOpenParentCabinet(card)}>
+                        Открыть кабинет
+                      </Button>
+                    )}
+                  </TableCell>
                   {isOwner && <TableCell>{card.abonement?.name ?? '—'}</TableCell>}
                   <TableCell align="right">
                     <Button size="small" onClick={() => openEdit(card)}>Редактировать</Button>
@@ -450,6 +489,30 @@ const StudentCardsPage: React.FC = () => {
           <DialogActions>
             <Button onClick={() => setDialogOpen(false)}>Отмена</Button>
             <Button variant="contained" onClick={handleSave} disabled={saving}>{editingId ? 'Сохранить' : 'Создать'}</Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={!!cabinetInviteLink} onClose={() => { setCabinetInviteLink(null); loadCards(); }} maxWidth="sm" fullWidth>
+          <DialogTitle>Ссылка для родителя</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Отправьте родителю эту ссылку — по ней он задаст пароль и получит доступ в кабинет (действует 7 дней):
+            </Typography>
+            {cabinetInviteLink && (
+              <TextField
+                fullWidth
+                size="small"
+                value={cabinetInviteLink}
+                sx={{ mt: 1, mb: 1 }}
+                InputProps={{ readOnly: true }}
+              />
+            )}
+            <Button size="small" onClick={() => cabinetInviteLink && navigator.clipboard.writeText(cabinetInviteLink)}>
+              Копировать ссылку
+            </Button>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => { setCabinetInviteLink(null); loadCards(); }}>Готово</Button>
           </DialogActions>
         </Dialog>
       </Box>

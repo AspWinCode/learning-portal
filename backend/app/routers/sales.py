@@ -11,6 +11,7 @@ from openpyxl import Workbook, load_workbook
 from app import auth
 from app.database import get_db
 from app.student_display import get_student_display_name, get_students_display_names
+from app.services.parent_invite import create_parent_with_invite
 from app.models import (
     Lead,
     LeadStatus,
@@ -98,6 +99,7 @@ from app.schemas import (
     AbonementResponse,
     AbsenceFollowUpResponse,
     AbsenceFollowUpStageUpdate,
+    OpenParentCabinetResponse,
 )
 from app.routers.action_log import log_action
 
@@ -261,12 +263,18 @@ async def get_sales_instruction_image(
     return StreamingResponse(BytesIO(img.data), media_type=img.content_type or "application/octet-stream")
 
 
-def _student_card_response(card: StudentCard, user: User) -> StudentCardResponse:
+def _student_card_response(card: StudentCard, user: User, db: Session) -> StudentCardResponse:
     """Собирает ответ по карточке; поля абонемента/скидки только для owner."""
+    parent_cabinet_open = False
+    if getattr(card, "student_id", None):
+        st = db.query(Student).filter(Student.id == card.student_id).first()
+        if st and st.parent_id:
+            parent_cabinet_open = True
     data = {
         "id": card.id,
         "student_id": getattr(card, "student_id", None),
         "student_full_name": card.student_full_name,
+        "parent_cabinet_open": parent_cabinet_open,
         "birth_date": card.birth_date,
         "student_phone": card.student_phone,
         "telegram": card.telegram,
@@ -318,7 +326,7 @@ async def list_student_cards(
     if archived is not None:
         query = query.filter(StudentCard.archived == archived)
     items = query.order_by(StudentCard.created_at.desc()).all()
-    return [_student_card_response(c, current_user) for c in items]
+    return [_student_card_response(c, current_user, db) for c in items]
 
 
 @router.post("/student-cards", response_model=StudentCardResponse, status_code=status.HTTP_201_CREATED)
@@ -348,7 +356,7 @@ async def create_student_card(
     db.add(card)
     db.commit()
     db.refresh(card)
-    return _student_card_response(card, current_user)
+    return _student_card_response(card, current_user, db)
 
 
 @router.get("/student-cards/import-template")
@@ -571,7 +579,7 @@ async def get_student_card(
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
-    return _student_card_response(card, current_user)
+    return _student_card_response(card, current_user, db)
 
 
 @router.put("/student-cards/{card_id}", response_model=StudentCardResponse)
@@ -602,7 +610,7 @@ async def update_student_card(
         setattr(card, k, v)
     db.commit()
     db.refresh(card)
-    return _student_card_response(card, current_user)
+    return _student_card_response(card, current_user, db)
 
 
 @router.post("/student-cards/{card_id}/archive")
@@ -633,6 +641,83 @@ async def unarchive_student_card(
     card.archived = False
     db.commit()
     return {"archived": False}
+
+
+@router.post("/student-cards/{card_id}/open-parent-cabinet", response_model=OpenParentCabinetResponse)
+async def open_parent_cabinet_from_card(
+    card_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """
+    Карточка во главе: по карточке создаём/привязываем ученика и родителя, открываем кабинет.
+    Если у карточки нет student_id — создаётся Student из ФИО карточки.
+    Если у ученика нет parent_id — создаётся или находится родитель по email карточки, при необходимости отправляется приглашение.
+    База (оценки, характеристики) не меняется.
+    """
+    _require_sales_admin_owner(current_user)
+    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Карточка не найдена")
+    parent_email = (getattr(card, "parent_email", None) or "").strip().lower()
+    if not parent_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Укажите email родителя в карточке (поле «Email родителя»), чтобы открыть кабинет.",
+        )
+    parent_full_name = (getattr(card, "parent_full_name", None) or "").strip() or "Родитель"
+
+    if not getattr(card, "student_id", None):
+        student = Student(
+            full_name=(card.student_full_name or "").strip() or "Ученик",
+            status=StudentStatus.ACTIVE,
+        )
+        db.add(student)
+        db.flush()
+        card.student_id = student.id
+        db.add(card)
+        db.flush()
+    else:
+        student = db.query(Student).filter(Student.id == card.student_id).first()
+        if not student:
+            raise HTTPException(status_code=404, detail="Ученик по карточке не найден")
+
+    if student.parent_id:
+        db.commit()
+        return OpenParentCabinetResponse(
+            already_open=True,
+            student_id=student.id,
+            parent_id=student.parent_id,
+        )
+
+    parent_user = db.query(User).filter(
+        User.email == parent_email,
+        User.role == UserRole.PARENT,
+    ).first()
+    if parent_user:
+        student.parent_id = parent_user.id
+        db.add(student)
+        db.commit()
+        return OpenParentCabinetResponse(
+            already_open=False,
+            student_id=student.id,
+            parent_id=parent_user.id,
+        )
+
+    try:
+        parent_user, invite_link = create_parent_with_invite(db, parent_email, parent_full_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    student.parent_id = parent_user.id
+    db.add(student)
+    db.commit()
+    log_action(db, current_user.id, "open_parent_cabinet", "student_card", card_id, {"student_id": student.id, "parent_id": parent_user.id})
+    return OpenParentCabinetResponse(
+        already_open=False,
+        student_id=student.id,
+        parent_id=parent_user.id,
+        invite_link=invite_link,
+    )
 
 
 @router.get("/students-for-cards", response_model=List[Dict])

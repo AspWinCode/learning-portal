@@ -287,6 +287,7 @@ export interface StudentCard {
   id: number;
   student_id?: number | null;
   student_full_name: string;
+  parent_cabinet_open?: boolean;
   birth_date?: string | null;
   student_phone?: string | null;
   telegram?: string | null;

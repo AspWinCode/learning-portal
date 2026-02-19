@@ -377,14 +377,6 @@ export const studentCardsApi = {
     });
     return response.data;
   },
-  getAbsences: async (stage?: string): Promise<AbsenceFollowUp[]> => {
-    const response = await api.get('/api/sales/absences', { params: stage ? { stage } : {} });
-    return response.data;
-  },
-  updateAbsenceStage: async (absenceId: number, stage: string): Promise<AbsenceFollowUp> => {
-    const response = await api.patch(`/api/sales/absences/${absenceId}`, { stage });
-    return response.data;
-  },
 };
 
 export const characteristicsApi = {
@@ -814,6 +806,14 @@ export const salesApi = {
       params: { lead_ids: leadIds },
       paramsSerializer: { indexes: null },
     });
+    return response.data;
+  },
+  getAbsences: async (stage?: string): Promise<AbsenceFollowUp[]> => {
+    const response = await api.get('/api/sales/absences', { params: stage ? { stage } : {} });
+    return response.data;
+  },
+  updateAbsenceStage: async (absenceId: number, stage: string): Promise<AbsenceFollowUp> => {
+    const response = await api.patch(`/api/sales/absences/${absenceId}`, { stage });
     return response.data;
   },
 };

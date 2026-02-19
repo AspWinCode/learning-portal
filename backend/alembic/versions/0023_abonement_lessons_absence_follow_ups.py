@@ -1,6 +1,6 @@
 """Add abonement.lessons_count and absence_follow_ups table
 
-Revision ID: 0023_abonement_lessons_absence_follow_ups
+Revision ID: 0023_abonement_lessons_abs
 Revises: 0022_student_accounts
 Create Date: 2026-02-19
 
@@ -10,7 +10,7 @@ from sqlalchemy import inspect
 import sqlalchemy as sa
 
 
-revision = "0023_abonement_lessons_absence_follow_ups"
+revision = "0023_abonement_lessons_abs"
 down_revision = "0022_student_accounts"
 branch_labels = None
 depends_on = None

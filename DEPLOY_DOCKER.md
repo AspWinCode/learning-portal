@@ -65,10 +65,25 @@ docker compose --profile telegram up -d --build
 
 ## 4) Обновление (deploy новой версии)
 
+Вариант A (ручной):
+
 ```bash
 cd learning-portal
 git pull
 docker compose up -d --build
+```
+
+Вариант B (через скрипт, одна ветка):
+
+```bash
+cd learning-portal
+./deploy.sh
+```
+
+По умолчанию скрипт деплоит `main`. При необходимости можно указать ветку явно:
+
+```bash
+./deploy.sh work
 ```
 
 

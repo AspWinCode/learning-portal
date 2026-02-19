@@ -213,7 +213,7 @@ async def delete_sales_instruction(
     return None
 
 
-@router.post("/sales/instruction-images")
+@router.post("/instruction-images")
 async def upload_sales_instruction_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -236,7 +236,7 @@ async def upload_sales_instruction_image(
     return {"id": img.id, "url": url}
 
 
-@router.get("/sales/instruction-images/{image_id}")
+@router.get("/instruction-images/{image_id}")
 async def get_sales_instruction_image(
     image_id: int,
     db: Session = Depends(get_db),

@@ -273,7 +273,7 @@ const SalesLeadsPage: React.FC = () => {
       });
       setLeads(data);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨╗╨╕╨┤╤Л'));
+      setError(extractApiError(err, 'Не удалось загрузить лиды'));
     } finally {
       setLoading(false);
     }
@@ -509,40 +509,40 @@ const SalesLeadsPage: React.FC = () => {
   const handleCreate = async () => {
     setError(null);
     if (!form.parent_full_name.trim()) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨д╨Ш╨Ю ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П');
+      setError('Заполните ФИО родителя');
       return;
     }
     if (!form.parent_phone.trim()) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╤В╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П');
+      setError('Заполните телефон родителя');
       return;
     }
     if (!form.city.trim()) {
-      setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨│╨╛╤А╨╛╨┤');
+      setError('Выберите город');
       return;
     }
     if (!form.source_id) {
-      setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╕╤Б╤В╨╛╤З╨╜╨╕╨║');
+      setError('Выберите источник');
       return;
     }
     try {
       const sourceIdNumber = form.source_id ? Number(form.source_id) : undefined;
       const selectedSource = leadSources.find((s) => s.id === sourceIdNumber);
-      if (selectedSource?.name.toLowerCase() === '╤А╨╡╨║╨╛╨╝╨╡╨╜╨┤╨░╤Ж╨╕╤П' && !form.referral_name.trim()) {
-        setError('╨Ф╨╗╤П ╨╕╤Б╤В╨╛╤З╨╜╨╕╨║╨░ "╤А╨╡╨║╨╛╨╝╨╡╨╜╨┤╨░╤Ж╨╕╤П" ╤Г╨║╨░╨╢╨╕╤В╨╡, ╨║╤В╨╛ ╨┐╤А╨╕╨│╨╗╨░╤Б╨╕╨╗');
+      if (selectedSource?.name.toLowerCase() === 'сарафанное радио' && !form.referral_name.trim()) {
+        setError('Для источника "Сарафанное радио" нужно указать, кто порекомендовал');
         return;
       }
       if (!isValidRuPhone(form.parent_phone)) {
-        setError('╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╨▓ ╤Д╨╛╤А╨╝╨░╤В╨╡ +7XXXXXXXXXX');
+        setError('Некорректный телефон родителя, ожидается формат +7XXXXXXXXXX');
         return;
       }
       if (form.child_phone.trim() && !isValidRuPhone(form.child_phone)) {
-        setError('╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤И╨║╨╛╨╗╤М╨╜╨╕╨║╨░ ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╨▓ ╤Д╨╛╤А╨╝╨░╤В╨╡ +7XXXXXXXXXX');
+        setError('Некорректный телефон ребёнка, ожидается формат +7XXXXXXXXXX');
         return;
       }
       const normalizedParentPhone = normalizeRuPhone(form.parent_phone);
       const normalizedChildPhone = normalizeRuPhone(form.child_phone);
-      const contactName = form.parent_full_name || form.child_full_name || '╨С╨╡╨╖ ╨╕╨╝╨╡╨╜╨╕';
-      const phone = normalizedParentPhone || normalizedChildPhone || '╨╜╨╡ ╤Г╨║╨░╨╖╨░╨╜';
+      const contactName = form.parent_full_name || form.child_full_name || 'Имя не указано';
+      const phone = normalizedParentPhone || normalizedChildPhone || 'нет телефона';
       await salesApi.createLead({
         contact_name: contactName,
         phone,
@@ -576,7 +576,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleStatusChange = async (lead: Lead, newStatus: LeadStatus, statusOptionId?: number) => {
     if (lead.status === newStatus) return;
     if (newStatus === 'won') {
-      const ok = window.confirm('╨Я╨╛╨┤╤В╨▓╨╡╤А╨┤╨╕╤В╤М ╨┐╨╡╤А╨╡╨▓╨╛╨┤ ╨╗╨╕╨┤╨░ ╨▓ "╨г╤Б╨┐╨╡╤И╨╜╨╛"?');
+      const ok = window.confirm('Перевести лида в статус "Согласились заниматься"?');
       if (!ok) return;
     }
     if (newStatus === 'lost') {
@@ -591,7 +591,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.updateLead(lead.id, { status: newStatus, status_option_id: statusOptionId });
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М ╤Б╤В╨░╤В╤Г╤Б ╨╗╨╕╨┤╨░'));
+      setError(extractApiError(err, 'Не удалось обновить статус лида'));
     } finally {
       setActionLoadingId(null);
     }
@@ -1830,12 +1830,12 @@ const SalesLeadsPage: React.FC = () => {
           />
           <TextField
             size="small"
-            label="╨в╨╡╨│"
+            label="Тег"
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
           />
           <Button variant={overdueOnly ? 'contained' : 'outlined'} size="small" onClick={() => setOverdueOnly((v) => !v)}>
-            ╨Я╤А╨╛╤Б╤А╨╛╤З╨╡╨╜╨╜╤Л╨╡
+            Только просроченные
           </Button>
           {viewMode === 'kanban' && (
             <Stack direction="row" alignItems="center">
@@ -1846,17 +1846,17 @@ const SalesLeadsPage: React.FC = () => {
                 size="small"
               />
               <Typography component="label" htmlFor="show-archive-column" variant="body2" sx={{ cursor: 'pointer' }}>
-                ╨Я╨╛╨║╨░╨╖╨░╤В╤М ╨║╨╛╨╗╨╛╨╜╨║╤Г ┬л╨Р╤А╤Е╨╕╨▓┬╗
+                Показывать колонку «Архив»
               </Typography>
             </Stack>
           )}
           {!isPipelineRoute && (
             <>
               <Button size="small" variant="contained" onClick={handleOpenCreate} sx={{ whiteSpace: 'nowrap' }}>
-                ╨Э╨╛╨▓╤Л╨╣ ╨╗╨╕╨┤
+                Новый лид
               </Button>
               <Button size="small" variant="outlined" component="label" sx={{ whiteSpace: 'nowrap' }}>
-                ╨Ш╨╝╨┐╨╛╤А╤В ╨╕╨╖ Excel
+                Импорт из Excel
                 <input
                   type="file"
                   hidden
@@ -1869,7 +1869,7 @@ const SalesLeadsPage: React.FC = () => {
                 />
               </Button>
               <Button size="small" variant="text" onClick={handleDownloadTemplate} sx={{ whiteSpace: 'nowrap' }}>
-                ╨и╨░╨▒╨╗╨╛╨╜ Excel
+                Шаблон Excel
               </Button>
             </>
           )}
@@ -1879,14 +1879,14 @@ const SalesLeadsPage: React.FC = () => {
       {viewMode === 'table' && (
         <Stack direction="row" spacing={1} mb={1.25} flexWrap="wrap" useFlexGap>
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel id="table-city-filter-label">╨У╨╛╤А╨╛╨┤ (╨▒╤Л╤Б╤В╤А╤Л╨╣)</InputLabel>
+            <InputLabel id="table-city-filter-label">Город (таблица)</InputLabel>
             <Select
               labelId="table-city-filter-label"
-              label="╨У╨╛╤А╨╛╨┤ (╨▒╤Л╤Б╤В╤А╤Л╨╣)"
+              label="Город (таблица)"
               value={tableCityFilter}
               onChange={(e) => setTableCityFilter(e.target.value as string)}
             >
-              <MenuItem value="">╨Т╤Б╨╡ ╨│╨╛╤А╨╛╨┤╨░</MenuItem>
+              <MenuItem value="">Любой город</MenuItem>
               {cityOptions.map((city) => (
                 <MenuItem key={city} value={city}>
                   {city}
@@ -1895,14 +1895,14 @@ const SalesLeadsPage: React.FC = () => {
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel id="table-class-filter-label">╨Ъ╨╗╨░╤Б╤Б (╨▒╤Л╤Б╤В╤А╤Л╨╣)</InputLabel>
+            <InputLabel id="table-class-filter-label">Класс (таблица)</InputLabel>
             <Select
               labelId="table-class-filter-label"
-              label="╨Ъ╨╗╨░╤Б╤Б (╨▒╤Л╤Б╤В╤А╤Л╨╣)"
+              label="Класс (таблица)"
               value={tableClassFilter}
               onChange={(e) => setTableClassFilter(e.target.value as string)}
             >
-              <MenuItem value="">╨Т╤Б╨╡ ╨║╨╗╨░╤Б╤Б╤Л</MenuItem>
+              <MenuItem value="">Любой класс</MenuItem>
               {classOptions.map((schoolClass) => (
                 <MenuItem key={schoolClass} value={schoolClass}>
                   {schoolClass}
@@ -1917,7 +1917,7 @@ const SalesLeadsPage: React.FC = () => {
             onChange={(_, value) => setTableSchoolFilter(value || '')}
             onInputChange={(_, value) => setTableSchoolFilter(value)}
             sx={{ minWidth: 250 }}
-            renderInput={(params) => <TextField {...params} size="small" label="╨и╨║╨╛╨╗╨░ (╨▒╤Л╤Б╤В╤А╤Л╨╣ ╨┐╨╛╨╕╤Б╨║)" />}
+            renderInput={(params) => <TextField {...params} size="small" label="Школа (таблица / фильтр)" />}
           />
           <Button
             size="small"
@@ -1928,7 +1928,7 @@ const SalesLeadsPage: React.FC = () => {
               setTableSchoolFilter('');
             }}
           >
-            ╨б╨▒╤А╨╛╤Б╨╕╤В╤М ╨▒╤Л╤Б╤В╤А╤Л╨╡ ╤Д╨╕╨╗╤М╤В╤А╤Л
+            Сбросить фильтры таблицы
           </Button>
         </Stack>
       )}
@@ -1941,7 +1941,7 @@ const SalesLeadsPage: React.FC = () => {
             disabled={selectedLeadIds.length === 0}
             onClick={() => setBatchFollowUpOpen(true)}
           >
-            ╨Ь╨░╤Б╤Б╨╛╨▓╤Л╨╣ follow-up ({selectedLeadIds.length})
+            Массовый follow‑up ({selectedLeadIds.length})
           </Button>
           <Button
             size="small"
@@ -1949,7 +1949,7 @@ const SalesLeadsPage: React.FC = () => {
             disabled={selectedLeadIds.length === 0}
             onClick={() => setBatchSendOpen(true)}
           >
-            ╨Ь╨░╤Б╤Б╨╛╨▓╨░╤П ╨╛╤В╨┐╤А╨░╨▓╨║╨░ ╤И╨░╨▒╨╗╨╛╨╜╨░
+            Массовая отправка информации
           </Button>
         </Stack>
       )}
@@ -1974,18 +1974,18 @@ const SalesLeadsPage: React.FC = () => {
                 onChange={(e) => handleSelectAllVisible(e.target.checked)}
               />
             </TableCell>
-            <TableCell>╨Ъ╨╗╨╕╨╡╨╜╤В</TableCell>
-            <TableCell>╨Ъ╨╛╨╜╤В╨░╨║╤В╤Л</TableCell>
-            <TableCell>╨б╤В╨░╤В╤Г╤Б</TableCell>
-            <TableCell>╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║</TableCell>
-            <TableCell>╨Ъ╨░╨╜╨░╨╗ ╨╛╨▒╤Й╨╡╨╜╨╕╤П</TableCell>
+            <TableCell>ID</TableCell>
+            <TableCell>Контакт</TableCell>
+            <TableCell>Статус</TableCell>
+            <TableCell>Источник</TableCell>
+            <TableCell>Следующий шаг</TableCell>
             <TableCell sortDirection={tableSortField === 'school_class' ? tableSortOrder : false}>
               <TableSortLabel
                 active={tableSortField === 'school_class'}
                 direction={tableSortField === 'school_class' ? tableSortOrder : 'asc'}
                 onClick={() => handleTableSort('school_class')}
               >
-                ╨Ъ╨╗╨░╤Б╤Б
+                Класс
               </TableSortLabel>
             </TableCell>
             <TableCell sortDirection={tableSortField === 'school_name' ? tableSortOrder : false}>
@@ -1994,7 +1994,7 @@ const SalesLeadsPage: React.FC = () => {
                 direction={tableSortField === 'school_name' ? tableSortOrder : 'asc'}
                 onClick={() => handleTableSort('school_name')}
               >
-                ╨и╨║╨╛╨╗╨░
+                Школа
               </TableSortLabel>
             </TableCell>
             <TableCell sortDirection={tableSortField === 'city' ? tableSortOrder : false}>
@@ -2003,7 +2003,7 @@ const SalesLeadsPage: React.FC = () => {
                 direction={tableSortField === 'city' ? tableSortOrder : 'asc'}
                 onClick={() => handleTableSort('city')}
               >
-                ╨У╨╛╤А╨╛╨┤
+                Город
               </TableSortLabel>
             </TableCell>
             <TableCell sortDirection={tableSortField === 'created_at' ? tableSortOrder : false}>
@@ -2012,7 +2012,7 @@ const SalesLeadsPage: React.FC = () => {
                 direction={tableSortField === 'created_at' ? tableSortOrder : 'desc'}
                 onClick={() => handleTableSort('created_at')}
               >
-                ╨б╨╛╨╖╨┤╨░╨╜
+                Создан
               </TableSortLabel>
             </TableCell>
           </TableRow>
@@ -2076,7 +2076,7 @@ const SalesLeadsPage: React.FC = () => {
           {!loading && filteredSortedLeads.length === 0 && (
             <TableRow>
               <TableCell colSpan={10}>
-                <Typography color="text.secondary">╨Ы╨╕╨┤╨╛╨▓ ╨╜╨╡╤В</Typography>
+                <Typography color="text.secondary">Лидов нет</Typography>
               </TableCell>
             </TableRow>
           )}

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -30,22 +30,22 @@ import { extractApiError } from '../utils/extractApiError';
 import type { B2BSchool, B2BSchoolPipelineStage, B2BSchoolContact, B2BProject } from '../types';
 
 const PIPELINE_STAGES: { value: B2BSchoolPipelineStage; label: string }[] = [
-  { value: 'new', label: '╨Э╨╛╨▓╤Л╨╡' },
-  { value: 'contact_found', label: '╨Ъ╨╛╨╜╤В╨░╨║╤В ╨╜╨░╨╣╨┤╨╡╨╜' },
-  { value: 'letter_sent', label: '╨Я╨╕╤Б╤М╨╝╨╛ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╨╛' },
-  { value: 'meeting_scheduled', label: '╨Э╨░╨╖╨╜╨░╤З╨╡╨╜╨░ ╨▓╤Б╤В╤А╨╡╤З╨░' },
-  { value: 'meeting_held', label: '╨Т╤Б╤В╤А╨╡╤З╨░ ╨┐╤А╨╛╨▓╨╡╨┤╨╡╨╜╨░' },
-  { value: 'permission_received', label: '╨а╨░╨╖╤А╨╡╤И╨╡╨╜╨╕╨╡ ╨┐╨╛╨╗╤Г╤З╨╡╨╜╨╛' },
-  { value: 'walkthrough_scheduled', label: '╨Э╨░╨╖╨╜╨░╤З╨╡╨╜╨░ ╨┤╨░╤В╨░ ╨╛╨▒╤Е╨╛╨┤╨░' },
-  { value: 'walkthrough_done', label: '╨Ю╨▒╤Е╨╛╨┤ ╨┐╤А╨╛╨▓╨╡╨┤╤С╨╜' },
-  { value: 'leads_received', label: '╨Ы╨╕╨┤╤Л ╨┐╨╛╨╗╤Г╤З╨╡╨╜╤Л' },
+  { value: 'new', label: 'Новые' },
+  { value: 'contact_found', label: 'Контакт найден' },
+  { value: 'letter_sent', label: 'Письмо отправлено' },
+  { value: 'meeting_scheduled', label: 'Назначена встреча' },
+  { value: 'meeting_held', label: 'Встреча проведена' },
+  { value: 'permission_received', label: 'Разрешение получено' },
+  { value: 'walkthrough_scheduled', label: 'Назначена дата обхода' },
+  { value: 'walkthrough_done', label: 'Обход проведён' },
+  { value: 'leads_received', label: 'Лиды получены' },
 ];
 
 const FRIENDSHIP_DEGREES: { value: string; label: string }[] = [
-  { value: 'unknown', label: '╨Э╨╡ ╨╖╨╜╨░╨╡╨╝ ╨┤╤А╤Г╨│ ╨┤╤А╤Г╨│╨░' },
-  { value: 'indirect', label: '╨Ч╨╜╨░╨╡╨╝ ╨║╨╛╤Б╨▓╨╡╨╜╨╜╨╛' },
-  { value: 'friends', label: '╨Ф╤А╤Г╨╢╨╕╨╝' },
-  { value: 'enemies', label: '╨Т╤А╨░╨│╨╕' },
+  { value: 'unknown', label: 'Не знаем друг друга' },
+  { value: 'indirect', label: 'Знаем косвенно' },
+  { value: 'friends', label: 'Друзья' },
+  { value: 'enemies', label: 'Враги' },
 ];
 
 const B2BSchoolsPage: React.FC = () => {
@@ -87,7 +87,7 @@ const B2BSchoolsPage: React.FC = () => {
       const data = await b2bApi.listSchools(projectId ? { project_id: projectId } : undefined);
       setSchools(data);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╤И╨║╨╛╨╗╤Л'));
+      setError(extractApiError(err, 'Не удалось загрузить школы'));
     } finally {
       setLoading(false);
     }
@@ -102,7 +102,7 @@ const B2BSchoolsPage: React.FC = () => {
         setSelectedProjectId(firstProjectId);
         await loadSchools(firstProjectId);
       } catch (err: any) {
-        setError((prev) => prev || extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨┐╤А╨╛╨╡╨║╤В╤Л B2B'));
+        setError((prev) => prev || extractApiError(err, 'Не удалось загрузить проект B2B'));
         await loadSchools(null);
       }
     })();
@@ -201,17 +201,17 @@ const B2BSchoolsPage: React.FC = () => {
       setContactDialogOpen(false);
       await refreshEditingSchool();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨║╨╛╨╜╤В╨░╨║╤В'));
+      setError(extractApiError(err, 'Не удалось сохранить контакт'));
     }
   };
 
   const handleDeleteContact = async (c: B2BSchoolContact) => {
-    if (!editingSchool || !window.confirm(`╨г╨┤╨░╨╗╨╕╤В╤М ╨║╨╛╨╜╤В╨░╨║╤В ${c.full_name}?`)) return;
+    if (!editingSchool || !window.confirm(`Удалить контакт ${c.full_name}?`)) return;
     try {
       await b2bApi.deleteContact(editingSchool.id, c.id);
       await refreshEditingSchool();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Г╨┤╨░╨╗╨╕╤В╤М ╨║╨╛╨╜╤В╨░╨║╤В'));
+      setError(extractApiError(err, 'Не удалось удалить контакт'));
     }
   };
 
@@ -232,7 +232,7 @@ const B2BSchoolsPage: React.FC = () => {
 
   const handleSaveProject = async () => {
     if (!projectForm.name.trim()) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨╜╨░╨╖╨▓╨░╨╜╨╕╨╡ ╨┐╤А╨╛╨╡╨║╤В╨░');
+      setError('Укажите название проекта');
       return;
     }
     const cities =
@@ -252,13 +252,13 @@ const B2BSchoolsPage: React.FC = () => {
       setProjectDialogOpen(false);
       await handleChangeProject(project.id);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨┐╤А╨╛╨╡╨║╤В'));
+      setError(extractApiError(err, 'Не удалось сохранить проект'));
     }
   };
 
   const handleSave = async () => {
     if (!form.name.trim()) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨╜╨░╨╖╨▓╨░╨╜╨╕╨╡ ╤И╨║╨╛╨╗╤Л');
+      setError('Укажите название школы');
       return;
     }
     const eventDates = form.event_dates
@@ -294,7 +294,7 @@ const B2BSchoolsPage: React.FC = () => {
       setDialogOpen(false);
       await loadSchools();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╤И╨║╨╛╨╗╤Г'));
+      setError(extractApiError(err, 'Не удалось сохранить школу'));
     }
   };
 
@@ -303,18 +303,18 @@ const B2BSchoolsPage: React.FC = () => {
       await b2bApi.updateSchool(school.id, { pipeline_stage: newStage });
       await loadSchools();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╕╨╖╨╝╨╡╨╜╨╕╤В╤М ╤Б╤В╨░╨┤╨╕╤О'));
+      setError(extractApiError(err, 'Не удалось изменить стадию'));
     }
   };
 
   const handleDelete = async (school: B2BSchool) => {
-    if (!window.confirm(`╨г╨┤╨░╨╗╨╕╤В╤М ╤И╨║╨╛╨╗╤Г ┬л${school.name}┬╗?`)) return;
+    if (!window.confirm(`Удалить школу «${school.name}»?`)) return;
     try {
       await b2bApi.deleteSchool(school.id);
       setDialogOpen(false);
       await loadSchools();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Г╨┤╨░╨╗╨╕╤В╤М ╤И╨║╨╛╨╗╤Г'));
+      setError(extractApiError(err, 'Не удалось удалить школу'));
     }
   };
 
@@ -335,19 +335,19 @@ const B2BSchoolsPage: React.FC = () => {
   return (
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} spacing={2}>
-        <Typography variant="h4">B2B (╤И╨║╨╛╨╗╤Л)</Typography>
+        <Typography variant="h4">B2B (школы)</Typography>
         <Stack direction="row" spacing={2} alignItems="center">
           <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel>╨Я╤А╨╛╨╡╨║╤В</InputLabel>
+            <InputLabel>Проект</InputLabel>
             <Select
-              label="╨Я╤А╨╛╨╡╨║╤В"
+              label="Проект"
               value={selectedProjectId ?? ''}
               onChange={(e) =>
                 void handleChangeProject(e.target.value === '' ? null : Number(e.target.value))
               }
             >
               <MenuItem value="">
-                <em>╨Т╤Б╨╡ ╤И╨║╨╛╨╗╤Л</em>
+                <em>Все школы</em>
               </MenuItem>
               {projects.map((p) => (
                 <MenuItem key={p.id} value={p.id}>
@@ -357,10 +357,10 @@ const B2BSchoolsPage: React.FC = () => {
             </Select>
           </FormControl>
           <Button variant="outlined" size="small" startIcon={<Add />} onClick={openCreateProject}>
-            ╨б╨╛╨╖╨┤╨░╤В╤М ╨┐╤А╨╛╨╡╨║╤В
+            Создать проект
           </Button>
           <Button variant="contained" startIcon={<Add />} onClick={openCreate}>
-            ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╤И╨║╨╛╨╗╤Г
+            Добавить школу
           </Button>
         </Stack>
       </Stack>
@@ -372,7 +372,7 @@ const B2BSchoolsPage: React.FC = () => {
       )}
 
       {loading ? (
-        <Typography color="text.secondary">╨Ч╨░╨│╤А╤Г╨╖╨║╨░тАж</Typography>
+        <Typography color="text.secondary">Загрузка…</Typography>
       ) : (
         <Box sx={{ overflowX: 'auto', pb: 2 }}>
           <Grid container spacing={2} sx={{ minWidth: 1400 }}>
@@ -384,7 +384,7 @@ const B2BSchoolsPage: React.FC = () => {
                       {col.label}
                     </Typography>
                     <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                      {col.schools.length} ╤И╤В.
+                      {col.schools.length} шт.
                     </Typography>
                     <Stack spacing={1}>
                       {col.schools.map((school) => (
@@ -393,42 +393,42 @@ const B2BSchoolsPage: React.FC = () => {
                             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                               <Typography variant="subtitle2">{school.name}</Typography>
                               <Stack direction="row" spacing={0.25}>
-                                <IconButton size="small" onClick={() => openEdit(school)} aria-label="╨а╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╤В╤М">
+                                <IconButton size="small" onClick={() => openEdit(school)} aria-label="Редактировать">
                                   <Edit fontSize="small" />
                                 </IconButton>
-                                <IconButton size="small" onClick={() => handleDelete(school)} aria-label="╨г╨┤╨░╨╗╨╕╤В╤М" color="error">
+                                <IconButton size="small" onClick={() => handleDelete(school)} aria-label="Удалить" color="error">
                                   <Delete fontSize="small" />
                                 </IconButton>
                               </Stack>
                             </Stack>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              ╨Ф╨╕╤А╨╡╨║╤В╨╛╤А: {school.director || 'тАФ'}
+                              Директор: {school.director || 'тАФ'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              ╨У╨╛╤А╨╛╨┤: {school.city || 'тАФ'}
+                              Город: {school.city || 'тАФ'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block" noWrap title={school.address || ''}>
-                              ╨Р╨┤╤А╨╡╤Б: {school.address || 'тАФ'}
+                              Адрес: {school.address || 'тАФ'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              ╨б╤В╨╡╨┐╨╡╨╜╤М ╨┤╤А╤Г╨╢╨▒╤Л: {FRIENDSHIP_DEGREES.find((d) => d.value === school.friendship_degree)?.label ?? school.friendship_degree ?? 'тАФ'}
+                              Степень дружбы: {FRIENDSHIP_DEGREES.find((d) => d.value === school.friendship_degree)?.label ?? school.friendship_degree ?? 'тАФ'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              ╨Ъ╨╛╨╜╤В╨░╨║╤В╨╛╨▓: {school.contacts?.length ?? 0}
+                              Контактов: {school.contacts?.length ?? 0}
                             </Typography>
                             <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                              <Chip size="small" label={`╨г╤З╨╡╨╜╨╕╨║╨╛╨▓: ${school.student_count ?? 'тАФ'}`} />
-                              <Chip size="small" label={`╨Ы╨╕╨┤╨╛╨▓: ${school.leads_count ?? 0}`} />
-                              <Chip size="small" color="success" label={`╨Ъ╨╛╨╜╨▓╨╡╤А╤Б╨╕╤П: ${school.conversion_percent ?? 0}%`} />
+                              <Chip size="small" label={`Учеников: ${school.student_count ?? 'тАФ'}`} />
+                              <Chip size="small" label={`Лидов: ${school.leads_count ?? 0}`} />
+                              <Chip size="small" color="success" label={`Конверсия: ${school.conversion_percent ?? 0}%`} />
                             </Stack>
                             <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                              ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П: {formatEventDates(school.event_dates ?? undefined)}
+                              Мероприятия: {formatEventDates(school.event_dates ?? undefined)}
                             </Typography>
                             <FormControl size="small" fullWidth sx={{ mt: 1 }}>
-                              <InputLabel>╨б╤В╨░╨┤╨╕╤П</InputLabel>
+                              <InputLabel>Стадия</InputLabel>
                               <Select
                                 value={school.pipeline_stage}
-                                label="╨б╤В╨░╨┤╨╕╤П"
+                                label="Стадия"
                                 onChange={(e) => handleStageChange(school, e.target.value as B2BSchoolPipelineStage)}
                               >
                                 {PIPELINE_STAGES.map((s) => (
@@ -451,36 +451,36 @@ const B2BSchoolsPage: React.FC = () => {
       )}
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingSchool ? '╨а╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╤В╤М ╤И╨║╨╛╨╗╤Г' : '╨Э╨╛╨▓╨░╤П ╤И╨║╨╛╨╗╨░'}</DialogTitle>
+        <DialogTitle>{editingSchool ? 'Редактировать школу' : 'Новая школа'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="╨Э╨░╨╕╨╝╨╡╨╜╨╛╨▓╨░╨╜╨╕╨╡ ╤И╨║╨╛╨╗╤Л"
+              label="Название школы"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               fullWidth
               required
             />
             <TextField
-              label="╨Ф╨╕╤А╨╡╨║╤В╨╛╤А ╤И╨║╨╛╨╗╤Л"
+              label="Директор школы"
               value={form.director}
               onChange={(e) => setForm((f) => ({ ...f, director: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨У╨╛╤А╨╛╨┤"
+              label="Город"
               value={form.city}
               onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨Р╨┤╤А╨╡╤Б"
+              label="Адрес"
               value={form.address}
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛ ╨┤╨╡╤В╨╡╨╣ ╨▓ ╤И╨║╨╛╨╗╨╡"
+              label="Количество детей в школе"
               type="number"
               value={form.student_count}
               onChange={(e) => setForm((f) => ({ ...f, student_count: e.target.value === '' ? '' : Number(e.target.value) }))}
@@ -488,10 +488,10 @@ const B2BSchoolsPage: React.FC = () => {
               InputProps={{ inputProps: { min: 0 } }}
             />
             <FormControl fullWidth>
-              <InputLabel>╨б╤В╨╡╨┐╨╡╨╜╤М ╨┤╤А╤Г╨╢╨▒╤Л</InputLabel>
-              <Select
+<InputLabel>Степень дружбы</InputLabel>
+                <Select
                 value={form.friendship_degree}
-                label="╨б╤В╨╡╨┐╨╡╨╜╤М ╨┤╤А╤Г╨╢╨▒╤Л"
+                label="Степень дружбы"
                 onChange={(e) => setForm((f) => ({ ...f, friendship_degree: e.target.value }))}
               >
                 {FRIENDSHIP_DEGREES.map((d) => (
@@ -502,17 +502,17 @@ const B2BSchoolsPage: React.FC = () => {
               </Select>
             </FormControl>
             <TextField
-              label="╨Ф╨░╤В╤Л ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣ (╤З╨╡╤А╨╡╨╖ ╨╖╨░╨┐╤П╤В╤Г╤О)"
+              label="Даты мероприятий (через запятую)"
               value={form.event_dates}
               onChange={(e) => setForm((f) => ({ ...f, event_dates: e.target.value }))}
               fullWidth
               placeholder="2025-03-01, 2025-03-15"
             />
             <FormControl fullWidth>
-              <InputLabel>╨б╤В╨░╨┤╨╕╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕</InputLabel>
+              <InputLabel>Стадия воронки</InputLabel>
               <Select
                 value={form.pipeline_stage}
-                label="╨б╤В╨░╨┤╨╕╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕"
+                label="Стадия воронки"
                 onChange={(e) => setForm((f) => ({ ...f, pipeline_stage: e.target.value as B2BSchoolPipelineStage }))}
               >
                 {PIPELINE_STAGES.map((s) => (
@@ -525,7 +525,7 @@ const B2BSchoolsPage: React.FC = () => {
 
             {form.pipeline_stage === 'meeting_scheduled' && (
               <TextField
-                label="╨Ъ╨╛╨│╨┤╨░ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨░ ╨▓╤Б╤В╤А╨╡╤З╨░"
+                label="Когда назначена встреча"
                 type="datetime-local"
                 value={form.meeting_scheduled_at}
                 onChange={(e) => setForm((f) => ({ ...f, meeting_scheduled_at: e.target.value }))}
@@ -535,7 +535,7 @@ const B2BSchoolsPage: React.FC = () => {
             )}
             {form.pipeline_stage === 'meeting_held' && (
               <TextField
-                label="╨Ю╤Б╨╜╨╛╨▓╨╜╤Л╨╡ ╨╕╤В╨╛╨│╨╕ ╨▓╤Б╤В╤А╨╡╤З╨╕"
+                label="Основные итоги встречи"
                 value={form.meeting_outcomes}
                 onChange={(e) => setForm((f) => ({ ...f, meeting_outcomes: e.target.value }))}
                 fullWidth
@@ -545,7 +545,7 @@ const B2BSchoolsPage: React.FC = () => {
             )}
             {form.pipeline_stage === 'walkthrough_scheduled' && (
               <TextField
-                label="╨Ф╨░╤В╨░ ╨╛╨▒╤Е╨╛╨┤╨░"
+                label="Дата обхода"
                 type="date"
                 value={form.walkthrough_scheduled_at}
                 onChange={(e) => setForm((f) => ({ ...f, walkthrough_scheduled_at: e.target.value }))}
@@ -557,9 +557,9 @@ const B2BSchoolsPage: React.FC = () => {
             {editingSchool && (
               <Box>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                  <Typography variant="subtitle2">╨Ъ╨╛╨╜╤В╨░╨║╤В╤Л</Typography>
+                  <Typography variant="subtitle2">Контакты</Typography>
                   <Button size="small" startIcon={<Add />} onClick={openAddContact}>
-                    ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╨║╨╛╨╜╤В╨░╨║╤В
+                    Добавить контакт
                   </Button>
                 </Stack>
                 <Stack spacing={1}>
@@ -571,14 +571,14 @@ const B2BSchoolsPage: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">{c.position || 'тАФ'}</Typography>
                           <Typography variant="caption" display="block">{c.phone}</Typography>
                           {c.phone_extra && (
-                            <Typography variant="caption" display="block" color="text.secondary">╨Ф╨╛╨┐. ╤В╨╡╨╗.: {c.phone_extra}</Typography>
+                            <Typography variant="caption" display="block" color="text.secondary">Доп. тел.: {c.phone_extra}</Typography>
                           )}
                         </Box>
                         <Stack direction="row" spacing={0.25}>
-                          <IconButton size="small" onClick={() => openEditContact(c)} aria-label="╨а╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╤В╤М ╨║╨╛╨╜╤В╨░╨║╤В">
+                          <IconButton size="small" onClick={() => openEditContact(c)} aria-label="Редактировать контакт">
                             <Edit fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" onClick={() => handleDeleteContact(c)} aria-label="╨г╨┤╨░╨╗╨╕╤В╤М ╨║╨╛╨╜╤В╨░╨║╤В" color="error">
+                          <IconButton size="small" onClick={() => handleDeleteContact(c)} aria-label="Удалить контакт" color="error">
                             <Delete fontSize="small" />
                           </IconButton>
                         </Stack>
@@ -586,7 +586,7 @@ const B2BSchoolsPage: React.FC = () => {
                     </Card>
                   ))}
                   {(!editingSchool.contacts || editingSchool.contacts.length === 0) && (
-                    <Typography variant="caption" color="text.secondary">╨Э╨╡╤В ╨║╨╛╨╜╤В╨░╨║╤В╨╛╨▓</Typography>
+                    <Typography variant="caption" color="text.secondary">Нет контактов</Typography>
                   )}
                 </Stack>
               </Box>
@@ -594,44 +594,44 @@ const B2BSchoolsPage: React.FC = () => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setDialogOpen(false)}>Отмена</Button>
           {editingSchool && (
             <Button color="error" onClick={() => handleDelete(editingSchool)}>
-              ╨г╨┤╨░╨╗╨╕╤В╤М
+              Удалить
             </Button>
           )}
           <Button variant="contained" onClick={() => void handleSave()}>
-            ╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>{editingContact ? '╨а╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╤В╤М ╨║╨╛╨╜╤В╨░╨║╤В' : '╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╨║╨╛╨╜╤В╨░╨║╤В'}</DialogTitle>
+        <DialogTitle>{editingContact ? 'Редактировать контакт' : 'Добавить контакт'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="╨д╨Ш╨Ю"
+              label="ФИО"
               value={contactForm.full_name}
               onChange={(e) => setContactForm((f) => ({ ...f, full_name: e.target.value }))}
               fullWidth
               required
             />
             <TextField
-              label="╨Ф╨╛╨╗╨╢╨╜╨╛╤Б╤В╤М"
+              label="Должность"
               value={contactForm.position}
               onChange={(e) => setContactForm((f) => ({ ...f, position: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨Э╨╛╨╝╨╡╤А ╤В╨╡╨╗╨╡╤Д╨╛╨╜╨░"
+              label="Номер телефона"
               value={contactForm.phone}
               onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))}
               fullWidth
               required
             />
             <TextField
-              label="╨Ф╨╛╨┐. ╨╜╨╛╨╝╨╡╤А ╤В╨╡╨╗╨╡╤Д╨╛╨╜╨░"
+              label="Доп. номер телефона"
               value={contactForm.phone_extra}
               onChange={(e) => setContactForm((f) => ({ ...f, phone_extra: e.target.value }))}
               fullWidth
@@ -639,38 +639,38 @@ const B2BSchoolsPage: React.FC = () => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setContactDialogOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setContactDialogOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleSaveContact()} disabled={!contactForm.full_name.trim() || !contactForm.phone.trim()}>
-            ╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={projectDialogOpen} onClose={() => setProjectDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨б╨╛╨╖╨┤╨░╤В╤М ╨┐╤А╨╛╨╡╨║╤В B2B</DialogTitle>
+        <DialogTitle>Создать проект B2B</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡ ╨┐╤А╨╛╨╡╨║╤В╨░"
+              label="Название проекта"
               value={projectForm.name}
               onChange={(e) => setProjectForm((f) => ({ ...f, name: e.target.value }))}
               fullWidth
               required
             />
             <TextField
-              label="╨Ы╨╛╨║╨░╤Ж╨╕╤П (╨┐╤А╨╕ ╨╜╨╡╨╛╨▒╤Е╨╛╨┤╨╕╨╝╨╛╤Б╤В╨╕)"
+              label="Локация (при необходимости)"
               value={projectForm.location}
               onChange={(e) => setProjectForm((f) => ({ ...f, location: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨У╨╛╤А╨╛╨┤ (╨╛╤Б╨╜╨╛╨▓╨╜╨╛╨╣)"
+              label="Город (основной)"
               value={projectForm.main_city}
               onChange={(e) => setProjectForm((f) => ({ ...f, main_city: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨Ъ╨░╨║╨╕╨╡ ╨│╨╛╤А╨╛╨┤╨░ ╨▓╨║╨╗╤О╤З╨╕╤В╤М ╨▓ ╨┐╤А╨╛╨╡╨║╤В"
-              helperText="╨Я╨╡╤А╨╡╤З╨╕╤Б╨╗╨╕╤В╨╡ ╤З╨╡╤А╨╡╨╖ ╨╖╨░╨┐╤П╤В╤Г╤О (╨╜╨░╨┐╤А╨╕╨╝╨╡╤А: ╨Ш╤А╨║╤Г╤В╤Б╨║, ╨Р╨╜╨│╨░╤А╤Б╨║)"
+              label="Какие города включить в проект"
+              helperText="Перечислите через запятую (например: Иркутск, Ангарск)"
               value={projectForm.citiesText}
               onChange={(e) => setProjectForm((f) => ({ ...f, citiesText: e.target.value }))}
               fullWidth
@@ -679,13 +679,13 @@ const B2BSchoolsPage: React.FC = () => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setProjectDialogOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setProjectDialogOpen(false)}>Отмена</Button>
           <Button
             variant="contained"
             onClick={() => void handleSaveProject()}
             disabled={!projectForm.name.trim()}
           >
-            ╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>

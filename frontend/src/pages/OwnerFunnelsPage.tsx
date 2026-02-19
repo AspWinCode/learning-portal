@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -34,7 +34,7 @@ import type {
 
 const FUNNEL_EVENTS = 'events';
 
-/** ╨н╤В╨░╨┐╤Л ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П, ╨┐╤А╨╕ ╨┐╨╡╤А╨╡╤Е╨╛╨┤╨╡ ╨╜╨░ ╨║╨╛╤В╨╛╤А╤Л╨╡ ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╤В╤Б╤П popup */
+/** Этап воронки Мероприятия, при переходе на которую показывается popup */
 const EVENTS_POPUP_STAGES: Record<string, 'contact' | 'reply' | 'meeting' | 'trip' | 'leads'> = {
   contact_found: 'contact',
   reply_received: 'reply',
@@ -106,7 +106,7 @@ const OwnerFunnelsPage: React.FC = () => {
       setFunnelTypes(data);
       if (data.length && !selectedFunnelId) setSelectedFunnelId(data[0].id);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╤В╨╕╨┐╤Л ╨▓╨╛╤А╨╛╨╜╨╛╨║'));
+      setError(extractApiError(err, 'Не удалось загрузить типы воронок'));
     }
   }, [selectedFunnelId]);
 
@@ -115,7 +115,7 @@ const OwnerFunnelsPage: React.FC = () => {
       const data = await ownerFunnelsApi.listEvents();
       setEvents(data);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П'));
+      setError(extractApiError(err, 'Не удалось загрузить мероприятия'));
     }
   }, []);
 
@@ -134,7 +134,7 @@ const OwnerFunnelsPage: React.FC = () => {
           : await ownerFunnelsApi.listItems(selectedFunnelId);
       setItems(data);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л'));
+      setError(extractApiError(err, 'Не удалось загрузить элементы'));
     } finally {
       setLoading(false);
     }
@@ -145,7 +145,7 @@ const OwnerFunnelsPage: React.FC = () => {
       const data = await b2bApi.listCities();
       setCities(data);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨│╨╛╤А╨╛╨┤╨░'));
+      setError(extractApiError(err, 'Не удалось загрузить город'));
     }
   }, []);
 
@@ -186,7 +186,7 @@ const OwnerFunnelsPage: React.FC = () => {
   const handleFunnelChange = (funnelId: string) => {
     setSelectedFunnelId(funnelId);
     if (funnelId !== FUNNEL_EVENTS) setSelectedEventId(null);
-    // ╨Я╤А╨╕ ╨▓╤Л╨▒╨╛╤А╨╡ ┬л╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П┬╗ ╤Б╤А╨░╨╖╤Г ╨╛╤В╨║╤А╤Л╨▓╨░╨╡╨╝ popup ╤Б╨╛╨╖╨┤╨░╨╜╨╕╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕ (╨╜╨░╨╖╨▓╨░╨╜╨╕╨╡ + ╨┤╨░╤В╤Л)
+    // При выборе «Мероприятие» сразу открываем popup создания воронки (название + даты)
     if (funnelId === FUNNEL_EVENTS) {
       setCreateOpen(true);
     }
@@ -223,7 +223,7 @@ const OwnerFunnelsPage: React.FC = () => {
         loadItems();
       }
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╨╖╨┤╨░╤В╤М'));
+      setError(extractApiError(err, 'Не удалось создать'));
     }
   };
 
@@ -241,7 +241,7 @@ const OwnerFunnelsPage: React.FC = () => {
       setAddCardOpen(false);
       loadItems();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┤╨╛╨▒╨░╨▓╨╕╤В╤М ╨║╨░╤А╤В╨╛╤З╨║╤Г'));
+      setError(extractApiError(err, 'Не удалось добавить карточку'));
     }
   };
 
@@ -256,10 +256,10 @@ const OwnerFunnelsPage: React.FC = () => {
       loadItems();
       if (result.added > 0) {
         setError(null);
-        // ╨Ь╨╛╨╢╨╜╨╛ ╨┐╨╛╨║╨░╨╖╨░╤В╤М ╤Г╤Б╨┐╨╡╤Е: ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╛ result.added ╨╕╨╖ result.total_in_city
+        // Можно показать успех: добавили result.added из result.total_in_city
       }
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┤╨╛╨▒╨░╨▓╨╕╤В╤М ╤И╨║╨╛╨╗╤Л'));
+      setError(extractApiError(err, 'Не удалось добавить школы'));
     } finally {
       setAddSchoolsLoading(false);
     }
@@ -303,7 +303,7 @@ const OwnerFunnelsPage: React.FC = () => {
       setStagePopup(null);
       loadItems();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┐╨╡╤А╨╡╨╜╨╡╤Б╤В╨╕'));
+      setError(extractApiError(err, 'Не удалось перенести'));
     } finally {
       setMovingId(null);
     }
@@ -331,13 +331,13 @@ const OwnerFunnelsPage: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('╨г╨┤╨░╨╗╨╕╤В╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В?')) return;
+    if (!window.confirm('Удалить элемент')) return;
     setError(null);
     try {
       await ownerFunnelsApi.deleteItem(id);
       loadItems();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Г╨┤╨░╨╗╨╕╤В╤М'));
+      setError(extractApiError(err, 'Не удалось удалить'));
     }
   };
 
@@ -394,7 +394,7 @@ const OwnerFunnelsPage: React.FC = () => {
     <Layout>
       <Box sx={{ p: 2 }}>
         <Typography variant="h5" sx={{ mb: 2 }}>
-          ╨Т╨╛╤А╨╛╨╜╨║╨╕
+          Воронки
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -404,10 +404,10 @@ const OwnerFunnelsPage: React.FC = () => {
 
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }} flexWrap="wrap">
           <FormControl size="small" sx={{ minWidth: 280 }}>
-            <InputLabel>╨Т╨╛╤А╨╛╨╜╨║╨░</InputLabel>
+            <InputLabel>Воронка</InputLabel>
             <Select
               value={selectedFunnelId}
-              label="╨Т╨╛╤А╨╛╨╜╨║╨░"
+              label="Воронка"
               onChange={(e) => handleFunnelChange(e.target.value)}
             >
               {funnelTypes.map((f) => (
@@ -419,10 +419,10 @@ const OwnerFunnelsPage: React.FC = () => {
           </FormControl>
           {isEventsFunnel && events.length > 0 && (
             <FormControl size="small" sx={{ minWidth: 280 }}>
-              <InputLabel>╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</InputLabel>
+              <InputLabel>Мероприятие</InputLabel>
               <Select
                 value={selectedEventId ?? ''}
-                label="╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡"
+                label="Мероприятие"
                 onChange={(e) => setSelectedEventId(Number(e.target.value))}
               >
                 {events.map((ev) => (
@@ -436,23 +436,23 @@ const OwnerFunnelsPage: React.FC = () => {
           )}
           {selectedFunnelId && !isEventsFunnel && (
             <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-              ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+              Добавить
             </Button>
           )}
           {isEventsFunnel && selectedEventId != null && (
             <>
               <Button variant="contained" startIcon={<Add />} onClick={() => setAddCardOpen(true)}>
-                ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╨║╨░╤А╤В╨╛╤З╨║╤Г
+                Добавить карточку
               </Button>
               <Button variant="outlined" startIcon={<Add />} onClick={() => setAddSchoolsOpen(true)}>
-                ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╤И╨║╨╛╨╗╤Л
+                Добавить школы
               </Button>
             </>
           )}
         </Stack>
 
         {!selectedFunnelId && funnelTypes.length === 0 && !loading && (
-          <Typography color="text.secondary">╨Ч╨░╨│╤А╤Г╨╖╨║╨░ ╤В╨╕╨┐╨╛╨▓ ╨▓╨╛╤А╨╛╨╜╨╛╨║...</Typography>
+          <Typography color="text.secondary">Загрузка типов воронок...</Typography>
         )}
 
         {isEventsFunnel && selectedEventId != null && selectedFunnel && (
@@ -546,7 +546,7 @@ const OwnerFunnelsPage: React.FC = () => {
 
         {loading && (
           <Typography color="text.secondary" sx={{ mt: 2 }}>
-            ╨Ч╨░╨│╤А╤Г╨╖╨║╨░...
+            Загрузка...
           </Typography>
         )}
       </Box>
@@ -560,65 +560,65 @@ const OwnerFunnelsPage: React.FC = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>{cardDetailItem ? (cardDetailItem.title || `╨Ъ╨░╤А╤В╨╛╤З╨║╨░ #${cardDetailItem.id}`) : ''}</DialogTitle>
+        <DialogTitle>{cardDetailItem ? (cardDetailItem.title || `Карточка #${cardDetailItem.id}`) : ''}</DialogTitle>
         <DialogContent>
           {cardDetailItem && selectedFunnel && (
             <Stack spacing={2} sx={{ mt: 0.5 }}>
               <Box>
-                <Typography variant="caption" color="text.secondary">╨н╤В╨░╨┐ ╨▓╨╛╤А╨╛╨╜╨║╨╕</Typography>
+                <Typography variant="caption" color="text.secondary">Этап воронки</Typography>
                 <Typography variant="body1">
                   {selectedFunnel.stages.find((s) => s.value === cardDetailItem.stage)?.label ?? cardDetailItem.stage}
                 </Typography>
               </Box>
 
               {cardDetailSchoolLoading && (
-                <Typography variant="body2" color="text.secondary">╨Ч╨░╨│╤А╤Г╨╖╨║╨░ ╨┤╨░╨╜╨╜╤Л╤Е ╤И╨║╨╛╨╗╤Л...</Typography>
+                <Typography variant="body2" color="text.secondary">Загрузка данных школы...</Typography>
               )}
               {cardDetailSchool && (
                 <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>╨Ф╨░╨╜╨╜╤Л╨╡ ╤И╨║╨╛╨╗╤Л (B2B)</Typography>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Данные школы (B2B)</Typography>
                   <Stack spacing={1.5}>
                     <Box>
-                      <Typography variant="caption" color="text.secondary">╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</Typography>
+                      <Typography variant="caption" color="text.secondary">Название</Typography>
                       <Typography variant="body2">{cardDetailSchool.name}</Typography>
                     </Box>
                     {cardDetailSchool.director && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨Ф╨╕╤А╨╡╨║╤В╨╛╤А</Typography>
+                        <Typography variant="caption" color="text.secondary">Директор</Typography>
                         <Typography variant="body2">{cardDetailSchool.director}</Typography>
                       </Box>
                     )}
                     {cardDetailSchool.city && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨У╨╛╤А╨╛╨┤</Typography>
+                        <Typography variant="caption" color="text.secondary">Город</Typography>
                         <Typography variant="body2">{cardDetailSchool.city}</Typography>
                       </Box>
                     )}
                     {cardDetailSchool.address && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨Р╨┤╤А╨╡╤Б</Typography>
+                        <Typography variant="caption" color="text.secondary">Адрес</Typography>
                         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{cardDetailSchool.address}</Typography>
                       </Box>
                     )}
                     {cardDetailSchool.student_count != null && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛ ╤Г╤З╨╡╨╜╨╕╨║╨╛╨▓</Typography>
+                        <Typography variant="caption" color="text.secondary">Количество учеников</Typography>
                         <Typography variant="body2">{cardDetailSchool.student_count}</Typography>
                       </Box>
                     )}
                     {cardDetailSchool.friendship_degree && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨б╤В╨╡╨┐╨╡╨╜╤М ╨┤╤А╤Г╨╢╨╡╨╗╤О╨▒╨╕╤П</Typography>
+                        <Typography variant="caption" color="text.secondary">Степень дружбы</Typography>
                         <Typography variant="body2">{cardDetailSchool.friendship_degree}</Typography>
                       </Box>
                     )}
                     <Box>
-                      <Typography variant="caption" color="text.secondary">╨н╤В╨░╨┐ ╨▓ B2B</Typography>
+                      <Typography variant="caption" color="text.secondary">Этап в B2B  B2B</Typography>
                       <Typography variant="body2">{cardDetailSchool.pipeline_stage}</Typography>
                     </Box>
                     {cardDetailSchool.leads_count != null && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨Ы╨╕╨┤╨╛╨▓ / ╨║╨╛╨╜╨▓╨╡╤А╤Б╨╕╤П</Typography>
+                        <Typography variant="caption" color="text.secondary">Лидов / Конверсия</Typography>
                         <Typography variant="body2">
                           {cardDetailSchool.leads_count}
                           {cardDetailSchool.conversion_percent != null && ` (${cardDetailSchool.conversion_percent}%)`}
@@ -627,25 +627,25 @@ const OwnerFunnelsPage: React.FC = () => {
                     )}
                     {cardDetailSchool.meeting_scheduled_at && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨Т╤Б╤В╤А╨╡╤З╨░ ╨╖╨░╨┐╨╗╨░╨╜╨╕╤А╨╛╨▓╨░╨╜╨░</Typography>
+                        <Typography variant="caption" color="text.secondary">Встреча запланирована</Typography>
                         <Typography variant="body2">{new Date(cardDetailSchool.meeting_scheduled_at).toLocaleString('ru-RU')}</Typography>
                       </Box>
                     )}
                     {cardDetailSchool.meeting_outcomes && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨Ш╤В╨╛╨│╨╕ ╨▓╤Б╤В╤А╨╡╤З╨╕</Typography>
+                        <Typography variant="caption" color="text.secondary">Итоги встречи </Typography>
                         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{cardDetailSchool.meeting_outcomes}</Typography>
                       </Box>
                     )}
                     {cardDetailSchool.walkthrough_scheduled_at && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨Я╨╛╤Е╨╛╨┤ ╨╖╨░╨┐╨╗╨░╨╜╨╕╤А╨╛╨▓╨░╨╜</Typography>
+                        <Typography variant="caption" color="text.secondary">Поход запланирован</Typography>
                         <Typography variant="body2">{new Date(cardDetailSchool.walkthrough_scheduled_at).toLocaleString('ru-RU')}</Typography>
                       </Box>
                     )}
                     {cardDetailSchool.contacts && cardDetailSchool.contacts.length > 0 && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">╨Ъ╨╛╨╜╤В╨░╨║╤В╤Л</Typography>
+                        <Typography variant="caption" color="text.secondary">Контакты</Typography>
                         <Stack spacing={0.5} sx={{ mt: 0.5 }}>
                           {cardDetailSchool.contacts.map((c) => (
                             <Typography key={c.id} variant="body2">
@@ -663,7 +663,7 @@ const OwnerFunnelsPage: React.FC = () => {
 
               {!isEventsFunnel && cardDetailItem.comment && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary">╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣</Typography>
+                  <Typography variant="caption" color="text.secondary">Комментарий</Typography>
                   <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{cardDetailItem.comment}</Typography>
                 </Box>
               )}
@@ -671,7 +671,7 @@ const OwnerFunnelsPage: React.FC = () => {
                 <>
                   {(cardDetailItem.card_data as OwnerFunnelCardData).contact_fio && (
                     <Box>
-                      <Typography variant="caption" color="text.secondary">╨Ъ╨╛╨╜╤В╨░╨║╤В (╨╕╨╖ ╨▓╨╛╤А╨╛╨╜╨║╨╕)</Typography>
+                      <Typography variant="caption" color="text.secondary">Контакт (из воронки)</Typography>
                       <Typography variant="body2">
                         {(cardDetailItem.card_data as OwnerFunnelCardData).contact_fio}
                         {(cardDetailItem.card_data as OwnerFunnelCardData).contact_phone &&
@@ -686,7 +686,7 @@ const OwnerFunnelsPage: React.FC = () => {
                   )}
                   {(cardDetailItem.card_data as OwnerFunnelCardData).reply_comment && (
                     <Box>
-                      <Typography variant="caption" color="text.secondary">╨Ю╤В╨▓╨╡╤В╨╜╨╛╨╡ ╨┐╨╕╤Б╤М╨╝╨╛ (╨║╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣)</Typography>
+                      <Typography variant="caption" color="text.secondary">Ответным письмом (комментарий)</Typography>
                       <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                         {(cardDetailItem.card_data as OwnerFunnelCardData).reply_comment}
                       </Typography>
@@ -694,19 +694,19 @@ const OwnerFunnelsPage: React.FC = () => {
                   )}
                   {(cardDetailItem.card_data as OwnerFunnelCardData).meeting_date && (
                     <Box>
-                      <Typography variant="caption" color="text.secondary">╨Ф╨░╤В╨░ ╨▓╤Б╤В╤А╨╡╤З╨╕</Typography>
+                      <Typography variant="caption" color="text.secondary">Дата встречи</Typography>
                       <Typography variant="body2">{(cardDetailItem.card_data as OwnerFunnelCardData).meeting_date}</Typography>
                     </Box>
                   )}
                   {(cardDetailItem.card_data as OwnerFunnelCardData).trip_date && (
                     <Box>
-                      <Typography variant="caption" color="text.secondary">╨Ф╨░╤В╨░ ╨┐╨╛╤Е╨╛╨┤╨░</Typography>
+                      <Typography variant="caption" color="text.secondary">Дата похода</Typography>
                       <Typography variant="body2">{(cardDetailItem.card_data as OwnerFunnelCardData).trip_date}</Typography>
                     </Box>
                   )}
                   {(cardDetailItem.card_data as OwnerFunnelCardData).leads_count != null && (
                     <Box>
-                      <Typography variant="caption" color="text.secondary">╨б╨╛╨▒╤А╨░╨╜╨╛ ╨╗╨╕╨┤╨╛╨▓ (╨▓╨╛╤А╨╛╨╜╨║╨░)</Typography>
+                      <Typography variant="caption" color="text.secondary">Собрано лидов (воронка)</Typography>
                       <Typography variant="body2">{(cardDetailItem.card_data as OwnerFunnelCardData).leads_count}</Typography>
                     </Box>
                   )}
@@ -721,7 +721,7 @@ const OwnerFunnelsPage: React.FC = () => {
                           navigate('/b2b-schools');
                         }}
                       >
-                        ╨Я╨╡╤А╨╡╨╣╤В╨╕ ╨║ ╤Б╨┐╨╕╤Б╨║╤Г B2B ╤И╨║╨╛╨╗
+                        Перейти к списку B2B школ
                       </Button>
                     </Box>
                   )}
@@ -731,43 +731,43 @@ const OwnerFunnelsPage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCardDetailItem(null)}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
+          <Button onClick={() => setCardDetailItem(null)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={addCardOpen} onClose={() => setAddCardOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╨║╨░╤А╤В╨╛╤З╨║╤Г</DialogTitle>
+        <DialogTitle>Добавить карточку</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
-            label="╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡ (╤И╨║╨╛╨╗╨░ / ╨║╨╛╨╜╤В╨░╨║╤В)"
+            label="Название (школа / контакт)"
             value={newCardTitle}
             onChange={(e) => setNewCardTitle(e.target.value)}
             sx={{ mt: 1 }}
-            placeholder="╨Э╨░╨┐╤А╨╕╨╝╨╡╤А: ╨и╨║╨╛╨╗╨░ тДЦ1"
+            placeholder="Например: Школа №1"
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddCardOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setAddCardOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={handleAddCard}>
-            ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+            Добавить
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={addSchoolsOpen} onClose={() => setAddSchoolsOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╤И╨║╨╛╨╗╤Л ╨┐╨╛ ╨│╨╛╤А╨╛╨┤╤Г</DialogTitle>
+        <DialogTitle>Добавить школы по городу</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 1 }}>
-            <InputLabel>╨У╨╛╤А╨╛╨┤</InputLabel>
+            <InputLabel>Город</InputLabel>
             <Select
               value={selectedCity}
-              label="╨У╨╛╤А╨╛╨┤"
+              label="Город"
               onChange={(e) => setSelectedCity(e.target.value)}
               displayEmpty
             >
               <MenuItem value="">
-                <em>╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨│╨╛╤А╨╛╨┤</em>
+                <em>Выберите город</em>
               </MenuItem>
               {cities.map((c) => (
                 <MenuItem key={c} value={c}>
@@ -777,55 +777,55 @@ const OwnerFunnelsPage: React.FC = () => {
             </Select>
           </FormControl>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            ╨Т ╨▓╨╛╤А╨╛╨╜╨║╤Г ╨▒╤Г╨┤╤Г╤В ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╤Л ╨▓╤Б╨╡ B2B ╤И╨║╨╛╨╗╤Л ╨╕╨╖ ╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨│╨╛ ╨│╨╛╤А╨╛╨┤╨░ (╨▓ ╤Н╤В╨░╨┐ ┬л╨Э╨╛╨▓╤Л╨╡┬╗). ╨г╨╢╨╡ ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╜╤Л╨╡ ╤И╨║╨╛╨╗╤Л ╨┐╤А╨╛╨┐╤Г╤Б╨║╨░╤О╤В╤Б╤П.
+            В воронку будут добавлены все B2B школы из выбранного города (в этап «Новые»). Или добавьте школы пропуском.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddSchoolsOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setAddSchoolsOpen(false)}>Отмена</Button>
           <Button
             variant="contained"
             onClick={handleAddSchools}
             disabled={!selectedCity.trim() || addSchoolsLoading}
           >
-            {addSchoolsLoading ? '╨Ф╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╨╡...' : '╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╤И╨║╨╛╨╗╤Л'}
+            {addSchoolsLoading ? 'Добавление...' : 'Добавить школы'}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{isEventsFunnel ? '╨Э╨╛╨▓╨╛╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡' : '╨Э╨╛╨▓╤Л╨╣ ╤Н╨╗╨╡╨╝╨╡╨╜╤В'}</DialogTitle>
+        <DialogTitle>{isEventsFunnel ? 'Новое мероприятие' : 'Новый элемент'}</DialogTitle>
         <DialogContent>
           {isEventsFunnel ? (
             <Stack spacing={2} sx={{ mt: 1 }}>
               <TextField
                 fullWidth
                 required
-                label="╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П"
+                label="Название Название мероприятия"
                 value={newEventName}
                 onChange={(e) => setNewEventName(e.target.value)}
-                placeholder="╨Э╨░╨┐╤А╨╕╨╝╨╡╤А: ╨Ф╨╡╨╜╤М ╨╛╤В╨║╤А╤Л╤В╤Л╤Е ╨┤╨▓╨╡╤А╨╡╨╣"
+                placeholder="Например: День открытых дверей"
               />
               <TextField
                 fullWidth
-                label="╨Ф╨░╤В╤Л ╨┐╤А╨╛╨▓╨╡╨┤╨╡╨╜╨╕╤П"
+                label="Название мероприятия"
                 value={newEventDates}
                 onChange={(e) => setNewEventDates(e.target.value)}
-                placeholder="╨Э╨░╨┐╤А╨╕╨╝╨╡╤А: 15.03.2026 тАУ 20.03.2026"
+                placeholder=": 15.03.2026 тАУ 20.03.2026"
               />
             </Stack>
           ) : (
             <>
               <TextField
                 fullWidth
-                label="╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡"
+                label="Название"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 sx={{ mt: 1 }}
-                placeholder="╨Э╨░╨┐╤А╨╕╨╝╨╡╤А: ╤И╨║╨╛╨╗╨░ тДЦ1"
+                placeholder="Например: Школа №1"
               />
               <TextField
                 fullWidth
-                label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
+                label="Название"
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
                 multiline
@@ -836,18 +836,18 @@ const OwnerFunnelsPage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setCreateOpen(false)}>Отмена</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
             disabled={isEventsFunnel && !newEventName.trim()}
           >
-            ╨б╨╛╨╖╨┤╨░╤В╤М
+            Создать
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Popup ╨┐╤А╨╕ ╨┐╨╡╤А╨╡╤Е╨╛╨┤╨╡ ╨╜╨░ ╤Н╤В╨░╨┐ ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П */}
+      {/* Popup смены этапа */}
       <Dialog
         open={!!stagePopup}
         onClose={() => setStagePopup(null)}
@@ -855,11 +855,11 @@ const OwnerFunnelsPage: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          {stagePopup?.kind === 'contact' && '╨Ъ╨╛╨╜╤В╨░╨║╤В ╨╜╨░╨╣╨┤╨╡╨╜'}
-          {stagePopup?.kind === 'reply' && '╨Я╨╛╨╗╤Г╤З╨╕╨╗╨╕ ╨╛╤В╨▓╨╡╤В╨╜╨╛╨╡ ╨┐╨╕╤Б╤М╨╝╨╛'}
-          {stagePopup?.kind === 'meeting' && '╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М ╨╜╨░ ╨▓╤Б╤В╤А╨╡╤З╤Г'}
-          {stagePopup?.kind === 'trip' && '╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М ╨╜╨░ ╨┐╨╛╤Е╨╛╨┤'}
-          {stagePopup?.kind === 'leads' && '╨б╨╛╨▒╤А╨░╨╗╨╕ ╨╗╨╕╨┤╨╛╨▓'}
+          {stagePopup?.kind === 'contact' && 'Контакт'}
+          {stagePopup?.kind === 'reply' && 'Ответ'}
+          {stagePopup?.kind === 'meeting' && 'Встреча'}
+          {stagePopup?.kind === 'trip' && 'Поход'}
+          {stagePopup?.kind === 'leads' && 'Лиды'}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -867,19 +867,19 @@ const OwnerFunnelsPage: React.FC = () => {
               <>
                 <TextField
                   fullWidth
-                  label="╨д╨Ш╨Ю"
+                  label=""
                   value={stageForm.contact_fio}
                   onChange={(e) => setStageForm((f) => ({ ...f, contact_fio: e.target.value }))}
                 />
                 <TextField
                   fullWidth
-                  label="╨Э╨╛╨╝╨╡╤А ╤В╨╡╨╗╨╡╤Д╨╛╨╜╨░"
+                  label="Телефон"
                   value={stageForm.contact_phone}
                   onChange={(e) => setStageForm((f) => ({ ...f, contact_phone: e.target.value }))}
                 />
                 <TextField
                   fullWidth
-                  label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
+                  label="Название"
                   value={stageForm.contact_comment}
                   onChange={(e) => setStageForm((f) => ({ ...f, contact_comment: e.target.value }))}
                   multiline
@@ -890,30 +890,30 @@ const OwnerFunnelsPage: React.FC = () => {
             {stagePopup?.kind === 'reply' && (
               <TextField
                 fullWidth
-                label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
+                label="Название"
                 value={stageForm.reply_comment}
                 onChange={(e) => setStageForm((f) => ({ ...f, reply_comment: e.target.value }))}
                 multiline
                 rows={3}
-                placeholder="╨в╨╡╨║╤Б╤В ╨╛╤В╨▓╨╡╤В╨░ ╨╕╨╗╨╕ ╨╖╨░╨╝╨╡╤В╨║╨░"
+                placeholder="Комментарий"
               />
             )}
             {stagePopup?.kind === 'meeting' && (
               <TextField
                 fullWidth
-                label="╨Ф╨░╤В╨░ ╨▓╤Б╤В╤А╨╡╤З╨╕"
+                label="Дата встречи"
                 value={stageForm.meeting_date}
                 onChange={(e) => setStageForm((f) => ({ ...f, meeting_date: e.target.value }))}
-                placeholder="╨Э╨░╨┐╤А╨╕╨╝╨╡╤А: 25.03.2026 ╨▓ 14:00"
+                placeholder=": 25.03.2026  14:00"
               />
             )}
             {stagePopup?.kind === 'trip' && (
               <TextField
                 fullWidth
-                label="╨Ф╨░╤В╨░ ╨┐╨╛╤Е╨╛╨┤╨░"
+                label="Дата похода"
                 value={stageForm.trip_date}
                 onChange={(e) => setStageForm((f) => ({ ...f, trip_date: e.target.value }))}
-                placeholder="╨Э╨░╨┐╤А╨╕╨╝╨╡╤А: 01.04.2026"
+                placeholder=": 01.04.2026"
               />
             )}
             {stagePopup?.kind === 'leads' && (
@@ -921,7 +921,7 @@ const OwnerFunnelsPage: React.FC = () => {
                 fullWidth
                 type="number"
                 inputProps={{ min: 0 }}
-                label="╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛ ╨╗╨╕╨┤╨╛╨▓"
+                label="Количество лидов"
                 value={stageForm.leads_count}
                 onChange={(e) => setStageForm((f) => ({ ...f, leads_count: e.target.value }))}
               />
@@ -929,9 +929,9 @@ const OwnerFunnelsPage: React.FC = () => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setStagePopup(null)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setStagePopup(null)}>Отмена</Button>
           <Button variant="contained" onClick={submitStagePopup}>
-            ╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>

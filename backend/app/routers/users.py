@@ -42,9 +42,9 @@ async def read_users(
     limit: int = 100,
     role: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner"]))
 ):
-    """Получение списка пользователей (только администратор)"""
+    """Получение списка пользователей (admin, owner)"""
     query = db.query(User)
     if role:
         query = query.filter(User.role == UserRole(role))
@@ -73,9 +73,9 @@ async def update_user(
     user_id: int,
     user_update: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner"]))
 ):
-    """Обновление пользователя (только администратор)"""
+    """Обновление пользователя (admin, owner)"""
     db_user = db.query(User).filter(User.id == user_id).first()
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")

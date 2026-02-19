@@ -34,12 +34,12 @@ const leadStatusLabels: Record<LeadStatus, string> = {
   demo: 'Демо',
   invoice_sent: 'Инвойс отправлен',
   won: 'Успешно',
-  lost: '╨Ч╨░╨║╤А╤Л╤В',
+  lost: 'Закрыт',
   thinking: 'Подумают',
   refused: 'Отказали',
   trial_scheduled: 'Записали на пробное',
-  event_registered: '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡',
-  decided_immediately: '╨а╨╡╤И╨╕╨╗ ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П ╤Б╤А╨░╨╖╤Г',
+  event_registered: 'Записали на мероприятие',
+  decided_immediately: 'Решил сразу',
 };
 
 const SalesSettingsPage: React.FC = () => {
@@ -111,7 +111,7 @@ const SalesSettingsPage: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => navigate('/sales-managers')}
           >
-            ╨б╨╛╨╖╨┤╨░╤В╤М sales ╨╝╨╡╨╜╨╡╨┤╨╢╨╡╤А╨░
+            Создать sales менеджера
           </Button>
         )}
       </Stack>
@@ -123,11 +123,11 @@ const SalesSettingsPage: React.FC = () => {
 
       <Stack spacing={2}>
         <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" mb={1}>╨У╨╛╤А╨╛╨┤╨░</Typography>
+          <Typography variant="h6" mb={1}>Города</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
               size="small"
-              label="╨Э╨╛╨▓╤Л╨╣ ╨│╨╛╤А╨╛╨┤"
+              label="Новый город "
               value={newCity}
               onChange={(e) => setNewCity(e.target.value)}
             />
@@ -139,14 +139,14 @@ const SalesSettingsPage: React.FC = () => {
                 setNewCity('');
               })}
             >
-              ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+              Добавить
             </Button>
           </Box>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-                <TableCell>╨Р╨║╤В╨╕╨▓╨╡╨╜</TableCell>
+                <TableCell>Название</TableCell>
+                <TableCell>Активен</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -166,11 +166,11 @@ const SalesSettingsPage: React.FC = () => {
         </Paper>
 
         <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" mb={1}>╨и╨║╨╛╨╗╤Л</Typography>
+          <Typography variant="h6" mb={1}>Школы</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
               size="small"
-              label="╨Э╨╛╨▓╨░╤П ╤И╨║╨╛╨╗╨░"
+              label="Новая школа"
               value={newSchool}
               onChange={(e) => setNewSchool(e.target.value)}
             />
@@ -182,14 +182,14 @@ const SalesSettingsPage: React.FC = () => {
                 setNewSchool('');
               })}
             >
-              ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+              Добавить
             </Button>
           </Box>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-                <TableCell>╨Р╨║╤В╨╕╨▓╨╜╨░</TableCell>
+                <TableCell>Название</TableCell>
+                <TableCell>Активна</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -209,11 +209,11 @@ const SalesSettingsPage: React.FC = () => {
         </Paper>
 
         <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" mb={1}>╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║╨╕ ╨╗╨╕╨┤╨░</Typography>
+          <Typography variant="h6" mb={1}>Источники лида</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
               size="small"
-              label="╨Э╨╛╨▓╤Л╨╣ ╨╕╤Б╤В╨╛╤З╨╜╨╕╨║"
+              label="Новый источник"
               value={newSource}
               onChange={(e) => setNewSource(e.target.value)}
             />
@@ -225,14 +225,14 @@ const SalesSettingsPage: React.FC = () => {
                 setNewSource('');
               })}
             >
-              ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+              Добавить
             </Button>
           </Box>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-                <TableCell>╨Р╨║╤В╨╕╨▓╨╡╨╜</TableCell>
+                <TableCell>Название</TableCell>
+                <TableCell>Активен</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -252,11 +252,11 @@ const SalesSettingsPage: React.FC = () => {
         </Paper>
 
         <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" mb={1}>╨б╨┐╨╕╤Б╨╛╨║ ╨╖╨░╨┤╨░╤З</Typography>
+          <Typography variant="h6" mb={1}>Список задач</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
               size="small"
-              label="╨Э╨╛╨▓╨░╤П ╨╖╨░╨┤╨░╤З╨░"
+              label="Новая задача"
               value={newTemplate}
               onChange={(e) => setNewTemplate(e.target.value)}
             />
@@ -268,14 +268,14 @@ const SalesSettingsPage: React.FC = () => {
                 setNewTemplate('');
               })}
             >
-              ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+              Добавить
             </Button>
           </Box>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-                <TableCell>╨Р╨║╤В╨╕╨▓╨╜╨░</TableCell>
+                <TableCell>Название</TableCell>
+                <TableCell>Активна</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -295,17 +295,17 @@ const SalesSettingsPage: React.FC = () => {
         </Paper>
 
         <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" mb={1}>╨б╨┐╨╕╤Б╨╛╨║ ╤Б╤В╨░╤В╤Г╤Б╨╛╨▓ ╨╖╨░╨┤╨░╤З</Typography>
+          <Typography variant="h6" mb={1}>Список статусов задач</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
             <TextField
               size="small"
-              label="╨Э╨╛╨▓╤Л╨╣ ╤Б╤В╨░╤В╤Г╤Б"
+              label="Новый статус"
               value={newStatus}
               onChange={(e) => setNewStatus(e.target.value)}
             />
             <FormControlLabel
               control={<Switch checked={newStatusClosed} onChange={(e) => setNewStatusClosed(e.target.checked)} />}
-              label="╨Ч╨░╨║╤А╤Л╨▓╨░╤О╤Й╨╕╨╣"
+              label="Закрывающий"
             />
             <Button
               variant="contained"
@@ -316,22 +316,22 @@ const SalesSettingsPage: React.FC = () => {
                 setNewStatusClosed(false);
               })}
             >
-              ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+              Добавить
             </Button>
           </Box>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-                <TableCell>╨Ч╨░╨║╤А╤Л╨▓╨░╤О╤Й╨╕╨╣</TableCell>
-                <TableCell>╨Р╨║╤В╨╕╨▓╨╡╨╜</TableCell>
+                <TableCell>Название</TableCell>
+                <TableCell>Закрывающий</TableCell>
+                <TableCell>Активен</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {statuses.map((st) => (
                 <TableRow key={st.id}>
                   <TableCell>{st.name}</TableCell>
-                  <TableCell>{st.is_closed ? '╨Ф╨░' : '╨Э╨╡╤В'}</TableCell>
+                  <TableCell>{st.is_closed ? 'Да' : 'Да'}</TableCell>
                   <TableCell>
                     <Switch
                       checked={st.is_active}
@@ -345,19 +345,19 @@ const SalesSettingsPage: React.FC = () => {
         </Paper>
 
         <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" mb={1}>╨б╤В╨░╤В╤Г╤Б╤Л ╨╗╨╕╨┤╨░</Typography>
+          <Typography variant="h6" mb={1}>Статусы лида </Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
             <TextField
               size="small"
-              label="╨Э╨╛╨▓╤Л╨╣ ╤Б╤В╨░╤В╤Г╤Б ╨╗╨╕╨┤╨░"
+              label="Новый статус лида"
               value={newLeadStatus}
               onChange={(e) => setNewLeadStatus(e.target.value)}
             />
             <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel id="new-lead-status-base-label">╨С╨░╨╖╨╛╨▓╨░╤П ╤Б╤В╨░╨┤╨╕╤П</InputLabel>
+              <InputLabel id="new-lead-status-base-label">Базовая стадия</InputLabel>
               <Select
                 labelId="new-lead-status-base-label"
-                label="╨С╨░╨╖╨╛╨▓╨░╤П ╤Б╤В╨░╨┤╨╕╤П"
+                label="Базовая стадия"
                 value={newLeadStatusBase}
                 onChange={(e) => setNewLeadStatusBase(e.target.value as LeadStatus)}
               >
@@ -377,15 +377,15 @@ const SalesSettingsPage: React.FC = () => {
                 setNewLeadStatusBase('new');
               })}
             >
-              ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+              Добавить
             </Button>
           </Box>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-                <TableCell>╨С╨░╨╖╨╛╨▓╨░╤П ╤Б╤В╨░╨┤╨╕╤П</TableCell>
-                <TableCell>╨Р╨║╤В╨╕╨▓╨╡╨╜</TableCell>
+                <TableCell>Название</TableCell>
+                <TableCell>Базовая стадия</TableCell>
+                <TableCell>Активен</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -406,17 +406,17 @@ const SalesSettingsPage: React.FC = () => {
         </Paper>
 
         <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" mb={1}>╨и╨░╨▒╨╗╨╛╨╜╤Л ╨╛╤В╨┐╤А╨░╨▓╨║╨╕ ╨╕╨╜╤Д╨╛</Typography>
+          <Typography variant="h6" mb={1}>Шаблоны отправки инфо</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
             <TextField
               size="small"
-              label="╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡ ╤И╨░╨▒╨╗╨╛╨╜╨░"
+              label="Название шаблона"
               value={newInfoTemplateName}
               onChange={(e) => setNewInfoTemplateName(e.target.value)}
             />
             <TextField
               size="small"
-              label="╨в╨╡╨║╤Б╤В ╤И╨░╨▒╨╗╨╛╨╜╨░"
+              label="Текст шаблона"
               value={newInfoTemplateBody}
               onChange={(e) => setNewInfoTemplateBody(e.target.value)}
               sx={{ minWidth: 420 }}
@@ -433,15 +433,15 @@ const SalesSettingsPage: React.FC = () => {
                 setNewInfoTemplateBody('');
               })}
             >
-              ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М
+              Добавить
             </Button>
           </Box>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-                <TableCell>╨в╨╡╨║╤Б╤В</TableCell>
-                <TableCell>╨Р╨║╤В╨╕╨▓╨╡╨╜</TableCell>
+                <TableCell>Название</TableCell>
+                <TableCell>Текст</TableCell>
+                <TableCell>Активен</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>

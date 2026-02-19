@@ -144,6 +144,7 @@ const TrainersPage: React.FC = () => {
               <TableCell>Оплата за месяц</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Количество групп</TableCell>
+              <TableCell>Действия</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -187,6 +188,39 @@ const TrainersPage: React.FC = () => {
                   <TableCell>{payment.toFixed(2)}</TableCell>
                   <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
                   <TableCell>{groupsCount}</TableCell>
+                  <TableCell>
+                    {trainer.is_active ? (
+                      <Button
+                        size="small"
+                        color="warning"
+                        onClick={async () => {
+                          try {
+                            await usersApi.update(trainer.id, { is_active: false });
+                            loadTrainers();
+                          } catch (err: any) {
+                            setError(err.response?.data?.detail || 'Ошибка архивации тренера');
+                          }
+                        }}
+                      >
+                        Архивировать
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        color="success"
+                        onClick={async () => {
+                          try {
+                            await usersApi.update(trainer.id, { is_active: true });
+                            loadTrainers();
+                          } catch (err: any) {
+                            setError(err.response?.data?.detail || 'Ошибка разархивации тренера');
+                          }
+                        }}
+                      >
+                        Разархивировать
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               );
             })}

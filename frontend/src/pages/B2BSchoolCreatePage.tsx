@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -25,15 +25,15 @@ import { extractApiError } from '../utils/extractApiError';
 import type { B2BSchool, B2BSchoolPipelineStage } from '../types';
 
 const PIPELINE_STAGES: { value: B2BSchoolPipelineStage; label: string }[] = [
-  { value: 'new', label: '╨Э╨╛╨▓╤Л╨╡' },
-  { value: 'contact_found', label: '╨Ъ╨╛╨╜╤В╨░╨║╤В ╨╜╨░╨╣╨┤╨╡╨╜' },
-  { value: 'letter_sent', label: '╨Я╨╕╤Б╤М╨╝╨╛ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╨╛' },
-  { value: 'meeting_scheduled', label: '╨Э╨░╨╖╨╜╨░╤З╨╡╨╜╨░ ╨▓╤Б╤В╤А╨╡╤З╨░' },
-  { value: 'meeting_held', label: '╨Т╤Б╤В╤А╨╡╤З╨░ ╨┐╤А╨╛╨▓╨╡╨┤╨╡╨╜╨░' },
-  { value: 'permission_received', label: '╨а╨░╨╖╤А╨╡╤И╨╡╨╜╨╕╨╡ ╨┐╨╛╨╗╤Г╤З╨╡╨╜╨╛' },
-  { value: 'walkthrough_scheduled', label: '╨Э╨░╨╖╨╜╨░╤З╨╡╨╜╨░ ╨┤╨░╤В╨░ ╨╛╨▒╤Е╨╛╨┤╨░' },
-  { value: 'walkthrough_done', label: '╨Ю╨▒╤Е╨╛╨┤ ╨┐╤А╨╛╨▓╨╡╨┤╤С╨╜' },
-  { value: 'leads_received', label: '╨Ы╨╕╨┤╤Л ╨┐╨╛╨╗╤Г╤З╨╡╨╜╤Л' },
+  { value: 'new', label: 'Новые' },
+  { value: 'contact_found', label: 'Контакт найден' },
+  { value: 'letter_sent', label: 'Письмо отправлено' },
+  { value: 'meeting_scheduled', label: 'Назначена встреча' },
+  { value: 'meeting_held', label: 'Встреча проведена' },
+  { value: 'permission_received', label: 'Разрешение получено' },
+  { value: 'walkthrough_scheduled', label: 'Назначена дата обхода' },
+  { value: 'walkthrough_done', label: 'Обход проведён' },
+  { value: 'leads_received', label: 'Лиды получены' },
 ];
 
 const B2BSchoolCreatePage: React.FC = () => {
@@ -61,7 +61,7 @@ const B2BSchoolCreatePage: React.FC = () => {
       const data = await b2bApi.listSchools();
       setSchools(data);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╤Б╨┐╨╕╤Б╨╛╨║ ╤И╨║╨╛╨╗'));
+      setError(extractApiError(err, 'Не удалось загрузить список школ'));
     } finally {
       setLoading(false);
     }
@@ -85,7 +85,7 @@ const B2BSchoolCreatePage: React.FC = () => {
     setError(null);
     setSuccess(null);
     if (!form.name.trim()) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨╜╨░╨╕╨╝╨╡╨╜╨╛╨▓╨░╨╜╨╕╨╡ ╤И╨║╨╛╨╗╤Л');
+      setError('Укажите название школы');
       return;
     }
     setSaving(true);
@@ -103,7 +103,7 @@ const B2BSchoolCreatePage: React.FC = () => {
         pipeline_stage: form.pipeline_stage,
         event_dates: eventDates,
       });
-      setSuccess('╨и╨║╨╛╨╗╨░ ╤Г╤Б╨┐╨╡╤И╨╜╨╛ ╤Б╨╛╨╖╨┤╨░╨╜╨░');
+      setSuccess('Школа успешно создана');
       setForm({
         name: '',
         director: '',
@@ -116,7 +116,7 @@ const B2BSchoolCreatePage: React.FC = () => {
       });
       await loadSchools();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╨╖╨┤╨░╤В╤М ╤И╨║╨╛╨╗╤Г'));
+      setError(extractApiError(err, 'Не удалось сохранить школу'));
     } finally {
       setSaving(false);
     }
@@ -126,7 +126,7 @@ const B2BSchoolCreatePage: React.FC = () => {
     <Layout>
       <Box>
         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h4">╨б╨╛╨╖╨┤╨░╤В╤М ╤И╨║╨╛╨╗╤Г (B2B)</Typography>
+          <Typography variant="h4">Создать школу (B2B)</Typography>
         </Stack>
 
         {error && (
@@ -143,32 +143,32 @@ const B2BSchoolCreatePage: React.FC = () => {
         <Box maxWidth={520}>
           <Stack spacing={2}>
             <TextField
-              label="╨Э╨░╨╕╨╝╨╡╨╜╨╛╨▓╨░╨╜╨╕╨╡ ╤И╨║╨╛╨╗╤Л"
+              label="Название школы"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               fullWidth
               required
             />
             <TextField
-              label="╨Ф╨╕╤А╨╡╨║╤В╨╛╤А ╤И╨║╨╛╨╗╤Л"
+              label="Директор школы"
               value={form.director}
               onChange={(e) => setForm((f) => ({ ...f, director: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨У╨╛╤А╨╛╨┤"
+              label="Город"
               value={form.city}
               onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨Р╨┤╤А╨╡╤Б"
+              label="Адрес"
               value={form.address}
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
               fullWidth
             />
             <TextField
-              label="╨Ъ╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛ ╨┤╨╡╤В╨╡╨╣ ╨▓ ╤И╨║╨╛╨╗╨╡"
+              label="Количество детей в школе"
               type="number"
               value={form.student_count}
               onChange={(e) =>
@@ -178,33 +178,33 @@ const B2BSchoolCreatePage: React.FC = () => {
               InputProps={{ inputProps: { min: 0 } }}
             />
             <FormControl fullWidth>
-              <InputLabel>╨б╤В╨╡╨┐╨╡╨╜╤М ╨┤╤А╤Г╨╢╨▒╤Л</InputLabel>
+              <InputLabel>Степень дружбы</InputLabel>
               <Select
                 value={form.friendship_degree}
-                label="╨б╤В╨╡╨┐╨╡╨╜╤М ╨┤╤А╤Г╨╢╨▒╤Л"
+                label="Степень дружбы"
                 onChange={(e) => setForm((f) => ({ ...f, friendship_degree: e.target.value }))}
               >
                 <MenuItem value="">
-                  <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜╨╛</em>
+                  <em>Не выбрано</em>
                 </MenuItem>
-                <MenuItem value="unknown">╨Э╨╡ ╨╖╨╜╨░╨╡╨╝ ╨┤╤А╤Г╨│ ╨┤╤А╤Г╨│╨░</MenuItem>
-                <MenuItem value="indirect">╨Ч╨╜╨░╨╡╨╝ ╨║╨╛╤Б╨▓╨╡╨╜╨╜╨╛</MenuItem>
-                <MenuItem value="friends">╨Ф╤А╤Г╨╢╨╕╨╝</MenuItem>
-                <MenuItem value="enemies">╨Т╤А╨░╨│╨╕</MenuItem>
+                <MenuItem value="unknown">Не знаем друг друга</MenuItem>
+                <MenuItem value="indirect">Знаем косвенно</MenuItem>
+                <MenuItem value="friends">Друзья╢</MenuItem>
+                <MenuItem value="enemies">Враги</MenuItem>
               </Select>
             </FormControl>
             <TextField
-              label="╨Ф╨░╤В╤Л ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣ (╤З╨╡╤А╨╡╨╖ ╨╖╨░╨┐╤П╤В╤Г╤О)"
+              label="Даты мероприятий (через запятую)"
               value={form.event_dates}
               onChange={(e) => setForm((f) => ({ ...f, event_dates: e.target.value }))}
               fullWidth
               placeholder="2025-03-01, 2025-03-15"
             />
             <FormControl fullWidth>
-              <InputLabel>╨б╤В╨░╨┤╨╕╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕</InputLabel>
+              <InputLabel>Стадия воронки</InputLabel>
               <Select
                 value={form.pipeline_stage}
-                label="╨б╤В╨░╨┤╨╕╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕"
+                label="Стадия воронки"
                 onChange={(e) =>
                   setForm((f) => ({ ...f, pipeline_stage: e.target.value as B2BSchoolPipelineStage }))
                 }
@@ -224,7 +224,7 @@ const B2BSchoolCreatePage: React.FC = () => {
                 onClick={() => void handleSave()}
                 disabled={saving}
               >
-                ╨б╨╛╨╖╨┤╨░╤В╤М ╤И╨║╨╛╨╗╤Г
+                Создать школу
               </Button>
             </Box>
           </Stack>
@@ -232,16 +232,16 @@ const B2BSchoolCreatePage: React.FC = () => {
 
         <Box sx={{ mt: 4 }}>
           <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
-            <Typography variant="h6">╨б╨╛╨╖╨┤╨░╨╜╨╜╤Л╨╡ ╤И╨║╨╛╨╗╤Л</Typography>
+            <Typography variant="h6">Созданные школы</Typography>
             <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>╨д╨╕╨╗╤М╤В╤А ╨┐╨╛ ╨│╨╛╤А╨╛╨┤╤Г</InputLabel>
+              <InputLabel>Фильтр по городу  </InputLabel>
               <Select
-                label="╨д╨╕╨╗╤М╤В╤А ╨┐╨╛ ╨│╨╛╤А╨╛╨┤╤Г"
+                label="Фильтр по городу  "
                 value={filterCity}
                 onChange={(e) => setFilterCity(e.target.value)}
               >
                 <MenuItem value="">
-                  <em>╨Т╤Б╨╡ ╨│╨╛╤А╨╛╨┤╨░</em>
+                  <em>Все города </em>
                 </MenuItem>
                 {uniqueCities.map((city) => (
                   <MenuItem key={city} value={city}>
@@ -253,25 +253,25 @@ const B2BSchoolCreatePage: React.FC = () => {
           </Stack>
 
           {loading ? (
-            <Typography color="text.secondary">╨Ч╨░╨│╤А╤Г╨╖╨║╨░тАж</Typography>
+            <Typography color="text.secondary">Загрузка…</Typography>
           ) : (
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡</TableCell>
-                    <TableCell>╨Ф╨╕╤А╨╡╨║╤В╨╛╤А</TableCell>
-                    <TableCell>╨У╨╛╤А╨╛╨┤</TableCell>
-                    <TableCell>╨Р╨┤╤А╨╡╤Б</TableCell>
-                    <TableCell align="right">╨г╤З╨╡╨╜╨╕╨║╨╛╨▓</TableCell>
-                    <TableCell>╨б╤В╨░╨┤╨╕╤П</TableCell>
+                    <TableCell>Название</TableCell>
+                    <TableCell>Директор</TableCell>
+                    <TableCell>Город</TableCell>
+                    <TableCell>Адрес</TableCell>
+                    <TableCell align="right">Учеников</TableCell>
+                    <TableCell>Стадия</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredSchools.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ py: 3 }} color="text.secondary">
-                        {schools.length === 0 ? '╨Э╨╡╤В ╤Б╨╛╨╖╨┤╨░╨╜╨╜╤Л╤Е ╤И╨║╨╛╨╗' : '╨Э╨╡╤В ╤И╨║╨╛╨╗ ╨▓ ╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨╝ ╨│╨╛╤А╨╛╨┤╨╡'}
+                        {schools.length === 0 ? 'Нет созданных школ' : 'Нет школ в выбранном городе'}
                       </TableCell>
                     </TableRow>
                   ) : (

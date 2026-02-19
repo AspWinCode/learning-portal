@@ -1,6 +1,6 @@
 """Add sales_cities, sales_schools, lead_statuses tables
 
-Revision ID: 0016_sales_cities_schools_lead_statuses
+Revision ID: 0016_sales_cities_schools
 Revises: 0015_task_repeat_fields
 Create Date: 2026-02-19
 
@@ -10,7 +10,7 @@ from sqlalchemy import inspect
 import sqlalchemy as sa
 
 
-revision = "0016_sales_cities_schools_lead_statuses"
+revision = "0016_sales_cities_schools"
 down_revision = "0015_task_repeat_fields"
 branch_labels = None
 depends_on = None

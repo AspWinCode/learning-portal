@@ -98,7 +98,7 @@ const GroupsPage: React.FC = () => {
       const data = await usersApi.getAll('trainer');
       setTrainers(data.filter(t => t.is_active));
     } catch (err) {
-      console.error('Ошибка загрузки ╤В╤Атренеров', err);
+      console.error('Ошибка загрузки тренеров', err);
     }
   };
 
@@ -639,7 +639,7 @@ const GroupsPage: React.FC = () => {
                     }}
                   >
                     <Typography variant="body2">
-                      {WEEKDAY_OPTIONS.find((o) => o.value === s.day_of_week)?.label ?? s.day_of_week} тАФ {s.start_time?.slice(0, 5)}тАУ{s.end_time?.slice(0, 5)}
+                      {WEEKDAY_OPTIONS.find((o) => o.value === s.day_of_week)?.label ?? s.day_of_week} — {s.start_time?.slice(0, 5)}–{s.end_time?.slice(0, 5)}
                     </Typography>
                     <Button size="small" color="error" onClick={() => handleRemoveSchedule(s.id)}>
                       Удалить
@@ -668,7 +668,7 @@ const GroupsPage: React.FC = () => {
                 ? (groupDetails?.programs || [])
                     .map((p) => `${p.name} (v${p.version})`)
                     .join(', ')
-                : 'тАФ'}
+                : '—'}
             </Typography>
 
             <FormControl fullWidth sx={{ mt: 2 }}>

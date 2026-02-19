@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
@@ -68,18 +68,18 @@ import {
 } from '../types';
 
 const statusLabels: Record<LeadStatus, string> = {
-  new: '╨Э╨╛╨▓╤Л╨╣',
-  contacted: '╨б╨▓╤П╨╖╨░╨╗╨╕╤Б╤М',
-  no_answer: '╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜',
-  demo: '╨Ф╨╡╨╝╨╛',
-  invoice_sent: '╨Ш╨╜╨▓╨╛╨╣╤Б ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜',
-  won: '╨г╤Б╨┐╨╡╤И╨╜╨╛',
-  lost: '╨Ч╨░╨║╤А╤Л╤В',
-  thinking: '╨Я╨╛╨┤╤Г╨╝╨░╤О╤В',
-  refused: '╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П',
-  trial_scheduled: '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡',
-  event_registered: '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡',
-  decided_immediately: '╨а╨╡╤И╨╕╨╗ ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П ╤Б╤А╨░╨╖╤Г',
+  new: '\u041d\u043e\u0432\u044b\u0439',
+  contacted: '\u0421\u0432\u044f\u0437\u0430\u043b\u0438\u0441\u044c',
+  no_answer: '\u041d\u0435\u0434\u043e\u0437\u0432\u043e\u043d',
+  demo: '\u0414\u0435\u043c\u043e',
+  invoice_sent: '\u0418\u043d\u0432\u043e\u0439\u0441 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d',
+  won: '\u0423\u0441\u043f\u0435\u0448\u043d\u043e',
+  lost: '\u0417\u0430\u043a\u0440\u044b\u0442',
+  thinking: '\u041f\u043e\u0434\u0443\u043c\u0430\u044e\u0442',
+  refused: '\u041e\u0442\u043a\u0430\u0437\u0430\u043b\u0438',
+  trial_scheduled: '\u0417\u0430\u043f\u0438\u0441\u0430\u043b\u0438 \u043d\u0430 \u043f\u0440\u043e\u0431\u043d\u043e\u0435',
+  event_registered: 'Записали на мероприятие',
+  decided_immediately: '\u0420\u0435\u0448\u0438\u043b \u0437\u0430\u043d\u0438\u043c\u0430\u0442\u044c\u0441\u044f \u0441\u0440\u0430\u0437\u0443',
 };
 
 /** ╨б╤В╨░╤В╤Г╤Б╤Л ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨┐╤А╨╛╨┤╨░╨╢ тАФ ╨╡╨┤╨╕╨╜╤Л╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╨┤╨╗╤П ╨╗╨╕╨┤╨╛╨▓ ╨╕ ╨▓╨╛╤А╨╛╨╜╨║╨╕ */
@@ -106,30 +106,30 @@ function getPipelineColumnForStatus(status: LeadStatus): LeadStatus {
 }
 
 const REFUSED_REASONS = [
-  '╨Э╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕',
-  '╨Ф╨╛╤А╨╛╨│╨╛',
-  '╨Э╨╡ ╨┐╨╛╨┤╤Е╨╛╨┤╨╕╤В ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡',
-  '╨г╨╢╨╡ ╨╖╨░╨╜╨╕╨╝╨░╨╡╤В╤Б╤П elsewhere',
-  '╨Я╨╡╤А╨╡╨┤╤Г╨╝╨░╨╗',
-  '╨Ф╤А╤Г╨│╨╛╨╡',
+  '\u041d\u0435\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438',
+  '\u0414\u043e\u0440\u043e\u0433\u043e',
+  '\u041d\u0435 \u043f\u043e\u0434\u0445\u043e\u0434\u0438\u0442 \u0440\u0430\u0441\u043f\u0438\u0441\u0430\u043d\u0438\u044e',
+  '\u0423\u0436\u0435 \u0437\u0430\u043d\u0438\u043c\u0430\u0435\u0442\u0441\u044f elsewhere',
+  '\u041f\u0435\u0440\u0435\u0434\u0443\u043c\u0430\u043b',
+  '\u0414\u0440\u0443\u0433\u043e\u0435',
 ];
 
 const leadCommunicationChannelLabels: Record<LeadCommunicationChannel, string> = {
   max: 'MAX',
-  email: '╨┐╨╛╤З╤В╨░',
-  sms: '╤Б╨╝╤Б',
+  email: '\u043f\u043e\u0447\u0442\u0430',
+  sms: 'смс',
   telegram: 'telegram',
 };
 
 const DEFAULT_CITY_OPTIONS = [
-  '╨Р╨╗╨╝╨░╤В╤Л',
-  '╨Р╤Б╤В╨░╨╜╨░',
-  '╨и╤Л╨╝╨║╨╡╨╜╤В',
-  '╨Ъ╨░╤А╨░╨│╨░╨╜╨┤╨░',
-  '╨Р╨║╤В╨╛╨▒╨╡',
-  '╨Я╨░╨▓╨╗╨╛╨┤╨░╤А',
-  '╨б╨╡╨╝╨╡╨╣',
-  '╨г╤Б╤В╤М-╨Ъ╨░╨╝╨╡╨╜╨╛╨│╨╛╤А╤Б╨║',
+  '\u0410\u043b\u043c\u0430\u0442\u044b',
+  '\u0410\u0441\u0442\u0430\u043d\u0430',
+  '\u0428\u044b\u043c\u043a\u0435\u043d\u0442',
+  '\u041a\u0430\u0440\u0430\u0433\u0430\u043d\u0434\u0430',
+  '\u0410\u043a\u0442\u043e\u0431\u0435',
+  '\u041f\u0430\u0432\u043b\u043e\u0434\u0430\u0440',
+  '\u0421\u0435\u043c\u0435\u0439',
+  '\u0423\u0441\u0442\u044c-\u041a\u0430\u043c\u0435\u043d\u043e\u0433\u043e\u0440\u0441\u043a',
 ];
 
 const normalizeRuPhone = (raw: string): string => {
@@ -1305,7 +1305,7 @@ const SalesLeadsPage: React.FC = () => {
   const formatEventOptionLabel = (ev: EventItem) => {
     const d = parseISO(ev.starts_at);
     const dateLabel = isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : ev.starts_at;
-    return `${ev.title} тАФ ${dateLabel}`;
+    return `${ev.title} — ${dateLabel}`;
   };
 
   const handleRegisterToEvent = async () => {
@@ -1488,7 +1488,7 @@ const SalesLeadsPage: React.FC = () => {
       try {
         await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1 });
         await loadLeads();
-        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" тАФ ╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜ 1`, severity: 'success' });
+        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" — ╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜ 1`, severity: 'success' });
       } catch (err: any) {
         setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
       }
@@ -2039,7 +2039,7 @@ const SalesLeadsPage: React.FC = () => {
                   <Typography variant="subtitle2">{lead.contact_name}</Typography>
                 </Stack>
               </TableCell>
-              <TableCell>{lead.phone || 'тАФ'}</TableCell>
+              <TableCell>{lead.phone || '—'}</TableCell>
               <TableCell>
                 <FormControl size="small" sx={{ minWidth: 160 }}>
                   <Select
@@ -2056,15 +2056,15 @@ const SalesLeadsPage: React.FC = () => {
                   </Select>
                 </FormControl>
               </TableCell>
-              <TableCell>{lead.source || 'тАФ'}</TableCell>
+              <TableCell>{lead.source || '—'}</TableCell>
               <TableCell>
                 {lead.communication_channel
                   ? (leadCommunicationChannelLabels[lead.communication_channel as LeadCommunicationChannel] ?? lead.communication_channel)
-                  : 'тАФ'}
+                  : '—'}
               </TableCell>
-              <TableCell>{lead.school_class || 'тАФ'}</TableCell>
-              <TableCell>{lead.school_name || 'тАФ'}</TableCell>
-              <TableCell>{lead.city || 'тАФ'}</TableCell>
+              <TableCell>{lead.school_class || '—'}</TableCell>
+              <TableCell>{lead.school_name || '—'}</TableCell>
+              <TableCell>{lead.city || '—'}</TableCell>
               <TableCell>
                 {(() => {
                   const d = parseISO(lead.created_at);
@@ -2737,8 +2737,8 @@ const SalesLeadsPage: React.FC = () => {
       </Dialog>
       <Dialog open={dropConfirmOpen} onClose={() => setDropConfirmOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {dropTargetStatus === 'thinking' && '╨Я╨╛╨┤╤Г╨╝╨░╤О╤В тАФ ╨┤╨░╤В╨░ ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░'}
-          {dropTargetStatus === 'refused' && '╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П тАФ ╨┐╤А╨╕╤З╨╕╨╜╨░'}
+          {dropTargetStatus === 'thinking' && '╨Я╨╛╨┤╤Г╨╝╨░╤О╤В — ╨┤╨░╤В╨░ ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░'}
+          {dropTargetStatus === 'refused' && '╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П — ╨┐╤А╨╕╤З╨╕╨╜╨░'}
           {dropTargetStatus === 'trial_scheduled' && '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡'}
           {dropTargetStatus === 'event_registered' && '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'}
           {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && '╨Я╨╛╨┤╤В╨▓╨╡╤А╨┤╨╕╤В╤М ╨┐╨╡╤А╨╡╨╜╨╛╤Б ╤Б╤В╨░╨┤╨╕╨╕'}
@@ -2796,7 +2796,7 @@ const SalesLeadsPage: React.FC = () => {
           {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                ╨Э╨╛╨▓╨░╤П ╤Б╤В╨░╨┤╨╕╤П: {dropTargetStatus ? statusLabels[dropTargetStatus] : 'тАФ'}
+                ╨Э╨╛╨▓╨░╤П ╤Б╤В╨░╨┤╨╕╤П: {dropTargetStatus ? statusLabels[dropTargetStatus] : '—'}
               </Typography>
               {(() => {
                 const lead = dropLeadId ? leads.find((l) => l.id === dropLeadId) : null;

@@ -1,14 +1,40 @@
+from datetime import time as dt_time
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
-from app.schemas import GroupCreate, GroupResponse, GroupUpdate, StudentResponse
-from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus
+from app.schemas import GroupCreate, GroupResponse, GroupUpdate, StudentResponse, GroupScheduleResponse
+from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule
 from app.routers.action_log import log_action
 from app.student_display import get_students_display_names
 
 router = APIRouter()
+
+
+def _parse_time(v) -> dt_time:
+    if hasattr(v, "hour"):
+        return v
+    s = str(v).strip()
+    parts = s.split(":")
+    h = int(parts[0]) if len(parts) > 0 else 0
+    m = int(parts[1]) if len(parts) > 1 else 0
+    return dt_time(hour=h, minute=m, second=0)
+
+
+def _group_to_response(db: Session, g: Group) -> GroupResponse:
+    student_list = getattr(g, "students", None) or []
+    display_names = get_students_display_names(db, [s.id for s in student_list]) if student_list else {}
+    students_out = [
+        StudentResponse(**{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)})
+        for s in student_list
+    ]
+    schedules = list(getattr(g, "group_schedules", None) or [])
+    base = GroupResponse.model_validate(g).model_dump(exclude={"students", "schedules", "programs"})
+    base["students"] = students_out
+    base["schedules"] = [GroupScheduleResponse.model_validate(s) for s in schedules]
+    base["programs"] = getattr(g, "programs", None) or []
+    return GroupResponse(**base)
 
 
 @router.post("/", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
@@ -18,37 +44,35 @@ async def create_group(
     current_user: User = Depends(auth.require_role(["admin"]))
 ):
     """Создание группы (только администратор)"""
-    # Проверка существования тренера
     trainer = db.query(User).filter(
         User.id == group.trainer_id,
         User.role == UserRole.TRAINER
     ).first()
     if not trainer:
         raise HTTPException(status_code=404, detail="Trainer not found")
-    
+
     db_group = Group(
         name=group.name,
+        direction=group.direction,
         trainer_id=group.trainer_id,
         status=GroupStatus.ACTIVE
     )
     db.add(db_group)
-    db.commit()
-    db.refresh(db_group)
-    
-    # Добавление учеников
+    db.flush()
+    if group.schedules:
+        for s in group.schedules:
+            start = s.start_time if hasattr(s.start_time, "hour") else _parse_time(s.start_time)
+            end = s.end_time if hasattr(s.end_time, "hour") else _parse_time(s.end_time)
+            db.add(GroupSchedule(group_id=db_group.id, day_of_week=s.day_of_week, start_time=start, end_time=end))
     if group.student_ids:
         for student_id in group.student_ids:
             student = db.query(Student).filter(Student.id == student_id).first()
             if student:
-                group_student = GroupStudent(
-                    group_id=db_group.id,
-                    student_id=student_id
-                )
-                db.add(group_student)
-        db.commit()
-    
+                db.add(GroupStudent(group_id=db_group.id, student_id=student_id))
+    db.commit()
+    db.refresh(db_group)
     log_action(db, current_user.id, "create", "group", db_group.id)
-    return db_group
+    return _group_to_response(db, db_group)
 
 
 @router.get("/", response_model=List[GroupResponse])
@@ -97,7 +121,11 @@ async def read_groups(
             StudentResponse(**{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)})
             for s in (g.students or [])
         ]
-        result.append(GroupResponse(**{**GroupResponse.model_validate(g).model_dump(), "students": students_out}))
+        base = GroupResponse.model_validate(g).model_dump(exclude={"students", "schedules", "programs"})
+        base["students"] = students_out
+        base["schedules"] = [GroupScheduleResponse.model_validate(s) for s in (getattr(g, "group_schedules", None) or [])]
+        base["programs"] = getattr(g, "programs", None) or []
+        result.append(GroupResponse(**base))
     return result
 
 
@@ -132,16 +160,7 @@ async def read_group(
         except Exception:
             group.students = []
 
-    # ФИО учеников из карточек (где привязана карточка)
-    student_list = group.students or []
-    if student_list:
-        display_names = get_students_display_names(db, [s.id for s in student_list])
-        students_out = [
-            StudentResponse(**{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)})
-            for s in student_list
-        ]
-        return GroupResponse(**{**GroupResponse.model_validate(group).model_dump(), "students": students_out})
-    return group
+    return _group_to_response(db, group)
 
 
 @router.put("/{group_id}", response_model=GroupResponse)
@@ -156,7 +175,8 @@ async def update_group(
     if db_group is None:
         raise HTTPException(status_code=404, detail="Group not found")
     
-    update_data = group_update.dict(exclude_unset=True)
+    update_data = group_update.model_dump(exclude_unset=True)
+    schedules_payload = update_data.pop("schedules", None)  # list of dicts or None
 
     # Валидация тренера (если меняем)
     if "trainer_id" in update_data and update_data["trainer_id"] is not None:
@@ -176,12 +196,19 @@ async def update_group(
 
     for field, value in update_data.items():
         setattr(db_group, field, value)
-    
+
+    if group_update.schedules is not None:
+        db.query(GroupSchedule).filter(GroupSchedule.group_id == group_id).delete()
+        for s in group_update.schedules:
+            start = s.start_time if hasattr(s.start_time, "hour") else _parse_time(s.start_time)
+            end = s.end_time if hasattr(s.end_time, "hour") else _parse_time(s.end_time)
+            db.add(GroupSchedule(group_id=group_id, day_of_week=s.day_of_week, start_time=start, end_time=end))
+
     db.commit()
     db.refresh(db_group)
-    
-    log_action(db, current_user.id, "update", "group", group_id, update_data)
-    return db_group
+
+    log_action(db, current_user.id, "update", "group", group_id, {**update_data, "schedules_updated": group_update.schedules is not None})
+    return _group_to_response(db, db_group)
 
 
 @router.post("/{group_id}/students/{student_id}")

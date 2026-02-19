@@ -868,35 +868,11 @@ class EventRegistrationResponse(BaseModel):
 # Group schemas
 class GroupBase(BaseModel):
     name: str
+    direction: Optional[str] = None
 
 
-class GroupCreate(GroupBase):
-    trainer_id: int
-    student_ids: Optional[List[int]] = []
-
-
-class GroupUpdate(BaseModel):
-    name: Optional[str] = None
-    trainer_id: Optional[int] = None
-    status: Optional[str] = None
-
-
-class GroupResponse(GroupBase):
-    id: int
-    trainer_id: int
-    status: str
-    created_at: datetime
-    trainer: Optional[UserResponse] = None
-    students: Optional[List[StudentResponse]] = []
-    programs: Optional[List["ProgramSummaryResponse"]] = []
-
-    class Config:
-        from_attributes = True
-
-
-# Group schedule (╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╣ ╨│╤А╤Г╨┐╨┐╤Л)
 class GroupScheduleCreate(BaseModel):
-    day_of_week: int  # 0=╨Я╨╜, 6=╨Т╤Б
+    day_of_week: int
     start_time: time
     end_time: time
 
@@ -907,6 +883,34 @@ class GroupScheduleResponse(BaseModel):
     day_of_week: int
     start_time: time
     end_time: time
+
+    class Config:
+        from_attributes = True
+
+
+class GroupCreate(GroupBase):
+    trainer_id: int
+    student_ids: Optional[List[int]] = []
+    schedules: Optional[List[GroupScheduleCreate]] = []
+
+
+class GroupUpdate(BaseModel):
+    name: Optional[str] = None
+    direction: Optional[str] = None
+    trainer_id: Optional[int] = None
+    status: Optional[str] = None
+    schedules: Optional[List[GroupScheduleCreate]] = None
+
+
+class GroupResponse(GroupBase):
+    id: int
+    trainer_id: int
+    status: str
+    created_at: datetime
+    trainer: Optional[UserResponse] = None
+    students: Optional[List[StudentResponse]] = []
+    programs: Optional[List["ProgramSummaryResponse"]] = []
+    schedules: Optional[List[GroupScheduleResponse]] = []
 
     class Config:
         from_attributes = True

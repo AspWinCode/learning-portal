@@ -597,6 +597,7 @@ class Group(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    direction = Column(String, nullable=True, index=True)  # first_step, specialist, expert, backend, frontend, oge, ege
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(_GroupStatusType(), default=GroupStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

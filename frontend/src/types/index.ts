@@ -57,9 +57,11 @@ export interface Group {
   trainer_id: number;
   status: 'active' | 'archived';
   created_at: string;
+  direction?: string | null;
   trainer?: User;
   students?: Student[];
   programs?: ProgramSummary[];
+  schedules?: GroupSchedule[];
 }
 
 export type AbsenceFollowUpStage = 'missed' | 'assigned' | 'made_up' | 'missed_makeup';

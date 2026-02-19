@@ -208,11 +208,21 @@ export const groupsApi = {
     const response = await api.get(`/api/groups/${id}`);
     return response.data;
   },
-  create: async (data: { name: string; trainer_id: number }): Promise<Group> => {
+  create: async (data: {
+    name: string;
+    trainer_id: number;
+    direction?: string | null;
+    schedules?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
+  }): Promise<Group> => {
     const response = await api.post('/api/groups/', data);
     return response.data;
   },
-  update: async (id: number, data: Partial<Group>): Promise<Group> => {
+  update: async (
+    id: number,
+    data: Partial<Pick<Group, 'name' | 'trainer_id' | 'status' | 'direction'>> & {
+      schedules?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
+    }
+  ): Promise<Group> => {
     const response = await api.put(`/api/groups/${id}`, data);
     return response.data;
   },

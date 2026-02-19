@@ -66,7 +66,7 @@ const SalesSettingsPage: React.FC = () => {
 
   const loadData = async () => {
     const errors: string[] = [];
-    const load = async <T>(name: string, fn: () => Promise<T>, setter: (v: T) => void) => {
+    const load = async <T,>(name: string, fn: () => Promise<T>, setter: (v: T) => void) => {
       try {
         const data = await fn();
         setter(data);

@@ -130,11 +130,12 @@ async def create_task_template(
         db.add(t)
         db.flush()
         for i, st in enumerate(payload.subtasks or []):
+            item = st if isinstance(st, dict) else {"text": getattr(st, "text", ""), "order": getattr(st, "order", None)}
             db.add(
                 TaskTemplateSubtask(
                     template_id=t.id,
-                    text=st.text.strip(),
-                    order=st.order if st.order is not None else i,
+                    text=(item.get("text") or "").strip(),
+                    order=item.get("order") if item.get("order") is not None else i,
                 )
             )
         for sid in payload.student_ids or []:
@@ -204,11 +205,12 @@ async def update_task_template(
         for s in t.subtasks:
             db.delete(s)
         for i, st in enumerate(payload.subtasks):
+            item = st if isinstance(st, dict) else {"text": getattr(st, "text", ""), "order": getattr(st, "order", None)}
             db.add(
                 TaskTemplateSubtask(
                     template_id=t.id,
-                    text=st.text.strip(),
-                    order=st.order if st.order is not None else i,
+                    text=(item.get("text") or "").strip(),
+                    order=item.get("order") if item.get("order") is not None else i,
                 )
             )
     if payload.student_ids is not None:
@@ -311,11 +313,12 @@ async def create_task(
         student_ids = payload.student_ids if payload.student_ids else [ts.student_id for ts in template.students]
     else:
         for i, st in enumerate(payload.subtasks or []):
+            item = st if isinstance(st, dict) else {"text": getattr(st, "text", ""), "order": getattr(st, "order", None)}
             db.add(
                 TaskSubtask(
                     task_id=task.id,
-                    text=st.text.strip(),
-                    order=st.order if st.order is not None else i,
+                    text=(item.get("text") or "").strip(),
+                    order=item.get("order") if item.get("order") is not None else i,
                     completed=False,
                 )
             )

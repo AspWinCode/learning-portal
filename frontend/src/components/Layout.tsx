@@ -217,8 +217,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     if (isAdminLike) items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
-    if (isAdminLike) items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
-    if (isAdminLike) items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
+    if (isAdminLike) {
+      items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
+      items.push({ text: 'Продажи: инструкции', icon: <Description />, path: '/sales/instructions' });
+      items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
+    }
     if (isAdminLike) items.push({ text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {
       items.push({ text: 'Воронки', icon: <FilterList />, path: '/owner-funnels' });

@@ -61,6 +61,11 @@ const StudentCardsPage: React.FC = () => {
   const [parentFullName, setParentFullName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [parentPhone2, setParentPhone2] = useState('');
+  const [parentTelegram, setParentTelegram] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+  const [studentEmail, setStudentEmail] = useState('');
+  const [preferredMessenger, setPreferredMessenger] = useState('');
+  const [comment, setComment] = useState('');
   const [abonementId, setAbonementId] = useState<number | ''>('');
   const [discountType, setDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
   const [discountValue, setDiscountValue] = useState('');
@@ -80,6 +85,11 @@ const StudentCardsPage: React.FC = () => {
     setParentFullName('');
     setParentPhone('');
     setParentPhone2('');
+    setParentTelegram('');
+    setParentEmail('');
+    setStudentEmail('');
+    setPreferredMessenger('');
+    setComment('');
     setAbonementId('');
     setDiscountType('none');
     setDiscountValue('');
@@ -139,6 +149,11 @@ const StudentCardsPage: React.FC = () => {
     setParentFullName(card.parent_full_name || '');
     setParentPhone(card.parent_phone || '');
     setParentPhone2(card.parent_phone_2 || '');
+    setParentTelegram(card.parent_telegram || '');
+    setParentEmail(card.parent_email || '');
+    setStudentEmail(card.student_email || '');
+    setPreferredMessenger(card.preferred_messenger || '');
+    setComment(card.comment || '');
     setAbonementId(card.abonement_id ?? '');
     setDiscountType(card.discount_type || 'none');
     setDiscountValue(String(card.discount_value ?? ''));
@@ -168,6 +183,11 @@ const StudentCardsPage: React.FC = () => {
         parent_full_name: parentFullName.trim() || null,
         parent_phone: parentPhone.trim() || null,
         parent_phone_2: parentPhone2.trim() || null,
+        parent_telegram: parentTelegram.trim() || null,
+        parent_email: parentEmail.trim() || null,
+        student_email: studentEmail.trim() || null,
+        preferred_messenger: preferredMessenger.trim() || null,
+        comment: comment.trim() || null,
         abonement_id: isOwner && abonementId ? Number(abonementId) : null,
         discount_type: isOwner ? discountType : 'none',
         discount_value: isOwner ? parseFloat(discountValue) || 0 : 0,
@@ -308,6 +328,19 @@ const StudentCardsPage: React.FC = () => {
               <TextField label="ФИО родителя" value={parentFullName} onChange={(e) => setParentFullName(e.target.value)} fullWidth />
               <TextField label="Мобильный телефон родителя" value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} fullWidth />
               <TextField label="Второй мобильный телефон родителя" value={parentPhone2} onChange={(e) => setParentPhone2(e.target.value)} fullWidth />
+              <TextField label="Телеграм родителя" value={parentTelegram} onChange={(e) => setParentTelegram(e.target.value)} fullWidth />
+              <TextField label="Email родителя" type="email" value={parentEmail} onChange={(e) => setParentEmail(e.target.value)} fullWidth />
+              <TextField label="Email ученика" type="email" value={studentEmail} onChange={(e) => setStudentEmail(e.target.value)} fullWidth />
+              <FormControl fullWidth>
+                <InputLabel>Удобный мессенджер для общения с родителем</InputLabel>
+                <Select value={preferredMessenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setPreferredMessenger(e.target.value)}>
+                  <MenuItem value="">—</MenuItem>
+                  <MenuItem value="max">MAX</MenuItem>
+                  <MenuItem value="telegram">Telegram</MenuItem>
+                  <MenuItem value="sms">SMS</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField label="Комментарий" value={comment} onChange={(e) => setComment(e.target.value)} fullWidth multiline minRows={2} />
 
               {isOwner && (
                 <>

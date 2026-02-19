@@ -373,6 +373,11 @@ class StudentCard(Base):
     parent_full_name = Column(String, nullable=True)
     parent_phone = Column(String, nullable=True)
     parent_phone_2 = Column(String, nullable=True)
+    parent_telegram = Column(String, nullable=True)
+    parent_email = Column(String, nullable=True)
+    student_email = Column(String, nullable=True)
+    preferred_messenger = Column(String, nullable=True)  # max / telegram / sms
+    comment = Column(Text, nullable=True)
     # Только owner: абонемент и скидка
     abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True, index=True)
     discount_type = Column(

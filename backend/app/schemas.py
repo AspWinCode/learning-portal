@@ -529,6 +529,11 @@ class StudentCardBase(BaseModel):
     parent_full_name: Optional[str] = None
     parent_phone: Optional[str] = None
     parent_phone_2: Optional[str] = None
+    parent_telegram: Optional[str] = None
+    parent_email: Optional[str] = None
+    student_email: Optional[str] = None
+    preferred_messenger: Optional[str] = None  # max / telegram / sms
+    comment: Optional[str] = None
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
@@ -552,6 +557,11 @@ class StudentCardUpdate(BaseModel):
     parent_full_name: Optional[str] = None
     parent_phone: Optional[str] = None
     parent_phone_2: Optional[str] = None
+    parent_telegram: Optional[str] = None
+    parent_email: Optional[str] = None
+    student_email: Optional[str] = None
+    preferred_messenger: Optional[str] = None
+    comment: Optional[str] = None
     abonement_id: Optional[int] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None

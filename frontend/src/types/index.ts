@@ -263,6 +263,11 @@ export interface StudentCard {
   parent_full_name?: string | null;
   parent_phone?: string | null;
   parent_phone_2?: string | null;
+  parent_telegram?: string | null;
+  parent_email?: string | null;
+  student_email?: string | null;
+  preferred_messenger?: string | null; // max | telegram | sms
+  comment?: string | null;
   abonement_id?: number | null;
   discount_type: 'none' | 'amount' | 'percent';
   discount_value: number;

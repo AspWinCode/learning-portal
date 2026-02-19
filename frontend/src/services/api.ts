@@ -294,6 +294,17 @@ export const salesInstructionsApi = {
   },
 };
 
+export const salesInstructionImagesApi = {
+  upload: async (file: File): Promise<{ id: number; url: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/api/sales/instruction-images', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+};
+
 export const characteristicsApi = {
   getAll: async (params?: any): Promise<Characteristic[]> => {
     const response = await api.get('/api/characteristics/', { params });

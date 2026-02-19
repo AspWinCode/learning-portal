@@ -33,6 +33,7 @@ from app.models import (
     SalesCity,
     SalesSchool,
     SalesInstruction,
+    SalesInstructionImage,
 )
 from app.schemas import (
     LeadCreate,
@@ -210,6 +211,41 @@ async def delete_sales_instruction(
     db.commit()
     log_action(db, current_user.id, "delete", "sales_instruction", instruction_id, {})
     return None
+
+
+@router.post("/sales/instruction-images")
+async def upload_sales_instruction_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    filename = file.filename or ""
+    content_type = file.content_type or "application/octet-stream"
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Можно загружать только изображения")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    if len(data) > 400 * 1024:
+        raise HTTPException(status_code=400, detail="Картинка слишком большая (лимит ~400KB)")
+    img = SalesInstructionImage(data=data, content_type=content_type)
+    db.add(img)
+    db.commit()
+    db.refresh(img)
+    url = f"/api/sales/instruction-images/{img.id}"
+    return {"id": img.id, "url": url}
+
+
+@router.get("/sales/instruction-images/{image_id}")
+async def get_sales_instruction_image(
+    image_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    img = db.query(SalesInstructionImage).filter(SalesInstructionImage.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return StreamingResponse(BytesIO(img.data), media_type=img.content_type or "application/octet-stream")
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:

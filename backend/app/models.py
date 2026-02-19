@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, Time, ForeignKey, Text, Float, Enum as SQLEnum, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, Time, ForeignKey, Text, Float, Enum as SQLEnum, JSON, UniqueConstraint, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
@@ -342,6 +342,15 @@ class SalesInstruction(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     created_by = relationship("User")
+
+
+class SalesInstructionImage(Base):
+    __tablename__ = "sales_instruction_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    data = Column(LargeBinary, nullable=False)
+    content_type = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class LeadTaskTemplate(Base):

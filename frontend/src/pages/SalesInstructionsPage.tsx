@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import { Box, Button, Card, CardContent, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
-import { salesInstructionsApi } from '../services/api';
+import { salesInstructionsApi, salesInstructionImagesApi } from '../services/api';
 import { SalesInstruction } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -91,7 +91,7 @@ const SalesInstructionsPage: React.FC = () => {
     }
   };
 
-  const handleInsertImage = (file: File | null) => {
+  const handleInsertImage = async (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       setError('Можно загружать только изображения (png/jpg/webp и т.п.)');
@@ -101,12 +101,12 @@ const SalesInstructionsPage: React.FC = () => {
       setError('Картинка слишком тяжёлая. Ограничение ~400KB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || '');
+    try {
+      const res = await salesInstructionImagesApi.upload(file);
+      const url = res.url;
       setDraftBody((prev) => {
         const el = bodyInputRef.current;
-        const tag = `<img src="${dataUrl}" style="max-width:100%;height:auto;" />`;
+        const tag = `<img src="${url}" style="max-width:100%;height:auto;" />`;
         if (!el) {
           return (prev ? `${prev}\n\n` : '') + tag;
         }
@@ -114,8 +114,9 @@ const SalesInstructionsPage: React.FC = () => {
         const end = el.selectionEnd ?? start;
         return prev.slice(0, start) + tag + prev.slice(end);
       });
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Не удалось загрузить картинку');
+    }
   };
 
   return (
@@ -201,9 +202,9 @@ const SalesInstructionsPage: React.FC = () => {
                         type="file"
                         hidden
                         accept="image/*"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0] || null;
-                          handleInsertImage(file);
+                          await handleInsertImage(file);
                           e.target.value = '';
                         }}
                       />

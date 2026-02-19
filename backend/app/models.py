@@ -642,6 +642,57 @@ class GroupSchedule(Base):
     group = relationship("Group", back_populates="group_schedules")
 
 
+# --- Проекты (канбан для admin/owner/sales): родители или ученики по этапам воронки ---
+class Project(Base):
+    """Проект: название, даты, описание; тип — родители или ученики; этапы (колонки канбана)."""
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    description = Column(Text, nullable=True)
+    entity_type = Column(String, nullable=False, index=True)  # "parent" | "student"
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    archived = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    stages = relationship("ProjectStage", back_populates="project", order_by="ProjectStage.position", cascade="all, delete-orphan")
+    cards = relationship("ProjectCard", back_populates="project", cascade="all, delete-orphan")
+
+
+class ProjectStage(Base):
+    """Этап воронки (колонка канбана): название и порядок."""
+    __tablename__ = "project_stages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    position = Column(Integer, default=0, nullable=False)
+
+    project = relationship("Project", back_populates="stages")
+    cards = relationship("ProjectCard", back_populates="stage", cascade="all, delete-orphan", order_by="ProjectCard.position")
+
+
+class ProjectCard(Base):
+    """Карточка в канбане: привязка к родителю (user) или ученику (student)."""
+    __tablename__ = "project_cards"
+    __table_args__ = (UniqueConstraint("project_id", "entity_type", "entity_id", name="uq_project_card_entity"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    stage_id = Column(Integer, ForeignKey("project_stages.id", ondelete="CASCADE"), nullable=False, index=True)
+    entity_type = Column(String, nullable=False, index=True)  # "parent" | "student"
+    entity_id = Column(Integer, nullable=False, index=True)  # user.id для parent, student.id для student
+    position = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("Project", back_populates="cards")
+    stage = relationship("ProjectStage", back_populates="cards")
+
+
 class LessonAttendance(Base):
     """╨Я╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М: ╨║╤В╨╛ ╨▒╤Л╨╗ ╨╜╨░ ╨╖╨░╨╜╤П╤В╨╕╨╕ (╨│╤А╤Г╨┐╨┐╨░ + ╨┤╨░╤В╨░)."""
     __tablename__ = "lesson_attendance"

@@ -87,6 +87,40 @@ export interface GroupSchedule {
   end_time: string;
 }
 
+export interface ProjectStage {
+  id: number;
+  project_id: number;
+  name: string;
+  position: number;
+}
+
+export interface ProjectCard {
+  id: number;
+  project_id: number;
+  stage_id: number;
+  entity_type: 'parent' | 'student';
+  entity_id: number;
+  position: number;
+  created_at: string;
+  display_name?: string | null;
+}
+
+export interface Project {
+  id: number;
+  name: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  description?: string | null;
+  entity_type: 'parent' | 'student';
+  created_by_id: number;
+  archived: boolean;
+  created_at: string;
+  updated_at?: string | null;
+  created_by?: User | null;
+  stages?: ProjectStage[];
+  card_count?: number;
+}
+
 export interface TrainerLessonSlot {
   group_id: number;
   group_name: string;

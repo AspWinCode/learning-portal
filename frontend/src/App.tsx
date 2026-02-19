@@ -37,6 +37,8 @@ import SalesInstructionsPage from './pages/SalesInstructionsPage';
 import StudentCardsPage from './pages/StudentCardsPage';
 import SalesAbsencesPage from './pages/SalesAbsencesPage';
 import TasksPage from './pages/TasksPage';
+import ProjectsPage from './pages/ProjectsPage';
+import ProjectKanbanPage from './pages/ProjectKanbanPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
 
@@ -305,6 +307,22 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <TasksPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/projects"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <ProjectsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <ProjectKanbanPage />
                 </PrivateRoute>
               }
             />

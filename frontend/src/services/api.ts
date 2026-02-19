@@ -245,6 +245,64 @@ export const groupsApi = {
   },
 };
 
+export const projectsApi = {
+  list: async (params?: { archived?: boolean }): Promise<import('../types').Project[]> => {
+    const response = await api.get('/api/projects/', { params });
+    return response.data;
+  },
+  getById: async (id: number): Promise<import('../types').Project> => {
+    const response = await api.get(`/api/projects/${id}`);
+    return response.data;
+  },
+  create: async (data: {
+    name: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    description?: string | null;
+    entity_type: 'parent' | 'student';
+  }): Promise<import('../types').Project> => {
+    const response = await api.post('/api/projects/', data);
+    return response.data;
+  },
+  update: async (
+    id: number,
+    data: Partial<Pick<import('../types').Project, 'name' | 'start_date' | 'end_date' | 'description' | 'archived'>>
+  ): Promise<import('../types').Project> => {
+    const response = await api.put(`/api/projects/${id}`, data);
+    return response.data;
+  },
+  getBoard: async (id: number): Promise<{
+    project: import('../types').Project;
+    stages: Array<import('../types').ProjectStage & { cards: import('../types').ProjectCard[] }>;
+  }> => {
+    const response = await api.get(`/api/projects/${id}/board`);
+    return response.data;
+  },
+  createStage: async (projectId: number, data: { name: string; position?: number }): Promise<import('../types').ProjectStage> => {
+    const response = await api.post(`/api/projects/${projectId}/stages`, data);
+    return response.data;
+  },
+  updateStage: async (
+    projectId: number,
+    stageId: number,
+    data: { name?: string; position?: number }
+  ): Promise<import('../types').ProjectStage> => {
+    const response = await api.patch(`/api/projects/${projectId}/stages/${stageId}`, data);
+    return response.data;
+  },
+  deleteStage: async (projectId: number, stageId: number): Promise<void> => {
+    await api.delete(`/api/projects/${projectId}/stages/${stageId}`);
+  },
+  moveCard: async (
+    projectId: number,
+    cardId: number,
+    data: { stage_id: number; position?: number }
+  ): Promise<import('../types').ProjectCard> => {
+    const response = await api.patch(`/api/projects/${projectId}/cards/${cardId}/move`, data);
+    return response.data;
+  },
+};
+
 export const trainerLessonsApi = {
   getForDate: async (lessonDate: string): Promise<import('../types').TrainerLessonSlot[]> => {
     const response = await api.get('/api/trainer-lessons/', { params: { lesson_date: lessonDate } });

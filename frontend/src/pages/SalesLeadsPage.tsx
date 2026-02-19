@@ -2230,18 +2230,18 @@ const SalesLeadsPage: React.FC = () => {
             <Card variant="outlined" sx={{ boxShadow: 'none' }}>
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                  <Typography variant="h6">╨Ъ╨░╤А╤В╨╛╤З╨║╨░ ╨╗╨╕╨┤╨░</Typography>
-                  <Button size="small" onClick={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
+                  <Typography variant="h6">Карточка лида</Typography>
+                  <Button size="small" onClick={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}>Закрыть</Button>
                 </Stack>
                 <Grid container spacing={2} sx={{ mt: 0.5 }}>
                   <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2">╨Ъ╨╗╨╕╨╡╨╜╤В</Typography>
+                    <Typography variant="subtitle2">Контакты</Typography>
                     <Grid container spacing={1} sx={{ mt: 0.25 }}>
                       <Grid item xs={12}>
                         <TextField
                           fullWidth
                           size="small"
-                          label="╨а╨╛╨┤╨╕╤В╨╡╨╗╤М"
+                          label="ФИО родителя"
                           value={leadInfoDraft.parent_full_name}
                           onChange={(e) => setLeadInfoDraft((s) => ({ ...s, parent_full_name: e.target.value }))}
                         />
@@ -2250,7 +2250,7 @@ const SalesLeadsPage: React.FC = () => {
                         <TextField
                           fullWidth
                           size="small"
-                          label="╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П"
+                          label="Телефон родителя"
                           value={leadInfoDraft.parent_phone}
                           onChange={(e) => setLeadInfoDraft((s) => ({ ...s, parent_phone: e.target.value }))}
                         />
@@ -2259,7 +2259,7 @@ const SalesLeadsPage: React.FC = () => {
                         <TextField
                           fullWidth
                           size="small"
-                          label="╨а╨╡╨▒╨╡╨╜╨╛╨║"
+                          label="ФИО ребёнка"
                           value={leadInfoDraft.child_full_name}
                           onChange={(e) => setLeadInfoDraft((s) => ({ ...s, child_full_name: e.target.value }))}
                         />
@@ -2268,7 +2268,7 @@ const SalesLeadsPage: React.FC = () => {
                         <TextField
                           fullWidth
                           size="small"
-                          label="╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤И╨║╨╛╨╗╤М╨╜╨╕╨║╨░"
+                          label="Телефон ребёнка"
                           value={leadInfoDraft.child_phone}
                           onChange={(e) => setLeadInfoDraft((s) => ({ ...s, child_phone: e.target.value }))}
                         />
@@ -2284,10 +2284,10 @@ const SalesLeadsPage: React.FC = () => {
                       </Grid>
                       <Grid item xs={12}>
                         <FormControl size="small" fullWidth>
-                          <InputLabel id="lead-communication-channel-label">╨Ъ╨░╨╜╨░╨╗ ╨╛╨▒╤Й╨╡╨╜╨╕╤П</InputLabel>
+                          <InputLabel id="lead-communication-channel-label">Канал общения</InputLabel>
                           <Select
                             labelId="lead-communication-channel-label"
-                            label="╨Ъ╨░╨╜╨░╨╗ ╨╛╨▒╤Й╨╡╨╜╨╕╤П"
+                            label="Канал общения"
                             value={leadInfoDraft.communication_channel}
                             onChange={(e) =>
                               setLeadInfoDraft((s) => ({
@@ -2297,7 +2297,7 @@ const SalesLeadsPage: React.FC = () => {
                             }
                           >
                             <MenuItem value="">
-                              <em>╨Э╨╡ ╨╖╨░╨┤╨░╨╜</em>
+                              <em>Не указан</em>
                             </MenuItem>
                             {Object.entries(leadCommunicationChannelLabels).map(([value, label]) => (
                               <MenuItem key={value} value={value}>
@@ -2311,7 +2311,7 @@ const SalesLeadsPage: React.FC = () => {
                         <TextField
                           fullWidth
                           size="small"
-                          label="╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║"
+                          label="Источник"
                           value={leadInfoDraft.source}
                           onChange={(e) => setLeadInfoDraft((s) => ({ ...s, source: e.target.value }))}
                         />
@@ -2320,7 +2320,7 @@ const SalesLeadsPage: React.FC = () => {
                         <TextField
                           fullWidth
                           size="small"
-                          label="╨Ъ╤В╨╛ ╨┐╤А╨╕╨│╨╗╨░╤Б╨╕╨╗"
+                          label="Кто порекомендовал"
                           value={leadInfoDraft.referral_name}
                           onChange={(e) => setLeadInfoDraft((s) => ({ ...s, referral_name: e.target.value }))}
                         />
@@ -2333,7 +2333,7 @@ const SalesLeadsPage: React.FC = () => {
                       disabled={leadInfoSaving}
                       sx={{ mt: 1 }}
                     >
-                      {leadInfoSaving ? '╨б╨╛╤Е╤А╨░╨╜╤П╨╡╨╝...' : '╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤О'}
+                      {leadInfoSaving ? 'Сохранение...' : 'Сохранить контакты'}
                     </Button>
                     <TextField
                       fullWidth
@@ -2341,14 +2341,14 @@ const SalesLeadsPage: React.FC = () => {
                       minRows={2}
                       size="small"
                       sx={{ mt: 1 }}
-                      label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
+                      label="Комментарий по лиду"
                       value={leadCommentDraft}
                       onChange={(e) => setLeadCommentDraft(e.target.value)}
-                      helperText={leadCommentSaving ? '╨б╨╛╤Е╤А╨░╨╜╤П╨╡╨╝...' : '╨б╨╛╤Е╤А╨░╨╜╤П╨╡╤В╤Б╤П ╨░╨▓╤В╨╛╨╝╨░╤В╨╕╤З╨╡╤Б╨║╨╕'}
+                      helperText={leadCommentSaving ? 'Сохранение...' : 'Можно описать контекст, договорённости и след. шаги'}
                     />
                     {selectedLead.lost_reason && (
                       <Alert severity="warning" sx={{ mt: 1 }}>
-                        ╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╖╨░╨║╤А╤Л╤В╨╕╤П: {selectedLead.lost_reason}
+                        Причина отказа: {selectedLead.lost_reason}
                       </Alert>
                     )}
                   </Grid>
@@ -2361,12 +2361,12 @@ const SalesLeadsPage: React.FC = () => {
       </Grid>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>╨Ч╨░╨┐╨╛╨╗╨╜╨╕╤В╤М ╨╗╨╕╨┤</DialogTitle>
+        <DialogTitle>Новый лид</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} md={6}>
               <TextField
-                label="╨д╨Ш╨Ю ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П *"
+                label="ФИО родителя *"
                 fullWidth
                 required
                 value={form.parent_full_name}
@@ -2375,7 +2375,7 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="╨д╨Ш╨Ю ╤А╨╡╨▒╨╡╨╜╨║╨░"
+                label="ФИО ребёнка"
                 fullWidth
                 value={form.child_full_name}
                 onChange={(e) => setForm((s) => ({ ...s, child_full_name: e.target.value }))}
@@ -2383,23 +2383,23 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П *"
+                label="Телефон родителя *"
                 fullWidth
                 required
                 value={form.parent_phone}
                 onChange={(e) => setForm((s) => ({ ...s, parent_phone: e.target.value }))}
                 onBlur={() => setForm((s) => ({ ...s, parent_phone: normalizeRuPhone(s.parent_phone) }))}
-                helperText="╨д╨╛╤А╨╝╨░╤В: +7XXXXXXXXXX"
+                helperText="Формат: +7XXXXXXXXXX"
               />
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤И╨║╨╛╨╗╤М╨╜╨╕╨║╨░"
+                label="Телефон ребёнка"
                 fullWidth
                 value={form.child_phone}
                 onChange={(e) => setForm((s) => ({ ...s, child_phone: e.target.value }))}
                 onBlur={() => setForm((s) => ({ ...s, child_phone: normalizeRuPhone(s.child_phone) }))}
-                helperText="╨д╨╛╤А╨╝╨░╤В: +7XXXXXXXXXX"
+                helperText="Формат: +7XXXXXXXXXX"
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -2412,15 +2412,15 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth required>
-                <InputLabel id="lead-city-label">╨У╨╛╤А╨╛╨┤ *</InputLabel>
+                <InputLabel id="lead-city-label">Город *</InputLabel>
                 <Select
                   labelId="lead-city-label"
-                  label="╨У╨╛╤А╨╛╨┤ *"
+                  label="Город *"
                   value={form.city}
                   onChange={(e) => setForm((s) => ({ ...s, city: e.target.value as string }))}
                 >
                   <MenuItem value="">
-                    <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜</em>
+                    <em>Не выбран</em>
                   </MenuItem>
                   {cityOptions.map((city) => (
                     <MenuItem key={city} value={city}>
@@ -2436,12 +2436,12 @@ const SalesLeadsPage: React.FC = () => {
                 options={schoolOptions}
                 inputValue={form.school_name}
                 onInputChange={(_, value) => setForm((s) => ({ ...s, school_name: value }))}
-                renderInput={(params) => <TextField {...params} label="╨и╨║╨╛╨╗╨░" fullWidth helperText="╨Ь╨╛╨╢╨╜╨╛ ╨▓╤Л╨▒╤А╨░╤В╤М ╨╕╨╖ ╤Б╨┐╨╕╤Б╨║╨░ ╨╕╨╗╨╕ ╨╜╨░╨╣╤В╨╕ ╤З╨╡╤А╨╡╨╖ ╨┐╨╛╨╕╤Б╨║" />}
+                renderInput={(params) => <TextField {...params} label="Школа" fullWidth helperText="Можно выбрать из списка или ввести свою" />}
               />
             </Grid>
             <Grid item xs={12} md={3}>
               <TextField
-                label="╨Ъ╨╗╨░╤Б╤Б"
+                label="Класс"
                 fullWidth
                 value={form.school_class}
                 onChange={(e) => setForm((s) => ({ ...s, school_class: e.target.value }))}
@@ -2449,7 +2449,7 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
-                label="╨Ф╨░╤В╨░ ╨╛╨▒╤Е╨╛╨┤╨░"
+                label="Дата обхода"
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
@@ -2459,15 +2459,15 @@ const SalesLeadsPage: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth required>
-                <InputLabel id="lead-source-label">╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║ *</InputLabel>
+                <InputLabel id="lead-source-label">Источник *</InputLabel>
                 <Select
                   labelId="lead-source-label"
-                  label="╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║ *"
+                  label="Источник *"
                   value={form.source_id}
                   onChange={(e) => setForm((s) => ({ ...s, source_id: e.target.value as string }))}
                 >
                   <MenuItem value="">
-                    <em>╨Э╨╡ ╨▓╤Л╨▒╤А╨░╨╜</em>
+                    <em>Не выбран</em>
                   </MenuItem>
                   {leadSources.map((src) => (
                     <MenuItem key={src.id} value={src.id}>
@@ -2477,10 +2477,10 @@ const SalesLeadsPage: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            {leadSources.find((s) => String(s.id) === String(form.source_id))?.name.toLowerCase() === '╤А╨╡╨║╨╛╨╝╨╡╨╜╨┤╨░╤Ж╨╕╤П' && (
+            {leadSources.find((s) => String(s.id) === String(form.source_id))?.name.toLowerCase() === 'сарафанное радио' && (
               <Grid item xs={12} md={6}>
                 <TextField
-                  label="╨Ъ╤В╨╛ ╨┐╤А╨╕╨│╨╗╨░╤Б╨╕╨╗"
+                  label="Кто порекомендовал"
                   fullWidth
                   value={form.referral_name}
                   onChange={(e) => setForm((s) => ({ ...s, referral_name: e.target.value }))}
@@ -2488,16 +2488,16 @@ const SalesLeadsPage: React.FC = () => {
               </Grid>
             )}
             <Grid item xs={12} md={6}>
-              <TextField
-                label="╨в╨╡╨│╨╕ (╤З╨╡╤А╨╡╨╖ ╨╖╨░╨┐╤П╤В╤Г╤О)"
+                <TextField
+                  label="Теги (через запятую)"
                 fullWidth
                 value={form.tags}
                 onChange={(e) => setForm((s) => ({ ...s, tags: e.target.value }))}
               />
             </Grid>
             <Grid item xs={12} md={12}>
-              <TextField
-                label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
+                <TextField
+                  label="Комментарий по лиду"
                 fullWidth
                 multiline
                 minRows={2}
@@ -2508,30 +2508,30 @@ const SalesLeadsPage: React.FC = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setCreateOpen(false)}>Отмена</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
             disabled={!form.parent_full_name.trim() || !form.parent_phone.trim() || !form.city.trim() || !form.source_id}
           >
-            ╨б╨╛╨╖╨┤╨░╤В╤М
+            Создать
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={sendInfoOpen} onClose={() => setSendInfoOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨╕╨╜╤Д╨╛</DialogTitle>
+        <DialogTitle>Отправить информацию</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 1 }}>
-            <InputLabel id="info-template-label">╨и╨░╨▒╨╗╨╛╨╜</InputLabel>
+            <InputLabel id="info-template-label">Шаблон сообщения</InputLabel>
             <Select
               labelId="info-template-label"
-              label="╨и╨░╨▒╨╗╨╛╨╜"
+              label="Шаблон сообщения"
               value={sendInfoForm.template_id}
               onChange={(e) => handleTemplateChange(String(e.target.value))}
             >
               <MenuItem value="">
-                <em>╨С╨╡╨╖ ╤И╨░╨▒╨╗╨╛╨╜╨░</em>
+                <em>Без шаблона</em>
               </MenuItem>
               {infoTemplates.map((tpl) => (
                 <MenuItem key={tpl.id} value={tpl.id}>{tpl.name}</MenuItem>
@@ -2539,10 +2539,10 @@ const SalesLeadsPage: React.FC = () => {
             </Select>
           </FormControl>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="info-channel-label">╨Ъ╨░╨╜╨░╨╗</InputLabel>
+            <InputLabel id="info-channel-label">Канал</InputLabel>
             <Select
               labelId="info-channel-label"
-              label="╨Ъ╨░╨╜╨░╨╗"
+              label="Канал"
               value={sendInfoForm.channel}
               onChange={(e) => setSendInfoForm((s) => ({ ...s, channel: String(e.target.value) }))}
             >
@@ -2555,31 +2555,31 @@ const SalesLeadsPage: React.FC = () => {
             fullWidth
             multiline
             minRows={3}
-            label="╨в╨╡╨║╤Б╤В"
+            label="Пауза"
             sx={{ mt: 2 }}
             value={sendInfoForm.message}
             onChange={(e) => setSendInfoForm((s) => ({ ...s, message: e.target.value }))}
           />
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="pause-reason-label">╨Я╤А╨╕╤З╨╕╨╜╨░ ╨┐╨░╤Г╨╖╤Л</InputLabel>
+            <InputLabel id="pause-reason-label">Причина паузы</InputLabel>
             <Select
               labelId="pause-reason-label"
-              label="╨Я╤А╨╕╤З╨╕╨╜╨░ ╨┐╨░╤Г╨╖╤Л"
+              label="Причина паузы"
               value={sendInfoForm.pause_reason}
               onChange={(e) => setSendInfoForm((s) => ({ ...s, pause_reason: String(e.target.value) }))}
             >
               <MenuItem value="">
-                <em>╨С╨╡╨╖ ╨┐╨░╤Г╨╖╤Л</em>
+                <em>Без paузы</em>
               </MenuItem>
-              <MenuItem value="╨╢╨┤╤С╨╝ ╨╛╤В╨▓╨╡╤В">╨╢╨┤╤С╨╝ ╨╛╤В╨▓╨╡╤В</MenuItem>
-              <MenuItem value="╨┐╨╛╨┤╤Г╨╝╨░╤В╤М">╨┐╨╛╨┤╤Г╨╝╨░╤В╤М</MenuItem>
-              <MenuItem value="╨╜╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕">╨╜╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕</MenuItem>
+              <MenuItem value="нет ответа">Нет ответа</MenuItem>
+              <MenuItem value="подумают">Подумают</MenuItem>
+              <MenuItem value="после мероприятия">После мероприятия</MenuItem>
             </Select>
           </FormControl>
           <TextField
             fullWidth
             type="datetime-local"
-            label="Follow-up (╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛)"
+            label="Follow-up (когда связаться)"
             InputLabelProps={{ shrink: true }}
             sx={{ mt: 2 }}
             value={sendInfoForm.follow_up_at}
@@ -2587,24 +2587,24 @@ const SalesLeadsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSendInfoOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
-          <Button variant="contained" onClick={handleSendInfo}>╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М</Button>
+          <Button onClick={() => setSendInfoOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={handleSendInfo}>Отправить</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={registerEventOpen} onClose={() => setRegisterEventOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ч╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</DialogTitle>
+        <DialogTitle>Быстрая запись на мероприятие</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 1 }}>
-            <InputLabel id="quick-event-label">╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</InputLabel>
+            <InputLabel id="quick-event-label">Мероприятие</InputLabel>
             <Select
               labelId="quick-event-label"
-              label="╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡"
+              label="Мероприятие"
               value={registerEventId}
               onChange={(e) => setRegisterEventId((e.target.value as number) || '')}
             >
               <MenuItem value="">
-                <em>╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</em>
+                <em>Не выбрано</em>
               </MenuItem>
               {events.map((ev) => (
                 <MenuItem key={ev.id} value={ev.id}>
@@ -2617,23 +2617,23 @@ const SalesLeadsPage: React.FC = () => {
             fullWidth
             multiline
             minRows={2}
-            label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣"
+            label="Комментарий по регистрации"
             sx={{ mt: 2 }}
             value={registerEventNote}
             onChange={(e) => setRegisterEventNote(e.target.value)}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRegisterEventOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
-          <Button variant="contained" onClick={handleRegisterToEvent}>╨Ч╨░╨┐╨╕╤Б╨░╤В╤М</Button>
+          <Button onClick={() => setRegisterEventOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={handleRegisterToEvent}>Записать</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={lostDialogOpen} onClose={() => setLostDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ч╨░╨║╤А╤Л╤В╤М ╨╗╨╕╨┤</DialogTitle>
+        <DialogTitle>Причина отказа</DialogTitle>
         <DialogContent>
           <TextField
-            label="╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╖╨░╨║╤А╤Л╤В╨╕╤П"
+            label="Причина отказа"
             fullWidth
             multiline
             minRows={3}
@@ -2643,22 +2643,22 @@ const SalesLeadsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setLostDialogOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setLostDialogOpen(false)}>Отмена</Button>
           <Button variant="contained" color="warning" onClick={handleConfirmLost}>
-            ╨Я╨╛╨┤╤В╨▓╨╡╤А╨┤╨╕╤В╤М
+            Подтвердить отказ
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={batchFollowUpOpen} onClose={() => setBatchFollowUpOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ь╨░╤Б╤Б╨╛╨▓╤Л╨╣ follow-up</DialogTitle>
+        <DialogTitle>Массовый follow‑up</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            ╨Т╤Л╨▒╤А╨░╨╜╨╛ ╨╗╨╕╨┤╨╛╨▓: {selectedLeadIds.length}
+            Выбрано лидов: {selectedLeadIds.length}
           </Typography>
           <TextField
             fullWidth
             type="datetime-local"
-            label="╨Ф╨░╤В╨░ ╨╕ ╨▓╤А╨╡╨╝╤П follow-up"
+            label="Дата и время follow‑up"
             InputLabelProps={{ shrink: true }}
             sx={{ mt: 2 }}
             value={batchFollowUpAt}
@@ -2666,28 +2666,28 @@ const SalesLeadsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBatchFollowUpOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setBatchFollowUpOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleBatchAssignFollowUp()}>
-            ╨Э╨░╨╖╨╜╨░╤З╨╕╤В╤М
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={batchSendOpen} onClose={() => setBatchSendOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ь╨░╤Б╤Б╨╛╨▓╨░╤П ╨╛╤В╨┐╤А╨░╨▓╨║╨░ ╤И╨░╨▒╨╗╨╛╨╜╨░</DialogTitle>
+        <DialogTitle>Массовая отправка информации</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            ╨Т╤Л╨▒╤А╨░╨╜╨╛ ╨╗╨╕╨┤╨╛╨▓: {selectedLeadIds.length}
+            Выбрано лидов: {selectedLeadIds.length}
           </Typography>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="batch-template-label">╨и╨░╨▒╨╗╨╛╨╜</InputLabel>
+            <InputLabel id="batch-template-label">Шаблон сообщения</InputLabel>
             <Select
               labelId="batch-template-label"
-              label="╨и╨░╨▒╨╗╨╛╨╜"
+              label="Шаблон сообщения"
               value={batchTemplateId}
               onChange={(e) => handleBatchTemplateChange((e.target.value as number) || '')}
             >
               <MenuItem value="">
-                <em>╨С╨╡╨╖ ╤И╨░╨▒╨╗╨╛╨╜╨░</em>
+                <em>Без шаблона</em>
               </MenuItem>
               {infoTemplates.map((tpl) => (
                 <MenuItem key={tpl.id} value={tpl.id}>
@@ -2697,10 +2697,10 @@ const SalesLeadsPage: React.FC = () => {
             </Select>
           </FormControl>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="batch-channel-label">╨Ъ╨░╨╜╨░╨╗</InputLabel>
+            <InputLabel id="batch-channel-label">Канал</InputLabel>
             <Select
               labelId="batch-channel-label"
-              label="╨Ъ╨░╨╜╨░╨╗"
+              label="Канал"
               value={batchSendChannel}
               onChange={(e) => setBatchSendChannel(String(e.target.value))}
             >
@@ -2713,7 +2713,7 @@ const SalesLeadsPage: React.FC = () => {
             fullWidth
             multiline
             minRows={3}
-            label="╨б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡"
+            label="Сообщение"
             sx={{ mt: 2 }}
             value={batchSendMessage}
             onChange={(e) => setBatchSendMessage(e.target.value)}
@@ -2721,7 +2721,7 @@ const SalesLeadsPage: React.FC = () => {
           <TextField
             fullWidth
             type="datetime-local"
-            label="Follow-up (╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛)"
+            label="Follow-up (когда связаться)"
             InputLabelProps={{ shrink: true }}
             sx={{ mt: 2 }}
             value={batchSendFollowUpAt}
@@ -2729,9 +2729,9 @@ const SalesLeadsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBatchSendOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setBatchSendOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleBatchSendTemplate()}>
-            ╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М
+            Отправить
           </Button>
         </DialogActions>
       </Dialog>

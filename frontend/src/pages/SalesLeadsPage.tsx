@@ -1421,12 +1421,12 @@ const SalesLeadsPage: React.FC = () => {
       if (real.total_steps > 0) {
         return {
           percent: real.progress_percent,
-          label: `${real.done_steps}/${real.total_steps} ╤И╨░╨│╨╛╨▓`,
+          label: `${real.done_steps}/${real.total_steps} шагов`,
         };
       }
-      if (lead.status === 'won') return { percent: 100, label: '╨╛╨┐╨╗╨░╤З╨╡╨╜╨╛' };
-      if (lead.status === 'lost') return { percent: 100, label: '╨╖╨░╨║╤А╤Л╤В╨╛' };
-      return { percent: 0, label: '╨╜╨╡╤В ╤И╨░╨│╨╛╨▓' };
+      if (lead.status === 'won') return { percent: 100, label: 'Закрыт: успешно' };
+      if (lead.status === 'lost') return { percent: 100, label: 'Закрыт: отказ' };
+      return { percent: 0, label: 'Шаги ещё не начаты' };
     }
     const byStatus: Record<LeadStatus, number> = {
       new: 0,
@@ -1445,12 +1445,12 @@ const SalesLeadsPage: React.FC = () => {
     const base = byStatus[lead.status] ?? 0;
     if (lead.status === 'contacted' || lead.status === 'no_answer' || lead.status === 'demo' || lead.status === 'invoice_sent') {
       if (!lead.next_contact_at) {
-        return { percent: Math.max(base - 10, 0), label: '╨▒╨╡╨╖ follow-up' };
+        return { percent: Math.max(base - 10, 0), label: 'Ждём назначения follow‑up' };
       }
     }
-    if (lead.status === 'won') return { percent: 100, label: '╨╛╨┐╨╗╨░╤З╨╡╨╜╨╛' };
-    if (lead.status === 'lost') return { percent: 100, label: '╨╖╨░╨║╤А╤Л╤В╨╛' };
-    return { percent: base, label: '╨┤╨╛╨╢╨╕╨╝' };
+    if (lead.status === 'won') return { percent: 100, label: 'Закрыт: успешно' };
+    if (lead.status === 'lost') return { percent: 100, label: 'Закрыт: отказ' };
+    return { percent: base, label: 'Продвижение по шагам' };
   };
 
   const requiresFollowUpOnDrop = (status: LeadStatus) =>

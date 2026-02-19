@@ -339,76 +339,6 @@ async def create_student_card(
     return _student_card_response(card, current_user)
 
 
-@router.get("/student-cards/{card_id}", response_model=StudentCardResponse)
-async def get_student_card(
-    card_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
-):
-    _require_sales_admin_owner(current_user)
-    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
-    if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
-    return _student_card_response(card, current_user)
-
-
-@router.put("/student-cards/{card_id}", response_model=StudentCardResponse)
-async def update_student_card(
-    card_id: int,
-    payload: StudentCardUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
-):
-    _require_sales_admin_owner(current_user)
-    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
-    if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
-    data = payload.model_dump(exclude_unset=True)
-    if current_user.role != UserRole.OWNER:
-        data.pop("abonement_id", None)
-        data.pop("discount_type", None)
-        data.pop("discount_value", None)
-    if data.get("abonement_id"):
-        ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
-        if not ab:
-            raise HTTPException(status_code=404, detail="Абонемент не найден")
-    for k, v in data.items():
-        setattr(card, k, v)
-    db.commit()
-    db.refresh(card)
-    return _student_card_response(card, current_user)
-
-
-@router.post("/student-cards/{card_id}/archive")
-async def archive_student_card(
-    card_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
-):
-    _require_sales_admin_owner(current_user)
-    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
-    if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
-    card.archived = True
-    db.commit()
-    return {"archived": True}
-
-
-@router.post("/student-cards/{card_id}/unarchive")
-async def unarchive_student_card(
-    card_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
-):
-    _require_sales_admin_owner(current_user)
-    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
-    if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
-    card.archived = False
-    db.commit()
-    return {"archived": False}
-
-
 @router.get("/student-cards/import-template")
 async def download_student_cards_import_template(
     current_user: User = Depends(auth.get_current_active_user),
@@ -617,6 +547,76 @@ async def import_student_cards_from_excel(
     db.commit()
     log_action(db, current_user.id, "import", "student_card", None, {"created": created, "skipped": skipped})
     return StudentCardImportResponse(created=created, skipped=skipped, errors=errors)
+
+
+@router.get("/student-cards/{card_id}", response_model=StudentCardResponse)
+async def get_student_card(
+    card_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_sales_admin_owner(current_user)
+    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Карточка не найдена")
+    return _student_card_response(card, current_user)
+
+
+@router.put("/student-cards/{card_id}", response_model=StudentCardResponse)
+async def update_student_card(
+    card_id: int,
+    payload: StudentCardUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_sales_admin_owner(current_user)
+    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Карточка не найдена")
+    data = payload.model_dump(exclude_unset=True)
+    if current_user.role != UserRole.OWNER:
+        data.pop("abonement_id", None)
+        data.pop("discount_type", None)
+        data.pop("discount_value", None)
+    if data.get("abonement_id"):
+        ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
+        if not ab:
+            raise HTTPException(status_code=404, detail="Абонемент не найден")
+    for k, v in data.items():
+        setattr(card, k, v)
+    db.commit()
+    db.refresh(card)
+    return _student_card_response(card, current_user)
+
+
+@router.post("/student-cards/{card_id}/archive")
+async def archive_student_card(
+    card_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_sales_admin_owner(current_user)
+    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Карточка не найдена")
+    card.archived = True
+    db.commit()
+    return {"archived": True}
+
+
+@router.post("/student-cards/{card_id}/unarchive")
+async def unarchive_student_card(
+    card_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_sales_admin_owner(current_user)
+    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Карточка не найдена")
+    card.archived = False
+    db.commit()
+    return {"archived": False}
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:

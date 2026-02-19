@@ -69,6 +69,7 @@ const StudentsPage: React.FC = () => {
   const [paymentDialog, setPaymentDialog] = useState<{ account: StudentAccount; type: 'payment' | 'deduct' } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [accountsError, setAccountsError] = useState('');
   const { user } = useAuth();
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
   const isOwner = user?.role === 'owner';
@@ -103,12 +104,14 @@ const StudentsPage: React.FC = () => {
     setAccountsStudent(student);
     setAccountsDialogOpen(true);
     setNewAccountName('');
+    setAccountsError('');
     setAccountsLoading(true);
     try {
       const list = await studentsApi.getAccounts(student.id);
       setAccounts(list);
-    } catch (err) {
-      setError('Не удалось загрузить счета');
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || 'Не удалось загрузить счета. Убедитесь, что на сервере выполнена миграция: alembic upgrade head';
+      setAccountsError(Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setAccountsLoading(false);
     }
@@ -1154,10 +1157,15 @@ const StudentsPage: React.FC = () => {
         </Dialog>
       )}
 
-      <Dialog open={accountsDialogOpen} onClose={() => setAccountsDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={accountsDialogOpen} onClose={() => { setAccountsDialogOpen(false); setAccountsError(''); }} maxWidth="sm" fullWidth>
         <DialogTitle>Счета: {accountsStudent?.full_name}</DialogTitle>
         <DialogContent>
-          {accountsLoading && accounts.length === 0 ? (
+          {accountsError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAccountsError('')}>
+              {accountsError}
+            </Alert>
+          )}
+          {accountsLoading && accounts.length === 0 && !accountsError ? (
             <Typography color="textSecondary">Загрузка...</Typography>
           ) : (
             <>

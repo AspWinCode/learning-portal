@@ -1698,13 +1698,13 @@ const SalesLeadsPage: React.FC = () => {
       }));
       base.push({
         status: 'next_event',
-        title: '╨б╨╗╨╡╨┤ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡',
+        title: 'Следующее мероприятие',
         leads: source.filter((l) => noShowLeadIds.has(l.id)),
       });
       if (showArchiveColumn) {
         base.push({
           status: 'archive',
-          title: '╨Р╤А╤Е╨╕╨▓',
+          title: 'Архив',
           leads: source.filter((l) => l.status === 'lost'),
         });
       }
@@ -1723,9 +1723,9 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.updateLead(selectedLead.id, { no_answer_attempt: attempt });
       await loadLeads();
       setSelectedLead((p) => (p ? { ...p, no_answer_attempt: attempt } : p));
-      setToast({ open: true, message: `╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜ ${attempt}`, severity: 'info' });
+      setToast({ open: true, message: `Попытка дозвона ${attempt}`, severity: 'info' });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+      setError(extractApiError(err, 'Не удалось обновить попытку дозвона'));
     }
   };
 
@@ -1739,9 +1739,9 @@ const SalesLeadsPage: React.FC = () => {
       setActionLoadingId(lead.id);
       await salesApi.updateLead(lead.id, { no_answer_attempt: attempt });
       await loadLeads();
-      setToast({ open: true, message: `╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜ ${attempt}`, severity: 'info' });
+      setToast({ open: true, message: `Попытка дозвона ${attempt}`, severity: 'info' });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+      setError(extractApiError(err, 'Не удалось обновить попытку дозвона'));
     } finally {
       setActionLoadingId(null);
     }
@@ -1757,9 +1757,9 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeads();
       setSelectedLead(null);
       setDetailsOpen(false);
-      setToast({ open: true, message: '╨Ы╨╕╨┤ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜ ╨▓ ╨░╤А╤Е╨╕╨▓', severity: 'success' });
+      setToast({ open: true, message: 'Лид перенесён в статус «Отказали после 3 недозвонов»', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨▓ ╨░╤А╤Е╨╕╨▓'));
+      setError(extractApiError(err, 'Не удалось перенести лида после 3 недозвонов'));
     }
   };
 
@@ -1769,7 +1769,7 @@ const SalesLeadsPage: React.FC = () => {
       tasks.filter((t) => {
         const templateName = taskTemplates.find((tpl) => tpl.id === t.template_id)?.name?.toLowerCase() || '';
         const note = (t.note || '').toLowerCase();
-        return templateName.includes('╨┤╨╛╨╢╨╕╨╝') || note.includes('╨┤╨╛╨╢╨╕╨╝') || note.includes('push');
+        return templateName.includes('push') || note.includes('push');
       }),
     [tasks, taskTemplates]
   );
@@ -1785,7 +1785,7 @@ const SalesLeadsPage: React.FC = () => {
   return (
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1.5}>
-        <Typography variant="h4">{isPipelineRoute ? '╨Т╨╛╤А╨╛╨╜╨║╨░' : '╨Ы╨╕╨┤╤Л'}</Typography>
+        <Typography variant="h4">{isPipelineRoute ? 'Воронка' : 'Лиды'}</Typography>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           {!isPipelineRoute && (
             <ToggleButtonGroup
@@ -1796,19 +1796,19 @@ const SalesLeadsPage: React.FC = () => {
                 if (v) setViewMode(v);
               }}
             >
-              <ToggleButton value="table">╨в╨░╨▒╨╗╨╕╤Ж╨░</ToggleButton>
-              <ToggleButton value="kanban">╨Т╨╛╤А╨╛╨╜╨║╨░</ToggleButton>
+              <ToggleButton value="table">Таблица</ToggleButton>
+              <ToggleButton value="kanban">Воронка</ToggleButton>
             </ToggleButtonGroup>
           )}
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel id="status-filter-label">╨б╤В╨░╤В╤Г╤Б</InputLabel>
+            <InputLabel id="status-filter-label">Статус</InputLabel>
             <Select
               labelId="status-filter-label"
-              label="╨б╤В╨░╤В╤Г╤Б"
+              label="Статус"
               value={statusFilter}
               onChange={(e) => setStatusFilter((e.target.value as LeadStatus) || '')}
             >
-              <MenuItem value="">╨Т╤Б╨╡</MenuItem>
+              <MenuItem value="">Любой</MenuItem>
               {statusOptions.map((st) => (
                 <MenuItem key={st} value={st}>
                   {statusLabels[st]}
@@ -1818,13 +1818,13 @@ const SalesLeadsPage: React.FC = () => {
           </FormControl>
           <TextField
             size="small"
-            label="╨Я╨╛╨╕╤Б╨║"
+            label="Поиск"
             value={qFilter}
             onChange={(e) => setQFilter(e.target.value)}
           />
           <TextField
             size="small"
-            label="╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║"
+            label="Источник"
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
           />

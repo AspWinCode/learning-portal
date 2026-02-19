@@ -85,6 +85,52 @@ from app.routers.action_log import log_action
 router = APIRouter()
 
 
+def _fix_mojibake(s: Optional[str]) -> Optional[str]:
+    """
+    Восстанавливает строку из битой кодировки (UTF-8, прочитанный как Latin-1/CP1252).
+    Для уже нормальных строк остаётся без изменений.
+    """
+    if not s or not isinstance(s, str):
+        return s
+    for enc in ("latin1", "cp1252"):
+        try:
+            fixed = s.encode(enc).decode("utf-8")
+            if fixed != s:
+                return fixed
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return s
+
+
+def _fix_lead_strings(lead: Lead) -> Lead:
+    """
+    Починить самые заметные текстовые поля лида, если они были сохранены кракозябрами.
+    Возвращает тот же ORM‑объект (мутабельно), чтобы Pydantic увидел уже исправленные значения.
+    """
+    for field in [
+        "contact_name",
+        "phone",
+        "parent_full_name",
+        "child_full_name",
+        "parent_phone",
+        "child_phone",
+        "email",
+        "city",
+        "school_name",
+        "school_class",
+        "source",
+        "referral_name",
+        "comment",
+        "pause_reason",
+        "lost_reason",
+    ]:
+        value = getattr(lead, field, None)
+        fixed = _fix_mojibake(value)
+        if fixed is not None and fixed != value:
+            setattr(lead, field, fixed)
+    return lead
+
+
 def _require_owner_or_admin(lead: Lead, user: User) -> None:
     if user.role in (UserRole.ADMIN, UserRole.OWNER):
         return
@@ -1354,7 +1400,8 @@ async def list_leads(
         query = query.filter(Lead.next_contact_at >= next_contact_from)
     if next_contact_to:
         query = query.filter(Lead.next_contact_at <= next_contact_to)
-    return query.all()
+    leads = query.all()
+    return [_fix_lead_strings(l) for l in leads]
 
 
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
@@ -1416,7 +1463,7 @@ async def get_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
-    return lead
+    return _fix_lead_strings(lead)
 
 
 @router.put("/leads/{lead_id}", response_model=LeadResponse)

@@ -100,6 +100,23 @@ class PasswordResetConfirm(BaseModel):
     new_password: str
 
 
+class ParentInviteRequest(BaseModel):
+    email: EmailStr
+    full_name: str = Field(..., min_length=1)
+
+
+class ParentInviteResponse(BaseModel):
+    user_id: int
+    email: str
+    full_name: str
+    invite_link: str
+
+
+class SetPasswordByInvite(BaseModel):
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
+
+
 # User schemas
 class UserBase(BaseModel):
     email: EmailStr

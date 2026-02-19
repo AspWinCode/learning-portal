@@ -1,9 +1,12 @@
+import os
+import secrets
+from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
-from app.schemas import UserCreate, UserResponse, UserUpdate
+from app.schemas import UserCreate, UserResponse, UserUpdate, ParentInviteRequest, ParentInviteResponse
 from app.models import User, UserRole
 from app.routers.action_log import log_action
 
@@ -34,6 +37,53 @@ async def create_user(
     
     log_action(db, current_user.id, "create", "user", db_user.id)
     return db_user
+
+
+def _hash_invite_token(secret_key: str, token: str) -> str:
+    import hashlib
+    raw = f"{secret_key}:invite:{token}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+@router.post("/invite-parent", response_model=ParentInviteResponse, status_code=status.HTTP_201_CREATED)
+async def invite_parent(
+    payload: ParentInviteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"]))
+):
+    """
+    Приглашение нового родителя: создаётся пользователь с ролью parent без пароля,
+    выдаётся ссылка для установки пароля. Существующих родителей не меняем.
+    """
+    existing = auth.get_user_by_email(db, email=payload.email)
+    if existing:
+        raise HTTPException(status_code=400, detail="Пользователь с таким email уже зарегистрирован")
+    token = secrets.token_urlsafe(32)
+    token_hash = _hash_invite_token(auth.SECRET_KEY, token)
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    random_password = secrets.token_urlsafe(24)
+    hashed = auth.get_password_hash(random_password)
+    db_user = User(
+        email=payload.email.strip().lower(),
+        hashed_password=hashed,
+        full_name=payload.full_name.strip(),
+        role=UserRole.PARENT,
+        is_active=True,
+        invite_token_hash=token_hash,
+        invite_token_expires_at=expires_at,
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+    invite_link = f"{frontend_url}/set-password?token={token}"
+    log_action(db, current_user.id, "invite_parent", "user", db_user.id)
+    return ParentInviteResponse(
+        user_id=db_user.id,
+        email=db_user.email,
+        full_name=db_user.full_name,
+        invite_link=invite_link,
+    )
 
 
 @router.get("/", response_model=List[UserResponse])

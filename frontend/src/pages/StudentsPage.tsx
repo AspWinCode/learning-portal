@@ -49,8 +49,8 @@ const StudentsPage: React.FC = () => {
   const [newParent, setNewParent] = useState({
     full_name: '',
     email: '',
-    password: '',
   });
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [newTrainer, setNewTrainer] = useState({
     full_name: '',
     email: '',
@@ -496,7 +496,7 @@ const StudentsPage: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => {
               setParentOpen(true);
-              setNewParent({ full_name: '', email: '', password: '' });
+              setNewParent({ full_name: '', email: '' });
             }}
           >
             Создать родителя
@@ -1023,69 +1023,80 @@ const StudentsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Диалог создания родителя */}
-      <Dialog open={parentOpen} onClose={() => setParentOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Создать родителя</DialogTitle>
+      {/* Диалог создания родителя (приглашение — ссылка для установки пароля) */}
+      <Dialog open={parentOpen} onClose={() => { setParentOpen(false); setInviteLink(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Пригласить родителя</DialogTitle>
         <DialogContent>
-          <TextField
-            fullWidth
-            label="ФИО родителя *"
-            value={newParent.full_name}
-            onChange={(e) => setNewParent({ ...newParent, full_name: e.target.value })}
-            sx={{ mt: 2 }}
-            required
-          />
-          <TextField
-            fullWidth
-            label="Email *"
-            type="email"
-            value={newParent.email}
-            onChange={(e) => setNewParent({ ...newParent, email: e.target.value })}
-            sx={{ mt: 2 }}
-            required
-          />
-          <TextField
-            fullWidth
-            label="Пароль *"
-            type="password"
-            value={newParent.password}
-            onChange={(e) => setNewParent({ ...newParent, password: e.target.value })}
-            sx={{ mt: 2 }}
-            required
-            helperText="Минимум 6 символов"
-          />
+          {!inviteLink ? (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+                Родителю будет создана учётная запись. Отправьте ему ссылку из следующего шага — по ней он задаст пароль и получит доступ в кабинет.
+              </Typography>
+              <TextField
+                fullWidth
+                label="ФИО родителя *"
+                value={newParent.full_name}
+                onChange={(e) => setNewParent({ ...newParent, full_name: e.target.value })}
+                sx={{ mt: 2 }}
+                required
+              />
+              <TextField
+                fullWidth
+                label="Email *"
+                type="email"
+                value={newParent.email}
+                onChange={(e) => setNewParent({ ...newParent, email: e.target.value })}
+                sx={{ mt: 2 }}
+                required
+              />
+            </>
+          ) : (
+            <>
+              <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>Родитель создан. Отправьте ему эту ссылку (действует 7 дней):</Typography>
+              <TextField
+                fullWidth
+                size="small"
+                value={inviteLink}
+                readOnly
+                sx={{ mt: 1, mb: 1 }}
+                InputProps={{ readOnly: true }}
+              />
+              <Button
+                size="small"
+                onClick={() => { navigator.clipboard.writeText(inviteLink); setError(''); }}
+              >
+                Копировать ссылку
+              </Button>
+            </>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setParentOpen(false)}>Отмена</Button>
-          <Button
-            onClick={async () => {
-              if (!newParent.full_name.trim() || !newParent.email.trim() || !newParent.password.trim()) {
-                setError('Заполните все поля');
-                return;
-              }
-              if (newParent.password.length < 6) {
-                setError('Пароль должен быть минимум 6 символов');
-                return;
-              }
-              try {
-                await usersApi.create({
-                  full_name: newParent.full_name.trim(),
-                  email: newParent.email.trim(),
-                  password: newParent.password,
-                  role: 'parent',
-                });
-                setParentOpen(false);
-                setNewParent({ full_name: '', email: '', password: '' });
+          <Button onClick={() => { setParentOpen(false); setInviteLink(null); }}>{inviteLink ? 'Готово' : 'Отмена'}</Button>
+          {!inviteLink && (
+            <Button
+              onClick={async () => {
+                if (!newParent.full_name.trim() || !newParent.email.trim()) {
+                  setError('Заполните ФИО и email');
+                  return;
+                }
                 setError('');
-                loadParents(); // Обновляем список родителей
-              } catch (err: any) {
-                setError(err.response?.data?.detail || 'Ошибка создания родителя');
-              }
-            }}
-            variant="contained"
-          >
-            Создать
-          </Button>
+                try {
+                  const res = await usersApi.inviteParent({
+                    full_name: newParent.full_name.trim(),
+                    email: newParent.email.trim(),
+                  });
+                  setInviteLink(res.invite_link);
+                  setNewParent({ full_name: '', email: '' });
+                  loadParents();
+                } catch (err: any) {
+                  setError(err.response?.data?.detail || 'Ошибка приглашения');
+                }
+              }}
+              variant="contained"
+            >
+              Создать и получить ссылку
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

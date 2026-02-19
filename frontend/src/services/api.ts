@@ -109,6 +109,10 @@ export const authApi = {
     const response = await api.post('/api/auth/password-reset/confirm', { email, code, new_password });
     return response.data as { message: string };
   },
+  setPasswordByInvite: async (token: string, new_password: string) => {
+    const response = await api.post('/api/auth/set-password-by-invite', { token, new_password });
+    return response.data as { message: string };
+  },
 };
 
 export const usersApi = {
@@ -123,6 +127,10 @@ export const usersApi = {
   },
   create: async (data: { full_name: string; email: string; password: string; role: string }): Promise<User> => {
     const response = await api.post('/api/users/', data);
+    return response.data;
+  },
+  inviteParent: async (data: { email: string; full_name: string }): Promise<{ user_id: number; email: string; full_name: string; invite_link: string }> => {
+    const response = await api.post('/api/users/invite-parent', data);
     return response.data;
   },
   update: async (id: number, data: Partial<User>): Promise<User> => {

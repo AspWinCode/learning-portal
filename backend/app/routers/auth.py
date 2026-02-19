@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
-from app.schemas import Token, UserLogin, PasswordReset, PasswordResetConfirm
+from app.schemas import Token, UserLogin, PasswordReset, PasswordResetConfirm, SetPasswordByInvite
 from app.models import User
 from app.services.telegram import notify_user
 
@@ -58,8 +58,12 @@ async def password_reset(
 
 
 def _hash_reset_code(code: str) -> str:
-    # Не храним код в явном виде. Хешируем с SECRET_KEY.
     raw = f"{auth.SECRET_KEY}:{code}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _hash_invite_token(token: str) -> str:
+    raw = f"{auth.SECRET_KEY}:invite:{token}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -145,6 +149,37 @@ async def password_reset_confirm(
     db.add(user)
     db.commit()
     return {"message": "Пароль изменён"}
+
+
+@router.post("/set-password-by-invite")
+async def set_password_by_invite(
+    body: SetPasswordByInvite,
+    db: Session = Depends(get_db),
+):
+    """
+    Установка пароля по ссылке-приглашению (для новых родителей).
+    Токен приходит в ссылке из приглашения.
+    """
+    token_hash = _hash_invite_token(body.token.strip())
+    user = db.query(User).filter(
+        User.invite_token_hash == token_hash,
+        User.invite_token_expires_at.isnot(None),
+    ).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Ссылка недействительна или просрочена")
+    now = _now_for(user.invite_token_expires_at)
+    if user.invite_token_expires_at < now:
+        user.invite_token_hash = None
+        user.invite_token_expires_at = None
+        db.add(user)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Ссылка просрочена")
+    user.hashed_password = auth.get_password_hash(body.new_password)
+    user.invite_token_hash = None
+    user.invite_token_expires_at = None
+    db.add(user)
+    db.commit()
+    return {"message": "Пароль установлен. Можно войти в кабинет."}
 
 
 @router.get("/me")

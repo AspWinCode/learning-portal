@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
 import LoginPage from './pages/LoginPage';
+import SetPasswordPage from './pages/SetPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import StudentsPage from './pages/StudentsPage';
 import GroupsPage from './pages/GroupsPage';
@@ -66,6 +67,7 @@ function App() {
         >
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/set-password" element={<SetPasswordPage />} />
             <Route
               path="/dashboard"
               element={

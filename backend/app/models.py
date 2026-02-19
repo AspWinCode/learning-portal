@@ -872,39 +872,39 @@ class TaskStudent(Base):
 
 
 # Owner funnel constants (owner_funnels router)
-OWNER_FUNNEL_SUPPORT_LETTERS = "support_letters"   # ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕ ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕
-OWNER_FUNNEL_THANK_YOU_LETTERS = "thank_you_letters"  # ╨Я╨╕╤Б╤М╨╝╨░ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕
-OWNER_FUNNEL_EVENTS = "events"  # ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П
+OWNER_FUNNEL_SUPPORT_LETTERS = "support_letters"   # Получить письма поддержки
+OWNER_FUNNEL_THANK_YOU_LETTERS = "thank_you_letters"  # Письма благодарности
+OWNER_FUNNEL_EVENTS = "events"  # Мероприятия
 
-# ╨н╤В╨░╨┐╤Л ╨┐╨╛ ╤В╨╕╨┐╨░╨╝ ╨▓╨╛╤А╨╛╨╜╨╛╨║ (value ╨┤╨╗╤П ╨С╨Ф -> label ╨┤╨╗╤П UI)
+# Этапы по типам воронок (value для БД -> label для UI)
 OWNER_FUNNEL_STAGES = {
     OWNER_FUNNEL_SUPPORT_LETTERS: [
-        ("new", "╨Э╨╛╨▓╨╛╨╡"),
-        ("letter_created", "╨б╨╛╨╖╨┤╨░╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
-        ("letter_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
-        ("letter_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("new", "Новое"),
+        ("letter_created", "Создал письмо"),
+        ("letter_sent", "Отправил письмо"),
+        ("letter_received", "Получил письмо"),
     ],
     OWNER_FUNNEL_THANK_YOU_LETTERS: [
-        ("new", "╨Э╨╛╨▓╨╛╨╡"),
-        ("thank_you_formed", "╨б╤Д╨╛╤А╨╝╨╕╤А╨╛╨▓╨░╨╗╨╕ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╤М"),
-        ("thank_you_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╤М"),
-        ("school_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨░ ╤И╨║╨╛╨╗╨░"),
+        ("new", "Новое"),
+        ("thank_you_formed", "Сформировали благодарность"),
+        ("thank_you_sent", "Отправили благодарность"),
+        ("school_received", "Получила школа"),
     ],
     OWNER_FUNNEL_EVENTS: [
-        ("new", "╨Э╨╛╨▓╤Л╨╡"),
-        ("contact_found", "╨Ъ╨╛╨╜╤В╨░╨║╤В ╨╜╨░╨╣╨┤╨╡╨╜"),
-        ("letter_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨┐╨╕╤Б╤М╨╝╨╛"),
-        ("reply_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨╕ ╨╛╤В╨▓╨╡╤В╨╜╨╛╨╡ ╨┐╨╕╤Б╤М╨╝╨╛"),
-        ("reached_by_phone", "╨Ф╨╛╨╖╨▓╨╛╨╜╨╕╨╗╨╕╤Б╤М"),
-        ("not_reached", "╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜╨╕╨╗╨╕╤Б╤М"),
-        ("meeting_agreed", "╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М ╨╜╨░ ╨▓╤Б╤В╤А╨╡╤З╤Г"),
-        ("agreement_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡ ╨╜╨░ ╤Б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╜╨╕╨╡"),
-        ("agreement_approved", "╨б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡"),
-        ("agreement_signed", "╨Я╨╛╨┤╨┐╨╕╤Б╨░╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡"),
-        ("trip_agreed", "╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М ╨╜╨░ ╨┐╨╛╤Е╨╛╨┤"),
-        ("info_sent_to_parents", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤О ╨▓ ╤З╨░╤В╤Л ╤А╨╛╨┤╨╕╤В╨╡╨╗╨╡╨╣"),
-        ("leads_collected", "╨б╨╛╨▒╤А╨░╨╗╨╕ ╨╗╨╕╨┤╨╛╨▓"),
-        ("rejected", "╨Ю╤В╨║╨░╨╖╨░╨╗╨╕"),
+        ("new", "Новые"),
+        ("contact_found", "Контакт найден"),
+        ("letter_sent", "Отправили письмо"),
+        ("reply_received", "Получили ответное письмо"),
+        ("reached_by_phone", "Дозвонились"),
+        ("not_reached", "Недозвонились"),
+        ("meeting_agreed", "Договорились на встречу"),
+        ("agreement_sent", "Отправили соглашение на согласование"),
+        ("agreement_approved", "Согласовали соглашение"),
+        ("agreement_signed", "Подписали соглашение"),
+        ("trip_agreed", "Договорились на поход"),
+        ("info_sent_to_parents", "Отправили информацию в чаты родителей"),
+        ("leads_collected", "Собрали лидов"),
+        ("rejected", "Отказали"),
     ],
 }
 

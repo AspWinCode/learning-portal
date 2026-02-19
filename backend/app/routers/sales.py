@@ -114,6 +114,38 @@ def _compute_price(abonement: Abonement) -> float:
     return round(price, 2)
 
 
+
+
+def _fix_mojibake(value: Optional[str]) -> Optional[str]:
+    if value is None or not isinstance(value, str):
+        return value
+    for enc in ("cp866", "latin1", "cp1252"):
+        try:
+            fixed = value.encode(enc).decode("utf-8")
+            if fixed != value and any(ch in fixed for ch in "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"):
+                return fixed
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return value
+
+
+def _fix_model_fields(obj, fields: List[str]) -> None:
+    for field in fields:
+        if hasattr(obj, field):
+            setattr(obj, field, _fix_mojibake(getattr(obj, field)))
+
+
+def _fix_lead_payload(lead: Lead) -> None:
+    _fix_model_fields(lead, [
+        "contact_name", "source", "referral_name", "comment", "parent_full_name",
+        "child_full_name", "city", "school_name", "school_class", "desired_slot",
+        "pause_reason", "lost_reason",
+    ])
+    if lead.tags:
+        lead.tags = [_fix_mojibake(tag) or tag for tag in lead.tags]
+    if getattr(lead, "status_option", None):
+        _fix_model_fields(lead.status_option, ["name"])
+
 def _normalize_source_name(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
@@ -528,7 +560,10 @@ async def list_lead_sources(
     query = db.query(LeadSource).order_by(LeadSource.name.asc())
     if active_only:
         query = query.filter(LeadSource.is_active.is_(True))
-    return query.all()
+    items = query.all()
+    for item in items:
+        _fix_model_fields(item, ["name"])
+    return items
 
 
 @router.post("/lead-sources", response_model=LeadSourceResponse, status_code=status.HTTP_201_CREATED)
@@ -548,6 +583,7 @@ async def create_lead_source(
     db.commit()
     db.refresh(source)
     log_action(db, current_user.id, "create", "lead_source", source.id, {"name": name})
+    _fix_model_fields(source, ["name"])
     return source
 
 
@@ -572,6 +608,7 @@ async def update_lead_source(
     db.commit()
     db.refresh(source)
     log_action(db, current_user.id, "update", "lead_source", source.id, data)
+    _fix_model_fields(source, ["name"])
     return source
 
 
@@ -584,7 +621,10 @@ async def list_lead_task_templates(
     query = db.query(LeadTaskTemplate).order_by(LeadTaskTemplate.name.asc())
     if active_only:
         query = query.filter(LeadTaskTemplate.is_active.is_(True))
-    return query.all()
+    items = query.all()
+    for item in items:
+        _fix_model_fields(item, ["name"])
+    return items
 
 
 @router.post("/lead-task-templates", response_model=LeadTaskTemplateResponse, status_code=status.HTTP_201_CREATED)
@@ -604,6 +644,7 @@ async def create_lead_task_template(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "create", "lead_task_template", item.id, {"name": name})
+    _fix_model_fields(item, ["name"])
     return item
 
 
@@ -628,6 +669,7 @@ async def update_lead_task_template(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "update", "lead_task_template", item.id, data)
+    _fix_model_fields(item, ["name"])
     return item
 
 
@@ -640,7 +682,10 @@ async def list_lead_task_statuses(
     query = db.query(LeadTaskStatusOptionModel).order_by(LeadTaskStatusOptionModel.id.asc())
     if active_only:
         query = query.filter(LeadTaskStatusOptionModel.is_active.is_(True))
-    return query.all()
+    items = query.all()
+    for item in items:
+        _fix_model_fields(item, ["name"])
+    return items
 
 
 @router.post("/lead-task-statuses", response_model=LeadTaskStatusOptionResponse, status_code=status.HTTP_201_CREATED)
@@ -660,6 +705,7 @@ async def create_lead_task_status(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "create", "lead_task_status", item.id, {"name": name, "is_closed": payload.is_closed})
+    _fix_model_fields(item, ["name"])
     return item
 
 
@@ -686,6 +732,7 @@ async def update_lead_task_status(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "update", "lead_task_status", item.id, data)
+    _fix_model_fields(item, ["name"])
     return item
 
 
@@ -698,7 +745,10 @@ async def list_lead_info_templates(
     query = db.query(LeadInfoTemplate).order_by(LeadInfoTemplate.name.asc())
     if active_only:
         query = query.filter(LeadInfoTemplate.is_active.is_(True))
-    return query.all()
+    items = query.all()
+    for item in items:
+        _fix_model_fields(item, ["name", "body"])
+    return items
 
 
 @router.post("/lead-info-templates", response_model=LeadInfoTemplateResponse, status_code=status.HTTP_201_CREATED)
@@ -720,6 +770,7 @@ async def create_lead_info_template(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "create", "lead_info_template", item.id, {"name": name})
+    _fix_model_fields(item, ["name", "body"])
     return item
 
 
@@ -749,6 +800,7 @@ async def update_lead_info_template(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "update", "lead_info_template", item.id, data)
+    _fix_model_fields(item, ["name", "body"])
     return item
 
 
@@ -876,7 +928,10 @@ async def list_lead_statuses(
     query = db.query(LeadStatusOption).order_by(LeadStatusOption.id.asc())
     if active_only:
         query = query.filter(LeadStatusOption.is_active.is_(True))
-    return query.all()
+    items = query.all()
+    for item in items:
+        _fix_model_fields(item, ["name"])
+    return items
 
 
 @router.post("/lead-statuses", response_model=LeadStatusOptionResponse, status_code=status.HTTP_201_CREATED)
@@ -897,6 +952,7 @@ async def create_lead_status(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "create", "lead_status_option", item.id, {"name": name, "base_status": base})
+    _fix_model_fields(item, ["name"])
     return item
 
 
@@ -924,6 +980,7 @@ async def update_lead_status(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "update", "lead_status_option", item.id, data)
+    _fix_model_fields(item, ["name"])
     return item
 
 
@@ -1354,7 +1411,10 @@ async def list_leads(
         query = query.filter(Lead.next_contact_at >= next_contact_from)
     if next_contact_to:
         query = query.filter(Lead.next_contact_at <= next_contact_to)
-    return query.all()
+    items = query.all()
+    for item in items:
+        _fix_lead_payload(item)
+    return items
 
 
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
@@ -1403,6 +1463,7 @@ async def create_lead(
     db.refresh(lead)
 
     log_action(db, current_user.id, "create", "lead", lead.id, {"owner_id": owner_id})
+    _fix_lead_payload(lead)
     return lead
 
 
@@ -1416,6 +1477,7 @@ async def get_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
+    _fix_lead_payload(lead)
     return lead
 
 
@@ -1472,6 +1534,7 @@ async def update_lead(
     db.commit()
     db.refresh(lead)
     log_action(db, current_user.id, "update", "lead", lead.id, update_data)
+    _fix_lead_payload(lead)
     return lead
 
 

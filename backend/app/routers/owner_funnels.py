@@ -71,7 +71,7 @@ def _fix_mojibake(s: Optional[str]) -> Optional[str]:
     """Восстанавливает строку из битой кодировки (UTF-8, прочитанный как Latin-1 или CP1252)."""
     if not s or not isinstance(s, str):
         return s
-    for enc in ("latin1", "cp1252"):
+    for enc in ("cp866", "latin1", "cp1252"):
         try:
             fixed = s.encode(enc).decode("utf-8")
             if fixed != s:

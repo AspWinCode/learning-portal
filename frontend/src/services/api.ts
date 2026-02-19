@@ -2,6 +2,8 @@ import axios from 'axios';
 import {
   User,
   Student,
+  StudentAccount,
+  StudentAccountTransaction,
   Group,
   Program,
   ProgramSummary,
@@ -154,6 +156,37 @@ export const studentsApi = {
   },
   removeProgram: async (studentId: number, programId: number): Promise<void> => {
     await api.delete(`/api/students/${studentId}/programs/${programId}`);
+  },
+  getAccounts: async (studentId: number): Promise<StudentAccount[]> => {
+    const response = await api.get(`/api/students/${studentId}/accounts`);
+    return response.data;
+  },
+  createAccount: async (studentId: number, data: { name: string }): Promise<StudentAccount> => {
+    const response = await api.post(`/api/students/${studentId}/accounts`, data);
+    return response.data;
+  },
+};
+
+export const studentAccountsApi = {
+  get: async (accountId: number): Promise<StudentAccount> => {
+    const response = await api.get(`/api/student-accounts/${accountId}`);
+    return response.data;
+  },
+  update: async (accountId: number, data: { name?: string }): Promise<StudentAccount> => {
+    const response = await api.patch(`/api/student-accounts/${accountId}`, data);
+    return response.data;
+  },
+  addPayment: async (accountId: number, data: { amount: number; note?: string }): Promise<StudentAccount> => {
+    const response = await api.post(`/api/student-accounts/${accountId}/payment`, data);
+    return response.data;
+  },
+  deduct: async (accountId: number, data: { amount: number; note?: string; lesson_attendance_id?: number }): Promise<StudentAccount> => {
+    const response = await api.post(`/api/student-accounts/${accountId}/deduct`, data);
+    return response.data;
+  },
+  getTransactions: async (accountId: number): Promise<StudentAccountTransaction[]> => {
+    const response = await api.get(`/api/student-accounts/${accountId}/transactions`);
+    return response.data;
   },
 };
 

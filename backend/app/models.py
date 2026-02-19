@@ -166,6 +166,7 @@ class Student(Base):
     grades = relationship("Grade", back_populates="student")
     characteristics = relationship("Characteristic", back_populates="student")
     abonement = relationship("Abonement", back_populates="students")
+    accounts = relationship("StudentAccount", back_populates="student", cascade="all, delete-orphan")
 
     @property
     def programs(self):
@@ -175,6 +176,49 @@ class Student(Base):
             sp.program for sp in self.student_programs
             if getattr(sp, "status", StudentProgramLinkStatus.ACTIVE) == StudentProgramLinkStatus.ACTIVE
         ]
+
+
+class StudentAccountTransactionKind(str, enum.Enum):
+    PAYMENT = "payment"
+    LESSON_DEDUCTION = "lesson_deduction"
+
+
+class StudentAccount(Base):
+    """Счет ученика: можно иметь несколько (группа, индивидуально и т.д.)."""
+    __tablename__ = "student_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    balance = Column(Float, default=0.0, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    student = relationship("Student", back_populates="accounts")
+    transactions = relationship(
+        "StudentAccountTransaction",
+        back_populates="account",
+        order_by="StudentAccountTransaction.created_at.desc()",
+        cascade="all, delete-orphan",
+    )
+
+
+class StudentAccountTransaction(Base):
+    """Операция по счету: пополнение или списание за занятие."""
+    __tablename__ = "student_account_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("student_accounts.id"), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    kind = Column(
+        SQLEnum(StudentAccountTransactionKind, name="studentaccounttransactionkind", values_callable=_enum_values),
+        nullable=False,
+    )
+    note = Column(String, nullable=True)
+    lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    account = relationship("StudentAccount", back_populates="transactions")
 
 
 class Abonement(Base):

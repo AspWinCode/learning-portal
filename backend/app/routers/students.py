@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import or_
 from app.database import get_db
 from app import auth
-from app.schemas import StudentCreate, StudentResponse, StudentUpdate, ProgramSummaryResponse
-from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus
+from app.schemas import StudentCreate, StudentResponse, StudentUpdate, ProgramSummaryResponse, StudentAccountCreate, StudentAccountResponse
+from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount
 from app.routers.action_log import log_action
 
 router = APIRouter()
@@ -291,4 +291,53 @@ async def delete_student(
     
     log_action(db, current_user.id, "archive", "student", student_id)
     return {"message": "Student archived"}
+
+
+@router.get("/{student_id}/accounts", response_model=List[StudentAccountResponse])
+async def list_student_accounts(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Список счетов ученика. Доступ: admin, owner, trainer (свои ученики), parent (свои)."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if current_user.role == UserRole.PARENT:
+        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif current_user.role == UserRole.TRAINER:
+        from app.models import GroupStudent, Group
+        has_access = db.query(GroupStudent).join(Group).filter(
+            GroupStudent.student_id == student_id,
+            Group.trainer_id == current_user.id,
+        ).first()
+        if not has_access:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    accounts = db.query(StudentAccount).filter(StudentAccount.student_id == student_id).order_by(StudentAccount.created_at).all()
+    return accounts
+
+
+@router.post("/{student_id}/accounts", response_model=StudentAccountResponse, status_code=status.HTTP_201_CREATED)
+async def create_student_account(
+    student_id: int,
+    payload: StudentAccountCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    """Создать счет ученику. Только admin/owner."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название счета обязательно")
+    account = StudentAccount(student_id=student_id, name=name, balance=0.0)
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    log_action(db, current_user.id, "create", "student_account", account.id, {"student_id": student_id, "name": name})
+    return account
 

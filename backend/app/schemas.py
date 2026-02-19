@@ -190,6 +190,52 @@ class StudentResponse(StudentBase):
         from_attributes = True
 
 
+# Student accounts (счета учеников)
+class StudentAccountCreate(BaseModel):
+    name: str
+
+
+class StudentAccountUpdate(BaseModel):
+    name: Optional[str] = None
+
+
+class StudentAccountTransactionResponse(BaseModel):
+    id: int
+    account_id: int
+    amount: float
+    kind: str
+    note: Optional[str] = None
+    lesson_attendance_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StudentAccountResponse(BaseModel):
+    id: int
+    student_id: int
+    name: str
+    balance: float
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    transactions: Optional[List[StudentAccountTransactionResponse]] = []
+
+    class Config:
+        from_attributes = True
+
+
+class StudentAccountPaymentRequest(BaseModel):
+    amount: float
+    note: Optional[str] = None
+
+
+class StudentAccountDeductRequest(BaseModel):
+    amount: float
+    note: Optional[str] = None
+    lesson_attendance_id: Optional[int] = None
+
+
 # --- Sales schemas ---
 
 

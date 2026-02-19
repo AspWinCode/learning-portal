@@ -24,9 +24,9 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
-import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi } from '../services/api';
-import { Student, User, Group, Program, Abonement } from '../types';
+import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon } from '@mui/icons-material';
+import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi } from '../services/api';
+import { Student, User, Group, Program, Abonement, StudentAccount } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const StudentsPage: React.FC = () => {
@@ -61,9 +61,18 @@ const StudentsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [abonements, setAbonements] = useState<Abonement[]>([]);
+  const [accountsDialogOpen, setAccountsDialogOpen] = useState(false);
+  const [accountsStudent, setAccountsStudent] = useState<Student | null>(null);
+  const [accounts, setAccounts] = useState<StudentAccount[]>([]);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [paymentDialog, setPaymentDialog] = useState<{ account: StudentAccount; type: 'payment' | 'deduct' } | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
   const { user } = useAuth();
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
   const isOwner = user?.role === 'owner';
+  const canManageAccounts = isAdminLike || user?.role === 'trainer' || user?.role === 'parent';
 
   useEffect(() => {
     loadStudents();
@@ -87,6 +96,68 @@ const StudentsPage: React.FC = () => {
       setStudents(data);
     } catch (err) {
       setError('Ошибка загрузки данных');
+    }
+  };
+
+  const openAccountsDialog = async (student: Student) => {
+    setAccountsStudent(student);
+    setAccountsDialogOpen(true);
+    setNewAccountName('');
+    setAccountsLoading(true);
+    try {
+      const list = await studentsApi.getAccounts(student.id);
+      setAccounts(list);
+    } catch (err) {
+      setError('Не удалось загрузить счета');
+    } finally {
+      setAccountsLoading(false);
+    }
+  };
+
+  const handleCreateAccount = async () => {
+    if (!accountsStudent || !newAccountName.trim()) return;
+    setAccountsLoading(true);
+    try {
+      const created = await studentsApi.createAccount(accountsStudent.id, { name: newAccountName.trim() });
+      setAccounts((prev) => [...prev, created]);
+      setNewAccountName('');
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка создания счета');
+    } finally {
+      setAccountsLoading(false);
+    }
+  };
+
+  const handlePaymentOrDeduct = async () => {
+    if (!paymentDialog) return;
+    const amount = parseFloat(paymentAmount.replace(',', '.'));
+    if (isNaN(amount) || amount <= 0) {
+      setError('Введите положительную сумму');
+      return;
+    }
+    if (paymentDialog.type === 'deduct' && paymentDialog.account.balance < amount) {
+      setError('Недостаточно средств на счете');
+      return;
+    }
+    setAccountsLoading(true);
+    setError('');
+    try {
+      if (paymentDialog.type === 'payment') {
+        await studentAccountsApi.addPayment(paymentDialog.account.id, { amount, note: paymentNote.trim() || undefined });
+      } else {
+        await studentAccountsApi.deduct(paymentDialog.account.id, { amount, note: paymentNote.trim() || undefined });
+      }
+      if (accountsStudent) {
+        const list = await studentsApi.getAccounts(accountsStudent.id);
+        setAccounts(list);
+      }
+      setPaymentDialog(null);
+      setPaymentAmount('');
+      setPaymentNote('');
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка операции');
+    } finally {
+      setAccountsLoading(false);
     }
   };
 
@@ -554,6 +625,16 @@ const StudentsPage: React.FC = () => {
                   )}
                   <TableCell>{student.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>
                   <TableCell>
+                    {canManageAccounts && (
+                      <Button
+                        size="small"
+                        startIcon={<AccountBalanceIcon />}
+                        onClick={() => openAccountsDialog(student)}
+                        sx={{ mr: 1 }}
+                      >
+                        Счета
+                      </Button>
+                    )}
                     <Button
                       size="small"
                       startIcon={<EditIcon />}
@@ -1072,6 +1153,75 @@ const StudentsPage: React.FC = () => {
           </DialogActions>
         </Dialog>
       )}
+
+      <Dialog open={accountsDialogOpen} onClose={() => setAccountsDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Счета: {accountsStudent?.full_name}</DialogTitle>
+        <DialogContent>
+          {accountsLoading && accounts.length === 0 ? (
+            <Typography color="textSecondary">Загрузка...</Typography>
+          ) : (
+            <>
+              {isAdminLike && (
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                  <TextField
+                    size="small"
+                    label="Название счета"
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                    placeholder="Группа / Индивидуально"
+                    sx={{ flex: 1 }}
+                  />
+                  <Button variant="outlined" onClick={handleCreateAccount} disabled={!newAccountName.trim() || accountsLoading}>
+                    Создать счет
+                  </Button>
+                </Stack>
+              )}
+              {accounts.length === 0 ? (
+                <Typography color="textSecondary">Нет счетов. {isAdminLike ? 'Создайте первый счет.' : ''}</Typography>
+              ) : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Счет</TableCell>
+                      <TableCell align="right">Остаток (₽)</TableCell>
+                      <TableCell align="right">Действия</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {accounts.map((acc) => (
+                      <TableRow key={acc.id}>
+                        <TableCell>{acc.name}</TableCell>
+                        <TableCell align="right">{acc.balance.toFixed(2)}</TableCell>
+                        <TableCell align="right">
+                          <Button size="small" onClick={() => { setPaymentDialog({ account: acc, type: 'payment' }); setPaymentAmount(''); setPaymentNote(''); }}>Пополнить</Button>
+                          {(isAdminLike || user?.role === 'trainer') && (
+                            <Button size="small" color="secondary" onClick={() => { setPaymentDialog({ account: acc, type: 'deduct' }); setPaymentAmount(''); setPaymentNote(''); }} disabled={acc.balance <= 0}>Списать</Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAccountsDialogOpen(false)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!paymentDialog} onClose={() => setPaymentDialog(null)}>
+        <DialogTitle>{paymentDialog?.type === 'payment' ? 'Пополнение счета' : 'Списание за занятие'}</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth label="Сумма (₽)" type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} inputProps={{ min: 0, step: 0.01 }} sx={{ mt: 1 }} />
+          <TextField fullWidth label="Комментарий" value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} sx={{ mt: 2 }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentDialog(null)}>Отмена</Button>
+          <Button variant="contained" onClick={handlePaymentOrDeduct} disabled={!paymentAmount || accountsLoading}>Подтвердить</Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 };

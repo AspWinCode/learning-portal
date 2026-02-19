@@ -21,6 +21,26 @@ export interface Student {
   programs?: ProgramSummary[];
 }
 
+export interface StudentAccountTransaction {
+  id: number;
+  account_id: number;
+  amount: number;
+  kind: 'payment' | 'lesson_deduction';
+  note?: string | null;
+  lesson_attendance_id?: number | null;
+  created_at: string;
+}
+
+export interface StudentAccount {
+  id: number;
+  student_id: number;
+  name: string;
+  balance: number;
+  created_at: string;
+  updated_at?: string | null;
+  transactions?: StudentAccountTransaction[];
+}
+
 export interface Abonement {
   id: number;
   name: string;

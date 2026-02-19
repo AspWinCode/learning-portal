@@ -2205,7 +2205,7 @@ const SalesLeadsPage: React.FC = () => {
                     ))}
                     {col.leads.length === 0 && (
                       <Typography variant="caption" color="text.secondary">
-                        ╨Я╤Г╤Б╤В╨╛
+                        Лидов нет
                       </Typography>
                     )}
                   </Stack>

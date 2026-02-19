@@ -67,6 +67,20 @@ def _stage_label(funnel_type: str, value: str) -> str:
     return STAGE_LABELS.get((funnel_type, value), value)
 
 
+def _fix_mojibake(s: Optional[str]) -> Optional[str]:
+    """Восстанавливает строку из битой кодировки (UTF-8, прочитанный как Latin-1 или CP1252)."""
+    if not s or not isinstance(s, str):
+        return s
+    for enc in ("latin1", "cp1252"):
+        try:
+            fixed = s.encode(enc).decode("utf-8")
+            if fixed != s:
+                return fixed
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            continue
+    return s
+
+
 
 OWNER_FUNNEL_TYPES_LIST = [
     OwnerFunnelTypeInfo(
@@ -100,7 +114,14 @@ async def list_owner_funnel_types(
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
     """╨б╨┐╨╕╤Б╨╛╨║ ╤В╨╕╨┐╨╛╨▓ ╨▓╨╛╤А╨╛╨╜╨╛╨║ ╤Б ╤Н╤В╨░╨┐╨░╨╝╨╕ ╨┤╨╗╤П ╨▓╤Л╨▒╨╛╤А╨░ ╨▓╨╛╤А╨╛╨╜╨║╨╕."""
-    return OWNER_FUNNEL_TYPES_LIST
+    return [
+        OwnerFunnelTypeInfo(
+            id=ft,
+            label=FUNNEL_TYPE_LABELS[ft],
+            stages=[{"value": v, "label": _stage_label(ft, v)} for v, _ in OWNER_FUNNEL_STAGES[ft]],
+        )
+        for ft in (OWNER_FUNNEL_SUPPORT_LETTERS, OWNER_FUNNEL_THANK_YOU_LETTERS, OWNER_FUNNEL_EVENTS)
+    ]
 
 
 @router.get("/owner-funnels/events", response_model=List[OwnerFunnelEventResponse])
@@ -110,7 +131,15 @@ async def list_owner_funnel_events(
 ):
     """╨б╨┐╨╕╤Б╨╛╨║ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣ (╨▓╨╛╤А╨╛╨╜╨╛╨║). ╨Ъ╨░╨╢╨┤╨╛╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ тАФ ╨┤╨╛╤Б╨║╨░ ╤Б ╤Н╤В╨░╨┐╨░╨╝╨╕."""
     events = db.query(OwnerFunnelEvent).order_by(OwnerFunnelEvent.created_at.desc()).all()
-    return events
+    return [
+        OwnerFunnelEventResponse(
+            id=e.id,
+            event_name=_fix_mojibake(e.event_name) or e.event_name,
+            event_dates=e.event_dates,
+            created_at=e.created_at,
+        )
+        for e in events
+    ]
 
 
 class AddSchoolsByCityPayload(BaseModel):
@@ -176,7 +205,12 @@ async def create_owner_funnel_event(
     db.add(event)
     db.commit()
     db.refresh(event)
-    return event
+    return OwnerFunnelEventResponse(
+        id=event.id,
+        event_name=_fix_mojibake(event.event_name) or event.event_name,
+        event_dates=event.event_dates,
+        created_at=event.created_at,
+    )
 
 
 @router.get("/owner-funnels/items", response_model=List[OwnerFunnelItemResponse])
@@ -199,7 +233,20 @@ async def list_owner_funnel_items(
         _validate_funnel_and_stage(funnel_type, stage)
         query = query.filter(OwnerFunnelItem.stage == stage)
     items = query.order_by(OwnerFunnelItem.created_at.desc()).all()
-    return items
+    return [
+        OwnerFunnelItemResponse(
+            id=it.id,
+            funnel_type=it.funnel_type,
+            event_id=it.event_id,
+            stage=it.stage,
+            title=_fix_mojibake(it.title) if it.title else None,
+            comment=_fix_mojibake(it.comment) if it.comment else None,
+            card_data=it.card_data,
+            created_at=it.created_at,
+            updated_at=it.updated_at,
+        )
+        for it in items
+    ]
 
 
 @router.post("/owner-funnels/items", response_model=OwnerFunnelItemResponse, status_code=201)
@@ -229,7 +276,17 @@ async def create_owner_funnel_item(
     db.add(item)
     db.commit()
     db.refresh(item)
-    return item
+    return OwnerFunnelItemResponse(
+        id=item.id,
+        funnel_type=item.funnel_type,
+        event_id=item.event_id,
+        stage=item.stage,
+        title=_fix_mojibake(item.title) if item.title else None,
+        comment=_fix_mojibake(item.comment) if item.comment else None,
+        card_data=item.card_data,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
 
 
 @router.get("/owner-funnels/items/{item_id}", response_model=OwnerFunnelItemResponse)
@@ -242,7 +299,17 @@ async def get_owner_funnel_item(
     item = db.query(OwnerFunnelItem).filter(OwnerFunnelItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return item
+    return OwnerFunnelItemResponse(
+        id=item.id,
+        funnel_type=item.funnel_type,
+        event_id=item.event_id,
+        stage=item.stage,
+        title=_fix_mojibake(item.title) if item.title else None,
+        comment=_fix_mojibake(item.comment) if item.comment else None,
+        card_data=item.card_data,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
 
 
 def _merge_events_card_data(item: OwnerFunnelItem, payload: OwnerFunnelItemUpdate) -> None:
@@ -302,7 +369,17 @@ async def update_owner_funnel_item(
         item.card_data = payload.card_data
     db.commit()
     db.refresh(item)
-    return item
+    return OwnerFunnelItemResponse(
+        id=item.id,
+        funnel_type=item.funnel_type,
+        event_id=item.event_id,
+        stage=item.stage,
+        title=_fix_mojibake(item.title) if item.title else None,
+        comment=_fix_mojibake(item.comment) if item.comment else None,
+        card_data=item.card_data,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
 
 
 @router.delete("/owner-funnels/items/{item_id}")

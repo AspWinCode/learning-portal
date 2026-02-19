@@ -2149,12 +2149,12 @@ const SalesLeadsPage: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">{lead.phone}</Typography>
                           {lead.source && (
                             <Typography variant="caption" display="block" color="text.secondary">
-                              ╨Ш╤Б╤В╨╛╤З╨╜╨╕╨║: {lead.source}
+                              Источник: {lead.source}
                             </Typography>
                           )}
                           {lead.status === 'thinking' && lead.next_contact_at && (
                             <Typography variant="caption" display="block" color="primary">
-                              ╨Я╨╡╤А╨╡╨╖╨▓╨╛╨╜: {format(parseISO(lead.next_contact_at), 'dd.MM HH:mm')}
+                              Следующий контакт: {format(parseISO(lead.next_contact_at), 'dd.MM HH:mm')}
                             </Typography>
                           )}
                           {lead.status === 'no_answer' && (
@@ -2169,7 +2169,7 @@ const SalesLeadsPage: React.FC = () => {
                                   disabled={actionLoadingId === lead.id}
                                   onClick={() => void handleWidgetNoAnswerAttempt(lead, n)}
                                 >
-                                  ╨Э╨╡╨┤. {n}
+                                  Попытка {n}
                                 </Button>
                               ))}
                             </Stack>
@@ -2180,7 +2180,7 @@ const SalesLeadsPage: React.FC = () => {
                               <Stack spacing={0.5} mt={1}>
                                 <Stack direction="row" justifyContent="space-between">
                                   <Typography variant="caption" color="text.secondary">
-                                    ╨Я╤А╨╛╨│╤А╨╡╤Б╤Б: {p.label}
+                                    Продвижение: {p.label}
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary">
                                     {p.percent}%
@@ -2197,7 +2197,7 @@ const SalesLeadsPage: React.FC = () => {
                           })()}
                           <Stack direction="row" spacing={1} mt={1}>
                             <Button size="small" onClick={() => handleOpenDetails(lead)}>
-                              ╨Ъ╨░╤А╤В╨╛╤З╨║╨░
+                              Открыть
                             </Button>
                           </Stack>
                         </CardContent>

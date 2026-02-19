@@ -459,7 +459,7 @@ const OwnerFunnelsPage: React.FC = () => {
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             {events.find((e) => e.id === selectedEventId)?.event_name}
             {events.find((e) => e.id === selectedEventId)?.event_dates &&
-              ` тАФ ${events.find((e) => e.id === selectedEventId)?.event_dates}`}
+              ` — ${events.find((e) => e.id === selectedEventId)?.event_dates}`}
           </Typography>
         )}
 
@@ -514,7 +514,7 @@ const OwnerFunnelsPage: React.FC = () => {
                               <Typography variant="caption" color="text.secondary" display="block">
                                 {(item.card_data as OwnerFunnelCardData).contact_fio}
                                 {(item.card_data as OwnerFunnelCardData).contact_phone &&
-                                  ` тАв ${(item.card_data as OwnerFunnelCardData).contact_phone}`}
+                                  ` • ${(item.card_data as OwnerFunnelCardData).contact_phone}`}
                               </Typography>
                             )}
                             {!isEventsFunnel && item.comment && (
@@ -650,7 +650,7 @@ const OwnerFunnelsPage: React.FC = () => {
                           {cardDetailSchool.contacts.map((c) => (
                             <Typography key={c.id} variant="body2">
                               {c.full_name}
-                              {c.position ? `, ${c.position}` : ''} тАФ {c.phone}
+                              {c.position ? `, ${c.position}` : ''} — {c.phone}
                               {c.phone_extra ? `, ${c.phone_extra}` : ''}
                             </Typography>
                           ))}
@@ -675,7 +675,7 @@ const OwnerFunnelsPage: React.FC = () => {
                       <Typography variant="body2">
                         {(cardDetailItem.card_data as OwnerFunnelCardData).contact_fio}
                         {(cardDetailItem.card_data as OwnerFunnelCardData).contact_phone &&
-                          ` тАв ${(cardDetailItem.card_data as OwnerFunnelCardData).contact_phone}`}
+                          ` • ${(cardDetailItem.card_data as OwnerFunnelCardData).contact_phone}`}
                       </Typography>
                       {(cardDetailItem.card_data as OwnerFunnelCardData).contact_comment && (
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -810,7 +810,7 @@ const OwnerFunnelsPage: React.FC = () => {
                 label="Название мероприятия"
                 value={newEventDates}
                 onChange={(e) => setNewEventDates(e.target.value)}
-                placeholder=": 15.03.2026 тАУ 20.03.2026"
+                placeholder=": 15.03.2026 – 20.03.2026"
               />
             </Stack>
           ) : (

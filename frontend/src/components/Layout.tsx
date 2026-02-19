@@ -451,7 +451,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </Box>
 
       <Dialog open={tgOpen} onClose={() => setTgOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Я╤А╨╕╨▓╤П╨╖╨║╨░ Telegram</DialogTitle>
+        <DialogTitle>Привязка Telegram</DialogTitle>
         <DialogContent>
           {tgError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setTgError('')}>
@@ -459,29 +459,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Alert>
           )}
           <Typography variant="body2" color="text.secondary">
-            ╨Э╨░╨┐╨╕╤И╨╕╤В╨╡ ╨▒╨╛╤В╤Г ╨║╨╛╨╝╨░╨╜╨┤╤Г:
+            Напишите боту команду:
           </Typography>
           <Typography variant="body1" sx={{ mt: 1, fontWeight: 700 }}>
             /start {tgCode || '...'}
           </Typography>
           {tgLink && (
             <Typography variant="body2" sx={{ mt: 1 }}>
-              ╨Ы╨╕╨▒╨╛ ╨╛╤В╨║╤А╨╛╨╣╤В╨╡ ╤Б╤Б╤Л╨╗╨║╤Г: <code>{tgLink}</code>
+              Либо откройте ссылку: <code>{tgLink}</code>
             </Typography>
           )}
           {tgExpiresAt && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-              ╨Ъ╨╛╨┤ ╨┤╨╡╨╣╤Б╤В╨▓╤Г╨╡╤В ╨┤╨╛: {new Date(tgExpiresAt).toLocaleString('ru-RU')}
+              Код действует до: {new Date(tgExpiresAt).toLocaleString('ru-RU')}
             </Typography>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTgOpen(false)}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
+          <Button onClick={() => setTgOpen(false)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={logoOpen} onClose={() => setLogoOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ы╨╛╨│╨╛╤В╨╕╨┐ ╤Б╨░╨╣╤В╨░</DialogTitle>
+        <DialogTitle>Логотип сайта</DialogTitle>
         <DialogContent>
           {logoError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLogoError('')}>
@@ -489,12 +489,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Alert>
           )}
           <Typography variant="body2" color="text.secondary">
-            ╨Ч╨░╨│╤А╤Г╨╖╨╕╤В╨╡ ╨╗╨╛╨│╨╛╤В╨╕╨┐ (PNG/JPG/WebP). ╨а╨╡╨║╨╛╨╝╨╡╨╜╨┤╤Г╨╡╨╝╤Л╨╣ ╤А╨░╨╖╨╝╨╡╤А: ╨║╨▓╨░╨┤╤А╨░╤В, ╨┤╨╛ ~180KB.
+            Загрузите логотип (PNG/JPG/WebP). Рекомендуемый размер: квадрат, до ~180KB.
           </Typography>
 
           <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
             <Button variant="outlined" component="label">
-              ╨Т╤Л╨▒╤А╨░╤В╤М ╤Д╨░╨╣╨╗
+              Выбрать файл
               <input
                 type="file"
                 accept="image/*"
@@ -507,19 +507,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               onClick={handleLogoSave}
               disabled={logoSaving || !logoPreview}
             >
-              {logoSaving ? '╨б╨╛╤Е╤А╨░╨╜╨╡╨╜╨╕╨╡...' : '╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'}
+              {logoSaving ? 'Сохранение...' : 'Сохранить'}
             </Button>
           </Box>
 
           {logoPreview && (
             <Box sx={{ mt: 2 }}>
               <Typography variant="caption" color="text.secondary">
-                ╨Я╤А╨╡╨▓╤М╤О:
+                Превью:
               </Typography>
               <Box
                 component="img"
                 src={logoPreview}
-                alt="╨Я╤А╨╡╨▓╤М╤О ╨╗╨╛╨│╨╛╤В╨╕╨┐╨░"
+                alt="Превью логотипа"
                 sx={{
                   display: 'block',
                   mt: 1,
@@ -536,7 +536,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <TextField
             fullWidth
             sx={{ mt: 2 }}
-            label="╨в╨╡╨║╤Г╤Й╨╕╨╣ ╨╗╨╛╨│╨╛╤В╨╕╨┐ (data URL)"
+            label="Текущий логотип (data URL)"
             value={logoUrl || ''}
             InputProps={{ readOnly: true }}
             multiline
@@ -544,7 +544,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setLogoOpen(false)}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
+          <Button onClick={() => setLogoOpen(false)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
     </Box>

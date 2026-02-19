@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -42,7 +42,7 @@ const SalesPostVisitPage: React.FC = () => {
       setLeads(data);
       setError(null);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╤Б╨┐╨╕╤Б╨╛╨║'));
+      setError(extractApiError(err, 'Не удалось загрузить список'));
     }
   }, []);
 
@@ -57,7 +57,7 @@ const SalesPostVisitPage: React.FC = () => {
       await salesApi.postVisitOutcome(lead.id, { outcome: 'agreed' });
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╕╤Б╤Е╨╛╨┤'));
+      setError(extractApiError(err, 'Не удалось сохранить исход'));
     } finally {
       setActionLoadingId(null);
     }
@@ -76,7 +76,7 @@ const SalesPostVisitPage: React.FC = () => {
   const handleConfirmThinking = async () => {
     if (!thinkingLead) return;
     if (!thinkingFollowUpAt.trim()) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┤╨░╤В╤Г ╨┐╨╛╨▓╤В╨╛╤А╨╜╨╛╨│╨╛ ╨║╨╛╨╜╤В╨░╨║╤В╨░');
+      setError('Укажите дату повторного контакта');
       return;
     }
     setActionLoadingId(thinkingLead.id);
@@ -89,7 +89,7 @@ const SalesPostVisitPage: React.FC = () => {
       });
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╕╤Б╤Е╨╛╨┤'));
+      setError(extractApiError(err, 'Не удалось сохранить исход'));
     } finally {
       setActionLoadingId(null);
       setThinkingLead(null);
@@ -105,7 +105,7 @@ const SalesPostVisitPage: React.FC = () => {
   const handleConfirmDeclined = async () => {
     if (!declinedLead) return;
     if (!declinedReason.trim()) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┐╤А╨╕╤З╨╕╨╜╤Г ╨╛╤В╨║╨░╨╖╨░');
+      setError('Укажите причину отказа');
       return;
     }
     setActionLoadingId(declinedLead.id);
@@ -118,7 +118,7 @@ const SalesPostVisitPage: React.FC = () => {
       });
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╕╤Б╤Е╨╛╨┤'));
+      setError(extractApiError(err, 'Не удалось сохранить исход'));
     } finally {
       setActionLoadingId(null);
       setDeclinedLead(null);
@@ -127,20 +127,20 @@ const SalesPostVisitPage: React.FC = () => {
   };
 
   const leadDisplayName = (l: Lead) =>
-    [l.parent_full_name || l.contact_name, l.child_full_name].filter(Boolean).join(' / ') || l.phone || `╨Ы╨╕╨┤ #${l.id}`;
-  const leadPhone = (l: Lead) => l.parent_phone || l.phone || 'тАФ';
+    [l.parent_full_name || l.contact_name, l.child_full_name].filter(Boolean).join(' / ') || l.phone || `Лид #${l.id}`;
+  const leadPhone = (l: Lead) => l.parent_phone || l.phone || '—';
 
   return (
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4">╨Я╨╛╤Б╨╗╨╡ ╨▓╨╕╨╖╨╕╤В╨░</Typography>
+        <Typography variant="h4">После визита</Typography>
         <Button variant="outlined" onClick={() => loadLeads()}>
-          ╨Ю╨▒╨╜╨╛╨▓╨╕╤В╤М
+          Обновить
         </Button>
       </Stack>
 
       <Typography color="text.secondary" sx={{ mb: 2 }}>
-        ╨Ы╨╕╨┤╤Л, ╨║╨╛╤В╨╛╤А╤Л╨╡ ╤Б╤Е╨╛╨┤╨╕╨╗╨╕ ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡. ╨Т ╤В╨╡╤З╨╡╨╜╨╕╨╡ 24 ╤З тАФ ╨╛╤В╨╖╤Л╨▓ ╨╕ ╨┐╤А╨╕╨│╨╗╨░╤И╨╡╨╜╨╕╨╡ ╨╜╨░ ╨╖╨░╨╜╤П╤В╨╕╤П. ╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╕╤Б╤Е╨╛╨┤ ╨┐╨╛ ╨║╨░╨╢╨┤╨╛╨╝╤Г.
+        Лиды, которые сходили на пробное мероприятие. В течение 24 ч — отзыв и приглашение на занятия. Выберите исход по каждому.
       </Typography>
 
       {error && (
@@ -152,10 +152,10 @@ const SalesPostVisitPage: React.FC = () => {
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>╨Ы╨╕╨┤</TableCell>
-            <TableCell>╨в╨╡╨╗╨╡╤Д╨╛╨╜</TableCell>
-            <TableCell>╨Ю╨▒╨╜╨╛╨▓╨╗╤С╨╜</TableCell>
-            <TableCell align="right">╨Ш╤Б╤Е╨╛╨┤</TableCell>
+            <TableCell>Лид</TableCell>
+            <TableCell>Телефон</TableCell>
+            <TableCell>Обновлён</TableCell>
+            <TableCell align="right">Исход</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -178,7 +178,7 @@ const SalesPostVisitPage: React.FC = () => {
                       const d = parseISO(lead.updated_at);
                       return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : lead.updated_at;
                     })()
-                  : 'тАФ'}
+                  : '—'}
               </TableCell>
               <TableCell align="right">
                 <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap">
@@ -189,7 +189,7 @@ const SalesPostVisitPage: React.FC = () => {
                     disabled={actionLoadingId === lead.id}
                     onClick={() => handleAgreed(lead)}
                   >
-                    ╨б╨╛╨│╨╗╨░╤Б╨╡╨╜ ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П
+                    Согласен заниматься
                   </Button>
                   <Button
                     size="small"
@@ -198,7 +198,7 @@ const SalesPostVisitPage: React.FC = () => {
                     disabled={actionLoadingId === lead.id}
                     onClick={() => openThinking(lead)}
                   >
-                    ╨Я╨╛╤И╤С╨╗ ╨┤╤Г╨╝╨░╤В╤М
+                    Пошёл думать
                   </Button>
                   <Button
                     size="small"
@@ -207,7 +207,7 @@ const SalesPostVisitPage: React.FC = () => {
                     disabled={actionLoadingId === lead.id}
                     onClick={() => openDeclined(lead)}
                   >
-                    ╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П
+                    Отказался
                   </Button>
                 </Stack>
               </TableCell>
@@ -217,7 +217,7 @@ const SalesPostVisitPage: React.FC = () => {
             <TableRow>
               <TableCell colSpan={4}>
                 <Typography color="text.secondary">
-                  ╨Э╨╡╤В ╨╗╨╕╨┤╨╛╨▓ ╨▓ ╤Б╤В╨░╨┤╨╕╨╕ ┬л╨Я╨╛╤Б╨╗╨╡ ╨▓╨╕╨╖╨╕╤В╨░┬╗. ╨б╤О╨┤╨░ ╨┐╨╛╨┐╨░╨┤╨░╤О╤В ╤В╨╡, ╨║╨╛╨│╨╛ ╨╛╤В╨╝╨╡╤В╨╕╨╗╨╕ ┬л╨Я╤А╨╕╤И╨╡╨╗┬╗ ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╕.
+                  Нет лидов в стадии «После визита». Сюда попадают те, кого отметили «Пришел» на мероприятии.
                 </Typography>
               </TableCell>
             </TableRow>
@@ -226,7 +226,7 @@ const SalesPostVisitPage: React.FC = () => {
       </Table>
 
       <Dialog open={thinkingOpen} onClose={() => setThinkingOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Я╨╛╤И╤С╨╗ ╨┤╤Г╨╝╨░╤В╤М</DialogTitle>
+        <DialogTitle>Пошёл думать</DialogTitle>
         <DialogContent>
           {thinkingLead && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -234,7 +234,7 @@ const SalesPostVisitPage: React.FC = () => {
             </Typography>
           )}
           <TextField
-            label="╨Ф╨░╤В╨░ ╨┐╨╛╨▓╤В╨╛╤А╨╜╨╛╨│╨╛ ╨║╨╛╨╜╤В╨░╨║╤В╨░"
+            label="Дата повторного контакта"
             type="datetime-local"
             fullWidth
             InputLabelProps={{ shrink: true }}
@@ -244,15 +244,15 @@ const SalesPostVisitPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setThinkingOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setThinkingOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleConfirmThinking()}>
-            ╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={declinedOpen} onClose={() => setDeclinedOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П ╨┐╨╛╤Б╨╗╨╡ ╨▓╨╕╨╖╨╕╤В╨░</DialogTitle>
+        <DialogTitle>Отказался после визита</DialogTitle>
         <DialogContent>
           {declinedLead && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -260,7 +260,7 @@ const SalesPostVisitPage: React.FC = () => {
             </Typography>
           )}
           <TextField
-            label="╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╛╤В╨║╨░╨╖╨░"
+            label="Причина отказа"
             fullWidth
             multiline
             minRows={3}
@@ -270,9 +270,9 @@ const SalesPostVisitPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeclinedOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setDeclinedOpen(false)}>Отмена</Button>
           <Button variant="contained" color="warning" onClick={() => void handleConfirmDeclined()}>
-            ╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -44,7 +44,7 @@ const SalesReinviteEventPage: React.FC = () => {
       setEvents(data);
       return data;
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П'));
+      setError(extractApiError(err, 'Не удалось загрузить мероприятия'));
       return [];
     }
   }, []);
@@ -123,9 +123,9 @@ const SalesReinviteEventPage: React.FC = () => {
   return (
     <Layout>
       <Stack spacing={2}>
-        <Typography variant="h4">╨Я╨╛╨╖╨▓╨░╤В╤М ╨╡╤Й╨╡ ╤А╨░╨╖ ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</Typography>
+        <Typography variant="h4">Позвать еще раз на мероприятие</Typography>
         <Typography variant="body2" color="text.secondary">
-          ╨Ч╨┤╨╡╤Б╤М ╨╛╤В╨╛╨▒╤А╨░╨╢╨░╤О╤В╤Б╤П ╤В╨╡, ╨║╤В╨╛ ╨╜╨╡ ╤П╨▓╨╕╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ (╨╜╨╡╤П╨▓╨║╨░). ╨Ь╨╛╨╢╨╜╨╛ ╨╛╤В╨║╤А╤Л╤В╤М ╨║╨░╤А╤В╨╛╤З╨║╤Г ╨╗╨╕╨┤╨░ ╨╕╨╗╨╕ ╨┐╨╡╤А╨╡╨╣╤В╨╕ ╨▓ ╤А╨░╨╖╨┤╨╡╨╗ ┬л╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П┬╗, ╤З╤В╨╛╨▒╤Л ╨╖╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨┤╤А╤Г╨│╨╛╨╡ ╤Б╨╛╨▒╤Л╤В╨╕╨╡.
+          Здесь отображаются те, кто не явился на мероприятие (неявка). Можно открыть карточку лида или перейти в раздел «Мероприятия», чтобы записать на другое событие.
         </Typography>
         {error && (
           <Alert severity="error">{error}</Alert>
@@ -139,11 +139,11 @@ const SalesReinviteEventPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</TableCell>
-                  <TableCell>╨Ф╨░╤В╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П</TableCell>
-                  <TableCell>╨Ъ╨╗╨╕╨╡╨╜╤В</TableCell>
-                  <TableCell>╨в╨╡╨╗╨╡╤Д╨╛╨╜</TableCell>
-                  <TableCell align="right">╨Ф╨╡╨╣╤Б╤В╨▓╨╕╤П</TableCell>
+                  <TableCell>Мероприятие</TableCell>
+                  <TableCell>Дата мероприятия</TableCell>
+                  <TableCell>Клиент</TableCell>
+                  <TableCell>Телефон</TableCell>
+                  <TableCell align="right">Действия</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -151,7 +151,7 @@ const SalesReinviteEventPage: React.FC = () => {
                   <TableRow>
                     <TableCell colSpan={5}>
                       <Typography color="text.secondary">
-                        ╨Э╨╡╤В ╨╖╨░╨┐╨╕╤Б╨╡╨╣ ╤Б ╨╜╨╡╤П╨▓╨║╨╛╨╣. ╨Ю╤В╨╝╨╡╤В╤М╤В╨╡ ╨╜╨╡╤П╨▓╨║╤Г ╨▓ ╤А╨░╨╖╨┤╨╡╨╗╨╡ ┬л╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П┬╗, ╤З╤В╨╛╨▒╤Л ╨╗╨╕╨┤╤Л ╨┐╨╛╤П╨▓╨╕╨╗╨╕╤Б╤М ╨╖╨┤╨╡╤Б╤М.
+                        Нет записей с неявкой. Отметьте неявку в разделе «Мероприятия», чтобы лиды появились здесь.
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -165,8 +165,8 @@ const SalesReinviteEventPage: React.FC = () => {
                           return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : event.starts_at;
                         })()}
                       </TableCell>
-                      <TableCell>{lead?.contact_name ?? 'тАФ'}</TableCell>
-                      <TableCell>{lead?.phone ?? 'тАФ'}</TableCell>
+                      <TableCell>{lead?.contact_name ?? '—'}</TableCell>
+                      <TableCell>{lead?.phone ?? '—'}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
                           <Button
@@ -174,14 +174,14 @@ const SalesReinviteEventPage: React.FC = () => {
                             variant="outlined"
                             onClick={() => navigate(`/sales/leads?open=${registration.lead_id}`)}
                           >
-                            ╨Ъ╨░╤А╤В╨╛╤З╨║╨░ ╨╗╨╕╨┤╨░
+                            Карточка лида
                           </Button>
                           <Button
                             size="small"
                             variant="contained"
                             onClick={() => navigate('/sales/events')}
                           >
-                            ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П
+                            Мероприятия
                           </Button>
                         </Stack>
                       </TableCell>

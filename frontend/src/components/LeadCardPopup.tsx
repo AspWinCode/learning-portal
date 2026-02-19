@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -18,13 +18,13 @@ import { extractApiError } from '../utils/extractApiError';
 import type { Lead, LeadTask, Invoice, LeadCommunication } from '../types';
 
 const statusLabels: Record<string, string> = {
-  new: '╨Э╨╛╨▓╤Л╨╣',
-  contacted: '╨б╨▓╤П╨╖╨░╨╗╨╕╤Б╤М',
-  no_answer: '╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜',
-  demo: '╨Ф╨╡╨╝╨╛',
-  invoice_sent: '╨Ш╨╜╨▓╨╛╨╣╤Б ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜',
-  won: '╨г╤Б╨┐╨╡╤И╨╜╨╛',
-  lost: '╨Ч╨░╨║╤А╤Л╤В',
+  new: 'Новый',
+  contacted: 'Связались',
+  no_answer: 'Недозвон',
+  demo: 'Демо',
+  invoice_sent: 'Инвойс отправлен',
+  won: 'Успешно',
+  lost: 'Закрыт',
 };
 
 interface LeadCardPopupProps {
@@ -64,7 +64,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
       setInvoices(invoicesData);
       setCommunications(commData);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨║╨░╤А╤В╨╛╤З╨║╤Г'));
+      setError(extractApiError(err, 'Не удалось загрузить карточку'));
       setLead(null);
     } finally {
       setLoading(false);
@@ -91,7 +91,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
   };
 
   const leadName = lead
-    ? [lead.parent_full_name || lead.contact_name, lead.child_full_name].filter(Boolean).join(' / ') || lead.phone || `╨Ы╨╕╨┤ #${lead.id}`
+    ? [lead.parent_full_name || lead.contact_name, lead.child_full_name].filter(Boolean).join(' / ') || lead.phone || `Лид #${lead.id}`
     : '';
 
   return (
@@ -105,12 +105,12 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
     >
       <DialogContent sx={{ p: 0 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-          <Typography variant="h6">╨Ъ╨░╤А╤В╨╛╤З╨║╨░ ╨╗╨╕╨┤╨░</Typography>
+          <Typography variant="h6">Карточка лида</Typography>
           <Stack direction="row" alignItems="center" spacing={0.5}>
             <Button size="small" startIcon={<OpenInNew />} onClick={handleOpenFull}>
-              ╨Ю╤В╨║╤А╤Л╤В╤М ╨┐╨╛╨╗╨╜╤Г╤О ╨║╨░╤А╤В╨╛╤З╨║╤Г
+              Открыть полную карточку
             </Button>
-            <IconButton size="small" onClick={onClose} aria-label="╨Ч╨░╨║╤А╤Л╤В╤М">
+            <IconButton size="small" onClick={onClose} aria-label="Закрыть">
               <CloseIcon />
             </IconButton>
           </Stack>
@@ -118,7 +118,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
         {loading && (
           <Typography color="text.secondary" sx={{ p: 2 }}>
-            ╨Ч╨░╨│╤А╤Г╨╖╨║╨░тАж
+            Загрузка…
           </Typography>
         )}
 
@@ -132,11 +132,11 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
           <Stack spacing={2} sx={{ p: 2 }}>
             <Card variant="outlined">
               <CardContent>
-                <Typography variant="subtitle2" color="text.secondary">╨Ъ╨╛╨╜╤В╨░╨║╤В</Typography>
+                <Typography variant="subtitle2" color="text.secondary">Контакт</Typography>
                 <Typography variant="body1">{leadName}</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {lead.parent_phone || lead.phone || 'тАФ'}
-                  {lead.email ? ` тАв ${lead.email}` : ''}
+                  {lead.parent_phone || lead.phone || '—'}
+                  {lead.email ? ` • ${lead.email}` : ''}
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                   <Chip size="small" label={statusLabels[lead.status] ?? lead.status} />
@@ -149,15 +149,15 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
             <Card variant="outlined">
               <CardContent>
-                <Typography variant="subtitle2" color="text.secondary">╨Ч╨░╨┤╨░╤З╨╕ ({tasks.length})</Typography>
+                <Typography variant="subtitle2" color="text.secondary">Задачи ({tasks.length})</Typography>
                 {tasks.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">╨Э╨╡╤В ╨╖╨░╨┤╨░╤З</Typography>
+                  <Typography variant="body2" color="text.secondary">Нет задач</Typography>
                 ) : (
                   <Stack spacing={0.5} sx={{ mt: 0.5 }}>
                     {tasks.slice(0, 5).map((t) => (
                       <Stack key={t.id} direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="body2">{t.note || 'тАФ'}</Typography>
-                        <Chip size="small" label={t.status === 'open' ? '╨Ю╤В╨║╤А╤Л╤В╨░' : '╨Ч╨░╨║╤А╤Л╤В╨░'} color={t.status === 'open' ? 'default' : 'success'} />
+                        <Typography variant="body2">{t.note || '—'}</Typography>
+                        <Chip size="small" label={t.status === 'open' ? 'Открыта' : 'Закрыта'} color={t.status === 'open' ? 'default' : 'success'} />
                         {t.due_at && (
                           <Typography variant="caption" color="text.secondary">
                             {isValid(parseISO(t.due_at)) ? format(parseISO(t.due_at), 'dd.MM HH:mm') : t.due_at}
@@ -166,7 +166,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                       </Stack>
                     ))}
                     {tasks.length > 5 && (
-                      <Typography variant="caption" color="text.secondary">╨╕ ╨╡╤Й╤С {tasks.length - 5}</Typography>
+                      <Typography variant="caption" color="text.secondary">и ещё {tasks.length - 5}</Typography>
                     )}
                   </Stack>
                 )}
@@ -175,9 +175,9 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
             <Card variant="outlined">
               <CardContent>
-                <Typography variant="subtitle2" color="text.secondary">╨Ш╨╜╨▓╨╛╨╣╤Б╤Л ({invoices.length})</Typography>
+                <Typography variant="subtitle2" color="text.secondary">Инвойсы ({invoices.length})</Typography>
                 {invoices.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">╨Э╨╡╤В ╨╕╨╜╨▓╨╛╨╣╤Б╨╛╨▓</Typography>
+                  <Typography variant="body2" color="text.secondary">Нет инвойсов</Typography>
                 ) : (
                   <Stack spacing={0.5} sx={{ mt: 0.5 }}>
                     {invoices.map((inv) => (
@@ -193,9 +193,9 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
             <Card variant="outlined">
               <CardContent>
-                <Typography variant="subtitle2" color="text.secondary">╨Ъ╨╛╨╝╨╝╤Г╨╜╨╕╨║╨░╤Ж╨╕╨╕ ({communications.length})</Typography>
+                <Typography variant="subtitle2" color="text.secondary">Коммуникации ({communications.length})</Typography>
                 {communications.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">╨Э╨╡╤В</Typography>
+                  <Typography variant="body2" color="text.secondary">Нет</Typography>
                 ) : (
                   <Stack spacing={0.5} sx={{ mt: 0.5 }}>
                     {communications.slice(0, 3).map((c) => (
@@ -204,7 +204,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                       </Typography>
                     ))}
                     {communications.length > 3 && (
-                      <Typography variant="caption" color="text.secondary">╨╕ ╨╡╤Й╤С {communications.length - 3}</Typography>
+                      <Typography variant="caption" color="text.secondary">и ещё {communications.length - 3}</Typography>
                     )}
                   </Stack>
                 )}
@@ -212,7 +212,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
             </Card>
 
             <Button fullWidth variant="outlined" startIcon={<OpenInNew />} onClick={handleOpenFull} sx={{ mt: 1 }}>
-              ╨Ю╤В╨║╤А╤Л╤В╤М ╨┐╨╛╨╗╨╜╤Г╤О ╨║╨░╤А╤В╨╛╤З╨║╤Г ╨┤╨╗╤П ╤А╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╨╜╨╕╤П
+              Открыть полную карточку для редактирования
             </Button>
           </Stack>
         )}

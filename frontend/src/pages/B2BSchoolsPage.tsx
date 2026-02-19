@@ -319,7 +319,7 @@ const B2BSchoolsPage: React.FC = () => {
   };
 
   const formatEventDates = (dates: string[] | null | undefined) => {
-    if (!dates?.length) return 'тАФ';
+    if (!dates?.length) return '—';
     return dates
       .map((d) => {
         try {
@@ -402,22 +402,22 @@ const B2BSchoolsPage: React.FC = () => {
                               </Stack>
                             </Stack>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              Директор: {school.director || 'тАФ'}
+                              Директор: {school.director || '—'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              Город: {school.city || 'тАФ'}
+                              Город: {school.city || '—'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block" noWrap title={school.address || ''}>
-                              Адрес: {school.address || 'тАФ'}
+                              Адрес: {school.address || '—'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              Степень дружбы: {FRIENDSHIP_DEGREES.find((d) => d.value === school.friendship_degree)?.label ?? school.friendship_degree ?? 'тАФ'}
+                              Степень дружбы: {FRIENDSHIP_DEGREES.find((d) => d.value === school.friendship_degree)?.label ?? school.friendship_degree ?? '—'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
                               Контактов: {school.contacts?.length ?? 0}
                             </Typography>
                             <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                              <Chip size="small" label={`Учеников: ${school.student_count ?? 'тАФ'}`} />
+                              <Chip size="small" label={`Учеников: ${school.student_count ?? '—'}`} />
                               <Chip size="small" label={`Лидов: ${school.leads_count ?? 0}`} />
                               <Chip size="small" color="success" label={`Конверсия: ${school.conversion_percent ?? 0}%`} />
                             </Stack>
@@ -568,7 +568,7 @@ const B2BSchoolsPage: React.FC = () => {
                       <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                         <Box>
                           <Typography variant="body2" fontWeight="medium">{c.full_name}</Typography>
-                          <Typography variant="caption" color="text.secondary">{c.position || 'тАФ'}</Typography>
+                          <Typography variant="caption" color="text.secondary">{c.position || '—'}</Typography>
                           <Typography variant="caption" display="block">{c.phone}</Typography>
                           {c.phone_extra && (
                             <Typography variant="caption" display="block" color="text.secondary">Доп. тел.: {c.phone_extra}</Typography>

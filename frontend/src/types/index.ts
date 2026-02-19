@@ -451,7 +451,7 @@ export interface OwnerFunnelTypeInfo {
   stages: OwnerFunnelStageOption[];
 }
 
-/** ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ тАФ ╤Б╨░╨╝╨░ ╨▓╨╛╤А╨╛╨╜╨║╨░ (╨┤╨╛╤Б╨║╨░ ╤Б ╤Н╤В╨░╨┐╨░╨╝╨╕). ╨Ъ╨░╤А╤В╨╛╤З╨║╨╕ ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨░╤Е тАФ ╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л ╤Б event_id. */
+/** Мероприятие — сама воронка (доска с этапами). Карточки в колонках — элементы с event_id. */
 export interface OwnerFunnelEvent {
   id: number;
   event_name: string;
@@ -471,7 +471,7 @@ export interface OwnerFunnelItem {
   updated_at?: string | null;
 }
 
-/** ╨Ф╨░╨╜╨╜╤Л╨╡ ╨║╨░╤А╤В╨╛╤З╨║╨╕ ╨▓╨╛╤А╨╛╨╜╨║╨╕ ┬л╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П┬╗ */
+/** Данные карточки воронки «Мероприятия» */
 export interface OwnerFunnelCardData {
   event_name?: string;
   event_dates?: string;

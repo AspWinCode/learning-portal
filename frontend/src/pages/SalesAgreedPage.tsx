@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -59,7 +59,7 @@ const SalesAgreedPage: React.FC = () => {
       setLeads([...inv, ...decided]);
       setError(null);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╤Б╨┐╨╕╤Б╨╛╨║'));
+      setError(extractApiError(err, 'Не удалось загрузить список'));
     }
   }, []);
 
@@ -78,7 +78,7 @@ const SalesAgreedPage: React.FC = () => {
   }, [loadLeads, loadTemplates]);
 
   const questionnaireTemplate = templates.find(
-    (t) => (t.name || '').toLowerCase().includes('╨░╨╜╨║╨╡╤В')
+    (t) => (t.name || '').toLowerCase().includes('анкет')
   );
   const defaultTemplateId = questionnaireTemplate?.id ?? templates[0]?.id;
 
@@ -109,11 +109,11 @@ const SalesAgreedPage: React.FC = () => {
   const handleSendQuestionnaire = async () => {
     if (!sendLead) return;
     if (!sendForm.message.trim()) {
-      setError('╨Т╨▓╨╡╨┤╨╕╤В╨╡ ╤В╨╡╨║╤Б╤В ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╤П');
+      setError('Введите текст сообщения');
       return;
     }
     if (!sendForm.follow_up_at) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┤╨░╤В╤Г follow-up');
+      setError('Укажите дату follow-up');
       return;
     }
     setActionLoadingId(sendLead.id);
@@ -130,7 +130,7 @@ const SalesAgreedPage: React.FC = () => {
       setSendLead(null);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨░╨╜╨║╨╡╤В╤Г'));
+      setError(extractApiError(err, 'Не удалось отправить анкету'));
     } finally {
       setActionLoadingId(null);
     }
@@ -143,27 +143,27 @@ const SalesAgreedPage: React.FC = () => {
       await salesApi.updateLead(lead.id, { questionnaire_filled: true });
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╤В╨╝╨╡╤В╨╕╤В╤М ╨░╨╜╨║╨╡╤В╤Г'));
+      setError(extractApiError(err, 'Не удалось отметить анкету'));
     } finally {
       setActionLoadingId(null);
     }
   };
 
   const leadDisplayName = (l: Lead) =>
-    [l.parent_full_name || l.contact_name, l.child_full_name].filter(Boolean).join(' / ') || l.phone || `╨Ы╨╕╨┤ #${l.id}`;
-  const leadPhone = (l: Lead) => l.parent_phone || l.phone || 'тАФ';
+    [l.parent_full_name || l.contact_name, l.child_full_name].filter(Boolean).join(' / ') || l.phone || `Лид #${l.id}`;
+  const leadPhone = (l: Lead) => l.parent_phone || l.phone || '—';
 
   return (
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4">╨Р╨╜╨║╨╡╤В╨░ ╤Г╤З╨╡╨╜╨╕╨║╨░</Typography>
+        <Typography variant="h4">Анкета ученика</Typography>
         <Button variant="outlined" onClick={() => loadLeads()}>
-          ╨Ю╨▒╨╜╨╛╨▓╨╕╤В╤М
+          Обновить
         </Button>
       </Stack>
 
       <Typography color="text.secondary" sx={{ mb: 2 }}>
-        ╨Ы╨╕╨┤╤Л, ╨║╨╛╤В╨╛╤А╤Л╨╡ ╤Б╨╛╨│╨╗╨░╤Б╨╕╨╗╨╕╤Б╤М ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П. ╨Ю╤В╨┐╤А╨░╨▓╤М╤В╨╡ ╨╕╨╝ ╨░╨╜╨║╨╡╤В╤Г ╤Г╤З╨╡╨╜╨╕╨║╨░ (╤И╨░╨▒╨╗╨╛╨╜ ╨╕╨╖ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨╛╨▓ ╨╕╨╗╨╕ ╤Б╨▓╨╛╨╣ ╤В╨╡╨║╤Б╤В).
+        Лиды, которые согласились заниматься. Отправьте им анкету ученика (шаблон из справочников или свой текст).
       </Typography>
 
       {error && (
@@ -175,10 +175,10 @@ const SalesAgreedPage: React.FC = () => {
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>╨Ы╨╕╨┤</TableCell>
-            <TableCell>╨в╨╡╨╗╨╡╤Д╨╛╨╜</TableCell>
-            <TableCell>╨Ю╨▒╨╜╨╛╨▓╨╗╤С╨╜</TableCell>
-            <TableCell align="right">╨Ф╨╡╨╣╤Б╤В╨▓╨╕╤П</TableCell>
+            <TableCell>Лид</TableCell>
+            <TableCell>Телефон</TableCell>
+            <TableCell>Обновлён</TableCell>
+            <TableCell align="right">Действия</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -201,7 +201,7 @@ const SalesAgreedPage: React.FC = () => {
                       const d = parseISO(lead.updated_at);
                       return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : lead.updated_at;
                     })()
-                  : 'тАФ'}
+                  : '—'}
               </TableCell>
               <TableCell align="right">
                 <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap">
@@ -212,7 +212,7 @@ const SalesAgreedPage: React.FC = () => {
                     disabled={actionLoadingId === lead.id}
                     onClick={() => openSendDialog(lead)}
                   >
-                    ╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨░╨╜╨║╨╡╤В╤Г
+                    Отправить анкету
                   </Button>
                   <Button
                     size="small"
@@ -221,7 +221,7 @@ const SalesAgreedPage: React.FC = () => {
                     disabled={actionLoadingId === lead.id}
                     onClick={() => handleMarkQuestionnaireFilled(lead)}
                   >
-                    ╨Р╨╜╨║╨╡╤В╨░ ╨╖╨░╨┐╨╛╨╗╨╜╨╡╨╜╨░
+                    Анкета заполнена
                   </Button>
                 </Stack>
               </TableCell>
@@ -231,7 +231,7 @@ const SalesAgreedPage: React.FC = () => {
             <TableRow>
               <TableCell colSpan={4}>
                 <Typography color="text.secondary">
-                  ╨Э╨╡╤В ╨╗╨╕╨┤╨╛╨▓ ╨▓ ╤Б╤В╨░╨┤╨╕╨╕ ┬л╨У╨╛╤В╨╛╨▓ ╨║ ╨╛╤Д╨╛╤А╨╝╨╗╨╡╨╜╨╕╤О┬╗. ╨б╤О╨┤╨░ ╨┐╨╛╨┐╨░╨┤╨░╤О╤В ╤В╨╡, ╨║╤В╨╛ ╨╜╨░ ╨▓╨║╨╗╨░╨┤╨║╨╡ ┬л╨Я╨╛╤Б╨╗╨╡ ╨▓╨╕╨╖╨╕╤В╨░┬╗ ╨╜╨░╨╢╨░╨╗ ┬л╨б╨╛╨│╨╗╨░╤Б╨╡╨╜ ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П┬╗.
+                  Нет лидов в стадии «Готов к оформлению». Сюда попадают те, кто на вкладке «После визита» нажал «Согласен заниматься».
                 </Typography>
               </TableCell>
             </TableRow>
@@ -240,23 +240,23 @@ const SalesAgreedPage: React.FC = () => {
       </Table>
 
       <Dialog open={sendOpen} onClose={() => setSendOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨░╨╜╨║╨╡╤В╤Г ╤Г╤З╨╡╨╜╨╕╨║╨░</DialogTitle>
+        <DialogTitle>Отправить анкету ученика</DialogTitle>
         <DialogContent>
           {sendLead && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              {leadDisplayName(sendLead)} тАФ {leadPhone(sendLead)}
+              {leadDisplayName(sendLead)} — {leadPhone(sendLead)}
             </Typography>
           )}
           <FormControl fullWidth sx={{ mt: 1 }}>
-            <InputLabel id="questionnaire-template-label">╨и╨░╨▒╨╗╨╛╨╜</InputLabel>
+            <InputLabel id="questionnaire-template-label">Шаблон</InputLabel>
             <Select
               labelId="questionnaire-template-label"
-              label="╨и╨░╨▒╨╗╨╛╨╜"
+              label="Шаблон"
               value={sendForm.template_id}
               onChange={(e) => handleTemplateChange(String(e.target.value))}
             >
               <MenuItem value="">
-                <em>╨С╨╡╨╖ ╤И╨░╨▒╨╗╨╛╨╜╨░</em>
+                <em>Без шаблона</em>
               </MenuItem>
               {templates.map((tpl) => (
                 <MenuItem key={tpl.id} value={tpl.id}>
@@ -266,10 +266,10 @@ const SalesAgreedPage: React.FC = () => {
             </Select>
           </FormControl>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="questionnaire-channel-label">╨Ъ╨░╨╜╨░╨╗</InputLabel>
+            <InputLabel id="questionnaire-channel-label">Канал</InputLabel>
             <Select
               labelId="questionnaire-channel-label"
-              label="╨Ъ╨░╨╜╨░╨╗"
+              label="Канал"
               value={sendForm.channel}
               onChange={(e) => setSendForm((s) => ({ ...s, channel: String(e.target.value) }))}
             >
@@ -282,31 +282,31 @@ const SalesAgreedPage: React.FC = () => {
             fullWidth
             multiline
             minRows={4}
-            label="╨в╨╡╨║╤Б╤В ╨░╨╜╨║╨╡╤В╤Л / ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╤П"
+            label="Текст анкеты / сообщения"
             sx={{ mt: 2 }}
             value={sendForm.message}
             onChange={(e) => setSendForm((s) => ({ ...s, message: e.target.value }))}
           />
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="questionnaire-pause-label">╨Я╤А╨╕╤З╨╕╨╜╨░ ╨┐╨░╤Г╨╖╤Л</InputLabel>
+            <InputLabel id="questionnaire-pause-label">Причина паузы</InputLabel>
             <Select
               labelId="questionnaire-pause-label"
-              label="╨Я╤А╨╕╤З╨╕╨╜╨░ ╨┐╨░╤Г╨╖╤Л"
+              label="Причина паузы"
               value={sendForm.pause_reason}
               onChange={(e) => setSendForm((s) => ({ ...s, pause_reason: String(e.target.value) }))}
             >
               <MenuItem value="">
-                <em>╨С╨╡╨╖ ╨┐╨░╤Г╨╖╤Л</em>
+                <em>Без паузы</em>
               </MenuItem>
-              <MenuItem value="╨╢╨┤╤С╨╝ ╨╛╤В╨▓╨╡╤В">╨╢╨┤╤С╨╝ ╨╛╤В╨▓╨╡╤В</MenuItem>
-              <MenuItem value="╨┐╨╛╨┤╤Г╨╝╨░╤В╤М">╨┐╨╛╨┤╤Г╨╝╨░╤В╤М</MenuItem>
-              <MenuItem value="╨╜╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕">╨╜╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕</MenuItem>
+              <MenuItem value="ждём ответ">ждём ответ</MenuItem>
+              <MenuItem value="подумать">подумать</MenuItem>
+              <MenuItem value="нет времени">нет времени</MenuItem>
             </Select>
           </FormControl>
           <TextField
             fullWidth
             type="datetime-local"
-            label="Follow-up (╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛)"
+            label="Follow-up (обязательно)"
             InputLabelProps={{ shrink: true }}
             sx={{ mt: 2 }}
             value={sendForm.follow_up_at}
@@ -314,9 +314,9 @@ const SalesAgreedPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSendOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setSendOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleSendQuestionnaire()}>
-            ╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М
+            Отправить
           </Button>
         </DialogActions>
       </Dialog>

@@ -278,14 +278,14 @@ const B2BSchoolCreatePage: React.FC = () => {
                     filteredSchools.map((school) => (
                       <TableRow key={school.id}>
                         <TableCell>{school.name}</TableCell>
-                        <TableCell>{school.director || 'тАФ'}</TableCell>
-                        <TableCell>{school.city || 'тАФ'}</TableCell>
+                        <TableCell>{school.director || '—'}</TableCell>
+                        <TableCell>{school.city || '—'}</TableCell>
                         <TableCell sx={{ maxWidth: 200 }} title={school.address || ''}>
                           <Typography variant="body2" noWrap>
-                            {school.address || 'тАФ'}
+                            {school.address || '—'}
                           </Typography>
                         </TableCell>
-                        <TableCell align="right">{school.student_count ?? 'тАФ'}</TableCell>
+                        <TableCell align="right">{school.student_count ?? '—'}</TableCell>
                         <TableCell>
                           {PIPELINE_STAGES.find((s) => s.value === school.pipeline_stage)?.label ?? school.pipeline_stage}
                         </TableCell>

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -22,7 +22,7 @@ import { trainerLessonsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { TrainerLessonSlot } from '../types';
 
-const WEEKDAY_NAMES = ['╨Я╨╜', '╨Т╤В', '╨б╤А', '╨з╤В', '╨Я╤В', '╨б╨▒', '╨Т╤Б'];
+const WEEKDAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 const TrainerLessonsPage: React.FC = () => {
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
@@ -41,7 +41,7 @@ const TrainerLessonsPage: React.FC = () => {
       const data = await trainerLessonsApi.getForDate(viewDate);
       setSlots(data);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨╖╨░╨╜╤П╤В╨╕╤П'));
+      setError(extractApiError(err, 'Не удалось загрузить занятия'));
       setSlots([]);
     } finally {
       setLoading(false);
@@ -83,7 +83,7 @@ const TrainerLessonsPage: React.FC = () => {
       setSelectedSlot(null);
       loadSlots();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨┐╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М'));
+      setError(extractApiError(err, 'Не удалось сохранить посещаемость'));
     } finally {
       setSaving(false);
     }
@@ -91,26 +91,26 @@ const TrainerLessonsPage: React.FC = () => {
 
   const displayDate = viewDate ? (() => {
     const d = new Date(viewDate + 'T12:00:00');
-    return format(d, 'd MMMM yyyy ╨│.', { locale: ru });
+    return format(d, 'd MMMM yyyy г.', { locale: ru });
   })() : '';
   const displayWeekday = viewDate ? WEEKDAY_NAMES[(new Date(viewDate + 'T12:00:00').getDay() + 6) % 7] : '';
 
   return (
     <Layout>
       <Stack spacing={2}>
-        <Typography variant="h4">╨г╤А╨╛╨║╨╕</Typography>
+        <Typography variant="h4">Уроки</Typography>
         <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
           <Button size="small" onClick={handlePrevDay}>тЖР</Button>
-          <Button size="small" onClick={handleToday}>╨б╨╡╨│╨╛╨┤╨╜╤П</Button>
+          <Button size="small" onClick={handleToday}>Сегодня</Button>
           <Button size="small" onClick={handleNextDay}>тЖТ</Button>
           <Typography variant="h6">{displayDate} ({displayWeekday})</Typography>
         </Stack>
         {error && <Alert severity="error">{error}</Alert>}
         {loading ? (
-          <Typography color="text.secondary">╨Ч╨░╨│╤А╤Г╨╖╨║╨░...</Typography>
+          <Typography color="text.secondary">Загрузка...</Typography>
         ) : slots.length === 0 ? (
           <Typography color="text.secondary">
-            ╨Э╨░ ╤Н╤В╤Г ╨┤╨░╤В╤Г ╨╜╨╡╤В ╨╖╨░╨╜╤П╤В╨╕╨╣ ╨┐╨╛ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤О. ╨Ф╨╛╨▒╨░╨▓╤М╤В╨╡ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡ ╨▓ ╨║╨░╤А╤В╨╛╤З╨║╨╡ ╨│╤А╤Г╨┐╨┐╤Л (╨У╤А╤Г╨┐╨┐╤Л тЖТ ╨│╤А╤Г╨┐╨┐╨░ тЖТ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡).
+            На эту дату нет занятий по расписанию. Добавьте расписание в карточке группы (Группы → группа → расписание).
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -129,7 +129,7 @@ const TrainerLessonsPage: React.FC = () => {
                 <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                   <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
                     <Typography variant="subtitle2" color="primary">
-                      {(slot.start_time || '').slice(0, 5)} тАУ {(slot.end_time || '').slice(0, 5)}
+                      {(slot.start_time || '').slice(0, 5)} – {(slot.end_time || '').slice(0, 5)}
                     </Typography>
                     {slot.program_name && (
                       <>
@@ -151,7 +151,7 @@ const TrainerLessonsPage: React.FC = () => {
                   </Stack>
                   {slot.students.some((s) => s.attended !== null && s.attended !== undefined) && (
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      ╨Ю╤В╨╝╨╡╤З╨╡╨╜╨╛: {slot.students.filter((s) => s.attended === true).length}/{slot.students.length}
+                      Отмечено: {slot.students.filter((s) => s.attended === true).length}/{slot.students.length}
                     </Typography>
                   )}
                 </CardContent>
@@ -163,11 +163,11 @@ const TrainerLessonsPage: React.FC = () => {
 
       <Dialog open={popupOpen} onClose={() => setPopupOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          ╨Ч╨░╨╜╤П╤В╨╕╨╡: {selectedSlot?.group_name} тАФ {selectedSlot?.lesson_date && format(new Date(selectedSlot.lesson_date + 'T12:00:00'), 'd.MM.yyyy')}
+          Занятие: {selectedSlot?.group_name} — {selectedSlot?.lesson_date && format(new Date(selectedSlot.lesson_date + 'T12:00:00'), 'd.MM.yyyy')}
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            ╨Ю╤В╨╝╨╡╤В╤М╤В╨╡, ╨║╤В╨╛ ╨▒╤Л╨╗ ╨╜╨░ ╨╖╨░╨╜╤П╤В╨╕╨╕
+            Отметьте, кто был на занятии
           </Typography>
           <Stack spacing={0.5}>
             {selectedSlot?.students.map((student) => (
@@ -187,9 +187,9 @@ const TrainerLessonsPage: React.FC = () => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPopupOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setPopupOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={handleSaveAttendance} disabled={saving}>
-            {saving ? '╨б╨╛╤Е╤А╨░╨╜╨╡╨╜╨╕╨╡...' : '╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'}
+            {saving ? 'Сохранение...' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>

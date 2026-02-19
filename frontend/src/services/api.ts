@@ -51,7 +51,7 @@ const api = axios.create({
   timeout: 15000,
 });
 
-// Interceptor ╨┤╨╗╤П ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╤П ╤В╨╛╨║╨╡╨╜╨░
+// Interceptor для добавления токена
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -60,7 +60,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor ╨┤╨╗╤П ╨╛╨▒╤А╨░╨▒╨╛╤В╨║╨╕ ╨╛╤И╨╕╨▒╨╛╨║
+// Interceptor для обработки ошибок
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -74,7 +74,7 @@ api.interceptors.response.use(
 
 export const authApi = {
   login: async (email: string, password: string) => {
-    // OAuth2 / FastAPI OAuth2PasswordRequestForm ╨╛╨╢╨╕╨┤╨░╨╡╤В ╤А╨╛╨▓╨╜╨╛ application/x-www-form-urlencoded
+    // OAuth2 / FastAPI OAuth2PasswordRequestForm ожидает ровно application/x-www-form-urlencoded
     const body = new URLSearchParams();
     body.append('username', email);
     body.append('password', password);

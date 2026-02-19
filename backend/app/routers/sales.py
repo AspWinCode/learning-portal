@@ -32,6 +32,7 @@ from app.models import (
     UserRole,
     SalesCity,
     SalesSchool,
+    SalesInstruction,
 )
 from app.schemas import (
     LeadCreate,
@@ -79,6 +80,9 @@ from app.schemas import (
     SalesQueueRegistrationItem,
     FollowUpItemResponse,
     LeadPushStatsResponse,
+    SalesInstructionCreate,
+    SalesInstructionUpdate,
+    SalesInstructionResponse,
 )
 from app.routers.action_log import log_action
 
@@ -129,6 +133,83 @@ def _fix_lead_strings(lead: Lead) -> Lead:
         if fixed is not None and fixed != value:
             setattr(lead, field, fixed)
     return lead
+
+
+@router.get("/sales-instructions", response_model=List[SalesInstructionResponse])
+async def list_sales_instructions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    items = db.query(SalesInstruction).order_by(SalesInstruction.created_at.asc()).all()
+    return items
+
+
+@router.post("/sales-instructions", response_model=SalesInstructionResponse, status_code=status.HTTP_201_CREATED)
+async def create_sales_instruction(
+    payload: SalesInstructionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    title = (payload.title or "").strip()
+    body = (payload.body or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title is required")
+    if not body:
+        raise HTTPException(status_code=400, detail="Body is required")
+    item = SalesInstruction(
+        title=title,
+        body=body,
+        created_by_id=current_user.id,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "create", "sales_instruction", item.id, {"title": title})
+    return item
+
+
+@router.put("/sales-instructions/{instruction_id}", response_model=SalesInstructionResponse)
+async def update_sales_instruction(
+    instruction_id: int,
+    payload: SalesInstructionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    item = db.query(SalesInstruction).filter(SalesInstruction.id == instruction_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Instruction not found")
+    data = payload.dict(exclude_unset=True)
+    if "title" in data:
+        title = (data["title"] or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Title is required")
+        item.title = title
+    if "body" in data:
+        body = (data["body"] or "").strip()
+        if not body:
+            raise HTTPException(status_code=400, detail="Body is required")
+        item.body = body
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "update", "sales_instruction", item.id, data)
+    return item
+
+
+@router.delete("/sales-instructions/{instruction_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sales_instruction(
+    instruction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    item = db.query(SalesInstruction).filter(SalesInstruction.id == instruction_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Instruction not found")
+    db.delete(item)
+    db.commit()
+    log_action(db, current_user.id, "delete", "sales_instruction", instruction_id, {})
+    return None
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:

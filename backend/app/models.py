@@ -331,6 +331,19 @@ class SalesSchool(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class SalesInstruction(Base):
+    __tablename__ = "sales_instructions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    created_by = relationship("User")
+
+
 class LeadTaskTemplate(Base):
     __tablename__ = "lead_task_templates"
 

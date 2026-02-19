@@ -490,6 +490,30 @@ class LeadInfoTemplateResponse(BaseModel):
         from_attributes = True
 
 
+class SalesInstructionBase(BaseModel):
+    title: str
+    body: str
+
+
+class SalesInstructionCreate(SalesInstructionBase):
+    pass
+
+
+class SalesInstructionUpdate(BaseModel):
+    title: Optional[str] = None
+    body: Optional[str] = None
+
+
+class SalesInstructionResponse(SalesInstructionBase):
+    id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class LeadSendInfoRequest(BaseModel):
     template_id: Optional[int] = None
     channel: str = "messenger"

@@ -36,6 +36,7 @@ import {
   OwnerFunnelTypeInfo,
   OwnerFunnelEvent,
   OwnerFunnelItem,
+  SalesInstruction,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -272,6 +273,24 @@ export const gradesApi = {
       params: { program_id: programId },
     });
     return response.data;
+  },
+};
+
+export const salesInstructionsApi = {
+  list: async (): Promise<SalesInstruction[]> => {
+    const response = await api.get('/api/sales/sales-instructions');
+    return response.data;
+  },
+  create: async (data: { title: string; body: string }): Promise<SalesInstruction> => {
+    const response = await api.post('/api/sales/sales-instructions', data);
+    return response.data;
+  },
+  update: async (id: number, data: Partial<{ title: string; body: string }>): Promise<SalesInstruction> => {
+    const response = await api.put(`/api/sales/sales-instructions/${id}`, data);
+    return response.data;
+  },
+  remove: async (id: number): Promise<void> => {
+    await api.delete(`/api/sales/sales-instructions/${id}`);
   },
 };
 

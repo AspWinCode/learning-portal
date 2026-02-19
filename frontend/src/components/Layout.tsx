@@ -201,6 +201,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'Счета', icon: <ReceiptLong />, path: '/sales/invoices' },
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
+        { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' },
       ];

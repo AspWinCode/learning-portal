@@ -239,6 +239,15 @@ export interface SalesSchool {
   created_at: string;
 }
 
+export interface SalesInstruction {
+  id: number;
+  title: string;
+  body: string;
+  created_by_id: number;
+  created_at: string;
+  updated_at?: string | null;
+}
+
 export interface LeadTaskTemplate {
   id: number;
   name: string;

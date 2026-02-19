@@ -40,7 +40,7 @@ def upgrade() -> None:
             sa.Column("parent_phone", sa.String(), nullable=True),
             sa.Column("parent_phone_2", sa.String(), nullable=True),
             sa.Column("abonement_id", sa.Integer(), sa.ForeignKey("abonements.id"), nullable=True),
-            sa.Column("discount_type", sa.Enum("none", "amount", "percent", name="discounttype", create_type=False), nullable=False, server_default="none"),
+            sa.Column("discount_type", sa.String(), nullable=False, server_default="none"),
             sa.Column("discount_value", sa.Float(), nullable=False, server_default=sa.text("0")),
             sa.Column("archived", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),

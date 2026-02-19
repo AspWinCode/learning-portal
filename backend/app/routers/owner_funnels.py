@@ -1,4 +1,4 @@
-﻿"""╨Т╨╛╤А╨╛╨╜╨║╨╕ ╨┤╨╗╤П ╤А╨╛╨╗╨╕ owner: ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕, ╨┐╨╕╤Б╤М╨╝╨░ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕, ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П."""
+"""╨Т╨╛╤А╨╛╨╜╨║╨╕ ╨┤╨╗╤П ╤А╨╛╨╗╨╕ owner: ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕, ╨┐╨╕╤Б╤М╨╝╨░ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕, ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П."""
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -30,21 +30,59 @@ from app.models import User
 router = APIRouter()
 
 # ╨б╨┐╨╕╤Б╨╛╨║ ╨▓╨╛╤А╨╛╨╜╨╛╨║ ╨┤╨╗╤П ╨▓╤Л╨▒╨╛╤А╨░ (id, label, stages)
+
+# Русские подписи для воронок и этапов (без кракозябр)
+FUNNEL_TYPE_LABELS = {
+    OWNER_FUNNEL_SUPPORT_LETTERS: "Получить письма поддержки",
+    OWNER_FUNNEL_THANK_YOU_LETTERS: "Письма благодарности",
+    OWNER_FUNNEL_EVENTS: "Мероприятия",
+}
+STAGE_LABELS = {
+    (OWNER_FUNNEL_SUPPORT_LETTERS, "new"): "Новые",
+    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_created"): "Создал письмо",
+    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_sent"): "Отправил письмо",
+    (OWNER_FUNNEL_SUPPORT_LETTERS, "letter_received"): "Получил письмо",
+    (OWNER_FUNNEL_THANK_YOU_LETTERS, "new"): "Новые",
+    (OWNER_FUNNEL_THANK_YOU_LETTERS, "thank_you_formed"): "Сформировали благодарность",
+    (OWNER_FUNNEL_THANK_YOU_LETTERS, "thank_you_sent"): "Отправили благодарность",
+    (OWNER_FUNNEL_THANK_YOU_LETTERS, "school_received"): "Получила школа",
+    (OWNER_FUNNEL_EVENTS, "new"): "Новые",
+    (OWNER_FUNNEL_EVENTS, "contact_found"): "Контакт найден",
+    (OWNER_FUNNEL_EVENTS, "letter_sent"): "Отправили письмо",
+    (OWNER_FUNNEL_EVENTS, "reply_received"): "Получили ответное письмо",
+    (OWNER_FUNNEL_EVENTS, "reached_by_phone"): "Дозвонились",
+    (OWNER_FUNNEL_EVENTS, "not_reached"): "Недозвонились",
+    (OWNER_FUNNEL_EVENTS, "meeting_agreed"): "Договорились на встречу",
+    (OWNER_FUNNEL_EVENTS, "agreement_sent"): "Отправили согласование",
+    (OWNER_FUNNEL_EVENTS, "agreement_approved"): "Согласовали соглашение",
+    (OWNER_FUNNEL_EVENTS, "agreement_signed"): "Подписали соглашение",
+    (OWNER_FUNNEL_EVENTS, "trip_agreed"): "Договорились на поход",
+    (OWNER_FUNNEL_EVENTS, "info_sent_to_parents"): "Отправили информацию в чат родителям",
+    (OWNER_FUNNEL_EVENTS, "leads_collected"): "Собрали лидов",
+    (OWNER_FUNNEL_EVENTS, "rejected"): "Отказали",
+}
+
+
+def _stage_label(funnel_type: str, value: str) -> str:
+    return STAGE_LABELS.get((funnel_type, value), value)
+
+
+
 OWNER_FUNNEL_TYPES_LIST = [
     OwnerFunnelTypeInfo(
         id=OWNER_FUNNEL_SUPPORT_LETTERS,
-        label="╨Я╨╛╨╗╤Г╤З╨╕╤В╤М ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕",
-        stages=[{"value": v, "label": l} for v, l in OWNER_FUNNEL_STAGES[OWNER_FUNNEL_SUPPORT_LETTERS]],
+        label=FUNNEL_TYPE_LABELS[OWNER_FUNNEL_SUPPORT_LETTERS],
+        stages=[{"value": v, "label": _stage_label(OWNER_FUNNEL_SUPPORT_LETTERS, v)} for v, _ in OWNER_FUNNEL_STAGES[OWNER_FUNNEL_SUPPORT_LETTERS]],
     ),
     OwnerFunnelTypeInfo(
         id=OWNER_FUNNEL_THANK_YOU_LETTERS,
-        label="╨Я╨╕╤Б╤М╨╝╨░ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕",
-        stages=[{"value": v, "label": l} for v, l in OWNER_FUNNEL_STAGES[OWNER_FUNNEL_THANK_YOU_LETTERS]],
+        label=FUNNEL_TYPE_LABELS[OWNER_FUNNEL_THANK_YOU_LETTERS],
+        stages=[{"value": v, "label": _stage_label(OWNER_FUNNEL_THANK_YOU_LETTERS, v)} for v, _ in OWNER_FUNNEL_STAGES[OWNER_FUNNEL_THANK_YOU_LETTERS]],
     ),
     OwnerFunnelTypeInfo(
         id=OWNER_FUNNEL_EVENTS,
-        label="╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П",
-        stages=[{"value": v, "label": l} for v, l in OWNER_FUNNEL_STAGES[OWNER_FUNNEL_EVENTS]],
+        label=FUNNEL_TYPE_LABELS[OWNER_FUNNEL_EVENTS],
+        stages=[{"value": v, "label": _stage_label(OWNER_FUNNEL_EVENTS, v)} for v, _ in OWNER_FUNNEL_STAGES[OWNER_FUNNEL_EVENTS]],
     ),
 ]
 

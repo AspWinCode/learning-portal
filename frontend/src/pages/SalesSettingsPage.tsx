@@ -65,25 +65,32 @@ const SalesSettingsPage: React.FC = () => {
   const [newSchool, setNewSchool] = useState('');
 
   const loadData = async () => {
-    try {
-      const [info, src, tpl, st, leadSt, citiesList, schoolsList] = await Promise.all([
-        salesApi.listLeadInfoTemplates(false),
-        salesApi.listLeadSources(false),
-        salesApi.listLeadTaskTemplates(false),
-        salesApi.listLeadTaskStatuses(false),
-        salesApi.listLeadStatuses(false),
-        salesApi.listSalesCities(false),
-        salesApi.listSalesSchools(false),
-      ]);
-      setInfoTemplates(info);
-      setSources(src);
-      setTemplates(tpl);
-      setStatuses(st);
-      setLeadStatuses(leadSt);
-      setCities(citiesList);
-      setSchools(schoolsList);
-    } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось загрузить настройки'));
+    const errors: string[] = [];
+    const load = async <T>(name: string, fn: () => Promise<T>, setter: (v: T) => void) => {
+      try {
+        const data = await fn();
+        setter(data);
+      } catch (err: any) {
+        const msg = extractApiError(err, 'Ошибка загрузки');
+        errors.push(`${name}: ${msg}`);
+      }
+    };
+    await Promise.all([
+      load('Шаблоны инфо', () => salesApi.listLeadInfoTemplates(false), setInfoTemplates),
+      load('Источники лида', () => salesApi.listLeadSources(false), setSources),
+      load('Шаблоны задач', () => salesApi.listLeadTaskTemplates(false), setTemplates),
+      load('Статусы задач', () => salesApi.listLeadTaskStatuses(false), setStatuses),
+      load('Статусы лида', () => salesApi.listLeadStatuses(false), setLeadStatuses),
+      load('Города', () => salesApi.listSalesCities(false), setCities),
+      load('Школы', () => salesApi.listSalesSchools(false), setSchools),
+    ]);
+    if (errors.length) {
+      const hint = errors.some((e) => e.includes('Not Found') || e.includes('404'))
+        ? ' Убедитесь, что на сервере выполнен deploy и миграции (alembic upgrade head).'
+        : '';
+      setError(errors.join(' ') + hint);
+    } else {
+      setError('');
     }
   };
 

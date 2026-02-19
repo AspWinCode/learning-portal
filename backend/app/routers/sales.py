@@ -19,6 +19,7 @@ from app.models import (
     LeadTaskTemplate,
     LeadTaskStatusOption as LeadTaskStatusOptionModel,
     LeadInfoTemplate,
+    LeadStatusOption,
     LeadCommunication,
     Invoice,
     InvoiceStatus,
@@ -29,6 +30,8 @@ from app.models import (
     Abonement,
     User,
     UserRole,
+    SalesCity,
+    SalesSchool,
 )
 from app.schemas import (
     LeadCreate,
@@ -57,7 +60,16 @@ from app.schemas import (
     LeadInfoTemplateCreate,
     LeadInfoTemplateResponse,
     LeadInfoTemplateUpdate,
+    LeadStatusOptionCreate,
+    LeadStatusOptionResponse,
+    LeadStatusOptionUpdate,
     LeadSendInfoRequest,
+    SalesCityCreate,
+    SalesCityResponse,
+    SalesCityUpdate,
+    SalesSchoolCreate,
+    SalesSchoolResponse,
+    SalesSchoolUpdate,
     LeadQuickCommunicationCreate,
     LeadContactResultRequest,
     LeadCommunicationResponse,
@@ -203,7 +215,7 @@ def _has_open_task_like(db: Session, lead_id: int, marker: str) -> bool:
 ALLOWED_PAUSE_REASONS = {"ждём ответ", "подумать", "нет времени"}
 
 
-@router.get("/sales/dashboard", response_model=SalesDashboardResponse)
+@router.get("/dashboard", response_model=SalesDashboardResponse)
 async def get_sales_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
@@ -737,6 +749,181 @@ async def update_lead_info_template(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "update", "lead_info_template", item.id, data)
+    return item
+
+
+# --- Sales cities (справочник городов для Sales) ---
+@router.get("/cities", response_model=List[SalesCityResponse])
+async def list_sales_cities(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    query = db.query(SalesCity).order_by(SalesCity.name.asc())
+    if active_only:
+        query = query.filter(SalesCity.is_active.is_(True))
+    return query.all()
+
+
+@router.post("/cities", response_model=SalesCityResponse, status_code=status.HTTP_201_CREATED)
+async def create_sales_city(
+    payload: SalesCityCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    name = _normalize_source_name(payload.name)
+    if not name:
+        raise HTTPException(status_code=400, detail="City name is required")
+    exists = db.query(SalesCity).filter(cast(SalesCity.name, Text).ilike(name)).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="City already exists")
+    item = SalesCity(name=name, is_active=True)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "create", "sales_city", item.id, {"name": name})
+    return item
+
+
+@router.put("/cities/{city_id}", response_model=SalesCityResponse)
+async def update_sales_city(
+    city_id: int,
+    payload: SalesCityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    item = db.query(SalesCity).filter(SalesCity.id == city_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="City not found")
+    data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        name = _normalize_source_name(data["name"])
+        if not name:
+            raise HTTPException(status_code=400, detail="City name is required")
+        item.name = name
+    if "is_active" in data:
+        item.is_active = data["is_active"]
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "update", "sales_city", item.id, data)
+    return item
+
+
+# --- Sales schools (справочник школ для Sales) ---
+@router.get("/schools", response_model=List[SalesSchoolResponse])
+async def list_sales_schools(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    query = db.query(SalesSchool).order_by(SalesSchool.name.asc())
+    if active_only:
+        query = query.filter(SalesSchool.is_active.is_(True))
+    return query.all()
+
+
+@router.post("/schools", response_model=SalesSchoolResponse, status_code=status.HTTP_201_CREATED)
+async def create_sales_school(
+    payload: SalesSchoolCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    name = _normalize_source_name(payload.name)
+    if not name:
+        raise HTTPException(status_code=400, detail="School name is required")
+    exists = db.query(SalesSchool).filter(cast(SalesSchool.name, Text).ilike(name)).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="School already exists")
+    item = SalesSchool(name=name, is_active=True)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "create", "sales_school", item.id, {"name": name})
+    return item
+
+
+@router.put("/schools/{school_id}", response_model=SalesSchoolResponse)
+async def update_sales_school(
+    school_id: int,
+    payload: SalesSchoolUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    item = db.query(SalesSchool).filter(SalesSchool.id == school_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="School not found")
+    data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        name = _normalize_source_name(data["name"])
+        if not name:
+            raise HTTPException(status_code=400, detail="School name is required")
+        item.name = name
+    if "is_active" in data:
+        item.is_active = data["is_active"]
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "update", "sales_school", item.id, data)
+    return item
+
+
+# --- Lead status options (кастомные статусы лида) ---
+@router.get("/lead-statuses", response_model=List[LeadStatusOptionResponse])
+async def list_lead_statuses(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    query = db.query(LeadStatusOption).order_by(LeadStatusOption.id.asc())
+    if active_only:
+        query = query.filter(LeadStatusOption.is_active.is_(True))
+    return query.all()
+
+
+@router.post("/lead-statuses", response_model=LeadStatusOptionResponse, status_code=status.HTTP_201_CREATED)
+async def create_lead_status(
+    payload: LeadStatusOptionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    name = _normalize_source_name(payload.name)
+    if not name:
+        raise HTTPException(status_code=400, detail="Status name is required")
+    exists = db.query(LeadStatusOption).filter(cast(LeadStatusOption.name, Text).ilike(name)).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Lead status already exists")
+    base = getattr(payload.base_status, "value", payload.base_status) if hasattr(payload.base_status, "value") else payload.base_status
+    item = LeadStatusOption(name=name, base_status=base, is_active=True)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "create", "lead_status_option", item.id, {"name": name, "base_status": base})
+    return item
+
+
+@router.put("/lead-statuses/{status_id}", response_model=LeadStatusOptionResponse)
+async def update_lead_status(
+    status_id: int,
+    payload: LeadStatusOptionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    item = db.query(LeadStatusOption).filter(LeadStatusOption.id == status_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Lead status not found")
+    data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        name = _normalize_source_name(data["name"])
+        if not name:
+            raise HTTPException(status_code=400, detail="Status name is required")
+        item.name = name
+    if "base_status" in data:
+        base = data["base_status"]
+        item.base_status = getattr(base, "value", base) if base is not None else item.base_status
+    if "is_active" in data:
+        item.is_active = data["is_active"]
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "update", "lead_status_option", item.id, data)
     return item
 
 

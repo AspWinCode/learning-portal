@@ -392,7 +392,7 @@ export const salesApi = {
     next_contact_from?: string;
     next_contact_to?: string;
   }): Promise<Lead[]> => {
-    const response = await api.get('/api/leads', { params: params || {} });
+    const response = await api.get('/api/sales/leads', { params: params || {} });
     return response.data;
   },
   createLead: async (payload: {
@@ -418,14 +418,14 @@ export const salesApi = {
     comment?: string;
     next_contact_at?: string;
   }): Promise<Lead> => {
-    const response = await api.post('/api/leads', payload);
+    const response = await api.post('/api/sales/leads', payload);
     return response.data;
   },
   postVisitOutcome: async (
     leadId: number,
     payload: { outcome: 'agreed' | 'thinking' | 'declined'; follow_up_at?: string; lost_reason?: string }
   ): Promise<Lead> => {
-    const response = await api.post(`/api/leads/${leadId}/post-visit-outcome`, payload);
+    const response = await api.post(`/api/sales/leads/${leadId}/post-visit-outcome`, payload);
     return response.data;
   },
   updateLead: async (
@@ -459,15 +459,15 @@ export const salesApi = {
       questionnaire_filled?: boolean;
     }
   ): Promise<Lead> => {
-    const response = await api.put(`/api/leads/${id}`, payload);
+    const response = await api.put(`/api/sales/leads/${id}`, payload);
     return response.data;
   },
   getLead: async (leadId: number): Promise<Lead> => {
-    const response = await api.get(`/api/leads/${leadId}`);
+    const response = await api.get(`/api/sales/leads/${leadId}`);
     return response.data;
   },
   listTasks: async (leadId: number): Promise<LeadTask[]> => {
-    const response = await api.get(`/api/leads/${leadId}/tasks`);
+    const response = await api.get(`/api/sales/leads/${leadId}/tasks`);
     return response.data;
   },
   createTask: async (leadId: number, payload: {
@@ -477,11 +477,11 @@ export const salesApi = {
     channel?: string;
     due_at?: string
   }): Promise<LeadTask> => {
-    const response = await api.post(`/api/leads/${leadId}/tasks`, payload);
+    const response = await api.post(`/api/sales/leads/${leadId}/tasks`, payload);
     return response.data;
   },
   closeTask: async (leadId: number, taskId: number): Promise<LeadTask> => {
-    const response = await api.post(`/api/leads/${leadId}/tasks/${taskId}/close`);
+    const response = await api.post(`/api/sales/leads/${leadId}/tasks/${taskId}/close`);
     return response.data;
   },
   updateTask: async (
@@ -489,15 +489,15 @@ export const salesApi = {
     taskId: number,
     payload: { status?: 'open' | 'done'; note?: string; channel?: string; due_at?: string }
   ): Promise<LeadTask> => {
-    const response = await api.put(`/api/leads/${leadId}/tasks/${taskId}`, payload);
+    const response = await api.put(`/api/sales/leads/${leadId}/tasks/${taskId}`, payload);
     return response.data;
   },
   createInvoice: async (leadId: number, payload: { abonement_id: number; email_to?: string; currency?: string }): Promise<Invoice> => {
-    const response = await api.post(`/api/leads/${leadId}/invoices`, payload);
+    const response = await api.post(`/api/sales/leads/${leadId}/invoices`, payload);
     return response.data;
   },
   listInvoices: async (leadId: number): Promise<Invoice[]> => {
-    const response = await api.get(`/api/leads/${leadId}/invoices`);
+    const response = await api.get(`/api/sales/leads/${leadId}/invoices`);
     return response.data;
   },
   listAllInvoices: async (params?: {
@@ -506,15 +506,15 @@ export const salesApi = {
     created_from?: string;
     created_to?: string;
   }): Promise<Invoice[]> => {
-    const response = await api.get('/api/invoices', { params: params || {} });
+    const response = await api.get('/api/sales/invoices', { params: params || {} });
     return response.data;
   },
   sendInvoiceEmail: async (invoiceId: number): Promise<Invoice> => {
-    const response = await api.post(`/api/invoices/${invoiceId}/send-email`);
+    const response = await api.post(`/api/sales/invoices/${invoiceId}/send-email`);
     return response.data;
   },
   listEvents: async (status?: EventStatus): Promise<EventItem[]> => {
-    const response = await api.get('/api/events', { params: status ? { status_filter: status } : {} });
+    const response = await api.get('/api/sales/events', { params: status ? { status_filter: status } : {} });
     return response.data;
   },
   createEvent: async (payload: {
@@ -525,163 +525,163 @@ export const salesApi = {
     location?: string;
     capacity?: number;
   }): Promise<EventItem> => {
-    const response = await api.post('/api/events', payload);
+    const response = await api.post('/api/sales/events', payload);
     return response.data;
   },
   registerLeadToEvent: async (eventId: number, payload: { lead_id: number; note?: string }): Promise<EventRegistration> => {
-    const response = await api.post(`/api/events/${eventId}/registrations`, payload);
+    const response = await api.post(`/api/sales/events/${eventId}/registrations`, payload);
     return response.data;
   },
   listEventRegistrations: async (eventId: number): Promise<EventRegistration[]> => {
-    const response = await api.get(`/api/events/${eventId}/registrations`);
+    const response = await api.get(`/api/sales/events/${eventId}/registrations`);
     return response.data;
   },
   cancelEventRegistration: async (eventId: number, registrationId: number): Promise<EventRegistration> => {
-    const response = await api.post(`/api/events/${eventId}/registrations/${registrationId}/cancel`);
+    const response = await api.post(`/api/sales/events/${eventId}/registrations/${registrationId}/cancel`);
     return response.data;
   },
   confirmEventRegistration: async (eventId: number, registrationId: number): Promise<EventRegistration> => {
-    const response = await api.post(`/api/events/${eventId}/registrations/${registrationId}/confirm`);
+    const response = await api.post(`/api/sales/events/${eventId}/registrations/${registrationId}/confirm`);
     return response.data;
   },
   markEventRegistrationCame: async (eventId: number, registrationId: number): Promise<EventRegistration> => {
-    const response = await api.post(`/api/events/${eventId}/registrations/${registrationId}/mark-came`);
+    const response = await api.post(`/api/sales/events/${eventId}/registrations/${registrationId}/mark-came`);
     return response.data;
   },
   markEventRegistrationNoShow: async (eventId: number, registrationId: number): Promise<EventRegistration> => {
-    const response = await api.post(`/api/events/${eventId}/registrations/${registrationId}/mark-no-show`);
+    const response = await api.post(`/api/sales/events/${eventId}/registrations/${registrationId}/mark-no-show`);
     return response.data;
   },
   importLeadsXlsx: async (file: File): Promise<{ created: number; skipped: number; errors: string[] }> => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await api.post('/api/leads/import-xlsx', formData, {
+    const response = await api.post('/api/sales/leads/import-xlsx', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
   },
   downloadLeadsImportTemplate: async (): Promise<Blob> => {
-    const response = await api.get('/api/leads/import-template', {
+    const response = await api.get('/api/sales/leads/import-template', {
       responseType: 'blob',
     });
     return response.data;
   },
   listLeadSources: async (active_only = true): Promise<LeadSource[]> => {
-    const response = await api.get('/api/lead-sources', { params: { active_only } });
+    const response = await api.get('/api/sales/lead-sources', { params: { active_only } });
     return response.data;
   },
   createLeadSource: async (name: string): Promise<LeadSource> => {
-    const response = await api.post('/api/lead-sources', { name });
+    const response = await api.post('/api/sales/lead-sources', { name });
     return response.data;
   },
   updateLeadSource: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<LeadSource> => {
-    const response = await api.put(`/api/lead-sources/${id}`, payload);
+    const response = await api.put(`/api/sales/lead-sources/${id}`, payload);
     return response.data;
   },
   listSalesCities: async (active_only = true): Promise<SalesCity[]> => {
-    const response = await api.get('/api/cities', { params: { active_only } });
+    const response = await api.get('/api/sales/cities', { params: { active_only } });
     return response.data;
   },
   createSalesCity: async (name: string): Promise<SalesCity> => {
-    const response = await api.post('/api/cities', { name });
+    const response = await api.post('/api/sales/cities', { name });
     return response.data;
   },
   updateSalesCity: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesCity> => {
-    const response = await api.put(`/api/cities/${id}`, payload);
+    const response = await api.put(`/api/sales/cities/${id}`, payload);
     return response.data;
   },
   listSalesSchools: async (active_only = true): Promise<SalesSchool[]> => {
-    const response = await api.get('/api/schools', { params: { active_only } });
+    const response = await api.get('/api/sales/schools', { params: { active_only } });
     return response.data;
   },
   createSalesSchool: async (name: string): Promise<SalesSchool> => {
-    const response = await api.post('/api/schools', { name });
+    const response = await api.post('/api/sales/schools', { name });
     return response.data;
   },
   updateSalesSchool: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesSchool> => {
-    const response = await api.put(`/api/schools/${id}`, payload);
+    const response = await api.put(`/api/sales/schools/${id}`, payload);
     return response.data;
   },
   listLeadTaskTemplates: async (active_only = true): Promise<LeadTaskTemplate[]> => {
-    const response = await api.get('/api/lead-task-templates', { params: { active_only } });
+    const response = await api.get('/api/sales/lead-task-templates', { params: { active_only } });
     return response.data;
   },
   createLeadTaskTemplate: async (name: string): Promise<LeadTaskTemplate> => {
-    const response = await api.post('/api/lead-task-templates', { name });
+    const response = await api.post('/api/sales/lead-task-templates', { name });
     return response.data;
   },
   updateLeadTaskTemplate: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<LeadTaskTemplate> => {
-    const response = await api.put(`/api/lead-task-templates/${id}`, payload);
+    const response = await api.put(`/api/sales/lead-task-templates/${id}`, payload);
     return response.data;
   },
   listLeadTaskStatuses: async (active_only = true): Promise<LeadTaskStatusOption[]> => {
-    const response = await api.get('/api/lead-task-statuses', { params: { active_only } });
+    const response = await api.get('/api/sales/lead-task-statuses', { params: { active_only } });
     return response.data;
   },
   createLeadTaskStatus: async (payload: { name: string; is_closed?: boolean }): Promise<LeadTaskStatusOption> => {
-    const response = await api.post('/api/lead-task-statuses', payload);
+    const response = await api.post('/api/sales/lead-task-statuses', payload);
     return response.data;
   },
   updateLeadTaskStatus: async (
     id: number,
     payload: { name?: string; is_closed?: boolean; is_active?: boolean }
   ): Promise<LeadTaskStatusOption> => {
-    const response = await api.put(`/api/lead-task-statuses/${id}`, payload);
+    const response = await api.put(`/api/sales/lead-task-statuses/${id}`, payload);
     return response.data;
   },
   listLeadStatuses: async (active_only = true): Promise<LeadStatusOption[]> => {
-    const response = await api.get('/api/lead-statuses', { params: { active_only } });
+    const response = await api.get('/api/sales/lead-statuses', { params: { active_only } });
     return response.data;
   },
   createLeadStatus: async (payload: { name: string; base_status: LeadStatus }): Promise<LeadStatusOption> => {
-    const response = await api.post('/api/lead-statuses', payload);
+    const response = await api.post('/api/sales/lead-statuses', payload);
     return response.data;
   },
   updateLeadStatus: async (
     id: number,
     payload: { name?: string; base_status?: LeadStatus; is_active?: boolean }
   ): Promise<LeadStatusOption> => {
-    const response = await api.put(`/api/lead-statuses/${id}`, payload);
+    const response = await api.put(`/api/sales/lead-statuses/${id}`, payload);
     return response.data;
   },
   listLeadInfoTemplates: async (active_only = true): Promise<LeadInfoTemplate[]> => {
-    const response = await api.get('/api/lead-info-templates', { params: { active_only } });
+    const response = await api.get('/api/sales/lead-info-templates', { params: { active_only } });
     return response.data;
   },
   createLeadInfoTemplate: async (payload: { name: string; body: string }): Promise<LeadInfoTemplate> => {
-    const response = await api.post('/api/lead-info-templates', payload);
+    const response = await api.post('/api/sales/lead-info-templates', payload);
     return response.data;
   },
   updateLeadInfoTemplate: async (
     id: number,
     payload: { name?: string; body?: string; is_active?: boolean }
   ): Promise<LeadInfoTemplate> => {
-    const response = await api.put(`/api/lead-info-templates/${id}`, payload);
+    const response = await api.put(`/api/sales/lead-info-templates/${id}`, payload);
     return response.data;
   },
   listLeadCommunications: async (leadId: number): Promise<LeadCommunication[]> => {
-    const response = await api.get(`/api/leads/${leadId}/communications`);
+    const response = await api.get(`/api/sales/leads/${leadId}/communications`);
     return response.data;
   },
   sendLeadInfo: async (
     leadId: number,
     payload: { template_id?: number; channel?: string; message: string; follow_up_at: string; pause_reason?: string }
   ): Promise<LeadCommunication> => {
-    const response = await api.post(`/api/leads/${leadId}/send-info`, payload);
+    const response = await api.post(`/api/sales/leads/${leadId}/send-info`, payload);
     return response.data;
   },
   logLeadCommunication: async (
     leadId: number,
     payload: { channel: 'call' | 'messenger' | 'email'; message?: string; follow_up_at?: string }
   ): Promise<LeadCommunication> => {
-    const response = await api.post(`/api/leads/${leadId}/communications`, payload);
+    const response = await api.post(`/api/sales/leads/${leadId}/communications`, payload);
     return response.data;
   },
   saveLeadContactResult: async (
     leadId: number,
     payload: { outcome: 'connected' | 'no_answer' | 'callback'; note?: string; follow_up_at?: string }
   ): Promise<LeadCommunication> => {
-    const response = await api.post(`/api/leads/${leadId}/contact-result`, payload);
+    const response = await api.post(`/api/sales/leads/${leadId}/contact-result`, payload);
     return response.data;
   },
   getSalesDashboard: async (): Promise<SalesDashboardData> => {
@@ -694,11 +694,11 @@ export const salesApi = {
     event_id?: number;
     reason?: string;
   }): Promise<FollowUpItem[]> => {
-    const response = await api.get('/api/follow-ups', { params: params || {} });
+    const response = await api.get('/api/sales/follow-ups', { params: params || {} });
     return response.data;
   },
   getLeadsPushStats: async (leadIds: number[]): Promise<LeadPushStats[]> => {
-    const response = await api.get('/api/leads/push-stats', {
+    const response = await api.get('/api/sales/leads/push-stats', {
       params: { lead_ids: leadIds },
       paramsSerializer: { indexes: null },
     });

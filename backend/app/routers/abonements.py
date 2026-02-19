@@ -26,7 +26,7 @@ def _validate_price(price: float) -> None:
 async def read_abonements(
     status_filter: Optional[AbonementStatus] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
 ):
     query = db.query(Abonement)
     if status_filter:

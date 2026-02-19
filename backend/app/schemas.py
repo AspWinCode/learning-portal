@@ -514,6 +514,60 @@ class SalesInstructionResponse(SalesInstructionBase):
         from_attributes = True
 
 
+# Student cards (личные карточки ученика)
+class StudentCardBase(BaseModel):
+    student_full_name: str
+    birth_date: Optional[date] = None
+    student_phone: Optional[str] = None
+    telegram: Optional[str] = None
+    gender: Optional[str] = None
+    on_grant: bool = False
+    format_type: Optional[str] = None  # group / individual
+    city: Optional[str] = None
+    school: Optional[str] = None
+    grade: Optional[str] = None
+    parent_full_name: Optional[str] = None
+    parent_phone: Optional[str] = None
+    parent_phone_2: Optional[str] = None
+    abonement_id: Optional[int] = None
+    discount_type: DiscountType = DiscountType.NONE
+    discount_value: float = 0.0
+
+
+class StudentCardCreate(StudentCardBase):
+    pass
+
+
+class StudentCardUpdate(BaseModel):
+    student_full_name: Optional[str] = None
+    birth_date: Optional[date] = None
+    student_phone: Optional[str] = None
+    telegram: Optional[str] = None
+    gender: Optional[str] = None
+    on_grant: Optional[bool] = None
+    format_type: Optional[str] = None
+    city: Optional[str] = None
+    school: Optional[str] = None
+    grade: Optional[str] = None
+    parent_full_name: Optional[str] = None
+    parent_phone: Optional[str] = None
+    parent_phone_2: Optional[str] = None
+    abonement_id: Optional[int] = None
+    discount_type: Optional[DiscountType] = None
+    discount_value: Optional[float] = None
+
+
+class StudentCardResponse(StudentCardBase):
+    id: int
+    archived: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    abonement: Optional["AbonementResponse"] = None
+
+    class Config:
+        from_attributes = True
+
+
 class LeadSendInfoRequest(BaseModel):
     template_id: Optional[int] = None
     channel: str = "messenger"

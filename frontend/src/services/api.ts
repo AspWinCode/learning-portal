@@ -37,6 +37,7 @@ import {
   OwnerFunnelEvent,
   OwnerFunnelItem,
   SalesInstruction,
+  StudentCard,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -302,6 +303,31 @@ export const salesInstructionImagesApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
+  },
+};
+
+export const studentCardsApi = {
+  list: async (params?: { archived?: boolean }): Promise<StudentCard[]> => {
+    const response = await api.get('/api/sales/student-cards', { params: params ?? {} });
+    return response.data;
+  },
+  get: async (id: number): Promise<StudentCard> => {
+    const response = await api.get(`/api/sales/student-cards/${id}`);
+    return response.data;
+  },
+  create: async (data: Omit<StudentCard, 'id' | 'archived' | 'created_at' | 'updated_at' | 'abonement'>): Promise<StudentCard> => {
+    const response = await api.post('/api/sales/student-cards', data);
+    return response.data;
+  },
+  update: async (id: number, data: Partial<Omit<StudentCard, 'id' | 'archived' | 'created_at' | 'updated_at' | 'abonement'>>): Promise<StudentCard> => {
+    const response = await api.put(`/api/sales/student-cards/${id}`, data);
+    return response.data;
+  },
+  archive: async (id: number): Promise<void> => {
+    await api.post(`/api/sales/student-cards/${id}/archive`);
+  },
+  unarchive: async (id: number): Promise<void> => {
+    await api.post(`/api/sales/student-cards/${id}/unarchive`);
   },
 };
 

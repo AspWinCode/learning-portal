@@ -353,6 +353,41 @@ class SalesInstructionImage(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class StudentCard(Base):
+    """Личная карточка ученика (sales/CRM). Видят: sales, admin, owner."""
+    __tablename__ = "student_cards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Обучающийся
+    student_full_name = Column(String, nullable=False, index=True)
+    birth_date = Column(Date, nullable=True)
+    student_phone = Column(String, nullable=True)
+    telegram = Column(String, nullable=True)
+    gender = Column(String, nullable=True)  # м/ж или male/female
+    on_grant = Column(Boolean, default=False, nullable=False)
+    format_type = Column(String, nullable=True)  # group / individual
+    city = Column(String, nullable=True)
+    school = Column(String, nullable=True)
+    grade = Column(String, nullable=True)
+    # Заказчик
+    parent_full_name = Column(String, nullable=True)
+    parent_phone = Column(String, nullable=True)
+    parent_phone_2 = Column(String, nullable=True)
+    # Только owner: абонемент и скидка
+    abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True, index=True)
+    discount_type = Column(
+        SQLEnum(DiscountType, name="discounttype", values_callable=_enum_values),
+        default=DiscountType.NONE,
+        nullable=False,
+    )
+    discount_value = Column(Float, default=0.0, nullable=False)
+    archived = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    abonement = relationship("Abonement")
+
+
 class LeadTaskTemplate(Base):
     __tablename__ = "lead_task_templates"
 

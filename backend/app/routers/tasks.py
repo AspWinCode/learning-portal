@@ -98,13 +98,16 @@ async def list_task_templates(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner"])),
 ):
-    rows = (
-        db.query(TaskTemplate)
-        .options(joinedload(TaskTemplate.subtasks), joinedload(TaskTemplate.students))
-        .order_by(TaskTemplate.created_at.desc())
-        .all()
-    )
-    return [_template_to_response(t) for t in rows]
+    try:
+        rows = (
+            db.query(TaskTemplate)
+            .options(joinedload(TaskTemplate.subtasks), joinedload(TaskTemplate.students))
+            .order_by(TaskTemplate.created_at.desc())
+            .all()
+        )
+        return [_template_to_response(t) for t in rows]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"task_templates list: {type(e).__name__}: {e}")
 
 
 @router.post("/task-templates", response_model=TaskTemplateResponse, status_code=status.HTTP_201_CREATED)
@@ -113,38 +116,42 @@ async def create_task_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner"])),
 ):
-    t = TaskTemplate(
-        name=payload.name.strip(),
-        created_by_id=current_user.id,
-        repeat_enabled=payload.repeat_enabled or False,
-        repeat_frequency=payload.repeat_frequency,
-        repeat_days=payload.repeat_days,
-        repeat_end_type=payload.repeat_end_type,
-        repeat_end_after_count=payload.repeat_end_after_count,
-        repeat_end_until=payload.repeat_end_until,
-    )
-    db.add(t)
-    db.flush()
-    for i, st in enumerate(payload.subtasks or []):
-        db.add(
-            TaskTemplateSubtask(
-                template_id=t.id,
-                text=st.text.strip(),
-                order=st.order if st.order is not None else i,
-            )
+    try:
+        t = TaskTemplate(
+            name=payload.name.strip(),
+            created_by_id=current_user.id,
+            repeat_enabled=payload.repeat_enabled or False,
+            repeat_frequency=payload.repeat_frequency,
+            repeat_days=payload.repeat_days,
+            repeat_end_type=payload.repeat_end_type,
+            repeat_end_after_count=payload.repeat_end_after_count,
+            repeat_end_until=payload.repeat_end_until,
         )
-    for sid in payload.student_ids or []:
-        if db.query(Student).filter(Student.id == sid).first():
-            db.add(TaskTemplateStudent(template_id=t.id, student_id=sid))
-    db.commit()
-    db.refresh(t)
-    t = (
-        db.query(TaskTemplate)
-        .options(joinedload(TaskTemplate.subtasks), joinedload(TaskTemplate.students))
-        .filter(TaskTemplate.id == t.id)
-        .first()
-    )
-    return _template_to_response(t)
+        db.add(t)
+        db.flush()
+        for i, st in enumerate(payload.subtasks or []):
+            db.add(
+                TaskTemplateSubtask(
+                    template_id=t.id,
+                    text=st.text.strip(),
+                    order=st.order if st.order is not None else i,
+                )
+            )
+        for sid in payload.student_ids or []:
+            if db.query(Student).filter(Student.id == sid).first():
+                db.add(TaskTemplateStudent(template_id=t.id, student_id=sid))
+        db.commit()
+        db.refresh(t)
+        t = (
+            db.query(TaskTemplate)
+            .options(joinedload(TaskTemplate.subtasks), joinedload(TaskTemplate.students))
+            .filter(TaskTemplate.id == t.id)
+            .first()
+        )
+        return _template_to_response(t)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"task_templates create: {type(e).__name__}: {e}")
 
 
 @router.get("/task-templates/{template_id}", response_model=TaskTemplateResponse)

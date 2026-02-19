@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import { Box, Button, Card, CardContent, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
 import { salesInstructionsApi } from '../services/api';
@@ -17,6 +17,7 @@ const SalesInstructionsPage: React.FC = () => {
   const [draftTitle, setDraftTitle] = useState('');
   const [draftBody, setDraftBody] = useState('');
   const [saving, setSaving] = useState(false);
+  const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const resetDraft = () => {
     setEditingId(null);
@@ -90,6 +91,33 @@ const SalesInstructionsPage: React.FC = () => {
     }
   };
 
+  const handleInsertImage = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Можно загружать только изображения (png/jpg/webp и т.п.)');
+      return;
+    }
+    if (file.size > 400 * 1024) {
+      setError('Картинка слишком тяжёлая. Ограничение ~400KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      setDraftBody((prev) => {
+        const el = bodyInputRef.current;
+        const tag = `<img src="${dataUrl}" style="max-width:100%;height:auto;" />`;
+        if (!el) {
+          return (prev ? `${prev}\n\n` : '') + tag;
+        }
+        const start = el.selectionStart ?? prev.length;
+        const end = el.selectionEnd ?? start;
+        return prev.slice(0, start) + tag + prev.slice(end);
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -120,9 +148,12 @@ const SalesInstructionsPage: React.FC = () => {
                 <Typography variant="h6" gutterBottom>
                   {it.title}
                 </Typography>
-                <Typography variant="body2" whiteSpace="pre-wrap">
-                  {it.body}
-                </Typography>
+                <Typography
+                  variant="body2"
+                  component="div"
+                  sx={{ whiteSpace: 'pre-wrap' }}
+                  dangerouslySetInnerHTML={{ __html: it.body.replace(/\n/g, '<br/>') }}
+                />
                 {isAdminLike && (
                   <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                     <Button size="small" onClick={() => handleEdit(it)}>
@@ -157,8 +188,26 @@ const SalesInstructionsPage: React.FC = () => {
                     minRows={6}
                     value={draftBody}
                     onChange={(e) => setDraftBody(e.target.value)}
+                    inputRef={bodyInputRef}
                   />
                   <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="outlined"
+                      component="label"
+                      disabled={saving}
+                    >
+                      Добавить картинку
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          handleInsertImage(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </Button>
                     <Button variant="contained" onClick={handleSave} disabled={saving}>
                       Сохранить
                     </Button>

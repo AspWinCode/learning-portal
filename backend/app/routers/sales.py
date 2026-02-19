@@ -240,7 +240,6 @@ async def upload_sales_instruction_image(
 async def get_sales_instruction_image(
     image_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
 ):
     img = db.query(SalesInstructionImage).filter(SalesInstructionImage.id == image_id).first()
     if not img:

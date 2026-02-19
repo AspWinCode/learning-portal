@@ -34,17 +34,12 @@ def upgrade() -> None:
         )
         op.create_index("ix_student_accounts_student_id", "student_accounts", ["student_id"])
     if not _table_exists(conn, "student_account_transactions"):
-        # Create enum only if not exists (PostgreSQL)
-        op.execute(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'studentaccounttransactionkind') THEN "
-            "CREATE TYPE studentaccounttransactionkind AS ENUM ('payment', 'lesson_deduction'); END IF; END $$"
-        )
         op.create_table(
             "student_account_transactions",
             sa.Column("id", sa.Integer(), primary_key=True),
             sa.Column("account_id", sa.Integer(), sa.ForeignKey("student_accounts.id"), nullable=False),
             sa.Column("amount", sa.Float(), nullable=False),
-            sa.Column("kind", sa.Enum("payment", "lesson_deduction", name="studentaccounttransactionkind", create_type=False), nullable=False),
+            sa.Column("kind", sa.String(), nullable=False, server_default="payment"),
             sa.Column("note", sa.String(), nullable=True),
             sa.Column("lesson_attendance_id", sa.Integer(), sa.ForeignKey("lesson_attendance.id"), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
@@ -62,4 +57,3 @@ def downgrade() -> None:
     if _table_exists(conn, "student_accounts"):
         op.drop_index("ix_student_accounts_student_id", table_name="student_accounts")
         op.drop_table("student_accounts")
-    op.execute("DROP TYPE IF EXISTS studentaccounttransactionkind")

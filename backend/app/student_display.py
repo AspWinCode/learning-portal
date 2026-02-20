@@ -18,7 +18,9 @@ def get_student_display_name(db: Session, student: Student) -> str:
         )
         .first()
     )
-    return (card.student_full_name or student.full_name or "").strip() or "—"
+    if card and card.student_full_name:
+        return (card.student_full_name or "").strip() or "—"
+    return (student.full_name or "").strip() or "—"
 
 
 def get_students_display_names(db: Session, student_ids: List[int]) -> Dict[int, str]:

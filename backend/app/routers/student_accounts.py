@@ -28,7 +28,7 @@ router = APIRouter()
 
 
 def _can_access_student(db: Session, user: User, student_id: int) -> bool:
-    if user.role in (UserRole.ADMIN, UserRole.OWNER):
+    if user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         return True
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
@@ -71,7 +71,7 @@ async def update_student_account(
     account_id: int,
     payload: StudentAccountUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     account = _get_account_and_check(db, account_id, current_user)
     if payload.name is not None:
@@ -93,9 +93,9 @@ async def add_payment(
 ):
     """Пополнение счета (оплата)."""
     account = _get_account_and_check(db, account_id, current_user)
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER) and current_user.role != UserRole.TRAINER:
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES) and current_user.role != UserRole.TRAINER:
         if current_user.role != UserRole.PARENT:
-            raise HTTPException(status_code=403, detail="Только admin, owner, тренер или родитель могут пополнять счет")
+            raise HTTPException(status_code=403, detail="Только admin, owner, sales, тренер или родитель могут пополнять счет")
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма пополнения должна быть больше 0")
@@ -122,8 +122,8 @@ async def deduct_lesson(
 ):
     """Списание за занятие."""
     account = _get_account_and_check(db, account_id, current_user)
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.TRAINER):
-        raise HTTPException(status_code=403, detail="Списание доступно только admin, owner или тренеру")
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES, UserRole.TRAINER):
+        raise HTTPException(status_code=403, detail="Списание доступно только admin, owner, sales или тренеру")
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма списания должна быть больше 0")

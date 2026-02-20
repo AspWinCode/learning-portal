@@ -109,8 +109,9 @@ const StudentsPage: React.FC = () => {
   const { user } = useAuth();
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
   const isOwner = user?.role === 'owner';
+  const hasFullStudentsView = isAdminLike || user?.role === 'sales';
   const canAssignAbonement = isAdminLike || user?.role === 'sales';
-  const canManageAccounts = isAdminLike || user?.role === 'trainer' || user?.role === 'parent';
+  const canManageAccounts = isAdminLike || user?.role === 'trainer' || user?.role === 'parent' || user?.role === 'sales';
   const canCreateCard = isAdminLike || user?.role === 'sales';
   const [citiesList, setCitiesList] = useState<string[]>([]);
 
@@ -118,12 +119,12 @@ const StudentsPage: React.FC = () => {
 
   useEffect(() => {
     loadStudents();
-    if (isAdminLike) {
+    if (hasFullStudentsView) {
       loadParents();
       if (canCreateCard) {
         salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
       }
-      if (!isOwner) {
+      if (!isOwner || user?.role === 'sales') {
         loadTrainers();
       }
       loadGroups();
@@ -131,11 +132,9 @@ const StudentsPage: React.FC = () => {
       if (canAssignAbonement) {
         loadAbonements();
       }
-      if (isAdminLike) {
-        studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
-      }
+      studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
     }
-  }, [user, statusFilter, canCreateCard, isAdminLike, canAssignAbonement]);
+  }, [user, statusFilter, canCreateCard, hasFullStudentsView, canAssignAbonement]);
 
   useEffect(() => {
     if (parentCreateMode !== 'existing' || !parentSearchQuery.trim()) {
@@ -654,7 +653,7 @@ const StudentsPage: React.FC = () => {
     }
   };
 
-  if (!isAdminLike) {
+  if (!hasFullStudentsView) {
     return (
       <Layout>
         <Typography variant="h4" gutterBottom>
@@ -701,7 +700,7 @@ const StudentsPage: React.FC = () => {
               <MenuItem value="archived">Архивированные</MenuItem>
             </Select>
           </FormControl>
-          {isAdminLike && (
+          {hasFullStudentsView && (
             <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>По типу</InputLabel>
               <Select
@@ -716,7 +715,7 @@ const StudentsPage: React.FC = () => {
               </Select>
             </FormControl>
           )}
-          {!isOwner && (
+          {(!isOwner || user?.role === 'sales') && (
             <Button
               variant="outlined"
               startIcon={<AddIcon />}
@@ -759,9 +758,6 @@ const StudentsPage: React.FC = () => {
               <TableCell>Родитель</TableCell>
               <TableCell>Группа</TableCell>
               <TableCell>Программа</TableCell>
-              {canAssignAbonement && <TableCell>Абонемент</TableCell>}
-              {canAssignAbonement && <TableCell>Скидка</TableCell>}
-              {canAssignAbonement && <TableCell>Итого со скидкой</TableCell>}
               <TableCell>Статус</TableCell>
               <TableCell>Действия</TableCell>
             </TableRow>
@@ -769,7 +765,6 @@ const StudentsPage: React.FC = () => {
           <TableBody>
             {filteredStudents.map((student, index) => {
               const studentGroup = getStudentGroup(student);
-              const abonement = getAbonementForStudent(student);
               return (
                 <TableRow key={student.id}>
                   <TableCell>{index + 1}</TableCell>
@@ -824,37 +819,6 @@ const StudentsPage: React.FC = () => {
                       </FormControl>
                     </Stack>
                   </TableCell>
-                  {canAssignAbonement && (
-                    <TableCell>
-                      <FormControl size="small" fullWidth>
-                        <InputLabel>Абонемент</InputLabel>
-                        <Select
-                          label="Абонемент"
-                          value={student.abonement_id?.toString() || ''}
-                          onChange={(e) => handleAbonementAssign(student.id, e.target.value)}
-                        >
-                          <MenuItem value="">
-                            <em>Не выбран</em>
-                          </MenuItem>
-                          {abonements
-                            .filter((a) => a.status === 'active')
-                            .map((a) => (
-                              <MenuItem key={a.id} value={a.id.toString()}>
-                                {a.name}
-                              </MenuItem>
-                            ))}
-                        </Select>
-                      </FormControl>
-                    </TableCell>
-                  )}
-                  {canAssignAbonement && (
-                    <TableCell>{abonement ? getDiscountLabel(abonement) : '—'}</TableCell>
-                  )}
-                  {canAssignAbonement && (
-                    <TableCell>
-                      {abonement ? `${getPriceWithDiscount(abonement).toFixed(2)} ₽` : '—'}
-                    </TableCell>
-                  )}
                   <TableCell>{student.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>
                   <TableCell>
                     {canManageAccounts && (
@@ -977,7 +941,7 @@ const StudentsPage: React.FC = () => {
         </Table>
       </TableContainer>
 
-      {!isOwner && (
+      {(!isOwner || user?.role === 'sales') && (
         <>
           <Typography variant="h5" sx={{ mt: 3, mb: 2 }}>
             Тренеры
@@ -1457,7 +1421,7 @@ const StudentsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {!isOwner && (
+      {(!isOwner || user?.role === 'sales') && (
         <Dialog open={trainerOpen} onClose={() => setTrainerOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Создать тренера</DialogTitle>
           <DialogContent>
@@ -1537,7 +1501,7 @@ const StudentsPage: React.FC = () => {
             <Typography color="textSecondary">Загрузка...</Typography>
           ) : (
             <>
-              {isAdminLike && (
+              {(isAdminLike || user?.role === 'sales') && (
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
                   <TextField
                     size="small"
@@ -1553,7 +1517,7 @@ const StudentsPage: React.FC = () => {
                 </Stack>
               )}
               {accounts.length === 0 ? (
-                <Typography color="textSecondary">Нет счетов. {isAdminLike ? 'Создайте первый счет.' : ''}</Typography>
+                <Typography color="textSecondary">Нет счетов. {(isAdminLike || user?.role === 'sales') ? 'Создайте первый счет.' : ''}</Typography>
               ) : (
                 <Table size="small">
                   <TableHead>
@@ -1570,7 +1534,7 @@ const StudentsPage: React.FC = () => {
                         <TableCell align="right">{acc.balance.toFixed(2)}</TableCell>
                         <TableCell align="right">
                           <Button size="small" onClick={() => { setPaymentDialog({ account: acc, type: 'payment' }); setPaymentAmount(''); setPaymentNote(''); }}>Пополнить</Button>
-                          {(isAdminLike || user?.role === 'trainer') && (
+                          {(isAdminLike || user?.role === 'trainer' || user?.role === 'sales') && (
                             <Button size="small" color="secondary" onClick={() => { setPaymentDialog({ account: acc, type: 'deduct' }); setPaymentAmount(''); setPaymentNote(''); }} disabled={acc.balance <= 0}>Списать</Button>
                           )}
                         </TableCell>

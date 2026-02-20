@@ -482,7 +482,7 @@ async def list_student_accounts(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Список счетов ученика. Доступ: admin, owner, trainer (свои ученики), parent (свои)."""
+    """Список счетов ученика. Доступ: admin, owner, sales, trainer (свои ученики), parent (свои)."""
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -497,7 +497,7 @@ async def list_student_accounts(
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER):
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     accounts = db.query(StudentAccount).filter(StudentAccount.student_id == student_id).order_by(StudentAccount.created_at).all()
     return accounts
@@ -510,7 +510,7 @@ async def create_student_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Создать счет ученику. Доступ: admin, owner, trainer (свои ученики), parent (свои)."""
+    """Создать счет ученику. Доступ: admin, owner, sales, trainer (свои ученики), parent (свои)."""
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -525,7 +525,7 @@ async def create_student_account(
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER):
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     name = (payload.name or "").strip()
     if not name:

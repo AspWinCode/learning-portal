@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+import traceback
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, owner_funnels, trainer_lessons, student_accounts, projects
 import os
 
@@ -64,6 +66,18 @@ app.include_router(owner_funnels.router, prefix="/api", tags=["owner_funnels"])
 app.include_router(trainer_lessons.router, prefix="/api", tags=["trainer_lessons"])
 app.include_router(student_accounts.router, prefix="/api/student-accounts", tags=["student_accounts"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """При необработанной ошибке возвращаем JSON с detail (HTTPException пропускаем)."""
+    if isinstance(exc, HTTPException):
+        raise exc
+    tb = traceback.format_exc()
+    detail = f"{type(exc).__name__}: {str(exc)}"
+    if os.getenv("APP_ENV", "").lower() != "production":
+        detail += " | " + tb.replace("\n", " ")[:800]
+    return JSONResponse(status_code=500, content={"detail": detail})
 
 
 @app.get("/")

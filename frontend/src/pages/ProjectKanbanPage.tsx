@@ -52,12 +52,30 @@ const ProjectKanbanPage: React.FC = () => {
   const load = async () => {
     if (!id || isNaN(id)) return;
     setLoading(true);
+    setError('');
     try {
       const data = await projectsApi.getBoard(id);
       setProject(data.project);
       setStages(data.stages || []);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка загрузки доски');
+      const res = err.response;
+      const data = res?.data;
+      const detail = data?.detail;
+      let msg: string;
+      if (typeof detail === 'string') msg = detail;
+      else if (Array.isArray(detail)) msg = detail.map((x: any) => x?.msg || JSON.stringify(x)).join(', ');
+      else if (detail && typeof detail === 'object' && detail.message) msg = detail.message;
+      else if (typeof data === 'string') msg = data.slice(0, 500);
+      else if (err.message) msg = err.message;
+      else msg = 'Ошибка загрузки доски';
+      if (res?.status) msg = `[${res.status}] ${msg}`;
+      else if (!err.response) msg = `Сеть: ${msg}`;
+      if (res?.status === 500 && data && typeof data === 'object' && typeof data.detail !== 'string') {
+        try {
+          msg += ' Ответ: ' + JSON.stringify(data).slice(0, 400);
+        } catch (_) {}
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

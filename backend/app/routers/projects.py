@@ -16,6 +16,7 @@ from app.schemas import (
     ProjectStageCreate,
     ProjectCardResponse,
     ProjectCardMove,
+    UserResponse,
 )
 
 router = APIRouter()
@@ -220,6 +221,14 @@ async def delete_stage(
     db.commit()
 
 
+def _safe_iso(val):
+    if val is None:
+        return None
+    if hasattr(val, "isoformat"):
+        return val.isoformat()
+    return str(val)
+
+
 @router.get("/{project_id}/board")
 async def get_project_board(
     project_id: int,
@@ -232,33 +241,70 @@ async def get_project_board(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     stages_out = []
-    for s in sorted(project.stages, key=lambda x: x.position):
+    stages_list = sorted(getattr(project, "stages", None) or [], key=lambda x: x.position)
+    for s in stages_list:
         cards = db.query(ProjectCard).filter(ProjectCard.stage_id == s.id).order_by(ProjectCard.position).all()
         cards_out = []
         for c in cards:
-            name = None
-            if c.entity_type == "parent":
-                u = db.query(User).filter(User.id == c.entity_id).first()
-                name = u.full_name if u else f"User #{c.entity_id}"
-            else:
-                st = db.query(Student).filter(Student.id == c.entity_id).first()
-                name = st.full_name if st else f"Student #{c.entity_id}"
-            cards_out.append(
-                ProjectCardResponse(
-                    **ProjectCardResponse.model_validate(c).model_dump(),
-                    display_name=name,
-                )
-            )
-        stages_out.append(
-            {
-                **ProjectStageResponse.model_validate(s).model_dump(),
-                "cards": cards_out,
+            try:
+                if c.entity_type == "parent":
+                    u = db.query(User).filter(User.id == c.entity_id).first()
+                    name = u.full_name if u else f"User #{c.entity_id}"
+                else:
+                    st = db.query(Student).filter(Student.id == c.entity_id).first()
+                    name = st.full_name if st else f"Student #{c.entity_id}"
+            except Exception:
+                name = f"#{c.entity_id}"
+            cards_out.append({
+                "id": c.id,
+                "project_id": c.project_id,
+                "stage_id": c.stage_id,
+                "entity_type": c.entity_type,
+                "entity_id": c.entity_id,
+                "position": c.position,
+                "created_at": _safe_iso(c.created_at),
+                "display_name": name,
+            })
+        stages_out.append({
+            "id": s.id,
+            "project_id": s.project_id,
+            "name": s.name,
+            "position": s.position,
+            "cards": cards_out,
+        })
+    try:
+        created_by = getattr(project, "created_by", None)
+        created_by_data = None
+        if created_by:
+            created_by_data = {
+                "id": created_by.id,
+                "email": getattr(created_by, "email", ""),
+                "full_name": getattr(created_by, "full_name", ""),
+                "role": getattr(getattr(created_by, "role", None), "value", None) or str(getattr(created_by, "role", "")),
+                "is_active": getattr(created_by, "is_active", True),
+                "created_at": _safe_iso(getattr(created_by, "created_at", None)),
+                "trainer_rate": getattr(created_by, "trainer_rate", None),
+                "trainer_lessons": getattr(created_by, "trainer_lessons", None),
             }
-        )
-    return {
-        "project": ProjectResponse.model_validate(project),
-        "stages": stages_out,
-    }
+    except Exception:
+        created_by_data = None
+    card_count = db.query(ProjectCard).filter(ProjectCard.project_id == project.id).count()
+    project_payload = {
+        "id": project.id,
+        "name": project.name,
+        "start_date": _safe_iso(getattr(project, "start_date", None)),
+        "end_date": _safe_iso(getattr(project, "end_date", None)),
+        "description": getattr(project, "description", None),
+        "entity_type": project.entity_type,
+        "created_by_id": project.created_by_id,
+        "archived": getattr(project, "archived", False),
+        "created_at": _safe_iso(getattr(project, "created_at", None)),
+        "updated_at": _safe_iso(getattr(project, "updated_at", None)),
+        "created_by": created_by_data,
+        "stages": [],
+        "card_count": card_count,
+        }
+    return {"project": project_payload, "stages": stages_out}
 
 
 @router.patch("/{project_id}/cards/{card_id}/move")

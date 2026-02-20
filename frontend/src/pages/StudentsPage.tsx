@@ -109,6 +109,7 @@ const StudentsPage: React.FC = () => {
   const { user } = useAuth();
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
   const isOwner = user?.role === 'owner';
+  const canAssignAbonement = user?.role === 'admin' || user?.role === 'sales';
   const canManageAccounts = isAdminLike || user?.role === 'trainer' || user?.role === 'parent';
   const canCreateCard = isAdminLike || user?.role === 'sales';
   const [citiesList, setCitiesList] = useState<string[]>([]);
@@ -127,14 +128,14 @@ const StudentsPage: React.FC = () => {
       }
       loadGroups();
       loadPrograms();
-      if (isOwner) {
+      if (canAssignAbonement) {
         loadAbonements();
       }
       if (isAdminLike) {
         studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
       }
     }
-  }, [user, statusFilter, canCreateCard, isAdminLike]);
+  }, [user, statusFilter, canCreateCard, isAdminLike, canAssignAbonement]);
 
   useEffect(() => {
     if (parentCreateMode !== 'existing' || !parentSearchQuery.trim()) {
@@ -301,7 +302,7 @@ const StudentsPage: React.FC = () => {
     }
 
     const abonementId =
-      isOwner && newStudent.abonement_id && newStudent.abonement_id.trim() !== ''
+      canAssignAbonement && newStudent.abonement_id && newStudent.abonement_id.trim() !== ''
         ? parseInt(newStudent.abonement_id)
         : null;
     if (abonementId !== null && isNaN(abonementId)) {
@@ -529,7 +530,7 @@ const StudentsPage: React.FC = () => {
         updateData.parent_id = null;
       }
 
-      if (isOwner) {
+      if (canAssignAbonement) {
         if (newStudent.abonement_id) {
           updateData.abonement_id = parseInt(newStudent.abonement_id);
         } else {
@@ -728,16 +729,6 @@ const StudentsPage: React.FC = () => {
             </Button>
           )}
           <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setParentOpen(true);
-              setNewParent({ full_name: '', email: '' });
-            }}
-          >
-            Создать родителя
-          </Button>
-          <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => {
@@ -768,9 +759,9 @@ const StudentsPage: React.FC = () => {
               <TableCell>Родитель</TableCell>
               <TableCell>Группа</TableCell>
               <TableCell>Программа</TableCell>
-              {isOwner && <TableCell>Абонемент</TableCell>}
-              {isOwner && <TableCell>Скидка</TableCell>}
-              {isOwner && <TableCell>Итого со скидкой</TableCell>}
+              {canAssignAbonement && <TableCell>Абонемент</TableCell>}
+              {canAssignAbonement && <TableCell>Скидка</TableCell>}
+              {canAssignAbonement && <TableCell>Итого со скидкой</TableCell>}
               <TableCell>Статус</TableCell>
               <TableCell>Действия</TableCell>
             </TableRow>
@@ -833,7 +824,7 @@ const StudentsPage: React.FC = () => {
                       </FormControl>
                     </Stack>
                   </TableCell>
-                  {isOwner && (
+                  {canAssignAbonement && (
                     <TableCell>
                       <FormControl size="small" fullWidth>
                         <InputLabel>Абонемент</InputLabel>
@@ -856,10 +847,10 @@ const StudentsPage: React.FC = () => {
                       </FormControl>
                     </TableCell>
                   )}
-                  {isOwner && (
+                  {canAssignAbonement && (
                     <TableCell>{abonement ? getDiscountLabel(abonement) : '—'}</TableCell>
                   )}
-                  {isOwner && (
+                  {canAssignAbonement && (
                     <TableCell>
                       {abonement ? `${getPriceWithDiscount(abonement).toFixed(2)} ₽` : '—'}
                     </TableCell>
@@ -1237,7 +1228,7 @@ const StudentsPage: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-          {isOwner && (
+          {canAssignAbonement && (
             <FormControl fullWidth sx={{ mt: 2 }}>
               <InputLabel>Абонемент</InputLabel>
               <Select
@@ -1360,7 +1351,7 @@ const StudentsPage: React.FC = () => {
                 ))}
             </Select>
           </FormControl>
-          {isOwner && (
+          {canAssignAbonement && (
             <FormControl fullWidth sx={{ mt: 2 }}>
               <InputLabel>Абонемент</InputLabel>
               <Select

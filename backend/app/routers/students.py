@@ -27,7 +27,7 @@ router = APIRouter()
 async def create_student_with_parent(
     payload: StudentWithParentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     """
     Композитное создание: ученик + родитель (найти по id/email или создать нового).
@@ -127,9 +127,9 @@ async def search_parents(
 async def create_student(
     student: StudentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
-    """Создание ученика (только администратор)"""
+    """Создание ученика (admin, owner, sales)."""
     # Проверка существования родителя (если указан)
     if student.parent_id:
         parent = db.query(User).filter(
@@ -186,8 +186,8 @@ async def read_students(
             Group.trainer_id == current_user.id,
             Student.status == StudentStatus.ACTIVE
         )
-    # Администратор видит всех
-    elif current_user.role in (UserRole.ADMIN, UserRole.OWNER):
+    # Администратор, владелец и sales видят всех
+    elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         if status_filter:
             query = query.filter(Student.status == status_filter)
     
@@ -379,9 +379,9 @@ async def update_student(
     student_id: int,
     student_update: StudentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
-    """Обновление ученика (только администратор)"""
+    """Обновление ученика (admin, owner, sales)."""
     db_student = db.query(Student).filter(Student.id == student_id).first()
     if db_student is None:
         raise HTTPException(status_code=404, detail="Student not found")

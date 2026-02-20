@@ -212,7 +212,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       { text: 'Главная', icon: <Dashboard />, path: '/dashboard' },
       { text: 'Ученики', icon: <People />, path: '/students' },
       { text: 'Группы', icon: <Group />, path: '/groups' },
-      { text: 'Уроки', icon: <EventAvailable />, path: '/lessons' },
+      ...(role !== 'owner' ? [{ text: 'Уроки', icon: <EventAvailable />, path: '/lessons' }] : []),
       { text: 'Программы', icon: <Book />, path: '/programs' },
       { text: 'Оценки', icon: <Grade />, path: '/grades' },
       { text: 'Характеристики', icon: <Description />, path: '/characteristics' },

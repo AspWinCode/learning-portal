@@ -26,12 +26,14 @@ import {
   Checkbox,
   FormControlLabel,
   Switch,
+  Autocomplete,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
-import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi } from '../services/api';
+import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
 import { Student, User, Group, Program, Abonement, StudentAccount } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
+import { applyPhoneMask, isValidPhone, phoneToApiValue } from '../utils/phoneMask';
 
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -107,11 +109,17 @@ const StudentsPage: React.FC = () => {
   const isOwner = user?.role === 'owner';
   const canManageAccounts = isAdminLike || user?.role === 'trainer' || user?.role === 'parent';
   const canCreateCard = isAdminLike || user?.role === 'sales';
+  const [citiesList, setCitiesList] = useState<string[]>([]);
+
+  const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || '').trim());
 
   useEffect(() => {
     loadStudents();
     if (isAdminLike) {
       loadParents();
+      if (canCreateCard) {
+        salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
+      }
       if (!isOwner) {
         loadTrainers();
       }
@@ -121,7 +129,7 @@ const StudentsPage: React.FC = () => {
         loadAbonements();
       }
     }
-  }, [user, statusFilter]);
+  }, [user, statusFilter, canCreateCard]);
 
   useEffect(() => {
     if (parentCreateMode !== 'existing' || !parentSearchQuery.trim()) {
@@ -138,6 +146,15 @@ const StudentsPage: React.FC = () => {
     }, 300);
     return () => clearTimeout(t);
   }, [parentCreateMode, parentSearchQuery]);
+
+  useEffect(() => {
+    setCardFields((prev) => ({
+      ...prev,
+      student_full_name: newStudent.full_name,
+      parent_full_name: parentCreateMode === 'new' ? newParent.full_name : (selectedParentForCreate?.full_name ?? ''),
+      parent_email: parentCreateMode === 'new' ? newParent.email : (selectedParentForCreate?.email ?? ''),
+    }));
+  }, [newStudent.full_name, parentCreateMode, newParent.full_name, newParent.email, selectedParentForCreate?.full_name, selectedParentForCreate?.email]);
 
   const loadStudents = async () => {
     try {
@@ -298,6 +315,19 @@ const StudentsPage: React.FC = () => {
         const createdStudent = await studentsApi.create(studentData);
         await assignProgramAndGroup(createdStudent.id);
         if (createCardToo && canCreateCard) {
+          const phoneErr = [cardFields.student_phone, cardFields.parent_phone, cardFields.parent_phone_2].find((p) => p.trim() && !isValidPhone(p));
+          if (phoneErr) {
+            setError('Введите корректный номер телефона: 10 цифр в формате +7(XXX) XXX-XX-XX');
+            return;
+          }
+          if (cardFields.student_email.trim() && !isValidEmail(cardFields.student_email)) {
+            setError('Введите корректный email ученика');
+            return;
+          }
+          if (cardFields.parent_email.trim() && !isValidEmail(cardFields.parent_email)) {
+            setError('Введите корректный email родителя');
+            return;
+          }
           try {
             await createCardForStudent(createdStudent, null);
           } catch (err: any) {
@@ -320,6 +350,10 @@ const StudentsPage: React.FC = () => {
         setError('Заполните ФИО и email родителя');
         return;
       }
+      if (parentCreateMode === 'new' && newParent.email.trim() && !isValidEmail(newParent.email)) {
+        setError('Введите корректный email родителя');
+        return;
+      }
 
       const parentPayload =
         parentCreateMode === 'existing' && selectedParentForCreate
@@ -333,6 +367,20 @@ const StudentsPage: React.FC = () => {
 
       await assignProgramAndGroup(createdStudent.id);
       if (createCardToo && canCreateCard) {
+        const phoneErr = [cardFields.student_phone, cardFields.parent_phone, cardFields.parent_phone_2].find((p) => p.trim() && !isValidPhone(p));
+        if (phoneErr) {
+          setError('Введите корректный номер телефона: 10 цифр в формате +7(XXX) XXX-XX-XX');
+          return;
+        }
+        if (cardFields.student_email.trim() && !isValidEmail(cardFields.student_email)) {
+          setError('Введите корректный email ученика');
+          return;
+        }
+        const parentEmail = (cardFields.parent_email || createdParent.email || '').trim();
+        if (parentEmail && !isValidEmail(parentEmail)) {
+          setError('Введите корректный email родителя');
+          return;
+        }
         try {
           await createCardForStudent(createdStudent, {
             full_name: createdParent.full_name,
@@ -390,7 +438,7 @@ const StudentsPage: React.FC = () => {
       student_full_name: (cardFields.student_full_name || student.full_name).trim(),
       student_email: cardFields.student_email.trim() || undefined,
       birth_date: cardFields.birth_date.trim() || undefined,
-      student_phone: cardFields.student_phone.trim() || undefined,
+      student_phone: cardFields.student_phone.trim() ? phoneToApiValue(cardFields.student_phone) || undefined : undefined,
       telegram: cardFields.telegram.trim() || undefined,
       gender: cardFields.gender || undefined,
       on_grant: cardFields.on_grant,
@@ -399,8 +447,8 @@ const StudentsPage: React.FC = () => {
       school: cardFields.school.trim() || undefined,
       grade: cardFields.grade.trim() || undefined,
       parent_full_name: (cardFields.parent_full_name || parentInfo?.full_name || '').trim() || undefined,
-      parent_phone: cardFields.parent_phone.trim() || undefined,
-      parent_phone_2: cardFields.parent_phone_2.trim() || undefined,
+      parent_phone: cardFields.parent_phone.trim() ? phoneToApiValue(cardFields.parent_phone) || undefined : undefined,
+      parent_phone_2: cardFields.parent_phone_2.trim() ? phoneToApiValue(cardFields.parent_phone_2) || undefined : undefined,
       parent_telegram: cardFields.parent_telegram.trim() || undefined,
       parent_email: (cardFields.parent_email || parentInfo?.email || '').trim() || undefined,
       preferred_messenger: cardFields.preferred_messenger || undefined,
@@ -1040,6 +1088,8 @@ const StudentsPage: React.FC = () => {
                 type="email"
                 value={newParent.email}
                 onChange={(e) => setNewParent({ ...newParent, email: e.target.value })}
+                error={!!newParent.email.trim() && !isValidEmail(newParent.email)}
+                helperText={newParent.email.trim() && !isValidEmail(newParent.email) ? 'Введите корректный email' : ''}
               />
             </Stack>
           )}
@@ -1060,9 +1110,9 @@ const StudentsPage: React.FC = () => {
                 <Stack spacing={1.5} sx={{ mt: 1, pl: 1, borderLeft: 2, borderColor: 'divider' }}>
                   <Typography variant="subtitle2" color="primary">Личная карточка</Typography>
                   <TextField size="small" fullWidth label="ФИО ученика" value={cardFields.student_full_name || newStudent.full_name} onChange={(e) => setCardFields((f) => ({ ...f, student_full_name: e.target.value }))} />
-                  <TextField size="small" fullWidth label="Email ученика" type="email" value={cardFields.student_email} onChange={(e) => setCardFields((f) => ({ ...f, student_email: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Email ученика" type="email" value={cardFields.student_email} onChange={(e) => setCardFields((f) => ({ ...f, student_email: e.target.value }))} error={!!cardFields.student_email.trim() && !isValidEmail(cardFields.student_email)} helperText={cardFields.student_email.trim() && !isValidEmail(cardFields.student_email) ? 'Введите корректный email' : ''} />
                   <TextField size="small" fullWidth label="Дата рождения ученика" type="date" value={cardFields.birth_date} onChange={(e) => setCardFields((f) => ({ ...f, birth_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-                  <TextField size="small" fullWidth label="Мобильный телефон ученика" value={cardFields.student_phone} onChange={(e) => setCardFields((f) => ({ ...f, student_phone: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Мобильный телефон ученика" value={cardFields.student_phone} onChange={(e) => setCardFields((f) => ({ ...f, student_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.student_phone.trim() && !isValidPhone(cardFields.student_phone)} helperText={cardFields.student_phone.trim() && !isValidPhone(cardFields.student_phone) ? '10 цифр номера' : ''} />
                   <TextField size="small" fullWidth label="Телеграмм ученика" value={cardFields.telegram} onChange={(e) => setCardFields((f) => ({ ...f, telegram: e.target.value }))} />
                   <FormControl size="small" fullWidth>
                     <InputLabel>Пол</InputLabel>
@@ -1081,14 +1131,22 @@ const StudentsPage: React.FC = () => {
                       <MenuItem value="individual">Индивидуальное</MenuItem>
                     </Select>
                   </FormControl>
-                  <TextField size="small" fullWidth label="Город" value={cardFields.city} onChange={(e) => setCardFields((f) => ({ ...f, city: e.target.value }))} />
+                  <Autocomplete
+                    size="small"
+                    freeSolo
+                    options={citiesList}
+                    value={cardFields.city}
+                    onInputChange={(_, v) => setCardFields((f) => ({ ...f, city: v ?? '' }))}
+                    onChange={(_, v) => setCardFields((f) => ({ ...f, city: (typeof v === 'string' ? v : v ?? '').trim() }))}
+                    renderInput={(params) => <TextField {...params} label="Город" placeholder="Выберите или введите город" />}
+                  />
                   <TextField size="small" fullWidth label="Образовательное учреждение" value={cardFields.school} onChange={(e) => setCardFields((f) => ({ ...f, school: e.target.value }))} />
                   <TextField size="small" fullWidth label="Класс" value={cardFields.grade} onChange={(e) => setCardFields((f) => ({ ...f, grade: e.target.value }))} />
                   <TextField size="small" fullWidth label="ФИО родителя" value={cardFields.parent_full_name || (parentCreateMode === 'new' ? newParent.full_name : selectedParentForCreate?.full_name || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_full_name: e.target.value }))} />
-                  <TextField size="small" fullWidth label="Мобильный телефон родителя" value={cardFields.parent_phone} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone: e.target.value }))} />
-                  <TextField size="small" fullWidth label="Второй мобильный телефон родителя" value={cardFields.parent_phone_2} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone_2: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Мобильный телефон родителя" value={cardFields.parent_phone} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone)} helperText={cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone) ? '10 цифр номера' : ''} />
+                  <TextField size="small" fullWidth label="Второй мобильный телефон родителя" value={cardFields.parent_phone_2} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone_2: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2)} helperText={cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2) ? '10 цифр номера' : ''} />
                   <TextField size="small" fullWidth label="Телеграм родителя" value={cardFields.parent_telegram} onChange={(e) => setCardFields((f) => ({ ...f, parent_telegram: e.target.value }))} />
-                  <TextField size="small" fullWidth label="Email родителя" type="email" value={cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_email: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Email родителя" type="email" value={cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_email: e.target.value }))} error={!!(cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || '')).trim() && !isValidEmail(cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || ''))} helperText={((cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || '')).trim() && !isValidEmail(cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || ''))) ? 'Введите корректный email' : ''} />
                   <FormControl size="small" fullWidth>
                     <InputLabel>Удобный мессенджер для общения с родителем</InputLabel>
                     <Select value={cardFields.preferred_messenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setCardFields((f) => ({ ...f, preferred_messenger: e.target.value as '' | 'max' | 'telegram' | 'sms' }))}>

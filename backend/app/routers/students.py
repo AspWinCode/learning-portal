@@ -376,12 +376,25 @@ async def create_student_account(
     student_id: int,
     payload: StudentAccountCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Создать счет ученику. Только admin/owner."""
+    """Создать счет ученику. Доступ: admin, owner, trainer (свои ученики), parent (свои)."""
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
+    if current_user.role == UserRole.PARENT:
+        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif current_user.role == UserRole.TRAINER:
+        from app.models import GroupStudent, Group
+        has_access = db.query(GroupStudent).join(Group).filter(
+            GroupStudent.student_id == student_id,
+            Group.trainer_id == current_user.id,
+        ).first()
+        if not has_access:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
     name = (payload.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Название счета обязательно")

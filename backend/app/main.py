@@ -63,7 +63,7 @@ app.include_router(sales.router, prefix="/api/sales", tags=["sales"])
 app.include_router(tasks.router, prefix="/api", tags=["tasks"])
 app.include_router(b2b.router, prefix="/api", tags=["b2b"])
 app.include_router(owner_funnels.router, prefix="/api", tags=["owner_funnels"])
-app.include_router(trainer_lessons.router, prefix="/api", tags=["trainer_lessons"])
+app.include_router(trainer_lessons.router, prefix="/api/trainer-lessons", tags=["trainer_lessons"])
 app.include_router(student_accounts.router, prefix="/api/student-accounts", tags=["student_accounts"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 

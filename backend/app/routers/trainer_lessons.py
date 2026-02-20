@@ -33,7 +33,7 @@ def _serialize_time(t: time) -> str:
 
 @router.get("/", response_model=List[TrainerLessonSlotResponse])
 async def get_lessons_for_date(
-    lesson_date: date = Query(..., description="╨Ф╨░╤В╨░ ╨▓ ╤Д╨╛╤А╨╝╨░╤В╨╡ YYYY-MM-DD"),
+    lesson_date: date = Query(..., description="Дата в формате YYYY-MM-DD"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):

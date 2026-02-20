@@ -56,13 +56,17 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
 
   const canSeeAbsences = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
   const canManageAccounts = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'trainer' || user?.role === 'parent';
+  const canInviteParent = (user?.role === 'admin' || user?.role === 'owner') && !!student?.parent_id;
 
   useEffect(() => {
     if (!open || !studentId) return;
     setError(null);
+    setInviteLink(null);
     setLoading(true);
     setStudent(null);
     setAttendances([]);
@@ -169,6 +173,40 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   Родитель: {student.parent?.full_name || '—'}
                   {student.parent?.email && ` (${student.parent.email})`}
                 </Typography>
+                {canInviteParent && (
+                  <Box sx={{ mt: 1 }}>
+                    {inviteLink ? (
+                      <Alert severity="success" onClose={() => setInviteLink(null)}>
+                        <Typography variant="body2" gutterBottom>Ссылка для входа (действует 7 дней). Отправьте её родителю:</Typography>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <TextField size="small" fullWidth value={inviteLink} InputProps={{ readOnly: true }} sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }} />
+                          <Button size="small" onClick={() => { navigator.clipboard.writeText(inviteLink); }}>Копировать</Button>
+                        </Stack>
+                      </Alert>
+                    ) : (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={inviteLoading}
+                        onClick={async () => {
+                          if (!studentId) return;
+                          setInviteLoading(true);
+                          setError(null);
+                          try {
+                            const res = await studentsApi.inviteParent(studentId);
+                            setInviteLink(res.invite_link);
+                          } catch (err: any) {
+                            setError(err.response?.data?.detail || 'Не удалось создать приглашение');
+                          } finally {
+                            setInviteLoading(false);
+                          }
+                        }}
+                      >
+                        {inviteLoading ? 'Создание…' : 'Дать доступ родителю'}
+                      </Button>
+                    )}
+                  </Box>
+                )}
                 <Typography variant="body2">Статус: {student.status === 'active' ? 'Активен' : 'В архиве'}</Typography>
                 {(student.programs || []).filter((p) => p.status === 'active').length > 0 && (
                   <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>

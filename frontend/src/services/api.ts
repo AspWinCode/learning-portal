@@ -156,6 +156,21 @@ export const studentsApi = {
     const response = await api.post('/api/students/', data);
     return response.data;
   },
+  createWithParent: async (data: {
+    student: { full_name: string; abonement_id?: number | null };
+    parent: { id?: number | null; full_name: string; email?: string | null };
+  }): Promise<{ student: Student; parent: { id: number; full_name: string; email: string } }> => {
+    const response = await api.post('/api/students/with-parent', data);
+    return response.data;
+  },
+  searchParents: async (q: string): Promise<{ id: number; full_name: string; email: string }[]> => {
+    const response = await api.get('/api/students/parents/search', { params: { q, limit: 20 } });
+    return response.data;
+  },
+  inviteParent: async (studentId: number): Promise<{ invite_link: string }> => {
+    const response = await api.post(`/api/students/${studentId}/invite-parent`);
+    return response.data;
+  },
   update: async (id: number, data: Partial<Student>): Promise<Student> => {
     const response = await api.put(`/api/students/${id}`, data);
     return response.data;

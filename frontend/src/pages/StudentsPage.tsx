@@ -47,6 +47,11 @@ const StudentsPage: React.FC = () => {
     program_id: '',
     abonement_id: '',
   });
+  const [parentCreateMode, setParentCreateMode] = useState<'none' | 'existing' | 'new'>('new');
+  const [parentSearchQuery, setParentSearchQuery] = useState('');
+  const [parentSearchResults, setParentSearchResults] = useState<{ id: number; full_name: string; email: string }[]>([]);
+  const [parentSearching, setParentSearching] = useState(false);
+  const [selectedParentForCreate, setSelectedParentForCreate] = useState<{ id: number; full_name: string; email: string } | null>(null);
   const [newParent, setNewParent] = useState({
     full_name: '',
     email: '',
@@ -91,6 +96,22 @@ const StudentsPage: React.FC = () => {
       }
     }
   }, [user, statusFilter]);
+
+  useEffect(() => {
+    if (parentCreateMode !== 'existing' || !parentSearchQuery.trim()) {
+      setParentSearchResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      setParentSearching(true);
+      studentsApi
+        .searchParents(parentSearchQuery.trim())
+        .then(setParentSearchResults)
+        .catch(() => setParentSearchResults([]))
+        .finally(() => setParentSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [parentCreateMode, parentSearchQuery]);
 
   const loadStudents = async () => {
     try {
@@ -231,69 +252,97 @@ const StudentsPage: React.FC = () => {
       return;
     }
 
+    const abonementId =
+      isOwner && newStudent.abonement_id && newStudent.abonement_id.trim() !== ''
+        ? parseInt(newStudent.abonement_id)
+        : null;
+    if (abonementId !== null && isNaN(abonementId)) {
+      setError('Некорректный абонемент');
+      return;
+    }
+
     try {
-      const studentData: any = {
-        full_name: newStudent.full_name.trim(),
-      };
+      setError('');
 
-      // Добавляем parent_id только если он выбран (не пустая строка)
-      if (newStudent.parent_id && newStudent.parent_id.trim() !== '') {
-        const parentId = parseInt(newStudent.parent_id);
-        if (!isNaN(parentId)) {
-          studentData.parent_id = parentId;
-        }
+      if (parentCreateMode === 'none') {
+        const studentData: any = {
+          full_name: newStudent.full_name.trim(),
+          abonement_id: abonementId ?? undefined,
+        };
+        const createdStudent = await studentsApi.create(studentData);
+        await assignProgramAndGroup(createdStudent.id);
+        setOpen(false);
+        resetCreateForm();
+        loadStudents();
+        loadGroups();
+        return;
       }
 
-      if (isOwner && newStudent.abonement_id && newStudent.abonement_id.trim() !== '') {
-        const abonementId = parseInt(newStudent.abonement_id);
-        if (!isNaN(abonementId)) {
-          studentData.abonement_id = abonementId;
-        }
+      if (parentCreateMode === 'existing' && !selectedParentForCreate) {
+        setError('Выберите родителя из списка или переключитесь на «Создать нового»');
+        return;
+      }
+      if (parentCreateMode === 'new' && (!newParent.full_name.trim() || !newParent.email.trim())) {
+        setError('Заполните ФИО и email родителя');
+        return;
       }
 
-      console.log('Отправка данных:', studentData); // Для отладки
+      const parentPayload =
+        parentCreateMode === 'existing' && selectedParentForCreate
+          ? { id: selectedParentForCreate.id, full_name: selectedParentForCreate.full_name, email: selectedParentForCreate.email }
+          : { id: null as number | null, full_name: newParent.full_name.trim(), email: newParent.email.trim() };
 
-      const createdStudent = await studentsApi.create(studentData);
+      const { student: createdStudent } = await studentsApi.createWithParent({
+        student: { full_name: newStudent.full_name.trim(), abonement_id: abonementId ?? undefined },
+        parent: parentPayload,
+      });
 
-      // Назначаем программу, если выбрана
-      if (newStudent.program_id && newStudent.program_id.trim() !== '') {
+      await assignProgramAndGroup(createdStudent.id);
+      setOpen(false);
+      resetCreateForm();
+      loadStudents();
+      loadGroups();
+    } catch (err: any) {
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail || err.message || 'Ошибка создания ученика';
+      if (status === 409) {
+        setError('Найдено несколько родителей с таким email. Выберите родителя из списка (режим «Выбрать существующего»).');
+      } else {
+        setError(detail);
+      }
+    }
+  };
+
+  const assignProgramAndGroup = async (studentId: number) => {
+    if (newStudent.program_id && newStudent.program_id.trim() !== '') {
+      const programId = parseInt(newStudent.program_id);
+      if (!isNaN(programId)) {
         try {
-          const programId = parseInt(newStudent.program_id);
-          if (!isNaN(programId)) {
-            await programsApi.assignToStudent(programId, createdStudent.id);
-          }
+          await programsApi.assignToStudent(programId, studentId);
         } catch (err: any) {
-          console.error('Ошибка назначения программы', err);
-          setError(
-            `Ученик создан, но не удалось назначить программу: ${
-              err.response?.data?.detail || 'ошибка'
-            }`
-          );
+          setError(`Ученик создан, но не удалось назначить программу: ${err.response?.data?.detail || 'ошибка'}`);
         }
       }
-
-      // Добавляем в группу, если выбрана
-      if (newStudent.group_id && newStudent.group_id.trim() !== '') {
+    }
+    if (newStudent.group_id && newStudent.group_id.trim() !== '') {
+      const groupId = parseInt(newStudent.group_id);
+      if (!isNaN(groupId)) {
         try {
-          const groupId = parseInt(newStudent.group_id);
-          if (!isNaN(groupId)) {
-            await groupsApi.addStudent(groupId, createdStudent.id);
-          }
+          await groupsApi.addStudent(groupId, studentId);
         } catch (err: any) {
           console.error('Ошибка добавления в группу', err);
-          // Не блокируем создание, если не удалось добавить в группу
         }
       }
-
-      setOpen(false);
-      setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
-      loadStudents();
-      loadGroups(); // Перезагружаем группы для обновления списка
-    } catch (err: any) {
-      console.error('Ошибка создания ученика:', err);
-      const errorMessage = err.response?.data?.detail || err.message || 'Ошибка создания ученика';
-      setError(errorMessage);
     }
+  };
+
+  const resetCreateForm = () => {
+    setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
+    setParentCreateMode('new');
+    setParentSearchQuery('');
+    setParentSearchResults([]);
+    setSelectedParentForCreate(null);
+    setNewParent({ full_name: '', email: '' });
   };
 
   const handleEdit = async (student: Student) => {
@@ -507,8 +556,8 @@ const StudentsPage: React.FC = () => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => {
+              resetCreateForm();
               setOpen(true);
-              setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
             }}
           >
             Добавить ученика
@@ -818,7 +867,7 @@ const StudentsPage: React.FC = () => {
       )}
 
       {/* Диалог добавления */}
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={open} onClose={() => { setOpen(false); setError(''); }} maxWidth="sm" fullWidth>
         <DialogTitle>Добавить ученика</DialogTitle>
         <DialogContent>
           <TextField
@@ -829,23 +878,72 @@ const StudentsPage: React.FC = () => {
             sx={{ mt: 2 }}
             required
           />
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Родитель</InputLabel>
-            <Select
-              value={newStudent.parent_id}
-              label="Родитель"
-              onChange={(e) => setNewStudent({ ...newStudent, parent_id: e.target.value })}
-            >
-              <MenuItem value="">
-                <em>Не выбран</em>
-              </MenuItem>
-              {parents.map((parent) => (
-                <MenuItem key={parent.id} value={parent.id.toString()}>
-                  {parent.full_name} ({parent.email})
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 0.5 }}>Родитель</Typography>
+          <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+            <Button size="small" variant={parentCreateMode === 'none' ? 'contained' : 'outlined'} onClick={() => { setParentCreateMode('none'); setSelectedParentForCreate(null); setParentSearchQuery(''); }}>
+              Без родителя
+            </Button>
+            <Button size="small" variant={parentCreateMode === 'existing' ? 'contained' : 'outlined'} onClick={() => { setParentCreateMode('existing'); setSelectedParentForCreate(null); setParentSearchQuery(''); }}>
+              Выбрать существующего
+            </Button>
+            <Button size="small" variant={parentCreateMode === 'new' ? 'contained' : 'outlined'} onClick={() => { setParentCreateMode('new'); setSelectedParentForCreate(null); }}>
+              Создать нового
+            </Button>
+          </Stack>
+          {parentCreateMode === 'existing' && (
+            <Stack spacing={1} sx={{ mt: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Поиск по email или ФИО"
+                value={parentSearchQuery}
+                onChange={(e) => setParentSearchQuery(e.target.value)}
+                placeholder="Введите для поиска..."
+              />
+              {parentSearching && <Typography variant="caption" color="text.secondary">Поиск...</Typography>}
+              {selectedParentForCreate && (
+                <Chip
+                  label={`${selectedParentForCreate.full_name} (${selectedParentForCreate.email})`}
+                  onDelete={() => setSelectedParentForCreate(null)}
+                  size="small"
+                />
+              )}
+              {!selectedParentForCreate && parentSearchResults.length > 0 && (
+                <Stack direction="column" spacing={0.5}>
+                  {parentSearchResults.map((p) => (
+                    <Button
+                      key={p.id}
+                      size="small"
+                      fullWidth
+                      sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                      onClick={() => setSelectedParentForCreate(p)}
+                    >
+                      {p.full_name} — {p.email}
+                    </Button>
+                  ))}
+                </Stack>
+              )}
+            </Stack>
+          )}
+          {parentCreateMode === 'new' && (
+            <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                label="ФИО родителя *"
+                value={newParent.full_name}
+                onChange={(e) => setNewParent({ ...newParent, full_name: e.target.value })}
+              />
+              <TextField
+                fullWidth
+                size="small"
+                label="Email родителя *"
+                type="email"
+                value={newParent.email}
+                onChange={(e) => setNewParent({ ...newParent, email: e.target.value })}
+              />
+            </Stack>
+          )}
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Группа</InputLabel>
             <Select

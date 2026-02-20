@@ -207,6 +207,38 @@ class StudentResponse(StudentBase):
         from_attributes = True
 
 
+# Создание ученика вместе с родителем (композитный сценарий)
+class StudentWithParentParentPayload(BaseModel):
+    id: Optional[int] = None  # если задан — используем существующего
+    full_name: str = Field(..., min_length=1)
+    email: Optional[EmailStr] = None  # обязателен при создании нового
+
+
+class StudentWithParentStudentPayload(BaseModel):
+    full_name: str = Field(..., min_length=1)
+    abonement_id: Optional[int] = None
+
+
+class StudentWithParentCreate(BaseModel):
+    student: StudentWithParentStudentPayload
+    parent: StudentWithParentParentPayload
+
+
+class ParentInfoInResponse(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+
+class StudentWithParentResponse(BaseModel):
+    student: StudentResponse
+    parent: ParentInfoInResponse
+
+
+class InviteParentResponse(BaseModel):
+    invite_link: str
+
+
 # Student accounts (счета учеников)
 class StudentAccountCreate(BaseModel):
     name: str

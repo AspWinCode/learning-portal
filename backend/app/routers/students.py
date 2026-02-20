@@ -4,12 +4,123 @@ from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import or_
 from app.database import get_db
 from app import auth
-from app.schemas import StudentCreate, StudentResponse, StudentUpdate, ProgramSummaryResponse, StudentAccountCreate, StudentAccountResponse
+from app.schemas import (
+    StudentCreate,
+    StudentResponse,
+    StudentUpdate,
+    ProgramSummaryResponse,
+    StudentAccountCreate,
+    StudentAccountResponse,
+    StudentWithParentCreate,
+    StudentWithParentResponse,
+    InviteParentResponse,
+)
 from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, LessonAttendance, Group
 from app.routers.action_log import log_action
 from app.student_display import get_student_display_name, get_students_display_names
+from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
 
 router = APIRouter()
+
+
+@router.post("/with-parent", response_model=StudentWithParentResponse, status_code=status.HTTP_201_CREATED)
+async def create_student_with_parent(
+    payload: StudentWithParentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    """
+    Композитное создание: ученик + родитель (найти по id/email или создать нового).
+    В одной транзакции: определить/создать parent → создать student с parent_id.
+    """
+    parent_user = None
+    email_normalized = (payload.parent.email or "").strip().lower() if payload.parent.email else None
+
+    if payload.parent.id is not None:
+        parent_user = db.query(User).filter(User.id == payload.parent.id, User.role == UserRole.PARENT).first()
+        if not parent_user:
+            raise HTTPException(status_code=404, detail="Родитель с указанным id не найден")
+    else:
+        if not email_normalized:
+            raise HTTPException(status_code=400, detail="Укажите email родителя или выберите существующего")
+        found = db.query(User).filter(User.role == UserRole.PARENT, User.email == email_normalized).all()
+        if len(found) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Найдено несколько родителей с таким email. Выберите вручную.",
+            )
+        if len(found) == 1:
+            parent_user = found[0]
+        else:
+            try:
+                parent_user = create_parent_user_no_invite(
+                    db, email_normalized, payload.parent.full_name or ""
+                )
+                db.flush()
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+    abonement_id = None
+    if payload.student.abonement_id:
+        abonement = db.query(Abonement).filter(Abonement.id == payload.student.abonement_id).first()
+        if not abonement:
+            raise HTTPException(status_code=404, detail="Abonement not found")
+        if abonement.status != AbonementStatus.ACTIVE:
+            raise HTTPException(status_code=400, detail="Abonement is archived")
+        abonement_id = abonement.id
+
+    db_student = Student(
+        full_name=payload.student.full_name.strip(),
+        parent_id=parent_user.id,
+        abonement_id=abonement_id,
+        status=StudentStatus.ACTIVE,
+    )
+    db.add(db_student)
+    db.commit()
+    db.refresh(db_student)
+    db.refresh(parent_user)
+
+    log_action(db, current_user.id, "create", "student", db_student.id)
+
+    display_name = get_student_display_name(db, db_student.id)
+    student_response = StudentResponse(
+        id=db_student.id,
+        full_name=display_name,
+        parent_id=db_student.parent_id,
+        abonement_id=db_student.abonement_id,
+        status=db_student.status,
+        created_at=db_student.created_at,
+        parent=parent_user,
+        abonement=db_student.abonement,
+        programs=[],
+    )
+    from app.schemas import ParentInfoInResponse
+    return StudentWithParentResponse(
+        student=student_response,
+        parent=ParentInfoInResponse(id=parent_user.id, full_name=parent_user.full_name, email=parent_user.email),
+    )
+
+
+@router.get("/parents/search", response_model=List[dict])
+async def search_parents(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    """Поиск родителей по email или ФИО для выбора при создании ученика."""
+    term = f"%{q.strip()}%"
+    users = (
+        db.query(User)
+        .filter(
+            User.role == UserRole.PARENT,
+            or_(User.email.ilike(term), User.full_name.ilike(term)),
+        )
+        .order_by(User.full_name)
+        .limit(limit)
+        .all()
+    )
+    return [{"id": u.id, "full_name": u.full_name, "email": u.email} for u in users]
 
 
 @router.post("/", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
@@ -127,6 +238,27 @@ async def read_student(
     return StudentResponse(
         **{**StudentResponse.model_validate(student).model_dump(), "full_name": display_name}
     )
+
+
+@router.post("/{student_id}/invite-parent", response_model=InviteParentResponse)
+async def invite_parent_for_student(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    """Сгенерировать ссылку-приглашение для родителя ученика (установка пароля / вход в кабинет)."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not student.parent_id:
+        raise HTTPException(status_code=400, detail="У ученика не указан родитель")
+    parent_user = db.query(User).filter(User.id == student.parent_id).first()
+    if not parent_user or parent_user.role != UserRole.PARENT:
+        raise HTTPException(status_code=404, detail="Родитель не найден")
+    invite_link = create_invite_for_existing_parent(db, parent_user)
+    db.commit()
+    log_action(db, current_user.id, "invite_parent", "student", student_id)
+    return InviteParentResponse(invite_link=invite_link)
 
 
 @router.get("/{student_id}/attendances")

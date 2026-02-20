@@ -3,11 +3,13 @@ import {
   Alert,
   Box,
   Button,
+  Card,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Paper,
@@ -23,12 +25,14 @@ import {
   Typography,
 } from '@mui/material';
 import Add from '@mui/icons-material/Add';
+import Delete from '@mui/icons-material/Delete';
 import Edit from '@mui/icons-material/Edit';
 import Layout from '../components/Layout';
 import { b2bApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
 import { format, parseISO } from 'date-fns';
-import type { B2BSchool, B2BSchoolPipelineStage } from '../types';
+import type { B2BSchool, B2BSchoolContact, B2BSchoolPipelineStage } from '../types';
 
 const PIPELINE_STAGES: { value: B2BSchoolPipelineStage; label: string }[] = [
   { value: 'new', label: 'Новая' },
@@ -99,6 +103,9 @@ const B2BSchoolCreatePage: React.FC = () => {
   const [managers, setManagers] = useState<{ id: number; full_name: string }[]>([]);
   const [loadingSchool, setLoadingSchool] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [contactForm, setContactForm] = useState({ full_name: '', position: '', phone: '', phone_extra: '' });
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<B2BSchoolContact | null>(null);
 
   const loadSchools = useCallback(async () => {
     setLoading(true);
@@ -157,6 +164,73 @@ const B2BSchoolCreatePage: React.FC = () => {
       setLoadingSchool(false);
     }
   }, []);
+
+  const refreshEditingSchool = useCallback(async () => {
+    if (!editingSchool) return;
+    try {
+      const updated = await b2bApi.getSchool(editingSchool.id);
+      setEditingSchool(updated);
+    } catch (_) {}
+  }, [editingSchool?.id]);
+
+  const openAddContact = () => {
+    setEditingContact(null);
+    setContactForm({ full_name: '', position: '', phone: '', phone_extra: '' });
+    setContactDialogOpen(true);
+  };
+
+  const openEditContact = (c: B2BSchoolContact) => {
+    setEditingContact(c);
+    setContactForm({
+      full_name: c.full_name,
+      position: c.position ?? '',
+      phone: phoneFromApi(c.phone),
+      phone_extra: phoneFromApi(c.phone_extra),
+    });
+    setContactDialogOpen(true);
+  };
+
+  const handleSaveContact = async () => {
+    if (!editingSchool || !contactForm.full_name.trim()) return;
+    const phoneDigits = phoneToApiValue(contactForm.phone);
+    if (!isValidPhone(contactForm.phone)) {
+      setError('Введите корректный номер телефона: 10 цифр в формате +7(XXX) XXX-XX-XX');
+      return;
+    }
+    setError(null);
+    try {
+      const payload = {
+        full_name: contactForm.full_name.trim(),
+        position: contactForm.position.trim() || undefined,
+        phone: phoneDigits,
+        phone_extra: contactForm.phone_extra.trim() && isValidPhone(contactForm.phone_extra)
+          ? phoneToApiValue(contactForm.phone_extra)
+          : undefined,
+      };
+      if (editingContact) {
+        await b2bApi.updateContact(editingSchool.id, editingContact.id, payload);
+      } else {
+        await b2bApi.createContact(editingSchool.id, {
+          ...payload,
+          phone_extra: payload.phone_extra ?? undefined,
+        });
+      }
+      setContactDialogOpen(false);
+      await refreshEditingSchool();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось сохранить контакт'));
+    }
+  };
+
+  const handleDeleteContact = async (c: B2BSchoolContact) => {
+    if (!editingSchool || !window.confirm(`Удалить контакт ${c.full_name}?`)) return;
+    try {
+      await b2bApi.deleteContact(editingSchool.id, c.id);
+      await refreshEditingSchool();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось удалить контакт'));
+    }
+  };
 
   const handleSaveEdit = async () => {
     if (!editingSchool) return;
@@ -569,6 +643,44 @@ const B2BSchoolCreatePage: React.FC = () => {
                     InputLabelProps={{ shrink: true }}
                   />
                 )}
+
+                {editingSchool && (
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                      <Typography variant="subtitle2">Контакты</Typography>
+                      <Button size="small" startIcon={<Add />} onClick={openAddContact}>
+                        Добавить контакт
+                      </Button>
+                    </Stack>
+                    <Stack spacing={1}>
+                      {(editingSchool.contacts ?? []).map((c) => (
+                        <Card key={c.id} variant="outlined" sx={{ p: 1.5 }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                            <Box>
+                              <Typography variant="body2" fontWeight="medium">{c.full_name}</Typography>
+                              <Typography variant="caption" color="text.secondary">{c.position || '—'}</Typography>
+                              <Typography variant="caption" display="block">{c.phone}</Typography>
+                              {c.phone_extra && (
+                                <Typography variant="caption" display="block" color="text.secondary">Доп. тел.: {c.phone_extra}</Typography>
+                              )}
+                            </Box>
+                            <Stack direction="row" spacing={0.25}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); openEditContact(c); }} aria-label="Редактировать контакт">
+                                <Edit fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); void handleDeleteContact(c); }} aria-label="Удалить контакт" color="error">
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          </Stack>
+                        </Card>
+                      ))}
+                      {(!editingSchool.contacts || editingSchool.contacts.length === 0) && (
+                        <Typography variant="caption" color="text.secondary">Нет контактов</Typography>
+                      )}
+                    </Stack>
+                  </Box>
+                )}
               </Stack>
             )}
           </DialogContent>
@@ -581,6 +693,56 @@ const B2BSchoolCreatePage: React.FC = () => {
               startIcon={<Edit />}
             >
               {savingEdit ? 'Сохранение…' : 'Сохранить'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>{editingContact ? 'Редактировать контакт' : 'Добавить контакт'}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="ФИО"
+                value={contactForm.full_name}
+                onChange={(e) => setContactForm((f) => ({ ...f, full_name: e.target.value }))}
+                fullWidth
+                required
+              />
+              <TextField
+                label="Должность"
+                value={contactForm.position}
+                onChange={(e) => setContactForm((f) => ({ ...f, position: e.target.value }))}
+                fullWidth
+              />
+              <TextField
+                label="Контакт"
+                value={contactForm.phone}
+                onChange={(e) => setContactForm((f) => ({ ...f, phone: applyPhoneMask(e.target.value) }))}
+                fullWidth
+                required
+                placeholder="+7(999) 123-45-67"
+                error={contactForm.phone.length > 0 && !isValidPhone(contactForm.phone)}
+                helperText={contactForm.phone.length > 0 && !isValidPhone(contactForm.phone) ? 'Введите 10 цифр номера' : ''}
+              />
+              <TextField
+                label="Дополнительный контакт"
+                value={contactForm.phone_extra}
+                onChange={(e) => setContactForm((f) => ({ ...f, phone_extra: applyPhoneMask(e.target.value) }))}
+                fullWidth
+                placeholder="+7(999) 123-45-67"
+                error={contactForm.phone_extra.length > 0 && !isValidPhone(contactForm.phone_extra)}
+                helperText={contactForm.phone_extra.length > 0 && !isValidPhone(contactForm.phone_extra) ? 'Введите 10 цифр или оставьте пустым' : ''}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setContactDialogOpen(false)}>Отмена</Button>
+            <Button
+              variant="contained"
+              onClick={() => void handleSaveContact()}
+              disabled={!contactForm.full_name.trim() || !isValidPhone(contactForm.phone)}
+            >
+              Сохранить
             </Button>
           </DialogActions>
         </Dialog>

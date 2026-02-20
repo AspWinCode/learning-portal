@@ -109,7 +109,7 @@ const StudentsPage: React.FC = () => {
   const { user } = useAuth();
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
   const isOwner = user?.role === 'owner';
-  const canAssignAbonement = user?.role === 'sales';
+  const canAssignAbonement = isAdminLike || user?.role === 'sales';
   const canManageAccounts = isAdminLike || user?.role === 'trainer' || user?.role === 'parent';
   const canCreateCard = isAdminLike || user?.role === 'sales';
   const [citiesList, setCitiesList] = useState<string[]>([]);

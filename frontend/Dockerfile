@@ -5,6 +5,8 @@
 #
 
 FROM node:18-alpine AS build
+# Ensure UTF-8 for source and build output (avoids mojibake in built JS)
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 # package-lock.json in this repo may be out of sync; npm ci is strict and fails.

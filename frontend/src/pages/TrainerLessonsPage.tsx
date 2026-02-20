@@ -100,9 +100,9 @@ const TrainerLessonsPage: React.FC = () => {
       <Stack spacing={2}>
         <Typography variant="h4">Уроки</Typography>
         <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
-          <Button size="small" onClick={handlePrevDay}>←</Button>
+          <Button size="small" onClick={handlePrevDay}>{'<'}</Button>
           <Button size="small" onClick={handleToday}>Сегодня</Button>
-          <Button size="small" onClick={handleNextDay}>→</Button>
+          <Button size="small" onClick={handleNextDay}>{'>'}</Button>
           <Typography variant="h6">{displayDate} ({displayWeekday})</Typography>
         </Stack>
         {error && <Alert severity="error">{error}</Alert>}

@@ -98,7 +98,12 @@ const TrainerLessonsPage: React.FC = () => {
   return (
     <Layout>
       <Stack spacing={2}>
-        <Typography variant="h4">Уроки</Typography>
+        <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+          <Typography variant="h4">Уроки</Typography>
+          <Typography component="span" variant="caption" sx={{ color: 'text.secondary', alignSelf: 'flex-end', pb: 0.5 }}>
+            (обновлено 19.02.2026)
+          </Typography>
+        </Stack>
         <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
           <Button size="small" onClick={handlePrevDay}>{'<'}</Button>
           <Button size="small" onClick={handleToday}>Сегодня</Button>

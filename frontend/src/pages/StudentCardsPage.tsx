@@ -321,6 +321,9 @@ const StudentCardsPage: React.FC = () => {
           </Alert>
         )}
 
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Удобнее создавать карточку при добавлении ученика: Ученики → Добавить ученика → отметьте «Также создать личную карточку». Здесь — карточка без ученика или привязка к существующему.
+        </Alert>
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }} flexWrap="wrap">
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
             <Tab label="Активные" value="active" />

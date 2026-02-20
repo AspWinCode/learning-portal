@@ -23,9 +23,11 @@ import {
   InputLabel,
   Chip,
   Stack,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
-import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi } from '../services/api';
+import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi } from '../services/api';
 import { Student, User, Group, Program, Abonement, StudentAccount } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
@@ -56,6 +58,8 @@ const StudentsPage: React.FC = () => {
     full_name: '',
     email: '',
   });
+  const [createCardToo, setCreateCardToo] = useState(false);
+  const [cardFields, setCardFields] = useState({ city: '', school: '', grade: '', comment: '', source: '' });
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [newTrainer, setNewTrainer] = useState({
     full_name: '',
@@ -81,6 +85,7 @@ const StudentsPage: React.FC = () => {
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
   const isOwner = user?.role === 'owner';
   const canManageAccounts = isAdminLike || user?.role === 'trainer' || user?.role === 'parent';
+  const canCreateCard = isAdminLike || user?.role === 'sales';
 
   useEffect(() => {
     loadStudents();
@@ -271,6 +276,14 @@ const StudentsPage: React.FC = () => {
         };
         const createdStudent = await studentsApi.create(studentData);
         await assignProgramAndGroup(createdStudent.id);
+        if (createCardToo && canCreateCard) {
+          try {
+            await createCardForStudent(createdStudent, null);
+          } catch (err: any) {
+            setError(err.response?.data?.detail || 'Ученик создан, но не удалось создать карточку');
+            return;
+          }
+        }
         setOpen(false);
         resetCreateForm();
         loadStudents();
@@ -292,12 +305,23 @@ const StudentsPage: React.FC = () => {
           ? { id: selectedParentForCreate.id, full_name: selectedParentForCreate.full_name, email: selectedParentForCreate.email }
           : { id: null as number | null, full_name: newParent.full_name.trim(), email: newParent.email.trim() };
 
-      const { student: createdStudent } = await studentsApi.createWithParent({
+      const { student: createdStudent, parent: createdParent } = await studentsApi.createWithParent({
         student: { full_name: newStudent.full_name.trim(), abonement_id: abonementId ?? undefined },
         parent: parentPayload,
       });
 
       await assignProgramAndGroup(createdStudent.id);
+      if (createCardToo && canCreateCard) {
+        try {
+          await createCardForStudent(createdStudent, {
+            full_name: createdParent.full_name,
+            email: createdParent.email,
+          });
+        } catch (err: any) {
+          setError(err.response?.data?.detail || 'Ученик создан, но не удалось создать карточку');
+          return;
+        }
+      }
       setOpen(false);
       resetCreateForm();
       loadStudents();
@@ -336,6 +360,26 @@ const StudentsPage: React.FC = () => {
     }
   };
 
+  const createCardForStudent = async (
+    student: Student,
+    parentInfo: { full_name: string; email: string } | null
+  ) => {
+    await studentCardsApi.create({
+      student_id: student.id,
+      student_full_name: student.full_name,
+      parent_full_name: parentInfo?.full_name ?? undefined,
+      parent_email: parentInfo?.email ?? undefined,
+      city: cardFields.city.trim() || undefined,
+      school: cardFields.school.trim() || undefined,
+      grade: cardFields.grade.trim() || undefined,
+      comment: cardFields.comment.trim() || undefined,
+      source: cardFields.source.trim() || undefined,
+      on_grant: false,
+      discount_type: 'none',
+      discount_value: 0,
+    });
+  };
+
   const resetCreateForm = () => {
     setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
     setParentCreateMode('new');
@@ -343,6 +387,8 @@ const StudentsPage: React.FC = () => {
     setParentSearchResults([]);
     setSelectedParentForCreate(null);
     setNewParent({ full_name: '', email: '' });
+    setCreateCardToo(false);
+    setCardFields({ city: '', school: '', grade: '', comment: '', source: '' });
   };
 
   const handleEdit = async (student: Student) => {
@@ -944,6 +990,34 @@ const StudentsPage: React.FC = () => {
               />
             </Stack>
           )}
+
+          {canCreateCard && (
+            <>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={createCardToo}
+                    onChange={(e) => setCreateCardToo(e.target.checked)}
+                  />
+                }
+                label="Также создать личную карточку (продажи)"
+                sx={{ mt: 2 }}
+              />
+              {createCardToo && (
+                <Stack spacing={1.5} sx={{ mt: 1, pl: 1, borderLeft: 2, borderColor: 'divider' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Дополнительные поля карточки (по желанию)
+                  </Typography>
+                  <TextField size="small" fullWidth label="Город" value={cardFields.city} onChange={(e) => setCardFields((f) => ({ ...f, city: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Школа / ОУ" value={cardFields.school} onChange={(e) => setCardFields((f) => ({ ...f, school: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Класс" value={cardFields.grade} onChange={(e) => setCardFields((f) => ({ ...f, grade: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={1} />
+                  <TextField size="small" fullWidth label="Откуда пришёл" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт" />
+                </Stack>
+              )}
+            </>
+          )}
+
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Группа</InputLabel>
             <Select

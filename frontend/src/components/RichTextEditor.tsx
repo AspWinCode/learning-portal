@@ -82,7 +82,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       if (!items || !onPasteImage) {
         return;
       }
-      for (const item of items) {
+      const arr = Array.from(items);
+      for (let i = 0; i < arr.length; i++) {
+        const item = arr[i];
         if (item.kind === 'file') {
           const file = item.getAsFile();
           if (file?.type.startsWith('image/')) {

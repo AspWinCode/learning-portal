@@ -612,20 +612,23 @@ const StudentsPage: React.FC = () => {
   const getAbonementForStudent = (student: Student): Abonement | undefined =>
     student.abonement || (student.abonement_id ? abonements.find((a) => a.id === student.abonement_id) : undefined);
 
-  const studentIdsByFilter = useMemo(() => {
-    const grant = new Set(studentCards.filter((c) => c.student_id != null && c.on_grant).map((c) => c.student_id!));
-    const individual = new Set(studentCards.filter((c) => c.student_id != null && c.format_type === 'individual').map((c) => c.student_id!));
-    const paid = new Set(studentCards.filter((c) => c.student_id != null && !c.on_grant).map((c) => c.student_id!));
-    return { grant, individual, paid };
-  }, [studentCards]);
+  const grantStudentIds = useMemo(
+    () => new Set(studentCards.filter((c) => c.student_id != null && c.on_grant).map((c) => c.student_id!)),
+    [studentCards]
+  );
+
+  const isInIndividualGroup = (student: Student): boolean => {
+    const g = groups.find((gr) => gr.students?.some((st) => st.id === student.id));
+    return (g?.name?.toLowerCase().includes('индивидуально') ?? false);
+  };
 
   const filteredStudents = useMemo(() => {
     let list = students;
-    if (typeFilter === 'grant') list = list.filter((s) => studentIdsByFilter.grant.has(s.id));
-    else if (typeFilter === 'individual') list = list.filter((s) => studentIdsByFilter.individual.has(s.id));
-    else if (typeFilter === 'paid') list = list.filter((s) => studentIdsByFilter.paid.has(s.id));
+    if (typeFilter === 'grant') list = list.filter((s) => grantStudentIds.has(s.id));
+    else if (typeFilter === 'individual') list = list.filter((s) => isInIndividualGroup(s));
+    else if (typeFilter === 'paid') list = list.filter((s) => !grantStudentIds.has(s.id) && !isInIndividualGroup(s));
     return list;
-  }, [students, typeFilter, studentIdsByFilter]);
+  }, [students, typeFilter, grantStudentIds, groups]);
 
   const getDiscountLabel = (ab: Abonement): string => {
     if (ab.discount_type === 'none') return '—';

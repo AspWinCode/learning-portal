@@ -35,7 +35,6 @@ import SalesReinviteEventPage from './pages/SalesReinviteEventPage';
 import SalesAgreedPage from './pages/SalesAgreedPage';
 import SalesReportsPage from './pages/SalesReportsPage';
 import SalesInstructionsPage from './pages/SalesInstructionsPage';
-import StudentCardsPage from './pages/StudentCardsPage';
 import SalesAbsencesPage from './pages/SalesAbsencesPage';
 import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
@@ -196,14 +195,6 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesInstructionsPage />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/sales/student-cards"
-              element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
-                  <StudentCardsPage />
                 </PrivateRoute>
               }
             />

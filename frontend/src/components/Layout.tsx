@@ -202,7 +202,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Счета', icon: <ReceiptLong />, path: '/sales/invoices' },
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
-        { text: 'Карточки учеников', icon: <People />, path: '/sales/student-cards' },
         { text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' },
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
@@ -224,7 +223,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (isAdminLike) {
       items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
       items.push({ text: 'Продажи: инструкции', icon: <Description />, path: '/sales/instructions' });
-      items.push({ text: 'Продажи: карточки учеников', icon: <People />, path: '/sales/student-cards' });
       items.push({ text: 'Продажи: пропуски', icon: <PendingActions />, path: '/sales/absences' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });

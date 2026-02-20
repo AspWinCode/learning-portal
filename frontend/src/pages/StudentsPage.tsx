@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import {
   Typography,
@@ -30,7 +30,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
-import { Student, User, Group, Program, Abonement, StudentAccount } from '../types';
+import { Student, User, Group, Program, Abonement, StudentAccount, StudentCard as StudentCardType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
 import { applyPhoneMask, isValidPhone, phoneToApiValue } from '../utils/phoneMask';
@@ -38,6 +38,8 @@ import { applyPhoneMask, isValidPhone, phoneToApiValue } from '../utils/phoneMas
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all');
+  const [typeFilter, setTypeFilter] = useState<'' | 'grant' | 'individual' | 'paid'>('');
+  const [studentCards, setStudentCards] = useState<StudentCardType[]>([]);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [parentOpen, setParentOpen] = useState(false);
@@ -128,8 +130,11 @@ const StudentsPage: React.FC = () => {
       if (isOwner) {
         loadAbonements();
       }
+      if (isAdminLike) {
+        studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
+      }
     }
-  }, [user, statusFilter, canCreateCard]);
+  }, [user, statusFilter, canCreateCard, isAdminLike]);
 
   useEffect(() => {
     if (parentCreateMode !== 'existing' || !parentSearchQuery.trim()) {
@@ -607,6 +612,21 @@ const StudentsPage: React.FC = () => {
   const getAbonementForStudent = (student: Student): Abonement | undefined =>
     student.abonement || (student.abonement_id ? abonements.find((a) => a.id === student.abonement_id) : undefined);
 
+  const studentIdsByFilter = useMemo(() => {
+    const grant = new Set(studentCards.filter((c) => c.student_id != null && c.on_grant).map((c) => c.student_id!));
+    const individual = new Set(studentCards.filter((c) => c.student_id != null && c.format_type === 'individual').map((c) => c.student_id!));
+    const paid = new Set(studentCards.filter((c) => c.student_id != null && !c.on_grant).map((c) => c.student_id!));
+    return { grant, individual, paid };
+  }, [studentCards]);
+
+  const filteredStudents = useMemo(() => {
+    let list = students;
+    if (typeFilter === 'grant') list = list.filter((s) => studentIdsByFilter.grant.has(s.id));
+    else if (typeFilter === 'individual') list = list.filter((s) => studentIdsByFilter.individual.has(s.id));
+    else if (typeFilter === 'paid') list = list.filter((s) => studentIdsByFilter.paid.has(s.id));
+    return list;
+  }, [students, typeFilter, studentIdsByFilter]);
+
   const getDiscountLabel = (ab: Abonement): string => {
     if (ab.discount_type === 'none') return '—';
     if (ab.discount_type === 'percent') return `${ab.discount_value}%`;
@@ -677,6 +697,21 @@ const StudentsPage: React.FC = () => {
               <MenuItem value="archived">Архивированные</MenuItem>
             </Select>
           </FormControl>
+          {isAdminLike && (
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>По типу</InputLabel>
+              <Select
+                value={typeFilter}
+                label="По типу"
+                onChange={(e) => setTypeFilter(e.target.value as '' | 'grant' | 'individual' | 'paid')}
+              >
+                <MenuItem value="">Все</MenuItem>
+                <MenuItem value="grant">По гранту</MenuItem>
+                <MenuItem value="individual">Индивидуальные</MenuItem>
+                <MenuItem value="paid">По оплате</MenuItem>
+              </Select>
+            </FormControl>
+          )}
           {!isOwner && (
             <Button
               variant="outlined"
@@ -725,6 +760,7 @@ const StudentsPage: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell>№</TableCell>
               <TableCell>ФИО</TableCell>
               <TableCell>Родитель</TableCell>
               <TableCell>Группа</TableCell>
@@ -737,11 +773,12 @@ const StudentsPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {students.map((student) => {
+            {filteredStudents.map((student, index) => {
               const studentGroup = getStudentGroup(student);
               const abonement = getAbonementForStudent(student);
               return (
                 <TableRow key={student.id}>
+                  <TableCell>{index + 1}</TableCell>
                   <TableCell>{student.full_name}</TableCell>
                   <TableCell>{student.parent?.full_name || '-'}</TableCell>
                   <TableCell>{studentGroup?.name || '-'}</TableCell>

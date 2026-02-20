@@ -497,17 +497,27 @@ export interface EventRegistration {
   lead?: Lead;
 }
 
-// B2B Schools pipeline
+// B2B Schools pipeline (conveyor)
 export type B2BSchoolPipelineStage =
   | 'new'
+  | 'find_contacts'
+  | 'first_contact'
   | 'contact_found'
   | 'letter_sent'
   | 'meeting_scheduled'
+  | 'agreement'
   | 'meeting_held'
   | 'permission_received'
+  | 'event_scheduled'
   | 'walkthrough_scheduled'
+  | 'event_done'
   | 'walkthrough_done'
-  | 'leads_received';
+  | 'leads_received'
+  | 'thank_you'
+  | 'support_letter_requested'
+  | 'support_letter_received'
+  | 'partners'
+  | 'rejected';
 
 export type B2BSchoolFriendshipDegree = 'unknown' | 'indirect' | 'friends' | 'enemies';
 
@@ -530,6 +540,10 @@ export interface B2BSchool {
   student_count?: number | null;
   friendship_degree?: string | null;
   pipeline_stage: string;
+  next_step?: string | null;
+  next_step_date?: string | null;
+  manager_id?: number | null;
+  manager_full_name?: string | null;
   event_dates?: string[] | null;
   meeting_scheduled_at?: string | null;
   meeting_outcomes?: string | null;

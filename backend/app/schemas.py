@@ -1211,17 +1211,27 @@ class ReportRequest(BaseModel):
     format: str = "xlsx"  # xlsx or csv
 
 
-# B2B Schools
+# B2B Schools (conveyor stages)
 class B2BSchoolPipelineStage(str, Enum):
     NEW = "new"
+    FIND_CONTACTS = "find_contacts"
+    FIRST_CONTACT = "first_contact"
     CONTACT_FOUND = "contact_found"
     LETTER_SENT = "letter_sent"
     MEETING_SCHEDULED = "meeting_scheduled"
+    AGREEMENT = "agreement"
     MEETING_HELD = "meeting_held"
     PERMISSION_RECEIVED = "permission_received"
+    EVENT_SCHEDULED = "event_scheduled"
     WALKTHROUGH_SCHEDULED = "walkthrough_scheduled"
+    EVENT_DONE = "event_done"
     WALKTHROUGH_DONE = "walkthrough_done"
     LEADS_RECEIVED = "leads_received"
+    THANK_YOU = "thank_you"
+    SUPPORT_LETTER_REQUESTED = "support_letter_requested"
+    SUPPORT_LETTER_RECEIVED = "support_letter_received"
+    PARTNERS = "partners"
+    REJECTED = "rejected"
 
 
 class B2BSchoolFriendshipDegree(str, Enum):
@@ -1266,6 +1276,9 @@ class B2BSchoolCreate(BaseModel):
     student_count: Optional[int] = None
     friendship_degree: Optional[B2BSchoolFriendshipDegree] = None
     pipeline_stage: B2BSchoolPipelineStage = B2BSchoolPipelineStage.NEW
+    next_step: Optional[str] = None
+    next_step_date: Optional[date] = None
+    manager_id: Optional[int] = None
     event_dates: Optional[List[str]] = None
     meeting_scheduled_at: Optional[datetime] = None
     meeting_outcomes: Optional[str] = None
@@ -1280,6 +1293,9 @@ class B2BSchoolUpdate(BaseModel):
     student_count: Optional[int] = None
     friendship_degree: Optional[B2BSchoolFriendshipDegree] = None
     pipeline_stage: Optional[B2BSchoolPipelineStage] = None
+    next_step: Optional[str] = None
+    next_step_date: Optional[date] = None
+    manager_id: Optional[int] = None
     event_dates: Optional[List[str]] = None
     meeting_scheduled_at: Optional[datetime] = None
     meeting_outcomes: Optional[str] = None
@@ -1295,6 +1311,10 @@ class B2BSchoolResponse(BaseModel):
     student_count: Optional[int] = None
     friendship_degree: Optional[str] = None
     pipeline_stage: str
+    next_step: Optional[str] = None
+    next_step_date: Optional[date] = None
+    manager_id: Optional[int] = None
+    manager_full_name: Optional[str] = None
     event_dates: Optional[List[str]] = None
     meeting_scheduled_at: Optional[datetime] = None
     meeting_outcomes: Optional[str] = None

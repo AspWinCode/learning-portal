@@ -30,15 +30,25 @@ import { extractApiError } from '../utils/extractApiError';
 import type { B2BSchool, B2BSchoolPipelineStage, B2BSchoolContact, B2BProject } from '../types';
 
 const PIPELINE_STAGES: { value: B2BSchoolPipelineStage; label: string }[] = [
-  { value: 'new', label: 'Новые' },
+  { value: 'new', label: 'Новая' },
+  { value: 'find_contacts', label: 'Найти контакты' },
+  { value: 'first_contact', label: 'Первичный контакт' },
   { value: 'contact_found', label: 'Контакт найден' },
   { value: 'letter_sent', label: 'Письмо отправлено' },
   { value: 'meeting_scheduled', label: 'Назначена встреча' },
+  { value: 'agreement', label: 'Согласование' },
   { value: 'meeting_held', label: 'Встреча проведена' },
   { value: 'permission_received', label: 'Разрешение получено' },
+  { value: 'event_scheduled', label: 'Запланировано мероприятие' },
   { value: 'walkthrough_scheduled', label: 'Назначена дата обхода' },
+  { value: 'event_done', label: 'Проведено' },
   { value: 'walkthrough_done', label: 'Обход проведён' },
   { value: 'leads_received', label: 'Лиды получены' },
+  { value: 'thank_you', label: 'Благодарности' },
+  { value: 'support_letter_requested', label: 'Письмо поддержки запрошено' },
+  { value: 'support_letter_received', label: 'Письмо поддержки получено' },
+  { value: 'partners', label: 'Партнёры' },
+  { value: 'rejected', label: 'Отказ/Заморозка' },
 ];
 
 const FRIENDSHIP_DEGREES: { value: string; label: string }[] = [
@@ -50,8 +60,11 @@ const FRIENDSHIP_DEGREES: { value: string; label: string }[] = [
 
 const B2BSchoolsPage: React.FC = () => {
   const [schools, setSchools] = useState<B2BSchool[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [selectedCity, setSelectedCity] = useState<string>('');
   const [projects, setProjects] = useState<B2BProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [managers, setManagers] = useState<{ id: number; full_name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -64,6 +77,9 @@ const B2BSchoolsPage: React.FC = () => {
     student_count: '' as number | '',
     friendship_degree: '',
     pipeline_stage: 'new' as B2BSchoolPipelineStage,
+    next_step: '',
+    next_step_date: '',
+    manager_id: '' as number | '',
     event_dates: '',
     meeting_scheduled_at: '',
     meeting_outcomes: '',
@@ -80,11 +96,14 @@ const B2BSchoolsPage: React.FC = () => {
     citiesText: '',
   });
 
-  const loadSchools = useCallback(async (projectId?: number | null) => {
+  const loadSchools = useCallback(async (projectId?: number | null, city?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await b2bApi.listSchools(projectId ? { project_id: projectId } : undefined);
+      const data = await b2bApi.listSchools({
+        ...(projectId ? { project_id: projectId } : {}),
+        ...(city ? { city } : {}),
+      });
       setSchools(data);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить школы'));
@@ -96,17 +115,24 @@ const B2BSchoolsPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const pr = await b2bApi.listProjects();
+        const [pr, cityList, mgrList] = await Promise.all([
+          b2bApi.listProjects(),
+          b2bApi.listCities(),
+          b2bApi.listManagers(),
+        ]);
         setProjects(pr);
-        const firstProjectId = pr.length ? pr[0].id : null;
-        setSelectedProjectId(firstProjectId);
-        await loadSchools(firstProjectId);
+        setCities(cityList);
+        setManagers(mgrList);
+        if (pr.length) setSelectedProjectId(pr[0].id);
       } catch (err: any) {
-        setError((prev) => prev || extractApiError(err, 'Не удалось загрузить проект B2B'));
-        await loadSchools(null);
+        setError(extractApiError(err, 'Не удалось загрузить данные'));
       }
     })();
-  }, [loadSchools]);
+  }, []);
+
+  useEffect(() => {
+    loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
+  }, [selectedCity, selectedProjectId, loadSchools]);
 
   const schoolsByStage = PIPELINE_STAGES.map((stage) => ({
     ...stage,
@@ -123,6 +149,9 @@ const B2BSchoolsPage: React.FC = () => {
       student_count: '',
       friendship_degree: '',
       pipeline_stage: 'new',
+      next_step: '',
+      next_step_date: '',
+      manager_id: '',
       event_dates: '',
       meeting_scheduled_at: '',
       meeting_outcomes: '',
@@ -139,6 +168,7 @@ const B2BSchoolsPage: React.FC = () => {
     const walkAt = school.walkthrough_scheduled_at
       ? format(parseISO(school.walkthrough_scheduled_at), 'yyyy-MM-dd')
       : '';
+    const nextDate = school.next_step_date ? format(parseISO(school.next_step_date), 'yyyy-MM-dd') : '';
     setForm({
       name: school.name,
       director: school.director ?? '',
@@ -147,6 +177,9 @@ const B2BSchoolsPage: React.FC = () => {
       student_count: school.student_count ?? '',
       friendship_degree: school.friendship_degree ?? '',
       pipeline_stage: (school.pipeline_stage as B2BSchoolPipelineStage) ?? 'new',
+      next_step: school.next_step ?? '',
+      next_step_date: nextDate,
+      manager_id: school.manager_id ?? '',
       event_dates: Array.isArray(school.event_dates) ? school.event_dates.join(', ') : '',
       meeting_scheduled_at: meetingAt,
       meeting_outcomes: school.meeting_outcomes ?? '',
@@ -215,9 +248,8 @@ const B2BSchoolsPage: React.FC = () => {
     }
   };
 
-  const handleChangeProject = async (projectId: number | null) => {
+  const handleChangeProject = (projectId: number | null) => {
     setSelectedProjectId(projectId);
-    await loadSchools(projectId);
   };
 
   const openCreateProject = () => {
@@ -280,6 +312,9 @@ const B2BSchoolsPage: React.FC = () => {
       student_count: form.student_count === '' ? undefined : Number(form.student_count),
       friendship_degree: form.friendship_degree || undefined,
       pipeline_stage: form.pipeline_stage,
+      next_step: form.next_step.trim() || null,
+      next_step_date: form.next_step_date.trim() ? form.next_step_date : null,
+      manager_id: form.manager_id === '' ? null : Number(form.manager_id),
       event_dates: eventDates,
       meeting_scheduled_at: meetingAt,
       meeting_outcomes: form.pipeline_stage === 'meeting_held' ? (form.meeting_outcomes.trim() || null) : undefined,
@@ -292,7 +327,7 @@ const B2BSchoolsPage: React.FC = () => {
         await b2bApi.createSchool(payload);
       }
       setDialogOpen(false);
-      await loadSchools();
+      await loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось сохранить школу'));
     }
@@ -301,7 +336,7 @@ const B2BSchoolsPage: React.FC = () => {
   const handleStageChange = async (school: B2BSchool, newStage: B2BSchoolPipelineStage) => {
     try {
       await b2bApi.updateSchool(school.id, { pipeline_stage: newStage });
-      await loadSchools();
+      await loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось изменить стадию'));
     }
@@ -312,14 +347,14 @@ const B2BSchoolsPage: React.FC = () => {
     try {
       await b2bApi.deleteSchool(school.id);
       setDialogOpen(false);
-      await loadSchools();
+      await loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось удалить школу'));
     }
   };
 
   const formatEventDates = (dates: string[] | null | undefined) => {
-    if (!dates?.length) return 'тАФ';
+    if (!dates?.length) return '—';
     return dates
       .map((d) => {
         try {
@@ -336,14 +371,27 @@ const B2BSchoolsPage: React.FC = () => {
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} spacing={2}>
         <Typography variant="h4">B2B (школы)</Typography>
-        <Stack direction="row" spacing={2} alignItems="center">
+        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Город</InputLabel>
+            <Select
+              label="Город"
+              value={selectedCity}
+              onChange={(e) => setSelectedCity(e.target.value)}
+            >
+              <MenuItem value="">Все</MenuItem>
+              {cities.map((c) => (
+                <MenuItem key={c} value={c}>{c}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Проект</InputLabel>
             <Select
               label="Проект"
               value={selectedProjectId ?? ''}
               onChange={(e) =>
-                void handleChangeProject(e.target.value === '' ? null : Number(e.target.value))
+                handleChangeProject(e.target.value === '' ? null : Number(e.target.value))
               }
             >
               <MenuItem value="">
@@ -405,19 +453,26 @@ const B2BSchoolsPage: React.FC = () => {
                               Директор: {school.director || 'тАФ'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              Город: {school.city || 'тАФ'}
+                              Город: {school.city || '—'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block" noWrap title={school.address || ''}>
-                              Адрес: {school.address || 'тАФ'}
+                              Адрес: {school.address || '—'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              Степень дружбы: {FRIENDSHIP_DEGREES.find((d) => d.value === school.friendship_degree)?.label ?? school.friendship_degree ?? 'тАФ'}
+                              Степень дружбы: {FRIENDSHIP_DEGREES.find((d) => d.value === school.friendship_degree)?.label ?? school.friendship_degree ?? '—'}
                             </Typography>
+                            {(school.next_step || school.manager_full_name) && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {school.next_step && `${school.next_step}${school.next_step_date ? ` (${format(parseISO(school.next_step_date), 'dd.MM')})` : ''}`}
+                                {school.next_step && school.manager_full_name && ' · '}
+                                {school.manager_full_name && `Менеджер: ${school.manager_full_name}`}
+                              </Typography>
+                            )}
                             <Typography variant="caption" color="text.secondary" display="block">
                               Контактов: {school.contacts?.length ?? 0}
                             </Typography>
                             <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                              <Chip size="small" label={`Учеников: ${school.student_count ?? 'тАФ'}`} />
+                              <Chip size="small" label={`Учеников: ${school.student_count ?? '—'}`} />
                               <Chip size="small" label={`Лидов: ${school.leads_count ?? 0}`} />
                               <Chip size="small" color="success" label={`Конверсия: ${school.conversion_percent ?? 0}%`} />
                             </Stack>
@@ -519,6 +574,34 @@ const B2BSchoolsPage: React.FC = () => {
                   <MenuItem key={s.value} value={s.value}>
                     {s.label}
                   </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Следующий шаг"
+              value={form.next_step}
+              onChange={(e) => setForm((f) => ({ ...f, next_step: e.target.value }))}
+              fullWidth
+              placeholder="Что сделать дальше"
+            />
+            <TextField
+              label="Дата следующего шага"
+              type="date"
+              value={form.next_step_date}
+              onChange={(e) => setForm((f) => ({ ...f, next_step_date: e.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+            <FormControl fullWidth>
+              <InputLabel>Ответственный (менеджер)</InputLabel>
+              <Select
+                value={form.manager_id === '' ? '' : form.manager_id}
+                label="Ответственный (менеджер)"
+                onChange={(e) => setForm((f) => ({ ...f, manager_id: e.target.value === '' ? '' : Number(e.target.value) }))}
+              >
+                <MenuItem value=""><em>Не назначен</em></MenuItem>
+                {managers.map((m) => (
+                  <MenuItem key={m.id} value={m.id}>{m.full_name}</MenuItem>
                 ))}
               </Select>
             </FormControl>

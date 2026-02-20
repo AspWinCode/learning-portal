@@ -935,6 +935,20 @@ export const b2bApi = {
     const response = await api.get('/api/b2b-schools/cities');
     return response.data;
   },
+  listManagers: async (): Promise<{ id: number; full_name: string }[]> => {
+    const response = await api.get('/api/b2b-schools/managers');
+    return response.data;
+  },
+  planForToday: async (city?: string | null): Promise<{
+    overdue: B2BSchool[];
+    no_next_step: B2BSchool[];
+    find_contacts_stale: B2BSchool[];
+    today: B2BSchool[];
+  }> => {
+    const params = city ? { city } : {};
+    const response = await api.get('/api/b2b-schools/plan-for-today', { params });
+    return response.data;
+  },
   listSchools: async (opts?: { pipeline_stage?: string; project_id?: number; city?: string }): Promise<B2BSchool[]> => {
     const params: any = {};
     if (opts?.pipeline_stage) params.pipeline_stage = opts.pipeline_stage;
@@ -955,6 +969,9 @@ export const b2bApi = {
     student_count?: number;
     friendship_degree?: string;
     pipeline_stage?: B2BSchoolPipelineStage;
+    next_step?: string | null;
+    next_step_date?: string | null;
+    manager_id?: number | null;
     event_dates?: string[];
     meeting_scheduled_at?: string | null;
     meeting_outcomes?: string | null;
@@ -973,6 +990,9 @@ export const b2bApi = {
       student_count: number;
       friendship_degree: string;
       pipeline_stage: B2BSchoolPipelineStage;
+      next_step: string | null;
+      next_step_date: string | null;
+      manager_id: number | null;
       event_dates: string[];
       meeting_scheduled_at: string | null;
       meeting_outcomes: string | null;

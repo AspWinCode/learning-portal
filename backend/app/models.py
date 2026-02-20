@@ -900,17 +900,27 @@ class AppSetting(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
-# B2B Schools pipeline
+# B2B Schools pipeline (conveyor stages for owner)
 class B2BSchoolPipelineStage(str, enum.Enum):
     NEW = "new"
+    FIND_CONTACTS = "find_contacts"
+    FIRST_CONTACT = "first_contact"
     CONTACT_FOUND = "contact_found"
     LETTER_SENT = "letter_sent"
     MEETING_SCHEDULED = "meeting_scheduled"
+    AGREEMENT = "agreement"
     MEETING_HELD = "meeting_held"
     PERMISSION_RECEIVED = "permission_received"
+    EVENT_SCHEDULED = "event_scheduled"
     WALKTHROUGH_SCHEDULED = "walkthrough_scheduled"
+    EVENT_DONE = "event_done"
     WALKTHROUGH_DONE = "walkthrough_done"
     LEADS_RECEIVED = "leads_received"
+    THANK_YOU = "thank_you"
+    SUPPORT_LETTER_REQUESTED = "support_letter_requested"
+    SUPPORT_LETTER_RECEIVED = "support_letter_received"
+    PARTNERS = "partners"
+    REJECTED = "rejected"
 
 
 class B2BSchoolFriendshipDegree(str, enum.Enum):
@@ -936,6 +946,9 @@ class B2BSchool(Base):
         default=B2BSchoolPipelineStage.NEW.value,
         index=True,
     )
+    next_step = Column(Text, nullable=True)
+    next_step_date = Column(Date, nullable=True, index=True)
+    manager_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     event_dates = Column(JSON, nullable=True)
     meeting_scheduled_at = Column(DateTime(timezone=True), nullable=True)
     meeting_outcomes = Column(Text, nullable=True)
@@ -943,6 +956,7 @@ class B2BSchool(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    manager = relationship("User", foreign_keys=[manager_id])
     leads = relationship("Lead", back_populates="b2b_school", foreign_keys="Lead.b2b_school_id")
     school_contacts = relationship("B2BSchoolContact", back_populates="school", cascade="all, delete-orphan")
 

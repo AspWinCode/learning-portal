@@ -20,6 +20,7 @@ import AbonementsPage from './pages/AbonementsPage';
 import TrainersPage from './pages/TrainersPage';
 import B2BSchoolsPage from './pages/B2BSchoolsPage';
 import B2BSchoolCreatePage from './pages/B2BSchoolCreatePage';
+import B2BPlanForTodayPage from './pages/B2BPlanForTodayPage';
 import OwnerFunnelsPage from './pages/OwnerFunnelsPage';
 import ParentDashboardPage from './pages/ParentDashboardPage';
 import SalesLeadsPage from './pages/SalesLeadsPage';
@@ -267,6 +268,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']}>
                   <OwnerFunnelsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/b2b-schools/plan"
+              element={
+                <PrivateRoute allowedRoles={['owner']}>
+                  <B2BPlanForTodayPage />
                 </PrivateRoute>
               }
             />

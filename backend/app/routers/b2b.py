@@ -1,12 +1,13 @@
-﻿from typing import List, Optional, Tuple
+from datetime import date, datetime, timedelta, time as dt_time
+from typing import List, Optional, Tuple, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import distinct
+from sqlalchemy import distinct, nulls_last
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
 from app.database import get_db
-from app.models import B2BSchool, B2BSchoolContact, B2BProject, Lead, LeadStatus, User
+from app.models import B2BSchool, B2BSchoolContact, B2BProject, Lead, LeadStatus, User, UserRole
 from app.schemas import (
     B2BSchoolCreate,
     B2BSchoolUpdate,
@@ -47,6 +48,7 @@ def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
         )
         for c in school.school_contacts
     ]
+    manager_name = school.manager.full_name if school.manager else None
     return B2BSchoolResponse(
         id=school.id,
         name=school.name,
@@ -56,6 +58,10 @@ def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
         student_count=school.student_count,
         friendship_degree=school.friendship_degree,
         pipeline_stage=school.pipeline_stage,
+        next_step=school.next_step,
+        next_step_date=school.next_step_date,
+        manager_id=school.manager_id,
+        manager_full_name=manager_name,
         event_dates=school.event_dates,
         meeting_scheduled_at=school.meeting_scheduled_at,
         meeting_outcomes=school.meeting_outcomes,
@@ -78,6 +84,56 @@ async def list_b2b_school_cities(
     return [r[0] for r in rows if r[0] and r[0].strip()]
 
 
+@router.get("/b2b-schools/managers", response_model=List[Dict[str, Any]])
+async def list_b2b_managers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """List sales users for assigning as school manager."""
+    users = db.query(User).filter(User.role == UserRole.SALES, User.is_active == True).order_by(User.full_name).all()
+    return [{"id": u.id, "full_name": u.full_name} for u in users]
+
+
+@router.get("/b2b-schools/plan-for-today", response_model=Dict[str, List[B2BSchoolResponse]])
+async def plan_for_today(
+    city: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Schools for owner's daily plan: overdue, no next step, find_contacts > 3 days, today follow-up."""
+    today = date.today()
+    cutoff = today - timedelta(days=3)
+    base = db.query(B2BSchool).options(
+        joinedload(B2BSchool.school_contacts),
+        joinedload(B2BSchool.manager),
+    )
+    if city and city.strip():
+        base = base.filter(B2BSchool.city == city.strip())
+
+    def run(q):
+        return [_school_to_response(db, s) for s in q.order_by(nulls_last(B2BSchool.next_step_date.asc()), B2BSchool.name).all()]
+
+    overdue = base.filter(B2BSchool.next_step_date.isnot(None), B2BSchool.next_step_date < today)
+    no_next = base.filter((B2BSchool.next_step.is_(None)) | (B2BSchool.next_step_date.is_(None)))
+    from sqlalchemy import or_
+    cutoff_ts = datetime.combine(cutoff, dt_time.min)
+    find_stale = base.filter(
+        B2BSchool.pipeline_stage == "find_contacts",
+        or_(
+            B2BSchool.updated_at < cutoff_ts,
+            (B2BSchool.updated_at.is_(None)) & (B2BSchool.created_at < cutoff_ts),
+        ),
+    )
+    today_q = base.filter(B2BSchool.next_step_date == today)
+
+    return {
+        "overdue": run(overdue),
+        "no_next_step": run(no_next),
+        "find_contacts_stale": run(find_stale),
+        "today": run(today_q),
+    }
+
+
 @router.get("/b2b-schools", response_model=List[B2BSchoolResponse])
 async def list_b2b_schools(
     pipeline_stage: Optional[str] = Query(default=None),
@@ -86,7 +142,10 @@ async def list_b2b_schools(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    query = db.query(B2BSchool).options(joinedload(B2BSchool.school_contacts)).order_by(B2BSchool.created_at.desc())
+    query = db.query(B2BSchool).options(
+        joinedload(B2BSchool.school_contacts),
+        joinedload(B2BSchool.manager),
+    ).order_by(B2BSchool.created_at.desc())
     if project_id is not None:
         project = db.query(B2BProject).filter(B2BProject.id == project_id).first()
         if not project:
@@ -109,7 +168,10 @@ async def list_b2b_schools(
 
 
 def _load_school_with_contacts(db: Session, school_id: int) -> B2BSchool:
-    school = db.query(B2BSchool).options(joinedload(B2BSchool.school_contacts)).filter(B2BSchool.id == school_id).first()
+    school = db.query(B2BSchool).options(
+        joinedload(B2BSchool.school_contacts),
+        joinedload(B2BSchool.manager),
+    ).filter(B2BSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="School not found")
     _ = school.school_contacts
@@ -140,6 +202,9 @@ async def create_b2b_school(
         student_count=payload.student_count,
         friendship_degree=payload.friendship_degree.value if payload.friendship_degree else None,
         pipeline_stage=payload.pipeline_stage.value,
+        next_step=payload.next_step,
+        next_step_date=payload.next_step_date,
+        manager_id=payload.manager_id,
         event_dates=payload.event_dates,
         meeting_scheduled_at=payload.meeting_scheduled_at,
         meeting_outcomes=payload.meeting_outcomes,

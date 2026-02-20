@@ -36,7 +36,7 @@ const SalesAbsencesPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await salesApi.getAbsences(stageFilter || undefined);
+      const data = await salesApi.getAbsences(stageFilter ? { stage: stageFilter } : {});
       setItems(data);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить пропуски'));

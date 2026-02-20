@@ -24,10 +24,11 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi } from '../services/api';
 import { Student, User, Group, Program, Abonement, StudentAccount } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import StudentDetailPopup from '../components/StudentDetailPopup';
 
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -70,6 +71,7 @@ const StudentsPage: React.FC = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [accountsError, setAccountsError] = useState('');
+  const [studentDetailId, setStudentDetailId] = useState<number | null>(null);
   const { user } = useAuth();
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
   const isOwner = user?.role === 'owner';
@@ -638,6 +640,14 @@ const StudentsPage: React.FC = () => {
                         Счета
                       </Button>
                     )}
+                    <Button
+                      size="small"
+                      startIcon={<PersonIcon />}
+                      onClick={() => setStudentDetailId(student.id)}
+                      sx={{ mr: 1 }}
+                    >
+                      Карточка
+                    </Button>
                     <Button
                       size="small"
                       startIcon={<EditIcon />}
@@ -1240,6 +1250,11 @@ const StudentsPage: React.FC = () => {
           <Button variant="contained" onClick={handlePaymentOrDeduct} disabled={!paymentAmount || accountsLoading}>Подтвердить</Button>
         </DialogActions>
       </Dialog>
+      <StudentDetailPopup
+        open={studentDetailId !== null}
+        onClose={() => setStudentDetailId(null)}
+        studentId={studentDetailId}
+      />
     </Layout>
   );
 };

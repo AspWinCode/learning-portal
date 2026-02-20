@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { projectsApi } from '../services/api';
 import { Project, ProjectStage, ProjectCard } from '../types';
+import StudentDetailPopup from '../components/StudentDetailPopup';
 
 interface StageWithCards extends ProjectStage {
   cards: ProjectCard[];
@@ -41,6 +42,7 @@ const ProjectKanbanPage: React.FC = () => {
   const [editStageOpen, setEditStageOpen] = useState(false);
   const [editingStage, setEditingStage] = useState<StageWithCards | null>(null);
   const [editStageName, setEditStageName] = useState('');
+  const [studentDetailId, setStudentDetailId] = useState<number | null>(null);
 
   const id = projectId ? parseInt(projectId, 10) : NaN;
 
@@ -229,10 +231,11 @@ const ProjectKanbanPage: React.FC = () => {
                     key={card.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, card, stage.id)}
+                    onClick={() => card.entity_type === 'student' && setStudentDetailId(card.entity_id)}
                     sx={{
                       p: 1.5,
-                      cursor: 'grab',
-                      '&:active': { cursor: 'grabbing' },
+                      cursor: card.entity_type === 'student' ? 'pointer' : 'grab',
+                      '&:active': { cursor: card.entity_type === 'student' ? 'pointer' : 'grabbing' },
                       opacity: draggedCard?.cardId === card.id ? 0.6 : 1,
                     }}
                     elevation={1}
@@ -285,6 +288,11 @@ const ProjectKanbanPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <StudentDetailPopup
+        open={studentDetailId !== null}
+        onClose={() => setStudentDetailId(null)}
+        studentId={studentDetailId}
+      />
     </Layout>
   );
 };

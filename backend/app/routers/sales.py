@@ -737,6 +737,7 @@ async def list_students_for_cards(
 @router.get("/absences", response_model=List[AbsenceFollowUpResponse])
 async def list_absences(
     stage: Optional[str] = Query(None, description="Фильтр по этапу: missed, assigned, made_up, missed_makeup"),
+    student_id: Optional[int] = Query(None, description="Фильтр по ученику"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -744,6 +745,8 @@ async def list_absences(
     query = db.query(AbsenceFollowUp).order_by(AbsenceFollowUp.lesson_date.desc(), AbsenceFollowUp.id.desc())
     if stage:
         query = query.filter(AbsenceFollowUp.stage == stage)
+    if student_id is not None:
+        query = query.filter(AbsenceFollowUp.student_id == student_id)
     items = query.all()
     result = []
     for a in items:

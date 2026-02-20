@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from app.database import get_db
 from app import auth
 from app.schemas import StudentCreate, StudentResponse, StudentUpdate, ProgramSummaryResponse, StudentAccountCreate, StudentAccountResponse
-from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount
+from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, LessonAttendance, Group
 from app.routers.action_log import log_action
 from app.student_display import get_student_display_name, get_students_display_names
 
@@ -127,6 +127,46 @@ async def read_student(
     return StudentResponse(
         **{**StudentResponse.model_validate(student).model_dump(), "full_name": display_name}
     )
+
+
+@router.get("/{student_id}/attendances")
+async def get_student_attendances(
+    student_id: int,
+    limit: int = Query(100, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Посещение занятий ученика: последние записи с датой, группой и статусом (был/не был)."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if current_user.role == UserRole.PARENT:
+        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif current_user.role == UserRole.TRAINER:
+        from app.models import GroupStudent
+        has_access = db.query(GroupStudent).join(Group, GroupStudent.group_id == Group.id).filter(
+            GroupStudent.student_id == student_id,
+            Group.trainer_id == current_user.id
+        ).first()
+        if not has_access:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    rows = (
+        db.query(LessonAttendance, Group.name)
+        .join(Group, LessonAttendance.group_id == Group.id)
+        .filter(LessonAttendance.student_id == student_id)
+        .order_by(LessonAttendance.lesson_date.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "lesson_date": att.lesson_date.isoformat() if hasattr(att.lesson_date, "isoformat") else str(att.lesson_date),
+            "group_name": group_name,
+            "attended": att.attended,
+        }
+        for att, group_name in rows
+    ]
 
 
 @router.get("/{student_id}/program-options", response_model=List[ProgramSummaryResponse])

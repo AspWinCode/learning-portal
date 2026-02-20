@@ -174,6 +174,10 @@ export const studentsApi = {
     const response = await api.post(`/api/students/${studentId}/accounts`, data);
     return response.data;
   },
+  getAttendances: async (studentId: number, limit?: number): Promise<Array<{ lesson_date: string; group_name: string; attended: boolean }>> => {
+    const response = await api.get(`/api/students/${studentId}/attendances`, { params: limit ? { limit } : {} });
+    return response.data;
+  },
 };
 
 export const studentAccountsApi = {
@@ -892,8 +896,8 @@ export const salesApi = {
     const response = await api.get('/api/sales/students-for-cards');
     return response.data;
   },
-  getAbsences: async (stage?: string): Promise<AbsenceFollowUp[]> => {
-    const response = await api.get('/api/sales/absences', { params: stage ? { stage } : {} });
+  getAbsences: async (params?: { stage?: string; student_id?: number }): Promise<AbsenceFollowUp[]> => {
+    const response = await api.get('/api/sales/absences', { params: params || {} });
     return response.data;
   },
   updateAbsenceStage: async (absenceId: number, stage: string): Promise<AbsenceFollowUp> => {

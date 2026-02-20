@@ -33,7 +33,7 @@ import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAc
 import { Student, User, Group, Program, Abonement, StudentAccount, StudentCard as StudentCardType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
-import { applyPhoneMask, isValidPhone, phoneToApiValue } from '../utils/phoneMask';
+import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
 
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -85,6 +85,7 @@ const StudentsPage: React.FC = () => {
     source: '',
     comment: '',
   });
+  const [editingCardId, setEditingCardId] = useState<number | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [newTrainer, setNewTrainer] = useState({
     full_name: '',
@@ -499,7 +500,6 @@ const StudentsPage: React.FC = () => {
 
   const handleEdit = async (student: Student) => {
     setEditingStudent(student);
-    // Находим группу ученика из уже загруженных групп
     const studentGroup = getStudentGroup(student);
     setNewStudent({
       full_name: student.full_name,
@@ -509,6 +509,38 @@ const StudentsPage: React.FC = () => {
       program_id: '',
       abonement_id: student.abonement_id?.toString() || '',
     });
+    setParentCreateMode(student.parent_id ? 'existing' : 'none');
+    setParentSearchQuery('');
+    setParentSearchResults([]);
+    setSelectedParentForCreate(student.parent_id ? (parents.find((p) => p.id === student.parent_id) ?? null) : null);
+    const card = studentCards.find((c) => c.student_id === student.id);
+    if (card) {
+      setEditingCardId(card.id);
+      setCardFields({
+        student_full_name: card.student_full_name || '',
+        student_email: card.student_email || '',
+        birth_date: card.birth_date || '',
+        student_phone: phoneFromApi(card.student_phone),
+        telegram: card.telegram || '',
+        gender: (card.gender === 'm' || card.gender === 'f' ? card.gender : '') as '' | 'm' | 'f',
+        on_grant: card.on_grant ?? false,
+        format_type: (card.format_type === 'group' || card.format_type === 'individual' ? card.format_type : '') as '' | 'group' | 'individual',
+        city: card.city || '',
+        school: card.school || '',
+        grade: card.grade || '',
+        parent_full_name: card.parent_full_name || '',
+        parent_phone: phoneFromApi(card.parent_phone),
+        parent_phone_2: phoneFromApi(card.parent_phone_2),
+        parent_telegram: card.parent_telegram || '',
+        parent_email: card.parent_email || '',
+        preferred_messenger: (card.preferred_messenger === 'max' || card.preferred_messenger === 'telegram' || card.preferred_messenger === 'sms' ? card.preferred_messenger : '') as '' | 'max' | 'telegram' | 'sms',
+        source: card.source || '',
+        comment: card.comment || '',
+      });
+    } else {
+      setEditingCardId(null);
+      setCardFields(emptyCardFields());
+    }
     setEditOpen(true);
   };
 
@@ -561,11 +593,48 @@ const StudentsPage: React.FC = () => {
         }
       }
       
-      // Перезагружаем группы для обновления списка
       loadGroups();
+
+      if (canCreateCard && editingStudent) {
+        const parentInfo = newStudent.parent_id ? parents.find((p) => p.id.toString() === newStudent.parent_id) : null;
+        const cardPayload = {
+          student_id: editingStudent.id,
+          student_full_name: (cardFields.student_full_name || newStudent.full_name).trim(),
+          student_email: cardFields.student_email.trim() || undefined,
+          birth_date: cardFields.birth_date.trim() || undefined,
+          student_phone: cardFields.student_phone.trim() ? phoneToApiValue(cardFields.student_phone) || undefined : undefined,
+          telegram: cardFields.telegram.trim() || undefined,
+          gender: cardFields.gender || undefined,
+          on_grant: cardFields.on_grant,
+          format_type: cardFields.format_type || undefined,
+          city: cardFields.city.trim() || undefined,
+          school: cardFields.school.trim() || undefined,
+          grade: cardFields.grade.trim() || undefined,
+          parent_full_name: (cardFields.parent_full_name || parentInfo?.full_name || '').trim() || undefined,
+          parent_phone: cardFields.parent_phone.trim() ? phoneToApiValue(cardFields.parent_phone) || undefined : undefined,
+          parent_phone_2: cardFields.parent_phone_2.trim() ? phoneToApiValue(cardFields.parent_phone_2) || undefined : undefined,
+          parent_telegram: cardFields.parent_telegram.trim() || undefined,
+          parent_email: (cardFields.parent_email || parentInfo?.email || '').trim() || undefined,
+          preferred_messenger: cardFields.preferred_messenger || undefined,
+          source: cardFields.source.trim() || undefined,
+          comment: cardFields.comment.trim() || undefined,
+        };
+        try {
+          if (editingCardId) {
+            await studentCardsApi.update(editingCardId, cardPayload);
+          } else {
+            await studentCardsApi.create({ ...cardPayload, discount_type: 'none', discount_value: 0 });
+          }
+          studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
+        } catch (cardErr: any) {
+          setError(cardErr.response?.data?.detail || 'Ученик сохранён, но не удалось сохранить карточку');
+          return;
+        }
+      }
 
       setEditOpen(false);
       setEditingStudent(null);
+      setEditingCardId(null);
       setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
       loadStudents();
     } catch (err: any) {
@@ -1223,7 +1292,7 @@ const StudentsPage: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования */}
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={editOpen} onClose={() => { setEditOpen(false); setEditingCardId(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>Редактировать ученика</DialogTitle>
         <DialogContent>
           <TextField
@@ -1234,23 +1303,106 @@ const StudentsPage: React.FC = () => {
             sx={{ mt: 2 }}
             required
           />
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Родитель</InputLabel>
-            <Select
-              value={newStudent.parent_id}
-              label="Родитель"
-              onChange={(e) => setNewStudent({ ...newStudent, parent_id: e.target.value })}
-            >
-              <MenuItem value="">
-                <em>Не выбран</em>
-              </MenuItem>
-              {parents.map((parent) => (
-                <MenuItem key={parent.id} value={parent.id.toString()}>
-                  {parent.full_name} ({parent.email})
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 0.5 }}>Родитель</Typography>
+          <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+            <Button size="small" variant={parentCreateMode === 'none' ? 'contained' : 'outlined'} onClick={() => { setParentCreateMode('none'); setSelectedParentForCreate(null); setNewStudent((prev) => ({ ...prev, parent_id: '' })); }}>
+              Без родителя
+            </Button>
+            <Button size="small" variant={parentCreateMode === 'existing' ? 'contained' : 'outlined'} onClick={() => { setParentCreateMode('existing'); setSelectedParentForCreate(null); setParentSearchQuery(''); }}>
+              Выбрать существующего
+            </Button>
+          </Stack>
+          {parentCreateMode === 'existing' && (
+            <Stack spacing={1} sx={{ mt: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Поиск по email или ФИО"
+                value={parentSearchQuery}
+                onChange={(e) => setParentSearchQuery(e.target.value)}
+                placeholder="Введите для поиска..."
+              />
+              {parentSearching && <Typography variant="caption" color="text.secondary">Поиск...</Typography>}
+              {selectedParentForCreate && (
+                <Chip
+                  label={`${selectedParentForCreate.full_name} (${selectedParentForCreate.email})`}
+                  onDelete={() => { setSelectedParentForCreate(null); setNewStudent((prev) => ({ ...prev, parent_id: '' })); }}
+                  size="small"
+                />
+              )}
+              {!selectedParentForCreate && parentSearchResults.length > 0 && (
+                <Stack direction="column" spacing={0.5}>
+                  {parentSearchResults.map((p) => (
+                    <Button
+                      key={p.id}
+                      size="small"
+                      fullWidth
+                      sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                      onClick={() => { setSelectedParentForCreate(p); setNewStudent((prev) => ({ ...prev, parent_id: p.id.toString() })); }}
+                    >
+                      {p.full_name} — {p.email}
+                    </Button>
+                  ))}
+                </Stack>
+              )}
+            </Stack>
+          )}
+
+          {canCreateCard && (
+            <Stack spacing={1.5} sx={{ mt: 2, pl: 1, borderLeft: 2, borderColor: 'divider' }}>
+              <Typography variant="subtitle2" color="primary">Личная карточка (продажи)</Typography>
+              <TextField size="small" fullWidth label="ФИО ученика" value={cardFields.student_full_name || newStudent.full_name} onChange={(e) => setCardFields((f) => ({ ...f, student_full_name: e.target.value }))} />
+              <TextField size="small" fullWidth label="Email ученика" type="email" value={cardFields.student_email} onChange={(e) => setCardFields((f) => ({ ...f, student_email: e.target.value }))} error={!!cardFields.student_email.trim() && !isValidEmail(cardFields.student_email)} helperText={cardFields.student_email.trim() && !isValidEmail(cardFields.student_email) ? 'Введите корректный email' : ''} />
+              <TextField size="small" fullWidth label="Дата рождения ученика" type="date" value={cardFields.birth_date} onChange={(e) => setCardFields((f) => ({ ...f, birth_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
+              <TextField size="small" fullWidth label="Мобильный телефон ученика" value={cardFields.student_phone} onChange={(e) => setCardFields((f) => ({ ...f, student_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.student_phone.trim() && !isValidPhone(cardFields.student_phone)} helperText={cardFields.student_phone.trim() && !isValidPhone(cardFields.student_phone) ? '10 цифр номера' : ''} />
+              <TextField size="small" fullWidth label="Телеграмм ученика" value={cardFields.telegram} onChange={(e) => setCardFields((f) => ({ ...f, telegram: e.target.value }))} />
+              <FormControl size="small" fullWidth>
+                <InputLabel>Пол</InputLabel>
+                <Select value={cardFields.gender} label="Пол" onChange={(e) => setCardFields((f) => ({ ...f, gender: e.target.value as '' | 'm' | 'f' }))}>
+                  <MenuItem value="">—</MenuItem>
+                  <MenuItem value="m">М</MenuItem>
+                  <MenuItem value="f">Ж</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControlLabel control={<Switch checked={cardFields.on_grant} onChange={(e) => setCardFields((f) => ({ ...f, on_grant: e.target.checked }))} />} label="На гранте" />
+              <FormControl size="small" fullWidth>
+                <InputLabel>Формат</InputLabel>
+                <Select value={cardFields.format_type} label="Формат" onChange={(e) => setCardFields((f) => ({ ...f, format_type: e.target.value as '' | 'group' | 'individual' }))}>
+                  <MenuItem value="">—</MenuItem>
+                  <MenuItem value="group">Группа</MenuItem>
+                  <MenuItem value="individual">Индивидуальное</MenuItem>
+                </Select>
+              </FormControl>
+              <Autocomplete
+                size="small"
+                freeSolo
+                options={citiesList}
+                value={cardFields.city}
+                onInputChange={(_, v) => setCardFields((f) => ({ ...f, city: v ?? '' }))}
+                onChange={(_, v) => setCardFields((f) => ({ ...f, city: (typeof v === 'string' ? v : v ?? '').trim() }))}
+                renderInput={(params) => <TextField {...params} label="Город" placeholder="Выберите или введите город" />}
+              />
+              <TextField size="small" fullWidth label="Образовательное учреждение" value={cardFields.school} onChange={(e) => setCardFields((f) => ({ ...f, school: e.target.value }))} />
+              <TextField size="small" fullWidth label="Класс" value={cardFields.grade} onChange={(e) => setCardFields((f) => ({ ...f, grade: e.target.value }))} />
+              <TextField size="small" fullWidth label="ФИО родителя" value={cardFields.parent_full_name || (selectedParentForCreate?.full_name || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_full_name: e.target.value }))} />
+              <TextField size="small" fullWidth label="Мобильный телефон родителя" value={cardFields.parent_phone} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone)} helperText={cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone) ? '10 цифр номера' : ''} />
+              <TextField size="small" fullWidth label="Второй мобильный телефон родителя" value={cardFields.parent_phone_2} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone_2: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2)} helperText={cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2) ? '10 цифр номера' : ''} />
+              <TextField size="small" fullWidth label="Телеграм родителя" value={cardFields.parent_telegram} onChange={(e) => setCardFields((f) => ({ ...f, parent_telegram: e.target.value }))} />
+              <TextField size="small" fullWidth label="Email родителя" type="email" value={cardFields.parent_email || (selectedParentForCreate?.email || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_email: e.target.value }))} error={!!(cardFields.parent_email || selectedParentForCreate?.email || '').trim() && !isValidEmail(cardFields.parent_email || selectedParentForCreate?.email || '')} helperText={((cardFields.parent_email || selectedParentForCreate?.email || '').trim() && !isValidEmail(cardFields.parent_email || selectedParentForCreate?.email || '')) ? 'Введите корректный email' : ''} />
+              <FormControl size="small" fullWidth>
+                <InputLabel>Удобный мессенджер для общения с родителем</InputLabel>
+                <Select value={cardFields.preferred_messenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setCardFields((f) => ({ ...f, preferred_messenger: e.target.value as '' | 'max' | 'telegram' | 'sms' }))}>
+                  <MenuItem value="">—</MenuItem>
+                  <MenuItem value="max">MAX</MenuItem>
+                  <MenuItem value="telegram">Telegram</MenuItem>
+                  <MenuItem value="sms">SMS</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField size="small" fullWidth label="Откуда пришел" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт, соцсети" />
+              <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={2} />
+            </Stack>
+          )}
+
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Группа</InputLabel>
             <Select
@@ -1338,7 +1490,7 @@ const StudentsPage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditOpen(false)}>Отмена</Button>
+          <Button onClick={() => { setEditOpen(false); setEditingCardId(null); }}>Отмена</Button>
           <Button onClick={handleUpdate} variant="contained">
             Сохранить
           </Button>

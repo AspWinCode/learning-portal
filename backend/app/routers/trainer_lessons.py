@@ -10,6 +10,7 @@ from app import auth
 from app.models import (
     User,
     Group,
+    GroupStatus,
     GroupSchedule,
     GroupStudent,
     LessonAttendance,
@@ -43,7 +44,7 @@ async def get_lessons_for_date(
     weekday = lesson_date.weekday()  # 0=Monday, 6=Sunday
     groups = db.query(Group).filter(
         Group.trainer_id == current_user.id,
-        Group.status == 'ACTIVE',
+        Group.status == GroupStatus.ACTIVE,
     ).all()
     result: List[TrainerLessonSlotResponse] = []
     for group in groups:

@@ -53,7 +53,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  timeout: 30000, // 30s — для входа и тяжёлых запросов после деплоя
 });
 
 // Interceptor ╨┤╨╗╤П ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╤П ╤В╨╛╨║╨╡╨╜╨░

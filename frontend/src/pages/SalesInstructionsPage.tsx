@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import { Box, Button, Card, CardContent, CircularProgress, Stack, TextField, Typography, Alert } from '@mui/material';
 import { salesInstructionsApi, salesInstructionImagesApi } from '../services/api';
 import { SalesInstruction } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { RichTextEditor } from '../components/RichTextEditor';
 
 const SalesInstructionsPage: React.FC = () => {
   const { user } = useAuth();
@@ -17,7 +18,6 @@ const SalesInstructionsPage: React.FC = () => {
   const [draftTitle, setDraftTitle] = useState('');
   const [draftBody, setDraftBody] = useState('');
   const [saving, setSaving] = useState(false);
-  const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const resetDraft = () => {
     setEditingId(null);
@@ -51,11 +51,13 @@ const SalesInstructionsPage: React.FC = () => {
     }
     setEditingId(item.id);
     setDraftTitle(item.title);
-    setDraftBody(item.body);
+    setDraftBody(item.body?.includes('<') ? item.body : (item.body || '').replace(/\n/g, '<br>'));
   };
 
+  const stripHtml = (html: string) => (new DOMParser().parseFromString(html, 'text/html').body.textContent || '').trim();
+
   const handleSave = async () => {
-    if (!draftTitle.trim() || !draftBody.trim()) {
+    if (!draftTitle.trim() || !stripHtml(draftBody)) {
       setError('Заполните заголовок и текст инструкции');
       return;
     }
@@ -91,31 +93,24 @@ const SalesInstructionsPage: React.FC = () => {
     }
   };
 
-  const handleInsertImage = async (file: File | null) => {
-    if (!file) return;
+  const handlePasteImage = useCallback(async (file: File): Promise<string> => {
     if (!file.type.startsWith('image/')) {
-      setError('Можно загружать только изображения (png/jpg/webp и т.п.)');
-      return;
+      throw new Error('Можно загружать только изображения');
     }
     if (file.size > 400 * 1024) {
-      setError('Картинка слишком тяжёлая. Ограничение ~400KB.');
-      return;
+      throw new Error('Картинка слишком тяжёлая. Ограничение ~400KB.');
     }
+    const res = await salesInstructionImagesApi.upload(file);
+    return res.url;
+  }, []);
+
+  const handleInsertImageFromFile = async (file: File | null) => {
+    if (!file) return;
     try {
-      const res = await salesInstructionImagesApi.upload(file);
-      const url = res.url;
-      setDraftBody((prev) => {
-        const el = bodyInputRef.current;
-        const tag = `<img src="${url}" style="max-width:100%;height:auto;" />`;
-        if (!el) {
-          return (prev ? `${prev}\n\n` : '') + tag;
-        }
-        const start = el.selectionStart ?? prev.length;
-        const end = el.selectionEnd ?? start;
-        return prev.slice(0, start) + tag + prev.slice(end);
-      });
+      const url = await handlePasteImage(file);
+      setDraftBody((prev) => (prev ? prev + `<p><img src="${url}" alt="" style="max-width:100%;height:auto;" /></p>` : `<p><img src="${url}" alt="" style="max-width:100%;height:auto;" /></p>`));
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Не удалось загрузить картинку');
+      setError(err.response?.data?.detail || err.message || 'Не удалось загрузить картинку');
     }
   };
 
@@ -152,8 +147,8 @@ const SalesInstructionsPage: React.FC = () => {
                 <Typography
                   variant="body2"
                   component="div"
-                  sx={{ whiteSpace: 'pre-wrap' }}
-                  dangerouslySetInnerHTML={{ __html: it.body.replace(/\n/g, '<br/>') }}
+                  sx={{ '& img': { maxWidth: '100%', height: 'auto' } }}
+                  dangerouslySetInnerHTML={{ __html: it.body?.includes('<') ? it.body : (it.body || '').replace(/\n/g, '<br/>') }}
                 />
                 {isAdminLike && (
                   <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
@@ -182,14 +177,13 @@ const SalesInstructionsPage: React.FC = () => {
                     value={draftTitle}
                     onChange={(e) => setDraftTitle(e.target.value)}
                   />
-                  <TextField
-                    label="Текст инструкции"
-                    fullWidth
-                    multiline
-                    minRows={6}
+                  <RichTextEditor
+                    key={editingId ?? 'new'}
                     value={draftBody}
-                    onChange={(e) => setDraftBody(e.target.value)}
-                    inputRef={bodyInputRef}
+                    onChange={setDraftBody}
+                    onPasteImage={handlePasteImage}
+                    minHeight={280}
+                    placeholder="Введите текст инструкции. Можно вставлять картинки через Ctrl+V."
                   />
                   <Stack direction="row" spacing={1}>
                     <Button
@@ -204,7 +198,7 @@ const SalesInstructionsPage: React.FC = () => {
                         accept="image/*"
                         onChange={async (e) => {
                           const file = e.target.files?.[0] || null;
-                          await handleInsertImage(file);
+                          await handleInsertImageFromFile(file);
                           e.target.value = '';
                         }}
                       />

@@ -25,6 +25,7 @@ import {
   Stack,
   Checkbox,
   FormControlLabel,
+  Switch,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi } from '../services/api';
@@ -59,7 +60,27 @@ const StudentsPage: React.FC = () => {
     email: '',
   });
   const [createCardToo, setCreateCardToo] = useState(false);
-  const [cardFields, setCardFields] = useState({ city: '', school: '', grade: '', comment: '', source: '' });
+  const [cardFields, setCardFields] = useState({
+    student_full_name: '',
+    student_email: '',
+    birth_date: '',
+    student_phone: '',
+    telegram: '',
+    gender: '' as '' | 'm' | 'f',
+    on_grant: false,
+    format_type: '' as '' | 'group' | 'individual',
+    city: '',
+    school: '',
+    grade: '',
+    parent_full_name: '',
+    parent_phone: '',
+    parent_phone_2: '',
+    parent_telegram: '',
+    parent_email: '',
+    preferred_messenger: '' as '' | 'max' | 'telegram' | 'sms',
+    source: '',
+    comment: '',
+  });
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [newTrainer, setNewTrainer] = useState({
     full_name: '',
@@ -366,19 +387,51 @@ const StudentsPage: React.FC = () => {
   ) => {
     await studentCardsApi.create({
       student_id: student.id,
-      student_full_name: student.full_name,
-      parent_full_name: parentInfo?.full_name ?? undefined,
-      parent_email: parentInfo?.email ?? undefined,
+      student_full_name: (cardFields.student_full_name || student.full_name).trim(),
+      student_email: cardFields.student_email.trim() || undefined,
+      birth_date: cardFields.birth_date.trim() || undefined,
+      student_phone: cardFields.student_phone.trim() || undefined,
+      telegram: cardFields.telegram.trim() || undefined,
+      gender: cardFields.gender || undefined,
+      on_grant: cardFields.on_grant,
+      format_type: cardFields.format_type || undefined,
       city: cardFields.city.trim() || undefined,
       school: cardFields.school.trim() || undefined,
       grade: cardFields.grade.trim() || undefined,
-      comment: cardFields.comment.trim() || undefined,
+      parent_full_name: (cardFields.parent_full_name || parentInfo?.full_name || '').trim() || undefined,
+      parent_phone: cardFields.parent_phone.trim() || undefined,
+      parent_phone_2: cardFields.parent_phone_2.trim() || undefined,
+      parent_telegram: cardFields.parent_telegram.trim() || undefined,
+      parent_email: (cardFields.parent_email || parentInfo?.email || '').trim() || undefined,
+      preferred_messenger: cardFields.preferred_messenger || undefined,
       source: cardFields.source.trim() || undefined,
-      on_grant: false,
+      comment: cardFields.comment.trim() || undefined,
       discount_type: 'none',
       discount_value: 0,
     });
   };
+
+  const emptyCardFields = () => ({
+    student_full_name: '',
+    student_email: '',
+    birth_date: '',
+    student_phone: '',
+    telegram: '',
+    gender: '' as '' | 'm' | 'f',
+    on_grant: false,
+    format_type: '' as '' | 'group' | 'individual',
+    city: '',
+    school: '',
+    grade: '',
+    parent_full_name: '',
+    parent_phone: '',
+    parent_phone_2: '',
+    parent_telegram: '',
+    parent_email: '',
+    preferred_messenger: '' as '' | 'max' | 'telegram' | 'sms',
+    source: '',
+    comment: '',
+  });
 
   const resetCreateForm = () => {
     setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
@@ -388,7 +441,7 @@ const StudentsPage: React.FC = () => {
     setSelectedParentForCreate(null);
     setNewParent({ full_name: '', email: '' });
     setCreateCardToo(false);
-    setCardFields({ city: '', school: '', grade: '', comment: '', source: '' });
+    setCardFields(emptyCardFields());
   };
 
   const handleEdit = async (student: Student) => {
@@ -1005,14 +1058,48 @@ const StudentsPage: React.FC = () => {
               />
               {createCardToo && (
                 <Stack spacing={1.5} sx={{ mt: 1, pl: 1, borderLeft: 2, borderColor: 'divider' }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Дополнительные поля карточки (по желанию)
-                  </Typography>
+                  <Typography variant="subtitle2" color="primary">Личная карточка</Typography>
+                  <TextField size="small" fullWidth label="ФИО ученика" value={cardFields.student_full_name || newStudent.full_name} onChange={(e) => setCardFields((f) => ({ ...f, student_full_name: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Email ученика" type="email" value={cardFields.student_email} onChange={(e) => setCardFields((f) => ({ ...f, student_email: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Дата рождения ученика" type="date" value={cardFields.birth_date} onChange={(e) => setCardFields((f) => ({ ...f, birth_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
+                  <TextField size="small" fullWidth label="Мобильный телефон ученика" value={cardFields.student_phone} onChange={(e) => setCardFields((f) => ({ ...f, student_phone: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Телеграмм ученика" value={cardFields.telegram} onChange={(e) => setCardFields((f) => ({ ...f, telegram: e.target.value }))} />
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Пол</InputLabel>
+                    <Select value={cardFields.gender} label="Пол" onChange={(e) => setCardFields((f) => ({ ...f, gender: e.target.value as '' | 'm' | 'f' }))}>
+                      <MenuItem value="">—</MenuItem>
+                      <MenuItem value="m">М</MenuItem>
+                      <MenuItem value="f">Ж</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControlLabel control={<Switch checked={cardFields.on_grant} onChange={(e) => setCardFields((f) => ({ ...f, on_grant: e.target.checked }))} />} label="На гранте" />
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Формат</InputLabel>
+                    <Select value={cardFields.format_type} label="Формат" onChange={(e) => setCardFields((f) => ({ ...f, format_type: e.target.value as '' | 'group' | 'individual' }))}>
+                      <MenuItem value="">—</MenuItem>
+                      <MenuItem value="group">Группа</MenuItem>
+                      <MenuItem value="individual">Индивидуальное</MenuItem>
+                    </Select>
+                  </FormControl>
                   <TextField size="small" fullWidth label="Город" value={cardFields.city} onChange={(e) => setCardFields((f) => ({ ...f, city: e.target.value }))} />
-                  <TextField size="small" fullWidth label="Школа / ОУ" value={cardFields.school} onChange={(e) => setCardFields((f) => ({ ...f, school: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Образовательное учреждение" value={cardFields.school} onChange={(e) => setCardFields((f) => ({ ...f, school: e.target.value }))} />
                   <TextField size="small" fullWidth label="Класс" value={cardFields.grade} onChange={(e) => setCardFields((f) => ({ ...f, grade: e.target.value }))} />
-                  <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={1} />
-                  <TextField size="small" fullWidth label="Откуда пришёл" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт" />
+                  <TextField size="small" fullWidth label="ФИО родителя" value={cardFields.parent_full_name || (parentCreateMode === 'new' ? newParent.full_name : selectedParentForCreate?.full_name || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_full_name: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Мобильный телефон родителя" value={cardFields.parent_phone} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Второй мобильный телефон родителя" value={cardFields.parent_phone_2} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone_2: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Телеграм родителя" value={cardFields.parent_telegram} onChange={(e) => setCardFields((f) => ({ ...f, parent_telegram: e.target.value }))} />
+                  <TextField size="small" fullWidth label="Email родителя" type="email" value={cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_email: e.target.value }))} />
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Удобный мессенджер для общения с родителем</InputLabel>
+                    <Select value={cardFields.preferred_messenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setCardFields((f) => ({ ...f, preferred_messenger: e.target.value as '' | 'max' | 'telegram' | 'sms' }))}>
+                      <MenuItem value="">—</MenuItem>
+                      <MenuItem value="max">MAX</MenuItem>
+                      <MenuItem value="telegram">Telegram</MenuItem>
+                      <MenuItem value="sms">SMS</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField size="small" fullWidth label="Откуда пришел" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт, соцсети" />
+                  <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={2} />
                 </Stack>
               )}
             </>

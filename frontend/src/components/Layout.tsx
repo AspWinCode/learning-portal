@@ -195,8 +195,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'sales')
       return [
         { text: 'Дашборд продаж', icon: <Dashboard />, path: '/sales/dashboard' },
-        { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
+        { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
         { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'Счета', icon: <ReceiptLong />, path: '/sales/invoices' },

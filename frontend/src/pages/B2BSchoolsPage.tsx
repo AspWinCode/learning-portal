@@ -383,7 +383,7 @@ const B2BSchoolsPage: React.FC = () => {
     }
   };
 
-  const [schoolLeads, setSchoolLeads] = useState<{ id: number; contact_name: string; phone: string; status: string; source: string | null; created_at: string }[]>([]);
+  const [schoolLeads, setSchoolLeads] = useState<{ id: number; contact_name: string; phone: string; status: string; source: string | null; source_event: string | null; created_at: string }[]>([]);
   const [loadingLeads, setLoadingLeads] = useState(false);
   const [transferLeadsLoading, setTransferLeadsLoading] = useState(false);
 
@@ -415,6 +415,106 @@ const B2BSchoolsPage: React.FC = () => {
       setError(extractApiError(err, 'Не удалось передать лиды'));
     } finally {
       setTransferLeadsLoading(false);
+    }
+  };
+
+  type SchoolInteraction = { id: number; b2b_school_id: number; type: string; happened_at: string; summary: string | null; created_by_id: number | null; created_by_name: string | null; created_at: string };
+  const [schoolInteractions, setSchoolInteractions] = useState<SchoolInteraction[]>([]);
+  const [loadingInteractions, setLoadingInteractions] = useState(false);
+  const [interactionForm, setInteractionForm] = useState({ type: 'call', happened_at: '', summary: '', next_step: '', next_step_date: '' });
+  const [addInteractionLoading, setAddInteractionLoading] = useState(false);
+
+  useEffect(() => {
+    if (!dialogOpen || !editingSchool?.id) {
+      setSchoolInteractions([]);
+      return;
+    }
+    setLoadingInteractions(true);
+    b2bApi.listSchoolInteractions(editingSchool.id).then((data) => {
+      setSchoolInteractions(data);
+    }).catch(() => {
+      setSchoolInteractions([]);
+    }).finally(() => {
+      setLoadingInteractions(false);
+    });
+  }, [dialogOpen, editingSchool?.id]);
+
+  const handleAddInteraction = async () => {
+    if (!editingSchool) return;
+    if (!interactionForm.happened_at.trim()) {
+      setError('Укажите дату и время взаимодействия');
+      return;
+    }
+    setError(null);
+    setAddInteractionLoading(true);
+    try {
+      await b2bApi.createSchoolInteraction(editingSchool.id, {
+        type: interactionForm.type,
+        happened_at: interactionForm.happened_at,
+        summary: interactionForm.summary.trim() || undefined,
+        next_step: interactionForm.next_step.trim() || undefined,
+        next_step_date: interactionForm.next_step_date || undefined,
+      });
+      setSuccess('Взаимодействие добавлено');
+      const data = await b2bApi.listSchoolInteractions(editingSchool.id);
+      setSchoolInteractions(data);
+      if (interactionForm.next_step || interactionForm.next_step_date) {
+        setForm((f) => ({
+          ...f,
+          next_step: interactionForm.next_step || f.next_step,
+          next_step_date: interactionForm.next_step_date || f.next_step_date,
+        }));
+        setInteractionForm((prev) => ({ ...prev, next_step: '', next_step_date: '' }));
+      }
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось добавить взаимодействие'));
+    } finally {
+      setAddInteractionLoading(false);
+    }
+  };
+
+  type SchoolEvent = { id: number; b2b_school_id: number; format: string; online_type: string | null; event_dates: string[] | null; created_at: string };
+  const [schoolEvents, setSchoolEvents] = useState<SchoolEvent[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [eventForm, setEventForm] = useState({ format: 'offline', online_type: '', datesText: '' });
+  const [addEventLoading, setAddEventLoading] = useState(false);
+
+  useEffect(() => {
+    if (!dialogOpen || !editingSchool?.id) {
+      setSchoolEvents([]);
+      return;
+    }
+    setLoadingEvents(true);
+    b2bApi.listSchoolEvents(editingSchool.id).then((data) => {
+      setSchoolEvents(data);
+    }).catch(() => {
+      setSchoolEvents([]);
+    }).finally(() => {
+      setLoadingEvents(false);
+    });
+  }, [dialogOpen, editingSchool?.id]);
+
+  const handleAddEvent = async () => {
+    if (!editingSchool) return;
+    setError(null);
+    setAddEventLoading(true);
+    try {
+      const dates = eventForm.datesText.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+      await b2bApi.createSchoolEvent(editingSchool.id, {
+        format: eventForm.format,
+        online_type: eventForm.format === 'online' && eventForm.online_type ? eventForm.online_type : undefined,
+        dates: dates.length ? dates : undefined,
+      });
+      setSuccess('Мероприятие добавлено');
+      const data = await b2bApi.listSchoolEvents(editingSchool.id);
+      setSchoolEvents(data);
+      setEventDialogOpen(false);
+      setEventForm({ format: 'offline', online_type: '', datesText: '' });
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось добавить мероприятие'));
+    } finally {
+      setAddEventLoading(false);
     }
   };
 
@@ -1077,7 +1177,7 @@ const B2BSchoolsPage: React.FC = () => {
               <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-events')}>
                 + Мероприятие
               </Button>
-              <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-contacts')}>
+              <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-interactions')}>
                 + Взаимодействие
               </Button>
               <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-partnership')}>
@@ -1140,6 +1240,41 @@ const B2BSchoolsPage: React.FC = () => {
               </Select>
             </FormControl>
             <Box id="card-section-events">
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography variant="subtitle2">Мероприятия</Typography>
+                {editingSchool && (
+                  <Button size="small" variant="outlined" startIcon={<Add />} onClick={() => setEventDialogOpen(true)}>
+                    Добавить мероприятие
+                  </Button>
+                )}
+              </Stack>
+              {editingSchool && (
+                <>
+                  {loadingEvents ? (
+                    <Typography variant="caption" color="text.secondary">Загрузка…</Typography>
+                  ) : schoolEvents.length > 0 ? (
+                    <Stack spacing={0.5} sx={{ mb: 1 }}>
+                      {schoolEvents.map((ev) => (
+                        <Card key={ev.id} variant="outlined" sx={{ p: 1 }}>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                            <Chip size="small" label={ev.format === 'online' ? 'Онлайн' : ev.format === 'hybrid' ? 'Гибрид' : 'Офлайн'} />
+                            {ev.format === 'online' && ev.online_type && (
+                              <Typography variant="caption" color="text.secondary">
+                                {ev.online_type === 'webinar' ? 'Вебинар' : ev.online_type === 'olympiad' ? 'Олимпиада' : ev.online_type === 'open_doors' ? 'День открытых дверей' : ev.online_type}
+                              </Typography>
+                            )}
+                            {ev.event_dates && ev.event_dates.length > 0 && (
+                              <Typography variant="caption" color="text.secondary">
+                                {ev.event_dates.join(', ')}
+                              </Typography>
+                            )}
+                          </Stack>
+                        </Card>
+                      ))}
+                    </Stack>
+                  ) : null}
+                </>
+              )}
               <TextField
                 label="Даты мероприятий (через запятую)"
                 value={form.event_dates}
@@ -1276,6 +1411,94 @@ const B2BSchoolsPage: React.FC = () => {
             </Box>
 
             {editingSchool && (
+              <Box id="card-section-interactions">
+                <Typography variant="subtitle2" gutterBottom>Взаимодействия</Typography>
+                {loadingInteractions ? (
+                  <Typography variant="caption" color="text.secondary">Загрузка…</Typography>
+                ) : (
+                  <Stack spacing={1} sx={{ mb: 2 }}>
+                    {schoolInteractions.length === 0 ? (
+                      <Typography variant="caption" color="text.secondary">Нет записей. Добавьте взаимодействие ниже.</Typography>
+                    ) : (
+                      schoolInteractions.map((i) => (
+                        <Card key={i.id} variant="outlined" sx={{ p: 1 }}>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                            <Chip size="small" label={i.type === 'call' ? 'Звонок' : i.type === 'letter' ? 'Письмо' : 'Встреча'} />
+                            <Typography variant="caption" color="text.secondary">
+                              {i.happened_at ? format(parseISO(i.happened_at), 'dd.MM.yyyy HH:mm') : ''}
+                            </Typography>
+                            {i.created_by_name && (
+                              <Typography variant="caption" color="text.secondary">— {i.created_by_name}</Typography>
+                            )}
+                          </Stack>
+                          {i.summary && <Typography variant="body2" sx={{ mt: 0.5 }}>{i.summary}</Typography>}
+                        </Card>
+                      ))
+                    )}
+                  </Stack>
+                )}
+                <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>Добавить взаимодействие</Typography>
+                <Stack spacing={1}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Тип</InputLabel>
+                    <Select
+                      value={interactionForm.type}
+                      label="Тип"
+                      onChange={(e) => setInteractionForm((f) => ({ ...f, type: e.target.value }))}
+                    >
+                      <MenuItem value="call">Звонок</MenuItem>
+                      <MenuItem value="letter">Письмо</MenuItem>
+                      <MenuItem value="meeting">Встреча</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    label="Дата и время"
+                    type="datetime-local"
+                    value={interactionForm.happened_at}
+                    onChange={(e) => setInteractionForm((f) => ({ ...f, happened_at: e.target.value }))}
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Итог / комментарий"
+                    value={interactionForm.summary}
+                    onChange={(e) => setInteractionForm((f) => ({ ...f, summary: e.target.value }))}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                  />
+                  <TextField
+                    size="small"
+                    label="Следующий шаг (опционально)"
+                    value={interactionForm.next_step}
+                    onChange={(e) => setInteractionForm((f) => ({ ...f, next_step: e.target.value }))}
+                    fullWidth
+                    placeholder="Обновит поле «Следующий шаг» в карточке"
+                  />
+                  <TextField
+                    size="small"
+                    label="Дата следующего шага (опционально)"
+                    type="date"
+                    value={interactionForm.next_step_date}
+                    onChange={(e) => setInteractionForm((f) => ({ ...f, next_step_date: e.target.value }))}
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={addInteractionLoading || !interactionForm.happened_at}
+                    onClick={() => void handleAddInteraction()}
+                  >
+                    {addInteractionLoading ? 'Добавление…' : 'Добавить'}
+                  </Button>
+                </Stack>
+              </Box>
+            )}
+
+            {editingSchool && (
               <Box id="card-section-leads">
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                   <Typography variant="subtitle2">Лиды</Typography>
@@ -1298,9 +1521,17 @@ const B2BSchoolsPage: React.FC = () => {
                       <Card key={lead.id} variant="outlined" sx={{ p: 1 }}>
                         <Typography variant="body2" fontWeight="medium">{lead.contact_name}</Typography>
                         <Typography variant="caption" display="block" color="text.secondary">{lead.phone}</Typography>
-                        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }} flexWrap="wrap">
                           <Chip size="small" label={lead.status} />
-                          {lead.source && <Typography variant="caption" color="text.secondary">Источник: {lead.source}</Typography>}
+                          {lead.source_event && (
+                            <Typography variant="caption" color="text.secondary">Мероприятие: {lead.source_event}</Typography>
+                          )}
+                          {lead.source && !lead.source_event && (
+                            <Typography variant="caption" color="text.secondary">Источник: {lead.source}</Typography>
+                          )}
+                          {lead.source && lead.source_event && (
+                            <Typography variant="caption" color="text.secondary"> | {lead.source}</Typography>
+                          )}
                         </Stack>
                       </Card>
                     ))}
@@ -1413,6 +1644,54 @@ const B2BSchoolsPage: React.FC = () => {
           <Button onClick={() => setContactDialogOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleSaveContact()} disabled={!contactForm.full_name.trim() || !contactForm.phone.trim()}>
             Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={eventDialogOpen} onClose={() => setEventDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Добавить мероприятие</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Формат</InputLabel>
+              <Select
+                value={eventForm.format}
+                label="Формат"
+                onChange={(e) => setEventForm((f) => ({ ...f, format: e.target.value }))}
+              >
+                <MenuItem value="offline">Офлайн</MenuItem>
+                <MenuItem value="online">Онлайн</MenuItem>
+                <MenuItem value="hybrid">Гибрид</MenuItem>
+              </Select>
+            </FormControl>
+            {eventForm.format === 'online' && (
+              <FormControl fullWidth size="small">
+                <InputLabel>Тип онлайн-мероприятия</InputLabel>
+                <Select
+                  value={eventForm.online_type}
+                  label="Тип онлайн-мероприятия"
+                  onChange={(e) => setEventForm((f) => ({ ...f, online_type: e.target.value }))}
+                >
+                  <MenuItem value="">—</MenuItem>
+                  <MenuItem value="webinar">Вебинар</MenuItem>
+                  <MenuItem value="olympiad">Олимпиада</MenuItem>
+                  <MenuItem value="open_doors">День открытых дверей</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            <TextField
+              size="small"
+              label="Даты (через запятую)"
+              value={eventForm.datesText}
+              onChange={(e) => setEventForm((f) => ({ ...f, datesText: e.target.value }))}
+              fullWidth
+              placeholder="2025-03-01, 2025-03-15"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEventDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={() => void handleAddEvent()} disabled={addEventLoading}>
+            {addEventLoading ? 'Добавление…' : 'Добавить'}
           </Button>
         </DialogActions>
       </Dialog>

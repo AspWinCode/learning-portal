@@ -14,6 +14,8 @@ from app.database import get_db
 from app.models import (
     B2BSchool,
     B2BSchoolContact,
+    B2BSchoolEvent,
+    B2BSchoolInteraction,
     B2BProject,
     B2BSchoolPipelineStage,
     Lead,
@@ -28,7 +30,11 @@ from app.schemas import (
     B2BSchoolContactResponse,
     B2BSchoolContactUpdate,
     B2BSchoolCreate,
+    B2BSchoolEventCreate,
+    B2BSchoolEventResponse,
     B2BSchoolImportResponse,
+    B2BSchoolInteractionCreate,
+    B2BSchoolInteractionResponse,
     B2BSchoolResponse,
     B2BSchoolUpdate,
     B2BLeadListItem,
@@ -625,6 +631,58 @@ def _on_b2b_school_stage_changed(
         )
 
 
+# Порядок чек-листа партнёрства: следующий шаг → заголовок задачи
+PARTNERSHIP_CHAIN = [
+    ("invited", "Отправить соглашение школе"),
+    ("agreement_sent", "Получить подпись со стороны школы"),
+    ("signed_school", "Получить подпись с нашей стороны"),
+    ("signed_both", "Получить оригиналы договора"),
+    ("originals_received", "Разместить иконку на сайте школы"),
+    ("icon_on_site", "Ввести в реестр активных партнёров"),
+    ("active_partner", None),
+]
+
+
+def _on_b2b_partnership_updated(
+    db: Session,
+    school: B2BSchool,
+    previous_partnership: Optional[Dict[str, Any]],
+    current_user_id: int,
+) -> None:
+    """При изменении чек-листа партнёрства: если какой-то пункт только что отмечен — создать одну задачу на следующий шаг."""
+    new_partnership = getattr(school, "partnership", None) or {}
+    if not isinstance(new_partnership, dict):
+        return
+    prev = previous_partnership if isinstance(previous_partnership, dict) else {}
+    manager_id = school.manager_id
+    if not manager_id:
+        return
+    name = school.name or "Школа"
+    # Найти самый «продвинутый» пункт, который только что стал True
+    last_newly_checked: Optional[str] = None
+    for i, (key, _) in enumerate(PARTNERSHIP_CHAIN):
+        if key == "active_partner":
+            break
+        old_val = prev.get(key) if prev else False
+        new_val = new_partnership.get(key)
+        if new_val and not old_val:
+            last_newly_checked = key
+    if last_newly_checked is None:
+        return
+    # Следующий шаг в цепочке
+    for i, (key, task_title) in enumerate(PARTNERSHIP_CHAIN):
+        if key == last_newly_checked and i + 1 < len(PARTNERSHIP_CHAIN):
+            next_title = PARTNERSHIP_CHAIN[i + 1][1]
+            if next_title:
+                _create_b2b_task(
+                    db,
+                    created_by_id=current_user_id,
+                    title=f"{next_title}: {name}",
+                    assigned_to_id=manager_id,
+                )
+            break
+
+
 def _load_school_with_contacts(db: Session, school_id: int) -> B2BSchool:
     school = db.query(B2BSchool).options(
         joinedload(B2BSchool.school_contacts),
@@ -646,6 +704,25 @@ async def get_b2b_school(
     return _school_to_response(db, school)
 
 
+def _event_label(event: Optional[Any]) -> Optional[str]:
+    """Строка-источник по мероприятию для лида."""
+    if not event:
+        return None
+    parts = []
+    if getattr(event, "format", None) == "online" and getattr(event, "online_type", None):
+        label = {"webinar": "Вебинар", "olympiad": "Олимпиада", "open_doors": "День открытых дверей"}.get(
+            event.online_type, event.online_type
+        )
+        parts.append(label)
+    else:
+        fmt = getattr(event, "format", None) or ""
+        parts.append("Онлайн" if fmt == "online" else "Гибрид" if fmt == "hybrid" else "Офлайн")
+    dates = getattr(event, "event_dates", None)
+    if dates and isinstance(dates, list):
+        parts.append(", ".join(dates[:3]))
+    return " ".join(parts) if parts else "Мероприятие"
+
+
 @router.get("/b2b-schools/{school_id}/leads", response_model=List[B2BLeadListItem])
 async def list_school_leads(
     school_id: int,
@@ -658,6 +735,7 @@ async def list_school_leads(
         raise HTTPException(status_code=404, detail="School not found")
     leads = (
         db.query(Lead)
+        .options(joinedload(Lead.b2b_event))
         .filter(Lead.b2b_school_id == school_id)
         .order_by(Lead.created_at.desc())
         .all()
@@ -669,6 +747,7 @@ async def list_school_leads(
             phone=l.phone or "",
             status=l.status.value if hasattr(l.status, "value") else str(l.status),
             source=l.source,
+            source_event=_event_label(l.b2b_event) if getattr(l, "b2b_event", None) else None,
             created_at=l.created_at,
         )
         for l in leads
@@ -692,6 +771,165 @@ async def transfer_school_leads(
     )
     db.commit()
     return {"updated": updated}
+
+
+@router.get("/b2b-schools/{school_id}/interactions", response_model=List[B2BSchoolInteractionResponse])
+async def list_school_interactions(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Журнал взаимодействий по B2B-школе (по убыванию даты)."""
+    school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    items = (
+        db.query(B2BSchoolInteraction)
+        .filter(B2BSchoolInteraction.b2b_school_id == school_id)
+        .order_by(B2BSchoolInteraction.happened_at.desc())
+        .all()
+    )
+    return [
+        B2BSchoolInteractionResponse(
+            id=i.id,
+            b2b_school_id=i.b2b_school_id,
+            type=i.type,
+            happened_at=i.happened_at,
+            summary=i.summary,
+            created_by_id=i.created_by_id,
+            created_by_name=i.created_by.full_name if i.created_by else None,
+            created_at=i.created_at,
+        )
+        for i in items
+    ]
+
+
+@router.post("/b2b-schools/{school_id}/interactions", response_model=B2BSchoolInteractionResponse, status_code=201)
+async def create_school_interaction(
+    school_id: int,
+    payload: B2BSchoolInteractionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Добавить взаимодействие; опционально обновить next_step/next_step_date школы."""
+    school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    if payload.type not in ("call", "letter", "meeting"):
+        raise HTTPException(status_code=400, detail="type must be call, letter or meeting")
+    interaction = B2BSchoolInteraction(
+        b2b_school_id=school_id,
+        type=payload.type,
+        happened_at=payload.happened_at,
+        summary=payload.summary,
+        created_by_id=current_user.id,
+    )
+    db.add(interaction)
+    if payload.next_step is not None or payload.next_step_date is not None:
+        if payload.next_step is not None:
+            school.next_step = payload.next_step
+        if payload.next_step_date is not None:
+            school.next_step_date = payload.next_step_date
+    db.commit()
+    db.refresh(interaction)
+    return B2BSchoolInteractionResponse(
+        id=interaction.id,
+        b2b_school_id=interaction.b2b_school_id,
+        type=interaction.type,
+        happened_at=interaction.happened_at,
+        summary=interaction.summary,
+        created_by_id=interaction.created_by_id,
+        created_by_name=current_user.full_name,
+        created_at=interaction.created_at,
+    )
+
+
+def _on_b2b_online_event_created(
+    db: Session,
+    school: B2BSchool,
+    event: B2BSchoolEvent,
+    current_user_id: int,
+) -> None:
+    """При создании онлайн-мероприятия — создать задачи менеджеру."""
+    manager_id = school.manager_id
+    if not manager_id:
+        return
+    name = school.name or "Школа"
+    online_label = {"webinar": "Вебинар", "olympiad": "Олимпиада", "open_doors": "День открытых дверей"}.get(
+        event.online_type or "", event.online_type or "онлайн"
+    )
+    suffix = f" ({online_label}): {name}"
+    _create_b2b_task(db, current_user_id, f"Отправить ссылку{suffix}", manager_id)
+    _create_b2b_task(db, current_user_id, f"Рассылка по чатам{suffix}", manager_id)
+    _create_b2b_task(db, current_user_id, f"Напоминание за 2 дня до мероприятия{suffix}", manager_id)
+    _create_b2b_task(db, current_user_id, f"Напоминание за 1 день до мероприятия{suffix}", manager_id)
+    _create_b2b_task(db, current_user_id, f"Занести лиды{suffix}", manager_id)
+
+
+@router.get("/b2b-schools/{school_id}/events", response_model=List[B2BSchoolEventResponse])
+async def list_school_events(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Список мероприятий B2B-школы."""
+    school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    events = (
+        db.query(B2BSchoolEvent)
+        .filter(B2BSchoolEvent.b2b_school_id == school_id)
+        .order_by(B2BSchoolEvent.created_at.desc())
+        .all()
+    )
+    return [
+        B2BSchoolEventResponse(
+            id=e.id,
+            b2b_school_id=e.b2b_school_id,
+            format=e.format,
+            online_type=e.online_type,
+            event_dates=e.event_dates,
+            created_at=e.created_at,
+        )
+        for e in events
+    ]
+
+
+@router.post("/b2b-schools/{school_id}/events", response_model=B2BSchoolEventResponse, status_code=201)
+async def create_school_event(
+    school_id: int,
+    payload: B2BSchoolEventCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Добавить мероприятие; при format=online создать авто-задачи."""
+    school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    if payload.format not in ("offline", "online", "hybrid"):
+        raise HTTPException(status_code=400, detail="format must be offline, online or hybrid")
+    if payload.format == "online" and payload.online_type and payload.online_type not in ("webinar", "olympiad", "open_doors"):
+        raise HTTPException(status_code=400, detail="online_type must be webinar, olympiad or open_doors")
+    event = B2BSchoolEvent(
+        b2b_school_id=school_id,
+        format=payload.format,
+        online_type=payload.online_type,
+        event_dates=payload.dates,
+    )
+    db.add(event)
+    db.flush()
+    if payload.format == "online":
+        _on_b2b_online_event_created(db, school, event, current_user.id)
+    db.commit()
+    db.refresh(event)
+    return B2BSchoolEventResponse(
+        id=event.id,
+        b2b_school_id=event.b2b_school_id,
+        format=event.format,
+        online_type=event.online_type,
+        event_dates=event.event_dates,
+        created_at=event.created_at,
+    )
 
 
 @router.post("/b2b-schools", response_model=B2BSchoolResponse, status_code=201)
@@ -737,6 +975,10 @@ async def update_b2b_school(
     school = _load_school_with_contacts(db, school_id)
     old_stage = school.pipeline_stage
     old_support_letter = getattr(school, "support_letter_status", None)
+    old_partnership = None
+    if getattr(school, "partnership", None) is not None:
+        p = getattr(school, "partnership", None)
+        old_partnership = dict(p) if isinstance(p, dict) else None
     data = payload.dict(exclude_unset=True)
     if "pipeline_stage" in data and data["pipeline_stage"] is not None:
         data["pipeline_stage"] = data["pipeline_stage"].value
@@ -747,6 +989,8 @@ async def update_b2b_school(
     new_stage = school.pipeline_stage
     if new_stage != old_stage:
         _on_b2b_school_stage_changed(db, school, new_stage, current_user.id)
+    if "partnership" in data and school.manager_id:
+        _on_b2b_partnership_updated(db, school, old_partnership, current_user.id)
     new_support_letter = getattr(school, "support_letter_status", None)
     if new_support_letter == "requested" and old_support_letter != "requested" and school.manager_id:
         _create_b2b_task(

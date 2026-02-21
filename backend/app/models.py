@@ -305,6 +305,7 @@ class Lead(Base):
     lost_reason = Column(String, nullable=True)
     questionnaire_filled = Column(Boolean, default=False, nullable=False, index=True)
     b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=True, index=True)
+    b2b_event_id = Column(Integer, ForeignKey("b2b_school_events.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -314,6 +315,7 @@ class Lead(Base):
     source_ref = relationship("LeadSource")
     status_option = relationship("LeadStatusOption")
     b2b_school = relationship("B2BSchool", back_populates="leads")
+    b2b_event = relationship("B2BSchoolEvent", back_populates="leads", foreign_keys=[b2b_event_id])
     tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="lead", cascade="all, delete-orphan")
     communications = relationship("LeadCommunication", back_populates="lead", cascade="all, delete-orphan")
@@ -963,6 +965,43 @@ class B2BSchool(Base):
     manager = relationship("User", foreign_keys=[manager_id])
     leads = relationship("Lead", back_populates="b2b_school", foreign_keys="Lead.b2b_school_id")
     school_contacts = relationship("B2BSchoolContact", back_populates="school", cascade="all, delete-orphan")
+    interactions = relationship("B2BSchoolInteraction", back_populates="school", cascade="all, delete-orphan")
+    school_events = relationship("B2BSchoolEvent", back_populates="school", cascade="all, delete-orphan")
+
+
+class B2BSchoolInteractionType(str, enum.Enum):
+    CALL = "call"
+    LETTER = "letter"
+    MEETING = "meeting"
+
+
+class B2BSchoolInteraction(Base):
+    __tablename__ = "b2b_school_interactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=False, index=True)
+    type = Column(String(32), nullable=False)
+    happened_at = Column(DateTime(timezone=True), nullable=False)
+    summary = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    school = relationship("B2BSchool", back_populates="interactions")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class B2BSchoolEvent(Base):
+    __tablename__ = "b2b_school_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=False, index=True)
+    format = Column(String(32), nullable=False)  # offline, online, hybrid
+    online_type = Column(String(32), nullable=True)  # webinar, olympiad, open_doors
+    event_dates = Column(JSON, nullable=True)  # list of date strings
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    school = relationship("B2BSchool", back_populates="school_events")
+    leads = relationship("Lead", back_populates="b2b_event", foreign_keys="Lead.b2b_event_id")
 
 
 class B2BSchoolContact(Base):

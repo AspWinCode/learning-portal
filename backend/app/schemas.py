@@ -1378,6 +1378,51 @@ class B2BLeadListItem(BaseModel):
     phone: str
     status: str
     source: Optional[str] = None
+    source_event: Optional[str] = None  # мероприятие: тип и даты
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class B2BSchoolInteractionCreate(BaseModel):
+    """Создание записи журнала взаимодействий по школе."""
+    type: str  # call, letter, meeting
+    happened_at: datetime
+    summary: Optional[str] = None
+    next_step: Optional[str] = None
+    next_step_date: Optional[date] = None
+
+
+class B2BSchoolInteractionResponse(BaseModel):
+    """Запись журнала взаимодействий."""
+    id: int
+    b2b_school_id: int
+    type: str
+    happened_at: datetime
+    summary: Optional[str] = None
+    created_by_id: Optional[int] = None
+    created_by_name: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class B2BSchoolEventCreate(BaseModel):
+    """Создание мероприятия B2B-школы."""
+    format: str  # offline, online, hybrid
+    online_type: Optional[str] = None  # webinar, olympiad, open_doors
+    dates: Optional[List[str]] = None  # ["2025-03-01", "2025-03-15"]
+
+
+class B2BSchoolEventResponse(BaseModel):
+    """Мероприятие B2B-школы."""
+    id: int
+    b2b_school_id: int
+    format: str
+    online_type: Optional[str] = None
+    event_dates: Optional[List[str]] = None
     created_at: datetime
 
     class Config:

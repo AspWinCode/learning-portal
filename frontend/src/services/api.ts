@@ -1003,12 +1003,28 @@ export const b2bApi = {
     const response = await api.get(`/api/b2b-schools/${id}`);
     return response.data;
   },
-  listSchoolLeads: async (schoolId: number): Promise<{ id: number; contact_name: string; phone: string; status: string; source: string | null; created_at: string }[]> => {
+  listSchoolLeads: async (schoolId: number): Promise<{ id: number; contact_name: string; phone: string; status: string; source: string | null; source_event: string | null; created_at: string }[]> => {
     const response = await api.get(`/api/b2b-schools/${schoolId}/leads`);
     return response.data;
   },
   transferSchoolLeads: async (schoolId: number): Promise<{ updated: number }> => {
     const response = await api.post(`/api/b2b-schools/${schoolId}/leads/transfer`);
+    return response.data;
+  },
+  listSchoolInteractions: async (schoolId: number): Promise<{ id: number; b2b_school_id: number; type: string; happened_at: string; summary: string | null; created_by_id: number | null; created_by_name: string | null; created_at: string }[]> => {
+    const response = await api.get(`/api/b2b-schools/${schoolId}/interactions`);
+    return response.data;
+  },
+  createSchoolInteraction: async (schoolId: number, payload: { type: string; happened_at: string; summary?: string; next_step?: string; next_step_date?: string }): Promise<{ id: number; b2b_school_id: number; type: string; happened_at: string; summary: string | null; created_by_id: number | null; created_by_name: string | null; created_at: string }> => {
+    const response = await api.post(`/api/b2b-schools/${schoolId}/interactions`, payload);
+    return response.data;
+  },
+  listSchoolEvents: async (schoolId: number): Promise<{ id: number; b2b_school_id: number; format: string; online_type: string | null; event_dates: string[] | null; created_at: string }[]> => {
+    const response = await api.get(`/api/b2b-schools/${schoolId}/events`);
+    return response.data;
+  },
+  createSchoolEvent: async (schoolId: number, payload: { format: string; online_type?: string; dates?: string[] }): Promise<{ id: number; b2b_school_id: number; format: string; online_type: string | null; event_dates: string[] | null; created_at: string }> => {
+    const response = await api.post(`/api/b2b-schools/${schoolId}/events`, payload);
     return response.data;
   },
   createSchool: async (payload: {

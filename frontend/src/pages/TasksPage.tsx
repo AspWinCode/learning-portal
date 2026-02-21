@@ -71,6 +71,7 @@ const TasksPage: React.FC = () => {
   const [lessonDetailRefreshing, setLessonDetailRefreshing] = useState(false);
   const [callResultSaving, setCallResultSaving] = useState<number | null>(null);
   const callRoundBlockRef = useRef<HTMLDivElement>(null);
+  const [lessonPeriodTab, setLessonPeriodTab] = useState(0); // 0 сегодня, 1 завтра, 2 неделя
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
@@ -368,157 +369,160 @@ const TasksPage: React.FC = () => {
         ) : tab === 0 && canSeeLessonTasks ? (
           <Stack spacing={3}>
             <Box>
-              <Typography variant="h6" gutterBottom>Задачи на сегодня</Typography>
-              <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
-                Позвать детей на занятие (сегодня)
-              </Typography>
-              {lessonTasks.some((t) => t.status === 'soon') && (
-                <Alert severity="info" sx={{ mb: 1 }}>
-                  Через 15 минут урок у {lessonTasks.filter((t) => t.status === 'soon').length} групп(ы)
-                </Alert>
+              <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Позвать детей на занятие</Typography>
+              <Tabs value={lessonPeriodTab} onChange={(_, v) => setLessonPeriodTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
+                <Tab label="Сегодня" />
+                <Tab label="Завтра" />
+                <Tab label="Неделя" />
+              </Tabs>
+
+              {lessonPeriodTab === 0 && (
+                <>
+                  {lessonTasks.some((t) => t.status === 'soon') && (
+                    <Alert severity="info" sx={{ mb: 1 }}>
+                      Через 15 минут урок у {lessonTasks.filter((t) => t.status === 'soon').length} групп(ы)
+                    </Alert>
+                  )}
+                  {lessonTasksLoading ? (
+                    <Typography color="text.secondary">Загрузка уроков...</Typography>
+                  ) : lessonTasks.length === 0 ? (
+                    <Typography color="text.secondary">На сегодня уроков по расписанию нет.</Typography>
+                  ) : (
+                    <Stack direction="row" flexWrap="wrap" gap={1}>
+                      {lessonTasks.map((item) => {
+                        const statusLabels: Record<string, string> = {
+                          waiting: 'Ожидает урока',
+                          soon: 'Скоро урок',
+                          in_progress: 'Идёт урок',
+                          call_round: 'Дозвон',
+                          completed: 'Завершено',
+                        };
+                        const statusColor: Record<string, 'default' | 'primary' | 'warning' | 'success' | 'error'> = {
+                          waiting: 'default',
+                          soon: 'warning',
+                          in_progress: 'primary',
+                          call_round: 'error',
+                          completed: 'success',
+                        };
+                        return (
+                          <Card key={`${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 280, maxWidth: 360 }}>
+                            <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                              <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {item.trainer_name} — {item.start_time}
+                              </Typography>
+                              <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+                                <Chip size="small" label={statusLabels[item.status] || item.status} color={statusColor[item.status] || 'default'} />
+                                <Typography variant="caption" color="text.secondary">
+                                  Всего: {item.total} / На месте: {item.present_count} / Нет: {item.absent_count}
+                                  {(item.call_contacted_count ?? 0) > 0 && ` / Дозвонено: ${item.call_contacted_count}`}
+                                </Typography>
+                              </Stack>
+                              <Button
+                                size="small"
+                                startIcon={<OpenInNew />}
+                                sx={{ mt: 1 }}
+                                onClick={() => setLessonTaskDetail(item)}
+                              >
+                                Открыть карточку
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </>
               )}
-              {lessonTasksLoading ? (
-                <Typography color="text.secondary">Загрузка уроков...</Typography>
-              ) : lessonTasks.length === 0 ? (
-                <Typography color="text.secondary">На сегодня уроков по расписанию нет.</Typography>
-              ) : (
-                <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
-                  {lessonTasks.map((item) => {
-                    const statusLabels: Record<string, string> = {
-                      waiting: 'Ожидает урока',
-                      soon: 'Скоро урок',
-                      in_progress: 'Идёт урок',
-                      call_round: 'Дозвон',
-                      completed: 'Завершено',
-                    };
-                    const statusColor: Record<string, 'default' | 'primary' | 'warning' | 'success' | 'error'> = {
-                      waiting: 'default',
-                      soon: 'warning',
-                      in_progress: 'primary',
-                      call_round: 'error',
-                      completed: 'success',
-                    };
-                    return (
-                      <Card key={`${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 280, maxWidth: 360 }}>
-                        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                          <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {item.trainer_name} — {item.start_time}
-                          </Typography>
-                          <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
-                            <Chip size="small" label={statusLabels[item.status] || item.status} color={statusColor[item.status] || 'default'} />
-                            <Typography variant="caption" color="text.secondary">
-                              Всего: {item.total} / На месте: {item.present_count} / Нет: {item.absent_count}
-                              {(item.call_contacted_count ?? 0) > 0 && ` / Дозвонено: ${item.call_contacted_count}`}
+
+              {lessonPeriodTab === 1 && (
+                <>
+                  {lessonTasksTomorrowLoading ? (
+                    <Typography color="text.secondary">Загрузка...</Typography>
+                  ) : lessonTasksTomorrow.length === 0 ? (
+                    <Typography color="text.secondary">На завтра уроков по расписанию нет.</Typography>
+                  ) : (
+                    <Stack direction="row" flexWrap="wrap" gap={1}>
+                      {lessonTasksTomorrow.map((item) => (
+                        <Card key={`tm-${item.group_id}-${item.schedule_id}-${item.lesson_date}`} variant="outlined" sx={{ minWidth: 280, maxWidth: 360 }}>
+                          <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                            <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {item.trainer_name} — {item.start_time}
                             </Typography>
-                          </Stack>
-                          <Button
-                            size="small"
-                            startIcon={<OpenInNew />}
-                            sx={{ mt: 1 }}
-                            onClick={() => setLessonTaskDetail(item)}
-                          >
-                            Открыть карточку
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </Stack>
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                              Всего: {item.total} учеников
+                            </Typography>
+                            <Button
+                              size="small"
+                              startIcon={<OpenInNew />}
+                              sx={{ mt: 1 }}
+                              onClick={() => setLessonTaskDetail(item)}
+                            >
+                              Открыть карточку
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Stack>
+                  )}
+                </>
               )}
-            </Box>
 
-            <Box>
-              <Typography variant="h6" gutterBottom>Задачи на завтра</Typography>
-              <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
-                Позвать детей на занятие (завтра)
-              </Typography>
-              {lessonTasksTomorrowLoading ? (
-                <Typography color="text.secondary">Загрузка...</Typography>
-              ) : lessonTasksTomorrow.length === 0 ? (
-                <Typography color="text.secondary">На завтра уроков по расписанию нет.</Typography>
-              ) : (
-                <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
-                  {lessonTasksTomorrow.map((item) => (
-                    <Card key={`tm-${item.group_id}-${item.schedule_id}-${item.lesson_date}`} variant="outlined" sx={{ minWidth: 280, maxWidth: 360 }}>
-                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                        <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {item.trainer_name} — {item.start_time}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                          Всего: {item.total} учеников
-                        </Typography>
-                        <Button
-                          size="small"
-                          startIcon={<OpenInNew />}
-                          sx={{ mt: 1 }}
-                          onClick={() => setLessonTaskDetail(item)}
-                        >
-                          Открыть карточку
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Stack>
-              )}
-            </Box>
-
-            <Box>
-              <Typography variant="h6" gutterBottom>Задачи на неделю</Typography>
-              <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
-                Позвать детей на занятие (7 дней)
-              </Typography>
-              {lessonTasksWeekLoading ? (
-                <Typography color="text.secondary">Загрузка...</Typography>
-              ) : lessonTasksWeek.length === 0 ? (
-                <Typography color="text.secondary">На неделю уроков по расписанию нет.</Typography>
-              ) : (
-                <Stack spacing={2} sx={{ mt: 1 }}>
-                  {Object.entries(
-                    lessonTasksWeek.reduce<Record<string, LessonTaskItem[]>>((acc, item) => {
-                      const d = item.lesson_date;
-                      if (!acc[d]) acc[d] = [];
-                      acc[d].push(item);
-                      return acc;
-                    }, {})
-                  )
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([dayDate, items]) => {
-                      const d = new Date(dayDate + 'T12:00:00');
-                      const dayLabel = d.toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' });
-                      return (
-                        <Box key={dayDate}>
-                          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                            {dayLabel}
-                          </Typography>
-                          <Stack direction="row" flexWrap="wrap" gap={1}>
-                            {items.map((item) => (
-                              <Card key={`w-${item.lesson_date}-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 260, maxWidth: 340 }}>
-                                <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                                  <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
-                                  <Typography variant="body2" color="text.secondary">
-                                    {item.trainer_name} — {item.start_time}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                    Всего: {item.total} учеников
-                                  </Typography>
-                                  <Button
-                                    size="small"
-                                    startIcon={<OpenInNew />}
-                                    sx={{ mt: 1 }}
-                                    onClick={() => setLessonTaskDetail(item)}
-                                  >
-                                    Открыть карточку
-                                  </Button>
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </Stack>
-                        </Box>
-                      );
-                    })}
-                </Stack>
+              {lessonPeriodTab === 2 && (
+                <>
+                  {lessonTasksWeekLoading ? (
+                    <Typography color="text.secondary">Загрузка...</Typography>
+                  ) : lessonTasksWeek.length === 0 ? (
+                    <Typography color="text.secondary">На неделю уроков по расписанию нет.</Typography>
+                  ) : (
+                    <Stack spacing={2}>
+                      {Object.entries(
+                        lessonTasksWeek.reduce<Record<string, LessonTaskItem[]>>((acc, item) => {
+                          const d = item.lesson_date;
+                          if (!acc[d]) acc[d] = [];
+                          acc[d].push(item);
+                          return acc;
+                        }, {})
+                      )
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([dayDate, items]) => {
+                          const d = new Date(dayDate + 'T12:00:00');
+                          const dayLabel = d.toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                          return (
+                            <Box key={dayDate}>
+                              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                {dayLabel}
+                              </Typography>
+                              <Stack direction="row" flexWrap="wrap" gap={1}>
+                                {items.map((item) => (
+                                  <Card key={`w-${item.lesson_date}-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 260, maxWidth: 340 }}>
+                                    <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                      <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                                      <Typography variant="body2" color="text.secondary">
+                                        {item.trainer_name} — {item.start_time}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                        Всего: {item.total} учеников
+                                      </Typography>
+                                      <Button
+                                        size="small"
+                                        startIcon={<OpenInNew />}
+                                        sx={{ mt: 1 }}
+                                        onClick={() => setLessonTaskDetail(item)}
+                                      >
+                                        Открыть карточку
+                                      </Button>
+                                    </CardContent>
+                                  </Card>
+                                ))}
+                              </Stack>
+                            </Box>
+                          );
+                        })}
+                    </Stack>
+                  )}
+                </>
               )}
             </Box>
 

@@ -78,6 +78,8 @@ const B2BSchoolCreatePage: React.FC = () => {
     friendship_degree: '',
     pipeline_stage: 'new' as B2BSchoolPipelineStage,
     manager_id: '' as number | '',
+    source: '',
+    priority: '',
     event_dates: '',
   });
   const [schools, setSchools] = useState<B2BSchool[]>([]);
@@ -303,6 +305,8 @@ const B2BSchoolCreatePage: React.FC = () => {
         student_count: form.student_count === '' ? undefined : Number(form.student_count),
         friendship_degree: form.friendship_degree || undefined,
         pipeline_stage: form.pipeline_stage,
+        source: form.source.trim() || undefined,
+        priority: form.priority.trim() || undefined,
         event_dates: eventDates,
       });
       setSuccess('Школа успешно создана');
@@ -315,6 +319,8 @@ const B2BSchoolCreatePage: React.FC = () => {
         friendship_degree: '',
         pipeline_stage: 'new',
         manager_id: '',
+        source: '',
+        priority: '',
         event_dates: '',
       });
       await loadSchools();
@@ -356,6 +362,8 @@ const B2BSchoolCreatePage: React.FC = () => {
         next_step: NEXT_STEP_LAUNCH,
         next_step_date: tomorrow,
         manager_id: managerId,
+        source: form.source.trim() || undefined,
+        priority: form.priority.trim() || undefined,
         event_dates: eventDates,
       });
       setSuccess('Школа создана и запущена в работу');
@@ -368,6 +376,8 @@ const B2BSchoolCreatePage: React.FC = () => {
         friendship_degree: '',
         pipeline_stage: 'new',
         manager_id: '',
+        source: '',
+        priority: '',
         event_dates: '',
       });
       await loadSchools();
@@ -486,6 +496,20 @@ const B2BSchoolCreatePage: React.FC = () => {
               value={form.city}
               onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
               fullWidth
+            />
+            <TextField
+              label="Источник"
+              value={form.source}
+              onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
+              fullWidth
+              placeholder="Откуда узнали о школе"
+            />
+            <TextField
+              label="Приоритет"
+              value={form.priority}
+              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+              fullWidth
+              placeholder="Высокий / Средний / Низкий"
             />
             <TextField
               label="Адрес"
@@ -698,6 +722,7 @@ const B2BSchoolCreatePage: React.FC = () => {
                     <TableCell>Город</TableCell>
                     <TableCell>Адрес</TableCell>
                     <TableCell align="right">Учеников</TableCell>
+                    <TableCell align="center">Контакты</TableCell>
                     <TableCell>Ответственный</TableCell>
                     <TableCell>След. действие</TableCell>
                     <TableCell>Стадия</TableCell>
@@ -707,7 +732,7 @@ const B2BSchoolCreatePage: React.FC = () => {
                 <TableBody>
                   {filteredSchools.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} align="center" sx={{ py: 3 }} color="text.secondary">
+                      <TableCell colSpan={10} align="center" sx={{ py: 3 }} color="text.secondary">
                         {schools.filter((s) => s.pipeline_stage === 'new').length === 0
                           ? 'Нет школ в стадии «Новая»'
                           : 'Нет школ в выбранном городе'}
@@ -730,6 +755,7 @@ const B2BSchoolCreatePage: React.FC = () => {
                           </Typography>
                         </TableCell>
                         <TableCell align="right">{school.student_count ?? '—'}</TableCell>
+                        <TableCell align="center">{school.contacts?.length ?? 0}</TableCell>
                         <TableCell>{school.manager_full_name || '—'}</TableCell>
                         <TableCell sx={{ maxWidth: 180 }}>
                           {hasNoNextAction(school) ? (

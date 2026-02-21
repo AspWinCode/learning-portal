@@ -6,16 +6,22 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
   Select,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import OpenInNew from '@mui/icons-material/OpenInNew';
+import Event from '@mui/icons-material/Event';
 import Layout from '../components/Layout';
 import { b2bApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
@@ -26,7 +32,8 @@ const Section: React.FC<{
   title: string;
   schools: B2BSchool[];
   onOpenSchool: (id: number) => void;
-}> = ({ id, title, schools, onOpenSchool }) => (
+  onReschedule?: (school: B2BSchool) => void;
+}> = ({ id, title, schools, onOpenSchool, onReschedule }) => (
   <Box id={id}>
     <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
       {title} ({schools.length})
@@ -52,9 +59,16 @@ const Section: React.FC<{
                     {s.manager_full_name && ` · ${s.manager_full_name}`}
                   </Typography>
                 </Box>
-                <Button size="small" startIcon={<OpenInNew />} onClick={(e) => { e.stopPropagation(); onOpenSchool(s.id); }}>
-                  Карточка
-                </Button>
+                <Stack direction="row" spacing={0.5}>
+                  {onReschedule && (
+                    <Button size="small" startIcon={<Event />} onClick={(e) => { e.stopPropagation(); onReschedule(s); }}>
+                      Перенести
+                    </Button>
+                  )}
+                  <Button size="small" startIcon={<OpenInNew />} onClick={(e) => { e.stopPropagation(); onOpenSchool(s.id); }}>
+                    Карточка
+                  </Button>
+                </Stack>
               </Stack>
             </CardContent>
           </Card>
@@ -74,9 +88,15 @@ const B2BPlanForTodayPage: React.FC = () => {
     today: B2BSchool[];
     tomorrow: B2BSchool[];
     week: B2BSchool[];
+    no_contacts: B2BSchool[];
+    no_touches_7d: B2BSchool[];
+    event_done_no_leads: B2BSchool[];
+    negotiations_14d: B2BSchool[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rescheduleSchool, setRescheduleSchool] = useState<B2BSchool | null>(null);
+  const [rescheduleForm, setRescheduleForm] = useState({ next_step: '', next_step_date: '' });
 
   const loadCities = useCallback(async () => {
     try {
@@ -111,6 +131,29 @@ const B2BPlanForTodayPage: React.FC = () => {
 
   const onOpenSchool = (id: number) => {
     window.open(`/b2b-schools?open=${id}`, '_blank');
+  };
+
+  const handleRescheduleOpen = (school: B2BSchool) => {
+    setRescheduleSchool(school);
+    setRescheduleForm({
+      next_step: school.next_step ?? '',
+      next_step_date: school.next_step_date ? format(parseISO(school.next_step_date), 'yyyy-MM-dd') : '',
+    });
+  };
+
+  const handleRescheduleSave = async () => {
+    if (!rescheduleSchool) return;
+    setError(null);
+    try {
+      await b2bApi.updateSchool(rescheduleSchool.id, {
+        next_step: rescheduleForm.next_step.trim() || null,
+        next_step_date: rescheduleForm.next_step_date.trim() || null,
+      });
+      setRescheduleSchool(null);
+      await loadPlan();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось перенести'));
+    }
   };
 
   return (
@@ -181,16 +224,75 @@ const B2BPlanForTodayPage: React.FC = () => {
                   onClick={() => document.getElementById('section-week')?.scrollIntoView({ behavior: 'smooth' })}
                   sx={{ cursor: 'pointer' }}
                 />
+                <Chip
+                  label={`Без контактов: ${data.no_contacts?.length ?? 0}`}
+                  color={data.no_contacts?.length ? 'warning' : 'default'}
+                  onClick={() => document.getElementById('section-no-contacts')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: (data.no_contacts?.length ?? 0) > 0 ? 'pointer' : 'default' }}
+                />
+                <Chip
+                  label={`Нет касаний 7 дн: ${data.no_touches_7d?.length ?? 0}`}
+                  color={data.no_touches_7d?.length ? 'warning' : 'default'}
+                  onClick={() => document.getElementById('section-no-touches')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: (data.no_touches_7d?.length ?? 0) > 0 ? 'pointer' : 'default' }}
+                />
+                <Chip
+                  label={`Проведено без лидов: ${data.event_done_no_leads?.length ?? 0}`}
+                  color={data.event_done_no_leads?.length ? 'error' : 'default'}
+                  onClick={() => document.getElementById('section-event-no-leads')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: (data.event_done_no_leads?.length ?? 0) > 0 ? 'pointer' : 'default' }}
+                />
+                <Chip
+                  label={`Переговоры 14+ дн: ${data.negotiations_14d?.length ?? 0}`}
+                  color={data.negotiations_14d?.length ? 'warning' : 'default'}
+                  onClick={() => document.getElementById('section-negotiations-14')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: (data.negotiations_14d?.length ?? 0) > 0 ? 'pointer' : 'default' }}
+                />
               </Stack>
             </Box>
-            <Section id="section-overdue" title="Просроченные следующие действия" schools={data.overdue} onOpenSchool={onOpenSchool} />
-            <Section id="section-no-next" title="Школы без следующего шага" schools={data.no_next_step} onOpenSchool={onOpenSchool} />
-            <Section id="section-find-contacts" title="Школы в статусе «Найти контакты» больше 3 дней" schools={data.find_contacts_stale} onOpenSchool={onOpenSchool} />
-            <Section id="section-today" title="Сегодня: дожим / перезвонить" schools={data.today} onOpenSchool={onOpenSchool} />
-            <Section id="section-tomorrow" title="Завтра" schools={data.tomorrow} onOpenSchool={onOpenSchool} />
-            <Section id="section-week" title="На неделе" schools={data.week} onOpenSchool={onOpenSchool} />
+            <Section id="section-overdue" title="Просроченные следующие действия" schools={data.overdue} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-no-next" title="Школы без следующего шага" schools={data.no_next_step} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-find-contacts" title="Школы в статусе «Найти контакты» больше 3 дней" schools={data.find_contacts_stale} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-today" title="Сегодня: дожим / перезвонить" schools={data.today} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-tomorrow" title="Завтра" schools={data.tomorrow} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-week" title="На неделе" schools={data.week} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-no-contacts" title="Школы без контактов" schools={data.no_contacts ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-no-touches" title="Нет касаний 7 дней (переговоры/подготовка)" schools={data.no_touches_7d ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-event-no-leads" title="Мероприятие проведено, лидов нет" schools={data.event_done_no_leads ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
+            <Section id="section-negotiations-14" title="Переговоры 14+ дней (ревью)" schools={data.negotiations_14d ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} />
           </Stack>
         ) : null}
+
+      <Dialog open={!!rescheduleSchool} onClose={() => setRescheduleSchool(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Перенести</DialogTitle>
+        <DialogContent>
+          {rescheduleSchool && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="body2" color="text.secondary">{rescheduleSchool.name}</Typography>
+              <TextField
+                label="Следующее действие"
+                value={rescheduleForm.next_step}
+                onChange={(e) => setRescheduleForm((f) => ({ ...f, next_step: e.target.value }))}
+                fullWidth
+                size="small"
+              />
+              <TextField
+                label="Дата"
+                type="date"
+                value={rescheduleForm.next_step_date}
+                onChange={(e) => setRescheduleForm((f) => ({ ...f, next_step_date: e.target.value }))}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRescheduleSchool(null)}>Отмена</Button>
+          <Button variant="contained" onClick={() => void handleRescheduleSave()}>Сохранить</Button>
+        </DialogActions>
+      </Dialog>
       </Stack>
     </Layout>
   );

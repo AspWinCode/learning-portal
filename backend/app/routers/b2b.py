@@ -77,6 +77,10 @@ def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
         next_step_date=school.next_step_date,
         manager_id=school.manager_id,
         manager_full_name=manager_name,
+        source=getattr(school, "source", None),
+        priority=getattr(school, "priority", None),
+        support_letter_status=getattr(school, "support_letter_status", None),
+        partnership=getattr(school, "partnership", None),
         event_dates=school.event_dates,
         meeting_scheduled_at=school.meeting_scheduled_at,
         meeting_outcomes=school.meeting_outcomes,
@@ -115,11 +119,13 @@ async def plan_for_today(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """Schools for owner's daily plan: overdue, no next step, find_contacts > 3 days, today, tomorrow, week."""
+    """Schools for owner's daily plan: overdue, no next step, find_contacts > 3 days, today, tomorrow, week, risks."""
     today = date.today()
     tomorrow = today + timedelta(days=1)
     week_end = today + timedelta(days=7)
     cutoff = today - timedelta(days=3)
+    cutoff_7 = today - timedelta(days=7)
+    cutoff_14 = today - timedelta(days=14)
     base = db.query(B2BSchool).options(
         joinedload(B2BSchool.school_contacts),
         joinedload(B2BSchool.manager),
@@ -130,10 +136,13 @@ async def plan_for_today(
     def run(q):
         return [_school_to_response(db, s) for s in q.order_by(nulls_last(B2BSchool.next_step_date.asc()), B2BSchool.name).all()]
 
+    from sqlalchemy import or_, exists
+
     overdue = base.filter(B2BSchool.next_step_date.isnot(None), B2BSchool.next_step_date < today)
     no_next = base.filter((B2BSchool.next_step.is_(None)) | (B2BSchool.next_step_date.is_(None)))
-    from sqlalchemy import or_
     cutoff_ts = datetime.combine(cutoff, dt_time.min)
+    cutoff_7_ts = datetime.combine(cutoff_7, dt_time.min)
+    cutoff_14_ts = datetime.combine(cutoff_14, dt_time.min)
     find_stale = base.filter(
         B2BSchool.pipeline_stage == "find_contacts",
         or_(
@@ -148,6 +157,25 @@ async def plan_for_today(
         B2BSchool.next_step_date > tomorrow,
         B2BSchool.next_step_date <= week_end,
     )
+    no_contacts = base.filter(~exists().where(B2BSchoolContact.b2b_school_id == B2BSchool.id))
+    no_touches_7d = base.filter(
+        B2BSchool.pipeline_stage.in_(["agreement", "permission_received", "event_scheduled"]),
+        or_(
+            B2BSchool.updated_at < cutoff_7_ts,
+            (B2BSchool.updated_at.is_(None)) & (B2BSchool.created_at < cutoff_7_ts),
+        ),
+    )
+    event_done_no_leads = base.filter(
+        B2BSchool.pipeline_stage.in_(["event_done", "walkthrough_done"]),
+        ~exists().where(Lead.b2b_school_id == B2BSchool.id),
+    )
+    negotiations_14d = base.filter(
+        B2BSchool.pipeline_stage == "agreement",
+        or_(
+            B2BSchool.updated_at < cutoff_14_ts,
+            (B2BSchool.updated_at.is_(None)) & (B2BSchool.created_at < cutoff_14_ts),
+        ),
+    )
 
     return {
         "overdue": run(overdue),
@@ -156,6 +184,10 @@ async def plan_for_today(
         "today": run(today_q),
         "tomorrow": run(tomorrow_q),
         "week": run(week_q),
+        "no_contacts": run(no_contacts),
+        "no_touches_7d": run(no_touches_7d),
+        "event_done_no_leads": run(event_done_no_leads),
+        "negotiations_14d": run(negotiations_14d),
     }
 
 
@@ -163,10 +195,14 @@ async def plan_for_today(
 async def list_b2b_schools(
     pipeline_stage: Optional[str] = Query(default=None),
     project_id: Optional[int] = Query(default=None),
-    city: Optional[str] = Query(default=None, description="╨д╨╕╨╗╤М╤В╤А ╨┐╨╛ ╨│╨╛╤А╨╛╨┤╤Г"),
+    city: Optional[str] = Query(default=None, description="Фильтр по городу"),
+    manager_id: Optional[int] = Query(default=None, description="Фильтр по ответственному"),
+    overdue: Optional[bool] = Query(default=None, description="Только с просроченным next_step_date"),
+    search: Optional[str] = Query(default=None, description="Поиск по названию/городу"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
+    from sqlalchemy import or_
     query = db.query(B2BSchool).options(
         joinedload(B2BSchool.school_contacts),
         joinedload(B2BSchool.manager),
@@ -180,7 +216,6 @@ async def list_b2b_schools(
             cities.append(project.main_city)
         if isinstance(project.cities, list):
             cities.extend([c for c in project.cities if isinstance(c, str)])
-        # ╨╜╨╛╤А╨╝╨░╨╗╨╕╨╖╤Г╨╡╨╝ ╨│╨╛╤А╨╛╨┤╨░
         cities = [c.strip() for c in cities if c and isinstance(c, str)]
         if cities:
             query = query.filter(B2BSchool.city.in_(cities))
@@ -188,6 +223,19 @@ async def list_b2b_schools(
         query = query.filter(B2BSchool.city == city.strip())
     if pipeline_stage is not None:
         query = query.filter(B2BSchool.pipeline_stage == pipeline_stage)
+    if manager_id is not None:
+        query = query.filter(B2BSchool.manager_id == manager_id)
+    if overdue is True:
+        today = date.today()
+        query = query.filter(B2BSchool.next_step_date.isnot(None), B2BSchool.next_step_date < today)
+    if search is not None and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                B2BSchool.name.ilike(term),
+                (B2BSchool.city.isnot(None) & B2BSchool.city.ilike(term)),
+            )
+        )
     schools = query.all()
     return [_school_to_response(db, s) for s in schools]
 
@@ -490,6 +538,8 @@ async def create_b2b_school(
         next_step=payload.next_step,
         next_step_date=payload.next_step_date,
         manager_id=payload.manager_id,
+        source=payload.source,
+        priority=payload.priority,
         event_dates=payload.event_dates,
         meeting_scheduled_at=payload.meeting_scheduled_at,
         meeting_outcomes=payload.meeting_outcomes,

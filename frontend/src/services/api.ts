@@ -961,16 +961,30 @@ export const b2bApi = {
     today: B2BSchool[];
     tomorrow: B2BSchool[];
     week: B2BSchool[];
+    no_contacts: B2BSchool[];
+    no_touches_7d: B2BSchool[];
+    event_done_no_leads: B2BSchool[];
+    negotiations_14d: B2BSchool[];
   }> => {
     const params = city ? { city } : {};
     const response = await api.get('/api/b2b-schools/plan-for-today', { params });
     return response.data;
   },
-  listSchools: async (opts?: { pipeline_stage?: string; project_id?: number; city?: string }): Promise<B2BSchool[]> => {
-    const params: any = {};
+  listSchools: async (opts?: {
+    pipeline_stage?: string;
+    project_id?: number;
+    city?: string;
+    manager_id?: number;
+    overdue?: boolean;
+    search?: string;
+  }): Promise<B2BSchool[]> => {
+    const params: Record<string, unknown> = {};
     if (opts?.pipeline_stage) params.pipeline_stage = opts.pipeline_stage;
-    if (opts?.project_id) params.project_id = opts.project_id;
+    if (opts?.project_id != null) params.project_id = opts.project_id;
     if (opts?.city) params.city = opts.city;
+    if (opts?.manager_id != null) params.manager_id = opts.manager_id;
+    if (opts?.overdue === true) params.overdue = true;
+    if (opts?.search?.trim()) params.search = opts.search.trim();
     const response = await api.get('/api/b2b-schools', { params });
     return response.data;
   },
@@ -989,6 +1003,8 @@ export const b2bApi = {
     next_step?: string | null;
     next_step_date?: string | null;
     manager_id?: number | null;
+    source?: string | null;
+    priority?: string | null;
     event_dates?: string[];
     meeting_scheduled_at?: string | null;
     meeting_outcomes?: string | null;
@@ -1010,6 +1026,10 @@ export const b2bApi = {
       next_step: string | null;
       next_step_date: string | null;
       manager_id: number | null;
+      source: string | null;
+      priority: string | null;
+      support_letter_status: string | null;
+      partnership: Record<string, boolean> | null;
       event_dates: string[];
       meeting_scheduled_at: string | null;
       meeting_outcomes: string | null;

@@ -949,6 +949,10 @@ class B2BSchool(Base):
     next_step = Column(Text, nullable=True)
     next_step_date = Column(Date, nullable=True, index=True)
     manager_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    source = Column(String(256), nullable=True)
+    priority = Column(String(64), nullable=True)
+    support_letter_status = Column(String(32), nullable=True)  # not_needed, requested, received, archive
+    partnership = Column(JSON, nullable=True)  # checklist: {invited, agreement_sent, signed_school, signed_both, originals_received, icon_on_site, active_partner}
     event_dates = Column(JSON, nullable=True)
     meeting_scheduled_at = Column(DateTime(timezone=True), nullable=True)
     meeting_outcomes = Column(Text, nullable=True)

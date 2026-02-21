@@ -544,6 +544,10 @@ export interface B2BSchool {
   next_step_date?: string | null;
   manager_id?: number | null;
   manager_full_name?: string | null;
+  source?: string | null;
+  priority?: string | null;
+  support_letter_status?: string | null;
+  partnership?: Record<string, boolean> | null;
   event_dates?: string[] | null;
   meeting_scheduled_at?: string | null;
   meeting_outcomes?: string | null;

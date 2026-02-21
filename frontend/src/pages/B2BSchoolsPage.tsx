@@ -6,17 +6,21 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
   InputLabel,
   MenuItem,
   Paper,
+  Radio,
+  RadioGroup,
   Select,
   Stack,
   Table,
@@ -62,6 +66,21 @@ const B2BSchoolsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSchool, setEditingSchool] = useState<B2BSchool | null>(null);
+  const PARTNERSHIP_KEYS = [
+    { key: 'invited', label: 'Пригласили' },
+    { key: 'agreement_sent', label: 'Отправили соглашение' },
+    { key: 'signed_school', label: 'Подписано школой' },
+    { key: 'signed_both', label: 'Подписано с двух сторон' },
+    { key: 'originals_received', label: 'Оригиналы получены' },
+    { key: 'icon_on_site', label: 'Иконка на сайт' },
+    { key: 'active_partner', label: 'Активный партнёр' },
+  ] as const;
+  const SUPPORT_LETTER_OPTIONS = [
+    { value: '', label: 'Не требуется' },
+    { value: 'requested', label: 'Запрошено' },
+    { value: 'received', label: 'Получено' },
+    { value: 'archive', label: 'Архив' },
+  ];
   const [form, setForm] = useState({
     name: '',
     director: '',
@@ -73,6 +92,8 @@ const B2BSchoolsPage: React.FC = () => {
     next_step: '',
     next_step_date: '',
     manager_id: '' as number | '',
+    support_letter_status: '',
+    partnership: {} as Record<string, boolean>,
     event_dates: '',
     meeting_scheduled_at: '',
     meeting_outcomes: '',
@@ -93,22 +114,50 @@ const B2BSchoolsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
   const [draggingSchoolId, setDraggingSchoolId] = useState<number | null>(null);
   const [dropTargetStage, setDropTargetStage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedManagerId, setSelectedManagerId] = useState<number | ''>('');
+  const [selectedStageFilter, setSelectedStageFilter] = useState<string>('');
+  const [filterOverdue, setFilterOverdue] = useState(false);
+  const [stageDropDialog, setStageDropDialog] = useState<{
+    schoolId: number;
+    targetStage: string;
+    schoolName: string;
+  } | null>(null);
+  const [stageDropForm, setStageDropForm] = useState({
+    what_done: '' as 'call' | 'letter' | 'meeting' | '',
+    next_step: '',
+    next_step_date: '',
+  });
 
-  const loadSchools = useCallback(async (projectId?: number | null, city?: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await b2bApi.listSchools({
-        ...(projectId ? { project_id: projectId } : {}),
-        ...(city ? { city } : {}),
-      });
-      setSchools(data);
-    } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось загрузить школы'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadSchools = useCallback(
+    async (opts?: {
+      projectId?: number | null;
+      city?: string;
+      manager_id?: number | null;
+      pipeline_stage?: string;
+      overdue?: boolean;
+      search?: string;
+    }) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await b2bApi.listSchools({
+          ...(opts?.projectId ? { project_id: opts.projectId } : {}),
+          ...(opts?.city ? { city: opts.city } : {}),
+          ...(opts?.manager_id != null ? { manager_id: opts.manager_id } : {}),
+          ...(opts?.pipeline_stage ? { pipeline_stage: opts.pipeline_stage } : {}),
+          ...(opts?.overdue === true ? { overdue: true } : {}),
+          ...(opts?.search?.trim() ? { search: opts.search.trim() } : {}),
+        });
+        setSchools(data);
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось загрузить школы'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     (async () => {
@@ -129,8 +178,23 @@ const B2BSchoolsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
-  }, [selectedCity, selectedProjectId, loadSchools]);
+    loadSchools({
+      projectId: selectedProjectId ?? undefined,
+      city: selectedCity || undefined,
+      manager_id: selectedManagerId === '' ? undefined : selectedManagerId,
+      pipeline_stage: selectedStageFilter || undefined,
+      overdue: filterOverdue || undefined,
+      search: searchQuery.trim() || undefined,
+    });
+  }, [
+    selectedCity,
+    selectedProjectId,
+    selectedManagerId,
+    selectedStageFilter,
+    filterOverdue,
+    searchQuery,
+    loadSchools,
+  ]);
 
   const schoolsByStage = PIPELINE_STAGES.map((stage) => ({
     ...stage,
@@ -150,6 +214,8 @@ const B2BSchoolsPage: React.FC = () => {
       next_step: '',
       next_step_date: '',
       manager_id: '',
+      support_letter_status: '',
+      partnership: {},
       event_dates: '',
       meeting_scheduled_at: '',
       meeting_outcomes: '',
@@ -178,6 +244,8 @@ const B2BSchoolsPage: React.FC = () => {
       next_step: school.next_step ?? '',
       next_step_date: nextDate,
       manager_id: school.manager_id ?? '',
+      support_letter_status: school.support_letter_status ?? '',
+      partnership: (school.partnership && typeof school.partnership === 'object' ? school.partnership as Record<string, boolean> : {}),
       event_dates: Array.isArray(school.event_dates) ? school.event_dates.join(', ') : '',
       meeting_scheduled_at: meetingAt,
       meeting_outcomes: school.meeting_outcomes ?? '',
@@ -346,6 +414,10 @@ const B2BSchoolsPage: React.FC = () => {
       meeting_outcomes: form.pipeline_stage === 'meeting_held' ? (form.meeting_outcomes.trim() || null) : undefined,
       walkthrough_scheduled_at: walkAt,
     };
+    if (editingSchool) {
+      payload.support_letter_status = form.support_letter_status.trim() || null;
+      payload.partnership = Object.keys(form.partnership).length ? form.partnership : null;
+    }
     try {
       if (editingSchool) {
         await b2bApi.updateSchool(editingSchool.id, payload);
@@ -353,7 +425,14 @@ const B2BSchoolsPage: React.FC = () => {
         await b2bApi.createSchool(payload);
       }
       setDialogOpen(false);
-      await loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
+      await loadSchools({
+        projectId: selectedProjectId ?? undefined,
+        city: selectedCity || undefined,
+        manager_id: selectedManagerId === '' ? undefined : selectedManagerId,
+        pipeline_stage: selectedStageFilter || undefined,
+        overdue: filterOverdue || undefined,
+        search: searchQuery.trim() || undefined,
+      });
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось сохранить школу'));
     }
@@ -362,7 +441,14 @@ const B2BSchoolsPage: React.FC = () => {
   const handleStageChange = async (school: B2BSchool, newStage: B2BSchoolPipelineStage) => {
     try {
       await b2bApi.updateSchool(school.id, { pipeline_stage: newStage });
-      await loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
+      await loadSchools({
+        projectId: selectedProjectId ?? undefined,
+        city: selectedCity || undefined,
+        manager_id: selectedManagerId === '' ? undefined : selectedManagerId,
+        pipeline_stage: selectedStageFilter || undefined,
+        overdue: filterOverdue || undefined,
+        search: searchQuery.trim() || undefined,
+      });
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось изменить стадию'));
     }
@@ -378,12 +464,28 @@ const B2BSchoolsPage: React.FC = () => {
       setDropTargetStage(null);
       try {
         await b2bApi.updateSchool(schoolId, { pipeline_stage: targetStage });
-        await loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
+        await loadSchools({
+          projectId: selectedProjectId ?? undefined,
+          city: selectedCity || undefined,
+          manager_id: selectedManagerId === '' ? undefined : selectedManagerId,
+          pipeline_stage: selectedStageFilter || undefined,
+          overdue: filterOverdue || undefined,
+          search: searchQuery.trim() || undefined,
+        });
       } catch (err: any) {
         setError(extractApiError(err, 'Не удалось перенести школу'));
       }
     },
-    [schools, selectedProjectId, selectedCity, loadSchools]
+    [
+      schools,
+      selectedProjectId,
+      selectedCity,
+      selectedManagerId,
+      selectedStageFilter,
+      filterOverdue,
+      searchQuery,
+      loadSchools,
+    ]
   );
 
   const schoolsForTable = useMemo(
@@ -399,12 +501,43 @@ const B2BSchoolsPage: React.FC = () => {
     [schools]
   );
 
+  const handleStageDropDialogSubmit = async () => {
+    if (!stageDropDialog) return;
+    setError(null);
+    try {
+      const payload: { pipeline_stage: string; next_step?: string | null; next_step_date?: string | null } = {
+        pipeline_stage: stageDropDialog.targetStage,
+      };
+      if (stageDropForm.next_step.trim()) payload.next_step = stageDropForm.next_step.trim();
+      if (stageDropForm.next_step_date.trim()) payload.next_step_date = stageDropForm.next_step_date.trim();
+      await b2bApi.updateSchool(stageDropDialog.schoolId, payload);
+      setStageDropDialog(null);
+      await loadSchools({
+        projectId: selectedProjectId ?? undefined,
+        city: selectedCity || undefined,
+        manager_id: selectedManagerId === '' ? undefined : selectedManagerId,
+        pipeline_stage: selectedStageFilter || undefined,
+        overdue: filterOverdue || undefined,
+        search: searchQuery.trim() || undefined,
+      });
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось обновить школу'));
+    }
+  };
+
   const handleDelete = async (school: B2BSchool) => {
     if (!window.confirm(`Удалить школу «${school.name}»?`)) return;
     try {
       await b2bApi.deleteSchool(school.id);
       setDialogOpen(false);
-      await loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
+      await loadSchools({
+        projectId: selectedProjectId ?? undefined,
+        city: selectedCity || undefined,
+        manager_id: selectedManagerId === '' ? undefined : selectedManagerId,
+        pipeline_stage: selectedStageFilter || undefined,
+        overdue: filterOverdue || undefined,
+        search: searchQuery.trim() || undefined,
+      });
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось удалить школу'));
     }
@@ -429,6 +562,14 @@ const B2BSchoolsPage: React.FC = () => {
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} spacing={2}>
         <Typography variant="h4">B2B (школы)</Typography>
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+          <TextField
+            size="small"
+            label="Поиск школы"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Название или город"
+            sx={{ minWidth: 200 }}
+          />
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Город</InputLabel>
             <Select
@@ -442,6 +583,49 @@ const B2BSchoolsPage: React.FC = () => {
               ))}
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Ответственный</InputLabel>
+            <Select
+              label="Ответственный"
+              value={selectedManagerId === '' ? '' : selectedManagerId}
+              onChange={(e) => setSelectedManagerId(e.target.value === '' ? '' : (e.target.value as number))}
+            >
+              <MenuItem value="">
+                <em>Все</em>
+              </MenuItem>
+              {managers.map((m) => (
+                <MenuItem key={m.id} value={m.id}>
+                  {m.full_name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 220 }}>
+            <InputLabel>Стадия</InputLabel>
+            <Select
+              label="Стадия"
+              value={selectedStageFilter}
+              onChange={(e) => setSelectedStageFilter(e.target.value)}
+            >
+              <MenuItem value="">
+                <em>Все</em>
+              </MenuItem>
+              {PIPELINE_STAGES.map((s) => (
+                <MenuItem key={s.value} value={s.value}>
+                  {s.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={filterOverdue}
+                onChange={(e) => setFilterOverdue(e.target.checked)}
+              />
+            }
+            label="Просрочено"
+          />
           <FormControl size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Проект</InputLabel>
             <Select
@@ -498,18 +682,21 @@ const B2BSchoolsPage: React.FC = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Название</TableCell>
-                <TableCell>Директор</TableCell>
                 <TableCell>Город</TableCell>
                 <TableCell>Стадия</TableCell>
                 <TableCell>След. действие</TableCell>
                 <TableCell>Ответственный</TableCell>
+                <TableCell align="right">Лиды</TableCell>
+                <TableCell align="right">Мероприятий</TableCell>
+                <TableCell>Партнёрство</TableCell>
+                <TableCell>Степень дружбы</TableCell>
                 <TableCell align="right" width={100}>Действия</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {schoolsForTable.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 3, color: 'text.secondary' }}>
                     Нет школ
                   </TableCell>
                 </TableRow>
@@ -517,7 +704,6 @@ const B2BSchoolsPage: React.FC = () => {
               schoolsForTable.map((school) => (
                 <TableRow key={school.id} hover sx={{ cursor: 'pointer' }} onClick={() => openEdit(school)}>
                   <TableCell>{school.name}</TableCell>
-                  <TableCell>{school.director || '—'}</TableCell>
                   <TableCell>{school.city || '—'}</TableCell>
                   <TableCell>
                     {PIPELINE_STAGES.find((s) => s.value === school.pipeline_stage)?.label ?? school.pipeline_stage}
@@ -533,6 +719,18 @@ const B2BSchoolsPage: React.FC = () => {
                     )}
                   </TableCell>
                   <TableCell>{school.manager_full_name || '—'}</TableCell>
+                  <TableCell align="right">{school.leads_count ?? 0}</TableCell>
+                  <TableCell align="right">
+                    {Array.isArray(school.event_dates) ? school.event_dates.length : 0}
+                  </TableCell>
+                  <TableCell>
+                    {school.pipeline_stage === 'partners' || (school.partnership as Record<string, boolean>)?.active_partner
+                      ? 'Партнёр'
+                      : '—'}
+                  </TableCell>
+                  <TableCell>
+                    {FRIENDSHIP_DEGREES.find((d) => d.value === school.friendship_degree)?.label ?? school.friendship_degree ?? '—'}
+                  </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     <IconButton size="small" onClick={() => openEdit(school)} aria-label="Редактировать">
                       <Edit fontSize="small" />
@@ -567,7 +765,23 @@ const B2BSchoolsPage: React.FC = () => {
                   onDrop={(e) => {
                     e.preventDefault();
                     const schoolId = e.dataTransfer.getData('schoolId');
-                    if (schoolId) void handleStageDrop(col.value as B2BSchoolPipelineStage, schoolId);
+                    const id = schoolId ? Number(schoolId) : 0;
+                    if (id && Number.isFinite(id)) {
+                      const school = schools.find((s) => s.id === id);
+                      if (school && (school.pipeline_stage as string) !== col.value) {
+                        setStageDropDialog({
+                          schoolId: id,
+                          targetStage: col.value,
+                          schoolName: school.name || 'Школа',
+                        });
+                        setStageDropForm({ what_done: '', next_step: '', next_step_date: '' });
+                      } else if (school) {
+                        setDropTargetStage(null);
+                        return;
+                      } else {
+                        void handleStageDrop(col.value as B2BSchoolPipelineStage, schoolId);
+                      }
+                    }
                     setDropTargetStage(null);
                   }}
                 >
@@ -651,6 +865,9 @@ const B2BSchoolsPage: React.FC = () => {
                               <Chip size="small" label={`Учеников: ${school.student_count ?? '—'}`} />
                               <Chip size="small" label={`Лидов: ${school.leads_count ?? 0}`} />
                               <Chip size="small" color="success" label={`Конверсия: ${school.conversion_percent ?? 0}%`} />
+                              {(school.pipeline_stage === 'partners' || (school.partnership as Record<string, boolean>)?.active_partner) && (
+                                <Chip size="small" color="primary" label="Партнёр" />
+                              )}
                             </Stack>
                             <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
                               Мероприятия: {formatEventDates(school.event_dates ?? undefined)}
@@ -680,6 +897,78 @@ const B2BSchoolsPage: React.FC = () => {
           </Grid>
         </Box>
       )}
+
+      <Dialog
+        open={!!stageDropDialog}
+        onClose={() => setStageDropDialog(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>
+          Перенести в стадию «{stageDropDialog ? PIPELINE_STAGES.find((s) => s.value === stageDropDialog.targetStage)?.label : ''}»
+        </DialogTitle>
+        <DialogContent>
+          {stageDropDialog && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                {stageDropDialog.schoolName}
+              </Typography>
+              <FormControl component="fieldset">
+                <Typography variant="subtitle2" gutterBottom>Что сделали?</Typography>
+                <RadioGroup
+                  value={stageDropForm.what_done}
+                  onChange={(e) => setStageDropForm((f) => ({ ...f, what_done: e.target.value as 'call' | 'letter' | 'meeting' }))}
+                >
+                  <FormControlLabel value="call" control={<Radio size="small" />} label="Звонок" />
+                  <FormControlLabel value="letter" control={<Radio size="small" />} label="Письмо" />
+                  <FormControlLabel value="meeting" control={<Radio size="small" />} label="Встреча" />
+                </RadioGroup>
+              </FormControl>
+              <TextField
+                label="Следующее действие"
+                value={stageDropForm.next_step}
+                onChange={(e) => setStageDropForm((f) => ({ ...f, next_step: e.target.value }))}
+                fullWidth
+                size="small"
+              />
+              <TextField
+                label="Дата след. действия"
+                type="date"
+                value={stageDropForm.next_step_date}
+                onChange={(e) => setStageDropForm((f) => ({ ...f, next_step_date: e.target.value }))}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStageDropDialog(null)}>Отмена</Button>
+          <Button
+            onClick={() => {
+              if (stageDropDialog) {
+                void b2bApi.updateSchool(stageDropDialog.schoolId, { pipeline_stage: stageDropDialog.targetStage }).then(() => {
+                  setStageDropDialog(null);
+                  loadSchools({
+                    projectId: selectedProjectId ?? undefined,
+                    city: selectedCity || undefined,
+                    manager_id: selectedManagerId === '' ? undefined : selectedManagerId,
+                    pipeline_stage: selectedStageFilter || undefined,
+                    overdue: filterOverdue || undefined,
+                    search: searchQuery.trim() || undefined,
+                  });
+                });
+              }
+            }}
+          >
+            Перенести без заполнения
+          </Button>
+          <Button variant="contained" onClick={() => void handleStageDropDialogSubmit()}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingSchool ? 'Редактировать школу' : 'Новая школа'}</DialogTitle>
@@ -813,6 +1102,42 @@ const B2BSchoolsPage: React.FC = () => {
               />
             )}
 
+            <FormControl fullWidth sx={{ mt: 1 }}>
+              <InputLabel>Письмо поддержки</InputLabel>
+              <Select
+                value={form.support_letter_status}
+                label="Письмо поддержки"
+                onChange={(e) => setForm((f) => ({ ...f, support_letter_status: e.target.value }))}
+              >
+                {SUPPORT_LETTER_OPTIONS.map((o) => (
+                  <MenuItem key={o.value || 'none'} value={o.value}>{o.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>Партнёрство</Typography>
+              <Stack direction="row" flexWrap="wrap" gap={1}>
+                {PARTNERSHIP_KEYS.map(({ key, label }) => (
+                  <FormControlLabel
+                    key={key}
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={!!form.partnership[key]}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            partnership: { ...f.partnership, [key]: e.target.checked },
+                          }))
+                        }
+                      />
+                    }
+                    label={label}
+                  />
+                ))}
+              </Stack>
+            </Box>
+
             {editingSchool && (
               <Box>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
@@ -827,7 +1152,7 @@ const B2BSchoolsPage: React.FC = () => {
                       <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                         <Box>
                           <Typography variant="body2" fontWeight="medium">{c.full_name}</Typography>
-                          <Typography variant="caption" color="text.secondary">{c.position || 'тАФ'}</Typography>
+                          <Typography variant="caption" color="text.secondary">{c.position || '—'}</Typography>
                           <Typography variant="caption" display="block">{c.phone}</Typography>
                           {c.phone_extra && (
                             <Typography variant="caption" display="block" color="text.secondary">Доп. тел.: {c.phone_extra}</Typography>

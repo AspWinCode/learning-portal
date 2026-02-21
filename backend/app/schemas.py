@@ -1371,6 +1371,19 @@ class B2BSchoolResponse(BaseModel):
         from_attributes = True
 
 
+class B2BLeadListItem(BaseModel):
+    """Элемент списка лидов по B2B-школе для карточки."""
+    id: int
+    contact_name: str
+    phone: str
+    status: str
+    source: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class B2BSchoolImportResponse(BaseModel):
     created: int
     skipped: int

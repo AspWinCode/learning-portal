@@ -1003,6 +1003,14 @@ export const b2bApi = {
     const response = await api.get(`/api/b2b-schools/${id}`);
     return response.data;
   },
+  listSchoolLeads: async (schoolId: number): Promise<{ id: number; contact_name: string; phone: string; status: string; source: string | null; created_at: string }[]> => {
+    const response = await api.get(`/api/b2b-schools/${schoolId}/leads`);
+    return response.data;
+  },
+  transferSchoolLeads: async (schoolId: number): Promise<{ updated: number }> => {
+    const response = await api.post(`/api/b2b-schools/${schoolId}/leads/transfer`);
+    return response.data;
+  },
   createSchool: async (payload: {
     name: string;
     director?: string;

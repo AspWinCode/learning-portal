@@ -31,6 +31,7 @@ from app.schemas import (
     B2BSchoolImportResponse,
     B2BSchoolResponse,
     B2BSchoolUpdate,
+    B2BLeadListItem,
     B2BProjectCreate,
     B2BProjectResponse,
     B2BProjectUpdate,
@@ -643,6 +644,54 @@ async def get_b2b_school(
 ):
     school = _load_school_with_contacts(db, school_id)
     return _school_to_response(db, school)
+
+
+@router.get("/b2b-schools/{school_id}/leads", response_model=List[B2BLeadListItem])
+async def list_school_leads(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Список лидов по B2B-школе для карточки."""
+    school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    leads = (
+        db.query(Lead)
+        .filter(Lead.b2b_school_id == school_id)
+        .order_by(Lead.created_at.desc())
+        .all()
+    )
+    return [
+        B2BLeadListItem(
+            id=l.id,
+            contact_name=l.contact_name,
+            phone=l.phone or "",
+            status=l.status.value if hasattr(l.status, "value") else str(l.status),
+            source=l.source,
+            created_at=l.created_at,
+        )
+        for l in leads
+    ]
+
+
+@router.post("/b2b-schools/{school_id}/leads/transfer")
+async def transfer_school_leads(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Передать лиды школы в обработку: статус NEW → CONTACTED."""
+    school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    updated = (
+        db.query(Lead)
+        .filter(Lead.b2b_school_id == school_id, Lead.status == LeadStatus.NEW)
+        .update({Lead.status: LeadStatus.CONTACTED}, synchronize_session="fetch")
+    )
+    db.commit()
+    return {"updated": updated}
 
 
 @router.post("/b2b-schools", response_model=B2BSchoolResponse, status_code=201)

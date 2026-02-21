@@ -383,6 +383,41 @@ const B2BSchoolsPage: React.FC = () => {
     }
   };
 
+  const [schoolLeads, setSchoolLeads] = useState<{ id: number; contact_name: string; phone: string; status: string; source: string | null; created_at: string }[]>([]);
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [transferLeadsLoading, setTransferLeadsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!dialogOpen || !editingSchool?.id) {
+      setSchoolLeads([]);
+      return;
+    }
+    setLoadingLeads(true);
+    b2bApi.listSchoolLeads(editingSchool.id).then((data) => {
+      setSchoolLeads(data);
+    }).catch(() => {
+      setSchoolLeads([]);
+    }).finally(() => {
+      setLoadingLeads(false);
+    });
+  }, [dialogOpen, editingSchool?.id]);
+
+  const handleTransferLeads = async () => {
+    if (!editingSchool) return;
+    setError(null);
+    setTransferLeadsLoading(true);
+    try {
+      const res = await b2bApi.transferSchoolLeads(editingSchool.id);
+      setSuccess(res.updated > 0 ? `Передано в обработку: ${res.updated} лид(ов)` : 'Нет лидов со статусом «Новый» для передачи');
+      const data = await b2bApi.listSchoolLeads(editingSchool.id);
+      setSchoolLeads(data);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось передать лиды'));
+    } finally {
+      setTransferLeadsLoading(false);
+    }
+  };
+
   const handleChangeProject = (projectId: number | null) => {
     setSelectedProjectId(projectId);
   };
@@ -1051,6 +1086,9 @@ const B2BSchoolsPage: React.FC = () => {
               <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-support-letter')}>
                 Письмо поддержки
               </Button>
+              <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-leads')}>
+                Лиды
+              </Button>
             </Stack>
           )}
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -1236,6 +1274,40 @@ const B2BSchoolsPage: React.FC = () => {
                 ))}
               </Stack>
             </Box>
+
+            {editingSchool && (
+              <Box id="card-section-leads">
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2">Лиды</Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={transferLeadsLoading || schoolLeads.length === 0}
+                    onClick={() => void handleTransferLeads()}
+                  >
+                    {transferLeadsLoading ? 'Отправка…' : 'Передать в обработку'}
+                  </Button>
+                </Stack>
+                {loadingLeads ? (
+                  <Typography variant="caption" color="text.secondary">Загрузка…</Typography>
+                ) : schoolLeads.length === 0 ? (
+                  <Typography variant="caption" color="text.secondary">Нет лидов по этой школе</Typography>
+                ) : (
+                  <Stack spacing={0.5}>
+                    {schoolLeads.map((lead) => (
+                      <Card key={lead.id} variant="outlined" sx={{ p: 1 }}>
+                        <Typography variant="body2" fontWeight="medium">{lead.contact_name}</Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">{lead.phone}</Typography>
+                        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                          <Chip size="small" label={lead.status} />
+                          {lead.source && <Typography variant="caption" color="text.secondary">Источник: {lead.source}</Typography>}
+                        </Stack>
+                      </Card>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+            )}
 
             {editingSchool && (
               <Box id="card-section-contacts">

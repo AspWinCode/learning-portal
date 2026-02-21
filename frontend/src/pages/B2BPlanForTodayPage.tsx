@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   FormControl,
   InputLabel,
   MenuItem,
@@ -21,11 +22,12 @@ import { extractApiError } from '../utils/extractApiError';
 import type { B2BSchool } from '../types';
 
 const Section: React.FC<{
+  id?: string;
   title: string;
   schools: B2BSchool[];
   onOpenSchool: (id: number) => void;
-}> = ({ title, schools, onOpenSchool }) => (
-  <Box>
+}> = ({ id, title, schools, onOpenSchool }) => (
+  <Box id={id}>
     <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
       {title} ({schools.length})
     </Typography>
@@ -70,6 +72,8 @@ const B2BPlanForTodayPage: React.FC = () => {
     no_next_step: B2BSchool[];
     find_contacts_stale: B2BSchool[];
     today: B2BSchool[];
+    tomorrow: B2BSchool[];
+    week: B2BSchool[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -133,10 +137,58 @@ const B2BPlanForTodayPage: React.FC = () => {
           <Typography color="text.secondary">Загрузка...</Typography>
         ) : data ? (
           <Stack spacing={3}>
-            <Section title="Просроченные следующие действия" schools={data.overdue} onOpenSchool={onOpenSchool} />
-            <Section title="Школы без следующего шага" schools={data.no_next_step} onOpenSchool={onOpenSchool} />
-            <Section title="Школы в статусе «Найти контакты» больше 3 дней" schools={data.find_contacts_stale} onOpenSchool={onOpenSchool} />
-            <Section title="Сегодня: дожим / перезвонить" schools={data.today} onOpenSchool={onOpenSchool} />
+            <Box>
+              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                Риски процесса
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={1}>
+                <Chip
+                  label={`Без след. действия: ${data.no_next_step.length}`}
+                  color={data.no_next_step.length > 0 ? 'warning' : 'default'}
+                  onClick={() => document.getElementById('section-no-next')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: data.no_next_step.length > 0 ? 'pointer' : 'default' }}
+                />
+                <Chip
+                  label={`Просрочено: ${data.overdue.length}`}
+                  color={data.overdue.length > 0 ? 'error' : 'default'}
+                  onClick={() => document.getElementById('section-overdue')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: data.overdue.length > 0 ? 'pointer' : 'default' }}
+                />
+                <Chip
+                  label={`Найти контакты >3 дн: ${data.find_contacts_stale.length}`}
+                  color={data.find_contacts_stale.length > 0 ? 'warning' : 'default'}
+                  onClick={() => document.getElementById('section-find-contacts')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: data.find_contacts_stale.length > 0 ? 'pointer' : 'default' }}
+                />
+                <Chip
+                  label={`Сегодня: ${data.today.length}`}
+                  color="primary"
+                  variant={data.today.length > 0 ? 'filled' : 'outlined'}
+                  onClick={() => document.getElementById('section-today')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: 'pointer' }}
+                />
+                <Chip
+                  label={`Завтра: ${data.tomorrow.length}`}
+                  color="primary"
+                  variant={data.tomorrow.length > 0 ? 'filled' : 'outlined'}
+                  onClick={() => document.getElementById('section-tomorrow')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: 'pointer' }}
+                />
+                <Chip
+                  label={`На неделе: ${data.week.length}`}
+                  color="primary"
+                  variant={data.week.length > 0 ? 'filled' : 'outlined'}
+                  onClick={() => document.getElementById('section-week')?.scrollIntoView({ behavior: 'smooth' })}
+                  sx={{ cursor: 'pointer' }}
+                />
+              </Stack>
+            </Box>
+            <Section id="section-overdue" title="Просроченные следующие действия" schools={data.overdue} onOpenSchool={onOpenSchool} />
+            <Section id="section-no-next" title="Школы без следующего шага" schools={data.no_next_step} onOpenSchool={onOpenSchool} />
+            <Section id="section-find-contacts" title="Школы в статусе «Найти контакты» больше 3 дней" schools={data.find_contacts_stale} onOpenSchool={onOpenSchool} />
+            <Section id="section-today" title="Сегодня: дожим / перезвонить" schools={data.today} onOpenSchool={onOpenSchool} />
+            <Section id="section-tomorrow" title="Завтра" schools={data.tomorrow} onOpenSchool={onOpenSchool} />
+            <Section id="section-week" title="На неделе" schools={data.week} onOpenSchool={onOpenSchool} />
           </Stack>
         ) : null}
       </Stack>

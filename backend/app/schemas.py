@@ -1361,6 +1361,12 @@ class B2BSchoolResponse(BaseModel):
         from_attributes = True
 
 
+class B2BSchoolImportResponse(BaseModel):
+    created: int
+    skipped: int
+    errors: List[str] = []
+
+
 class B2BProjectBase(BaseModel):
     name: str
     location: Optional[str] = None

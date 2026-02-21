@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -8,7 +9,9 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Checkbox,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputLabel,
   MenuItem,
@@ -22,39 +25,24 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import Add from '@mui/icons-material/Add';
 import Delete from '@mui/icons-material/Delete';
 import Edit from '@mui/icons-material/Edit';
+import PlayArrow from '@mui/icons-material/PlayArrow';
+import Person from '@mui/icons-material/Person';
+import OpenInNew from '@mui/icons-material/OpenInNew';
 import Layout from '../components/Layout';
 import { b2bApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, addDays } from 'date-fns';
 import type { B2BSchool, B2BSchoolContact, B2BSchoolPipelineStage } from '../types';
+import { ALL_FUNNEL_STAGES, hasNoNextAction } from '../constants/b2bFunnel';
 
-const PIPELINE_STAGES: { value: B2BSchoolPipelineStage; label: string }[] = [
-  { value: 'new', label: 'Новая' },
-  { value: 'find_contacts', label: 'Найти контакты' },
-  { value: 'first_contact', label: 'Первичный контакт' },
-  { value: 'contact_found', label: 'Контакт найден' },
-  { value: 'letter_sent', label: 'Письмо отправлено' },
-  { value: 'meeting_scheduled', label: 'Назначена встреча' },
-  { value: 'agreement', label: 'Согласование' },
-  { value: 'meeting_held', label: 'Встреча проведена' },
-  { value: 'permission_received', label: 'Разрешение получено' },
-  { value: 'event_scheduled', label: 'Запланировано мероприятие' },
-  { value: 'walkthrough_scheduled', label: 'Назначена дата обхода' },
-  { value: 'event_done', label: 'Проведено' },
-  { value: 'walkthrough_done', label: 'Обход проведён' },
-  { value: 'leads_received', label: 'Лиды получены' },
-  { value: 'thank_you', label: 'Благодарности' },
-  { value: 'support_letter_requested', label: 'Письмо поддержки запрошено' },
-  { value: 'support_letter_received', label: 'Письмо поддержки получено' },
-  { value: 'partners', label: 'Партнёры' },
-  { value: 'rejected', label: 'Отказ/Заморозка' },
-];
+const PIPELINE_STAGES = ALL_FUNNEL_STAGES;
 
 const FRIENDSHIP_DEGREES: { value: string; label: string }[] = [
   { value: 'unknown', label: 'Не знаем друг друга' },
@@ -89,6 +77,7 @@ const B2BSchoolCreatePage: React.FC = () => {
     student_count: '' as number | '',
     friendship_degree: '',
     pipeline_stage: 'new' as B2BSchoolPipelineStage,
+    manager_id: '' as number | '',
     event_dates: '',
   });
   const [schools, setSchools] = useState<B2BSchool[]>([]);
@@ -106,6 +95,14 @@ const B2BSchoolCreatePage: React.FC = () => {
   const [contactForm, setContactForm] = useState({ full_name: '', position: '', phone: '', phone_extra: '' });
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<B2BSchoolContact | null>(null);
+  const [launchingId, setLaunchingId] = useState<number | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importCity, setImportCity] = useState('');
+  const [importManagerId, setImportManagerId] = useState<number | ''>('');
+  const [importLaunch, setImportLaunch] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
+  const navigate = useNavigate();
 
   const loadSchools = useCallback(async () => {
     setLoading(true);
@@ -281,8 +278,9 @@ const B2BSchoolCreatePage: React.FC = () => {
   }, [schools]);
 
   const filteredSchools = useMemo(() => {
-    if (!filterCity) return schools;
-    return schools.filter((s) => s.city === filterCity);
+    let list = schools.filter((s) => s.pipeline_stage === 'new');
+    if (filterCity) list = list.filter((s) => s.city === filterCity);
+    return list;
   }, [schools, filterCity]);
 
   const handleSave = async () => {
@@ -316,6 +314,7 @@ const B2BSchoolCreatePage: React.FC = () => {
         student_count: '',
         friendship_degree: '',
         pipeline_stage: 'new',
+        manager_id: '',
         event_dates: '',
       });
       await loadSchools();
@@ -323,6 +322,129 @@ const B2BSchoolCreatePage: React.FC = () => {
       setError(extractApiError(err, 'Не удалось сохранить школу'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const NEXT_STEP_LAUNCH = 'Найти контакты (директор/завуч/информатика)';
+
+  const handleSaveAndLaunch = async () => {
+    setError(null);
+    setSuccess(null);
+    if (!form.name.trim()) {
+      setError('Укажите название школы');
+      return;
+    }
+    const managerId = form.manager_id === '' ? undefined : form.manager_id;
+    if (managerId == null) {
+      setError('Для запуска в работу укажите ответственного');
+      return;
+    }
+    setSaving(true);
+    try {
+      const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+      const eventDates = form.event_dates
+        ? form.event_dates.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
+        : undefined;
+      await b2bApi.createSchool({
+        name: form.name.trim(),
+        director: form.director.trim() || undefined,
+        city: form.city.trim() || undefined,
+        address: form.address.trim() || undefined,
+        student_count: form.student_count === '' ? undefined : Number(form.student_count),
+        friendship_degree: form.friendship_degree || undefined,
+        pipeline_stage: 'find_contacts',
+        next_step: NEXT_STEP_LAUNCH,
+        next_step_date: tomorrow,
+        manager_id: managerId,
+        event_dates: eventDates,
+      });
+      setSuccess('Школа создана и запущена в работу');
+      setForm({
+        name: '',
+        director: '',
+        city: '',
+        address: '',
+        student_count: '',
+        friendship_degree: '',
+        pipeline_stage: 'new',
+        manager_id: '',
+        event_dates: '',
+      });
+      await loadSchools();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось создать школу'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLaunch = async (e: React.MouseEvent, school: B2BSchool) => {
+    e.stopPropagation();
+    setLaunchingId(school.id);
+    setError(null);
+    try {
+      const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+      await b2bApi.updateSchool(school.id, {
+        pipeline_stage: 'find_contacts',
+        next_step: NEXT_STEP_LAUNCH,
+        next_step_date: tomorrow,
+      });
+      setSuccess(`Школа «${school.name}» запущена в работу`);
+      await loadSchools();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось запустить в работу'));
+    } finally {
+      setLaunchingId(null);
+    }
+  };
+
+  const handleOpenCard = (e: React.MouseEvent, school: B2BSchool) => {
+    e.stopPropagation();
+    navigate(`/b2b-schools?open=${school.id}`);
+  };
+
+  const handleDelete = async (e: React.MouseEvent, school: B2BSchool) => {
+    e.stopPropagation();
+    if (!window.confirm(`Удалить школу «${school.name}»?`)) return;
+    setError(null);
+    try {
+      await b2bApi.deleteSchool(school.id);
+      setSuccess('Школа удалена');
+      await loadSchools();
+      if (editingSchool?.id === school.id) {
+        setCardDialogOpen(false);
+        setEditingSchool(null);
+      }
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось удалить школу'));
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      setError('Выберите файл для импорта');
+      return;
+    }
+    setError(null);
+    setImportResult(null);
+    setImporting(true);
+    try {
+      const res = await b2bApi.importSchools({
+        file: importFile,
+        city: importCity.trim() || undefined,
+        manager_id: importManagerId === '' ? undefined : importManagerId,
+        launch_in_work: importLaunch,
+      });
+      setImportResult(res);
+      if (res.created > 0) {
+        setSuccess(`Импорт: создано ${res.created}, пропущено ${res.skipped}`);
+        await loadSchools();
+      }
+      setImportFile(null);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось импортировать файл'));
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -405,6 +527,25 @@ const B2BSchoolCreatePage: React.FC = () => {
               placeholder="2025-03-01, 2025-03-15"
             />
             <FormControl fullWidth>
+              <InputLabel>Ответственный</InputLabel>
+              <Select
+                value={form.manager_id === '' ? '' : form.manager_id}
+                label="Ответственный"
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, manager_id: e.target.value === '' ? '' : (e.target.value as number) }))
+                }
+              >
+                <MenuItem value="">
+                  <em>Не выбрано</em>
+                </MenuItem>
+                {managers.map((m) => (
+                  <MenuItem key={m.id} value={m.id}>
+                    {m.full_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth>
               <InputLabel>Стадия воронки</InputLabel>
               <Select
                 value={form.pipeline_stage}
@@ -421,7 +562,7 @@ const B2BSchoolCreatePage: React.FC = () => {
               </Select>
             </FormControl>
 
-            <Box>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               <Button
                 variant="contained"
                 startIcon={<Add />}
@@ -430,8 +571,97 @@ const B2BSchoolCreatePage: React.FC = () => {
               >
                 Создать школу
               </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<PlayArrow />}
+                onClick={() => void handleSaveAndLaunch()}
+                disabled={saving}
+              >
+                Создать и запустить в работу
+              </Button>
             </Box>
           </Stack>
+        </Box>
+
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>Импорт из файла</Typography>
+          <Stack direction="row" alignItems="center" flexWrap="wrap" spacing={2} sx={{ mb: 1 }}>
+            <Button variant="outlined" component="label">
+              Выбрать Excel/CSV
+              <input
+                type="file"
+                hidden
+                accept=".xlsx,.csv"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  setImportFile(f || null);
+                  setImportResult(null);
+                }}
+              />
+            </Button>
+            {importFile && (
+              <Typography variant="body2" color="text.secondary">
+                {importFile.name}
+              </Typography>
+            )}
+            <TextField
+              size="small"
+              label="Город (по умолчанию)"
+              value={importCity}
+              onChange={(e) => setImportCity(e.target.value)}
+              sx={{ minWidth: 180 }}
+              placeholder="для всех строк"
+            />
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Ответственный (по умолчанию)</InputLabel>
+              <Select
+                value={importManagerId === '' ? '' : importManagerId}
+                label="Ответственный (по умолчанию)"
+                onChange={(e) => setImportManagerId(e.target.value === '' ? '' : (e.target.value as number))}
+              >
+                <MenuItem value="">
+                  <em>Не выбрано</em>
+                </MenuItem>
+                {managers.map((m) => (
+                  <MenuItem key={m.id} value={m.id}>
+                    {m.full_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={importLaunch}
+                  onChange={(e) => setImportLaunch(e.target.checked)}
+                />
+              }
+              label="Запустить в работу"
+            />
+            <Button
+              variant="contained"
+              onClick={() => void handleImport()}
+              disabled={importing || !importFile}
+            >
+              {importing ? 'Загрузка…' : 'Загрузить'}
+            </Button>
+          </Stack>
+          <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+            Формат: .xlsx или .csv. Первая строка — заголовки. Колонки: название (обязательно), директор, город, адрес, учеников.
+          </Typography>
+          {importResult && (
+            <Alert severity={importResult.errors.length > 0 ? 'warning' : 'success'} sx={{ mt: 1 }}>
+              Создано: {importResult.created}, пропущено: {importResult.skipped}
+              {importResult.errors.length > 0 && (
+                <Box component="ul" sx={{ m: 0, pl: 2, mt: 0.5 }}>
+                  {importResult.errors.map((msg, idx) => (
+                    <li key={idx}>{msg}</li>
+                  ))}
+                </Box>
+              )}
+            </Alert>
+          )}
         </Box>
 
         <Box sx={{ mt: 4 }}>
@@ -468,14 +698,19 @@ const B2BSchoolCreatePage: React.FC = () => {
                     <TableCell>Город</TableCell>
                     <TableCell>Адрес</TableCell>
                     <TableCell align="right">Учеников</TableCell>
+                    <TableCell>Ответственный</TableCell>
+                    <TableCell>След. действие</TableCell>
                     <TableCell>Стадия</TableCell>
+                    <TableCell align="center" width={140}>Действия</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredSchools.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ py: 3 }} color="text.secondary">
-                        {schools.length === 0 ? 'Нет созданных школ' : 'Нет школ в выбранном городе'}
+                      <TableCell colSpan={9} align="center" sx={{ py: 3 }} color="text.secondary">
+                        {schools.filter((s) => s.pipeline_stage === 'new').length === 0
+                          ? 'Нет школ в стадии «Новая»'
+                          : 'Нет школ в выбранном городе'}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -483,7 +718,7 @@ const B2BSchoolCreatePage: React.FC = () => {
                       <TableRow
                         key={school.id}
                         hover
-                        sx={{ cursor: 'pointer' }}
+                        sx={{ cursor: 'pointer', ...(hasNoNextAction(school) ? { bgcolor: 'grey.100' } : {}) }}
                         onClick={() => openEdit(school)}
                       >
                         <TableCell>{school.name}</TableCell>
@@ -495,8 +730,50 @@ const B2BSchoolCreatePage: React.FC = () => {
                           </Typography>
                         </TableCell>
                         <TableCell align="right">{school.student_count ?? '—'}</TableCell>
+                        <TableCell>{school.manager_full_name || '—'}</TableCell>
+                        <TableCell sx={{ maxWidth: 180 }}>
+                          {hasNoNextAction(school) ? (
+                            <Typography variant="body2" color="warning.main">
+                              Не задано
+                            </Typography>
+                          ) : (
+                            <Typography variant="body2">
+                              {school.next_step}
+                              {school.next_step_date ? ` (${format(parseISO(school.next_step_date), 'dd.MM.yyyy')})` : ''}
+                            </Typography>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {PIPELINE_STAGES.find((s) => s.value === school.pipeline_stage)?.label ?? school.pipeline_stage}
+                        </TableCell>
+                        <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                          <Stack direction="row" spacing={0.5} justifyContent="center" flexWrap="wrap">
+                            <Tooltip title="Запустить в работу">
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                disabled={launchingId === school.id}
+                                onClick={(e) => void handleLaunch(e, school)}
+                              >
+                                <PlayArrow fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Назначить ответственного">
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); openEdit(school); }}>
+                                <Person fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Открыть карточку">
+                              <IconButton size="small" onClick={(e) => handleOpenCard(e, school)}>
+                                <OpenInNew fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Удалить">
+                              <IconButton size="small" color="error" onClick={(e) => void handleDelete(e, school)}>
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     ))

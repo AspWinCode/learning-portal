@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -15,41 +16,33 @@ import {
   IconButton,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import Add from '@mui/icons-material/Add';
 import Edit from '@mui/icons-material/Edit';
 import Delete from '@mui/icons-material/Delete';
+import ViewModule from '@mui/icons-material/ViewModule';
+import TableChart from '@mui/icons-material/TableChart';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import { b2bApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { B2BSchool, B2BSchoolPipelineStage, B2BSchoolContact, B2BProject } from '../types';
+import { ALL_FUNNEL_STAGES, hasNoNextAction } from '../constants/b2bFunnel';
 
-const PIPELINE_STAGES: { value: B2BSchoolPipelineStage; label: string }[] = [
-  { value: 'new', label: 'Новая' },
-  { value: 'find_contacts', label: 'Найти контакты' },
-  { value: 'first_contact', label: 'Первичный контакт' },
-  { value: 'contact_found', label: 'Контакт найден' },
-  { value: 'letter_sent', label: 'Письмо отправлено' },
-  { value: 'meeting_scheduled', label: 'Назначена встреча' },
-  { value: 'agreement', label: 'Согласование' },
-  { value: 'meeting_held', label: 'Встреча проведена' },
-  { value: 'permission_received', label: 'Разрешение получено' },
-  { value: 'event_scheduled', label: 'Запланировано мероприятие' },
-  { value: 'walkthrough_scheduled', label: 'Назначена дата обхода' },
-  { value: 'event_done', label: 'Проведено' },
-  { value: 'walkthrough_done', label: 'Обход проведён' },
-  { value: 'leads_received', label: 'Лиды получены' },
-  { value: 'thank_you', label: 'Благодарности' },
-  { value: 'support_letter_requested', label: 'Письмо поддержки запрошено' },
-  { value: 'support_letter_received', label: 'Письмо поддержки получено' },
-  { value: 'partners', label: 'Партнёры' },
-  { value: 'rejected', label: 'Отказ/Заморозка' },
-];
+const PIPELINE_STAGES = ALL_FUNNEL_STAGES;
 
 const FRIENDSHIP_DEGREES: { value: string; label: string }[] = [
   { value: 'unknown', label: 'Не знаем друг друга' },
@@ -95,6 +88,11 @@ const B2BSchoolsPage: React.FC = () => {
     main_city: '',
     citiesText: '',
   });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openIdHandled = useRef(false);
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
+  const [draggingSchoolId, setDraggingSchoolId] = useState<number | null>(null);
+  const [dropTargetStage, setDropTargetStage] = useState<string | null>(null);
 
   const loadSchools = useCallback(async (projectId?: number | null, city?: string) => {
     setLoading(true);
@@ -160,7 +158,7 @@ const B2BSchoolsPage: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const openEdit = (school: B2BSchool) => {
+  const openEdit = useCallback((school: B2BSchool) => {
     setEditingSchool(school);
     const meetingAt = school.meeting_scheduled_at
       ? format(parseISO(school.meeting_scheduled_at), "yyyy-MM-dd'T'HH:mm")
@@ -186,7 +184,35 @@ const B2BSchoolsPage: React.FC = () => {
       walkthrough_scheduled_at: walkAt,
     });
     setDialogOpen(true);
-  };
+  }, []);
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || openIdHandled.current || loading) return;
+    const id = Number(openId);
+    if (!Number.isFinite(id)) return;
+    openIdHandled.current = true;
+    const fromList = schools.find((s) => s.id === id);
+    if (fromList) {
+      openEdit(fromList);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('open');
+        return next;
+      }, { replace: true });
+      return;
+    }
+    b2bApi.getSchool(id).then((school) => {
+      openEdit(school);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('open');
+        return next;
+      }, { replace: true });
+    }).catch(() => {
+      openIdHandled.current = false;
+    });
+  }, [schools, loading, searchParams, openEdit, setSearchParams]);
 
   const refreshEditingSchool = useCallback(async () => {
     if (!editingSchool) return;
@@ -342,6 +368,35 @@ const B2BSchoolsPage: React.FC = () => {
     }
   };
 
+  const handleStageDrop = useCallback(
+    async (targetStage: B2BSchoolPipelineStage, schoolIdStr: string) => {
+      const schoolId = Number(schoolIdStr);
+      if (!Number.isFinite(schoolId)) return;
+      const school = schools.find((s) => s.id === schoolId);
+      if (!school || school.pipeline_stage === targetStage) return;
+      setDraggingSchoolId(null);
+      setDropTargetStage(null);
+      try {
+        await b2bApi.updateSchool(schoolId, { pipeline_stage: targetStage });
+        await loadSchools(selectedProjectId ?? undefined, selectedCity || undefined);
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось перенести школу'));
+      }
+    },
+    [schools, selectedProjectId, selectedCity, loadSchools]
+  );
+
+  const schoolsForTable = useMemo(
+    () => [...schools].sort((a, b) => {
+      const stageOrder = PIPELINE_STAGES.map((s) => s.value);
+      const ai = stageOrder.indexOf(a.pipeline_stage);
+      const bi = stageOrder.indexOf(b.pipeline_stage);
+      if (ai !== bi) return ai - bi;
+      return (a.name || '').localeCompare(b.name || '');
+    }),
+    [schools]
+  );
+
   const handleDelete = async (school: B2BSchool) => {
     if (!window.confirm(`Удалить школу «${school.name}»?`)) return;
     try {
@@ -404,6 +459,20 @@ const B2BSchoolsPage: React.FC = () => {
               ))}
             </Select>
           </FormControl>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(_, v) => v != null && setViewMode(v)}
+            size="small"
+            sx={{ ml: 1 }}
+          >
+            <ToggleButton value="table" aria-label="Таблица">
+              <TableChart sx={{ mr: 0.5 }} /> Таблица
+            </ToggleButton>
+            <ToggleButton value="kanban" aria-label="Канбан">
+              <ViewModule sx={{ mr: 0.5 }} /> Канбан
+            </ToggleButton>
+          </ToggleButtonGroup>
           <Button variant="outlined" size="small" startIcon={<Add />} onClick={openCreateProject}>
             Создать проект
           </Button>
@@ -421,12 +490,85 @@ const B2BSchoolsPage: React.FC = () => {
 
       {loading ? (
         <Typography color="text.secondary">Загрузка…</Typography>
+      ) : viewMode === 'table' ? (
+        <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Директор</TableCell>
+                <TableCell>Город</TableCell>
+                <TableCell>Стадия</TableCell>
+                <TableCell>След. действие</TableCell>
+                <TableCell>Ответственный</TableCell>
+                <TableCell align="right" width={100}>Действия</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {schoolsForTable.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                    Нет школ
+                  </TableCell>
+                </TableRow>
+              ) : (
+              schoolsForTable.map((school) => (
+                <TableRow key={school.id} hover sx={{ cursor: 'pointer' }} onClick={() => openEdit(school)}>
+                  <TableCell>{school.name}</TableCell>
+                  <TableCell>{school.director || '—'}</TableCell>
+                  <TableCell>{school.city || '—'}</TableCell>
+                  <TableCell>
+                    {PIPELINE_STAGES.find((s) => s.value === school.pipeline_stage)?.label ?? school.pipeline_stage}
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 220 }}>
+                    {hasNoNextAction(school) ? (
+                      <Typography variant="body2" color="warning.main">Не задано</Typography>
+                    ) : (
+                      <Typography variant="body2">
+                        {school.next_step}
+                        {school.next_step_date ? ` (${format(parseISO(school.next_step_date), 'dd.MM.yyyy')})` : ''}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>{school.manager_full_name || '—'}</TableCell>
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                    <IconButton size="small" onClick={() => openEdit(school)} aria-label="Редактировать">
+                      <Edit fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => handleDelete(school)} aria-label="Удалить" color="error">
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              )))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       ) : (
         <Box sx={{ overflowX: 'auto', pb: 2 }}>
           <Grid container spacing={2} sx={{ minWidth: 1400 }}>
             {schoolsByStage.map((col) => (
               <Grid item xs={12} sm={6} md={3} key={col.value} sx={{ minWidth: 280 }}>
-                <Card variant="outlined" sx={{ height: '100%', bgcolor: 'grey.50' }}>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    height: '100%',
+                    bgcolor: dropTargetStage === col.value ? 'action.selected' : 'grey.50',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    setDropTargetStage(col.value);
+                  }}
+                  onDragLeave={() => setDropTargetStage(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const schoolId = e.dataTransfer.getData('schoolId');
+                    if (schoolId) void handleStageDrop(col.value as B2BSchoolPipelineStage, schoolId);
+                    setDropTargetStage(null);
+                  }}
+                >
                   <CardContent sx={{ py: 1.5 }}>
                     <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                       {col.label}
@@ -436,7 +578,23 @@ const B2BSchoolsPage: React.FC = () => {
                     </Typography>
                     <Stack spacing={1}>
                       {col.schools.map((school) => (
-                        <Card key={school.id} variant="outlined" sx={{ bgcolor: 'background.paper' }}>
+                        <Card
+                          key={school.id}
+                          variant="outlined"
+                          draggable
+                          sx={{
+                            bgcolor: 'background.paper',
+                            opacity: draggingSchoolId === school.id ? 0.7 : 1,
+                            cursor: 'grab',
+                            '&:active': { cursor: 'grabbing' },
+                          }}
+                          onDragStart={(e) => {
+                            setDraggingSchoolId(school.id);
+                            e.dataTransfer.setData('schoolId', String(school.id));
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => setDraggingSchoolId(null)}
+                        >
                           <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                               <Typography variant="subtitle2">{school.name}</Typography>
@@ -450,7 +608,7 @@ const B2BSchoolsPage: React.FC = () => {
                               </Stack>
                             </Stack>
                             <Typography variant="caption" color="text.secondary" display="block">
-                              Директор: {school.director || 'тАФ'}
+                              Директор: {school.director || '—'}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" display="block">
                               Город: {school.city || '—'}
@@ -461,13 +619,29 @@ const B2BSchoolsPage: React.FC = () => {
                             <Typography variant="caption" color="text.secondary" display="block">
                               Степень дружбы: {FRIENDSHIP_DEGREES.find((d) => d.value === school.friendship_degree)?.label ?? school.friendship_degree ?? '—'}
                             </Typography>
-                            {(school.next_step || school.manager_full_name) && (
-                              <Typography variant="caption" color="text.secondary" display="block">
-                                {school.next_step && `${school.next_step}${school.next_step_date ? ` (${format(parseISO(school.next_step_date), 'dd.MM')})` : ''}`}
-                                {school.next_step && school.manager_full_name && ' · '}
-                                {school.manager_full_name && `Менеджер: ${school.manager_full_name}`}
+                            <Box sx={{ mt: 0.5, mb: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary" display="block" sx={{ fontWeight: 600 }}>
+                                Следующее действие:
                               </Typography>
-                            )}
+                              {hasNoNextAction(school) ? (
+                                <>
+                                  <Typography variant="caption" color="warning.main" display="block">
+                                    Не задано
+                                  </Typography>
+                                  <Chip size="small" color="warning" label="Нет следующего действия" sx={{ mt: 0.25 }} />
+                                </>
+                              ) : (
+                                <Typography variant="caption" display="block" sx={{ color: 'primary.main' }}>
+                                  {school.next_step}
+                                  {school.next_step_date ? ` · ${format(parseISO(school.next_step_date), 'dd.MM.yyyy')}` : ''}
+                                </Typography>
+                              )}
+                              {school.manager_full_name && (
+                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
+                                  Менеджер: {school.manager_full_name}
+                                </Typography>
+                              )}
+                            </Box>
                             <Typography variant="caption" color="text.secondary" display="block">
                               Контактов: {school.contacts?.length ?? 0}
                             </Typography>

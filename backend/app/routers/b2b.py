@@ -1,23 +1,38 @@
+import csv
 from datetime import date, datetime, timedelta, time as dt_time
+from io import BytesIO, StringIO
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from openpyxl import load_workbook
 from sqlalchemy import distinct, nulls_last
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
 from app.database import get_db
-from app.models import B2BSchool, B2BSchoolContact, B2BProject, Lead, LeadStatus, User, UserRole
+from app.models import (
+    B2BSchool,
+    B2BSchoolContact,
+    B2BProject,
+    B2BSchoolPipelineStage,
+    Lead,
+    LeadStatus,
+    Task,
+    TaskStatus,
+    User,
+    UserRole,
+)
 from app.schemas import (
-    B2BSchoolCreate,
-    B2BSchoolUpdate,
-    B2BSchoolResponse,
     B2BSchoolContactCreate,
-    B2BSchoolContactUpdate,
     B2BSchoolContactResponse,
+    B2BSchoolContactUpdate,
+    B2BSchoolCreate,
+    B2BSchoolImportResponse,
+    B2BSchoolResponse,
+    B2BSchoolUpdate,
     B2BProjectCreate,
-    B2BProjectUpdate,
     B2BProjectResponse,
+    B2BProjectUpdate,
 )
 
 router = APIRouter()
@@ -100,8 +115,10 @@ async def plan_for_today(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """Schools for owner's daily plan: overdue, no next step, find_contacts > 3 days, today follow-up."""
+    """Schools for owner's daily plan: overdue, no next step, find_contacts > 3 days, today, tomorrow, week."""
     today = date.today()
+    tomorrow = today + timedelta(days=1)
+    week_end = today + timedelta(days=7)
     cutoff = today - timedelta(days=3)
     base = db.query(B2BSchool).options(
         joinedload(B2BSchool.school_contacts),
@@ -125,12 +142,20 @@ async def plan_for_today(
         ),
     )
     today_q = base.filter(B2BSchool.next_step_date == today)
+    tomorrow_q = base.filter(B2BSchool.next_step_date == tomorrow)
+    week_q = base.filter(
+        B2BSchool.next_step_date.isnot(None),
+        B2BSchool.next_step_date > tomorrow,
+        B2BSchool.next_step_date <= week_end,
+    )
 
     return {
         "overdue": run(overdue),
         "no_next_step": run(no_next),
         "find_contacts_stale": run(find_stale),
         "today": run(today_q),
+        "tomorrow": run(tomorrow_q),
+        "week": run(week_q),
     }
 
 
@@ -165,6 +190,266 @@ async def list_b2b_schools(
         query = query.filter(B2BSchool.pipeline_stage == pipeline_stage)
     schools = query.all()
     return [_school_to_response(db, s) for s in schools]
+
+
+def _parse_import_rows_from_xlsx(data: bytes) -> List[Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[int]]]:
+    """Returns list of (name, director, city, address, student_count). First row = header."""
+    wb = load_workbook(filename=BytesIO(data), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return []
+    headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
+    name_cols = ["название", "name", "школа", "school"]
+    dir_cols = ["директор", "director"]
+    city_cols = ["город", "city"]
+    addr_cols = ["адрес", "address"]
+    count_cols = ["учеников", "student_count", "количество", "кол-во"]
+
+    def col(key_list: List[str]) -> Optional[int]:
+        for k in key_list:
+            if k in headers:
+                return headers.index(k)
+        return None
+
+    name_idx = col(name_cols) if any(h in headers for h in name_cols) else (0 if headers else None)
+    dir_idx = col(dir_cols)
+    city_idx = col(city_cols)
+    addr_idx = col(addr_cols)
+    count_idx = col(count_cols)
+
+    result: List[Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[int]]] = []
+    for row in rows[1:]:
+        row_list = list(row) if row else []
+        while len(row_list) < len(headers):
+            row_list.append(None)
+        def v(i: Optional[int]) -> Optional[str]:
+            if i is None or i >= len(row_list):
+                return None
+            x = row_list[i]
+            if x is None:
+                return None
+            s = str(x).strip()
+            return s if s else None
+        def n(i: Optional[int]) -> Optional[int]:
+            if i is None or i >= len(row_list):
+                return None
+            x = row_list[i]
+            if x is None:
+                return None
+            try:
+                return int(float(str(x).replace(",", ".")))
+            except (ValueError, TypeError):
+                return None
+        name = v(name_idx) if name_idx is not None else v(0)
+        result.append((name, v(dir_idx), v(city_idx), v(addr_idx), n(count_idx)))
+    return result
+
+
+def _parse_import_rows_from_csv(data: bytes) -> List[Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[int]]]:
+    """Returns list of (name, director, city, address, student_count). First row = header."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = data.decode("cp1251")
+        except Exception:
+            text = data.decode("utf-8", errors="replace")
+    reader = csv.reader(StringIO(text))
+    rows = list(reader)
+    if not rows:
+        return []
+    headers = [str(h).strip().lower() for h in rows[0]]
+    name_cols = ["название", "name", "школа", "school"]
+    dir_cols = ["директор", "director"]
+    city_cols = ["город", "city"]
+    addr_cols = ["адрес", "address"]
+    count_cols = ["учеников", "student_count", "количество", "кол-во"]
+
+    def col(key_list: List[str]) -> Optional[int]:
+        for k in key_list:
+            if k in headers:
+                return headers.index(k)
+        return None
+
+    name_idx = col(name_cols) if any(h in headers for h in name_cols) else 0
+    dir_idx = col(dir_cols)
+    city_idx = col(city_cols)
+    addr_idx = col(addr_cols)
+    count_idx = col(count_cols)
+
+    result: List[Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[int]]] = []
+    for row in rows[1:]:
+        while len(row) < len(headers):
+            row.append("")
+        def v(i: Optional[int]) -> Optional[str]:
+            if i is None or i >= len(row):
+                return None
+            s = str(row[i]).strip()
+            return s if s else None
+        def n(i: Optional[int]) -> Optional[int]:
+            if i is None or i >= len(row):
+                return None
+            try:
+                return int(float(str(row[i]).replace(",", ".")))
+            except (ValueError, TypeError):
+                return None
+        name = v(name_idx) if name_idx is not None else v(0)
+        result.append((name, v(dir_idx), v(city_idx), v(addr_idx), n(count_idx)))
+    return result
+
+
+@router.post("/b2b-schools/import", response_model=B2BSchoolImportResponse)
+async def import_b2b_schools(
+    file: UploadFile = File(...),
+    city: Optional[str] = Query(default=None, description="Assign city to all imported schools if not in file"),
+    manager_id: Optional[int] = Query(default=None, description="Assign manager to all imported schools"),
+    launch_in_work: bool = Query(default=False, description="Set pipeline find_contacts and next step for created schools"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Import B2B schools from Excel (.xlsx) or CSV. Columns: name (required), director, city, address, student_count."""
+    filename = (file.filename or "").lower().strip()
+    if not (filename.endswith(".xlsx") or filename.endswith(".csv")):
+        raise HTTPException(status_code=400, detail="Поддерживаются только форматы .xlsx и .csv")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+
+    if filename.endswith(".xlsx"):
+        rows = _parse_import_rows_from_xlsx(data)
+    else:
+        rows = _parse_import_rows_from_csv(data)
+
+    if launch_in_work and manager_id is None:
+        return B2BSchoolImportResponse(
+            created=0, skipped=0,
+            errors=["Для опции «запустить в работу» укажите ответственного (менеджер) в параметрах импорта."],
+        )
+
+    tomorrow = date.today() + timedelta(days=1)
+    next_step_launch = "Найти контакты (директор/завуч/информатика)"
+    default_city = city.strip() if city and city.strip() else None
+    created = 0
+    skipped = 0
+    errors: List[str] = []
+
+    for i, (name, director, city_val, address, student_count) in enumerate(rows, start=2):
+        school_name = (name or "").strip()
+        if not school_name:
+            skipped += 1
+            continue
+        school_city = (city_val or "").strip() or default_city
+        school_manager_id = manager_id
+        pipeline_stage = B2BSchoolPipelineStage.NEW.value
+        next_step = None
+        next_step_date = None
+        if launch_in_work:
+            pipeline_stage = B2BSchoolPipelineStage.FIND_CONTACTS.value
+            next_step = next_step_launch
+            next_step_date = tomorrow
+        school = B2BSchool(
+            name=school_name,
+            director=(director or "").strip() or None,
+            city=school_city,
+            address=(address or "").strip() or None,
+            student_count=student_count,
+            pipeline_stage=pipeline_stage,
+            next_step=next_step,
+            next_step_date=next_step_date,
+            manager_id=school_manager_id,
+        )
+        db.add(school)
+        db.flush()
+        if launch_in_work and school_manager_id:
+            _on_b2b_school_created(db, school, current_user.id)
+        created += 1
+
+    db.commit()
+    return B2BSchoolImportResponse(created=created, skipped=skipped, errors=errors)
+
+
+def _create_b2b_task(
+    db: Session,
+    created_by_id: int,
+    title: str,
+    assigned_to_id: Optional[int] = None,
+) -> Optional[Task]:
+    """Create a Task for B2B automation. Title truncated to 512 chars."""
+    if not title or not title.strip():
+        return None
+    task = Task(
+        title=(title.strip()[:512]),
+        created_by_id=created_by_id,
+        assigned_to_id=assigned_to_id,
+        status=TaskStatus.ACTIVE.value,
+    )
+    db.add(task)
+    return task
+
+
+def _on_b2b_school_created(
+    db: Session,
+    school: B2BSchool,
+    created_by_id: int,
+) -> None:
+    """Trigger: school created. If find_contacts + manager → task 'Найти контакты'."""
+    if school.pipeline_stage != B2BSchoolPipelineStage.FIND_CONTACTS.value:
+        return
+    if not school.manager_id:
+        return
+    _create_b2b_task(
+        db,
+        created_by_id=created_by_id,
+        title=f"Найти контакты (директор/завуч/информатика): {school.name}",
+        assigned_to_id=school.manager_id,
+    )
+
+
+def _on_b2b_school_stage_changed(
+    db: Session,
+    school: B2BSchool,
+    new_stage: str,
+    created_by_id: int,
+) -> None:
+    """Trigger: pipeline_stage changed. Create task and optionally set next_step/next_step_date."""
+    day2 = date.today() + timedelta(days=2)
+    manager_id = school.manager_id
+    name = school.name or "Школа"
+
+    if new_stage in (B2BSchoolPipelineStage.FIRST_CONTACT.value, B2BSchoolPipelineStage.CONTACT_FOUND.value):
+        if not school.next_step or not school.next_step_date:
+            school.next_step = "Дожим через 2 дня"
+            school.next_step_date = day2
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Дожим через 2 дня: {name}",
+            assigned_to_id=manager_id,
+        )
+    elif new_stage == B2BSchoolPipelineStage.MEETING_SCHEDULED.value:
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Подтвердить встречу за 1 день / Провести: {name}",
+            assigned_to_id=manager_id,
+        )
+    elif new_stage == B2BSchoolPipelineStage.PERMISSION_RECEIVED.value:
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Подготовка мероприятия: {name}",
+            assigned_to_id=manager_id,
+        )
+    elif new_stage in (B2BSchoolPipelineStage.EVENT_DONE.value, B2BSchoolPipelineStage.WALKTHROUGH_DONE.value):
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Занести лиды: {name}",
+            assigned_to_id=manager_id,
+        )
+    elif new_stage == B2BSchoolPipelineStage.LEADS_RECEIVED.value:
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Передать лиды в обработку: {name}",
+            assigned_to_id=manager_id,
+        )
 
 
 def _load_school_with_contacts(db: Session, school_id: int) -> B2BSchool:
@@ -211,6 +496,8 @@ async def create_b2b_school(
         walkthrough_scheduled_at=payload.walkthrough_scheduled_at,
     )
     db.add(school)
+    db.flush()
+    _on_b2b_school_created(db, school, current_user.id)
     db.commit()
     db.refresh(school)
     _ = school.school_contacts
@@ -225,6 +512,7 @@ async def update_b2b_school(
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
     school = _load_school_with_contacts(db, school_id)
+    old_stage = school.pipeline_stage
     data = payload.dict(exclude_unset=True)
     if "pipeline_stage" in data and data["pipeline_stage"] is not None:
         data["pipeline_stage"] = data["pipeline_stage"].value
@@ -232,6 +520,9 @@ async def update_b2b_school(
         data["friendship_degree"] = data["friendship_degree"].value
     for key, value in data.items():
         setattr(school, key, value)
+    new_stage = school.pipeline_stage
+    if new_stage != old_stage:
+        _on_b2b_school_stage_changed(db, school, new_stage, current_user.id)
     db.commit()
     db.refresh(school)
     _ = school.school_contacts

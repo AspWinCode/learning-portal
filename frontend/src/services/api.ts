@@ -959,6 +959,8 @@ export const b2bApi = {
     no_next_step: B2BSchool[];
     find_contacts_stale: B2BSchool[];
     today: B2BSchool[];
+    tomorrow: B2BSchool[];
+    week: B2BSchool[];
   }> => {
     const params = city ? { city } : {};
     const response = await api.get('/api/b2b-schools/plan-for-today', { params });
@@ -1019,6 +1021,22 @@ export const b2bApi = {
   },
   deleteSchool: async (id: number): Promise<void> => {
     await api.delete(`/api/b2b-schools/${id}`);
+  },
+  importSchools: async (params: {
+    file: File;
+    city?: string | null;
+    manager_id?: number | null;
+    launch_in_work?: boolean;
+  }): Promise<{ created: number; skipped: number; errors: string[] }> => {
+    const form = new FormData();
+    form.append('file', params.file);
+    if (params.city != null && params.city !== '') form.append('city', params.city);
+    if (params.manager_id != null) form.append('manager_id', String(params.manager_id));
+    if (params.launch_in_work) form.append('launch_in_work', 'true');
+    const response = await api.post('/api/b2b-schools/import', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
   },
   listContacts: async (schoolId: number): Promise<B2BSchoolContact[]> => {
     const response = await api.get(`/api/b2b-schools/${schoolId}/contacts`);

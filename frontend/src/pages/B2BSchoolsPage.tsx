@@ -507,8 +507,12 @@ const B2BSchoolsPage: React.FC = () => {
     if (!stageDropDialog) return;
     setError(null);
     try {
-      const payload: { pipeline_stage: string; next_step?: string | null; next_step_date?: string | null } = {
-        pipeline_stage: stageDropDialog.targetStage,
+      const payload: {
+        pipeline_stage: B2BSchoolPipelineStage;
+        next_step?: string | null;
+        next_step_date?: string | null;
+      } = {
+        pipeline_stage: stageDropDialog.targetStage as B2BSchoolPipelineStage,
       };
       if (stageDropForm.next_step.trim()) payload.next_step = stageDropForm.next_step.trim();
       if (stageDropForm.next_step_date.trim()) payload.next_step_date = stageDropForm.next_step_date.trim();
@@ -950,7 +954,7 @@ const B2BSchoolsPage: React.FC = () => {
           <Button
             onClick={() => {
               if (stageDropDialog) {
-                void b2bApi.updateSchool(stageDropDialog.schoolId, { pipeline_stage: stageDropDialog.targetStage }).then(() => {
+                void b2bApi.updateSchool(stageDropDialog.schoolId, { pipeline_stage: stageDropDialog.targetStage as B2BSchoolPipelineStage }).then(() => {
                   setStageDropDialog(null);
                   loadSchools({
                     projectId: selectedProjectId ?? undefined,

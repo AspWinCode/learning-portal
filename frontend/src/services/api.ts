@@ -970,6 +970,13 @@ export const salesApi = {
     const response = await api.patch(`/api/sales/absences/${absenceId}`, { stage });
     return response.data;
   },
+  /** Справка по форме КНД 1151158 (2 страницы). Все поля передаются в body. */
+  generateTaxDeductionCertificate: async (data: Record<string, unknown>): Promise<Blob> => {
+    const response = await api.post('/api/sales/tax-deduction-certificate', data, {
+      responseType: 'blob',
+    });
+    return response.data as Blob;
+  },
 };
 
 export const abonementsApi = {

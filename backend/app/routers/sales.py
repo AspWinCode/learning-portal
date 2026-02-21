@@ -3,7 +3,7 @@ from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import cast, Text, or_
 from openpyxl import Workbook, load_workbook
@@ -2933,4 +2933,234 @@ async def list_lead_event_registrations(
         .filter(EventRegistration.lead_id == lead_id)
         .order_by(EventRegistration.created_at.desc())
         .all()
+    )
+
+
+# --- Справка для налогового вычета (форма КНД 1151158) ---
+try:
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+
+
+def _draw_line(c, x: float, y: float, text: str, label: str, label_x: float, font_size: int = 9):
+    """Рисует подпись слева и значение (линию) справа."""
+    c.setFont("Helvetica", font_size)
+    c.drawString(label_x, y, label)
+    c.drawString(x, y, (text or "")[:60])
+
+
+def _draw_date_cells(c, x: float, y: float, d: str, cell_w: float = 8 * mm):
+    """Печатает дату в ячейках ДД.ММ.ГГГГ."""
+    parts = (d or "").replace("-", ".").split(".") if d else []
+    day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
+    month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
+    year = (parts[2] if len(parts) > 2 else "")[:4]
+    c.drawString(x, y, day)
+    c.drawString(x + cell_w + 2, y, month)
+    c.drawString(x + (cell_w + 2) * 2, y, year)
+
+
+def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
+    """Формирует PDF по форме КНД 1151158 (2 страницы)."""
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    w, h = A4
+    left = 20 * mm
+    right = w - 20 * mm
+    row = 5 * mm
+
+    def _y():
+        nonlocal y
+        y -= row
+        return y + row
+
+    # ---------- СТРАНИЦА 1 ----------
+    y = h - 15 * mm
+    c.setFont("Helvetica", 8)
+    c.drawString(right - 50 * mm, y, "ИНН")
+    c.drawString(right - 50 * mm, y - 4 * mm, (data.get("org_inn") or ""))
+    c.drawString(right - 20 * mm, y, "КПП")
+    c.drawString(right - 20 * mm, y - 4 * mm, (data.get("org_kpp") or ""))
+    c.drawString(right - 5 * mm, y, "Стр. 0:01")
+    y -= 12 * mm
+
+    c.setFont("Helvetica", 9)
+    c.drawCentredString(w / 2, y, "Форма по КНД 1151158")
+    y -= 6 * mm
+    c.setFont("Helvetica-Bold", 10)
+    c.drawCentredString(w / 2, y, "Справка об оплате образовательных услуг для представления в налоговый орган")
+    y -= 10 * mm
+
+    c.setFont("Helvetica", 9)
+    c.drawString(left, _y(), "Номер справки")
+    c.drawString(left + 45 * mm, y + row, data.get("cert_number") or "")
+    c.drawString(left + 90 * mm, y + row, "Номер корректировки")
+    c.drawString(left + 130 * mm, y + row, data.get("correction_number") or "")
+    _y()
+    c.drawString(left, _y(), "Отчетный год")
+    c.drawString(left + 35 * mm, y + row, data.get("report_year") or "")
+    y -= 3 * mm
+
+    c.setFont("Helvetica", 9)
+    c.drawString(left, _y(), "Данные образовательной организации / индивидуального предпринимателя,")
+    _y()
+    c.drawString(left, _y(), "осуществляющего образовательную деятельность:")
+    y -= 2 * mm
+    org_name = (data.get("org_name") or "")[:120]
+    for i in range(0, min(len(org_name), 80), 60):
+        c.drawString(left, _y(), org_name[i : i + 60])
+    c.drawString(left, _y(), "(наименование образовательной организации / фамилия, имя, отчество ИП)")
+    y -= 2 * mm
+
+    c.drawString(left, _y(), "Обучение проводилось по очной форме обучения")
+    ft = data.get("fulltime_study")
+    c.drawString(left + 95 * mm, y + row, "0 - нет")
+    if ft is False or ft == "0":
+        c.drawString(left + 105 * mm, y + row, "X")
+    c.drawString(left + 115 * mm, y + row, "1 - да")
+    if ft is True or ft == "1":
+        c.drawString(left + 125 * mm, y + row, "X")
+    _y()
+    y -= 3 * mm
+
+    c.drawString(left, _y(), "Данные физического лица (его супруга/супруги), оплатившего образовательные услуги (далее – налогоплательщик):")
+    y -= 2 * mm
+    c.drawString(left, _y(), "Фамилия")
+    c.drawString(left + 28 * mm, y + row, (data.get("taxpayer_lastname") or "")[:35])
+    c.drawString(left + 95 * mm, y + row, "Имя")
+    c.drawString(left + 105 * mm, y + row, (data.get("taxpayer_firstname") or "")[:25])
+    _y()
+    c.drawString(left, _y(), "Отчество")
+    c.drawString(left + 28 * mm, y + row, (data.get("taxpayer_patronymic") or "")[:35])
+    c.drawString(left + 95 * mm, y + row, "ИНН")
+    c.drawString(left + 105 * mm, y + row, (data.get("taxpayer_inn") or "")[:12])
+    _y()
+    c.drawString(left, _y(), "Дата рождения")
+    _draw_date_cells(c, left + 38 * mm, y + row, data.get("taxpayer_dob"), 7 * mm)
+    y -= 3 * mm
+
+    c.drawString(left, _y(), "Сведения о документе, удостоверяющем личность:")
+    c.drawString(left, _y(), "Код вида документа")
+    c.drawString(left + 45 * mm, y + row, (data.get("doc_type_code") or "")[:5])
+    c.drawString(left + 75 * mm, y + row, "Серия и номер")
+    c.drawString(left + 105 * mm, y + row, (data.get("doc_series_number") or "")[:25])
+    _y()
+    c.drawString(left, _y(), "Дата выдачи")
+    _draw_date_cells(c, left + 32 * mm, y + row, data.get("doc_issue_date"), 7 * mm)
+    y -= 3 * mm
+
+    c.drawString(left, _y(), "Налогоплательщик и обучаемый являются одним лицом")
+    same = data.get("taxpayer_same_as_student")
+    c.drawString(left + 95 * mm, y + row, "0 - нет")
+    if same is False or same == "0":
+        c.drawString(left + 105 * mm, y + row, "X")
+    c.drawString(left + 115 * mm, y + row, "1 - да")
+    if same is True or same == "1":
+        c.drawString(left + 125 * mm, y + row, "X")
+    _y()
+    y -= 2 * mm
+
+    c.drawString(left, _y(), "Сумма расходов на оказанные образовательные услуги")
+    c.drawString(left + 95 * mm, y + row, (data.get("amount") or "0"))
+    y -= 8 * mm
+
+    c.drawString(left, _y(), "Достоверность и полноту сведений, указанных в настоящей справке, подтверждаю:")
+    _y()
+    c.drawString(left, _y(), (data.get("confirm_fio") or "")[:70])
+    c.drawString(left, _y(), "(фамилия, имя, отчество)")
+    c.drawString(left, _y(), "Подпись _______________________")
+    c.drawString(left, _y(), "Дата")
+    _draw_date_cells(c, left + 15 * mm, y + row, data.get("confirm_date") or date.today().isoformat(), 7 * mm)
+    _y()
+    c.drawString(left, _y(), "Справка составлена на")
+    c.drawString(left + 55 * mm, y + row, data.get("pages_count") or "2")
+    c.drawString(left + 65 * mm, y + row, "страницах")
+
+    c.rect(right - 25 * mm, h - 75 * mm, 22 * mm, 45 * mm)
+    c.setFont("Helvetica", 8)
+    c.drawString(right - 24 * mm, h - 78 * mm, "Зона QR-кода")
+
+    c.setFont("Helvetica", 7)
+    c.drawString(left, 18 * mm, "1 Отчество указывается при наличии (относится ко всем листам документа).")
+    c.drawString(left, 14 * mm, "2 ИНН указывается при наличии.")
+    c.drawString(left, 10 * mm, "Подготовлено с использованием системы КонсультантПлюс")
+
+    c.showPage()
+
+    # ---------- СТРАНИЦА 2 (данные обучаемого) ----------
+    y = h - 15 * mm
+    c.setFont("Helvetica", 8)
+    c.drawString(right - 50 * mm, y, "ИНН")
+    c.drawString(right - 50 * mm, y - 4 * mm, (data.get("org_inn") or ""))
+    c.drawString(right - 20 * mm, y, "КПП")
+    c.drawString(right - 20 * mm, y - 4 * mm, (data.get("org_kpp") or ""))
+    c.drawString(right - 5 * mm, y, "Стр. 0:02")
+    y -= 14 * mm
+
+    c.setFont("Helvetica", 9)
+    c.drawString(left, _y(), "Данные физического лица, которому оказаны образовательные услуги:")
+    c.drawString(left, _y(), "Фамилия")
+    c.drawString(left + 28 * mm, y + row, (data.get("student_lastname") or "")[:35])
+    c.drawString(left + 95 * mm, y + row, "Имя")
+    c.drawString(left + 105 * mm, y + row, (data.get("student_firstname") or "")[:25])
+    _y()
+    c.drawString(left, _y(), "Отчество")
+    c.drawString(left + 28 * mm, y + row, (data.get("student_patronymic") or "")[:35])
+    c.drawString(left + 95 * mm, y + row, "ИНН")
+    c.drawString(left + 105 * mm, y + row, (data.get("student_inn") or "")[:12])
+    _y()
+    c.drawString(left, _y(), "Дата рождения")
+    _draw_date_cells(c, left + 38 * mm, y + row, data.get("student_dob"), 7 * mm)
+    y -= 3 * mm
+
+    c.drawString(left, _y(), "Сведения о документе, удостоверяющем личность:")
+    c.drawString(left, _y(), "Код вида документа")
+    c.drawString(left + 45 * mm, y + row, (data.get("student_doc_type_code") or "")[:5])
+    c.drawString(left + 75 * mm, y + row, "Серия и номер")
+    c.drawString(left + 105 * mm, y + row, (data.get("student_doc_series_number") or "")[:25])
+    _y()
+    c.drawString(left, _y(), "Дата выдачи")
+    _draw_date_cells(c, left + 32 * mm, y + row, data.get("student_doc_issue_date"), 7 * mm)
+    y -= 12 * mm
+
+    c.drawString(left, _y(), "Достоверность и полноту сведений, указанных на данной странице, подтверждаю:")
+    _y()
+    c.drawString(left, _y(), "Подпись _______________________  Дата")
+    _draw_date_cells(c, left + 95 * mm, y + row, data.get("confirm_date") or date.today().isoformat(), 7 * mm)
+
+    c.setFont("Helvetica", 7)
+    c.drawString(left, 10 * mm, "Подготовлено с использованием системы КонсультантПлюс")
+
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return buf.read()
+
+
+@router.post("/tax-deduction-certificate")
+async def generate_tax_deduction_certificate(
+    body: Dict,
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """
+    Формирует PDF справки по форме КНД 1151158 (2 страницы).
+    Поля: org_inn, org_kpp, cert_number, correction_number, report_year, org_name,
+    fulltime_study (1/0), taxpayer_* (lastname, firstname, patronymic, inn, dob),
+    doc_type_code, doc_series_number, doc_issue_date, taxpayer_same_as_student (1/0),
+    amount, confirm_fio, confirm_date, pages_count,
+    student_* (если не одно лицо): lastname, firstname, patronymic, inn, dob,
+    student_doc_type_code, student_doc_series_number, student_doc_issue_date.
+    """
+    if not REPORTLAB_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Генерация PDF недоступна (reportlab не установлен)")
+    pdf_bytes = _build_tax_deduction_pdf_knd(body)
+    filename = "spravka_KND_1151158.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

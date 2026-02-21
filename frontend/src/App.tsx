@@ -36,6 +36,7 @@ import SalesAgreedPage from './pages/SalesAgreedPage';
 import SalesReportsPage from './pages/SalesReportsPage';
 import SalesInstructionsPage from './pages/SalesInstructionsPage';
 import SalesAbsencesPage from './pages/SalesAbsencesPage';
+import SalesTaxDeductionPage from './pages/SalesTaxDeductionPage';
 import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
@@ -203,6 +204,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesAbsencesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/tax-deduction"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <SalesTaxDeductionPage />
                 </PrivateRoute>
               }
             />

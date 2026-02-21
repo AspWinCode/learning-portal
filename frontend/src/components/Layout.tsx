@@ -204,6 +204,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
         { text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' },
+        { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' },
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' },
@@ -225,6 +226,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
       items.push({ text: 'Продажи: инструкции', icon: <Description />, path: '/sales/instructions' });
       items.push({ text: 'Продажи: пропуски', icon: <PendingActions />, path: '/sales/absences' });
+      items.push({ text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
     }

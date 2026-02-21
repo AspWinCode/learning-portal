@@ -10,7 +10,7 @@ from app.schemas import (
     CharacteristicTemplateResponse
 )
 from app.models import (
-    Characteristic, User, CharacteristicStatus, Student, GroupStudent, Group, UserRole, StudentStatus
+    Characteristic, CharacteristicTemplate, User, CharacteristicStatus, Student, GroupStudent, Group, UserRole, StudentStatus
 )
 from app.routers.action_log import log_action
 from datetime import datetime
@@ -26,8 +26,6 @@ async def create_template(
     current_user: User = Depends(auth.require_role(["admin"]))
 ):
     """Создание шаблона характеристики (только администратор)"""
-    from app.models import CharacteristicTemplate
-    
     db_template = CharacteristicTemplate(
         name=template.name,
         fields=[field.dict() for field in template.fields],
@@ -46,8 +44,6 @@ async def read_templates(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение списка шаблонов характеристик"""
-    from app.models import CharacteristicTemplate
-    
     templates = db.query(CharacteristicTemplate).filter(
         CharacteristicTemplate.is_active == True
     ).all()
@@ -87,8 +83,22 @@ async def create_characteristic(
             detail="Characteristic for this month/year already exists in pending or approved status"
         )
     
-    # Валидация обязательных полей (заглушка - нужно получать из шаблона)
-    # TODO: Реализовать валидацию на основе шаблона
+    # Валидация обязательных полей по активному шаблону (если есть)
+    active_template = db.query(CharacteristicTemplate).filter(
+        CharacteristicTemplate.is_active == True
+    ).first()
+    if active_template and isinstance(active_template.fields, list):
+        for f in active_template.fields:
+            if f.get("required"):
+                key = f.get("name")
+                if not key:
+                    continue
+                value = (characteristic.data or {}).get(key)
+                if value is None or (isinstance(value, str) and value.strip() == ""):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Обязательное поле «{key}» не заполнено"
+                    )
     
     db_characteristic = Characteristic(
         student_id=characteristic.student_id,
@@ -128,7 +138,6 @@ async def submit_characteristic(
         raise HTTPException(status_code=400, detail="Characteristic cannot be submitted from this status")
 
     # Минимальная валидация обязательных полей по активному шаблону (если есть)
-    from app.models import CharacteristicTemplate
     active_template = db.query(CharacteristicTemplate).filter(
         CharacteristicTemplate.is_active == True
     ).first()
@@ -189,6 +198,22 @@ async def update_characteristic(
         raise HTTPException(status_code=400, detail="Status cannot be changed via update")
 
     if body.data is not None:
+        # Валидация обязательных полей по активному шаблону
+        active_template = db.query(CharacteristicTemplate).filter(
+            CharacteristicTemplate.is_active == True
+        ).first()
+        if active_template and isinstance(active_template.fields, list):
+            for f in active_template.fields:
+                if f.get("required"):
+                    key = f.get("name")
+                    if not key:
+                        continue
+                    value = (body.data or {}).get(key)
+                    if value is None or (isinstance(value, str) and value.strip() == ""):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Обязательное поле «{key}» не заполнено"
+                        )
         db_characteristic.data = body.data
 
     db.commit()

@@ -1118,7 +1118,10 @@ const TasksPage: React.FC = () => {
               />
             )}
             renderTags={(value, getTagProps) =>
-              value.map((s, i) => <Chip key={s.id} label={s.full_name} {...getTagProps({ index: i })} size="small" />)
+              value.map((s, i) => {
+                const { key, ...chipProps } = getTagProps({ index: i });
+                return <Chip key={key} label={s.full_name} {...chipProps} size="small" />;
+              })
             }
           />
         </DialogContent>
@@ -1271,7 +1274,10 @@ const TasksPage: React.FC = () => {
               />
             )}
             renderTags={(value, getTagProps) =>
-              value.map((s, i) => <Chip key={s.id} label={s.full_name} {...getTagProps({ index: i })} size="small" />)
+              value.map((s, i) => {
+                const { key, ...chipProps } = getTagProps({ index: i });
+                return <Chip key={key} label={s.full_name} {...chipProps} size="small" />;
+              })
             }
           />
         </DialogContent>

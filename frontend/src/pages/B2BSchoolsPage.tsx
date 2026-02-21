@@ -413,11 +413,13 @@ const B2BSchoolsPage: React.FC = () => {
       meeting_scheduled_at: meetingAt,
       meeting_outcomes: form.pipeline_stage === 'meeting_held' ? (form.meeting_outcomes.trim() || null) : undefined,
       walkthrough_scheduled_at: walkAt,
+      ...(editingSchool
+        ? {
+            support_letter_status: form.support_letter_status.trim() || null,
+            partnership: Object.keys(form.partnership).length ? form.partnership : null,
+          }
+        : {}),
     };
-    if (editingSchool) {
-      payload.support_letter_status = form.support_letter_status.trim() || null;
-      payload.partnership = Object.keys(form.partnership).length ? form.partnership : null;
-    }
     try {
       if (editingSchool) {
         await b2bApi.updateSchool(editingSchool.id, payload);

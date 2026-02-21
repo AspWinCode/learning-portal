@@ -388,9 +388,11 @@ const B2BSchoolsPage: React.FC = () => {
 
   const schoolsForTable = useMemo(
     () => [...schools].sort((a, b) => {
-      const stageOrder = PIPELINE_STAGES.map((s) => s.value);
-      const ai = stageOrder.indexOf(a.pipeline_stage);
-      const bi = stageOrder.indexOf(b.pipeline_stage);
+      const stageOrder = PIPELINE_STAGES.map((s) => s.value as string);
+      const stageA = (a.pipeline_stage ?? '') as string;
+      const stageB = (b.pipeline_stage ?? '') as string;
+      const ai = stageOrder.indexOf(stageA);
+      const bi = stageOrder.indexOf(stageB);
       if (ai !== bi) return ai - bi;
       return (a.name || '').localeCompare(b.name || '');
     }),

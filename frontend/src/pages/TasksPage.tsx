@@ -62,7 +62,11 @@ const TasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<TaskResponse[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [lessonTasks, setLessonTasks] = useState<LessonTaskItem[]>([]);
+  const [lessonTasksTomorrow, setLessonTasksTomorrow] = useState<LessonTaskItem[]>([]);
+  const [lessonTasksWeek, setLessonTasksWeek] = useState<LessonTaskItem[]>([]);
   const [lessonTasksLoading, setLessonTasksLoading] = useState(false);
+  const [lessonTasksTomorrowLoading, setLessonTasksTomorrowLoading] = useState(false);
+  const [lessonTasksWeekLoading, setLessonTasksWeekLoading] = useState(false);
   const [lessonTaskDetail, setLessonTaskDetail] = useState<LessonTaskItem | null>(null);
   const [lessonDetailRefreshing, setLessonDetailRefreshing] = useState(false);
   const [callResultSaving, setCallResultSaving] = useState<number | null>(null);
@@ -142,15 +146,48 @@ const TasksPage: React.FC = () => {
     }
   }, [canSeeLessonTasks]);
 
+  const loadLessonTasksTomorrow = useCallback(async () => {
+    if (!canSeeLessonTasks) return;
+    setLessonTasksTomorrowLoading(true);
+    try {
+      const res = await salesApi.listLessonTasksTomorrow();
+      setLessonTasksTomorrow(res.items || []);
+    } catch {
+      setLessonTasksTomorrow([]);
+    } finally {
+      setLessonTasksTomorrowLoading(false);
+    }
+  }, [canSeeLessonTasks]);
+
+  const loadLessonTasksWeek = useCallback(async () => {
+    if (!canSeeLessonTasks) return;
+    setLessonTasksWeekLoading(true);
+    try {
+      const res = await salesApi.listLessonTasksWeek();
+      setLessonTasksWeek(res.items || []);
+    } catch {
+      setLessonTasksWeek([]);
+    } finally {
+      setLessonTasksWeekLoading(false);
+    }
+  }, [canSeeLessonTasks]);
+
   useEffect(() => {
     const run = async () => {
       setLoading(true);
       setError(null);
-      await Promise.all([loadTasks(), loadTemplates(), loadStudents(), loadLessonTasks()]);
+      await Promise.all([
+        loadTasks(),
+        loadTemplates(),
+        loadStudents(),
+        loadLessonTasks(),
+        loadLessonTasksTomorrow(),
+        loadLessonTasksWeek(),
+      ]);
       setLoading(false);
     };
     run();
-  }, [loadTasks, loadTemplates, loadStudents, loadLessonTasks]);
+  }, [loadTasks, loadTemplates, loadStudents, loadLessonTasks, loadLessonTasksTomorrow, loadLessonTasksWeek]);
 
   const handleSubtaskToggle = async (task: TaskResponse, subtask: TaskSubtaskResponse) => {
     try {
@@ -390,6 +427,101 @@ const TasksPage: React.FC = () => {
                 </Stack>
               )}
             </Box>
+
+            <Box>
+              <Typography variant="h6" gutterBottom>Задачи на завтра</Typography>
+              <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
+                Позвать детей на занятие (завтра)
+              </Typography>
+              {lessonTasksTomorrowLoading ? (
+                <Typography color="text.secondary">Загрузка...</Typography>
+              ) : lessonTasksTomorrow.length === 0 ? (
+                <Typography color="text.secondary">На завтра уроков по расписанию нет.</Typography>
+              ) : (
+                <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
+                  {lessonTasksTomorrow.map((item) => (
+                    <Card key={`tm-${item.group_id}-${item.schedule_id}-${item.lesson_date}`} variant="outlined" sx={{ minWidth: 280, maxWidth: 360 }}>
+                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                        <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {item.trainer_name} — {item.start_time}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                          Всего: {item.total} учеников
+                        </Typography>
+                        <Button
+                          size="small"
+                          startIcon={<OpenInNew />}
+                          sx={{ mt: 1 }}
+                          onClick={() => setLessonTaskDetail(item)}
+                        >
+                          Открыть карточку
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+            </Box>
+
+            <Box>
+              <Typography variant="h6" gutterBottom>Задачи на неделю</Typography>
+              <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
+                Позвать детей на занятие (7 дней)
+              </Typography>
+              {lessonTasksWeekLoading ? (
+                <Typography color="text.secondary">Загрузка...</Typography>
+              ) : lessonTasksWeek.length === 0 ? (
+                <Typography color="text.secondary">На неделю уроков по расписанию нет.</Typography>
+              ) : (
+                <Stack spacing={2} sx={{ mt: 1 }}>
+                  {Object.entries(
+                    lessonTasksWeek.reduce<Record<string, LessonTaskItem[]>>((acc, item) => {
+                      const d = item.lesson_date;
+                      if (!acc[d]) acc[d] = [];
+                      acc[d].push(item);
+                      return acc;
+                    }, {})
+                  )
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([dayDate, items]) => {
+                      const d = new Date(dayDate + 'T12:00:00');
+                      const dayLabel = d.toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                      return (
+                        <Box key={dayDate}>
+                          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+                            {dayLabel}
+                          </Typography>
+                          <Stack direction="row" flexWrap="wrap" gap={1}>
+                            {items.map((item) => (
+                              <Card key={`w-${item.lesson_date}-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 260, maxWidth: 340 }}>
+                                <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                  <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {item.trainer_name} — {item.start_time}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    Всего: {item.total} учеников
+                                  </Typography>
+                                  <Button
+                                    size="small"
+                                    startIcon={<OpenInNew />}
+                                    sx={{ mt: 1 }}
+                                    onClick={() => setLessonTaskDetail(item)}
+                                  >
+                                    Открыть карточку
+                                  </Button>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                </Stack>
+              )}
+            </Box>
+
             <Box>
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Все задачи</Typography>
               {isAdminOrOwner && (
@@ -799,10 +931,22 @@ const TasksPage: React.FC = () => {
               if (!lessonTaskDetail) return;
               setLessonDetailRefreshing(true);
               try {
-                const res = await salesApi.listLessonTasksToday();
-                const next = res.items || [];
-                setLessonTasks(next);
-                const updated = next.find((i) => i.group_id === lessonTaskDetail.group_id && i.schedule_id === lessonTaskDetail.schedule_id);
+                const [todayRes, tomorrowRes, weekRes] = await Promise.all([
+                  salesApi.listLessonTasksToday(),
+                  salesApi.listLessonTasksTomorrow(),
+                  salesApi.listLessonTasksWeek(),
+                ]);
+                const today = todayRes.items || [];
+                const tomorrow = tomorrowRes.items || [];
+                const week = weekRes.items || [];
+                setLessonTasks(today);
+                setLessonTasksTomorrow(tomorrow);
+                setLessonTasksWeek(week);
+                const match = (i: LessonTaskItem) =>
+                  i.group_id === lessonTaskDetail.group_id &&
+                  i.schedule_id === lessonTaskDetail.schedule_id &&
+                  i.lesson_date === lessonTaskDetail.lesson_date;
+                const updated = today.find(match) ?? tomorrow.find(match) ?? week.find(match);
                 if (updated) setLessonTaskDetail(updated);
               } finally {
                 setLessonDetailRefreshing(false);

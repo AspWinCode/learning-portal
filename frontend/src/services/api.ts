@@ -626,6 +626,14 @@ export const salesApi = {
   }): Promise<void> => {
     await api.post('/api/sales/lesson-tasks/call-result', payload);
   },
+  listLessonTasksTomorrow: async (): Promise<{ items: LessonTaskItem[] }> => {
+    const response = await api.get('/api/sales/lesson-tasks/tomorrow');
+    return response.data;
+  },
+  listLessonTasksWeek: async (): Promise<{ items: LessonTaskItem[] }> => {
+    const response = await api.get('/api/sales/lesson-tasks/week');
+    return response.data;
+  },
   listLeads: async (params?: {
     status_filter?: LeadStatus;
     questionnaire_filled?: boolean;

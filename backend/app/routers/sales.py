@@ -170,19 +170,15 @@ def _lesson_task_status(lesson_start: datetime, lesson_end: datetime, now: datet
     return "completed"
 
 
-@router.get("/lesson-tasks/today")
-async def list_lesson_tasks_today(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
-):
-    """
-    Уроки на сегодня для раздела «Позвать детей на занятие»: группы с расписанием на сегодня,
-    статус по текущему времени, ученики и посещаемость.
-    """
-    today = date.today()
-    weekday = today.weekday()  # 0=Monday, 6=Sunday
-    now = datetime.now()
-
+def _lesson_tasks_for_date(
+    db: Session,
+    target_date: date,
+    now: Optional[datetime] = None,
+) -> List[dict]:
+    """Список уроков на одну дату (для сегодня/завтра/недели)."""
+    if now is None:
+        now = datetime.now()
+    weekday = target_date.weekday()
     schedules = (
         db.query(GroupSchedule)
         .join(Group, Group.id == GroupSchedule.group_id)
@@ -199,9 +195,9 @@ async def list_lesson_tasks_today(
         if not group:
             continue
         trainer = group.trainer
-        lesson_start = datetime.combine(today, sched.start_time)
-        lesson_end = datetime.combine(today, sched.end_time)
-        status = _lesson_task_status(lesson_start, lesson_end, now)
+        lesson_start = datetime.combine(target_date, sched.start_time)
+        lesson_end = datetime.combine(target_date, sched.end_time)
+        status = _lesson_task_status(lesson_start, lesson_end, now) if target_date == date.today() else "waiting"
 
         student_ids = [gs.student_id for gs in group.group_students]
         attendance_rows = {}
@@ -210,7 +206,7 @@ async def list_lesson_tasks_today(
                 db.query(LessonAttendance)
                 .filter(
                     LessonAttendance.group_id == group.id,
-                    LessonAttendance.lesson_date == today,
+                    LessonAttendance.lesson_date == target_date,
                     LessonAttendance.student_id.in_(student_ids),
                 )
                 .all()
@@ -259,7 +255,7 @@ async def list_lesson_tasks_today(
             "group_name": group.name,
             "direction": group.direction,
             "schedule_id": sched.id,
-            "lesson_date": today.isoformat(),
+            "lesson_date": target_date.isoformat(),
             "start_time": sched.start_time.strftime("%H:%M") if hasattr(sched.start_time, "strftime") else str(sched.start_time),
             "end_time": sched.end_time.strftime("%H:%M") if hasattr(sched.end_time, "strftime") else str(sched.end_time),
             "status": status,
@@ -272,6 +268,42 @@ async def list_lesson_tasks_today(
             "unknown_count": sum(1 for u in students_out if u.get("attended") is None),
             "call_contacted_count": call_contacted_count,
         })
+    return out
+
+
+@router.get("/lesson-tasks/today")
+async def list_lesson_tasks_today(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Уроки на сегодня для раздела «Позвать детей на занятие»."""
+    today = date.today()
+    out = _lesson_tasks_for_date(db, today)
+    return {"items": out}
+
+
+@router.get("/lesson-tasks/tomorrow")
+async def list_lesson_tasks_tomorrow(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Уроки на завтра."""
+    tomorrow = date.today() + timedelta(days=1)
+    out = _lesson_tasks_for_date(db, tomorrow)
+    return {"items": out}
+
+
+@router.get("/lesson-tasks/week")
+async def list_lesson_tasks_week(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Уроки на неделю (сегодня + 6 дней)."""
+    today = date.today()
+    out = []
+    for day_offset in range(7):
+        target = today + timedelta(days=day_offset)
+        out.extend(_lesson_tasks_for_date(db, target))
     return {"items": out}
 
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -25,6 +26,7 @@ import type { TrainerLessonSlot } from '../types';
 const WEEKDAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 const TrainerLessonsPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
   const [slots, setSlots] = useState<TrainerLessonSlot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +34,15 @@ const TrainerLessonsPage: React.FC = () => {
   const [popupOpen, setPopupOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<TrainerLessonSlot | null>(null);
   const [attendanceDraft, setAttendanceDraft] = useState<Record<number, boolean>>({});
+  const [lateDraft, setLateDraft] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      setViewDate(dateParam);
+    }
+  }, [searchParams]);
 
   const loadSlots = useCallback(async () => {
     setLoading(true);
@@ -59,10 +69,13 @@ const TrainerLessonsPage: React.FC = () => {
   const openPopup = (slot: TrainerLessonSlot) => {
     setSelectedSlot(slot);
     const draft: Record<number, boolean> = {};
+    const late: Record<number, boolean> = {};
     slot.students.forEach((s) => {
       draft[s.id] = s.attended ?? true;
+      late[s.id] = !!s.late;
     });
     setAttendanceDraft(draft);
+    setLateDraft(late);
     setPopupOpen(true);
   };
 
@@ -77,6 +90,7 @@ const TrainerLessonsPage: React.FC = () => {
         attendances: selectedSlot.students.map((s) => ({
           student_id: s.id,
           attended: attendanceDraft[s.id] ?? true,
+          late: lateDraft[s.id] ?? false,
         })),
       });
       setPopupOpen(false);
@@ -176,18 +190,33 @@ const TrainerLessonsPage: React.FC = () => {
           </Typography>
           <Stack spacing={0.5}>
             {selectedSlot?.students.map((student) => (
-              <FormControlLabel
-                key={student.id}
-                control={
-                  <Checkbox
-                    checked={attendanceDraft[student.id] ?? true}
-                    onChange={(e) =>
-                      setAttendanceDraft((prev) => ({ ...prev, [student.id]: e.target.checked }))
+              <Stack key={student.id} direction="row" alignItems="center" flexWrap="wrap" spacing={1}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={attendanceDraft[student.id] ?? true}
+                      onChange={(e) =>
+                        setAttendanceDraft((prev) => ({ ...prev, [student.id]: e.target.checked }))
+                      }
+                    />
+                  }
+                  label={student.full_name}
+                />
+                {!(attendanceDraft[student.id] ?? true) && (
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={lateDraft[student.id] ?? false}
+                        onChange={(e) =>
+                          setLateDraft((prev) => ({ ...prev, [student.id]: e.target.checked }))
+                        }
+                      />
                     }
+                    label="Опоздает / в пути"
                   />
-                }
-                label={student.full_name}
-              />
+                )}
+              </Stack>
             ))}
           </Stack>
         </DialogContent>

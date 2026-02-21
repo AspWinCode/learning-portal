@@ -59,7 +59,7 @@ async def get_lessons_for_date(
                 LessonAttendance.group_id == group.id,
                 LessonAttendance.lesson_date == lesson_date,
             ).all():
-                attendance_map[att.student_id] = att.attended
+                attendance_map[att.student_id] = {"attended": att.attended, "late": getattr(att, "late", False)}
             program_name = None
             if group.programs:
                 program_name = group.programs[0].name if group.programs else None
@@ -70,11 +70,14 @@ async def get_lessons_for_date(
                 student = gs.student
                 if not student:
                     continue
-                attended = attendance_map.get(student.id)
+                info = attendance_map.get(student.id)
+                attended = info["attended"] if isinstance(info, dict) else info
+                late = info.get("late", False) if isinstance(info, dict) else False
                 students_data.append({
                     "id": student.id,
                     "full_name": display_names.get(student.id, student.full_name),
                     "attended": attended,
+                    "late": late,
                 })
             result.append(TrainerLessonSlotResponse(
                 group_id=group.id,
@@ -110,14 +113,17 @@ async def save_attendance(
             LessonAttendance.lesson_date == payload.lesson_date,
             LessonAttendance.student_id == item.student_id,
         ).first()
+        late = getattr(item, "late", False) or False
         if att:
             att.attended = item.attended
+            att.late = late
         else:
             att = LessonAttendance(
                 group_id=payload.group_id,
                 lesson_date=payload.lesson_date,
                 student_id=item.student_id,
                 attended=item.attended,
+                late=late,
             )
             db.add(att)
     db.commit()

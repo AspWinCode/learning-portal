@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -39,11 +39,16 @@ import {
   ExpandMore,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { tasksApi, studentsApi } from '../services/api';
+import { tasksApi, studentsApi, salesApi } from '../services/api';
+import type { LessonTaskItem, LessonTaskStudent } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { extractApiError } from '../utils/extractApiError';
 import type { TaskTemplateResponse, TaskResponse, TaskSubtaskResponse, RepeatFrequency, RepeatEndType } from '../types';
 import type { Student } from '../types';
+import OpenInNew from '@mui/icons-material/OpenInNew';
+import Refresh from '@mui/icons-material/Refresh';
+import Phone from '@mui/icons-material/Phone';
+import { Link } from 'react-router-dom';
 
 const WEEKDAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
@@ -51,10 +56,17 @@ const TasksPage: React.FC = () => {
   const { user } = useAuth();
   const isAdminOrOwner = user?.role === 'admin' || user?.role === 'owner';
   const isSales = user?.role === 'sales';
+  const canSeeLessonTasks = isAdminOrOwner || isSales;
 
   const [templates, setTemplates] = useState<TaskTemplateResponse[]>([]);
   const [tasks, setTasks] = useState<TaskResponse[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [lessonTasks, setLessonTasks] = useState<LessonTaskItem[]>([]);
+  const [lessonTasksLoading, setLessonTasksLoading] = useState(false);
+  const [lessonTaskDetail, setLessonTaskDetail] = useState<LessonTaskItem | null>(null);
+  const [lessonDetailRefreshing, setLessonDetailRefreshing] = useState(false);
+  const [callResultSaving, setCallResultSaving] = useState<number | null>(null);
+  const callRoundBlockRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
@@ -117,15 +129,28 @@ const TasksPage: React.FC = () => {
     }
   }, [isAdminOrOwner]);
 
+  const loadLessonTasks = useCallback(async () => {
+    if (!canSeeLessonTasks) return;
+    setLessonTasksLoading(true);
+    try {
+      const res = await salesApi.listLessonTasksToday();
+      setLessonTasks(res.items || []);
+    } catch {
+      setLessonTasks([]);
+    } finally {
+      setLessonTasksLoading(false);
+    }
+  }, [canSeeLessonTasks]);
+
   useEffect(() => {
     const run = async () => {
       setLoading(true);
       setError(null);
-      await Promise.all([loadTasks(), loadTemplates(), loadStudents()]);
+      await Promise.all([loadTasks(), loadTemplates(), loadStudents(), loadLessonTasks()]);
       setLoading(false);
     };
     run();
-  }, [loadTasks, loadTemplates, loadStudents]);
+  }, [loadTasks, loadTemplates, loadStudents, loadLessonTasks]);
 
   const handleSubtaskToggle = async (task: TaskResponse, subtask: TaskSubtaskResponse) => {
     try {
@@ -303,6 +328,159 @@ const TasksPage: React.FC = () => {
 
         {loading ? (
           <Typography color="text.secondary">Загрузка...</Typography>
+        ) : tab === 0 && canSeeLessonTasks ? (
+          <Stack spacing={3}>
+            <Box>
+              <Typography variant="h6" gutterBottom>Задачи на сегодня</Typography>
+              <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
+                Позвать детей на занятие (сегодня)
+              </Typography>
+              {lessonTasks.some((t) => t.status === 'soon') && (
+                <Alert severity="info" sx={{ mb: 1 }}>
+                  Через 15 минут урок у {lessonTasks.filter((t) => t.status === 'soon').length} групп(ы)
+                </Alert>
+              )}
+              {lessonTasksLoading ? (
+                <Typography color="text.secondary">Загрузка уроков...</Typography>
+              ) : lessonTasks.length === 0 ? (
+                <Typography color="text.secondary">На сегодня уроков по расписанию нет.</Typography>
+              ) : (
+                <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
+                  {lessonTasks.map((item) => {
+                    const statusLabels: Record<string, string> = {
+                      waiting: 'Ожидает урока',
+                      soon: 'Скоро урок',
+                      in_progress: 'Идёт урок',
+                      call_round: 'Дозвон',
+                      completed: 'Завершено',
+                    };
+                    const statusColor: Record<string, 'default' | 'primary' | 'warning' | 'success' | 'error'> = {
+                      waiting: 'default',
+                      soon: 'warning',
+                      in_progress: 'primary',
+                      call_round: 'error',
+                      completed: 'success',
+                    };
+                    return (
+                      <Card key={`${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 280, maxWidth: 360 }}>
+                        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                          <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {item.trainer_name} — {item.start_time}
+                          </Typography>
+                          <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+                            <Chip size="small" label={statusLabels[item.status] || item.status} color={statusColor[item.status] || 'default'} />
+                            <Typography variant="caption" color="text.secondary">
+                              Всего: {item.total} / На месте: {item.present_count} / Нет: {item.absent_count}
+                              {(item.call_contacted_count ?? 0) > 0 && ` / Дозвонено: ${item.call_contacted_count}`}
+                            </Typography>
+                          </Stack>
+                          <Button
+                            size="small"
+                            startIcon={<OpenInNew />}
+                            sx={{ mt: 1 }}
+                            onClick={() => setLessonTaskDetail(item)}
+                          >
+                            Открыть карточку
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </Stack>
+              )}
+            </Box>
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Все задачи</Typography>
+              {isAdminOrOwner && (
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                  <Button size="small" variant={statusFilter === 'active' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('active')}>
+                    Активные
+                  </Button>
+                  <Button size="small" variant={statusFilter === 'archived' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('archived')}>
+                    Архив
+                  </Button>
+                  <Button startIcon={<AddIcon />} variant="contained" onClick={() => openTaskDialog(undefined)} sx={{ ml: 2 }}>
+                    Создать задачу
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => openTaskDialog(undefined, templates[0]?.id)}>
+                    Из шаблона
+                  </Button>
+                </Stack>
+              )}
+              {tasks.length === 0 ? (
+                <Typography color="text.secondary">Нет задач.</Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {tasks.map((task) => (
+                    <Card key={task.id} variant="outlined">
+                      <ListItemButton
+                        onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                        sx={{ py: 1 }}
+                      >
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%' }}>
+                          {expandedTaskId === task.id ? <ExpandLess /> : <ExpandMore />}
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="subtitle1">{task.title}</Typography>
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                              <Chip size="small" label={task.status === 'active' ? 'Активна' : 'Архив'} color={task.status === 'active' ? 'primary' : 'default'} />
+                              <Typography variant="caption" color="text.secondary">
+                                Прогресс: {task.progress}%
+                              </Typography>
+                              <LinearProgress variant="determinate" value={task.progress} sx={{ width: 80, height: 6, borderRadius: 1 }} />
+                            </Stack>
+                          </Box>
+                          {isAdminOrOwner && (
+                            <Stack direction="row" spacing={0.5} onClick={(e) => e.stopPropagation()}>
+                              <IconButton size="small" onClick={() => openTaskDialog(task)} title="Редактировать">
+                                <EditIcon />
+                              </IconButton>
+                              {task.status === 'active' && (
+                                <IconButton size="small" onClick={() => archiveTask(task.id)} title="В архив">
+                                  <ArchiveIcon />
+                                </IconButton>
+                              )}
+                              <IconButton size="small" onClick={() => deleteTask(task.id)} color="error" title="Удалить">
+                                <DeleteIcon />
+                              </IconButton>
+                            </Stack>
+                          )}
+                        </Stack>
+                      </ListItemButton>
+                      {expandedTaskId === task.id && (
+                        <CardContent sx={{ pt: 0, borderTop: '1px solid', borderColor: 'divider' }}>
+                          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                            Подзадачи
+                          </Typography>
+                          <List dense>
+                            {task.subtasks.map((st) => (
+                              <ListItem key={st.id} disablePadding>
+                                <FormControlLabel
+                                  control={
+                                    <Checkbox
+                                      checked={st.completed}
+                                      onChange={() => handleSubtaskToggle(task, st)}
+                                      disabled={!isAdminOrOwner && !isSales}
+                                    />
+                                  }
+                                  label={<ListItemText primary={st.text} sx={{ textDecoration: st.completed ? 'line-through' : 'none' }} />}
+                                />
+                              </ListItem>
+                            ))}
+                          </List>
+                          {task.student_ids?.length > 0 && (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                              Ученики: {task.student_ids.length}
+                            </Typography>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          </Stack>
         ) : tab === 1 && isAdminOrOwner ? (
           <Box>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
@@ -438,6 +616,205 @@ const TasksPage: React.FC = () => {
           </Box>
         )}
       </Stack>
+
+      <Dialog open={!!lessonTaskDetail} onClose={() => setLessonTaskDetail(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Урок: {lessonTaskDetail?.group_name}</DialogTitle>
+        <DialogContent>
+          {lessonTaskDetail && (() => {
+            const d = lessonTaskDetail;
+            const toCall: LessonTaskStudent[] = d.students.filter((s) => s.attended !== true && !s.late);
+            const callContacted = d.call_contacted_count ?? 0;
+            const lessonStart = new Date(`${d.lesson_date}T${d.start_time}`);
+            const lessonEnd = new Date(`${d.lesson_date}T${d.end_time}`);
+            const callEnd = new Date(lessonStart.getTime() + 25 * 60 * 1000);
+            const markWindowEnd = new Date(lessonStart.getTime() + 10 * 60 * 1000);
+            const now = new Date();
+            let timerText = '';
+            if (d.status === 'in_progress' && now < markWindowEnd) {
+              const min = Math.max(0, Math.ceil((markWindowEnd.getTime() - now.getTime()) / 60000));
+              timerText = `До конца окна отметки: ${min} мин`;
+            } else if ((d.status === 'in_progress' || d.status === 'call_round') && now < callEnd) {
+              const min = Math.max(0, Math.ceil((callEnd.getTime() - now.getTime()) / 60000));
+              timerText = `Дозвон до ${callEnd.getHours().toString().padStart(2, '0')}:${callEnd.getMinutes().toString().padStart(2, '0')} (${min} мин)`;
+            }
+            const handleSetCallResult = async (studentId: number, call_result: string) => {
+              setCallResultSaving(studentId);
+              try {
+                await salesApi.setLessonCallResult({
+                  group_id: d.group_id,
+                  lesson_date: d.lesson_date,
+                  student_id: studentId,
+                  call_result,
+                });
+                const res = await salesApi.listLessonTasksToday();
+                const updated = res.items?.find((i) => i.group_id === d.group_id && i.schedule_id === d.schedule_id);
+                if (updated) setLessonTaskDetail(updated);
+              } finally {
+                setCallResultSaving(null);
+              }
+            };
+            const openCallList = () => {
+              const phones = toCall
+                .map((s) => s.parent_phone || s.parent_phone_2)
+                .filter(Boolean) as string[];
+              const normalized = phones.map((p) => (p.replace(/\D/g, '').startsWith('7') ? `+${p.replace(/\D/g, '')}` : `+7${p.replace(/\D/g, '').slice(-10)}`));
+              if (normalized.length) window.open(`tel:${normalized[0]}`, '_self');
+            };
+            return (
+              <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Время: {d.start_time}–{d.end_time} · Тренер: {d.trainer_name}
+                </Typography>
+                {timerText && (
+                  <Typography variant="body2" color="primary" fontWeight="medium">
+                    {timerText}
+                  </Typography>
+                )}
+                {d.status === 'in_progress' && (
+                  <Typography variant="body2" color="text.secondary">
+                    Окно отметки тренера: 10 минут
+                  </Typography>
+                )}
+                <Typography variant="body2">
+                  Всего: {d.total} / На месте: {d.present_count} / Нет: {d.absent_count} / Не отмечено: {d.unknown_count}
+                  {callContacted > 0 && ` / Дозвонено: ${callContacted}`}
+                </Typography>
+                <Box sx={{ py: 1, px: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Посещаемость отмечает тренер в разделе Уроки.
+                  </Typography>
+                  <Button
+                    component={Link}
+                    to={`/lessons?date=${d.lesson_date}`}
+                    size="small"
+                    variant="outlined"
+                    startIcon={<OpenInNew />}
+                  >
+                    Открыть Уроки на эту дату
+                  </Button>
+                </Box>
+                {(d.status === 'call_round' || d.status === 'in_progress') && toCall.length > 0 && (
+                  <Box ref={callRoundBlockRef}>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>К обзвону: {toCall.length}</Typography>
+                    {d.status === 'call_round' && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        startIcon={<Phone />}
+                        onClick={() => callRoundBlockRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                        sx={{ mb: 1, mr: 1 }}
+                      >
+                        Начать обзвон отсутствующих
+                      </Button>
+                    )}
+                    {toCall.length > 0 && (
+                      <Button size="small" variant="outlined" startIcon={<Phone />} onClick={openCallList}>
+                        Обзвонить по очереди
+                      </Button>
+                    )}
+                  </Box>
+                )}
+                <Typography variant="subtitle2" sx={{ pt: 0.5 }}>Посещаемость</Typography>
+                <Stack spacing={0.5}>
+                  {d.students.map((s) => {
+                    const statusIcon =
+                      s.attended === true ? '✅' :
+                      s.late ? '⏳' :
+                      s.call_result === 'contacted' ? '📞' :
+                      s.call_result === 'no_answer' ? '🚫' :
+                      s.call_result ? '☎️' :
+                      s.attended === false ? '❌' : '⏳';
+                    const needCall = s.attended !== true && !s.late;
+                    return (
+                      <Card key={s.student_id} variant="outlined" sx={{ p: 1 }}>
+                        <Stack spacing={0.5}>
+                          <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={0.5}>
+                            <Typography variant="body2">
+                              {statusIcon} {s.full_name}
+                            </Typography>
+                            {(s.parent_phone || s.parent_phone_2) && (
+                              <Typography variant="caption" color="text.secondary">
+                                {s.parent_full_name || 'Родитель'} · {s.parent_phone || s.parent_phone_2}
+                              </Typography>
+                            )}
+                          </Stack>
+                          {needCall && (d.status === 'call_round' || d.status === 'in_progress') && (
+                            <Stack direction="row" flexWrap="wrap" gap={0.5} useFlexGap>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={callResultSaving === s.student_id}
+                                onClick={() => handleSetCallResult(s.student_id, 'messenger')}
+                              >
+                                Написал в мессенджер
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={callResultSaving === s.student_id}
+                                onClick={() => handleSetCallResult(s.student_id, 'contacted')}
+                              >
+                                Дозвонился
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={callResultSaving === s.student_id}
+                                onClick={() => handleSetCallResult(s.student_id, 'no_answer')}
+                              >
+                                Не дозвонился
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={callResultSaving === s.student_id}
+                                onClick={() => handleSetCallResult(s.student_id, 'cancelled')}
+                              >
+                                Отменил сегодня
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={callResultSaving === s.student_id}
+                                onClick={() => handleSetCallResult(s.student_id, 'technical')}
+                              >
+                                Техн. проблема
+                              </Button>
+                            </Stack>
+                          )}
+                        </Stack>
+                      </Card>
+                    );
+                  })}
+                </Stack>
+              </Stack>
+            );
+          })()}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            startIcon={<Refresh />}
+            onClick={async () => {
+              if (!lessonTaskDetail) return;
+              setLessonDetailRefreshing(true);
+              try {
+                const res = await salesApi.listLessonTasksToday();
+                const next = res.items || [];
+                setLessonTasks(next);
+                const updated = next.find((i) => i.group_id === lessonTaskDetail.group_id && i.schedule_id === lessonTaskDetail.schedule_id);
+                if (updated) setLessonTaskDetail(updated);
+              } finally {
+                setLessonDetailRefreshing(false);
+              }
+            }}
+            disabled={lessonDetailRefreshing}
+          >
+            {lessonDetailRefreshing ? 'Обновление…' : 'Обновить'}
+          </Button>
+          <Button onClick={() => setLessonTaskDetail(null)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={templateDialogOpen} onClose={() => setTemplateDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{templateEditId ? 'Редактировать шаблон' : 'Новый шаблон'}</DialogTitle>

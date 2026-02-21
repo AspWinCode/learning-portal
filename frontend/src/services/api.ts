@@ -330,7 +330,7 @@ export const trainerLessonsApi = {
   saveAttendance: async (data: {
     group_id: number;
     lesson_date: string;
-    attendances: Array<{ student_id: number; attended: boolean }>;
+    attendances: Array<{ student_id: number; attended: boolean; late?: boolean }>;
   }): Promise<void> => {
     await api.post('/api/trainer-lessons/attendance', data);
   },
@@ -581,8 +581,51 @@ export const settingsApi = {
   },
 };
 
+// Урок на сегодня для раздела «Позвать детей на занятие»
+export type LessonTaskStudent = {
+  student_id: number;
+  full_name: string;
+  attended: boolean | null;
+  late?: boolean;
+  call_result?: string | null; // contacted | no_answer | cancelled | technical | messenger
+  parent_full_name: string | null;
+  parent_phone: string | null;
+  parent_phone_2: string | null;
+  parent_telegram: string | null;
+};
+export type LessonTaskItem = {
+  group_id: number;
+  group_name: string;
+  direction: string | null;
+  schedule_id: number;
+  lesson_date: string;
+  start_time: string;
+  end_time: string;
+  status: 'waiting' | 'soon' | 'in_progress' | 'call_round' | 'completed';
+  trainer_id: number | null;
+  trainer_name: string;
+  students: LessonTaskStudent[];
+  total: number;
+  present_count: number;
+  absent_count: number;
+  unknown_count: number;
+  call_contacted_count?: number;
+};
+
 // Sales API
 export const salesApi = {
+  listLessonTasksToday: async (): Promise<{ items: LessonTaskItem[] }> => {
+    const response = await api.get('/api/sales/lesson-tasks/today');
+    return response.data;
+  },
+  setLessonCallResult: async (payload: {
+    group_id: number;
+    lesson_date: string;
+    student_id: number;
+    call_result: string;
+  }): Promise<void> => {
+    await api.post('/api/sales/lesson-tasks/call-result', payload);
+  },
   listLeads: async (params?: {
     status_filter?: LeadStatus;
     questionnaire_filled?: boolean;

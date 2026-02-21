@@ -129,7 +129,7 @@ export interface TrainerLessonSlot {
   start_time: string;
   end_time: string;
   lesson_date: string;
-  students: Array<{ id: number; full_name: string; attended: boolean | null }>;
+  students: Array<{ id: number; full_name: string; attended: boolean | null; late?: boolean }>;
 }
 
 export interface Topic {

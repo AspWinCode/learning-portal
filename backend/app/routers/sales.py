@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, time as dt_time
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
@@ -42,6 +42,9 @@ from app.models import (
     AbsenceFollowUp,
     Student,
     Group,
+    GroupSchedule,
+    GroupStudent,
+    LessonAttendance,
 )
 from app.schemas import (
     LeadCreate,
@@ -100,6 +103,7 @@ from app.schemas import (
     AbsenceFollowUpResponse,
     AbsenceFollowUpStageUpdate,
     OpenParentCabinetResponse,
+    LessonCallResultUpdate,
 )
 from app.routers.action_log import log_action
 
@@ -150,6 +154,163 @@ def _fix_lead_strings(lead: Lead) -> Lead:
         if fixed is not None and fixed != value:
             setattr(lead, field, fixed)
     return lead
+
+
+def _lesson_task_status(lesson_start: datetime, lesson_end: datetime, now: datetime, call_window_min: int = 25) -> str:
+    """Статус карточки урока: waiting | soon | in_progress | call_round | completed."""
+    if now < lesson_start - timedelta(minutes=15):
+        return "waiting"
+    if now < lesson_start:
+        return "soon"
+    if now < lesson_start + timedelta(minutes=10):
+        return "in_progress"
+    call_end = min(lesson_start + timedelta(minutes=call_window_min), lesson_end)
+    if now < call_end:
+        return "call_round"
+    return "completed"
+
+
+@router.get("/lesson-tasks/today")
+async def list_lesson_tasks_today(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """
+    Уроки на сегодня для раздела «Позвать детей на занятие»: группы с расписанием на сегодня,
+    статус по текущему времени, ученики и посещаемость.
+    """
+    today = date.today()
+    weekday = today.weekday()  # 0=Monday, 6=Sunday
+    now = datetime.now()
+
+    schedules = (
+        db.query(GroupSchedule)
+        .join(Group, Group.id == GroupSchedule.group_id)
+        .filter(GroupSchedule.day_of_week == weekday, Group.status == "active")
+        .order_by(GroupSchedule.start_time)
+        .all()
+    )
+    out = []
+    for sched in schedules:
+        group = db.query(Group).options(
+            joinedload(Group.trainer),
+            joinedload(Group.group_students),
+        ).filter(Group.id == sched.group_id).first()
+        if not group:
+            continue
+        trainer = group.trainer
+        lesson_start = datetime.combine(today, sched.start_time)
+        lesson_end = datetime.combine(today, sched.end_time)
+        status = _lesson_task_status(lesson_start, lesson_end, now)
+
+        student_ids = [gs.student_id for gs in group.group_students]
+        attendance_rows = {}
+        if student_ids:
+            atts = (
+                db.query(LessonAttendance)
+                .filter(
+                    LessonAttendance.group_id == group.id,
+                    LessonAttendance.lesson_date == today,
+                    LessonAttendance.student_id.in_(student_ids),
+                )
+                .all()
+            )
+            for a in atts:
+                attendance_rows[a.student_id] = a
+
+        cards = {}
+        if student_ids:
+            card_list = (
+                db.query(StudentCard)
+                .filter(
+                    StudentCard.student_id.in_(student_ids),
+                    StudentCard.archived.is_(False),
+                )
+                .all()
+            )
+            for c in card_list:
+                if c.student_id:
+                    cards[c.student_id] = c
+
+        students_out = []
+        students = db.query(Student).filter(Student.id.in_(student_ids)).all() if student_ids else []
+        display_names = get_students_display_names(db, student_ids)
+        for st in students:
+            card = cards.get(st.id)
+            att_row = attendance_rows.get(st.id)
+            attended = att_row.attended if att_row else None
+            late = getattr(att_row, "late", False) if att_row else False
+            call_result = getattr(att_row, "call_result", None) if att_row else None
+            students_out.append({
+                "student_id": st.id,
+                "full_name": display_names.get(st.id, st.full_name or "—"),
+                "attended": attended,
+                "late": late,
+                "call_result": call_result,
+                "parent_full_name": (card.parent_full_name if card else None) or None,
+                "parent_phone": (card.parent_phone if card else None) or None,
+                "parent_phone_2": (card.parent_phone_2 if card else None) or None,
+                "parent_telegram": (card.parent_telegram if card else None) or None,
+            })
+
+        call_contacted_count = sum(1 for u in students_out if u.get("call_result"))
+        out.append({
+            "group_id": group.id,
+            "group_name": group.name,
+            "direction": group.direction,
+            "schedule_id": sched.id,
+            "lesson_date": today.isoformat(),
+            "start_time": sched.start_time.strftime("%H:%M") if hasattr(sched.start_time, "strftime") else str(sched.start_time),
+            "end_time": sched.end_time.strftime("%H:%M") if hasattr(sched.end_time, "strftime") else str(sched.end_time),
+            "status": status,
+            "trainer_id": trainer.id if trainer else None,
+            "trainer_name": trainer.full_name if trainer else "—",
+            "students": students_out,
+            "total": len(students_out),
+            "present_count": sum(1 for u in students_out if u.get("attended") is True),
+            "absent_count": sum(1 for u in students_out if u.get("attended") is False),
+            "unknown_count": sum(1 for u in students_out if u.get("attended") is None),
+            "call_contacted_count": call_contacted_count,
+        })
+    return {"items": out}
+
+
+VALID_CALL_RESULTS = {"contacted", "no_answer", "cancelled", "technical", "messenger"}
+
+
+@router.post("/lesson-tasks/call-result")
+async def set_lesson_call_result(
+    payload: LessonCallResultUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Установить результат дозвона по ученику (менеджер): contacted | no_answer | cancelled | technical | messenger."""
+    if payload.call_result not in VALID_CALL_RESULTS:
+        raise HTTPException(status_code=400, detail=f"call_result must be one of: {sorted(VALID_CALL_RESULTS)}")
+    lesson_date = payload.lesson_date if isinstance(payload.lesson_date, date) else date.fromisoformat(str(payload.lesson_date))
+    att = (
+        db.query(LessonAttendance)
+        .filter(
+            LessonAttendance.group_id == payload.group_id,
+            LessonAttendance.lesson_date == lesson_date,
+            LessonAttendance.student_id == payload.student_id,
+        )
+        .first()
+    )
+    if not att:
+        att = LessonAttendance(
+            group_id=payload.group_id,
+            lesson_date=lesson_date,
+            student_id=payload.student_id,
+            attended=False,
+        )
+        db.add(att)
+        db.commit()
+        db.refresh(att)
+    att.call_result = payload.call_result
+    att.call_result_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/sales-instructions", response_model=List[SalesInstructionResponse])

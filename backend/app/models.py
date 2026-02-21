@@ -705,6 +705,9 @@ class LessonAttendance(Base):
     lesson_date = Column(Date, nullable=False)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
     attended = Column(Boolean, default=True, nullable=False)
+    late = Column(Boolean, default=False, nullable=False)  # опоздает / в пути
+    call_result = Column(String(32), nullable=True)  # contacted | no_answer | cancelled | technical | messenger
+    call_result_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group", back_populates="lesson_attendances")

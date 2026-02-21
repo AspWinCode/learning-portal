@@ -1021,12 +1021,21 @@ class ProjectResponse(ProjectBase):
 class LessonAttendanceItem(BaseModel):
     student_id: int
     attended: bool
+    late: Optional[bool] = False
 
 
 class LessonAttendanceSave(BaseModel):
     group_id: int
     lesson_date: date
     attendances: List[LessonAttendanceItem]
+
+
+class LessonCallResultUpdate(BaseModel):
+    """Результат дозвона по одному ученику (менеджер)."""
+    group_id: int
+    lesson_date: date
+    student_id: int
+    call_result: str  # contacted | no_answer | cancelled | technical | messenger
 
 
 # ╨Ч╨░╨╜╤П╤В╨╕╨╡ ╨┤╨╗╤П ╨║╨░╨╗╨╡╨╜╨┤╨░╤А╤П ╤В╤А╨╡╨╜╨╡╤А╨░ (╨│╤А╤Г╨┐╨┐╨░ + ╤Б╨╗╨╛╤В ╨┐╨╛ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤О + ╤Г╤З╨╡╨╜╨╕╨║╨╕ ╨╕ ╨╛╤В╨╝╨╡╤В╨║╨╕)

@@ -1,9 +1,10 @@
 import csv
 from datetime import date, datetime, timedelta, time as dt_time
 from io import BytesIO, StringIO
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel
 from openpyxl import load_workbook
 from sqlalchemy import distinct, func as sa_func, nulls_last
 from sqlalchemy.orm import Session, joinedload
@@ -191,13 +192,17 @@ async def plan_for_today(
     }
 
 
-class CitySummaryItem(TypedDict):
+class CitySummaryItem(BaseModel):
+    """Сводка по одному городу для плана на сегодня."""
     city: str
     schools_in_work: int
     overdue: int
     events_this_week: int
     leads_7d: int
     partners: int
+
+    class Config:
+        frozen = True
 
 
 @router.get("/b2b-schools/plan-city-summary", response_model=List[CitySummaryItem])
@@ -267,14 +272,14 @@ async def plan_city_summary(
         events_this_week = sum(1 for s in city_schools if _event_in_week(s.event_dates))
         leads_7d = lead_counts_by_city.get(city, 0)
         partners = sum(1 for s in city_schools if _is_partner(s))
-        result.append({
-            "city": city,
-            "schools_in_work": schools_in_work,
-            "overdue": overdue,
-            "events_this_week": events_this_week,
-            "leads_7d": leads_7d,
-            "partners": partners,
-        })
+        result.append(CitySummaryItem(
+            city=city,
+            schools_in_work=schools_in_work,
+            overdue=overdue,
+            events_this_week=events_this_week,
+            leads_7d=leads_7d,
+            partners=partners,
+        ))
     return result
 
 

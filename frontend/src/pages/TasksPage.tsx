@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -83,6 +84,10 @@ const TasksPage: React.FC = () => {
   const [templateName, setTemplateName] = useState('');
   const [templateSubtasks, setTemplateSubtasks] = useState<{ text: string; order: number }[]>([]);
   const [templateStudentIds, setTemplateStudentIds] = useState<number[]>([]);
+  const [templateSelectedStudents, setTemplateSelectedStudents] = useState<Student[]>([]);
+  const [templateStudentOptions, setTemplateStudentOptions] = useState<Student[]>([]);
+  const [templateStudentSearchLoading, setTemplateStudentSearchLoading] = useState(false);
+  const templateStudentSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [templateRepeatEnabled, setTemplateRepeatEnabled] = useState(false);
   const [templateRepeatFrequency, setTemplateRepeatFrequency] = useState<RepeatFrequency | ''>('');
   const [templateRepeatDays, setTemplateRepeatDays] = useState<number[]>([]);
@@ -97,6 +102,10 @@ const TasksPage: React.FC = () => {
   const [taskTemplateId, setTaskTemplateId] = useState<number | ''>('');
   const [taskSubtasks, setTaskSubtasks] = useState<{ text: string; order: number }[]>([]);
   const [taskStudentIds, setTaskStudentIds] = useState<number[]>([]);
+  const [taskSelectedStudents, setTaskSelectedStudents] = useState<Student[]>([]);
+  const [taskStudentOptions, setTaskStudentOptions] = useState<Student[]>([]);
+  const [taskStudentSearchLoading, setTaskStudentSearchLoading] = useState(false);
+  const taskStudentSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [taskRepeatEnabled, setTaskRepeatEnabled] = useState(false);
   const [taskRepeatFrequency, setTaskRepeatFrequency] = useState<RepeatFrequency | ''>('');
   const [taskRepeatDays, setTaskRepeatDays] = useState<number[]>([]);
@@ -226,18 +235,19 @@ const TasksPage: React.FC = () => {
         repeat_end_after_count: templateRepeatEnabled && templateRepeatEndType === 'after_count' ? templateRepeatEndAfterCount : undefined,
         repeat_end_until: templateRepeatEnabled && templateRepeatEndType === 'until_date' && templateRepeatEndUntil ? templateRepeatEndUntil : undefined,
       };
+      const studentIds = templateSelectedStudents.map((s) => s.id);
       if (templateEditId) {
         await tasksApi.updateTemplate(templateEditId, {
           name: templateName.trim(),
           subtasks: subtasks.map((s, i) => ({ text: s.text.trim(), order: i })),
-          student_ids: templateStudentIds,
+          student_ids: studentIds,
           ...repeatPayload,
         });
       } else {
         await tasksApi.createTemplate({
           name: templateName.trim(),
           subtasks: subtasks.map((s, i) => ({ text: s.text.trim(), order: i })),
-          student_ids: templateStudentIds,
+          student_ids: studentIds,
           ...repeatPayload,
         });
       }
@@ -288,10 +298,11 @@ const TasksPage: React.FC = () => {
         repeat_end_after_count: taskRepeatEnabled && taskRepeatEndType === 'after_count' ? taskRepeatEndAfterCount : undefined,
         repeat_end_until: taskRepeatEnabled && taskRepeatEndType === 'until_date' && taskRepeatEndUntil ? taskRepeatEndUntil : undefined,
       };
+      const studentIds = taskSelectedStudents.map((s) => s.id);
       if (taskEditId) {
         await tasksApi.updateTask(taskEditId, {
           title: taskTitle.trim(),
-          student_ids: taskStudentIds,
+          student_ids: studentIds,
           ...taskRepeatPayload,
         });
       } else {
@@ -299,7 +310,7 @@ const TasksPage: React.FC = () => {
           title: taskTitle.trim() || undefined,
           template_id: taskTemplateId || undefined,
           subtasks: taskTemplateId ? undefined : (subtasks.length ? subtasks.map((s, i) => ({ text: s.text.trim(), order: i })) : undefined),
-          student_ids: taskStudentIds,
+          student_ids: studentIds,
           ...taskRepeatPayload,
         });
       }
@@ -349,6 +360,26 @@ const TasksPage: React.FC = () => {
       setTaskRepeatEndUntil(t.repeat_end_until ? t.repeat_end_until.slice(0, 10) : '');
     }
   }, [taskTemplateId, taskDialogOpen, taskEditId, templates]);
+
+  // Загрузить выбранных учеников для шаблона при открытии диалога
+  useEffect(() => {
+    if (!templateDialogOpen || !isAdminOrOwner) return;
+    if (templateStudentIds.length === 0) {
+      setTemplateSelectedStudents([]);
+      return;
+    }
+    studentsApi.getAll({ ids: templateStudentIds.join(',') }).then(setTemplateSelectedStudents).catch(() => setTemplateSelectedStudents([]));
+  }, [templateDialogOpen, templateStudentIds.join(',')]);
+
+  // Загрузить выбранных учеников для задачи при открытии диалога
+  useEffect(() => {
+    if (!taskDialogOpen) return;
+    if (taskStudentIds.length === 0) {
+      setTaskSelectedStudents([]);
+      return;
+    }
+    studentsApi.getAll({ ids: taskStudentIds.join(',') }).then(setTaskSelectedStudents).catch(() => setTaskSelectedStudents([]));
+  }, [taskDialogOpen, taskStudentIds.join(',')]);
 
   return (
     <Layout>
@@ -1046,14 +1077,49 @@ const TasksPage: React.FC = () => {
             </Stack>
           )}
 
-          <Typography variant="subtitle2" sx={{ mt: 2 }}>Ученики (ID через запятую)</Typography>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="Например: 1, 2, 3"
-            value={templateStudentIds.join(', ')}
-            onChange={(e) => setTemplateStudentIds(e.target.value.split(',').map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n)))}
-            margin="dense"
+          <Typography variant="subtitle2" sx={{ mt: 2 }}>Ученики</Typography>
+          <Autocomplete
+            multiple
+            value={templateSelectedStudents}
+            onChange={(_, newValue) => setTemplateSelectedStudents(newValue)}
+            options={templateStudentOptions}
+            getOptionLabel={(s) => s.full_name || ''}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            loading={templateStudentSearchLoading}
+            onInputChange={(_, value) => {
+              if (templateStudentSearchRef.current) clearTimeout(templateStudentSearchRef.current);
+              if (!value.trim()) {
+                setTemplateStudentOptions([]);
+                return;
+              }
+              templateStudentSearchRef.current = setTimeout(() => {
+                setTemplateStudentSearchLoading(true);
+                studentsApi.getAll({ q: value.trim(), limit: 20 }).then((data) => {
+                  setTemplateStudentOptions(Array.isArray(data) ? data : []);
+                }).catch(() => setTemplateStudentOptions([])).finally(() => setTemplateStudentSearchLoading(false));
+              }, 300);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === ' ' && templateStudentOptions.length > 0) {
+                const first = templateStudentOptions.find((o) => !templateSelectedStudents.some((s) => s.id === o.id));
+                if (first) {
+                  e.preventDefault();
+                  setTemplateSelectedStudents((prev) => [...prev, first]);
+                  setTemplateStudentOptions([]);
+                }
+              }
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                size="small"
+                placeholder="Введите фамилию или имя ученика, пробел — выбрать первого из списка"
+                margin="dense"
+              />
+            )}
+            renderTags={(value, getTagProps) =>
+              value.map((s, i) => <Chip key={s.id} label={s.full_name} {...getTagProps({ index: i })} size="small" />)
+            }
           />
         </DialogContent>
         <DialogActions>
@@ -1164,14 +1230,49 @@ const TasksPage: React.FC = () => {
             </Stack>
           )}
 
-          <Typography variant="subtitle2" sx={{ mt: 2 }}>Ученики (ID через запятую)</Typography>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="Например: 1, 2, 3"
-            value={taskStudentIds.join(', ')}
-            onChange={(e) => setTaskStudentIds(e.target.value.split(',').map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n)))}
-            margin="dense"
+          <Typography variant="subtitle2" sx={{ mt: 2 }}>Ученики</Typography>
+          <Autocomplete
+            multiple
+            value={taskSelectedStudents}
+            onChange={(_, newValue) => setTaskSelectedStudents(newValue)}
+            options={taskStudentOptions}
+            getOptionLabel={(s) => s.full_name || ''}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            loading={taskStudentSearchLoading}
+            onInputChange={(_, value) => {
+              if (taskStudentSearchRef.current) clearTimeout(taskStudentSearchRef.current);
+              if (!value.trim()) {
+                setTaskStudentOptions([]);
+                return;
+              }
+              taskStudentSearchRef.current = setTimeout(() => {
+                setTaskStudentSearchLoading(true);
+                studentsApi.getAll({ q: value.trim(), limit: 20 }).then((data) => {
+                  setTaskStudentOptions(Array.isArray(data) ? data : []);
+                }).catch(() => setTaskStudentOptions([])).finally(() => setTaskStudentSearchLoading(false));
+              }, 300);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === ' ' && taskStudentOptions.length > 0) {
+                const first = taskStudentOptions.find((o) => !taskSelectedStudents.some((s) => s.id === o.id));
+                if (first) {
+                  e.preventDefault();
+                  setTaskSelectedStudents((prev) => [...prev, first]);
+                  setTaskStudentOptions([]);
+                }
+              }
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                size="small"
+                placeholder="Введите фамилию или имя ученика, пробел — выбрать первого из списка"
+                margin="dense"
+              />
+            )}
+            renderTags={(value, getTagProps) =>
+              value.map((s, i) => <Chip key={s.id} label={s.full_name} {...getTagProps({ index: i })} size="small" />)
+            }
           />
         </DialogContent>
         <DialogActions>

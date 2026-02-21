@@ -167,10 +167,12 @@ async def read_students(
     skip: int = 0,
     limit: int = 100,
     status_filter: Optional[StudentStatus] = Query(None, alias="status"),
+    q: Optional[str] = Query(None, description="Поиск по ФИО (подстрока)"),
+    ids: Optional[str] = Query(None, description="Список ID через запятую (вернуть только этих учеников)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user)
 ):
-    """Получение списка учеников"""
+    """Получение списка учеников. q — поиск по имени/фамилии/отчеству, ids — выбор по ID."""
     query = db.query(Student)
     
     # Родитель видит только своих активных учеников
@@ -191,10 +193,20 @@ async def read_students(
         if status_filter:
             query = query.filter(Student.status == status_filter)
     
+    if ids and ids.strip():
+        id_list = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
+        if id_list:
+            query = query.filter(Student.id.in_(id_list))
+    else:
+        if q and q.strip():
+            term = f"%{q.strip()}%"
+            query = query.filter(Student.full_name.ilike(term))
+        query = query.offset(skip).limit(limit)
+    
     query = query.options(
         selectinload(Student.student_programs).joinedload(StudentProgram.program)
     )
-    students = query.offset(skip).limit(limit).all()
+    students = query.all()
     if not students:
         return []
     display_names = get_students_display_names(db, [s.id for s in students])

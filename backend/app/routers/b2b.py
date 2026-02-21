@@ -687,6 +687,7 @@ async def update_b2b_school(
 ):
     school = _load_school_with_contacts(db, school_id)
     old_stage = school.pipeline_stage
+    old_support_letter = getattr(school, "support_letter_status", None)
     data = payload.dict(exclude_unset=True)
     if "pipeline_stage" in data and data["pipeline_stage"] is not None:
         data["pipeline_stage"] = data["pipeline_stage"].value
@@ -697,6 +698,14 @@ async def update_b2b_school(
     new_stage = school.pipeline_stage
     if new_stage != old_stage:
         _on_b2b_school_stage_changed(db, school, new_stage, current_user.id)
+    new_support_letter = getattr(school, "support_letter_status", None)
+    if new_support_letter == "requested" and old_support_letter != "requested" and school.manager_id:
+        _create_b2b_task(
+            db,
+            created_by_id=current_user.id,
+            title=f"Запросить письмо поддержки: {school.name or 'Школа'}",
+            assigned_to_id=school.manager_id,
+        )
     db.commit()
     db.refresh(school)
     _ = school.school_contacts

@@ -32,6 +32,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import Add from '@mui/icons-material/Add';
@@ -41,7 +42,7 @@ import ViewModule from '@mui/icons-material/ViewModule';
 import TableChart from '@mui/icons-material/TableChart';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
-import { b2bApi } from '../services/api';
+import { b2bApi, tasksApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { B2BSchool, B2BSchoolPipelineStage, B2BSchoolContact, B2BProject } from '../types';
 import { ALL_FUNNEL_STAGES, hasNoNextAction } from '../constants/b2bFunnel';
@@ -64,6 +65,7 @@ const B2BSchoolsPage: React.FC = () => {
   const [managers, setManagers] = useState<{ id: number; full_name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSchool, setEditingSchool] = useState<B2BSchool | null>(null);
   const PARTNERSHIP_KEYS = [
@@ -339,6 +341,45 @@ const B2BSchoolsPage: React.FC = () => {
       await refreshEditingSchool();
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось удалить контакт'));
+    }
+  };
+
+  const [requestSupportLetterLoading, setRequestSupportLetterLoading] = useState(false);
+  const handleRequestSupportLetter = async () => {
+    if (!editingSchool) return;
+    setError(null);
+    setRequestSupportLetterLoading(true);
+    try {
+      await b2bApi.updateSchool(editingSchool.id, { support_letter_status: 'requested' });
+      setForm((f) => ({ ...f, support_letter_status: 'requested' }));
+      setSuccess('Письмо поддержки запрошено, задача создана');
+      await refreshEditingSchool();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось запросить письмо поддержки'));
+    } finally {
+      setRequestSupportLetterLoading(false);
+    }
+  };
+
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const [creatingFindContactsTask, setCreatingFindContactsTask] = useState(false);
+  const handleCreateFindContactsTask = async () => {
+    if (!editingSchool) return;
+    setError(null);
+    setCreatingFindContactsTask(true);
+    try {
+      await tasksApi.createTask({
+        title: `Найти контакты (директор/завуч/информатика): ${editingSchool.name}`,
+        assigned_to_id: editingSchool.manager_id ?? undefined,
+      });
+      setSuccess('Задача создана');
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось создать задачу'));
+    } finally {
+      setCreatingFindContactsTask(false);
     }
   };
 
@@ -679,6 +720,11 @@ const B2BSchoolsPage: React.FC = () => {
           {error}
         </Alert>
       )}
+      {success && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(null)}>
+          {success}
+        </Alert>
+      )}
 
       {loading ? (
         <Typography color="text.secondary">Загрузка…</Typography>
@@ -976,9 +1022,37 @@ const B2BSchoolsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => { setDialogOpen(false); setSuccess(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>{editingSchool ? 'Редактировать школу' : 'Новая школа'}</DialogTitle>
         <DialogContent>
+          {editingSchool && (
+            <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mb: 2 }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  tasksApi.createTask({
+                    title: `Задача: ${editingSchool.name}`,
+                    assigned_to_id: editingSchool.manager_id ?? undefined,
+                  }).then(() => setSuccess('Задача создана')).catch((err: any) => setError(extractApiError(err, 'Не удалось создать задачу')));
+                }}
+              >
+                + Задача
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-events')}>
+                + Мероприятие
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-contacts')}>
+                + Взаимодействие
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-partnership')}>
+                Партнёрство
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => scrollToSection('card-section-support-letter')}>
+                Письмо поддержки
+              </Button>
+            </Stack>
+          )}
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
               label="Название школы"
@@ -1027,13 +1101,15 @@ const B2BSchoolsPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <TextField
-              label="Даты мероприятий (через запятую)"
-              value={form.event_dates}
-              onChange={(e) => setForm((f) => ({ ...f, event_dates: e.target.value }))}
-              fullWidth
-              placeholder="2025-03-01, 2025-03-15"
-            />
+            <Box id="card-section-events">
+              <TextField
+                label="Даты мероприятий (через запятую)"
+                value={form.event_dates}
+                onChange={(e) => setForm((f) => ({ ...f, event_dates: e.target.value }))}
+                fullWidth
+                placeholder="2025-03-01, 2025-03-15"
+              />
+            </Box>
             <FormControl fullWidth>
               <InputLabel>Стадия воронки</InputLabel>
               <Select
@@ -1108,19 +1184,36 @@ const B2BSchoolsPage: React.FC = () => {
               />
             )}
 
-            <FormControl fullWidth sx={{ mt: 1 }}>
-              <InputLabel>Письмо поддержки</InputLabel>
-              <Select
-                value={form.support_letter_status}
-                label="Письмо поддержки"
-                onChange={(e) => setForm((f) => ({ ...f, support_letter_status: e.target.value }))}
-              >
-                {SUPPORT_LETTER_OPTIONS.map((o) => (
-                  <MenuItem key={o.value || 'none'} value={o.value}>{o.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Box>
+            <Box id="card-section-support-letter">
+              <FormControl fullWidth sx={{ mt: 1 }}>
+                <InputLabel>Письмо поддержки</InputLabel>
+                <Select
+                  value={form.support_letter_status}
+                  label="Письмо поддержки"
+                  onChange={(e) => setForm((f) => ({ ...f, support_letter_status: e.target.value }))}
+                >
+                  {SUPPORT_LETTER_OPTIONS.map((o) => (
+                    <MenuItem key={o.value || 'none'} value={o.value}>{o.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {editingSchool && form.support_letter_status !== 'requested' && form.support_letter_status !== 'received' && (
+                <Tooltip title={editingSchool.manager_id ? '' : 'Назначьте ответственного школе'}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      sx={{ mt: 0.5 }}
+                      disabled={requestSupportLetterLoading || !editingSchool.manager_id}
+                      onClick={() => void handleRequestSupportLetter()}
+                    >
+                      {requestSupportLetterLoading ? 'Отправка…' : 'Запросить'}
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+            </Box>
+            <Box id="card-section-partnership">
               <Typography variant="subtitle2" gutterBottom>Партнёрство</Typography>
               <Stack direction="row" flexWrap="wrap" gap={1}>
                 {PARTNERSHIP_KEYS.map(({ key, label }) => (
@@ -1145,12 +1238,28 @@ const B2BSchoolsPage: React.FC = () => {
             </Box>
 
             {editingSchool && (
-              <Box>
+              <Box id="card-section-contacts">
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                   <Typography variant="subtitle2">Контакты</Typography>
-                  <Button size="small" startIcon={<Add />} onClick={openAddContact}>
-                    Добавить контакт
-                  </Button>
+                  <Stack direction="row" spacing={0.5}>
+                    {(!editingSchool.contacts || editingSchool.contacts.length === 0) && (
+                      <Tooltip title={editingSchool.manager_id ? '' : 'Назначьте ответственного школе, чтобы поставить задачу'}>
+                        <span>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            disabled={!editingSchool.manager_id || creatingFindContactsTask}
+                            onClick={() => void handleCreateFindContactsTask()}
+                          >
+                            {creatingFindContactsTask ? 'Создание…' : 'Поставить задачу найти контакты'}
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    )}
+                    <Button size="small" startIcon={<Add />} onClick={openAddContact}>
+                      Добавить контакт
+                    </Button>
+                  </Stack>
                 </Stack>
                 <Stack spacing={1}>
                   {(editingSchool.contacts ?? []).map((c) => (

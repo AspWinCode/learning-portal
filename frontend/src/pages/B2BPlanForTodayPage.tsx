@@ -93,6 +93,14 @@ const B2BPlanForTodayPage: React.FC = () => {
     event_done_no_leads: B2BSchool[];
     negotiations_14d: B2BSchool[];
   } | null>(null);
+  const [citySummary, setCitySummary] = useState<{
+    city: string;
+    schools_in_work: number;
+    overdue: number;
+    events_this_week: number;
+    leads_7d: number;
+    partners: number;
+  }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rescheduleSchool, setRescheduleSchool] = useState<B2BSchool | null>(null);
@@ -111,8 +119,12 @@ const B2BPlanForTodayPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await b2bApi.planForToday(selectedCity || undefined);
-      setData(res);
+      const [planRes, summaryRes] = await Promise.all([
+        b2bApi.planForToday(selectedCity || undefined),
+        b2bApi.planCitySummary(),
+      ]);
+      setData(planRes);
+      setCitySummary(summaryRes);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить план'));
       setData(null);
@@ -180,6 +192,39 @@ const B2BPlanForTodayPage: React.FC = () => {
           <Typography color="text.secondary">Загрузка...</Typography>
         ) : data ? (
           <Stack spacing={3}>
+            {citySummary.length > 0 && (
+              <Card variant="outlined" sx={{ overflow: 'auto' }}>
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
+                    Сводка по городам
+                  </Typography>
+                  <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', '& th, & td': { px: 1.5, py: 0.5, textAlign: 'left', borderBottom: '1px solid', borderColor: 'divider' } }}>
+                    <thead>
+                      <tr>
+                        <th>Город</th>
+                        <th>В работе</th>
+                        <th>Просрочек</th>
+                        <th>Меропр. на неделе</th>
+                        <th>Лидов за 7 дн</th>
+                        <th>Партнёров</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {citySummary.map((row) => (
+                        <tr key={row.city}>
+                          <td>{row.city}</td>
+                          <td>{row.schools_in_work}</td>
+                          <td>{row.overdue}</td>
+                          <td>{row.events_this_week}</td>
+                          <td>{row.leads_7d}</td>
+                          <td>{row.partners}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Box>
+                </CardContent>
+              </Card>
+            )}
             <Box>
               <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
                 Риски процесса

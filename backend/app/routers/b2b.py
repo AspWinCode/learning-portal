@@ -1,11 +1,11 @@
 import csv
 from datetime import date, datetime, timedelta, time as dt_time
 from io import BytesIO, StringIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from openpyxl import load_workbook
-from sqlalchemy import distinct, nulls_last
+from sqlalchemy import distinct, func as sa_func, nulls_last
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -189,6 +189,93 @@ async def plan_for_today(
         "event_done_no_leads": run(event_done_no_leads),
         "negotiations_14d": run(negotiations_14d),
     }
+
+
+class CitySummaryItem(TypedDict):
+    city: str
+    schools_in_work: int
+    overdue: int
+    events_this_week: int
+    leads_7d: int
+    partners: int
+
+
+@router.get("/b2b-schools/plan-city-summary", response_model=List[CitySummaryItem])
+async def plan_city_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Сводка по городам для плана: в работе, просрочки, мероприятия на неделе, лиды за 7 дн, партнёры."""
+    today = date.today()
+    week_end = today + timedelta(days=7)
+    cutoff_7 = today - timedelta(days=7)
+    cutoff_7_ts = datetime.combine(cutoff_7, dt_time.min)
+
+    cities_rows = db.query(distinct(B2BSchool.city)).filter(
+        B2BSchool.city.isnot(None),
+        B2BSchool.city != "",
+    ).all()
+    cities = [r[0] for r in cities_rows if r[0]]
+
+    schools = db.query(B2BSchool).filter(
+        B2BSchool.city.isnot(None),
+        B2BSchool.city != "",
+    ).all()
+
+    def _event_in_week(edates: Any) -> bool:
+        if not edates or not isinstance(edates, list):
+            return False
+        for d in edates:
+            if isinstance(d, str):
+                try:
+                    d_parsed = datetime.strptime(d[:10], "%Y-%m-%d").date()
+                    if today <= d_parsed <= week_end:
+                        return True
+                except ValueError:
+                    pass
+        return False
+
+    def _is_partner(s: B2BSchool) -> bool:
+        if s.pipeline_stage == B2BSchoolPipelineStage.PARTNERS.value:
+            return True
+        if s.partnership and isinstance(s.partnership, dict) and s.partnership.get("active_partner"):
+            return True
+        return False
+
+    work_stages = {
+        B2BSchoolPipelineStage.NEW.value,
+        B2BSchoolPipelineStage.REJECTED.value,
+    }
+
+    lead_counts_by_city: Dict[str, int] = {c: 0 for c in cities}
+    leads_q = db.query(B2BSchool.city, sa_func.count(Lead.id)).join(
+        B2BSchool, Lead.b2b_school_id == B2BSchool.id
+    ).filter(
+        Lead.created_at >= cutoff_7_ts,
+        B2BSchool.city.isnot(None),
+        B2BSchool.city != "",
+    ).group_by(B2BSchool.city).all()
+    for city, cnt in leads_q:
+        if city:
+            lead_counts_by_city[city] = cnt
+
+    result: List[CitySummaryItem] = []
+    for city in sorted(cities):
+        city_schools = [s for s in schools if s.city == city]
+        schools_in_work = sum(1 for s in city_schools if s.pipeline_stage not in work_stages)
+        overdue = sum(1 for s in city_schools if s.next_step_date and s.next_step_date < today)
+        events_this_week = sum(1 for s in city_schools if _event_in_week(s.event_dates))
+        leads_7d = lead_counts_by_city.get(city, 0)
+        partners = sum(1 for s in city_schools if _is_partner(s))
+        result.append({
+            "city": city,
+            "schools_in_work": schools_in_work,
+            "overdue": overdue,
+            "events_this_week": events_this_week,
+            "leads_7d": leads_7d,
+            "partners": partners,
+        })
+    return result
 
 
 @router.get("/b2b-schools", response_model=List[B2BSchoolResponse])
@@ -492,11 +579,43 @@ def _on_b2b_school_stage_changed(
             title=f"Занести лиды: {name}",
             assigned_to_id=manager_id,
         )
+    elif new_stage == B2BSchoolPipelineStage.LETTER_SENT.value:
+        if not school.next_step or not school.next_step_date:
+            school.next_step = "Дожим через 2 дня"
+            school.next_step_date = day2
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Дожим через 2 дня: {name}",
+            assigned_to_id=manager_id,
+        )
+        if school.pipeline_stage != B2BSchoolPipelineStage.AGREEMENT.value:
+            school.pipeline_stage = B2BSchoolPipelineStage.AGREEMENT.value
+    elif new_stage == B2BSchoolPipelineStage.EVENT_SCHEDULED.value:
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Напоминание за 3 дня до мероприятия: {name}",
+            assigned_to_id=manager_id,
+        )
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Напоминание за 1 день до мероприятия: {name}",
+            assigned_to_id=manager_id,
+        )
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Подготовить материалы к мероприятию: {name}",
+            assigned_to_id=manager_id,
+        )
     elif new_stage == B2BSchoolPipelineStage.LEADS_RECEIVED.value:
         _create_b2b_task(
             db, created_by_id,
             title=f"Передать лиды в обработку: {name}",
             assigned_to_id=manager_id,
+        )
+        _create_b2b_task(
+            db, created_by_id,
+            title=f"Контроль конверсии через 7 дней: {name}",
+            assigned_to_id=manager_id or created_by_id,
         )
 
 

@@ -970,6 +970,17 @@ export const b2bApi = {
     const response = await api.get('/api/b2b-schools/plan-for-today', { params });
     return response.data;
   },
+  planCitySummary: async (): Promise<{
+    city: string;
+    schools_in_work: number;
+    overdue: number;
+    events_this_week: number;
+    leads_7d: number;
+    partners: number;
+  }[]> => {
+    const response = await api.get('/api/b2b-schools/plan-city-summary');
+    return response.data;
+  },
   listSchools: async (opts?: {
     pipeline_stage?: string;
     project_id?: number;

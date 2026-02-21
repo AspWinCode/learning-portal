@@ -87,6 +87,7 @@ def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
         manager_full_name=manager_name,
         source=getattr(school, "source", None),
         priority=getattr(school, "priority", None),
+        preference=getattr(school, "preference", None),
         support_letter_status=getattr(school, "support_letter_status", None),
         partnership=getattr(school, "partnership", None),
         event_dates=school.event_dates,
@@ -134,6 +135,9 @@ async def plan_for_today(
     cutoff = today - timedelta(days=3)
     cutoff_7 = today - timedelta(days=7)
     cutoff_14 = today - timedelta(days=14)
+    cutoff_48h = datetime.utcnow() - timedelta(hours=48)
+    date_1d_ago = today - timedelta(days=1)
+    date_2d_ago = today - timedelta(days=2)
     base = db.query(B2BSchool).options(
         joinedload(B2BSchool.school_contacts),
         joinedload(B2BSchool.manager),
@@ -158,6 +162,16 @@ async def plan_for_today(
             (B2BSchool.updated_at.is_(None)) & (B2BSchool.created_at < cutoff_ts),
         ),
     )
+    # Риск: в find_contacts, без контактов, обновление/создание более 48ч назад
+    no_contacts_exists = ~exists().where(B2BSchoolContact.b2b_school_id == B2BSchool.id)
+    find_contacts_no_contacts_48h = base.filter(
+        B2BSchool.pipeline_stage == "find_contacts",
+        no_contacts_exists,
+        or_(
+            B2BSchool.updated_at < cutoff_48h,
+            (B2BSchool.updated_at.is_(None)) & (B2BSchool.created_at < cutoff_48h),
+        ),
+    )
     today_q = base.filter(B2BSchool.next_step_date == today)
     tomorrow_q = base.filter(B2BSchool.next_step_date == tomorrow)
     week_q = base.filter(
@@ -165,7 +179,7 @@ async def plan_for_today(
         B2BSchool.next_step_date > tomorrow,
         B2BSchool.next_step_date <= week_end,
     )
-    no_contacts = base.filter(~exists().where(B2BSchoolContact.b2b_school_id == B2BSchool.id))
+    no_contacts = base.filter(no_contacts_exists)
     no_touches_7d = base.filter(
         B2BSchool.pipeline_stage.in_(["agreement", "permission_received", "event_scheduled"]),
         or_(
@@ -185,16 +199,44 @@ async def plan_for_today(
         ),
     )
 
+    # Риск: проведено без лидов 24–48ч — дата проведения 1–2 дня назад
+    def _event_held_date(school: B2BSchool) -> Optional[date]:
+        if school.pipeline_stage == "walkthrough_done" and getattr(school, "walkthrough_scheduled_at", None):
+            d = school.walkthrough_scheduled_at
+            return d.date() if hasattr(d, "date") else (d if isinstance(d, date) else None)
+        if school.pipeline_stage == "event_done" and getattr(school, "event_dates", None) and isinstance(school.event_dates, list):
+            dates_parsed = []
+            for x in school.event_dates:
+                if isinstance(x, str):
+                    try:
+                        dates_parsed.append(datetime.strptime(x[:10], "%Y-%m-%d").date())
+                    except Exception:
+                        pass
+                elif isinstance(x, date):
+                    dates_parsed.append(x)
+            return max(dates_parsed) if dates_parsed else None
+        return None
+
+    event_done_no_leads_schools = event_done_no_leads.order_by(nulls_last(B2BSchool.next_step_date.asc()), B2BSchool.name).all()
+    event_done_no_leads_list = [_school_to_response(db, s) for s in event_done_no_leads_schools]
+    event_done_no_leads_24_48h = []
+    for s in event_done_no_leads_schools:
+        held = _event_held_date(s)
+        if held and date_2d_ago <= held <= date_1d_ago:
+            event_done_no_leads_24_48h.append(_school_to_response(db, s))
+
     return {
         "overdue": run(overdue),
         "no_next_step": run(no_next),
         "find_contacts_stale": run(find_stale),
+        "find_contacts_no_contacts_48h": run(find_contacts_no_contacts_48h),
         "today": run(today_q),
         "tomorrow": run(tomorrow_q),
         "week": run(week_q),
         "no_contacts": run(no_contacts),
         "no_touches_7d": run(no_touches_7d),
-        "event_done_no_leads": run(event_done_no_leads),
+        "event_done_no_leads": event_done_no_leads_list,
+        "event_done_no_leads_24_48h": event_done_no_leads_24_48h,
         "negotiations_14d": run(negotiations_14d),
     }
 
@@ -951,6 +993,7 @@ async def create_b2b_school(
         manager_id=payload.manager_id,
         source=payload.source,
         priority=payload.priority,
+        preference=payload.preference,
         event_dates=payload.event_dates,
         meeting_scheduled_at=payload.meeting_scheduled_at,
         meeting_outcomes=payload.meeting_outcomes,

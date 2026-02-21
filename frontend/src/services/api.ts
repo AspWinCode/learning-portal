@@ -958,12 +958,14 @@ export const b2bApi = {
     overdue: B2BSchool[];
     no_next_step: B2BSchool[];
     find_contacts_stale: B2BSchool[];
+    find_contacts_no_contacts_48h: B2BSchool[];
     today: B2BSchool[];
     tomorrow: B2BSchool[];
     week: B2BSchool[];
     no_contacts: B2BSchool[];
     no_touches_7d: B2BSchool[];
     event_done_no_leads: B2BSchool[];
+    event_done_no_leads_24_48h: B2BSchool[];
     negotiations_14d: B2BSchool[];
   }> => {
     const params = city ? { city } : {};
@@ -1040,6 +1042,7 @@ export const b2bApi = {
     manager_id?: number | null;
     source?: string | null;
     priority?: string | null;
+    preference?: string | null;
     event_dates?: string[];
     meeting_scheduled_at?: string | null;
     meeting_outcomes?: string | null;
@@ -1063,6 +1066,7 @@ export const b2bApi = {
       manager_id: number | null;
       source: string | null;
       priority: string | null;
+      preference: string | null;
       support_letter_status: string | null;
       partnership: Record<string, boolean> | null;
       event_dates: string[];

@@ -546,6 +546,7 @@ export interface B2BSchool {
   manager_full_name?: string | null;
   source?: string | null;
   priority?: string | null;
+  preference?: string | null;  // online, offline, any
   support_letter_status?: string | null;
   partnership?: Record<string, boolean> | null;
   event_dates?: string[] | null;

@@ -1313,6 +1313,7 @@ class B2BSchoolCreate(BaseModel):
     manager_id: Optional[int] = None
     source: Optional[str] = None
     priority: Optional[str] = None
+    preference: Optional[str] = None  # online, offline, any
     event_dates: Optional[List[str]] = None
     meeting_scheduled_at: Optional[datetime] = None
     meeting_outcomes: Optional[str] = None
@@ -1332,6 +1333,7 @@ class B2BSchoolUpdate(BaseModel):
     manager_id: Optional[int] = None
     source: Optional[str] = None
     priority: Optional[str] = None
+    preference: Optional[str] = None
     support_letter_status: Optional[str] = None
     partnership: Optional[Dict[str, Any]] = None
     event_dates: Optional[List[str]] = None
@@ -1355,6 +1357,7 @@ class B2BSchoolResponse(BaseModel):
     manager_full_name: Optional[str] = None
     source: Optional[str] = None
     priority: Optional[str] = None
+    preference: Optional[str] = None
     support_letter_status: Optional[str] = None
     partnership: Optional[Dict[str, Any]] = None
     event_dates: Optional[List[str]] = None

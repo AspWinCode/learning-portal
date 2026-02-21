@@ -95,6 +95,7 @@ const B2BSchoolsPage: React.FC = () => {
     next_step_date: '',
     manager_id: '' as number | '',
     support_letter_status: '',
+    preference: '',
     partnership: {} as Record<string, boolean>,
     event_dates: '',
     meeting_scheduled_at: '',
@@ -217,6 +218,7 @@ const B2BSchoolsPage: React.FC = () => {
       next_step_date: '',
       manager_id: '',
       support_letter_status: '',
+      preference: '',
       partnership: {},
       event_dates: '',
       meeting_scheduled_at: '',
@@ -247,6 +249,7 @@ const B2BSchoolsPage: React.FC = () => {
       next_step_date: nextDate,
       manager_id: school.manager_id ?? '',
       support_letter_status: school.support_letter_status ?? '',
+      preference: school.preference ?? '',
       partnership: (school.partnership && typeof school.partnership === 'object' ? school.partnership as Record<string, boolean> : {}),
       event_dates: Array.isArray(school.event_dates) ? school.event_dates.join(', ') : '',
       meeting_scheduled_at: meetingAt,
@@ -585,6 +588,7 @@ const B2BSchoolsPage: React.FC = () => {
       next_step: form.next_step.trim() || null,
       next_step_date: form.next_step_date.trim() ? form.next_step_date : null,
       manager_id: form.manager_id === '' ? null : Number(form.manager_id),
+      preference: form.preference?.trim() || null,
       event_dates: eventDates,
       meeting_scheduled_at: meetingAt,
       meeting_outcomes: form.pipeline_stage === 'meeting_held' ? (form.meeting_outcomes.trim() || null) : undefined,
@@ -1049,6 +1053,13 @@ const B2BSchoolsPage: React.FC = () => {
                               Контактов: {school.contacts?.length ?? 0}
                             </Typography>
                             <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                              {school.preference && (
+                                <Chip
+                                  size="small"
+                                  variant="outlined"
+                                  label={school.preference === 'online' ? 'Онлайн' : school.preference === 'offline' ? 'Офлайн' : 'Любой'}
+                                />
+                              )}
                               <Chip size="small" label={`Учеников: ${school.student_count ?? '—'}`} />
                               <Chip size="small" label={`Лидов: ${school.leads_count ?? 0}`} />
                               <Chip size="small" color="success" label={`Конверсия: ${school.conversion_percent ?? 0}%`} />
@@ -1323,6 +1334,19 @@ const B2BSchoolsPage: React.FC = () => {
                 {managers.map((m) => (
                   <MenuItem key={m.id} value={m.id}>{m.full_name}</MenuItem>
                 ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth>
+              <InputLabel>Формат предпочтение (канбан)</InputLabel>
+              <Select
+                value={form.preference || ''}
+                label="Формат предпочтение (канбан)"
+                onChange={(e) => setForm((f) => ({ ...f, preference: e.target.value }))}
+              >
+                <MenuItem value="">—</MenuItem>
+                <MenuItem value="online">Онлайн</MenuItem>
+                <MenuItem value="offline">Офлайн</MenuItem>
+                <MenuItem value="any">Любой</MenuItem>
               </Select>
             </FormControl>
 

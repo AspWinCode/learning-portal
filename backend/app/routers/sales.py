@@ -2960,45 +2960,54 @@ def _knd_template_path() -> str:
     return os.path.join(_base, "templates", "knd_1151158.pdf")
 
 # Координаты полей для наложения на шаблон: (страница 0/1, x_mm, y_mm от верха, ключ в data, размер шрифта).
-# При необходимости подгоните под вашу форму (отредактируйте числа).
+# y_mm = расстояние от ВЕРХА страницы. Подгоните под ваш бланк (шаг 1–2 мм).
 _KND_OVERLAY_FIELDS = [
-    (0, 150, 18, "org_inn", 8),
-    (0, 165, 18, "org_kpp", 8),
-    (0, 45, 55, "cert_number", 9),
-    (0, 130, 55, "correction_number", 9),
-    (0, 35, 60, "report_year", 9),
-    (0, 20, 72, "org_name", 9),
-    (0, 28, 105, "taxpayer_lastname", 9),
-    (0, 105, 105, "taxpayer_firstname", 9),
-    (0, 28, 111, "taxpayer_patronymic", 9),
-    (0, 105, 111, "taxpayer_inn", 9),
-    (0, 45, 125, "doc_type_code", 9),
-    (0, 105, 125, "doc_series_number", 9),
-    (0, 95, 142, "amount", 9),
-    (0, 20, 198, "confirm_fio", 9),
-    (0, 55, 218, "pages_count", 9),
-    (1, 150, 18, "org_inn", 8),
-    (1, 165, 18, "org_kpp", 8),
-    (1, 28, 55, "student_lastname", 9),
-    (1, 105, 55, "student_firstname", 9),
-    (1, 28, 61, "student_patronymic", 9),
-    (1, 105, 61, "student_inn", 9),
-    (1, 45, 75, "student_doc_type_code", 9),
-    (1, 105, 75, "student_doc_series_number", 9),
+    # Страница 1 — шапка
+    (0, 142, 14, "org_inn", 8),
+    (0, 168, 14, "org_kpp", 8),
+    # Номер справки, корректировка, год — одна строка
+    (0, 48, 52, "cert_number", 9),
+    (0, 118, 52, "correction_number", 9),
+    (0, 168, 52, "report_year", 9),
+    # Организация
+    (0, 20, 68, "org_name", 9),
+    # Налогоплательщик: фамилия | имя
+    (0, 25, 98, "taxpayer_lastname", 9),
+    (0, 95, 98, "taxpayer_firstname", 9),
+    # отчество | ИНН
+    (0, 25, 104, "taxpayer_patronymic", 9),
+    (0, 95, 104, "taxpayer_inn", 9),
+    # Документ: код | серия и номер
+    (0, 42, 120, "doc_type_code", 9),
+    (0, 95, 120, "doc_series_number", 9),
+    # Сумма
+    (0, 92, 138, "amount", 9),
+    # Подтверждение
+    (0, 20, 192, "confirm_fio", 9),
+    (0, 52, 212, "pages_count", 8),
+    # Страница 2 — шапка и обучаемый
+    (1, 142, 14, "org_inn", 8),
+    (1, 168, 14, "org_kpp", 8),
+    (1, 25, 50, "student_lastname", 9),
+    (1, 95, 50, "student_firstname", 9),
+    (1, 25, 56, "student_patronymic", 9),
+    (1, 95, 56, "student_inn", 9),
+    (1, 42, 70, "student_doc_type_code", 9),
+    (1, 95, 70, "student_doc_series_number", 9),
 ]
-# Поля-даты: (страница, x_mm, y_mm, ключ, размер) — выводятся как ДД ММ ГГГГ в одну строку
+# Даты: ДД ММ ГГГГ в три ячейки. (страница, x_дд_mm, y_mm, шаг_между_ячейками_mm, ключ, размер). Год выводим 2 цифры (ГГ), чтобы влезало в ячейку.
 _KND_OVERLAY_DATES = [
-    (0, 38, 116, "taxpayer_dob", 9),
-    (0, 32, 130, "doc_issue_date", 9),
-    (0, 15, 206, "confirm_date", 9),
-    (1, 38, 66, "student_dob", 9),
-    (1, 32, 80, "student_doc_issue_date", 9),
-    (1, 95, 100, "confirm_date", 8),
+    (0, 38, 110, 8, "taxpayer_dob", 8),
+    (0, 30, 126, 8, "doc_issue_date", 8),
+    (0, 14, 200, 8, "confirm_date", 8),
+    (1, 38, 62, 8, "student_dob", 8),
+    (1, 30, 76, 8, "student_doc_issue_date", 8),
+    (1, 92, 96, 8, "confirm_date", 8),
 ]
-# Чекбоксы 0/1: (страница, x_0_нет, x_1_да, y_mm, ключ)
+# Чекбоксы: (страница, x_мм для "0-нет", x_мм для "1-да", y_mm, ключ)
 _KND_OVERLAY_CHECKBOXES = [
-    (0, 105, 118, 88, "fulltime_study"),
-    (0, 105, 118, 136, "taxpayer_same_as_student"),
+    (0, 100, 112, 84, "fulltime_study"),
+    (0, 100, 112, 132, "taxpayer_same_as_student"),
 ]
 
 # Шрифт с кириллицей (без него русский текст отображается чёрными квадратами)
@@ -3077,7 +3086,8 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
             val = (val or "")[:50]
             c.setFont(_PDF_FONT_NAME, size)
             c.drawString(x_pt(x_mm), y_pt(y_mm), val)
-        for (p, x_mm, y_mm, key, size) in _KND_OVERLAY_DATES:
+        for item in _KND_OVERLAY_DATES:
+            p, x_mm, y_mm, step_mm, key, size = item[0], item[1], item[2], item[3], item[4], item[5]
             if p != i:
                 continue
             d = data.get(key) or ""
@@ -3086,11 +3096,13 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
             parts = (d or "").replace("-", ".").split(".") if d else []
             day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
             month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
-            year = (parts[2] if len(parts) > 2 else "")[:4]
+            year_full = (parts[2] if len(parts) > 2 else "")[:4]
+            year_2 = year_full[-2:] if len(year_full) >= 2 else year_full  # ГГ для маленьких ячеек
+            step_pt = (page_w_pt / 210.0) * step_mm
             c.setFont(_PDF_FONT_NAME, size)
             c.drawString(x_pt(x_mm), y_pt(y_mm), day)
-            c.drawString(x_pt(x_mm) + cell_pt, y_pt(y_mm), month)
-            c.drawString(x_pt(x_mm) + cell_pt * 2, y_pt(y_mm), year)
+            c.drawString(x_pt(x_mm) + step_pt, y_pt(y_mm), month)
+            c.drawString(x_pt(x_mm) + step_pt * 2, y_pt(y_mm), year_2)
         for (p, x_no, x_yes, y_mm, key) in _KND_OVERLAY_CHECKBOXES:
             if p != i:
                 continue

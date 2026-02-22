@@ -28,6 +28,9 @@ services:
       # Telegram (optional)
       TELEGRAM_BOT_TOKEN: ""
       TELEGRAM_BOT_USERNAME: ""
+      # Точка Банк (выписки, привязка платежей)
+      TOCHKA_CLIENT_ID: ${TOCHKA_CLIENT_ID:-}
+      TOCHKA_CLIENT_SECRET: ${TOCHKA_CLIENT_SECRET:-}
     depends_on:
       db:
         condition: service_healthy

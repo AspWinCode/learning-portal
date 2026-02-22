@@ -46,6 +46,9 @@ from app.models import (
     GroupSchedule,
     GroupStudent,
     LessonAttendance,
+    StudentAccount,
+    StudentAccountTransaction,
+    StudentAccountTransactionKind,
 )
 from app.schemas import (
     LeadCreate,
@@ -507,6 +510,14 @@ def _student_card_response(card: StudentCard, user: User, db: Session) -> Studen
 def _require_sales_admin_owner(user: User) -> None:
     if user.role not in (UserRole.SALES, UserRole.ADMIN, UserRole.OWNER):
         raise HTTPException(status_code=403, detail="Not enough permissions")
+
+
+@router.get("/tochka/status")
+async def tochka_bank_status(current_user: User = Depends(auth.get_current_active_user)):
+    """Проверка: заданы ли учётные данные Точка Банк (TOCHKA_CLIENT_ID, TOCHKA_CLIENT_SECRET) в .env."""
+    _require_sales_admin_owner(current_user)
+    from app.services.tochka_client import is_configured
+    return {"configured": is_configured()}
 
 
 @router.get("/student-cards", response_model=List[StudentCardResponse])

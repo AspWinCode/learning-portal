@@ -45,6 +45,22 @@ docker compose ps
 
 ---
 
+## 0.2) Точка Банк на продакшене
+
+Чтобы интеграция с Точка Банк работала на сервере, в `.env` в каталоге проекта на VPS должны быть заданы переменные `TOCHKA_CLIENT_ID` и `TOCHKA_CLIENT_SECRET`. Добавьте их вручную (один раз) и перезапустите backend:
+
+```bash
+cd ~/learning-portal   # или /root/learning-portal
+# Добавить две строки в .env (подставьте свои значения из личного кабинета Точка):
+echo 'TOCHKA_CLIENT_ID=ваш_client_id' >> .env
+echo 'TOCHKA_CLIENT_SECRET=ваш_client_secret' >> .env
+docker compose up -d --build backend
+```
+
+Проверка: после входа под admin/owner/sales запрос `GET https://tirskix.space/api/sales/tochka/status` должен вернуть `{"configured":true}`.
+
+---
+
 ## 1) Сегодня: выключить (остановить сайт)
 
 ### 1.1 Подключиться к VPS (Windows PowerShell)

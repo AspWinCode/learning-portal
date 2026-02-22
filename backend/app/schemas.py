@@ -293,6 +293,24 @@ class StudentAccountDeductRequest(BaseModel):
     lesson_attendance_id: Optional[int] = None
 
 
+class BankPaymentItem(BaseModel):
+    """Один платёж из выписки (Точка Банк и др.): дата, сумма, ФИО плательщика (имя отчество или полное)."""
+    date: str  # YYYY-MM-DD или любой формат, сохраняем в note
+    amount: float
+    payer_name: str
+
+
+class BankPaymentImportRequest(BaseModel):
+    payments: List[BankPaymentItem]
+
+
+class BankPaymentImportResponse(BaseModel):
+    """Результат зачисления платежей по матчу ФИО плательщика с карточкой ученика (parent_full_name)."""
+    applied: List[dict]  # [{ "payer_name", "amount", "date", "student_id", "account_id", "student_name" }]
+    no_match: List[dict]  # [{ "payer_name", "amount", "date" }]
+    ambiguous: List[dict]  # [{ "payer_name", "amount", "date", "candidates": [{ "student_id", "student_name", "parent_full_name" }] }]
+
+
 # Пропуски (воронка для sales)
 class AbsenceFollowUpResponse(BaseModel):
     id: int

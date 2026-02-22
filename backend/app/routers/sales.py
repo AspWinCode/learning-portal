@@ -1,3 +1,4 @@
+import os
 from datetime import date, datetime, timedelta, time as dt_time
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
@@ -2941,37 +2942,186 @@ try:
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
 
+try:
+    from pypdf import PdfReader, PdfWriter
+    PYPDF_AVAILABLE = True
+except ImportError:
+    PYPDF_AVAILABLE = False
 
-def _draw_line(c, x: float, y: float, text: str, label: str, label_x: float, font_size: int = 9):
-    """Рисует подпись слева и значение (линию) справа."""
-    c.setFont("Helvetica", font_size)
-    c.drawString(label_x, y, label)
-    c.drawString(x, y, (text or "")[:60])
+# Путь к шаблону PDF формы (2 страницы). Если файл есть — заполняем его поверх, иначе рисуем с нуля.
+def _knd_template_path() -> str:
+    _base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.join(_base, "templates", "knd_1151158.pdf")
+
+# Координаты полей для наложения на шаблон: (страница 0/1, x_mm, y_mm от верха, ключ в data, размер шрифта).
+# При необходимости подгоните под вашу форму (отредактируйте числа).
+_KND_OVERLAY_FIELDS = [
+    (0, 150, 18, "org_inn", 8),
+    (0, 165, 18, "org_kpp", 8),
+    (0, 45, 55, "cert_number", 9),
+    (0, 130, 55, "correction_number", 9),
+    (0, 35, 60, "report_year", 9),
+    (0, 20, 72, "org_name", 9),
+    (0, 28, 105, "taxpayer_lastname", 9),
+    (0, 105, 105, "taxpayer_firstname", 9),
+    (0, 28, 111, "taxpayer_patronymic", 9),
+    (0, 105, 111, "taxpayer_inn", 9),
+    (0, 45, 125, "doc_type_code", 9),
+    (0, 105, 125, "doc_series_number", 9),
+    (0, 95, 142, "amount", 9),
+    (0, 20, 198, "confirm_fio", 9),
+    (0, 55, 218, "pages_count", 9),
+    (1, 150, 18, "org_inn", 8),
+    (1, 165, 18, "org_kpp", 8),
+    (1, 28, 55, "student_lastname", 9),
+    (1, 105, 55, "student_firstname", 9),
+    (1, 28, 61, "student_patronymic", 9),
+    (1, 105, 61, "student_inn", 9),
+    (1, 45, 75, "student_doc_type_code", 9),
+    (1, 105, 75, "student_doc_series_number", 9),
+]
+# Поля-даты: (страница, x_mm, y_mm, ключ, размер) — выводятся как ДД ММ ГГГГ в одну строку
+_KND_OVERLAY_DATES = [
+    (0, 38, 116, "taxpayer_dob", 9),
+    (0, 32, 130, "doc_issue_date", 9),
+    (0, 15, 206, "confirm_date", 9),
+    (1, 38, 66, "student_dob", 9),
+    (1, 32, 80, "student_doc_issue_date", 9),
+    (1, 95, 100, "confirm_date", 8),
+]
+# Чекбоксы 0/1: (страница, x_0_нет, x_1_да, y_mm, ключ)
+_KND_OVERLAY_CHECKBOXES = [
+    (0, 105, 118, 88, "fulltime_study"),
+    (0, 105, 118, 136, "taxpayer_same_as_student"),
+]
+
+# Шрифт с кириллицей (без него русский текст отображается чёрными квадратами)
+_PDF_FONT_NAME = "Helvetica"
+_PDF_FONT_BOLD = "Helvetica-Bold"
 
 
-def _draw_date_cells(c, x: float, y: float, d: str, cell_w: float = 8 * mm):
+def _register_cyrillic_font() -> None:
+    global _PDF_FONT_NAME, _PDF_FONT_BOLD
+    if _PDF_FONT_NAME != "Helvetica":
+        return
+    _base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    _candidates = [
+        os.path.join(_base, "fonts", "DejaVuSans.ttf"),
+        os.path.join(_base, "app", "fonts", "DejaVuSans.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "Fonts", "arial.ttf"),
+    ]
+    _font_path = None
+    for p in _candidates:
+        if p and os.path.isfile(p):
+            _font_path = p
+            break
+    if not _font_path:
+        return
+    try:
+        pdfmetrics.registerFont(TTFont("Cyrillic", _font_path))
+        _PDF_FONT_NAME = "Cyrillic"
+        _bold_path = _font_path.replace("DejaVuSans.ttf", "DejaVuSans-Bold.ttf").replace("arial.ttf", "arialbd.ttf")
+        if os.path.isfile(_bold_path):
+            pdfmetrics.registerFont(TTFont("CyrillicBold", _bold_path))
+            _PDF_FONT_BOLD = "CyrillicBold"
+        else:
+            _PDF_FONT_BOLD = "Cyrillic"
+    except Exception:
+        pass
+
+
+def _draw_date_cells(c, x: float, y: float, d: str, cell_w: float = 7 * mm):
     """Печатает дату в ячейках ДД.ММ.ГГГГ."""
     parts = (d or "").replace("-", ".").split(".") if d else []
     day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
     month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
     year = (parts[2] if len(parts) > 2 else "")[:4]
     c.drawString(x, y, day)
-    c.drawString(x + cell_w + 2, y, month)
-    c.drawString(x + (cell_w + 2) * 2, y, year)
+    c.drawString(x + cell_w + 1, y, month)
+    c.drawString(x + (cell_w + 1) * 2, y, year)
+
+
+def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> bytes:
+    """Заполняет загруженную PDF-форму: подложка — шаблон, поверх — только данные по координатам."""
+    _register_cyrillic_font()
+    reader = PdfReader(template_path)
+    page_w_pt = float(reader.pages[0].mediabox.width)
+    page_h_pt = float(reader.pages[0].mediabox.height)
+    # мм -> pt (A4: 210x297 mm = 595x842 pt)
+    def x_pt(x_mm: float) -> float:
+        return x_mm * (page_w_pt / 210.0)
+    def y_pt(y_mm_from_top: float) -> float:
+        return page_h_pt - y_mm_from_top * (page_h_pt / 297.0)
+    cell_pt = (page_w_pt / 210.0) * 8
+
+    for i, page in enumerate(reader.pages):
+        w = float(page.mediabox.width)
+        h = float(page.mediabox.height)
+        buf = BytesIO()
+        c = canvas.Canvas(buf, pagesize=(w, h))
+        c.setFont(_PDF_FONT_NAME, 9)
+        for (p, x_mm, y_mm, key, size) in _KND_OVERLAY_FIELDS:
+            if p != i:
+                continue
+            val = (data.get(key) or "")
+            if isinstance(val, (bool, int)):
+                val = str(val)
+            val = (val or "")[:50]
+            c.setFont(_PDF_FONT_NAME, size)
+            c.drawString(x_pt(x_mm), y_pt(y_mm), val)
+        for (p, x_mm, y_mm, key, size) in _KND_OVERLAY_DATES:
+            if p != i:
+                continue
+            d = data.get(key) or ""
+            if not d:
+                d = date.today().isoformat()
+            parts = (d or "").replace("-", ".").split(".") if d else []
+            day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
+            month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
+            year = (parts[2] if len(parts) > 2 else "")[:4]
+            c.setFont(_PDF_FONT_NAME, size)
+            c.drawString(x_pt(x_mm), y_pt(y_mm), day)
+            c.drawString(x_pt(x_mm) + cell_pt, y_pt(y_mm), month)
+            c.drawString(x_pt(x_mm) + cell_pt * 2, y_pt(y_mm), year)
+        for (p, x_no, x_yes, y_mm, key) in _KND_OVERLAY_CHECKBOXES:
+            if p != i:
+                continue
+            v = data.get(key)
+            if v is True or v == "1":
+                c.drawString(x_pt(x_yes), y_pt(y_mm), "X")
+            elif v is False or v == "0":
+                c.drawString(x_pt(x_no), y_pt(y_mm), "X")
+        c.save()
+        buf.seek(0)
+        overlay = PdfReader(buf)
+        page.merge_page(overlay.pages[0])
+
+    out = BytesIO()
+    writer = PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    writer.write(out)
+    out.seek(0)
+    return out.read()
 
 
 def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
     """Формирует PDF по форме КНД 1151158 (2 страницы)."""
+    _register_cyrillic_font()
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
     left = 20 * mm
     right = w - 20 * mm
-    row = 5 * mm
+    row = 5.5 * mm
 
     def _y():
         nonlocal y
@@ -2980,7 +3130,7 @@ def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
 
     # ---------- СТРАНИЦА 1 ----------
     y = h - 15 * mm
-    c.setFont("Helvetica", 8)
+    c.setFont(_PDF_FONT_NAME, 8)
     c.drawString(right - 50 * mm, y, "ИНН")
     c.drawString(right - 50 * mm, y - 4 * mm, (data.get("org_inn") or ""))
     c.drawString(right - 20 * mm, y, "КПП")
@@ -2988,14 +3138,14 @@ def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
     c.drawString(right - 5 * mm, y, "Стр. 0:01")
     y -= 12 * mm
 
-    c.setFont("Helvetica", 9)
+    c.setFont(_PDF_FONT_NAME, 9)
     c.drawCentredString(w / 2, y, "Форма по КНД 1151158")
     y -= 6 * mm
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont(_PDF_FONT_BOLD, 10)
     c.drawCentredString(w / 2, y, "Справка об оплате образовательных услуг для представления в налоговый орган")
     y -= 10 * mm
 
-    c.setFont("Helvetica", 9)
+    c.setFont(_PDF_FONT_NAME, 9)
     c.drawString(left, _y(), "Номер справки")
     c.drawString(left + 45 * mm, y + row, data.get("cert_number") or "")
     c.drawString(left + 90 * mm, y + row, "Номер корректировки")
@@ -3005,7 +3155,7 @@ def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
     c.drawString(left + 35 * mm, y + row, data.get("report_year") or "")
     y -= 3 * mm
 
-    c.setFont("Helvetica", 9)
+    c.setFont(_PDF_FONT_NAME, 9)
     c.drawString(left, _y(), "Данные образовательной организации / индивидуального предпринимателя,")
     _y()
     c.drawString(left, _y(), "осуществляющего образовательную деятельность:")
@@ -3081,10 +3231,10 @@ def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
     c.drawString(left + 65 * mm, y + row, "страницах")
 
     c.rect(right - 25 * mm, h - 75 * mm, 22 * mm, 45 * mm)
-    c.setFont("Helvetica", 8)
+    c.setFont(_PDF_FONT_NAME, 8)
     c.drawString(right - 24 * mm, h - 78 * mm, "Зона QR-кода")
 
-    c.setFont("Helvetica", 7)
+    c.setFont(_PDF_FONT_NAME, 7)
     c.drawString(left, 18 * mm, "1 Отчество указывается при наличии (относится ко всем листам документа).")
     c.drawString(left, 14 * mm, "2 ИНН указывается при наличии.")
     c.drawString(left, 10 * mm, "Подготовлено с использованием системы КонсультантПлюс")
@@ -3093,7 +3243,7 @@ def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
 
     # ---------- СТРАНИЦА 2 (данные обучаемого) ----------
     y = h - 15 * mm
-    c.setFont("Helvetica", 8)
+    c.setFont(_PDF_FONT_NAME, 8)
     c.drawString(right - 50 * mm, y, "ИНН")
     c.drawString(right - 50 * mm, y - 4 * mm, (data.get("org_inn") or ""))
     c.drawString(right - 20 * mm, y, "КПП")
@@ -3101,7 +3251,7 @@ def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
     c.drawString(right - 5 * mm, y, "Стр. 0:02")
     y -= 14 * mm
 
-    c.setFont("Helvetica", 9)
+    c.setFont(_PDF_FONT_NAME, 9)
     c.drawString(left, _y(), "Данные физического лица, которому оказаны образовательные услуги:")
     c.drawString(left, _y(), "Фамилия")
     c.drawString(left + 28 * mm, y + row, (data.get("student_lastname") or "")[:35])
@@ -3132,13 +3282,27 @@ def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
     c.drawString(left, _y(), "Подпись _______________________  Дата")
     _draw_date_cells(c, left + 95 * mm, y + row, data.get("confirm_date") or date.today().isoformat(), 7 * mm)
 
-    c.setFont("Helvetica", 7)
+    c.setFont(_PDF_FONT_NAME, 7)
     c.drawString(left, 10 * mm, "Подготовлено с использованием системы КонсультантПлюс")
 
     c.showPage()
     c.save()
     buf.seek(0)
     return buf.read()
+
+
+@router.get("/tax-deduction-certificate/status")
+async def tax_deduction_certificate_status(
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Проверка: путь к шаблону PDF и доступен ли он (для отладки деплоя)."""
+    template_path = _knd_template_path()
+    return {
+        "template_path": template_path,
+        "template_exists": os.path.isfile(template_path),
+        "pypdf_available": PYPDF_AVAILABLE,
+        "will_use_template": PYPDF_AVAILABLE and os.path.isfile(template_path),
+    }
 
 
 @router.post("/tax-deduction-certificate")
@@ -3157,10 +3321,15 @@ async def generate_tax_deduction_certificate(
     """
     if not REPORTLAB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Генерация PDF недоступна (reportlab не установлен)")
-    pdf_bytes = _build_tax_deduction_pdf_knd(body)
+    template_path = _knd_template_path()
+    use_template = PYPDF_AVAILABLE and os.path.isfile(template_path)
+    if use_template:
+        pdf_bytes = _build_tax_deduction_pdf_from_template(template_path, body)
+    else:
+        pdf_bytes = _build_tax_deduction_pdf_knd(body)
     filename = "spravka_KND_1151158.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Spravka-Source": "template" if use_template else "generated",
+    }
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)

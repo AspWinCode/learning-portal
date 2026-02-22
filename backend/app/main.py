@@ -1,9 +1,12 @@
 import traceback
+from datetime import date, timedelta
+import os
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from app.database import SessionLocal
 from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, owner_funnels, trainer_lessons, student_accounts, projects
-import os
 
 app = FastAPI(
     title="Learning Portal API",
@@ -11,26 +14,49 @@ app = FastAPI(
     version="1.0.0"
 )
 
+def _run_tochka_auto_import() -> None:
+    """Периодическая задача: импорт выписки Точка Банк и начисление по матчу ФИО. Запускается каждые 10 минут."""
+    try:
+        from app.services.tochka_client import is_configured
+        if not is_configured():
+            return
+        account_id = (os.getenv("TOCHKA_ACCOUNT_ID") or "").strip()
+        if not account_id:
+            return
+        date_to = date.today()
+        date_from = date_to - timedelta(days=3)
+        db = SessionLocal()
+        try:
+            from app.routers.sales import do_tochka_import_and_apply
+            do_tochka_import_and_apply(db, account_id, date_from, date_to, actor_user_id=None)
+        finally:
+            db.close()
+    except Exception:
+        # Логируем, но не падаем — следующий запуск повторит
+        traceback.print_exc()
+
+
 # Safety checks for production env
 @app.on_event("startup")
 def _validate_production_env() -> None:
     app_env = (os.getenv("APP_ENV") or "development").lower().strip()
     if app_env != "production":
-        return
+        pass  # continue to scheduler
+    else:
+        secret = os.getenv("SECRET_KEY") or ""
+        if (not secret) or secret == "your-secret-key-change-in-production" or len(secret) < 32:
+            raise RuntimeError("APP_ENV=production: SECRET_KEY must be set and at least 32 characters long")
+        db_url = os.getenv("DATABASE_URL") or ""
+        if (not db_url) or ("user:password" in db_url) or ("YOUR_PASSWORD" in db_url):
+            raise RuntimeError("APP_ENV=production: DATABASE_URL must be set (no placeholder credentials)")
+        cors_raw = os.getenv("CORS_ORIGINS") or ""
+        if "localhost" in cors_raw or "127.0.0.1" in cors_raw:
+            pass
 
-    secret = os.getenv("SECRET_KEY") or ""
-    if (not secret) or secret == "your-secret-key-change-in-production" or len(secret) < 32:
-        raise RuntimeError("APP_ENV=production: SECRET_KEY must be set and at least 32 characters long")
-
-    db_url = os.getenv("DATABASE_URL") or ""
-    if (not db_url) or ("user:password" in db_url) or ("YOUR_PASSWORD" in db_url):
-        raise RuntimeError("APP_ENV=production: DATABASE_URL must be set (no placeholder credentials)")
-
-    # Soft warning-like checks (do not block startup)
-    cors_raw = os.getenv("CORS_ORIGINS") or ""
-    if "localhost" in cors_raw or "127.0.0.1" in cors_raw:
-        # Not raising: sometimes people proxy locally even in prod, but it's usually a misconfig.
-        pass
+    # Планировщик: авто-импорт Точка Банк каждые 6 часов
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
+    scheduler.start()
 
 # CORS origins from env (comma-separated). Defaults to local dev.
 cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")

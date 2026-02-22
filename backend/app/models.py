@@ -445,6 +445,25 @@ class StudentCard(Base):
     student = relationship("Student", backref="student_card")
 
 
+class TochkaAppliedPayment(Base):
+    """Уже зачисленные платежи из Точка Банк — чтобы не дублировать при автоматическом импорте."""
+    __tablename__ = "tochka_applied_payments"
+    __table_args__ = (
+        UniqueConstraint(
+            "tochka_account_id", "payment_date", "amount", "payer_name",
+            name="uq_tochka_applied_account_date_amount_payer",
+        ),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    tochka_account_id = Column(String(64), nullable=False, index=True)
+    payment_date = Column(String(32), nullable=False)  # как в выписке (YYYY-MM-DD или ISO)
+    amount = Column(Float, nullable=False)
+    payer_name = Column(String(512), nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+    student_account_id = Column(Integer, ForeignKey("student_accounts.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class LeadTaskTemplate(Base):
     __tablename__ = "lead_task_templates"
 

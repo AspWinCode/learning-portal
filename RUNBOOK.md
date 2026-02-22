@@ -47,15 +47,21 @@ docker compose ps
 
 ## 0.2) Точка Банк на продакшене
 
-Чтобы интеграция с Точка Банк работала на сервере, в `.env` в каталоге проекта на VPS должны быть заданы переменные `TOCHKA_CLIENT_ID` и `TOCHKA_CLIENT_SECRET`. Добавьте их вручную (один раз) и перезапустите backend:
+Чтобы интеграция с Точка Банк работала на сервере, в `.env` в каталоге проекта на VPS должны быть заданы переменные `TOCHKA_CLIENT_ID` и `TOCHKA_CLIENT_SECRET`. Для **автоматического** импорта платежей каждые 10 минут дополнительно задайте `TOCHKA_ACCOUNT_ID` (ID счёта в Точка Банк). Добавьте вручную (один раз) и перезапустите backend:
 
 ```bash
 cd ~/learning-portal   # или /root/learning-portal
-# Добавить две строки в .env (подставьте свои значения из личного кабинета Точка):
+# Добавить в .env (подставьте свои значения из личного кабинета Точка):
 echo 'TOCHKA_CLIENT_ID=ваш_client_id' >> .env
 echo 'TOCHKA_CLIENT_SECRET=ваш_client_secret' >> .env
+echo 'TOCHKA_ACCOUNT_ID=id_счёта_в_точка_банк' >> .env
 docker compose up -d --build backend
 ```
+
+- **Ручной импорт:** `POST /api/sales/tochka/import-and-apply` (тело: `date_from`, `date_to`, опционально `account_id`) — по-прежнему доступен для Sales/Admin/Owner.
+- **Авто-импорт:** при заданном `TOCHKA_ACCOUNT_ID` backend раз в 10 минут загружает выписку за последние 3 дня и начисляет платежи по совпадению ФИО плательщика с родителем в карточке; уже зачисленные платежи не дублируются (таблица `tochka_applied_payments`).
+
+После деплоя с новой миграцией один раз выполните на VPS: `docker compose exec backend alembic upgrade head` (если миграции не запускаются автоматически при старте).
 
 Проверка: после входа под admin/owner/sales запрос `GET https://tirskix.space/api/sales/tochka/status` должен вернуть `{"configured":true}`.
 

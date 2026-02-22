@@ -311,6 +311,13 @@ class BankPaymentImportResponse(BaseModel):
     ambiguous: List[dict]  # [{ "payer_name", "amount", "date", "candidates": [{ "student_id", "student_name", "parent_full_name" }] }]
 
 
+class TochkaImportRequest(BaseModel):
+    """Запрос выписки из Точка Банк за период и зачисление по матчу ФИО плательщика с родителем в карточке."""
+    date_from: str  # YYYY-MM-DD
+    date_to: str    # YYYY-MM-DD
+    account_id: Optional[str] = None  # ID счёта в Точка Банк; если не передан — берётся из TOCHKA_ACCOUNT_ID
+
+
 # Пропуски (воронка для sales)
 class AbsenceFollowUpResponse(BaseModel):
     id: int

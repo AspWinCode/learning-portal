@@ -49,6 +49,7 @@ from app.models import (
     StudentAccount,
     StudentAccountTransaction,
     StudentAccountTransactionKind,
+    TochkaAppliedPayment,
 )
 from app.schemas import (
     LeadCreate,
@@ -108,6 +109,8 @@ from app.schemas import (
     AbsenceFollowUpStageUpdate,
     OpenParentCabinetResponse,
     LessonCallResultUpdate,
+    TochkaImportRequest,
+    BankPaymentImportResponse,
 )
 from app.routers.action_log import log_action
 
@@ -512,12 +515,204 @@ def _require_sales_admin_owner(user: User) -> None:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
 
+def _normalize_name(s: str) -> str:
+    """Нормализация ФИО для сравнения: нижний регистр, одна пробельная строка."""
+    if not s or not isinstance(s, str):
+        return ""
+    return " ".join((s or "").lower().strip().split())
+
+
+def _payer_matches_parent(payer_name: str, parent_full_name: Optional[str]) -> bool:
+    """Совпадает ли плательщик с ФИО родителя (имя+отчество в банке часто без фамилии)."""
+    if not parent_full_name or not payer_name:
+        return False
+    p = _normalize_name(payer_name)
+    parent = _normalize_name(parent_full_name)
+    if not p or not parent:
+        return False
+    if p == parent:
+        return True
+    if p in parent or parent in p:
+        return True
+    # Все слова из плательщика есть в ФИО родителя (например "Елена Владимировна" в "Князева Елена Владимировна")
+    p_words = set(p.split())
+    parent_words = set(parent.split())
+    return p_words <= parent_words
+
+
+def _tochka_payment_already_applied(
+    db: Session, account_id: str, payment_date: str, amount: float, payer_name: str
+) -> bool:
+    """Проверяет, был ли этот платёж из Точка Банк уже зачислен (идемпотентность)."""
+    payer_trunc = (payer_name or "")[:512]
+    return (
+        db.query(TochkaAppliedPayment.id)
+        .filter(
+            TochkaAppliedPayment.tochka_account_id == account_id,
+            TochkaAppliedPayment.payment_date == payment_date,
+            TochkaAppliedPayment.amount == amount,
+            TochkaAppliedPayment.payer_name == payer_trunc,
+        )
+        .first()
+        is not None
+    )
+
+
+def do_tochka_import_and_apply(
+    db: Session,
+    account_id: str,
+    date_from: date,
+    date_to: date,
+    actor_user_id: Optional[int] = None,
+) -> BankPaymentImportResponse:
+    """
+    Загружает выписку Точка Банк за период, сопоставляет входящие платежи с карточками учеников
+    по ФИО плательщика и зачисляет на счёт. Уже зачисленные платежи (по tochka_applied_payments) пропускаются.
+    actor_user_id — для лога; если None (авто-импорт), лог не пишем или пишем с system.
+    """
+    from app.services.tochka_client import (
+        fetch_statement_ready,
+        extract_incoming_transactions,
+    )
+
+    statement = fetch_statement_ready(account_id, date_from, date_to)
+    transactions = extract_incoming_transactions(statement)
+    cards = (
+        db.query(StudentCard)
+        .filter(StudentCard.archived.is_(False), StudentCard.student_id.isnot(None))
+        .all()
+    )
+
+    applied: List[dict] = []
+    no_match: List[dict] = []
+    ambiguous: List[dict] = []
+
+    for tx in transactions:
+        payer_name = tx.get("payer_name") or ""
+        amount = tx.get("amount") or 0
+        tx_date = tx.get("date") or ""
+
+        if _tochka_payment_already_applied(db, account_id, tx_date, amount, payer_name):
+            continue
+
+        matches = [c for c in cards if _payer_matches_parent(payer_name, c.parent_full_name)]
+        if len(matches) == 0:
+            no_match.append({"payer_name": payer_name, "amount": amount, "date": tx_date})
+            continue
+        if len(matches) > 1:
+            ambiguous.append({
+                "payer_name": payer_name,
+                "amount": amount,
+                "date": tx_date,
+                "candidates": [
+                    {
+                        "student_id": c.student_id,
+                        "student_name": get_student_display_name(db, db.query(Student).filter(Student.id == c.student_id).first()) if c.student_id else "",
+                        "parent_full_name": c.parent_full_name or "",
+                    }
+                    for c in matches
+                ],
+            })
+            continue
+
+        card = matches[0]
+        student_id = card.student_id
+        student = db.query(Student).filter(Student.id == student_id).first()
+        if not student:
+            no_match.append({"payer_name": payer_name, "amount": amount, "date": tx_date})
+            continue
+
+        account = db.query(StudentAccount).filter(StudentAccount.student_id == student_id).order_by(StudentAccount.id).first()
+        if not account:
+            account = StudentAccount(student_id=student_id, name="Основной", balance=0.0)
+            db.add(account)
+            db.flush()
+
+        note = f"Точка Банк, плательщик: {payer_name}, дата: {tx_date}"
+        db.add(
+            StudentAccountTransaction(
+                account_id=account.id,
+                amount=amount,
+                kind=StudentAccountTransactionKind.PAYMENT,
+                note=note,
+            )
+        )
+        account.balance += amount
+        payer_trunc = (payer_name or "")[:512]
+        db.add(
+            TochkaAppliedPayment(
+                tochka_account_id=account_id,
+                payment_date=tx_date,
+                amount=amount,
+                payer_name=payer_trunc,
+                student_id=student_id,
+                student_account_id=account.id,
+            )
+        )
+        student_name = get_student_display_name(db, student)
+        applied.append({
+            "payer_name": payer_name,
+            "amount": amount,
+            "date": tx_date,
+            "student_id": student_id,
+            "account_id": account.id,
+            "student_name": student_name,
+        })
+
+    db.commit()
+    if actor_user_id is not None:
+        log_action(
+            db, actor_user_id, "tochka_import_apply", "sales", None,
+            {"applied": len(applied), "no_match": len(no_match), "ambiguous": len(ambiguous)},
+        )
+    return BankPaymentImportResponse(applied=applied, no_match=no_match, ambiguous=ambiguous)
+
+
 @router.get("/tochka/status")
 async def tochka_bank_status(current_user: User = Depends(auth.get_current_active_user)):
     """Проверка: заданы ли учётные данные Точка Банк (TOCHKA_CLIENT_ID, TOCHKA_CLIENT_SECRET) в .env."""
     _require_sales_admin_owner(current_user)
     from app.services.tochka_client import is_configured
     return {"configured": is_configured()}
+
+
+@router.post("/tochka/import-and-apply", response_model=BankPaymentImportResponse)
+async def tochka_import_and_apply(
+    payload: TochkaImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """
+    Загрузить выписку из Точка Банк за период, сопоставить входящие платежи с карточками учеников
+    по ФИО плательщика (parent_full_name) и зачислить сумму на счёт ученика с датой оплаты в комментарии.
+    Уже зачисленные платежи пропускаются (идемпотентность).
+    """
+    _require_sales_admin_owner(current_user)
+    from app.services.tochka_client import is_configured
+
+    if not is_configured():
+        raise HTTPException(status_code=400, detail="Точка Банк не настроен: задайте TOCHKA_CLIENT_ID и TOCHKA_CLIENT_SECRET в .env")
+
+    account_id = (payload.account_id or "").strip() or (os.getenv("TOCHKA_ACCOUNT_ID") or "").strip()
+    if not account_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Укажите account_id (ID счёта в Точка Банк) в теле запроса или задайте TOCHKA_ACCOUNT_ID в .env",
+        )
+
+    try:
+        date_from = date.fromisoformat(payload.date_from)
+        date_to = date.fromisoformat(payload.date_to)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date_from и date_to должны быть в формате YYYY-MM-DD")
+
+    if date_from > date_to:
+        raise HTTPException(status_code=400, detail="date_from не может быть больше date_to")
+
+    try:
+        return do_tochka_import_and_apply(db, account_id, date_from, date_to, actor_user_id=current_user.id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Ошибка выписки Точка Банк: {e!s}")
 
 
 @router.get("/student-cards", response_model=List[StudentCardResponse])

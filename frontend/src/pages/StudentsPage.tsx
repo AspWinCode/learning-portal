@@ -697,18 +697,26 @@ const StudentsPage: React.FC = () => {
     [studentCards]
   );
 
+  const individualFormatStudentIds = useMemo(
+    () => new Set(studentCards.filter((c) => c.student_id != null && c.format_type === 'individual').map((c) => c.student_id!)),
+    [studentCards]
+  );
+
   const isInIndividualGroup = (student: Student): boolean => {
     const g = groups.find((gr) => gr.students?.some((st) => st.id === student.id));
     return (g?.name?.toLowerCase().includes('индивидуально') ?? false);
   };
 
+  const isIndividualStudent = (student: Student): boolean =>
+    isInIndividualGroup(student) || individualFormatStudentIds.has(student.id);
+
   const filteredStudents = useMemo(() => {
     let list = students;
     if (typeFilter === 'grant') list = list.filter((s) => grantStudentIds.has(s.id));
-    else if (typeFilter === 'individual') list = list.filter((s) => isInIndividualGroup(s));
-    else if (typeFilter === 'paid') list = list.filter((s) => !grantStudentIds.has(s.id) && !isInIndividualGroup(s));
+    else if (typeFilter === 'individual') list = list.filter((s) => isIndividualStudent(s));
+    else if (typeFilter === 'paid') list = list.filter((s) => !grantStudentIds.has(s.id) && !isIndividualStudent(s));
     return list;
-  }, [students, typeFilter, grantStudentIds, groups]);
+  }, [students, typeFilter, grantStudentIds, individualFormatStudentIds, groups]);
 
   const filteredParents = useMemo(() => parents.filter((p) => p.is_active !== false), [parents]);
   const filteredTrainers = useMemo(() => trainers.filter((t) => t.is_active !== false), [trainers]);

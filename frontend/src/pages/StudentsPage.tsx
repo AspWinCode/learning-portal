@@ -38,7 +38,7 @@ import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active');
   const [typeFilter, setTypeFilter] = useState<'' | 'grant' | 'individual' | 'paid'>('');
   const [studentCards, setStudentCards] = useState<StudentCardType[]>([]);
   const [open, setOpen] = useState(false);
@@ -710,6 +710,9 @@ const StudentsPage: React.FC = () => {
     return list;
   }, [students, typeFilter, grantStudentIds, groups]);
 
+  const filteredParents = useMemo(() => parents.filter((p) => p.is_active !== false), [parents]);
+  const filteredTrainers = useMemo(() => trainers.filter((t) => t.is_active !== false), [trainers]);
+
   const getDiscountLabel = (ab: Abonement): string => {
     if (ab.discount_type === 'none') return '—';
     if (ab.discount_type === 'percent') return `${ab.discount_value}%`;
@@ -983,7 +986,7 @@ const StudentsPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {parents.map((parent) => {
+            {filteredParents.map((parent) => {
               const studentsCount = students.filter(s => s.parent_id === parent.id).length;
               return (
                 <TableRow key={parent.id}>
@@ -1048,7 +1051,7 @@ const StudentsPage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {trainers.map((trainer) => {
+                {filteredTrainers.map((trainer) => {
                   const groupsCount = groups.filter(g => g.trainer_id === trainer.id).length;
                   return (
                     <TableRow key={trainer.id}>

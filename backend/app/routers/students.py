@@ -93,7 +93,7 @@ async def create_student_with_parent(
 
     log_action(db, current_user.id, "create", "student", db_student.id)
 
-    display_name = get_student_display_name(db, db_student.id)
+    display_name = get_student_display_name(db, db_student)
     student_response = StudentResponse(
         id=db_student.id,
         full_name=display_name,

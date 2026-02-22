@@ -37,6 +37,7 @@ import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../
 
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all');
   const [typeFilter, setTypeFilter] = useState<'' | 'grant' | 'individual' | 'paid'>('');
   const [studentCards, setStudentCards] = useState<StudentCardType[]>([]);
@@ -119,23 +120,31 @@ const StudentsPage: React.FC = () => {
   const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || '').trim());
 
   useEffect(() => {
-    loadStudents();
-    if (hasFullStudentsView) {
-      loadParents();
-      if (canCreateCard) {
-        salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
-      }
-      if (!isOwner || user?.role === 'sales') {
-        loadTrainers();
-      }
-      loadGroups();
-      loadPrograms();
-      if (canAssignAbonement) {
-        loadAbonements();
-      }
-      studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
+    if (!hasFullStudentsView) {
+      loadStudents();
+      return;
     }
-  }, [user, statusFilter, canCreateCard, hasFullStudentsView, canAssignAbonement]);
+    loadParents();
+    if (canCreateCard) {
+      salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
+    }
+    if (!isOwner || user?.role === 'sales') {
+      loadTrainers();
+    }
+    loadGroups();
+    loadPrograms();
+    if (canAssignAbonement) {
+      loadAbonements();
+    }
+    studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
+  }, [user, canCreateCard, hasFullStudentsView, canAssignAbonement]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      loadStudents();
+    }, searchQuery.trim() ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [user, statusFilter, searchQuery]);
 
   useEffect(() => {
     if (parentCreateMode !== 'existing' || !parentSearchQuery.trim()) {
@@ -164,8 +173,10 @@ const StudentsPage: React.FC = () => {
 
   const loadStudents = async () => {
     try {
-      const params = statusFilter === 'all' ? undefined : { status: statusFilter };
-      const data = await studentsApi.getAll(params);
+      const params: Record<string, string> = {};
+      if (statusFilter !== 'all') params.status = statusFilter;
+      if (searchQuery.trim()) params.q = searchQuery.trim();
+      const data = await studentsApi.getAll(Object.keys(params).length ? params : undefined);
       setStudents(data);
     } catch (err) {
       setError('Ошибка загрузки данных');
@@ -818,6 +829,16 @@ const StudentsPage: React.FC = () => {
       <Typography variant="h5" sx={{ mt: 3, mb: 2 }}>
         Ученики
       </Typography>
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          placeholder="Поиск по ФИО или имени..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          sx={{ minWidth: 280 }}
+          inputProps={{ 'aria-label': 'Поиск ученика по ФИО' }}
+        />
+      </Box>
       <TableContainer component={Paper} sx={{ mb: 4 }}>
         <Table>
           <TableHead>

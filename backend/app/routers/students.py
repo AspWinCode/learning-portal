@@ -34,10 +34,12 @@ async def create_student_with_parent(
     В одной транзакции: определить/создать parent → создать student с parent_id.
     """
     parent_user = None
-    email_normalized = (payload.parent.email or "").strip().lower() if payload.parent.email else None
+    # Безопасно получаем id родителя: parent может быть объектом { id, ... } или по ошибке передан как int
+    parent_id = payload.parent if isinstance(payload.parent, int) else getattr(payload.parent, "id", None)
+    email_normalized = (getattr(payload.parent, "email", None) or "").strip().lower() if getattr(payload.parent, "email", None) else None
 
-    if payload.parent.id is not None:
-        parent_user = db.query(User).filter(User.id == payload.parent.id, User.role == UserRole.PARENT).first()
+    if parent_id is not None:
+        parent_user = db.query(User).filter(User.id == parent_id, User.role == UserRole.PARENT).first()
         if not parent_user:
             raise HTTPException(status_code=404, detail="Родитель с указанным id не найден")
     else:
@@ -53,8 +55,9 @@ async def create_student_with_parent(
             parent_user = found[0]
         else:
             try:
+                parent_full_name = getattr(payload.parent, "full_name", None) or ""
                 parent_user = create_parent_user_no_invite(
-                    db, email_normalized, payload.parent.full_name or ""
+                    db, email_normalized, parent_full_name
                 )
                 db.flush()
             except ValueError as e:

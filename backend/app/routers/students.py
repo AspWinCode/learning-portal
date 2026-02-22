@@ -63,6 +63,14 @@ async def create_student_with_parent(
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
+    # Гарантируем, что parent_user — объект User (не int), иначе сериализация ответа даёт AttributeError
+    if parent_user is not None and not isinstance(parent_user, User):
+        pid = int(parent_user) if isinstance(parent_user, (int, float)) else None
+        if pid is not None:
+            parent_user = db.query(User).filter(User.id == pid, User.role == UserRole.PARENT).first()
+        if not parent_user or not isinstance(parent_user, User):
+            raise HTTPException(status_code=500, detail="Ошибка при определении родителя")
+
     abonement_id = None
     if payload.student.abonement_id:
         abonement = db.query(Abonement).filter(Abonement.id == payload.student.abonement_id).first()

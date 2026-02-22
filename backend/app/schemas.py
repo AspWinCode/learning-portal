@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, date, time
 from enum import Enum
@@ -222,6 +222,14 @@ class StudentWithParentStudentPayload(BaseModel):
 class StudentWithParentCreate(BaseModel):
     student: StudentWithParentStudentPayload
     parent: StudentWithParentParentPayload
+
+    @field_validator("parent", mode="before")
+    @classmethod
+    def parent_allow_int(cls, v: Any) -> Any:
+        """Если клиент по ошибке отправил parent как id (int), приводим к объекту."""
+        if isinstance(v, int):
+            return {"id": v, "full_name": "—", "email": None}
+        return v
 
 
 class ParentInfoInResponse(BaseModel):

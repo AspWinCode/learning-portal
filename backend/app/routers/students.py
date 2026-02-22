@@ -192,13 +192,20 @@ async def read_students(
             Student.parent_id == current_user.id,
             Student.status == StudentStatus.ACTIVE
         )
-    # Тренер видит только учеников из своих групп
+    # Тренер видит только учеников из своих групп (подзапрос, чтобы не дублировать ученика в нескольких группах)
     elif current_user.role == UserRole.TRAINER:
         from app.models import GroupStudent, Group
-        query = query.join(GroupStudent).join(Group).filter(
-            Group.trainer_id == current_user.id,
-            Student.status == StudentStatus.ACTIVE
+        subq = (
+            db.query(Student.id)
+            .join(GroupStudent, GroupStudent.student_id == Student.id)
+            .join(Group, Group.id == GroupStudent.group_id)
+            .filter(
+                Group.trainer_id == current_user.id,
+                Student.status == StudentStatus.ACTIVE,
+            )
+            .distinct()
         )
+        query = query.filter(Student.id.in_(subq))
     # Администратор, владелец и sales видят всех
     elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         if status_filter:
@@ -217,7 +224,14 @@ async def read_students(
     query = query.options(
         selectinload(Student.student_programs).joinedload(StudentProgram.program)
     )
-    students = query.all()
+    rows = query.all()
+    # Убираем дубликаты по id (могут появиться при join в других ветках)
+    seen_ids = set()
+    students = []
+    for s in rows:
+        if s.id not in seen_ids:
+            seen_ids.add(s.id)
+            students.append(s)
     if not students:
         return []
     display_names = get_students_display_names(db, [s.id for s in students])

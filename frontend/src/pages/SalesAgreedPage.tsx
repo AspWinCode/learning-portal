@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -13,13 +12,11 @@ import {
   MenuItem,
   Select,
   Stack,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -39,9 +36,7 @@ const defaultFollowUpAt = () => {
 
 const SalesAgreedPage: React.FC = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState(0);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [leadsFilled, setLeadsFilled] = useState<Lead[]>([]);
   const [templates, setTemplates] = useState<LeadInfoTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
@@ -69,18 +64,6 @@ const SalesAgreedPage: React.FC = () => {
     }
   }, []);
 
-  const loadLeadsFilled = useCallback(async () => {
-    try {
-      const [inv, decided] = await Promise.all([
-        salesApi.listLeads({ status_filter: 'invoice_sent', questionnaire_filled: true }),
-        salesApi.listLeads({ status_filter: 'decided_immediately', questionnaire_filled: true }),
-      ]);
-      setLeadsFilled([...inv, ...decided]);
-    } catch {
-      setLeadsFilled([]);
-    }
-  }, []);
-
   const loadTemplates = useCallback(async () => {
     try {
       const data = await salesApi.listLeadInfoTemplates(true);
@@ -92,9 +75,8 @@ const SalesAgreedPage: React.FC = () => {
 
   useEffect(() => {
     loadLeads();
-    loadLeadsFilled();
     loadTemplates();
-  }, [loadLeads, loadLeadsFilled, loadTemplates]);
+  }, [loadLeads, loadTemplates]);
 
   const questionnaireTemplate = templates.find(
     (t) => (t.name || '').toLowerCase().includes(S.questionnaireKey)
@@ -160,8 +142,8 @@ const SalesAgreedPage: React.FC = () => {
     setError(null);
     try {
       await salesApi.updateLead(lead.id, { questionnaire_filled: true });
-      await Promise.all([loadLeads(), loadLeadsFilled()]);
-      setTab(1);
+      await loadLeads();
+      navigate('/sales/invoices');
     } catch (err: any) {
       setError(extractApiError(err, S.markError));
     } finally {
@@ -192,135 +174,72 @@ const SalesAgreedPage: React.FC = () => {
         </Alert>
       )}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Нужно заполнить анкету" id="agreed-tab-0" aria-controls="agreed-panel-0" />
-        <Tab label="Счета" id="agreed-tab-1" aria-controls="agreed-panel-1" />
-      </Tabs>
-
-      <Box role="tabpanel" id="agreed-panel-0" aria-labelledby="agreed-tab-0" hidden={tab !== 0}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>{S.colLead}</TableCell>
-              <TableCell>{S.colPhone}</TableCell>
-              <TableCell>{S.colUpdated}</TableCell>
-              <TableCell align="right">{S.colActions}</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {leads.map((lead) => (
-              <TableRow key={lead.id} hover>
-                <TableCell>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>{S.colLead}</TableCell>
+            <TableCell>{S.colPhone}</TableCell>
+            <TableCell>{S.colUpdated}</TableCell>
+            <TableCell align="right">{S.colActions}</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {leads.map((lead) => (
+            <TableRow key={lead.id} hover>
+              <TableCell>
+                <Button
+                  size="small"
+                  variant="text"
+                  sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
+                  onClick={() => navigate('/sales/leads?open=' + lead.id)}
+                >
+                  {leadDisplayName(lead)}
+                </Button>
+              </TableCell>
+              <TableCell>{leadPhone(lead)}</TableCell>
+              <TableCell>
+                {lead.updated_at
+                  ? (() => {
+                      const d = parseISO(lead.updated_at);
+                      return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : lead.updated_at;
+                    })()
+                  : S.dash}
+              </TableCell>
+              <TableCell align="right">
+                <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap">
                   <Button
                     size="small"
-                    variant="text"
-                    sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
-                    onClick={() => navigate('/sales/leads?open=' + lead.id)}
+                    variant="contained"
+                    color="primary"
+                    disabled={actionLoadingId === lead.id}
+                    onClick={() => openSendDialog(lead)}
                   >
-                    {leadDisplayName(lead)}
+                    {S.btnSend}
                   </Button>
-                </TableCell>
-                <TableCell>{leadPhone(lead)}</TableCell>
-                <TableCell>
-                  {lead.updated_at
-                    ? (() => {
-                        const d = parseISO(lead.updated_at);
-                        return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : lead.updated_at;
-                      })()
-                    : S.dash}
-                </TableCell>
-                <TableCell align="right">
-                  <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap">
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="primary"
-                      disabled={actionLoadingId === lead.id}
-                      onClick={() => openSendDialog(lead)}
-                    >
-                      {S.btnSend}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="success"
-                      disabled={actionLoadingId === lead.id}
-                      onClick={() => handleMarkQuestionnaireFilled(lead)}
-                    >
-                      {S.btnFilled}
-                    </Button>
-                  </Stack>
-                </TableCell>
-              </TableRow>
-            ))}
-            {leads.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <Typography color="text.secondary">
-                    {S.emptyText}
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Box>
-
-      <Box role="tabpanel" id="agreed-panel-1" aria-labelledby="agreed-tab-1" hidden={tab !== 1}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>{S.colLead}</TableCell>
-              <TableCell>{S.colPhone}</TableCell>
-              <TableCell>{S.colUpdated}</TableCell>
-              <TableCell align="right">Действия</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {leadsFilled.map((lead) => (
-              <TableRow key={lead.id} hover>
-                <TableCell>
-                  <Button
-                    size="small"
-                    variant="text"
-                    sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
-                    onClick={() => navigate('/sales/leads?open=' + lead.id)}
-                  >
-                    {leadDisplayName(lead)}
-                  </Button>
-                </TableCell>
-                <TableCell>{leadPhone(lead)}</TableCell>
-                <TableCell>
-                  {lead.updated_at
-                    ? (() => {
-                        const d = parseISO(lead.updated_at);
-                        return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : lead.updated_at;
-                      })()
-                    : S.dash}
-                </TableCell>
-                <TableCell align="right">
                   <Button
                     size="small"
                     variant="outlined"
-                    onClick={() => navigate('/sales/leads?open=' + lead.id)}
+                    color="success"
+                    disabled={actionLoadingId === lead.id}
+                    onClick={() => handleMarkQuestionnaireFilled(lead)}
                   >
-                    Открыть карточку лида
+                    {S.btnFilled}
                   </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {leadsFilled.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <Typography color="text.secondary">
-                    Нет лидов с заполненной анкетой. После нажатия «Анкета заполнена» лид появится здесь — откройте карточку, чтобы создать счёт.
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Box>
+                </Stack>
+              </TableCell>
+            </TableRow>
+          ))}
+          {leads.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={4}>
+                <Typography color="text.secondary">
+                  {S.emptyText}
+                </Typography>
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
 
       <Dialog open={sendOpen} onClose={() => setSendOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{S.dialogTitle}</DialogTitle>

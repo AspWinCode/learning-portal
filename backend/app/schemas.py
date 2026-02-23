@@ -1165,10 +1165,12 @@ class LessonAttendanceSave(BaseModel):
 
 
 class MoveLessonPayload(BaseModel):
-    """Перенос занятия группы с одной даты на другую (только admin/owner/sales)."""
+    """Перенос занятия группы с одной даты на другую; опционально новое время (только admin/owner/sales)."""
     group_id: int
     from_date: date
     to_date: date
+    to_start_time: Optional[str] = None  # "HH:MM"
+    to_end_time: Optional[str] = None    # "HH:MM"
 
 
 class LessonCallResultUpdate(BaseModel):

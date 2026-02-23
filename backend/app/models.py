@@ -733,6 +733,8 @@ class LessonAttendance(Base):
     call_result_at = Column(DateTime(timezone=True), nullable=True)
     absence_reason = Column(String(64), nullable=True)  # was / not_was / sick / olympiad / event / other (ТЗ п.3.1)
     absence_comment = Column(Text, nullable=True)
+    lesson_start_time = Column(Time, nullable=True)  # при переносе с изменением времени
+    lesson_end_time = Column(Time, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group", back_populates="lesson_attendances")

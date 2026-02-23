@@ -1,6 +1,6 @@
 """API для тренера: занятия по расписанию и посещаемость."""
 from datetime import date, time, datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -50,39 +50,45 @@ async def get_lessons_for_date(
         groups = db.query(Group).filter(Group.status == GroupStatus.ACTIVE).all()
     else:
         raise HTTPException(status_code=403, detail="Only for trainers or admin/owner/sales")
+    def _time_eq(a: Optional[time], b: Optional[time]) -> bool:
+        if a is None and b is None:
+            return True
+        if a is None or b is None:
+            return False
+        return a == b
+
     result: List[TrainerLessonSlotResponse] = []
     for group in groups:
         schedules = db.query(GroupSchedule).filter(
             GroupSchedule.group_id == group.id,
             GroupSchedule.day_of_week == weekday,
         ).order_by(GroupSchedule.start_time).all()
-        for sched in schedules:
-            students_in_group = db.query(GroupStudent).filter(GroupStudent.group_id == group.id).all()
-            attendance_map = {}
-            for att in db.query(LessonAttendance).filter(
-                LessonAttendance.group_id == group.id,
-                LessonAttendance.lesson_date == lesson_date,
-            ).all():
-                attendance_map[att.student_id] = {
+        sched_times = {(s.start_time, s.end_time) for s in schedules}
+        attendances = db.query(LessonAttendance).filter(
+            LessonAttendance.group_id == group.id,
+            LessonAttendance.lesson_date == lesson_date,
+        ).all()
+        students_in_group = db.query(GroupStudent).filter(GroupStudent.group_id == group.id).all()
+        student_ids = [gs.student_id for gs in students_in_group if gs.student_id]
+        display_names = get_students_display_names(db, student_ids)
+        freezes = db.query(StudentFreeze).filter(
+            StudentFreeze.student_id.in_(student_ids),
+            StudentFreeze.freeze_start <= lesson_date,
+            StudentFreeze.freeze_end >= lesson_date,
+        ).all()
+        freeze_badges = {f.student_id: f"Заморожен с {f.freeze_start.strftime('%d.%m')} по {f.freeze_end.strftime('%d.%m')}" for f in freezes}
+        program_name = group.programs[0].name if group.programs else None
+
+        def build_slot(slot_start: time, slot_end: time, atts: list) -> None:
+            attendance_map = {
+                att.student_id: {
                     "attended": att.attended,
                     "late": getattr(att, "late", False),
                     "absence_reason": getattr(att, "absence_reason", None),
                     "absence_comment": getattr(att, "absence_comment", None),
                 }
-            program_name = None
-            if group.programs:
-                program_name = group.programs[0].name if group.programs else None
-            student_ids = [gs.student_id for gs in students_in_group if gs.student_id]
-            display_names = get_students_display_names(db, student_ids)
-            freezes = db.query(StudentFreeze).filter(
-                StudentFreeze.student_id.in_(student_ids),
-                StudentFreeze.freeze_start <= lesson_date,
-                StudentFreeze.freeze_end >= lesson_date,
-            ).all()
-            freeze_badges = {}
-            for f in freezes:
-                badge = f"Заморожен с {f.freeze_start.strftime('%d.%m')} по {f.freeze_end.strftime('%d.%m')}"
-                freeze_badges[f.student_id] = badge
+                for att in atts
+            }
             students_data = []
             for gs in students_in_group:
                 student = gs.student
@@ -105,11 +111,29 @@ async def get_lessons_for_date(
                 group_name=group.name,
                 program_name=program_name,
                 day_of_week=weekday,
-                start_time=sched.start_time,
-                end_time=sched.end_time,
+                start_time=slot_start,
+                end_time=slot_end,
                 lesson_date=lesson_date,
                 students=students_data,
             ))
+
+        for sched in schedules:
+            matching = [
+                att for att in attendances
+                if (getattr(att, "lesson_start_time", None) is None and getattr(att, "lesson_end_time", None) is None)
+                or (_time_eq(getattr(att, "lesson_start_time", None), sched.start_time) and _time_eq(getattr(att, "lesson_end_time", None), sched.end_time))
+            ]
+            build_slot(sched.start_time, sched.end_time, matching)
+
+        custom_times = set()
+        for att in attendances:
+            st, et = getattr(att, "lesson_start_time", None), getattr(att, "lesson_end_time", None)
+            if st is not None and et is not None and (st, et) not in sched_times:
+                custom_times.add((st, et))
+        for (st, et) in sorted(custom_times):
+            matching = [att for att in attendances if getattr(att, "lesson_start_time", None) == st and getattr(att, "lesson_end_time", None) == et]
+            build_slot(st, et, matching)
+
     result.sort(key=lambda x: (x.start_time, x.group_name))
     return result
 
@@ -264,9 +288,23 @@ async def move_lesson(
             status_code=400,
             detail="Group already has a lesson on to_date; cannot move",
         )
+    to_start: Optional[time] = None
+    to_end: Optional[time] = None
+    if payload.to_start_time or payload.to_end_time:
+        try:
+            if payload.to_start_time:
+                to_start = datetime.strptime(payload.to_start_time.strip(), "%H:%M").time()
+            if payload.to_end_time:
+                to_end = datetime.strptime(payload.to_end_time.strip(), "%H:%M").time()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
     att_ids = [a.id for a in attendances]
     for att in attendances:
         att.lesson_date = payload.to_date
+        if to_start is not None:
+            att.lesson_start_time = to_start
+        if to_end is not None:
+            att.lesson_end_time = to_end
     for abs_follow in db.query(AbsenceFollowUp).filter(
         AbsenceFollowUp.lesson_attendance_id.in_(att_ids),
     ).all():

@@ -58,6 +58,8 @@ const TrainerLessonsPage: React.FC = () => {
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [moveSlot, setMoveSlot] = useState<TrainerLessonSlot | null>(null);
   const [moveToDate, setMoveToDate] = useState('');
+  const [moveToStartTime, setMoveToStartTime] = useState('');
+  const [moveToEndTime, setMoveToEndTime] = useState('');
   const [moveError, setMoveError] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
 
@@ -94,6 +96,10 @@ const TrainerLessonsPage: React.FC = () => {
     e.stopPropagation();
     setMoveSlot(slot);
     setMoveToDate(format(addDays(new Date(slot.lesson_date || viewDate), 1), 'yyyy-MM-dd'));
+    const start = (slot.start_time || '').toString().slice(0, 5);
+    const end = (slot.end_time || '').toString().slice(0, 5);
+    setMoveToStartTime(start || '15:00');
+    setMoveToEndTime(end || '17:00');
     setMoveError(null);
     setMoveDialogOpen(true);
   };
@@ -112,6 +118,9 @@ const TrainerLessonsPage: React.FC = () => {
         group_id: moveSlot.group_id,
         from_date: fromDate,
         to_date: moveToDate,
+        ...(moveToStartTime && moveToEndTime
+          ? { to_start_time: moveToStartTime, to_end_time: moveToEndTime }
+          : {}),
       });
       setMoveDialogOpen(false);
       setMoveSlot(null);
@@ -359,6 +368,28 @@ const TrainerLessonsPage: React.FC = () => {
             InputLabelProps={{ shrink: true }}
             sx={{ mt: 1 }}
           />
+          <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+            <TextField
+              label="Время начала"
+              type="time"
+              value={moveToStartTime}
+              onChange={(e) => setMoveToStartTime(e.target.value)}
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 300 }}
+              sx={{ flex: 1 }}
+            />
+            <TextField
+              label="Время окончания"
+              type="time"
+              value={moveToEndTime}
+              onChange={(e) => setMoveToEndTime(e.target.value)}
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 300 }}
+              sx={{ flex: 1 }}
+            />
+          </Stack>
           {moveError && (
             <Alert severity="error" sx={{ mt: 1 }}>{moveError}</Alert>
           )}

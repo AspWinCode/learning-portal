@@ -344,6 +344,8 @@ export const trainerLessonsApi = {
     group_id: number;
     from_date: string;
     to_date: string;
+    to_start_time?: string;
+    to_end_time?: string;
   }): Promise<{ ok: boolean; moved_count: number }> => {
     const response = await api.post('/api/trainer-lessons/move', data);
     return response.data;

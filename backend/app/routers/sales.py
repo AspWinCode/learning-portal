@@ -1511,8 +1511,8 @@ def _require_owner(user: User) -> None:
         raise HTTPException(status_code=403, detail="Только owner")
 
 
-def _require_owner_or_admin(user: User) -> None:
-    """Owner или admin (настройки отработок)."""
+def _require_owner_or_admin_settings(user: User) -> None:
+    """Owner или admin (настройки отработок, без lead)."""
     if user.role not in (UserRole.OWNER, UserRole.ADMIN):
         raise HTTPException(status_code=403, detail="Только owner или admin")
 
@@ -1572,7 +1572,7 @@ async def list_program_makeup_compatibility(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Список правил совместимости программ для отработок (ТЗ п.5.3). Owner/admin."""
-    _require_owner_or_admin(current_user)
+    _require_owner_or_admin_settings(current_user)
     items = db.query(ProgramMakeupCompatibility).order_by(
         ProgramMakeupCompatibility.source_program_id,
         ProgramMakeupCompatibility.target_program_id,
@@ -1598,7 +1598,7 @@ async def create_program_makeup_compatibility(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Добавить правило: программа source может отрабатывать в программе target. Owner/admin."""
-    _require_owner_or_admin(current_user)
+    _require_owner_or_admin_settings(current_user)
     for pid in (payload.source_program_id, payload.target_program_id):
         if not db.query(Program).filter(Program.id == pid).first():
             raise HTTPException(status_code=404, detail=f"Программа {pid} не найдена")
@@ -1627,7 +1627,7 @@ async def delete_program_makeup_compatibility(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Удалить правило совместимости. Owner/admin."""
-    _require_owner_or_admin(current_user)
+    _require_owner_or_admin_settings(current_user)
     compat = db.query(ProgramMakeupCompatibility).filter(ProgramMakeupCompatibility.id == compat_id).first()
     if not compat:
         raise HTTPException(status_code=404, detail="Правило не найдено")

@@ -65,6 +65,7 @@ import {
   LeadTaskStatusOption,
   LeadTaskTemplate,
   LeadPushStats,
+  SalesCity,
 } from '../types';
 
 const statusLabels: Record<LeadStatus, string> = {
@@ -124,17 +125,6 @@ const leadCommunicationChannelLabels: Record<LeadCommunicationChannel, string> =
   telegram: 'telegram',
 };
 
-const DEFAULT_CITY_OPTIONS = [
-  '\u0410\u043b\u043c\u0430\u0442\u044b',
-  '\u0410\u0441\u0442\u0430\u043d\u0430',
-  '\u0428\u044b\u043c\u043a\u0435\u043d\u0442',
-  '\u041a\u0430\u0440\u0430\u0433\u0430\u043d\u0434\u0430',
-  '\u0410\u043a\u0442\u043e\u0431\u0435',
-  '\u041f\u0430\u0432\u043b\u043e\u0434\u0430\u0440',
-  '\u0421\u0435\u043c\u0435\u0439',
-  '\u0423\u0441\u0442\u044c-\u041a\u0430\u043c\u0435\u043d\u043e\u0433\u043e\u0440\u0441\u043a',
-];
-
 const normalizeRuPhone = (raw: string): string => {
   const digits = raw.replace(/\D/g, '');
   if (!digits) return '';
@@ -172,6 +162,7 @@ const SalesLeadsPage: React.FC = () => {
   const [taskStatusOptionId, setTaskStatusOptionId] = useState<number | ''>('');
   const [taskDueAt, setTaskDueAt] = useState('');
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
+  const [salesCities, setSalesCities] = useState<SalesCity[]>([]);
   const [taskTemplates, setTaskTemplates] = useState<LeadTaskTemplate[]>([]);
   const [taskStatusOptions, setTaskStatusOptions] = useState<LeadTaskStatusOption[]>([]);
   const [leadStatusOptions, setLeadStatusOptions] = useState<LeadStatusOption[]>([]);
@@ -284,13 +275,15 @@ const SalesLeadsPage: React.FC = () => {
 
   const loadSalesMeta = useCallback(async () => {
     try {
-      const [sources, templates, statuses, leadStatuses] = await Promise.all([
+      const [sources, cities, templates, statuses, leadStatuses] = await Promise.all([
         salesApi.listLeadSources(true),
+        salesApi.listSalesCities(true),
         salesApi.listLeadTaskTemplates(true),
         salesApi.listLeadTaskStatuses(true),
         salesApi.listLeadStatuses(true),
       ]);
       setLeadSources(sources);
+      setSalesCities(cities);
       setTaskTemplates(templates);
       setTaskStatusOptions(statuses);
       setLeadStatusOptions(leadStatuses);
@@ -420,13 +413,14 @@ const SalesLeadsPage: React.FC = () => {
   }, [location.search, leads, navigate]);
 
   const cityOptions = useMemo(() => {
-    const citySet = new Set(DEFAULT_CITY_OPTIONS);
+    const citySet = new Set<string>();
+    salesCities.forEach((c) => citySet.add(c.name.trim()));
     leads.forEach((lead) => {
       const city = lead.city?.trim();
       if (city) citySet.add(city);
     });
     return Array.from(citySet).sort((a, b) => a.localeCompare(b, 'ru'));
-  }, [leads]);
+  }, [salesCities, leads]);
 
   const schoolOptions = useMemo(() => {
     const schoolSet = new Set<string>();

@@ -344,6 +344,7 @@ const ReportsPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
+                  <TableCell width={48}>№</TableCell>
                   <TableCell>Тренер</TableCell>
                   <TableCell>Ученик</TableCell>
                   <TableCell>Статус</TableCell>
@@ -360,6 +361,7 @@ const ReportsPage: React.FC = () => {
                     : '—';
                   return (
                     <TableRow key={`${r.trainer?.id}-${r.student?.id}-${idx}`} sx={{ backgroundColor: bg }}>
+                      <TableCell>{idx + 1}</TableCell>
                       <TableCell>{r.trainer?.full_name || '—'}</TableCell>
                       <TableCell>{r.student?.full_name || '—'}</TableCell>
                       <TableCell>
@@ -379,7 +381,7 @@ const ReportsPage: React.FC = () => {
                 })}
                 {ccData && (ccData.rows || []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4}>
+                    <TableCell colSpan={5}>
                       <Typography variant="body2" color="text.secondary">
                         Нет данных (нет активных групп/учеников).
                       </Typography>

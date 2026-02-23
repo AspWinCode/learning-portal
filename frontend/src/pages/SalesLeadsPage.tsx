@@ -854,7 +854,7 @@ const SalesLeadsPage: React.FC = () => {
       }
       setToast({
         open: true,
-        message: `Follow-up h\h�hVh\h�dhah\: ${format(due, 'dd.MM.yyyy HH:mm')}`,
+        message: `Follow-up запланирован: ${format(due, 'dd.MM.yyyy HH:mm')}`,
         severity: 'warning',
       });
     } catch (err: any) {
@@ -1046,13 +1046,13 @@ const SalesLeadsPage: React.FC = () => {
       } else if (outcome === 'no_answer') {
         setToast({
           open: true,
-          message: `h-ha h$h[hVh�h[h\ dh[ddh�h\hah\, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
+          message: `Недозвон, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
           severity: 'warning',
         });
       } else {
         setToast({
           open: true,
-          message: `h/hadhahVh�h[h\ dh[ddh�h\hah\, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
+          message: `Сообщение отправлено, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
           severity: 'info',
         });
       }
@@ -1343,7 +1343,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.registerLeadToEvent(nearest.id, { lead_id: selectedLead.id });
       setToast({
         open: true,
-        message: `h+hUh$ hVh�hhUdh�h\: ${formatEventOptionLabel(nearest)}`,
+        message: `Лид записан на мероприятие: ${formatEventOptionLabel(nearest)}`,
         severity: 'success',
       });
     } catch (err: any) {
@@ -1488,7 +1488,7 @@ const SalesLeadsPage: React.FC = () => {
       try {
         await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1 });
         await loadLeads();
-        setToast({ open: true, message: `h+hUh$ "${lead.contact_name}"  h-hah$h[hVh�h[h\ 1`, severity: 'success' });
+        setToast({ open: true, message: `Лид "${lead.contact_name}" перенесён в статус «Недозвон» (попытка 1)`, severity: 'success' });
       } catch (err: any) {
         setError(extractApiError(err, 'Ошибка операции'));
       }
@@ -1498,7 +1498,7 @@ const SalesLeadsPage: React.FC = () => {
       try {
         await salesApi.updateLead(lead.id, { status: 'decided_immediately', questionnaire_filled: false });
         await loadLeads();
-        setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hhadhah\hadd!h\ h� h h\hQhadd ddhah\hUhQh�`, severity: 'success' });
+        setToast({ open: true, message: `Лид "${lead.contact_name}" записан как «Решили сразу»`, severity: 'success' });
         navigate('/sales/agreed');
       } catch (err: any) {
         setError(extractApiError(err, 'Ошибка операции'));
@@ -1558,7 +1558,7 @@ const SalesLeadsPage: React.FC = () => {
         setDropLeadId(null);
         setDropTargetStatus(null);
         setDropCallbackAt('');
-        setToast({ open: true, message: `0B0 hhadhahVh�h[h\h� dh[ddh�h\hah\h� h$hWd "${lead.contact_name}"`, severity: 'success' });
+        setToast({ open: true, message: `Лид "${lead.contact_name}" перенесён в «Думают»`, severity: 'success' });
       } catch (err: any) {
         setError(extractApiError(err, 'Ошибка операции'));
       }
@@ -1576,7 +1576,7 @@ const SalesLeadsPage: React.FC = () => {
         setDropLeadId(null);
         setDropTargetStatus(null);
         setDropRefusedReason('');
-        setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" h[dhdh�h�hWhah\ h� h�ddhUh�`, severity: 'success' });
+        setToast({ open: true, message: `Лид "${lead.contact_name}" отмечен как отказ`, severity: 'success' });
       } catch (err: any) {
         setError(extractApiError(err, 'Ошибка операции'));
       }
@@ -1603,7 +1603,7 @@ const SalesLeadsPage: React.FC = () => {
         setDropLeadId(null);
         setDropTargetStatus(null);
         setDropTrialAt('');
-        setToast({ open: true, message: `h/dh[h�h\h[ha hVh�hhWh�h\hUdh[h�h�h\h[ h$hWd "${lead.contact_name}"`, severity: 'success' });
+        setToast({ open: true, message: `Лид "${lead.contact_name}" записан на пробное занятие`, severity: 'success' });
       } catch (err: any) {
         setError(extractApiError(err, 'Ошибка операции'));
       }
@@ -1623,7 +1623,7 @@ const SalesLeadsPage: React.FC = () => {
         setDropTargetStatus(null);
         setDropEventId('');
         setDropEventNote('');
-        setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hVh�hhUdh�h\ h\h� h]hadh[hdhUddhUha`, severity: 'success' });
+        setToast({ open: true, message: `Лид "${lead.contact_name}" записан на мероприятие`, severity: 'success' });
       } catch (err: any) {
         setError(extractApiError(err, 'Ошибка операции'));
       }
@@ -1650,7 +1650,7 @@ const SalesLeadsPage: React.FC = () => {
       if (dropTargetStatus === 'demo' && dropEventId) {
         try {
           await salesApi.registerLeadToEvent(Number(dropEventId), { lead_id: lead.id, note: dropEventNote || undefined });
-          setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hVh�hhUdh�h\ h\h� hdh[h�h\h[ha hVh�h\ddhUha`, severity: 'success' });
+          setToast({ open: true, message: `Лид "${lead.contact_name}" записан на пробное и на мероприятие`, severity: 'success' });
         } catch (regErr: any) {
           setError(extractApiError(regErr, 'Ошибка операции'));
         }

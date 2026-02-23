@@ -146,6 +146,18 @@ const SalesEventsPage: React.FC = () => {
     return 'error';
   };
 
+  /** Last status tag from note (e.g. [confirmed], [came], [no-show]) → Russian label for Статус column */
+  const getStatusLabel = (reg: EventRegistration): string => {
+    if (reg.status === 'cancelled') return 'Отменён';
+    const note = (reg.note || '').trim();
+    const matches = [...note.matchAll(/\[([^\]]+)\]/g)];
+    const lastTag = matches.length ? matches[matches.length - 1][1].toLowerCase() : '';
+    if (lastTag === 'confirmed') return 'Подтвердили';
+    if (lastTag === 'came') return 'Пришли';
+    if (lastTag === 'no-show') return 'Не явились';
+    return 'Записан';
+  };
+
   const pConfirm = percent(conversion.confirmed, conversion.registered);
   const pCame = percent(conversion.came, conversion.confirmed || conversion.registered);
   const pOffer = percent(conversion.offer, conversion.came || conversion.registered);
@@ -501,7 +513,6 @@ const SalesEventsPage: React.FC = () => {
                   <TableCell>Лид</TableCell>
                   <TableCell>Контакт</TableCell>
                   <TableCell>Статус</TableCell>
-                  <TableCell>Заметка</TableCell>
                   <TableCell align="right" sx={{ minWidth: 320, whiteSpace: 'nowrap' }}>Действия</TableCell>
                 </TableRow>
               </TableHead>
@@ -527,8 +538,7 @@ const SalesEventsPage: React.FC = () => {
                       </Link>
                     </TableCell>
                     <TableCell>{reg.lead?.phone ?? '—'}</TableCell>
-                    <TableCell>{reg.status}</TableCell>
-                    <TableCell>{reg.note || '—'}</TableCell>
+                    <TableCell>{getStatusLabel(reg)}</TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       {reg.status === 'registered' && (
                         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
@@ -551,7 +561,7 @@ const SalesEventsPage: React.FC = () => {
                 ))}
                 {registrations.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={5}>
                       <Typography color="text.secondary">Регистраций пока нет</Typography>
                     </TableCell>
                   </TableRow>

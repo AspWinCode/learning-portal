@@ -270,20 +270,19 @@ const SalesEventsPage: React.FC = () => {
   };
 
   const handleMarkCame = async (reg: EventRegistration) => {
-    if (!selectedEventId) return;
+    if (!selectedEventId || reg.id == null) return;
     const eventId = Number(selectedEventId);
-    const prevRegistrations = registrations;
     const optimisticNote = prependNoteTag(reg.note, '[came]');
     setRegistrations((prev) =>
       prev.map((r) => (r.id === reg.id ? { ...r, note: optimisticNote } : r))
     );
+    setError(null);
     try {
       const updated = await salesApi.markEventRegistrationCame(eventId, reg.id);
       const note = updated?.note ?? optimisticNote;
       setRegistrations((prev) => prev.map((r) => (r.id === reg.id ? { ...r, note } : r)));
     } catch (err: any) {
-      setRegistrations(prevRegistrations);
-      setError(extractApiError(err, 'Не удалось отметить "пришел"'));
+      setError(extractApiError(err, 'Не удалось отметить "пришел" (статус обновлён на экране)'));
     }
   };
 

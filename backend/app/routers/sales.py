@@ -3440,31 +3440,36 @@ async def mark_event_registration_came(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
     reg.note = _append_note_tag(reg.note, "[came]")
-    # UX automation: after attendance create follow-up "offer course".
-    if not _has_open_task_like(db, lead.id, "[auto_attended_offer]"):
-        due_at = datetime.utcnow() + timedelta(hours=24)
-        auto_task = _create_auto_event_task(
-            db,
-            lead=lead,
-            owner_id=lead.owner_id,
-            note="[auto_attended_offer] После мероприятия: предложить курс",
-            due_at=due_at,
-            preferred_template_keywords=["курс", "предлож", "дожим", "offer"],
-        )
-        db.flush()
-        log_action(
-            db,
-            current_user.id,
-            "create",
-            "lead_task",
-            auto_task.id,
-            {"lead_id": lead.id, "type": "auto_attended_offer"},
-        )
-        if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
-            lead.next_contact_at = auto_task.due_at
     db.commit()
     db.refresh(reg)
     log_action(db, current_user.id, "mark_came", "event_registration", reg.id, {"event_id": event_id, "lead_id": reg.lead_id})
+    # UX automation: after attendance create follow-up "offer course" (do not fail the request if this fails)
+    try:
+        if not _has_open_task_like(db, lead.id, "[auto_attended_offer]"):
+            due_at = datetime.utcnow() + timedelta(hours=24)
+            auto_task = _create_auto_event_task(
+                db,
+                lead=lead,
+                owner_id=lead.owner_id,
+                note="[auto_attended_offer] После мероприятия: предложить курс",
+                due_at=due_at,
+                preferred_template_keywords=["курс", "предлож", "дожим", "offer"],
+            )
+            db.add(auto_task)
+            db.flush()
+            log_action(
+                db,
+                current_user.id,
+                "create",
+                "lead_task",
+                auto_task.id,
+                {"lead_id": lead.id, "type": "auto_attended_offer"},
+            )
+            if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
+                lead.next_contact_at = auto_task.due_at
+            db.commit()
+    except Exception:
+        db.rollback()
     return reg
 
 

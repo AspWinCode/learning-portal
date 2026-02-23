@@ -259,7 +259,9 @@ const SalesEventsPage: React.FC = () => {
       prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[confirmed]') } : r))
     );
     try {
-      await salesApi.confirmEventRegistration(eventId, reg.id);
+      const updated = await salesApi.confirmEventRegistration(eventId, reg.id);
+      setRegistrations((prev) => prev.map((r) => (r.id === reg.id ? { ...r, note: updated.note ?? r.note } : r)));
+      await loadRegistrations(eventId);
     } catch (err: any) {
       setRegistrations(prevRegistrations);
       setError(extractApiError(err, 'Не удалось подтвердить участие'));
@@ -274,7 +276,9 @@ const SalesEventsPage: React.FC = () => {
       prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[came]') } : r))
     );
     try {
-      await salesApi.markEventRegistrationCame(eventId, reg.id);
+      const updated = await salesApi.markEventRegistrationCame(eventId, reg.id);
+      setRegistrations((prev) => prev.map((r) => (r.id === reg.id ? { ...r, note: updated.note ?? r.note } : r)));
+      await loadRegistrations(eventId);
     } catch (err: any) {
       setRegistrations(prevRegistrations);
       setError(extractApiError(err, 'Не удалось отметить "пришел"'));
@@ -289,7 +293,9 @@ const SalesEventsPage: React.FC = () => {
       prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[no-show]') } : r))
     );
     try {
-      await salesApi.markEventRegistrationNoShow(eventId, reg.id);
+      const updated = await salesApi.markEventRegistrationNoShow(eventId, reg.id);
+      setRegistrations((prev) => prev.map((r) => (r.id === reg.id ? { ...r, note: updated.note ?? r.note } : r)));
+      await loadRegistrations(eventId);
     } catch (err: any) {
       setRegistrations(prevRegistrations);
       setError(extractApiError(err, 'Не удалось отметить «не явились»'));

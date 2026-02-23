@@ -39,6 +39,7 @@ import SalesAbsencesPage from './pages/SalesAbsencesPage';
 import SalesDebtsPage from './pages/SalesDebtsPage';
 import SalesProgramMakeupPage from './pages/SalesProgramMakeupPage';
 import SalesTaxDeductionPage from './pages/SalesTaxDeductionPage';
+import StudentCardsPage from './pages/StudentCardsPage';
 import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
@@ -206,6 +207,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesAbsencesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/student-cards"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <StudentCardsPage />
                 </PrivateRoute>
               }
             />

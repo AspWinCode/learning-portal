@@ -2812,6 +2812,7 @@ async def download_leads_import_template(
 @router.get("/leads", response_model=List[LeadResponse])
 async def list_leads(
     status_filter: Optional[LeadStatus] = None,
+    questionnaire_filled: Optional[bool] = None,
     q: Optional[str] = None,
     source: Optional[str] = None,
     tag: Optional[str] = None,
@@ -2829,6 +2830,8 @@ async def list_leads(
     query = _filter_query_by_role(db.query(Lead).order_by(Lead.created_at.desc()), current_user)
     if status_filter:
         query = query.filter(Lead.status == status_filter)
+    if questionnaire_filled is not None:
+        query = query.filter(Lead.questionnaire_filled == questionnaire_filled)
     if q:
         search = f"%{q.strip()}%"
         query = query.filter(
@@ -2971,6 +2974,7 @@ async def update_lead(
         "comment",
         "next_contact_at",
         "pause_reason",
+        "questionnaire_filled",
     ]:
         if field in update_data:
             setattr(lead, field, update_data[field])

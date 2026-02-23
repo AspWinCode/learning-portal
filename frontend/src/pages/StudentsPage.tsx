@@ -89,6 +89,9 @@ const StudentsPage: React.FC = () => {
   });
   const [editingCardId, setEditingCardId] = useState<number | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [editParentCabinetLink, setEditParentCabinetLink] = useState<string | null>(null);
+  const [editParentCabinetMessage, setEditParentCabinetMessage] = useState<string | null>(null);
+  const [editParentCabinetLoading, setEditParentCabinetLoading] = useState(false);
   const [newTrainer, setNewTrainer] = useState({
     full_name: '',
     email: '',
@@ -629,7 +632,7 @@ const StudentsPage: React.FC = () => {
           city: cardFields.city.trim() || undefined,
           school: cardFields.school.trim() || undefined,
           grade: cardFields.grade.trim() || undefined,
-          parent_full_name: (cardFields.parent_full_name || parentInfo?.full_name || '').trim() || undefined,
+          parent_full_name: (cardFields.parent_full_name ?? '').trim() || (parentInfo?.full_name ?? '').trim() || null,
           parent_phone: cardFields.parent_phone.trim() ? phoneToApiValue(cardFields.parent_phone) || undefined : undefined,
           parent_phone_2: cardFields.parent_phone_2.trim() ? phoneToApiValue(cardFields.parent_phone_2) || undefined : undefined,
           parent_telegram: cardFields.parent_telegram.trim() || undefined,
@@ -644,7 +647,8 @@ const StudentsPage: React.FC = () => {
           } else {
             await studentCardsApi.create({ ...cardPayload, discount_type: 'none', discount_value: 0 });
           }
-          studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
+          const updatedCards = await studentCardsApi.list({});
+          setStudentCards(updatedCards);
         } catch (cardErr: any) {
           setError(cardErr.response?.data?.detail || 'Ученик сохранён, но не удалось сохранить карточку');
           return;
@@ -654,6 +658,8 @@ const StudentsPage: React.FC = () => {
       setEditOpen(false);
       setEditingStudent(null);
       setEditingCardId(null);
+      setEditParentCabinetLink(null);
+      setEditParentCabinetMessage(null);
       setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
       loadStudents();
     } catch (err: any) {
@@ -1332,7 +1338,7 @@ const StudentsPage: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования */}
-      <Dialog open={editOpen} onClose={() => { setEditOpen(false); setEditingCardId(null); }} maxWidth="sm" fullWidth>
+      <Dialog open={editOpen} onClose={() => { setEditOpen(false); setEditingCardId(null); setEditParentCabinetLink(null); setEditParentCabinetMessage(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>Редактировать ученика</DialogTitle>
         <DialogContent>
           <TextField
@@ -1440,6 +1446,46 @@ const StudentsPage: React.FC = () => {
               </FormControl>
               <TextField size="small" fullWidth label="Откуда пришел" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт, соцсети" />
               <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={2} />
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>Кабинет родителя</Typography>
+              {editingCardId && (cardFields.parent_email?.trim() || studentCards.find((c) => c.id === editingCardId)?.parent_email) ? (
+                <Stack spacing={1}>
+                  <Typography variant="caption" color="text.secondary">Сначала нажмите «Сохранить» ниже, затем откройте кабинет (или откройте раздел «Карточки учеников» в меню).</Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={editParentCabinetLoading}
+                    onClick={async () => {
+                      if (!editingCardId) return;
+                      setEditParentCabinetLoading(true);
+                      setError('');
+                      setEditParentCabinetLink(null);
+                      setEditParentCabinetMessage(null);
+                      try {
+                        const res = await studentCardsApi.openParentCabinet(editingCardId);
+                        if (res.invite_link) setEditParentCabinetLink(res.invite_link);
+                        else setEditParentCabinetMessage('Кабинет родителя уже привязан к этому ученику.');
+                      } catch (err: any) {
+                        setError(err.response?.data?.detail || 'Не удалось открыть кабинет родителя');
+                      } finally {
+                        setEditParentCabinetLoading(false);
+                      }
+                    }}
+                  >
+                    {editParentCabinetLoading ? 'Открываю…' : 'Открыть кабинет родителя'}
+                  </Button>
+                  {editParentCabinetLink && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField size="small" fullWidth value={editParentCabinetLink} InputProps={{ readOnly: true }} sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }} />
+                      <Button size="small" onClick={() => { navigator.clipboard.writeText(editParentCabinetLink); }}>Копировать</Button>
+                    </Stack>
+                  )}
+                  {editParentCabinetMessage && !editParentCabinetLink && (
+                    <Alert severity="info" sx={{ py: 0 }}>{editParentCabinetMessage}</Alert>
+                  )}
+                </Stack>
+              ) : (
+                <Typography variant="caption" color="text.secondary">Укажите email родителя выше и нажмите «Сохранить». Затем здесь появится кнопка «Открыть кабинет родителя». Также можно открыть раздел «Карточки учеников» в меню слева.</Typography>
+              )}
             </Stack>
           )}
 

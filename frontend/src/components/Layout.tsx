@@ -196,6 +196,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       return [
         { text: 'Дашборд продаж', icon: <Dashboard />, path: '/sales/dashboard' },
         { text: 'Ученики', icon: <People />, path: '/students' },
+        { text: 'Карточки учеников', icon: <People />, path: '/sales/student-cards' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
         { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
@@ -228,6 +229,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     if (isAdminLike) {
       items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
+      items.push({ text: 'Карточки учеников', icon: <People />, path: '/sales/student-cards' });
       items.push({ text: 'Продажи: лиды', icon: <WorkOutline />, path: '/sales/leads' });
       items.push({ text: 'Продажи: события', icon: <EventAvailable />, path: '/sales/events' });
       items.push({ text: 'Позвать снова на мероприятие', icon: <EventAvailable />, path: '/sales/reinvite-event' });

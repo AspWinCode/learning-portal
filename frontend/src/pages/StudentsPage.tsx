@@ -39,7 +39,6 @@ import type { AnketaConvertConflict } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
 import AnketaFormDrawer from '../components/AnketaFormDrawer';
-import { studentCardsApi } from '../services/api';
 import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
 
 const StudentsPage: React.FC = () => {

@@ -25,7 +25,7 @@ import { format, addDays, subDays, startOfDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
-import { trainerLessonsApi } from '../services/api';
+import { trainerLessonsApi, studentsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { TrainerLessonSlot, AbsenceReason } from '../types';
 
@@ -43,6 +43,7 @@ const ABSENCE_REASONS: { value: AbsenceReason; label: string }[] = [
 const TrainerLessonsPage: React.FC = () => {
   const { user } = useAuth();
   const canMoveLessons = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
+  const canAddStudentToLesson = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales' || user?.role === 'trainer';
   const [searchParams] = useSearchParams();
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
   const [slots, setSlots] = useState<TrainerLessonSlot[]>([]);
@@ -65,6 +66,9 @@ const TrainerLessonsPage: React.FC = () => {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelSlot, setCancelSlot] = useState<TrainerLessonSlot | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [addStudentToLessonId, setAddStudentToLessonId] = useState('');
+  const [allStudents, setAllStudents] = useState<Array<{ id: number; full_name: string }>>([]);
+  const [addingToLesson, setAddingToLesson] = useState(false);
 
   useEffect(() => {
     const dateParam = searchParams.get('date');
@@ -73,15 +77,17 @@ const TrainerLessonsPage: React.FC = () => {
     }
   }, [searchParams]);
 
-  const loadSlots = useCallback(async () => {
+  const loadSlots = useCallback(async (): Promise<TrainerLessonSlot[]> => {
     setLoading(true);
     setError(null);
     try {
       const data = await trainerLessonsApi.getForDate(viewDate);
       setSlots(data);
+      return data;
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить занятия'));
       setSlots([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -168,6 +174,7 @@ const TrainerLessonsPage: React.FC = () => {
 
   const openPopup = (slot: TrainerLessonSlot) => {
     setSelectedSlot(slot);
+    setAddStudentToLessonId('');
     const draft: Record<number, boolean> = {};
     const late: Record<number, boolean> = {};
     const reasonDraft: Record<number, AbsenceReason> = {};
@@ -184,6 +191,58 @@ const TrainerLessonsPage: React.FC = () => {
     setAbsenceReasonDraft(reasonDraft);
     setAbsenceCommentDraft(commentDraft);
     setPopupOpen(true);
+  };
+
+  useEffect(() => {
+    if (popupOpen && selectedSlot && allStudents.length === 0) {
+      studentsApi.getAll({ status: 'active' }).then((data) => setAllStudents(data)).catch(() => {});
+    }
+  }, [popupOpen, selectedSlot, allStudents.length]);
+
+  const handleAddStudentToLesson = async () => {
+    if (!selectedSlot || !addStudentToLessonId) return;
+    setAddingToLesson(true);
+    setError(null);
+    try {
+      const slotStart = (selectedSlot.start_time || '').toString().slice(0, 5);
+      const slotEnd = (selectedSlot.end_time || '').toString().slice(0, 5);
+      await trainerLessonsApi.addStudentToLesson({
+        group_id: selectedSlot.group_id,
+        lesson_date: selectedSlot.lesson_date || viewDate,
+        student_id: parseInt(addStudentToLessonId, 10),
+        ...(slotStart && slotEnd ? { start_time: slotStart, end_time: slotEnd } : {}),
+      });
+      setAddStudentToLessonId('');
+      const newSlots = await loadSlots();
+      const updated = newSlots.find(
+        (s) =>
+          s.group_id === selectedSlot.group_id &&
+          (s.start_time || '').toString().slice(0, 5) === slotStart &&
+          (s.end_time || '').toString().slice(0, 5) === slotEnd
+      );
+      if (updated) {
+        setSelectedSlot(updated);
+        const draft: Record<number, boolean> = {};
+        const late: Record<number, boolean> = {};
+        const reasonDraft: Record<number, AbsenceReason> = {};
+        const commentDraft: Record<number, string> = {};
+        updated.students.forEach((s) => {
+          const attended = s.attended ?? true;
+          draft[s.id] = attended;
+          late[s.id] = !!s.late;
+          reasonDraft[s.id] = (s.absence_reason as AbsenceReason) || (attended ? 'was' : 'not_was');
+          commentDraft[s.id] = s.absence_comment || '';
+        });
+        setAttendanceDraft(draft);
+        setLateDraft(late);
+        setAbsenceReasonDraft(reasonDraft);
+        setAbsenceCommentDraft(commentDraft);
+      }
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось добавить ученика на урок'));
+    } finally {
+      setAddingToLesson(false);
+    }
   };
 
   const handleSaveAttendance = async () => {
@@ -322,6 +381,37 @@ const TrainerLessonsPage: React.FC = () => {
             Статус каждого ученика: Был / причина отсутствия (ТЗ п.3.1)
           </Typography>
           <Stack spacing={1.5}>
+            {canAddStudentToLesson && (
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }} flexWrap="wrap">
+                <FormControl size="small" sx={{ minWidth: 220 }}>
+                  <InputLabel>Добавить ученика на урок</InputLabel>
+                  <Select
+                    value={addStudentToLessonId}
+                    label="Добавить ученика на урок"
+                    onChange={(e) => setAddStudentToLessonId(e.target.value)}
+                  >
+                    <MenuItem value="">
+                      <em>Выберите ученика</em>
+                    </MenuItem>
+                    {allStudents
+                      .filter((s) => !selectedSlot?.students.some((ss) => ss.id === s.id))
+                      .map((s) => (
+                        <MenuItem key={s.id} value={s.id.toString()}>
+                          {s.full_name}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={!addStudentToLessonId || addingToLesson}
+                  onClick={handleAddStudentToLesson}
+                >
+                  {addingToLesson ? 'Добавление...' : 'Добавить'}
+                </Button>
+              </Stack>
+            )}
             {selectedSlot?.students.map((student) => {
               const reason = absenceReasonDraft[student.id] ?? 'was';
               const isPresent = reason === 'was';

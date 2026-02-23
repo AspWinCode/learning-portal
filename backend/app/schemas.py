@@ -1183,6 +1183,15 @@ class CancelLessonPayload(BaseModel):
     end_time: str   # "HH:MM"
 
 
+class AddStudentToLessonPayload(BaseModel):
+    """Добавить ученика на урок (вручную): создать запись посещаемости."""
+    group_id: int
+    lesson_date: date
+    student_id: int
+    start_time: Optional[str] = None  # "HH:MM" — для слота с кастомным временем
+    end_time: Optional[str] = None   # "HH:MM"
+
+
 class LessonCallResultUpdate(BaseModel):
     """Результат дозвона по одному ученику (менеджер)."""
     group_id: int

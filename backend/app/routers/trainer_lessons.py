@@ -24,7 +24,7 @@ from app.models import (
     AbsenceFollowUp,
     StudentFreeze,
 )
-from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave, MoveLessonPayload, CancelLessonPayload
+from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave, MoveLessonPayload, CancelLessonPayload, AddStudentToLessonPayload
 from app.student_display import get_students_display_names
 
 router = APIRouter()
@@ -77,10 +77,12 @@ async def get_lessons_for_date(
             LessonAttendance.lesson_date == lesson_date,
         ).all()
         students_in_group = db.query(GroupStudent).filter(GroupStudent.group_id == group.id).all()
-        student_ids = [gs.student_id for gs in students_in_group if gs.student_id]
-        display_names = get_students_display_names(db, student_ids)
+        group_student_ids = {gs.student_id for gs in students_in_group if gs.student_id}
+        attendance_student_ids = {att.student_id for att in attendances}
+        all_student_ids = list(group_student_ids | attendance_student_ids)
+        display_names = get_students_display_names(db, all_student_ids)
         freezes = db.query(StudentFreeze).filter(
-            StudentFreeze.student_id.in_(student_ids),
+            StudentFreeze.student_id.in_(all_student_ids),
             StudentFreeze.freeze_start <= lesson_date,
             StudentFreeze.freeze_end >= lesson_date,
         ).all()
@@ -97,6 +99,7 @@ async def get_lessons_for_date(
                 }
                 for att in atts
             }
+            slot_student_ids = {att.student_id for att in atts}
             students_data = []
             for gs in students_in_group:
                 student = gs.student
@@ -114,6 +117,22 @@ async def get_lessons_for_date(
                     "absence_comment": info.get("absence_comment") if isinstance(info, dict) else None,
                     "freeze_badge": freeze_badges.get(student.id),
                 })
+            extra_ids = slot_student_ids - group_student_ids
+            if extra_ids:
+                extra_students = db.query(Student).filter(Student.id.in_(extra_ids)).all()
+                for student in extra_students:
+                    info = attendance_map.get(student.id)
+                    attended = info["attended"] if isinstance(info, dict) else info
+                    late = info.get("late", False) if isinstance(info, dict) else False
+                    students_data.append({
+                        "id": student.id,
+                        "full_name": display_names.get(student.id, student.full_name),
+                        "attended": attended,
+                        "late": late,
+                        "absence_reason": info.get("absence_reason") if isinstance(info, dict) else None,
+                        "absence_comment": info.get("absence_comment") if isinstance(info, dict) else None,
+                        "freeze_badge": freeze_badges.get(student.id),
+                    })
             result.append(TrainerLessonSlotResponse(
                 group_id=group.id,
                 group_name=group.name,
@@ -267,6 +286,58 @@ async def save_attendance(
                         absence_reason=att.absence_reason,
                         absence_comment=att.absence_comment,
                     ))
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/add-student-to-lesson")
+async def add_student_to_lesson(
+    payload: AddStudentToLessonPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Добавить ученика на урок вручную (создать запись посещаемости). Тренер — своя группа; admin/owner/sales — любая."""
+    group = db.query(Group).filter(Group.id == payload.group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if current_user.role == UserRole.TRAINER:
+        if group.trainer_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not your group")
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Only trainer (own group) or admin/owner/sales")
+
+    student = db.query(Student).filter(Student.id == payload.student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    existing = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.lesson_date,
+        LessonAttendance.student_id == payload.student_id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Student already on this lesson")
+
+    lesson_start_time = None
+    lesson_end_time = None
+    if payload.start_time or payload.end_time:
+        try:
+            if payload.start_time:
+                lesson_start_time = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+            if payload.end_time:
+                lesson_end_time = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+
+    db.add(LessonAttendance(
+        group_id=payload.group_id,
+        lesson_date=payload.lesson_date,
+        student_id=payload.student_id,
+        attended=True,
+        late=False,
+        lesson_start_time=lesson_start_time,
+        lesson_end_time=lesson_end_time,
+    ))
     db.commit()
     return {"ok": True}
 

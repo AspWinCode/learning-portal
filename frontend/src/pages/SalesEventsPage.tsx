@@ -244,11 +244,22 @@ const SalesEventsPage: React.FC = () => {
     }
   };
 
+  /** Как на бэкенде: новый тег добавляется в начало заметки (для оптимистичного обновления) */
+  const prependNoteTag = (note: string | null | undefined, tag: string): string => {
+    const s = (note || '').trim();
+    if (s.toLowerCase().includes(tag.toLowerCase())) return s;
+    return `${tag} ${s}`.trim();
+  };
+
   const handleConfirmRegistration = async (reg: EventRegistration) => {
     if (!selectedEventId) return;
+    const eventId = Number(selectedEventId);
     try {
-      await salesApi.confirmEventRegistration(Number(selectedEventId), reg.id);
-      await loadRegistrations(Number(selectedEventId));
+      await salesApi.confirmEventRegistration(eventId, reg.id);
+      setRegistrations((prev) =>
+        prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[confirmed]') } : r))
+      );
+      await loadRegistrations(eventId);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось подтвердить участие'));
     }
@@ -256,9 +267,13 @@ const SalesEventsPage: React.FC = () => {
 
   const handleMarkCame = async (reg: EventRegistration) => {
     if (!selectedEventId) return;
+    const eventId = Number(selectedEventId);
     try {
-      await salesApi.markEventRegistrationCame(Number(selectedEventId), reg.id);
-      await loadRegistrations(Number(selectedEventId));
+      await salesApi.markEventRegistrationCame(eventId, reg.id);
+      setRegistrations((prev) =>
+        prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[came]') } : r))
+      );
+      await loadRegistrations(eventId);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось отметить "пришел"'));
     }
@@ -266,9 +281,13 @@ const SalesEventsPage: React.FC = () => {
 
   const handleMarkNoShow = async (reg: EventRegistration) => {
     if (!selectedEventId) return;
+    const eventId = Number(selectedEventId);
     try {
-      await salesApi.markEventRegistrationNoShow(Number(selectedEventId), reg.id);
-      await loadRegistrations(Number(selectedEventId));
+      await salesApi.markEventRegistrationNoShow(eventId, reg.id);
+      setRegistrations((prev) =>
+        prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[no-show]') } : r))
+      );
+      await loadRegistrations(eventId);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось отметить «не явились»'));
     }
@@ -308,12 +327,13 @@ const SalesEventsPage: React.FC = () => {
 
   const runBulkAction = async (action: 'confirm' | 'came' | 'no-show' | 'cancel') => {
     if (!selectedEventId || selectedRegistrationIds.length === 0 || bulkBusy) return;
+    const eventId = Number(selectedEventId);
+    const ids = new Set(selectedRegistrationIds);
     setBulkBusy(true);
     setSuccessMessage(null);
     try {
-      const targetRows = registrations.filter((r) => selectedRegistrationIds.includes(r.id));
+      const targetRows = registrations.filter((r) => ids.has(r.id));
       const jobs = targetRows.map((reg) => {
-        const eventId = Number(selectedEventId);
         if (action === 'confirm') return salesApi.confirmEventRegistration(eventId, reg.id);
         if (action === 'came') return salesApi.markEventRegistrationCame(eventId, reg.id);
         if (action === 'no-show') return salesApi.markEventRegistrationNoShow(eventId, reg.id);
@@ -322,6 +342,13 @@ const SalesEventsPage: React.FC = () => {
       const results = await Promise.allSettled(jobs);
       const ok = results.filter((r) => r.status === 'fulfilled').length;
       const failed = results.length - ok;
+      const tag =
+        action === 'confirm' ? '[confirmed]' : action === 'came' ? '[came]' : action === 'no-show' ? '[no-show]' : null;
+      if (tag && ok > 0) {
+        setRegistrations((prev) =>
+          prev.map((r) => (ids.has(r.id) ? { ...r, note: prependNoteTag(r.note, tag) } : r))
+        );
+      }
       setSuccessMessage(
         failed > 0
           ? `Массовое действие выполнено частично: успешно ${ok}, с ошибкой ${failed}`
@@ -331,7 +358,7 @@ const SalesEventsPage: React.FC = () => {
         setError(`Не все действия выполнены: ${failed} ошибок`);
       }
       setSelectedRegistrationIds([]);
-      await loadRegistrations(Number(selectedEventId));
+      await loadRegistrations(eventId);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось выполнить массовое действие'));
     } finally {

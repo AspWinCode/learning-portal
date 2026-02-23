@@ -1600,18 +1600,14 @@ async def close_by_fact_confirm(
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:
-    if user.role in (UserRole.ADMIN, UserRole.OWNER):
-        return
-    if user.role == UserRole.SALES and lead.owner_id == user.id:
+    if user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
 
 def _filter_query_by_role(query, user: User):
-    if user.role in (UserRole.ADMIN, UserRole.OWNER):
+    if user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         return query
-    if user.role == UserRole.SALES:
-        return query.filter(Lead.owner_id == user.id)
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
 
@@ -1746,9 +1742,6 @@ async def get_sales_dashboard(
     leads_q = _filter_query_by_role(db.query(Lead), current_user)
     tasks_q = db.query(LeadTask).join(Lead, Lead.id == LeadTask.lead_id)
     regs_q = db.query(EventRegistration).join(Lead, Lead.id == EventRegistration.lead_id)
-    if current_user.role == UserRole.SALES:
-        tasks_q = tasks_q.filter(Lead.owner_id == current_user.id)
-        regs_q = regs_q.filter(Lead.owner_id == current_user.id)
 
     active_lead_statuses = [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT]
     connected_statuses = [LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT, LeadStatus.WON]
@@ -1945,8 +1938,6 @@ async def list_follow_ups(
     end_week = end_today + timedelta(days=7)
 
     query = db.query(LeadTask, Lead).join(Lead, Lead.id == LeadTask.lead_id)
-    if current_user.role == UserRole.SALES:
-        query = query.filter(Lead.owner_id == current_user.id)
     query = query.filter(LeadTask.status == LeadTaskStatus.OPEN)
 
     if period == "overdue":
@@ -3238,9 +3229,6 @@ async def list_invoices(
         .options(joinedload(Invoice.lead))
         .order_by(Invoice.created_at.desc())
     )
-
-    if current_user.role == UserRole.SALES:
-        query = query.filter(Lead.owner_id == current_user.id)
 
     if status_filter:
         query = query.filter(Invoice.status == status_filter)

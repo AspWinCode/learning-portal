@@ -14,7 +14,7 @@ import io
 import csv
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -40,8 +40,9 @@ async def characteristics_compliance_report(
     if year < 2000 or year > 2100:
         raise HTTPException(status_code=400, detail="year must be reasonable")
 
-    window_start = datetime(year, month, 1, 0, 0, 0)
-    window_end = datetime(year, month, 5, 23, 59, 59)
+    # Окно в UTC, чтобы сравнивать с published_at (timezone-aware из БД)
+    window_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
+    window_end = datetime(year, month, 5, 23, 59, 59, tzinfo=timezone.utc)
 
     # Все пары (trainer_id, student_id), за которых тренер отвечает в этом месяце (по активным группам)
     pairs: List[Tuple[int, int]] = [

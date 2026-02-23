@@ -732,6 +732,16 @@ async def tochka_bank_status(current_user: User = Depends(auth.get_current_activ
     }
 
 
+@router.get("/tochka/status/public")
+async def tochka_bank_status_public():
+    """Проверка без авторизации (только configured/auto_import_configured). Для мониторинга и curl с сервера."""
+    from app.services.tochka_client import is_configured, is_auto_import_configured
+    return {
+        "configured": is_configured(),
+        "auto_import_configured": is_auto_import_configured(),
+    }
+
+
 @router.post("/tochka/import-and-apply", response_model=BankPaymentImportResponse)
 async def tochka_import_and_apply(
     payload: TochkaImportRequest,

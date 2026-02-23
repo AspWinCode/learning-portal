@@ -31,6 +31,14 @@ def is_configured() -> bool:
     return bool(client_id and client_secret)
 
 
+def is_auto_import_configured() -> bool:
+    """Проверка, включено ли автозачисление: заданы CLIENT_ID, CLIENT_SECRET и TOCHKA_ACCOUNT_ID."""
+    if not is_configured():
+        return False
+    account_id = (os.getenv("TOCHKA_ACCOUNT_ID") or "").strip()
+    return bool(account_id)
+
+
 def get_access_token(use_sandbox: bool = False) -> str:
     """
     Получить OAuth2 access token (client_credentials).

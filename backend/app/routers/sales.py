@@ -723,10 +723,13 @@ def do_tochka_import_and_apply(
 
 @router.get("/tochka/status")
 async def tochka_bank_status(current_user: User = Depends(auth.get_current_active_user)):
-    """Проверка: заданы ли учётные данные Точка Банк (TOCHKA_CLIENT_ID, TOCHKA_CLIENT_SECRET) в .env."""
+    """Проверка: заданы ли учётные данные Точка Банк и включено ли автозачисление."""
     _require_sales_admin_owner(current_user)
-    from app.services.tochka_client import is_configured
-    return {"configured": is_configured()}
+    from app.services.tochka_client import is_configured, is_auto_import_configured
+    return {
+        "configured": is_configured(),
+        "auto_import_configured": is_auto_import_configured(),
+    }
 
 
 @router.post("/tochka/import-and-apply", response_model=BankPaymentImportResponse)

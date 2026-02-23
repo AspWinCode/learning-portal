@@ -63,7 +63,9 @@ docker compose up -d --build backend
 
 После деплоя с новой миграцией один раз выполните на VPS: `docker compose exec backend alembic upgrade head` (если миграции не запускаются автоматически при старте).
 
-Проверка: после входа под admin/owner/sales запрос `GET https://tirskix.space/api/sales/tochka/status` должен вернуть `{"configured":true}`.
+Проверка: после входа под admin/owner/sales запрос `GET https://tirskix.space/api/sales/tochka/status` должен вернуть `{"configured": true, "auto_import_configured": true}` (если автозачисление включено).
+
+**Включить автозачисление:** добавьте на VPS в `.env` переменную `TOCHKA_ACCOUNT_ID` — ID счёта в Точка Банк (из личного кабинета Точка: Счета → нужный счёт → идентификатор счёта, или из API списка счетов). Затем перезапустите backend: `docker compose up -d --build backend`.
 
 ---
 

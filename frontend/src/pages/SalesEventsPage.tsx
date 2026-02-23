@@ -153,15 +153,15 @@ const SalesEventsPage: React.FC = () => {
     return 'error';
   };
 
-  /** Last status tag from note (e.g. [confirmed], [came], [no-show]) → Russian label for Статус column */
+  /** Status tag from note → Russian label. Backend prepends new tags, so the first tag is the latest. */
   const getStatusLabel = (reg: EventRegistration): string => {
     if (reg.status === 'cancelled') return 'Отменён';
     const note = (reg.note || '').trim();
     const matches = [...note.matchAll(/\[([^\]]+)\]/g)];
-    const lastTag = matches.length ? matches[matches.length - 1][1].toLowerCase() : '';
-    if (lastTag === 'confirmed') return 'Подтвердили';
-    if (lastTag === 'came') return 'Пришли';
-    if (lastTag === 'no-show') return 'Не явились';
+    const firstTag = matches.length ? matches[0][1].toLowerCase() : '';
+    if (firstTag === 'came') return 'Пришли';
+    if (firstTag === 'no-show') return 'Не явились';
+    if (firstTag === 'confirmed') return 'Подтвердили';
     return 'Записан';
   };
 

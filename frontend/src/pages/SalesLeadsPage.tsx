@@ -83,6 +83,9 @@ const statusLabels: Record<LeadStatus, string> = {
 };
 
 /** h1dh�dddd h�h[dh[h\hQhU hdh[h$h�hb B$ hah$hUh\dhc dhhUdh[hQ h$hWd hWhUh$h[h� hU h�h[dh[h\hQhU */
+/** Тег лида: пригласить на следующее мероприятие (воронка → колонка «Следующее мероприятие») */
+const TAG_REINVITE_NEXT_EVENT = 'reinvite_next_event';
+
 const PIPELINE_STATUSES: LeadStatus[] = [
   'new',
   'thinking',
@@ -211,7 +214,7 @@ const SalesLeadsPage: React.FC = () => {
   const [batchSendChannel, setBatchSendChannel] = useState('messenger');
   const [batchSendFollowUpAt, setBatchSendFollowUpAt] = useState('');
   const [draggedLeadId, setDraggedLeadId] = useState<number | null>(null);
-  const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | 'archive' | 'next_event' | null>(null);
   const [showArchiveColumn, setShowArchiveColumn] = useState(false);
   const [noShowLeadIds, setNoShowLeadIds] = useState<Set<number>>(new Set());
   const [dropConfirmOpen, setDropConfirmOpen] = useState(false);
@@ -1473,7 +1476,7 @@ const SalesLeadsPage: React.FC = () => {
     setDragOverColumn(null);
   };
 
-  const handleKanbanDrop = async (e: React.DragEvent, targetStatus: LeadStatus) => {
+  const handleKanbanDrop = async (e: React.DragEvent, targetStatus: LeadStatus | 'next_event') => {
     e.preventDefault();
     e.stopPropagation();
     setDragOverColumn(null);
@@ -1482,7 +1485,26 @@ const SalesLeadsPage: React.FC = () => {
     setDraggedLeadId(null);
     if (!id) return;
     const lead = leads.find((l) => l.id === id);
-    if (!lead || lead.status === targetStatus) return;
+    if (!lead) return;
+
+    if (targetStatus === 'next_event') {
+      try {
+        const currentTags = lead.tags || [];
+        if (currentTags.includes(TAG_REINVITE_NEXT_EVENT)) return;
+        await salesApi.updateLead(lead.id, { tags: [...currentTags, TAG_REINVITE_NEXT_EVENT] });
+        await loadLeads();
+        setToast({
+          open: true,
+          message: `Лид «${lead.contact_name}» перенесён в «Следующее мероприятие». Он отображается во вкладке «Позвать снова на мероприятие».`,
+          severity: 'success',
+        });
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось перенести лид в «Следующее мероприятие»'));
+      }
+      return;
+    }
+
+    if (lead.status === targetStatus) return;
 
     if (targetStatus === 'no_answer') {
       try {
@@ -1517,7 +1539,7 @@ const SalesLeadsPage: React.FC = () => {
     setDropConfirmOpen(true);
   };
 
-  const handleKanbanDragOver = (e: React.DragEvent, columnStatus: LeadStatus) => {
+  const handleKanbanDragOver = (e: React.DragEvent, columnStatus: LeadStatus | 'next_event') => {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
@@ -1681,25 +1703,30 @@ const SalesLeadsPage: React.FC = () => {
         : leads,
     [leads, isPipelineRoute]
   );
+  /** Лиды с тегом «пригласить на следующее мероприятие» — показываются только в колонке «Следующее мероприятие» */
+  const reinviteLeadIds = useMemo(
+    () => new Set(leads.filter((l) => (l.tags || []).includes(TAG_REINVITE_NEXT_EVENT)).map((l) => l.id)),
+    [leads]
+  );
   const kanbanColumns = useMemo(
     () => {
       const source = isPipelineRoute ? pipelineLeads : leads;
       // h*h[hh$h� h�ddhUh� dhQddd B$ hWhUh$d dh[ ddh�dddh[h] ,;h'h�hQddd,W h\ha hh[hQh�hVdh�h�hah] h� h�h[dh[h\hQha h�h[h[h�dha
       const visibleSource = showArchiveColumn ? source : source.filter((l) => l.status !== 'lost');
       // h+hUh$d d h\hadh�hQh[hc hh[hQh�hVdh�h�hah] dh[hWdhQh[ h� hQh[hWh[h\hQha ,;h1hWhah$ h]hadh[hdhUddhUha,W, hUhV h[ddh�hWdh\dd hQh[hWh[h\h[hQ dh�hUdh�hah]
-      const notNoShow = (l: Lead) => !noShowLeadIds.has(l.id);
+      const notInNextEventColumn = (l: Lead) => !noShowLeadIds.has(l.id) && !reinviteLeadIds.has(l.id);
       const base = PIPELINE_STATUSES.map((st) => ({
         status: st as LeadStatus | 'archive' | 'next_event',
         title: statusLabels[st],
         leads:
           st === 'refused' && showArchiveColumn
-            ? source.filter((l) => l.status === 'refused' && notNoShow(l))
-            : visibleSource.filter((l) => getPipelineColumnForStatus(l.status) === st && notNoShow(l)),
+            ? source.filter((l) => l.status === 'refused' && notInNextEventColumn(l))
+            : visibleSource.filter((l) => getPipelineColumnForStatus(l.status) === st && notInNextEventColumn(l)),
       }));
       base.push({
         status: 'next_event',
         title: 'Следующее мероприятие',
-        leads: source.filter((l) => noShowLeadIds.has(l.id)),
+        leads: source.filter((l) => noShowLeadIds.has(l.id) || reinviteLeadIds.has(l.id)),
       });
       if (showArchiveColumn) {
         base.push({
@@ -1710,7 +1737,7 @@ const SalesLeadsPage: React.FC = () => {
       }
       return base;
     },
-    [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds]
+    [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds, reinviteLeadIds]
   );
   const handleNoAnswerAttemptClick = async (attempt: 1 | 2 | 3) => {
     if (!selectedLead) return;
@@ -2108,13 +2135,13 @@ const SalesLeadsPage: React.FC = () => {
                 sx={{
                   height: '100%',
                   transition: 'background-color 0.15s, box-shadow 0.15s',
-                  ...((col.status !== 'archive' && col.status !== 'next_event') && dragOverColumn === col.status && draggedLeadId
+                  ...((col.status !== 'archive') && dragOverColumn === col.status && draggedLeadId
                     ? { bgcolor: 'action.hover', boxShadow: 2 }
                     : {}),
                 }}
-                onDragOver={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus)}
-                onDragLeave={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragLeave}
-                onDrop={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus)}
+                onDragOver={col.status === 'archive' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus | 'next_event')}
+                onDragLeave={col.status === 'archive' ? undefined : handleKanbanDragLeave}
+                onDrop={col.status === 'archive' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus | 'next_event')}
               >
                 <CardContent>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>

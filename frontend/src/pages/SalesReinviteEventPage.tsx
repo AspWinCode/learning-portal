@@ -31,10 +31,13 @@ interface NoShowRow {
   lead: Lead | null;
 }
 
+const TAG_REINVITE_NEXT_EVENT = 'reinvite_next_event';
+
 const SalesReinviteEventPage: React.FC = () => {
   const navigate = useNavigate();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [reinviteLeads, setReinviteLeads] = useState<Lead[]>([]);
   const [registrationsByEvent, setRegistrationsByEvent] = useState<Map<number, EventRegistration[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +57,15 @@ const SalesReinviteEventPage: React.FC = () => {
     try {
       const data = await salesApi.listLeads();
       setLeads(data);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const loadReinviteLeads = useCallback(async () => {
+    try {
+      const data = await salesApi.listLeads({ tag: TAG_REINVITE_NEXT_EVENT });
+      setReinviteLeads(data);
     } catch {
       // ignore
     }
@@ -79,7 +91,7 @@ const SalesReinviteEventPage: React.FC = () => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([loadEvents(), loadLeads()]).then(([data]) => {
+    Promise.all([loadEvents(), loadLeads(), loadReinviteLeads()]).then(([data]) => {
       if (cancelled || !data.length) {
         setLoading(false);
         return;
@@ -91,13 +103,18 @@ const SalesReinviteEventPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [loadEvents, loadLeads, loadAllRegistrations]);
+  }, [loadEvents, loadLeads, loadReinviteLeads, loadAllRegistrations]);
 
   const leadMap = useMemo(() => {
     const map = new Map<number, Lead>();
     leads.forEach((l) => map.set(l.id, l));
     return map;
   }, [leads]);
+
+  const leadDisplayName = (lead: Lead) =>
+    [lead.parent_full_name || lead.contact_name, lead.child_full_name].filter(Boolean).join(' / ') ||
+    lead.phone ||
+    `Лид #${lead.id}`;
 
   const noShowRows = useMemo((): NoShowRow[] => {
     const rows: NoShowRow[] = [];
@@ -166,7 +183,7 @@ const SalesReinviteEventPage: React.FC = () => {
                           return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : event.starts_at;
                         })()}
                       </TableCell>
-                      <TableCell>{lead?.contact_name ?? S.dash}</TableCell>
+                      <TableCell>{lead ? leadDisplayName(lead) : S.dash}</TableCell>
                       <TableCell>{lead?.phone ?? S.dash}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
@@ -192,6 +209,55 @@ const SalesReinviteEventPage: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+        )}
+
+        {!loading && (
+          <>
+            <Typography variant="h6" sx={{ mt: 3 }}>
+              {S.sectionFromPipeline}
+            </Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{S.colClient}</TableCell>
+                    <TableCell>{S.colPhone}</TableCell>
+                    <TableCell align="right">{S.colActions}</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {reinviteLeads.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>
+                        <Typography color="text.secondary">{S.emptyFromPipeline}</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    reinviteLeads.map((lead) => (
+                      <TableRow key={lead.id}>
+                        <TableCell>{leadDisplayName(lead)}</TableCell>
+                        <TableCell>{lead.phone ?? S.dash}</TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => navigate(`/sales/leads?open=${lead.id}`)}
+                            >
+                              {S.btnLeadCard}
+                            </Button>
+                            <Button size="small" variant="contained" onClick={() => navigate('/sales/events')}>
+                              {S.btnEvents}
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </>
         )}
       </Stack>
     </Layout>

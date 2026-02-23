@@ -344,10 +344,21 @@ export const trainerLessonsApi = {
     group_id: number;
     from_date: string;
     to_date: string;
+    from_start_time?: string;
+    from_end_time?: string;
     to_start_time?: string;
     to_end_time?: string;
   }): Promise<{ ok: boolean; moved_count: number }> => {
     const response = await api.post('/api/trainer-lessons/move', data);
+    return response.data;
+  },
+  cancelLesson: async (data: {
+    group_id: number;
+    lesson_date: string;
+    start_time: string;
+    end_time: string;
+  }): Promise<{ ok: boolean }> => {
+    const response = await api.post('/api/trainer-lessons/cancel', data);
     return response.data;
   },
 };

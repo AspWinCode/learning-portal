@@ -62,6 +62,9 @@ const TrainerLessonsPage: React.FC = () => {
   const [moveToEndTime, setMoveToEndTime] = useState('');
   const [moveError, setMoveError] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelSlot, setCancelSlot] = useState<TrainerLessonSlot | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     const dateParam = searchParams.get('date');
@@ -113,11 +116,14 @@ const TrainerLessonsPage: React.FC = () => {
     }
     setMoving(true);
     setMoveError(null);
+    const fromStart = (moveSlot.start_time || '').toString().slice(0, 5);
+    const fromEnd = (moveSlot.end_time || '').toString().slice(0, 5);
     try {
       await trainerLessonsApi.moveLesson({
         group_id: moveSlot.group_id,
         from_date: fromDate,
         to_date: moveToDate,
+        ...(fromStart && fromEnd ? { from_start_time: fromStart, from_end_time: fromEnd } : {}),
         ...(moveToStartTime && moveToEndTime
           ? { to_start_time: moveToStartTime, to_end_time: moveToEndTime }
           : {}),
@@ -129,6 +135,34 @@ const TrainerLessonsPage: React.FC = () => {
       setMoveError(extractApiError(err, 'Не удалось перенести занятие'));
     } finally {
       setMoving(false);
+    }
+  };
+
+  const openCancelDialog = (e: React.MouseEvent, slot: TrainerLessonSlot) => {
+    e.stopPropagation();
+    setCancelSlot(slot);
+    setCancelDialogOpen(true);
+  };
+
+  const handleCancelLesson = async () => {
+    if (!cancelSlot) return;
+    const slotStart = (cancelSlot.start_time || '').toString().slice(0, 5);
+    const slotEnd = (cancelSlot.end_time || '').toString().slice(0, 5);
+    setCancelling(true);
+    try {
+      await trainerLessonsApi.cancelLesson({
+        group_id: cancelSlot.group_id,
+        lesson_date: cancelSlot.lesson_date || viewDate,
+        start_time: slotStart,
+        end_time: slotEnd,
+      });
+      setCancelDialogOpen(false);
+      setCancelSlot(null);
+      loadSlots();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось отменить занятие'));
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -254,14 +288,23 @@ const TrainerLessonsPage: React.FC = () => {
                     </Typography>
                   )}
                   {canMoveLessons && (
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      sx={{ mt: 1 }}
-                      onClick={(e) => openMoveDialog(e, slot)}
-                    >
-                      Перенести на другой день
-                    </Button>
+                    <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={(e) => openMoveDialog(e, slot)}
+                      >
+                        Перенести на другой день
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        onClick={(e) => openCancelDialog(e, slot)}
+                      >
+                        Отменить занятие
+                      </Button>
+                    </Stack>
                   )}
                 </CardContent>
               </Card>
@@ -398,6 +441,23 @@ const TrainerLessonsPage: React.FC = () => {
           <Button onClick={() => setMoveDialogOpen(false)} disabled={moving}>Отмена</Button>
           <Button variant="contained" onClick={handleMoveLesson} disabled={moving || !moveToDate}>
             {moving ? 'Перенос...' : 'Перенести'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={cancelDialogOpen} onClose={() => !cancelling && setCancelDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Отменить занятие</DialogTitle>
+        <DialogContent>
+          {cancelSlot && (
+            <Typography>
+              Отменить занятие «{cancelSlot.group_name}» на {format(new Date((cancelSlot.lesson_date || viewDate) + 'T12:00:00'), 'd.MM.yyyy')} ({(cancelSlot.start_time || '').toString().slice(0, 5)} – {(cancelSlot.end_time || '').toString().slice(0, 5)})? Слот исчезнет из расписания.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCancelDialogOpen(false)} disabled={cancelling}>Нет</Button>
+          <Button variant="contained" color="error" onClick={handleCancelLesson} disabled={cancelling}>
+            {cancelling ? 'Отмена...' : 'Да, отменить'}
           </Button>
         </DialogActions>
       </Dialog>

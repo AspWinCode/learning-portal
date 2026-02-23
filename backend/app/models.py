@@ -637,6 +637,7 @@ class Group(Base):
     group_schedules = relationship("GroupSchedule", back_populates="group", cascade="all, delete-orphan")
     lesson_attendances = relationship("LessonAttendance", back_populates="group", cascade="all, delete-orphan")
     # ╨г╨┤╨╛╨▒╨╜╨░╤П ╤Б╨▓╤П╨╖╤М ╨┤╨╗╤П ╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╤Е ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ ╨│╤А╤Г╨┐╨┐╤Л
+    lesson_cancellations = relationship("LessonCancellation", back_populates="group", cascade="all, delete-orphan")
     programs = relationship("Program", secondary="group_programs", viewonly=True)
 
 
@@ -739,6 +740,21 @@ class LessonAttendance(Base):
 
     group = relationship("Group", back_populates="lesson_attendances")
     student = relationship("Student", back_populates="lesson_attendances")
+
+
+class LessonCancellation(Base):
+    """Отмена или перенос занятия: слот (группа, дата, время) не показывается на странице Уроки."""
+    __tablename__ = "lesson_cancellations"
+    __table_args__ = (
+        UniqueConstraint("group_id", "lesson_date", "start_time", "end_time", name="uq_lesson_cancellation_group_date_time"),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    lesson_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+
+    group = relationship("Group", back_populates="lesson_cancellations")
 
 
 class AbsenceFollowUpStage(str, enum.Enum):

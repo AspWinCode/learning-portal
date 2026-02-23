@@ -1169,8 +1169,18 @@ class MoveLessonPayload(BaseModel):
     group_id: int
     from_date: date
     to_date: date
+    from_start_time: Optional[str] = None  # "HH:MM" — слот на старой дате (чтобы скрыть его после переноса)
+    from_end_time: Optional[str] = None
     to_start_time: Optional[str] = None  # "HH:MM"
     to_end_time: Optional[str] = None    # "HH:MM"
+
+
+class CancelLessonPayload(BaseModel):
+    """Отмена занятия: слот не показывается на странице Уроки."""
+    group_id: int
+    lesson_date: date
+    start_time: str  # "HH:MM"
+    end_time: str   # "HH:MM"
 
 
 class LessonCallResultUpdate(BaseModel):

@@ -14,6 +14,7 @@ from app.models import (
     GroupSchedule,
     GroupStudent,
     LessonAttendance,
+    LessonCancellation,
     UserRole,
     Student,
     Abonement,
@@ -23,7 +24,7 @@ from app.models import (
     AbsenceFollowUp,
     StudentFreeze,
 )
-from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave, MoveLessonPayload
+from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave, MoveLessonPayload, CancelLessonPayload
 from app.student_display import get_students_display_names
 
 router = APIRouter()
@@ -56,6 +57,13 @@ async def get_lessons_for_date(
         if a is None or b is None:
             return False
         return a == b
+
+    group_ids = [g.id for g in groups]
+    cancellations = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id.in_(group_ids),
+        LessonCancellation.lesson_date == lesson_date,
+    ).all()
+    cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations}
 
     result: List[TrainerLessonSlotResponse] = []
     for group in groups:
@@ -118,6 +126,8 @@ async def get_lessons_for_date(
             ))
 
         for sched in schedules:
+            if (group.id, lesson_date, sched.start_time, sched.end_time) in cancelled_set:
+                continue
             matching = [
                 att for att in attendances
                 if (getattr(att, "lesson_start_time", None) is None and getattr(att, "lesson_end_time", None) is None)
@@ -131,6 +141,8 @@ async def get_lessons_for_date(
             if st is not None and et is not None and (st, et) not in sched_times:
                 custom_times.add((st, et))
         for (st, et) in sorted(custom_times):
+            if (group.id, lesson_date, st, et) in cancelled_set:
+                continue
             matching = [att for att in attendances if getattr(att, "lesson_start_time", None) == st and getattr(att, "lesson_end_time", None) == et]
             build_slot(st, et, matching)
 
@@ -296,6 +308,46 @@ async def move_lesson(
                 to_end = datetime.strptime(payload.to_end_time.strip(), "%H:%M").time()
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+
+    from_weekday = payload.from_date.weekday()
+    from_scheds = db.query(GroupSchedule).filter(
+        GroupSchedule.group_id == payload.group_id,
+        GroupSchedule.day_of_week == from_weekday,
+    ).order_by(GroupSchedule.start_time).all()
+    if payload.from_start_time and payload.from_end_time:
+        try:
+            from_start = datetime.strptime(payload.from_start_time.strip(), "%H:%M").time()
+            from_end = datetime.strptime(payload.from_end_time.strip(), "%H:%M").time()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid from_start_time/from_end_time; use HH:MM")
+    elif attendances:
+        att0 = attendances[0]
+        ast, aet = getattr(att0, "lesson_start_time", None), getattr(att0, "lesson_end_time", None)
+        if ast is not None and aet is not None:
+            from_start, from_end = ast, aet
+        elif from_scheds:
+            from_start, from_end = from_scheds[0].start_time, from_scheds[0].end_time
+        else:
+            raise HTTPException(status_code=400, detail="Provide from_start_time and from_end_time")
+    elif from_scheds:
+        from_start, from_end = from_scheds[0].start_time, from_scheds[0].end_time
+    else:
+        raise HTTPException(status_code=400, detail="Provide from_start_time and from_end_time")
+
+    existing_cancel = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id == payload.group_id,
+        LessonCancellation.lesson_date == payload.from_date,
+        LessonCancellation.start_time == from_start,
+        LessonCancellation.end_time == from_end,
+    ).first()
+    if not existing_cancel:
+        db.add(LessonCancellation(
+            group_id=payload.group_id,
+            lesson_date=payload.from_date,
+            start_time=from_start,
+            end_time=from_end,
+        ))
+
     if attendances:
         att_ids = [a.id for a in attendances]
         for att in attendances:
@@ -330,3 +382,47 @@ async def move_lesson(
         return {"ok": True, "moved_count": created}
     db.commit()
     return {"ok": True, "moved_count": len(attendances)}
+
+
+@router.post("/cancel")
+async def cancel_lesson(
+    payload: CancelLessonPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Отменить занятие: слот не показывается на странице Уроки. Только admin/owner/sales."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Only admin, owner or sales can cancel lessons")
+    try:
+        start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+        end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+    group = db.query(Group).filter(Group.id == payload.group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    existing = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id == payload.group_id,
+        LessonCancellation.lesson_date == payload.lesson_date,
+        LessonCancellation.start_time == start_t,
+        LessonCancellation.end_time == end_t,
+    ).first()
+    if not existing:
+        db.add(LessonCancellation(
+            group_id=payload.group_id,
+            lesson_date=payload.lesson_date,
+            start_time=start_t,
+            end_time=end_t,
+        ))
+    attendances_to_delete = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.lesson_date,
+        LessonAttendance.lesson_start_time == start_t,
+        LessonAttendance.lesson_end_time == end_t,
+    ).all()
+    att_ids = [a.id for a in attendances_to_delete]
+    db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id.in_(att_ids)).delete(synchronize_session=False)
+    for a in attendances_to_delete:
+        db.delete(a)
+    db.commit()
+    return {"ok": True}

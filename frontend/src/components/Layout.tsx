@@ -310,6 +310,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </ListItemButton>
         ))}
       </List>
+      <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 1, flexShrink: 0 }}>
+        Обновление 22.02
+      </Typography>
     </Box>
   );
 

@@ -254,13 +254,14 @@ const SalesEventsPage: React.FC = () => {
   const handleConfirmRegistration = async (reg: EventRegistration) => {
     if (!selectedEventId) return;
     const eventId = Number(selectedEventId);
+    const prevRegistrations = registrations;
+    setRegistrations((prev) =>
+      prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[confirmed]') } : r))
+    );
     try {
       await salesApi.confirmEventRegistration(eventId, reg.id);
-      setRegistrations((prev) =>
-        prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[confirmed]') } : r))
-      );
-      await loadRegistrations(eventId);
     } catch (err: any) {
+      setRegistrations(prevRegistrations);
       setError(extractApiError(err, 'Не удалось подтвердить участие'));
     }
   };
@@ -268,13 +269,14 @@ const SalesEventsPage: React.FC = () => {
   const handleMarkCame = async (reg: EventRegistration) => {
     if (!selectedEventId) return;
     const eventId = Number(selectedEventId);
+    const prevRegistrations = registrations;
+    setRegistrations((prev) =>
+      prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[came]') } : r))
+    );
     try {
       await salesApi.markEventRegistrationCame(eventId, reg.id);
-      setRegistrations((prev) =>
-        prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[came]') } : r))
-      );
-      await loadRegistrations(eventId);
     } catch (err: any) {
+      setRegistrations(prevRegistrations);
       setError(extractApiError(err, 'Не удалось отметить "пришел"'));
     }
   };
@@ -282,13 +284,14 @@ const SalesEventsPage: React.FC = () => {
   const handleMarkNoShow = async (reg: EventRegistration) => {
     if (!selectedEventId) return;
     const eventId = Number(selectedEventId);
+    const prevRegistrations = registrations;
+    setRegistrations((prev) =>
+      prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[no-show]') } : r))
+    );
     try {
       await salesApi.markEventRegistrationNoShow(eventId, reg.id);
-      setRegistrations((prev) =>
-        prev.map((r) => (r.id === reg.id ? { ...r, note: prependNoteTag(r.note, '[no-show]') } : r))
-      );
-      await loadRegistrations(eventId);
     } catch (err: any) {
+      setRegistrations(prevRegistrations);
       setError(extractApiError(err, 'Не удалось отметить «не явились»'));
     }
   };

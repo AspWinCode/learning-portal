@@ -425,8 +425,8 @@ const TrainerLessonsPage: React.FC = () => {
                   value={lessonTrainerId ?? selectedSlot?.trainer_id ?? ''}
                   onChange={(e) => setLessonTrainerId(e.target.value === '' ? '' : Number(e.target.value))}
                   displayEmpty
-                  renderValue={(v) => {
-                    if (v === '' || v == null) return selectedSlot?.trainer_name || '—';
+                  renderValue={(v: number | string) => {
+                    if (v == null || v === '') return selectedSlot?.trainer_name || '—';
                     const t = trainers.find((x) => x.id === Number(v));
                     return t?.full_name ?? selectedSlot?.trainer_name ?? '—';
                   }}

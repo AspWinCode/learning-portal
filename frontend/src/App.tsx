@@ -156,7 +156,7 @@ function App() {
             <Route
               path="/sales/reinvite-event"
               element={
-                <PrivateRoute allowedRoles={['sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesReinviteEventPage />
                 </PrivateRoute>
               }
@@ -164,7 +164,7 @@ function App() {
             <Route
               path="/sales/agreed"
               element={
-                <PrivateRoute allowedRoles={['sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesAgreedPage />
                 </PrivateRoute>
               }

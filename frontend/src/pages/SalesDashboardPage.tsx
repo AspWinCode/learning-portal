@@ -136,6 +136,15 @@ const SalesDashboardPage: React.FC = () => {
         <Button variant="outlined" onClick={loadDashboard}>Обновить</Button>
       </Stack>
 
+      <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+        <Button variant="contained" onClick={() => navigate('/sales/reinvite-event')}>
+          Позвать снова на мероприятие
+        </Button>
+        <Button variant="contained" color="success" onClick={() => navigate('/sales/agreed')}>
+          Решили сразу
+        </Button>
+      </Stack>
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}

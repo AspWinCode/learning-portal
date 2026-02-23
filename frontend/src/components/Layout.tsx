@@ -200,6 +200,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
         { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
+        { text: 'Позвать снова на мероприятие', icon: <EventAvailable />, path: '/sales/reinvite-event' },
         { text: 'Счета', icon: <ReceiptLong />, path: '/sales/invoices' },
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
@@ -227,6 +228,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
       items.push({ text: 'Продажи: лиды', icon: <WorkOutline />, path: '/sales/leads' });
       items.push({ text: 'Продажи: события', icon: <EventAvailable />, path: '/sales/events' });
+      items.push({ text: 'Позвать снова на мероприятие', icon: <EventAvailable />, path: '/sales/reinvite-event' });
       items.push({ text: 'Продажи: инструкции', icon: <Description />, path: '/sales/instructions' });
       items.push({ text: 'Продажи: пропуски', icon: <PendingActions />, path: '/sales/absences' });
       items.push({ text: 'Продажи: долги', icon: <ReceiptLong />, path: '/sales/debts' });

@@ -437,6 +437,8 @@ class StudentCard(Base):
         nullable=False,
     )
     discount_value = Column(Float, default=0.0, nullable=False)
+    learning_period_start = Column(Date, nullable=True)  # дата старта периода (ТЗ п.2.2)
+    next_payment_date = Column(Date, nullable=True)  # дата следующей оплаты
     archived = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -727,6 +729,8 @@ class LessonAttendance(Base):
     late = Column(Boolean, default=False, nullable=False)  # опоздает / в пути
     call_result = Column(String(32), nullable=True)  # contacted | no_answer | cancelled | technical | messenger
     call_result_at = Column(DateTime(timezone=True), nullable=True)
+    absence_reason = Column(String(64), nullable=True)  # was / not_was / sick / olympiad / event / other (ТЗ п.3.1)
+    absence_comment = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group", back_populates="lesson_attendances")
@@ -750,12 +754,43 @@ class AbsenceFollowUp(Base):
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
     lesson_date = Column(Date, nullable=False, index=True)
     stage = Column(String, nullable=False, index=True, server_default="missed")  # missed / assigned / made_up / missed_makeup
+    makeup_group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
+    makeup_lesson_date = Column(Date, nullable=True)
+    absence_reason = Column(String(64), nullable=True)
+    absence_comment = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     lesson_attendance = relationship("LessonAttendance")
     student = relationship("Student")
-    group = relationship("Group")
+    group = relationship("Group", foreign_keys=[group_id])
+    makeup_group = relationship("Group", foreign_keys=[makeup_group_id])
+
+
+class StudentFreeze(Base):
+    """Заморозка абонемента по запросу родителя. Только owner ставит/снимает (ТЗ п.7)."""
+    __tablename__ = "student_freezes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    freeze_start = Column(Date, nullable=False)
+    freeze_end = Column(Date, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    student = relationship("Student", backref="freezes")
+
+
+class ProgramMakeupCompatibility(Base):
+    """Матрица совместимости программ для отработок (ТЗ п.5.3). Конфигурируемо без переписывания кода."""
+    __tablename__ = "program_makeup_compatibility"
+    __table_args__ = (UniqueConstraint("source_program_id", "target_program_id", name="uq_makeup_compat_source_target"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_program_id = Column(Integer, ForeignKey("programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_program_id = Column(Integer, ForeignKey("programs.id", ondelete="CASCADE"), nullable=False)
+
+    source_program = relationship("Program", foreign_keys=[source_program_id])
+    target_program = relationship("Program", foreign_keys=[target_program_id])
 
 
 class Program(Base):

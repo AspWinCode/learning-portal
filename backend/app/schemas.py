@@ -326,10 +326,16 @@ class AbsenceFollowUpResponse(BaseModel):
     group_id: int
     lesson_date: date
     stage: str
+    absence_reason: Optional[str] = None
+    absence_comment: Optional[str] = None
+    makeup_group_id: Optional[int] = None
+    makeup_lesson_date: Optional[date] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     student_name: Optional[str] = None
     group_name: Optional[str] = None
+    program_name: Optional[str] = None
+    makeup_group_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -337,6 +343,76 @@ class AbsenceFollowUpResponse(BaseModel):
 
 class AbsenceFollowUpStageUpdate(BaseModel):
     stage: str  # missed / assigned / made_up / missed_makeup
+
+
+class AbsenceMakeupAssign(BaseModel):
+    """Назначить отработку на группу и дату."""
+    makeup_group_id: int
+    makeup_lesson_date: date
+
+
+class MakeupSuggestionItem(BaseModel):
+    """Вариант для отработки: группа + дата занятия."""
+    group_id: int
+    group_name: str
+    program_name: Optional[str] = None
+    lesson_date: date
+    day_of_week: int
+    start_time: Optional[str] = None
+
+
+class ProgramMakeupCompatibilityResponse(BaseModel):
+    id: int
+    source_program_id: int
+    target_program_id: int
+    source_program_name: Optional[str] = None
+    target_program_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProgramMakeupCompatibilityCreate(BaseModel):
+    source_program_id: int
+    target_program_id: int
+
+
+class PaymentStatusItem(BaseModel):
+    """Строка раздела «Долги»: ученик и статус оплаты (п.8.2, 12.2)."""
+    student_id: int
+    student_name: str
+    card_id: Optional[int] = None
+    next_payment_date: Optional[date] = None
+    learning_period_start: Optional[date] = None
+    status: str  # ok | due_soon | overdue
+
+
+class StudentFreezeCreate(BaseModel):
+    freeze_start: date
+    freeze_end: date
+
+
+class StudentFreezeResponse(BaseModel):
+    id: int
+    student_id: int
+    freeze_start: date
+    freeze_end: date
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CloseByFactPreview(BaseModel):
+    """Предпросмотр закрытия с оплатой по факту (ТЗ п.9)."""
+    lessons_attended_in_period: int
+    amount: float
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
+
+
+class CloseByFactConfirm(BaseModel):
+    confirm: bool = True
 
 
 # --- Sales schemas ---
@@ -1055,6 +1131,8 @@ class LessonAttendanceItem(BaseModel):
     student_id: int
     attended: bool
     late: Optional[bool] = False
+    absence_reason: Optional[str] = None  # was / not_was / sick / olympiad / event / other (ТЗ п.3.1)
+    absence_comment: Optional[str] = None
 
 
 class LessonAttendanceSave(BaseModel):

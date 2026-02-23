@@ -53,9 +53,21 @@ def _validate_production_env() -> None:
         if "localhost" in cors_raw or "127.0.0.1" in cors_raw:
             pass
 
-    # Планировщик: авто-импорт Точка Банк каждые 6 часов
+    def _run_payment_overdue_tasks() -> None:
+        """Просрочка оплаты: задачи менеджеру через 3 дня после next_payment_date, повтор раз в 7 дней (ТЗ п.8.3)."""
+        try:
+            from app.services.payment_overdue_tasks import create_payment_overdue_tasks
+            db = SessionLocal()
+            try:
+                create_payment_overdue_tasks(db)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
+    scheduler.add_job(_run_payment_overdue_tasks, "interval", days=1, id="payment_overdue_tasks")
     scheduler.start()
 
 # CORS origins from env (comma-separated). Defaults to local dev.

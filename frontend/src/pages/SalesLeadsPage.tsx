@@ -399,7 +399,7 @@ const SalesLeadsPage: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const leadIdParam = params.get('open') || params.get('leadId');
+    const leadIdParam = params.get('open') || params.get('leadId') || params.get('detail');
     const leadId = leadIdParam ? Number(leadIdParam) : NaN;
     if (!leadIdParam || Number.isNaN(leadId)) return;
     const targetLead = leads.find((l) => l.id === leadId);

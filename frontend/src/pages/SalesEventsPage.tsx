@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -14,6 +15,7 @@ import {
   FormControl,
   Grid,
   InputLabel,
+  Link,
   MenuItem,
   Paper,
   Select,
@@ -34,6 +36,7 @@ import { extractApiError } from '../utils/extractApiError';
 import { EventItem, EventRegistration, Lead } from '../types';
 
 const SalesEventsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<number | ''>('');
@@ -496,6 +499,7 @@ const SalesEventsPage: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell>Лид</TableCell>
+                  <TableCell>Контакт</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell>Заметка</TableCell>
                   <TableCell align="right" sx={{ minWidth: 320, whiteSpace: 'nowrap' }}>Действия</TableCell>
@@ -512,7 +516,17 @@ const SalesEventsPage: React.FC = () => {
                         inputProps={{ 'aria-label': `Выбрать регистрацию ${reg.id}` }}
                       />
                     </TableCell>
-                    <TableCell>{reg.lead?.contact_name || `Lead #${reg.lead_id}`}</TableCell>
+                    <TableCell>
+                      <Link
+                        component="button"
+                        variant="body2"
+                        onClick={() => navigate(`/sales/leads?detail=${reg.lead_id}`)}
+                        sx={{ textAlign: 'left', cursor: 'pointer' }}
+                      >
+                        {reg.lead?.contact_name || `Lead #${reg.lead_id}`}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{reg.lead?.phone ?? '—'}</TableCell>
                     <TableCell>{reg.status}</TableCell>
                     <TableCell>{reg.note || '—'}</TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
@@ -537,7 +551,7 @@ const SalesEventsPage: React.FC = () => {
                 ))}
                 {registrations.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5}>
+                    <TableCell colSpan={6}>
                       <Typography color="text.secondary">Регистраций пока нет</Typography>
                     </TableCell>
                   </TableRow>

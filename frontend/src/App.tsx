@@ -36,6 +36,8 @@ import SalesAgreedPage from './pages/SalesAgreedPage';
 import SalesReportsPage from './pages/SalesReportsPage';
 import SalesInstructionsPage from './pages/SalesInstructionsPage';
 import SalesAbsencesPage from './pages/SalesAbsencesPage';
+import SalesDebtsPage from './pages/SalesDebtsPage';
+import SalesProgramMakeupPage from './pages/SalesProgramMakeupPage';
 import SalesTaxDeductionPage from './pages/SalesTaxDeductionPage';
 import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
@@ -138,7 +140,7 @@ function App() {
             <Route
               path="/sales/events"
               element={
-                <PrivateRoute allowedRoles={['sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesEventsPage />
                 </PrivateRoute>
               }
@@ -204,6 +206,22 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesAbsencesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/debts"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <SalesDebtsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/program-makeup"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner']}>
+                  <SalesProgramMakeupPage />
                 </PrivateRoute>
               }
             />

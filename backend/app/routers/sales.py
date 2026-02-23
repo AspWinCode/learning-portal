@@ -50,6 +50,11 @@ from app.models import (
     StudentAccountTransaction,
     StudentAccountTransactionKind,
     TochkaAppliedPayment,
+    Program,
+    GroupProgram,
+    StudentProgram,
+    ProgramMakeupCompatibility,
+    StudentFreeze,
 )
 from app.schemas import (
     LeadCreate,
@@ -111,6 +116,15 @@ from app.schemas import (
     LessonCallResultUpdate,
     TochkaImportRequest,
     BankPaymentImportResponse,
+    AbsenceMakeupAssign,
+    MakeupSuggestionItem,
+    ProgramMakeupCompatibilityResponse,
+    ProgramMakeupCompatibilityCreate,
+    PaymentStatusItem,
+    StudentFreezeCreate,
+    StudentFreezeResponse,
+    CloseByFactPreview,
+    CloseByFactConfirm,
 )
 from app.routers.action_log import log_action
 
@@ -649,6 +663,12 @@ def do_tochka_import_and_apply(
                 student_account_id=account.id,
             )
         )
+        try:
+            pay_date = date.fromisoformat(tx_date[:10]) if tx_date else date.today()
+        except (ValueError, TypeError):
+            pay_date = date.today()
+        from app.services.student_card_period import update_card_payment_dates
+        update_card_payment_dates(db, student_id, pay_date)
         student_name = get_student_display_name(db, student)
         applied.append({
             "payer_name": payer_name,
@@ -1134,6 +1154,45 @@ async def list_students_for_cards(
     return [{"id": s.id, "full_name": display_names.get(s.id, s.full_name)} for s in students]
 
 
+def _get_student_program_name(db: Session, student_id: int, fallback_group_id: Optional[int] = None) -> Optional[str]:
+    """Программа ученика (источник правды для отработок). Сначала student_programs, иначе программа группы."""
+    sp = db.query(StudentProgram).filter(
+        StudentProgram.student_id == student_id,
+        StudentProgram.status == "active",
+    ).first()
+    if sp and sp.program:
+        return sp.program.name
+    if fallback_group_id:
+        gp = db.query(GroupProgram).filter(GroupProgram.group_id == fallback_group_id).first()
+        if gp and gp.program:
+            return gp.program.name
+    return None
+
+
+def _absence_to_response(db: Session, a: AbsenceFollowUp) -> AbsenceFollowUpResponse:
+    student = db.query(Student).filter(Student.id == a.student_id).first()
+    group = db.query(Group).filter(Group.id == a.group_id).first()
+    makeup_group = db.query(Group).filter(Group.id == a.makeup_group_id).first() if a.makeup_group_id else None
+    return AbsenceFollowUpResponse(
+        id=a.id,
+        lesson_attendance_id=a.lesson_attendance_id,
+        student_id=a.student_id,
+        group_id=a.group_id,
+        lesson_date=a.lesson_date,
+        stage=a.stage,
+        absence_reason=getattr(a, "absence_reason", None),
+        absence_comment=getattr(a, "absence_comment", None),
+        makeup_group_id=getattr(a, "makeup_group_id", None),
+        makeup_lesson_date=getattr(a, "makeup_lesson_date", None),
+        created_at=a.created_at,
+        updated_at=a.updated_at,
+        student_name=get_student_display_name(db, student) if student else None,
+        group_name=group.name if group else None,
+        program_name=_get_student_program_name(db, a.student_id, a.group_id),
+        makeup_group_name=makeup_group.name if makeup_group else None,
+    )
+
+
 @router.get("/absences", response_model=List[AbsenceFollowUpResponse])
 async def list_absences(
     stage: Optional[str] = Query(None, description="Фильтр по этапу: missed, assigned, made_up, missed_makeup"),
@@ -1148,23 +1207,7 @@ async def list_absences(
     if student_id is not None:
         query = query.filter(AbsenceFollowUp.student_id == student_id)
     items = query.all()
-    result = []
-    for a in items:
-        student = db.query(Student).filter(Student.id == a.student_id).first()
-        group = db.query(Group).filter(Group.id == a.group_id).first()
-        result.append(AbsenceFollowUpResponse(
-            id=a.id,
-            lesson_attendance_id=a.lesson_attendance_id,
-            student_id=a.student_id,
-            group_id=a.group_id,
-            lesson_date=a.lesson_date,
-            stage=a.stage,
-            created_at=a.created_at,
-            updated_at=a.updated_at,
-            student_name=get_student_display_name(db, student) if student else None,
-            group_name=group.name if group else None,
-        ))
-    return result
+    return [_absence_to_response(db, a) for a in items]
 
 
 @router.patch("/absences/{absence_id}", response_model=AbsenceFollowUpResponse)
@@ -1182,22 +1225,378 @@ async def update_absence_stage(
     if not absence:
         raise HTTPException(status_code=404, detail="Пропуск не найден")
     absence.stage = payload.stage
+    if payload.stage == "missed_makeup":
+        absence.makeup_group_id = None
+        absence.makeup_lesson_date = None
     db.commit()
     db.refresh(absence)
-    student = db.query(Student).filter(Student.id == absence.student_id).first()
-    group = db.query(Group).filter(Group.id == absence.group_id).first()
-    return AbsenceFollowUpResponse(
-        id=absence.id,
-        lesson_attendance_id=absence.lesson_attendance_id,
-        student_id=absence.student_id,
-        group_id=absence.group_id,
-        lesson_date=absence.lesson_date,
-        stage=absence.stage,
-        created_at=absence.created_at,
-        updated_at=absence.updated_at,
-        student_name=get_student_display_name(db, student) if student else None,
-        group_name=group.name if group else None,
+    return _absence_to_response(db, absence)
+
+
+@router.post("/absences/{absence_id}/assign-makeup", response_model=AbsenceFollowUpResponse)
+async def assign_makeup(
+    absence_id: int,
+    payload: AbsenceMakeupAssign,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Назначить отработку на группу и дату занятия (ТЗ п.5.5)."""
+    _require_sales_admin_owner(current_user)
+    absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
+    if not absence:
+        raise HTTPException(status_code=404, detail="Пропуск не найден")
+    group = db.query(Group).filter(Group.id == payload.makeup_group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    absence.makeup_group_id = payload.makeup_group_id
+    absence.makeup_lesson_date = payload.makeup_lesson_date
+    absence.stage = "assigned"
+    db.commit()
+    db.refresh(absence)
+    return _absence_to_response(db, absence)
+
+
+@router.get("/absences/{absence_id}/suggest-makeups", response_model=List[MakeupSuggestionItem])
+async def suggest_makeups(
+    absence_id: int,
+    days_ahead: int = Query(30, ge=7, le=60),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Подбор вариантов отработки по совместимости программ (ТЗ п.5). Окно 14–30 дней по умолчанию 30."""
+    _require_sales_admin_owner(current_user)
+    absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
+    if not absence:
+        raise HTTPException(status_code=404, detail="Пропуск не найден")
+    student_id = absence.student_id
+    today = date.today()
+    end_date = today + timedelta(days=days_ahead)
+    student_programs = db.query(StudentProgram).filter(
+        StudentProgram.student_id == student_id,
+        StudentProgram.status == "active",
+    ).all()
+    source_program_ids = [sp.program_id for sp in student_programs if sp.program_id]
+    if not source_program_ids:
+        group_prog = db.query(GroupProgram).filter(GroupProgram.group_id == absence.group_id).first()
+        if group_prog:
+            source_program_ids = [group_prog.program_id]
+    allowed_target_ids = set()
+    for pid in source_program_ids:
+        compats = db.query(ProgramMakeupCompatibility).filter(
+            ProgramMakeupCompatibility.source_program_id == pid,
+        ).all()
+        for c in compats:
+            allowed_target_ids.add(c.target_program_id)
+    if not allowed_target_ids and source_program_ids:
+        allowed_target_ids = set(source_program_ids)
+    group_ids = list({
+        row[0] for row in db.query(GroupProgram.group_id).filter(
+            GroupProgram.program_id.in_(allowed_target_ids),
+        ).distinct().all()
+    }) if allowed_target_ids else []
+    groups_active = db.query(Group).filter(Group.id.in_(group_ids), Group.status == "active").all() if group_ids else []
+    # Исключаем индивидуальные группы из вариантов отработки (ТЗ)
+    groups_active = [g for g in groups_active if "индивид" not in (g.name or "").lower()]
+    group_ids = [g.id for g in groups_active]
+    slots = []
+    for sched in db.query(GroupSchedule).filter(GroupSchedule.group_id.in_(group_ids)).all():
+        for d in range((end_date - today).days + 1):
+            lesson_date = today + timedelta(days=d)
+            if lesson_date.weekday() == sched.day_of_week:
+                slots.append((sched.group_id, lesson_date, sched.start_time))
+    result = []
+    seen = set()
+    for group_id, lesson_date, start_time in sorted(slots, key=lambda x: (x[1], x[2] or dt_time(0, 0))):
+        if (group_id, lesson_date) in seen:
+            continue
+        seen.add((group_id, lesson_date))
+        group = next((g for g in groups_active if g.id == group_id), None) or db.query(Group).filter(Group.id == group_id).first()
+        if not group:
+            continue
+        gp = db.query(GroupProgram).filter(GroupProgram.group_id == group_id).first()
+        program_name = gp.program.name if gp and gp.program else None
+        result.append(MakeupSuggestionItem(
+            group_id=group_id,
+            group_name=group.name,
+            program_name=program_name,
+            lesson_date=lesson_date,
+            day_of_week=lesson_date.weekday(),
+            start_time=start_time.strftime("%H:%M") if start_time else None,
+        ))
+    return result[:50]
+
+
+def _require_owner(user: User) -> None:
+    """Только owner (ТЗ: заморозка, закрытие по факту)."""
+    if user.role != UserRole.OWNER:
+        raise HTTPException(status_code=403, detail="Только owner")
+
+
+def _require_owner_or_admin(user: User) -> None:
+    """Owner или admin (настройки отработок)."""
+    if user.role not in (UserRole.OWNER, UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Только owner или admin")
+
+
+@router.get("/payment-status", response_model=List[PaymentStatusItem])
+async def list_payment_status(
+    status_filter: Optional[str] = Query(None, description="overdue | due_soon | ok | все"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Раздел «Долги» для менеджера (п.8.2, 12.2): ученики с датой следующей оплаты и статусом."""
+    _require_sales_admin_owner(current_user)
+    today = date.today()
+    due_soon_end = today + timedelta(days=3)
+    cards = (
+        db.query(StudentCard)
+        .filter(
+            StudentCard.student_id.isnot(None),
+            StudentCard.archived.is_(False),
+            StudentCard.next_payment_date.isnot(None),
+        )
+        .all()
     )
+    result = []
+    for card in cards:
+        student = db.query(Student).filter(Student.id == card.student_id).first()
+        if not student or student.status == StudentStatus.ARCHIVED:
+            continue
+        next_pay = getattr(card, "next_payment_date", None)
+        if not next_pay:
+            continue
+        if hasattr(next_pay, "date"):
+            next_pay = next_pay.date()
+        if next_pay < today:
+            st = "overdue"
+        elif next_pay <= due_soon_end:
+            st = "due_soon"
+        else:
+            st = "ok"
+        if status_filter and status_filter not in ("", "все", "all") and st != status_filter:
+            continue
+        result.append(PaymentStatusItem(
+            student_id=card.student_id,
+            student_name=get_student_display_name(db, student),
+            card_id=card.id,
+            next_payment_date=next_pay,
+            learning_period_start=getattr(card, "learning_period_start", None),
+            status=st,
+        ))
+    result.sort(key=lambda x: (x.next_payment_date or date.max, x.student_name))
+    return result
+
+
+@router.get("/program-makeup-compatibility", response_model=List[ProgramMakeupCompatibilityResponse])
+async def list_program_makeup_compatibility(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Список правил совместимости программ для отработок (ТЗ п.5.3). Owner/admin."""
+    _require_owner_or_admin(current_user)
+    items = db.query(ProgramMakeupCompatibility).order_by(
+        ProgramMakeupCompatibility.source_program_id,
+        ProgramMakeupCompatibility.target_program_id,
+    ).all()
+    result = []
+    for c in items:
+        src = db.query(Program).filter(Program.id == c.source_program_id).first()
+        tgt = db.query(Program).filter(Program.id == c.target_program_id).first()
+        result.append(ProgramMakeupCompatibilityResponse(
+            id=c.id,
+            source_program_id=c.source_program_id,
+            target_program_id=c.target_program_id,
+            source_program_name=src.name if src else None,
+            target_program_name=tgt.name if tgt else None,
+        ))
+    return result
+
+
+@router.post("/program-makeup-compatibility", response_model=ProgramMakeupCompatibilityResponse, status_code=status.HTTP_201_CREATED)
+async def create_program_makeup_compatibility(
+    payload: ProgramMakeupCompatibilityCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Добавить правило: программа source может отрабатывать в программе target. Owner/admin."""
+    _require_owner_or_admin(current_user)
+    for pid in (payload.source_program_id, payload.target_program_id):
+        if not db.query(Program).filter(Program.id == pid).first():
+            raise HTTPException(status_code=404, detail=f"Программа {pid} не найдена")
+    compat = ProgramMakeupCompatibility(
+        source_program_id=payload.source_program_id,
+        target_program_id=payload.target_program_id,
+    )
+    db.add(compat)
+    db.commit()
+    db.refresh(compat)
+    src = db.query(Program).filter(Program.id == compat.source_program_id).first()
+    tgt = db.query(Program).filter(Program.id == compat.target_program_id).first()
+    return ProgramMakeupCompatibilityResponse(
+        id=compat.id,
+        source_program_id=compat.source_program_id,
+        target_program_id=compat.target_program_id,
+        source_program_name=src.name if src else None,
+        target_program_name=tgt.name if tgt else None,
+    )
+
+
+@router.delete("/program-makeup-compatibility/{compat_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_program_makeup_compatibility(
+    compat_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Удалить правило совместимости. Owner/admin."""
+    _require_owner_or_admin(current_user)
+    compat = db.query(ProgramMakeupCompatibility).filter(ProgramMakeupCompatibility.id == compat_id).first()
+    if not compat:
+        raise HTTPException(status_code=404, detail="Правило не найдено")
+    db.delete(compat)
+    db.commit()
+
+
+@router.get("/students/{student_id}/freezes", response_model=List[StudentFreezeResponse])
+async def list_student_freezes(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Список заморозок ученика. Sales/admin/owner."""
+    _require_sales_admin_owner(current_user)
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    freezes = db.query(StudentFreeze).filter(StudentFreeze.student_id == student_id).order_by(StudentFreeze.freeze_start.desc()).all()
+    return [StudentFreezeResponse(id=f.id, student_id=f.student_id, freeze_start=f.freeze_start, freeze_end=f.freeze_end, created_at=f.created_at) for f in freezes]
+
+
+@router.post("/students/{student_id}/freezes", response_model=StudentFreezeResponse, status_code=status.HTTP_201_CREATED)
+async def create_student_freeze(
+    student_id: int,
+    payload: StudentFreezeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Поставить заморозку (ТЗ п.7). Только owner. Сдвиг периода — при необходимости обновить next_payment_date вручную или отдельным правилом."""
+    _require_owner(current_user)
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    if payload.freeze_end <= payload.freeze_start:
+        raise HTTPException(status_code=400, detail="freeze_end должна быть больше freeze_start")
+    freeze = StudentFreeze(student_id=student_id, freeze_start=payload.freeze_start, freeze_end=payload.freeze_end)
+    db.add(freeze)
+    card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    if card and getattr(card, "next_payment_date", None):
+        delta = (payload.freeze_end - payload.freeze_start).days
+        card.next_payment_date = card.next_payment_date + timedelta(days=delta)
+    db.commit()
+    db.refresh(freeze)
+    return StudentFreezeResponse(id=freeze.id, student_id=freeze.student_id, freeze_start=freeze.freeze_start, freeze_end=freeze.freeze_end, created_at=freeze.created_at)
+
+
+@router.delete("/students/{student_id}/freezes/{freeze_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_student_freeze(
+    student_id: int,
+    freeze_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Снять заморозку. Только owner."""
+    _require_owner(current_user)
+    freeze = db.query(StudentFreeze).filter(StudentFreeze.id == freeze_id, StudentFreeze.student_id == student_id).first()
+    if not freeze:
+        raise HTTPException(status_code=404, detail="Заморозка не найдена")
+    db.delete(freeze)
+    db.commit()
+
+
+@router.get("/students/{student_id}/close-by-fact-preview", response_model=CloseByFactPreview)
+async def close_by_fact_preview(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Предпросмотр: сколько занятий посещено в текущем периоде и сумма к оплате (ТЗ п.9). Только owner."""
+    _require_owner(current_user)
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    period_start = getattr(card, "learning_period_start", None) if card else None
+    if not period_start:
+        period_start = date.today() - timedelta(days=30)
+    period_end = date.today()
+    attended = db.query(LessonAttendance).filter(
+        LessonAttendance.student_id == student_id,
+        LessonAttendance.attended.is_(True),
+        LessonAttendance.lesson_date >= period_start,
+        LessonAttendance.lesson_date <= period_end,
+    ).count()
+    abonement = student.abonement or (db.query(Abonement).filter(Abonement.id == student.abonement_id).first() if student.abonement_id else None)
+    if not card and student.abonement_id:
+        abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
+    if card and getattr(card, "abonement_id", None):
+        abonement = db.query(Abonement).filter(Abonement.id == card.abonement_id).first() or abonement
+    price_per_lesson = 0.0
+    if abonement and (abonement.lessons_count or 8) > 0:
+        price_per_lesson = float(abonement.price or 0) / (abonement.lessons_count or 8)
+    amount = round(price_per_lesson * attended, 2)
+    return CloseByFactPreview(
+        lessons_attended_in_period=attended,
+        amount=amount,
+        period_start=period_start,
+        period_end=period_end,
+    )
+
+
+@router.post("/students/{student_id}/close-by-fact")
+async def close_by_fact_confirm(
+    student_id: int,
+    payload: CloseByFactConfirm,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Закрыть ученика с оплатой по факту (ТЗ п.9). Только owner. Фиксирует оплату, архивирует, снимает пропуски с очереди."""
+    _require_owner(current_user)
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail="Подтвердите закрытие")
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    period_start = getattr(card, "learning_period_start", None) if card else None
+    if not period_start:
+        period_start = date.today() - timedelta(days=30)
+    period_end = date.today()
+    attended = db.query(LessonAttendance).filter(
+        LessonAttendance.student_id == student_id,
+        LessonAttendance.attended.is_(True),
+        LessonAttendance.lesson_date >= period_start,
+        LessonAttendance.lesson_date <= period_end,
+    ).count()
+    abonement = student.abonement or (db.query(Abonement).filter(Abonement.id == student.abonement_id).first() if student.abonement_id else None)
+    if card and getattr(card, "abonement_id", None):
+        abonement = db.query(Abonement).filter(Abonement.id == card.abonement_id).first() or abonement
+    price_per_lesson = float(abonement.price or 0) / (abonement.lessons_count or 8) if abonement and (abonement.lessons_count or 8) > 0 else 0.0
+    amount = round(price_per_lesson * attended, 2)
+    account = db.query(StudentAccount).filter(StudentAccount.student_id == student_id).order_by(StudentAccount.id).first()
+    if account and amount > 0:
+        db.add(StudentAccountTransaction(
+            account_id=account.id,
+            amount=amount,
+            kind=StudentAccountTransactionKind.PAYMENT,
+            note=f"Закрытие по факту: {attended} занятий за период {period_start}–{period_end}",
+        ))
+        account.balance += amount
+    for a in db.query(AbsenceFollowUp).filter(AbsenceFollowUp.student_id == student_id).all():
+        a.stage = "made_up"
+    if card:
+        card.archived = True
+    student.status = StudentStatus.ARCHIVED
+    db.commit()
+    return {"ok": True, "student_id": student_id, "amount": amount, "lessons_attended": attended}
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:
@@ -2859,7 +3258,7 @@ async def list_invoices(
 async def list_events(
     status_filter: Optional[EventStatus] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     query = db.query(Event).order_by(Event.starts_at.asc())
     if status_filter:
@@ -2871,7 +3270,7 @@ async def list_events(
 async def create_event(
     payload: EventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     event = Event(
         title=payload.title,
@@ -2895,7 +3294,7 @@ async def update_event(
     event_id: int,
     payload: EventUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
@@ -2921,8 +3320,6 @@ async def list_event_registrations(
         raise HTTPException(status_code=404, detail="Event not found")
 
     query = db.query(EventRegistration).filter(EventRegistration.event_id == event_id).order_by(EventRegistration.created_at.desc())
-    if current_user.role == UserRole.SALES:
-        query = query.filter(EventRegistration.owner_id == current_user.id)
     return query.all()
 
 
@@ -2931,7 +3328,7 @@ async def create_event_registration(
     event_id: int,
     payload: EventRegistrationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     event = db.query(Event).filter(Event.id == event_id, Event.status == EventStatus.ACTIVE).first()
     if not event:
@@ -2988,7 +3385,7 @@ async def cancel_event_registration(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     reg = db.query(EventRegistration).filter(
         EventRegistration.id == registration_id,
@@ -3014,7 +3411,7 @@ async def confirm_event_registration(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     reg = db.query(EventRegistration).filter(
         EventRegistration.id == registration_id,
@@ -3038,7 +3435,7 @@ async def mark_event_registration_came(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     reg = db.query(EventRegistration).filter(
         EventRegistration.id == registration_id,
@@ -3084,7 +3481,7 @@ async def mark_event_registration_no_show(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     reg = db.query(EventRegistration).filter(
         EventRegistration.id == registration_id,
@@ -3129,7 +3526,7 @@ async def mark_event_registration_no_show(
 async def list_lead_event_registrations(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:

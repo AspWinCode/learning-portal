@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import {
   Typography,
@@ -108,12 +109,19 @@ const StudentsPage: React.FC = () => {
   const [paymentNote, setPaymentNote] = useState('');
   const [accountsError, setAccountsError] = useState('');
   const [studentDetailId, setStudentDetailId] = useState<number | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  useEffect(() => {
+    const detailId = searchParams.get('detail');
+    if (detailId && /^\d+$/.test(detailId)) {
+      setStudentDetailId(Number(detailId));
+    }
+  }, [searchParams]);
   const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
   const isOwner = user?.role === 'owner';
   const hasFullStudentsView = isAdminLike || user?.role === 'sales';
   const canAssignAbonement = isAdminLike || user?.role === 'sales';
-  const canManageAccounts = isAdminLike || user?.role === 'trainer' || user?.role === 'parent' || user?.role === 'sales';
+  const canManageAccounts = isAdminLike || user?.role === 'parent' || user?.role === 'sales';
   const canCreateCard = isAdminLike || user?.role === 'sales';
   const [citiesList, setCitiesList] = useState<string[]>([]);
 
@@ -1718,7 +1726,7 @@ const StudentsPage: React.FC = () => {
                         <TableCell align="right">{acc.balance.toFixed(2)}</TableCell>
                         <TableCell align="right">
                           <Button size="small" onClick={() => { setPaymentDialog({ account: acc, type: 'payment' }); setPaymentAmount(''); setPaymentNote(''); }}>Пополнить</Button>
-                          {(isAdminLike || user?.role === 'trainer' || user?.role === 'sales') && (
+                          {(isAdminLike || user?.role === 'sales') && (
                             <Button size="small" color="secondary" onClick={() => { setPaymentDialog({ account: acc, type: 'deduct' }); setPaymentAmount(''); setPaymentNote(''); }} disabled={acc.balance <= 0}>Списать</Button>
                           )}
                         </TableCell>
@@ -1748,7 +1756,11 @@ const StudentsPage: React.FC = () => {
       </Dialog>
       <StudentDetailPopup
         open={studentDetailId !== null}
-        onClose={() => setStudentDetailId(null)}
+        onClose={() => {
+          setStudentDetailId(null);
+          searchParams.delete('detail');
+          setSearchParams(searchParams, { replace: true });
+        }}
         studentId={studentDetailId}
       />
     </Layout>

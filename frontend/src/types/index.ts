@@ -73,10 +73,25 @@ export interface AbsenceFollowUp {
   group_id: number;
   lesson_date: string;
   stage: AbsenceFollowUpStage;
+  absence_reason?: string | null;
+  absence_comment?: string | null;
+  makeup_group_id?: number | null;
+  makeup_lesson_date?: string | null;
   created_at: string;
   updated_at?: string | null;
   student_name?: string | null;
   group_name?: string | null;
+  program_name?: string | null;
+  makeup_group_name?: string | null;
+}
+
+export interface MakeupSuggestionItem {
+  group_id: number;
+  group_name: string;
+  program_name?: string | null;
+  lesson_date: string;
+  day_of_week: number;
+  start_time?: string | null;
 }
 
 export interface GroupSchedule {
@@ -121,6 +136,8 @@ export interface Project {
   card_count?: number;
 }
 
+export type AbsenceReason = 'was' | 'not_was' | 'sick' | 'olympiad' | 'event' | 'other';
+
 export interface TrainerLessonSlot {
   group_id: number;
   group_name: string;
@@ -129,7 +146,15 @@ export interface TrainerLessonSlot {
   start_time: string;
   end_time: string;
   lesson_date: string;
-  students: Array<{ id: number; full_name: string; attended: boolean | null; late?: boolean }>;
+  students: Array<{
+    id: number;
+    full_name: string;
+    attended: boolean | null;
+    late?: boolean;
+    absence_reason?: string | null;
+    absence_comment?: string | null;
+    freeze_badge?: string | null;
+  }>;
 }
 
 export interface Topic {

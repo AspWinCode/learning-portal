@@ -330,7 +330,13 @@ export const trainerLessonsApi = {
   saveAttendance: async (data: {
     group_id: number;
     lesson_date: string;
-    attendances: Array<{ student_id: number; attended: boolean; late?: boolean }>;
+    attendances: Array<{
+      student_id: number;
+      attended: boolean;
+      late?: boolean;
+      absence_reason?: string | null;
+      absence_comment?: string | null;
+    }>;
   }): Promise<void> => {
     await api.post('/api/trainer-lessons/attendance', data);
   },
@@ -969,6 +975,68 @@ export const salesApi = {
   updateAbsenceStage: async (absenceId: number, stage: string): Promise<AbsenceFollowUp> => {
     const response = await api.patch(`/api/sales/absences/${absenceId}`, { stage });
     return response.data;
+  },
+  suggestMakeups: async (
+    absenceId: number,
+    daysAhead?: number
+  ): Promise<import('../types').MakeupSuggestionItem[]> => {
+    const response = await api.get(`/api/sales/absences/${absenceId}/suggest-makeups`, {
+      params: daysAhead ? { days_ahead: daysAhead } : {},
+    });
+    return response.data;
+  },
+  assignMakeup: async (
+    absenceId: number,
+    data: { makeup_group_id: number; makeup_lesson_date: string }
+  ): Promise<AbsenceFollowUp> => {
+    const response = await api.post(`/api/sales/absences/${absenceId}/assign-makeup`, data);
+    return response.data;
+  },
+  getStudentFreezes: async (studentId: number): Promise<{ id: number; student_id: number; freeze_start: string; freeze_end: string; created_at: string }[]> => {
+    const response = await api.get(`/api/sales/students/${studentId}/freezes`);
+    return response.data;
+  },
+  createStudentFreeze: async (
+    studentId: number,
+    data: { freeze_start: string; freeze_end: string }
+  ): Promise<{ id: number; student_id: number; freeze_start: string; freeze_end: string; created_at: string }> => {
+    const response = await api.post(`/api/sales/students/${studentId}/freezes`, data);
+    return response.data;
+  },
+  deleteStudentFreeze: async (studentId: number, freezeId: number): Promise<void> => {
+    await api.delete(`/api/sales/students/${studentId}/freezes/${freezeId}`);
+  },
+  getCloseByFactPreview: async (
+    studentId: number
+  ): Promise<{ lessons_attended_in_period: number; amount: number; period_start?: string; period_end?: string }> => {
+    const response = await api.get(`/api/sales/students/${studentId}/close-by-fact-preview`);
+    return response.data;
+  },
+  closeByFact: async (studentId: number): Promise<{ ok: boolean; student_id: number; amount: number; lessons_attended: number }> => {
+    const response = await api.post(`/api/sales/students/${studentId}/close-by-fact`, { confirm: true });
+    return response.data;
+  },
+  getPaymentStatus: async (params?: { status?: string }): Promise<
+    Array<{ student_id: number; student_name: string; card_id?: number; next_payment_date?: string; learning_period_start?: string; status: string }>
+  > => {
+    const response = await api.get('/api/sales/payment-status', { params: params || {} });
+    return response.data;
+  },
+  getProgramMakeupCompatibility: async (): Promise<
+    Array<{ id: number; source_program_id: number; target_program_id: number; source_program_name?: string; target_program_name?: string }>
+  > => {
+    const response = await api.get('/api/sales/program-makeup-compatibility');
+    return response.data;
+  },
+  createProgramMakeupCompatibility: async (data: {
+    source_program_id: number;
+    target_program_id: number;
+  }): Promise<{ id: number; source_program_id: number; target_program_id: number; source_program_name?: string; target_program_name?: string }> => {
+    const response = await api.post('/api/sales/program-makeup-compatibility', data);
+    return response.data;
+  },
+  deleteProgramMakeupCompatibility: async (compatId: number): Promise<void> => {
+    await api.delete(`/api/sales/program-makeup-compatibility/${compatId}`);
   },
   /** Справка по форме КНД 1151158 (2 страницы). Все поля передаются в body. */
   generateTaxDeductionCertificate: async (data: Record<string, unknown>): Promise<Blob> => {

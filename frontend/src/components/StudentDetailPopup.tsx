@@ -60,8 +60,15 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [inviteLoading, setInviteLoading] = useState(false);
 
   const canSeeAbsences = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
-  const canManageAccounts = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'trainer' || user?.role === 'parent';
+  const canManageAccounts = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'parent' || user?.role === 'sales';
   const canInviteParent = (user?.role === 'admin' || user?.role === 'owner') && !!student?.parent_id;
+  const isOwner = user?.role === 'owner';
+  const [freezes, setFreezes] = useState<Array<{ id: number; freeze_start: string; freeze_end: string }>>([]);
+  const [freezeStart, setFreezeStart] = useState('');
+  const [freezeEnd, setFreezeEnd] = useState('');
+  const [freezeLoading, setFreezeLoading] = useState(false);
+  const [closeByFactPreview, setCloseByFactPreview] = useState<{ lessons_attended_in_period: number; amount: number } | null>(null);
+  const [closeByFactLoading, setCloseByFactLoading] = useState(false);
 
   useEffect(() => {
     if (!open || !studentId) return;
@@ -73,21 +80,27 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setAbsences([]);
     setAccounts([]);
     setNewAccountName('');
-    Promise.all([
+    setFreezes([]);
+    setCloseByFactPreview(null);
+    const promises: [Promise<any>, Promise<any>, Promise<any>, Promise<any>, Promise<any>?] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),
       canSeeAbsences ? salesApi.getAbsences({ student_id: studentId }) : Promise.resolve([]),
       canManageAccounts ? studentsApi.getAccounts(studentId) : Promise.resolve([]),
-    ])
-      .then(([s, att, abs, acc]) => {
+    ];
+    if (isOwner) promises.push(salesApi.getStudentFreezes(studentId));
+    Promise.all(promises)
+      .then((results) => {
+        const [s, att, abs, acc, frz] = results;
         setStudent(s);
         setAttendances(att);
         setAbsences(abs as AbsenceFollowUp[]);
         setAccounts((acc || []) as StudentAccount[]);
+        if (isOwner && Array.isArray(frz)) setFreezes(frz.map((f: any) => ({ id: f.id, freeze_start: f.freeze_start, freeze_end: f.freeze_end })));
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Ошибка загрузки'))
       .finally(() => setLoading(false));
-  }, [open, studentId, canSeeAbsences, canManageAccounts]);
+  }, [open, studentId, canSeeAbsences, canManageAccounts, isOwner]);
 
   const loadAccounts = async () => {
     if (!studentId) return;
@@ -296,6 +309,109 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                     })}
                   </Stack>
                 )}
+              </Paper>
+            )}
+
+            {isOwner && student?.status === 'active' && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Только owner: заморозка и закрытие по факту
+                </Typography>
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="body2" fontWeight={500} sx={{ mb: 1 }}>Заморозка абонемента</Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                      <TextField type="date" size="small" label="Начало" value={freezeStart} onChange={(e) => setFreezeStart(e.target.value)} InputLabelProps={{ shrink: true }} />
+                      <TextField type="date" size="small" label="Конец" value={freezeEnd} onChange={(e) => setFreezeEnd(e.target.value)} InputLabelProps={{ shrink: true }} />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={!freezeStart || !freezeEnd || freezeLoading || freezeStart >= freezeEnd}
+                        onClick={async () => {
+                          if (!studentId) return;
+                          setFreezeLoading(true);
+                          try {
+                            await salesApi.createStudentFreeze(studentId, { freeze_start: freezeStart, freeze_end: freezeEnd });
+                            const list = await salesApi.getStudentFreezes(studentId);
+                            setFreezes(list.map((f: any) => ({ id: f.id, freeze_start: f.freeze_start, freeze_end: f.freeze_end })));
+                            setFreezeStart('');
+                            setFreezeEnd('');
+                          } catch (err: any) {
+                            setError(err.response?.data?.detail || 'Не удалось создать заморозку');
+                          } finally {
+                            setFreezeLoading(false);
+                          }
+                        }}
+                      >
+                        Поставить заморозку
+                      </Button>
+                    </Stack>
+                    {freezes.length > 0 && (
+                      <Stack spacing={0.5} sx={{ mt: 1 }}>
+                        {freezes.map((f) => (
+                          <Stack key={f.id} direction="row" alignItems="center" spacing={1}>
+                            <Typography variant="body2">
+                              {format(parseISO(f.freeze_start), 'd.MM.yyyy', { locale: ru })} – {format(parseISO(f.freeze_end), 'd.MM.yyyy', { locale: ru })}
+                            </Typography>
+                            <Button size="small" color="secondary" onClick={async () => {
+                              if (!studentId) return;
+                              try {
+                                await salesApi.deleteStudentFreeze(studentId, f.id);
+                                setFreezes((prev) => prev.filter((x) => x.id !== f.id));
+                              } catch (err: any) {
+                                setError(err.response?.data?.detail || 'Не удалось снять заморозку');
+                              }
+                            }}>Снять</Button>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" fontWeight={500} sx={{ mb: 1 }}>Закрыть с оплатой по факту</Typography>
+                    {closeByFactPreview === null && !closeByFactLoading && (
+                      <Button size="small" variant="outlined" onClick={async () => {
+                        if (!studentId) return;
+                        setCloseByFactLoading(true);
+                        try {
+                          const p = await salesApi.getCloseByFactPreview(studentId);
+                          setCloseByFactPreview(p);
+                        } catch (err: any) {
+                          setError(err.response?.data?.detail || 'Не удалось загрузить предпросмотр');
+                        } finally {
+                          setCloseByFactLoading(false);
+                        }
+                      }}>Показать расчёт</Button>
+                    )}
+                    {closeByFactLoading && <Typography variant="body2" color="text.secondary">Загрузка…</Typography>}
+                    {closeByFactPreview && (
+                      <Stack spacing={1}>
+                        <Typography variant="body2">
+                          Посещено занятий в периоде: {closeByFactPreview.lessons_attended_in_period}. К оплате: {closeByFactPreview.amount} ₽
+                        </Typography>
+                        <Button
+                          size="small"
+                          color="primary"
+                          variant="contained"
+                          onClick={async () => {
+                            if (!studentId) return;
+                            try {
+                              await salesApi.closeByFact(studentId);
+                              setCloseByFactPreview(null);
+                              onClose();
+                              window.location.reload();
+                            } catch (err: any) {
+                              setError(err.response?.data?.detail || 'Не удалось закрыть');
+                            }
+                          }}
+                        >
+                          Закрыть с оплатой по факту
+                        </Button>
+                        <Button size="small" onClick={() => setCloseByFactPreview(null)}>Отмена</Button>
+                      </Stack>
+                    )}
+                  </Box>
+                </Stack>
               </Paper>
             )}
 

@@ -1,4 +1,5 @@
 """Счета учеников: пополнение и списание за занятия."""
+from datetime import date
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, selectinload
@@ -58,6 +59,8 @@ async def get_student_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
+    if current_user.role == UserRole.TRAINER:
+        raise HTTPException(status_code=403, detail="Тренер по ТЗ не видит счета и оплаты")
     account = db.query(StudentAccount).options(selectinload(StudentAccount.transactions)).filter(StudentAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Счет не найден")
@@ -93,9 +96,8 @@ async def add_payment(
 ):
     """Пополнение счета (оплата)."""
     account = _get_account_and_check(db, account_id, current_user)
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES) and current_user.role != UserRole.TRAINER:
-        if current_user.role != UserRole.PARENT:
-            raise HTTPException(status_code=403, detail="Только admin, owner, sales, тренер или родитель могут пополнять счет")
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES, UserRole.PARENT):
+        raise HTTPException(status_code=403, detail="Только admin, owner, sales или родитель могут пополнять счёт (тренер по ТЗ не видит финансы)")
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма пополнения должна быть больше 0")
@@ -107,6 +109,8 @@ async def add_payment(
     )
     db.add(tx)
     account.balance += amount
+    from app.services.student_card_period import update_card_payment_dates
+    update_card_payment_dates(db, account.student_id, date.today())
     db.commit()
     db.refresh(account)
     log_action(db, current_user.id, "student_account_payment", "student_account", account_id, {"amount": amount})
@@ -122,8 +126,8 @@ async def deduct_lesson(
 ):
     """Списание за занятие."""
     account = _get_account_and_check(db, account_id, current_user)
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES, UserRole.TRAINER):
-        raise HTTPException(status_code=403, detail="Списание доступно только admin, owner, sales или тренеру")
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Списание доступно только admin, owner или sales (тренер по ТЗ не видит финансы)")
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма списания должна быть больше 0")
@@ -150,5 +154,7 @@ async def list_account_transactions(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
+    if current_user.role == UserRole.TRAINER:
+        raise HTTPException(status_code=403, detail="Тренер по ТЗ не видит счета и оплаты")
     account = _get_account_and_check(db, account_id, current_user)
     return account.transactions

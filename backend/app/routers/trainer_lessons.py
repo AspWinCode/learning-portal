@@ -21,6 +21,7 @@ from app.models import (
     StudentAccountTransaction,
     StudentAccountTransactionKind,
     AbsenceFollowUp,
+    StudentFreeze,
 )
 from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave
 from app.student_display import get_students_display_names
@@ -59,12 +60,26 @@ async def get_lessons_for_date(
                 LessonAttendance.group_id == group.id,
                 LessonAttendance.lesson_date == lesson_date,
             ).all():
-                attendance_map[att.student_id] = {"attended": att.attended, "late": getattr(att, "late", False)}
+                attendance_map[att.student_id] = {
+                    "attended": att.attended,
+                    "late": getattr(att, "late", False),
+                    "absence_reason": getattr(att, "absence_reason", None),
+                    "absence_comment": getattr(att, "absence_comment", None),
+                }
             program_name = None
             if group.programs:
                 program_name = group.programs[0].name if group.programs else None
             student_ids = [gs.student_id for gs in students_in_group if gs.student_id]
             display_names = get_students_display_names(db, student_ids)
+            freezes = db.query(StudentFreeze).filter(
+                StudentFreeze.student_id.in_(student_ids),
+                StudentFreeze.freeze_start <= lesson_date,
+                StudentFreeze.freeze_end >= lesson_date,
+            ).all()
+            freeze_badges = {}
+            for f in freezes:
+                badge = f"Заморожен с {f.freeze_start.strftime('%d.%m')} по {f.freeze_end.strftime('%d.%m')}"
+                freeze_badges[f.student_id] = badge
             students_data = []
             for gs in students_in_group:
                 student = gs.student
@@ -78,6 +93,9 @@ async def get_lessons_for_date(
                     "full_name": display_names.get(student.id, student.full_name),
                     "attended": attended,
                     "late": late,
+                    "absence_reason": info.get("absence_reason") if isinstance(info, dict) else None,
+                    "absence_comment": info.get("absence_comment") if isinstance(info, dict) else None,
+                    "freeze_badge": freeze_badges.get(student.id),
                 })
             result.append(TrainerLessonSlotResponse(
                 group_id=group.id,
@@ -114,9 +132,13 @@ async def save_attendance(
             LessonAttendance.student_id == item.student_id,
         ).first()
         late = getattr(item, "late", False) or False
+        reason = getattr(item, "absence_reason", None) or None
+        comment = getattr(item, "absence_comment", None) or None
         if att:
             att.attended = item.attended
             att.late = late
+            att.absence_reason = reason
+            att.absence_comment = comment
         else:
             att = LessonAttendance(
                 group_id=payload.group_id,
@@ -124,24 +146,75 @@ async def save_attendance(
                 student_id=item.student_id,
                 attended=item.attended,
                 late=late,
+                absence_reason=reason,
+                absence_comment=comment,
             )
             db.add(att)
     db.commit()
 
-    # Списание за занятие с счёта ученика (пропорционально абонементу) и создание записи пропуска при отсутствии
+    # ТЗ п.3.2: списываем только если "Был" (attended + reason was); иначе — пропуск, не списываем
     attendances_saved = db.query(LessonAttendance).filter(
         LessonAttendance.group_id == payload.group_id,
         LessonAttendance.lesson_date == payload.lesson_date,
     ).all()
     default_lessons = 8
     for att in attendances_saved:
-        # Уже списывали за это занятие?
+        is_present = att.attended and (not att.absence_reason or att.absence_reason == "was")
+        is_absence = not att.attended or (att.absence_reason and att.absence_reason != "was")
+
         existing_tx = db.query(StudentAccountTransaction).filter(
             StudentAccountTransaction.lesson_attendance_id == att.id,
         ).first()
         if existing_tx:
-            if not att.attended:
-                # Обеспечиваем запись в воронку пропусков
+            if is_absence:
+                in_freeze = db.query(StudentFreeze).filter(
+                    StudentFreeze.student_id == att.student_id,
+                    StudentFreeze.freeze_start <= att.lesson_date,
+                    StudentFreeze.freeze_end >= att.lesson_date,
+                ).first()
+                if not in_freeze:
+                    absence = db.query(AbsenceFollowUp).filter(
+                        AbsenceFollowUp.lesson_attendance_id == att.id,
+                    ).first()
+                    if not absence:
+                        db.add(AbsenceFollowUp(
+                            lesson_attendance_id=att.id,
+                            student_id=att.student_id,
+                            group_id=att.group_id,
+                            lesson_date=att.lesson_date,
+                            stage="missed",
+                            absence_reason=att.absence_reason,
+                            absence_comment=att.absence_comment,
+                        ))
+            continue
+
+        student = db.query(Student).filter(Student.id == att.student_id).first()
+        if not student:
+            continue
+        if is_present:
+            abonement = student.abonement
+            if not abonement:
+                abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
+            amount_per_lesson = 0.0
+            if abonement and abonement.price is not None and (abonement.lessons_count or default_lessons) > 0:
+                amount_per_lesson = float(abonement.price) / (abonement.lessons_count or default_lessons)
+            account = db.query(StudentAccount).filter(StudentAccount.student_id == att.student_id).order_by(StudentAccount.id).first()
+            if account and amount_per_lesson > 0 and account.balance >= amount_per_lesson:
+                account.balance -= amount_per_lesson
+                db.add(StudentAccountTransaction(
+                    account_id=account.id,
+                    amount=-amount_per_lesson,
+                    kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
+                    note=f"Занятие {att.lesson_date}",
+                    lesson_attendance_id=att.id,
+                ))
+        if is_absence:
+            in_freeze = db.query(StudentFreeze).filter(
+                StudentFreeze.student_id == att.student_id,
+                StudentFreeze.freeze_start <= att.lesson_date,
+                StudentFreeze.freeze_end >= att.lesson_date,
+            ).first()
+            if not in_freeze:
                 absence = db.query(AbsenceFollowUp).filter(
                     AbsenceFollowUp.lesson_attendance_id == att.id,
                 ).first()
@@ -152,41 +225,8 @@ async def save_attendance(
                         group_id=att.group_id,
                         lesson_date=att.lesson_date,
                         stage="missed",
+                        absence_reason=att.absence_reason,
+                        absence_comment=att.absence_comment,
                     ))
-            continue
-
-        student = db.query(Student).filter(Student.id == att.student_id).first()
-        if not student:
-            continue
-        abonement = student.abonement
-        if not abonement:
-            abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
-        amount_per_lesson = 0.0
-        if abonement and abonement.price is not None and (abonement.lessons_count or default_lessons) > 0:
-            amount_per_lesson = float(abonement.price) / (abonement.lessons_count or default_lessons)
-
-        account = db.query(StudentAccount).filter(StudentAccount.student_id == att.student_id).order_by(StudentAccount.id).first()
-        if account and amount_per_lesson > 0 and account.balance >= amount_per_lesson:
-            account.balance -= amount_per_lesson
-            db.add(StudentAccountTransaction(
-                account_id=account.id,
-                amount=-amount_per_lesson,
-                kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
-                note=f"Занятие {att.lesson_date}",
-                lesson_attendance_id=att.id,
-            ))
-
-        if not att.attended:
-            absence = db.query(AbsenceFollowUp).filter(
-                AbsenceFollowUp.lesson_attendance_id == att.id,
-            ).first()
-            if not absence:
-                db.add(AbsenceFollowUp(
-                    lesson_attendance_id=att.id,
-                    student_id=att.student_id,
-                    group_id=att.group_id,
-                    lesson_date=att.lesson_date,
-                    stage="missed",
-                ))
     db.commit()
     return {"ok": True}

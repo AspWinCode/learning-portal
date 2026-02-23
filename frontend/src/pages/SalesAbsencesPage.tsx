@@ -2,12 +2,19 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
+  List,
+  ListItem,
+  ListItemText,
   MenuItem,
   Select,
   Typography,
@@ -17,20 +24,34 @@ import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import { AbsenceFollowUp, AbsenceFollowUpStage } from '../types';
+import { AbsenceFollowUp, AbsenceFollowUpStage, MakeupSuggestionItem } from '../types';
 
 const STAGES: { value: AbsenceFollowUpStage; label: string }[] = [
-  { value: 'missed', label: 'Пропустил' },
-  { value: 'assigned', label: 'Назначили' },
+  { value: 'missed', label: 'Нужна отработка' },
+  { value: 'assigned', label: 'Отработка назначена' },
   { value: 'made_up', label: 'Отработал' },
-  { value: 'missed_makeup', label: 'Пропустил отработку' },
+  { value: 'missed_makeup', label: 'Пропустил отработку — переназначить' },
 ];
+
+const REASON_LABELS: Record<string, string> = {
+  was: 'Был',
+  not_was: 'Не был',
+  sick: 'Болел',
+  olympiad: 'Олимпиада',
+  event: 'Мероприятие',
+  other: 'Другое',
+};
 
 const SalesAbsencesPage: React.FC = () => {
   const [items, setItems] = useState<AbsenceFollowUp[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<string>('');
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestAbsence, setSuggestAbsence] = useState<AbsenceFollowUp | null>(null);
+  const [suggestions, setSuggestions] = useState<MakeupSuggestionItem[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   const loadAbsences = async () => {
     setLoading(true);
@@ -55,6 +76,40 @@ const SalesAbsencesPage: React.FC = () => {
       setItems((prev) => prev.map((a) => (a.id === absenceId ? updated : a)));
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось обновить этап'));
+    }
+  };
+
+  const openSuggest = async (a: AbsenceFollowUp) => {
+    setSuggestAbsence(a);
+    setSuggestOpen(true);
+    setSuggestLoading(true);
+    setSuggestions([]);
+    try {
+      const list = await salesApi.suggestMakeups(a.id, 30);
+      setSuggestions(list);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось подобрать отработки'));
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
+  const handleAssignMakeup = async (option: MakeupSuggestionItem) => {
+    if (!suggestAbsence) return;
+    setAssigning(true);
+    setError(null);
+    try {
+      const updated = await salesApi.assignMakeup(suggestAbsence.id, {
+        makeup_group_id: option.group_id,
+        makeup_lesson_date: option.lesson_date,
+      });
+      setItems((prev) => prev.map((a) => (a.id === suggestAbsence.id ? updated : a)));
+      setSuggestOpen(false);
+      setSuggestAbsence(null);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось назначить отработку'));
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -133,22 +188,50 @@ const SalesAbsencesPage: React.FC = () => {
                           <Typography variant="body2" fontWeight={500}>
                             {a.student_name || `Ученик #${a.student_id}`}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color="text.secondary" display="block">
                             {a.group_name || `Группа #${a.group_id}`} · {formatDate(a.lesson_date)}
+                            {a.program_name && ` · ${a.program_name}`}
                           </Typography>
-                          <FormControl size="small" fullWidth sx={{ mt: 1 }}>
-                            <Select
-                              value={a.stage}
-                              onChange={(e) => handleStageChange(a.id, e.target.value)}
-                              displayEmpty
-                            >
-                              {STAGES.map((s) => (
-                                <MenuItem key={s.value} value={s.value}>
-                                  {s.label}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
+                          {a.absence_reason && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Причина: {REASON_LABELS[a.absence_reason] || a.absence_reason}
+                              {a.absence_comment && ` — ${a.absence_comment}`}
+                            </Typography>
+                          )}
+                          {a.stage === 'assigned' && a.makeup_group_name && a.makeup_lesson_date && (
+                            <Typography variant="caption" color="primary" display="block">
+                              Отработка: {a.makeup_group_name} · {formatDate(a.makeup_lesson_date)}
+                            </Typography>
+                          )}
+                          <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                            {(a.stage === 'missed' || a.stage === 'missed_makeup') && (
+                              <Button size="small" variant="outlined" onClick={() => openSuggest(a)}>
+                                Подобрать отработку
+                              </Button>
+                            )}
+                            {a.stage === 'assigned' && (
+                              <Button
+                                size="small"
+                                color="secondary"
+                                onClick={() => handleStageChange(a.id, 'missed_makeup')}
+                              >
+                                Не пришёл
+                              </Button>
+                            )}
+                            <FormControl size="small" sx={{ minWidth: 180 }}>
+                              <Select
+                                value={a.stage}
+                                onChange={(e) => handleStageChange(a.id, e.target.value)}
+                                displayEmpty
+                              >
+                                {STAGES.map((s) => (
+                                  <MenuItem key={s.value} value={s.value}>
+                                    {s.label}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Stack>
                         </CardContent>
                       </Card>
                     ))}
@@ -158,6 +241,45 @@ const SalesAbsencesPage: React.FC = () => {
             ))}
           </Box>
         )}
+
+        <Dialog open={suggestOpen} onClose={() => { setSuggestOpen(false); setSuggestAbsence(null); }} maxWidth="sm" fullWidth>
+          <DialogTitle>Подобрать отработку</DialogTitle>
+          <DialogContent>
+            {suggestAbsence && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                {suggestAbsence.student_name} · {suggestAbsence.program_name || '—'}
+              </Typography>
+            )}
+            {suggestLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : suggestions.length === 0 ? (
+              <Typography color="text.secondary">Нет подходящих занятий. Заполните матрицу совместимости программ.</Typography>
+            ) : (
+              <List dense>
+                {suggestions.slice(0, 10).map((opt, idx) => (
+                  <ListItem
+                    key={`${opt.group_id}-${opt.lesson_date}-${idx}`}
+                    secondaryAction={
+                      <Button size="small" onClick={() => handleAssignMakeup(opt)} disabled={assigning}>
+                        Назначить
+                      </Button>
+                    }
+                  >
+                    <ListItemText
+                      primary={`${opt.group_name}${opt.program_name ? ` · ${opt.program_name}` : ''}`}
+                      secondary={`${formatDate(opt.lesson_date)}${opt.start_time ? `, ${opt.start_time}` : ''}`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => { setSuggestOpen(false); setSuggestAbsence(null); }}>Закрыть</Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Layout>
   );

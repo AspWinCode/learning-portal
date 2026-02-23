@@ -191,6 +191,7 @@ class StudentUpdate(BaseModel):
     parent_id: Optional[int] = None
     status: Optional[StudentStatus] = None
     abonement_id: Optional[int] = None
+    training_start_date: Optional[date] = None
 
 
 class StudentResponse(StudentBase):
@@ -198,6 +199,7 @@ class StudentResponse(StudentBase):
     parent_id: Optional[int] = None
     abonement_id: Optional[int] = None
     status: StudentStatus
+    training_start_date: Optional[date] = None
     created_at: datetime
     parent: Optional[UserResponse] = None
     abonement: Optional[AbonementResponse] = None

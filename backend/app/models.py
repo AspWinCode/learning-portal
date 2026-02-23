@@ -156,6 +156,7 @@ class Student(Base):
     parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True)
     status = Column(_StudentStatusType(), default=StudentStatus.ACTIVE)
+    training_start_date = Column(Date, nullable=True)  # с этой даты ученик в уроках; от неё считаются оплата и напоминания
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

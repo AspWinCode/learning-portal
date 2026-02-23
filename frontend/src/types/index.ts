@@ -15,6 +15,7 @@ export interface Student {
   parent_id?: number | null;
   abonement_id?: number | null;
   status: 'active' | 'archived';
+  training_start_date?: string | null;
   created_at: string;
   parent?: User;
   abonement?: Abonement;

@@ -44,7 +44,15 @@ async def characteristics_compliance_report(
     window_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
     window_end = datetime(year, month, 5, 23, 59, 59, tzinfo=timezone.utc)
 
-    # Все пары (trainer_id, student_id), за которых тренер отвечает в этом месяце (по активным группам)
+    # Все тренеры, у которых есть хотя бы одна активная группа (чтобы в отчёте были все такие тренеры)
+    all_trainer_ids_with_active_group = [
+        row[0] for row in db.query(Group.trainer_id)
+        .filter(Group.status == GroupStatus.ACTIVE)
+        .distinct()
+        .all()
+    ]
+
+    # Пары (trainer_id, student_id): тренер — ученик в его активной группе (активный ученик)
     pairs: List[Tuple[int, int]] = [
         (tid, sid) for (tid, sid) in db.query(Group.trainer_id, GroupStudent.student_id)
         .join(GroupStudent, GroupStudent.group_id == Group.id)
@@ -57,7 +65,10 @@ async def characteristics_compliance_report(
         .all()
     ]
 
-    if not pairs:
+    trainer_ids = sorted(set(all_trainer_ids_with_active_group) | {t for (t, _) in pairs})
+    student_ids = sorted({s for (_, s) in pairs})
+
+    if not trainer_ids:
         return {
             "month": month,
             "year": year,
@@ -65,9 +76,6 @@ async def characteristics_compliance_report(
             "window_end": window_end.isoformat(),
             "rows": [],
         }
-
-    trainer_ids = sorted({t for (t, _) in pairs})
-    student_ids = sorted({s for (_, s) in pairs})
 
     trainers = {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()}
     students = {s.id: s for s in db.query(Student).filter(Student.id.in_(student_ids)).all()}
@@ -105,7 +113,10 @@ async def characteristics_compliance_report(
                 best[k] = c
 
     rows: List[Dict[str, Any]] = []
+    trainers_with_rows = set()
+
     for trainer_id, student_id in sorted(pairs, key=lambda x: (x[0], x[1])):
+        trainers_with_rows.add(trainer_id)
         trainer = trainers.get(trainer_id)
         student = students.get(student_id)
         c = best.get((trainer_id, student_id))
@@ -126,6 +137,22 @@ async def characteristics_compliance_report(
             "window_start": window_start.isoformat(),
             "window_end": window_end.isoformat(),
         })
+
+    # Тренеры с активными группами, но без учеников в группах — одна строка «Нет учеников в группах»
+    for trainer_id in trainer_ids:
+        if trainer_id not in trainers_with_rows:
+            trainer = trainers.get(trainer_id)
+            rows.append({
+                "trainer": {"id": trainer_id, "full_name": trainer.full_name if trainer else f"#{trainer_id}"},
+                "student": {"id": None, "full_name": "— Нет учеников в группах"},
+                "characteristic": None,
+                "ok": False,
+                "window_start": window_start.isoformat(),
+                "window_end": window_end.isoformat(),
+            })
+
+    # Сортируем по тренеру, затем по ученику (строки «нет учеников» в конце по тренеру)
+    rows.sort(key=lambda r: (r["trainer"].get("full_name") or "", (r["student"].get("full_name") or "").replace("—", "я")))
 
     return {
         "month": month,

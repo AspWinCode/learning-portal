@@ -173,6 +173,9 @@ async def get_lessons_for_date(
                 student = gs.student
                 if not student:
                     continue
+                training_start = getattr(student, "training_start_date", None)
+                if training_start is not None and lesson_date < training_start:
+                    continue
                 info = attendance_map.get(student.id)
                 attended = info["attended"] if isinstance(info, dict) else info
                 late = info.get("late", False) if isinstance(info, dict) else False
@@ -189,6 +192,9 @@ async def get_lessons_for_date(
             if extra_ids:
                 extra_students = db.query(Student).filter(Student.id.in_(extra_ids)).all()
                 for student in extra_students:
+                    training_start = getattr(student, "training_start_date", None)
+                    if training_start is not None and lesson_date < training_start:
+                        continue
                     info = attendance_map.get(student.id)
                     attended = info["attended"] if isinstance(info, dict) else info
                     late = info.get("late", False) if isinstance(info, dict) else False

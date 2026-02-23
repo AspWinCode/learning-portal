@@ -60,6 +60,7 @@ const StudentsPage: React.FC = () => {
     group_id: '',
     program_id: '',
     abonement_id: '',
+    training_start_date: '',
   });
   const [parentCreateMode, setParentCreateMode] = useState<'none' | 'existing' | 'new'>('new');
   const [parentSearchQuery, setParentSearchQuery] = useState('');
@@ -635,7 +636,7 @@ const StudentsPage: React.FC = () => {
   });
 
   const resetCreateForm = () => {
-    setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
+    setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '', training_start_date: '' });
     setParentCreateMode('new');
     setParentSearchQuery('');
     setParentSearchResults([]);
@@ -655,6 +656,7 @@ const StudentsPage: React.FC = () => {
       group_id: studentGroup?.id?.toString() || '',
       program_id: '',
       abonement_id: student.abonement_id?.toString() || '',
+      training_start_date: student.training_start_date ? String(student.training_start_date).slice(0, 10) : '',
     });
     setParentCreateMode(student.parent_id ? 'existing' : 'none');
     setParentSearchQuery('');
@@ -715,6 +717,7 @@ const StudentsPage: React.FC = () => {
           updateData.abonement_id = null;
         }
       }
+      updateData.training_start_date = newStudent.training_start_date?.trim() ? newStudent.training_start_date.trim() : null;
 
       await studentsApi.update(editingStudent.id, updateData);
 
@@ -785,7 +788,7 @@ const StudentsPage: React.FC = () => {
       setEditingCardId(null);
       setEditParentCabinetLink(null);
       setEditParentCabinetMessage(null);
-      setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '' });
+      setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '', training_start_date: '' });
       loadStudents();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка обновления');
@@ -1632,6 +1635,17 @@ const StudentsPage: React.FC = () => {
             onChange={(e) => setNewStudent({ ...newStudent, full_name: e.target.value })}
             sx={{ mt: 2 }}
             required
+          />
+          <TextField
+            fullWidth
+            size="small"
+            label="Дата начала обучения"
+            type="date"
+            value={newStudent.training_start_date}
+            onChange={(e) => setNewStudent({ ...newStudent, training_start_date: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+            helperText="С этой даты ученик участвует в уроках; от неё считаются оплата и напоминания"
+            sx={{ mt: 2 }}
           />
           <Typography variant="subtitle2" sx={{ mt: 2, mb: 0.5 }}>Родитель</Typography>
           <Stack direction="row" spacing={1} sx={{ mb: 1 }}>

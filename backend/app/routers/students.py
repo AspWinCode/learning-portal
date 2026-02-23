@@ -474,6 +474,10 @@ async def update_student(
     
     for field, value in update_data.items():
         setattr(db_student, field, value)
+
+    if "training_start_date" in update_data and update_data["training_start_date"] is not None:
+        from app.services.student_card_period import set_card_payment_dates_from_training_start
+        set_card_payment_dates_from_training_start(db, student_id, update_data["training_start_date"])
     
     db.commit()
     db.refresh(db_student)

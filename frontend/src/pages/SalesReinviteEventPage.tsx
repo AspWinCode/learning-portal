@@ -18,6 +18,7 @@ import Layout from '../components/Layout';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { EventItem, EventRegistration, Lead } from '../types';
+import { S } from './SalesReinviteEventPage.strings';
 
 function hasNoShowTag(note: string | null | undefined): boolean {
   const lower = (note || '').toLowerCase();
@@ -44,7 +45,7 @@ const SalesReinviteEventPage: React.FC = () => {
       setEvents(data);
       return data;
     } catch (err: any) {
-      setError(extractApiError(err, '\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u043C\u0435\u0440\u043E\u043F\u0440\u0438\u044F\u0442\u0438\u044F'));
+      setError(extractApiError(err, S.loadError));
       return [];
     }
   }, []);
@@ -123,9 +124,9 @@ const SalesReinviteEventPage: React.FC = () => {
   return (
     <Layout>
       <Stack spacing={2}>
-        <Typography variant="h4">{'\u041F\u043E\u0437\u0432\u0430\u0442\u044C \u0441\u043D\u043E\u0432\u0430 \u043D\u0430 \u043C\u0435\u0440\u043E\u043F\u0440\u0438\u044F\u0442\u0438\u0435'}</Typography>
+        <Typography variant="h4">{S.title}</Typography>
         <Typography variant="body2" color="text.secondary">
-          {'\u0417\u0434\u0435\u0441\u044C \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0430\u044E\u0442\u0441\u044F \u0442\u0435, \u043A\u0442\u043E \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u043D\u0430 \u043C\u0435\u0440\u043E\u043F\u0440\u0438\u044F\u0442\u0438\u0435 (\u043D\u0435\u044F\u0432\u043A\u0430). \u041C\u043E\u0436\u043D\u043E \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0443 \u043B\u0438\u0434\u0430 \u0438\u043B\u0438 \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u0432 \u0440\u0430\u0437\u0434\u0435\u043B \u00AB\u041C\u0435\u0440\u043E\u043F\u0440\u0438\u044F\u0442\u0438\u044F\u00BB, \u0447\u0442\u043E\u0431\u044B \u0437\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u043D\u0430 \u0434\u0440\u0443\u0433\u043E\u0435 \u0441\u043E\u0431\u044B\u0442\u0438\u0435.'}
+          {S.description}{S.buildId}
         </Typography>
         {error && (
           <Alert severity="error">{error}</Alert>
@@ -139,11 +140,11 @@ const SalesReinviteEventPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>{'\u041C\u0435\u0440\u043E\u043F\u0440\u0438\u044F\u0442\u0438\u0435'}</TableCell>
-                  <TableCell>{'\u0414\u0430\u0442\u0430 \u043C\u0435\u0440\u043E\u043F\u0440\u0438\u044F\u0442\u0438\u044F'}</TableCell>
-                  <TableCell>{'\u041A\u043B\u0438\u0435\u043D\u0442'}</TableCell>
-                  <TableCell>{'\u0422\u0435\u043B\u0435\u0444\u043E\u043D'}</TableCell>
-                  <TableCell align="right">{'\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F'}</TableCell>
+                  <TableCell>{S.colEvent}</TableCell>
+                  <TableCell>{S.colDate}</TableCell>
+                  <TableCell>{S.colClient}</TableCell>
+                  <TableCell>{S.colPhone}</TableCell>
+                  <TableCell align="right">{S.colActions}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -151,7 +152,7 @@ const SalesReinviteEventPage: React.FC = () => {
                   <TableRow>
                     <TableCell colSpan={5}>
                       <Typography color="text.secondary">
-                        {'\u041D\u0435\u0442 \u0437\u0430\u043F\u0438\u0441\u0435\u0439 \u0441 \u043D\u0435\u044F\u0432\u043A\u043E\u0439. \u041E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u043D\u0435\u044F\u0432\u043A\u0443 \u0432 \u0440\u0430\u0437\u0434\u0435\u043B\u0435 \u00AB\u041C\u0435\u0440\u043E\u043F\u0440\u0438\u044F\u0442\u0438\u044F\u00BB, \u0447\u0442\u043E\u0431\u044B \u043B\u0438\u0434\u044B \u043F\u043E\u044F\u0432\u0438\u043B\u0438\u0441\u044C \u0437\u0434\u0435\u0441\u044C.'}
+                        {S.emptyText}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -165,8 +166,8 @@ const SalesReinviteEventPage: React.FC = () => {
                           return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : event.starts_at;
                         })()}
                       </TableCell>
-                      <TableCell>{lead?.contact_name ?? '\u2014'}</TableCell>
-                      <TableCell>{lead?.phone ?? '\u2014'}</TableCell>
+                      <TableCell>{lead?.contact_name ?? S.dash}</TableCell>
+                      <TableCell>{lead?.phone ?? S.dash}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
                           <Button
@@ -174,14 +175,14 @@ const SalesReinviteEventPage: React.FC = () => {
                             variant="outlined"
                             onClick={() => navigate(`/sales/leads?open=${registration.lead_id}`)}
                           >
-                            {'\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u043B\u0438\u0434\u0430'}
+                            {S.btnLeadCard}
                           </Button>
                           <Button
                             size="small"
                             variant="contained"
                             onClick={() => navigate('/sales/events')}
                           >
-                            {'\u041C\u0435\u0440\u043E\u043F\u0440\u0438\u044F\u0442\u0438\u044F'}
+                            {S.btnEvents}
                           </Button>
                         </Stack>
                       </TableCell>

@@ -194,7 +194,7 @@ const SalesAgreedPage: React.FC = () => {
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab label="Нужно заполнить анкету" id="agreed-tab-0" aria-controls="agreed-panel-0" />
-        <Tab label="Счет" id="agreed-tab-1" aria-controls="agreed-panel-1" />
+        <Tab label="Счета" id="agreed-tab-1" aria-controls="agreed-panel-1" />
       </Tabs>
 
       <Box role="tabpanel" id="agreed-panel-0" aria-labelledby="agreed-tab-0" hidden={tab !== 0}>

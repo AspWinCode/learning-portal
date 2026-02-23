@@ -3305,7 +3305,7 @@ async def update_event(
 async def list_event_registrations(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:

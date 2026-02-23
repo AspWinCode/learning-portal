@@ -569,7 +569,7 @@ const SalesLeadsPage: React.FC = () => {
       setCreateOpen(false);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[hVh$h�dd hWhUh$'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -652,7 +652,7 @@ const SalesLeadsPage: React.FC = () => {
         );
       }
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[h�h\h[h�hUdd hQh�h\h�hW h[h�dhah\hUd'));
+      setError(extractApiError(err, 'Ошибка операции'));
     } finally {
       setActionLoadingId(null);
     }
@@ -661,7 +661,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleConfirmLost = async () => {
     if (!pendingLostLead) return;
     if (!lostReason.trim()) {
-      setError('h3hQh�hbhUdha hdhUdhUh\d hVh�hQdddhUd hWhUh$h�');
+      setError('Ошибка операции');
       return;
     }
     setActionLoadingId(pendingLostLead.id);
@@ -677,7 +677,7 @@ const SalesLeadsPage: React.FC = () => {
         setSelectedLead({ ...selectedLead, status: 'lost', lost_reason: lostReason.trim() });
       }
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hQdddd hWhUh$'));
+      setError(extractApiError(err, 'Ошибка операции'));
     } finally {
       setActionLoadingId(null);
       setPendingLostLead(null);
@@ -696,7 +696,7 @@ const SalesLeadsPage: React.FC = () => {
       setInvoices(invoicesData);
       setCommunications(commData);
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hddhVhUdd hQh�ddh[dhQd hWhUh$h�'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -725,7 +725,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleCreateTask = async () => {
     if (!selectedLead) return;
     if (!taskTemplateId) {
-      setError('h"dh�hadhUdha hVh�h$h�dd hUhV dhhUdhQh�');
+      setError('Ошибка операции');
       return;
     }
     try {
@@ -740,7 +740,7 @@ const SalesLeadsPage: React.FC = () => {
       setTaskDueAt('');
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[hVh$h�dd hVh�h$h�dd'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -750,7 +750,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.closeTask(selectedLead.id, task.id);
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hQdddd hVh�h$h�dd'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -759,7 +759,7 @@ const SalesLeadsPage: React.FC = () => {
     setError(null);
     try {
       if (!lead.abonement_id) {
-        setError('h$hWd dh[hVh$h�h\hUd hUh\h�h[hcdh� d hWhUh$h� h$h[hWhbhah\ h�ddd h�dh�dh�h\ h�h�h[h\hah]hah\d');
+        setError('Ошибка операции');
         return;
       }
       const invoice = await salesApi.createInvoice(lead.id, {
@@ -769,7 +769,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.sendInvoiceEmail(invoice.id);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[hVh$h�dd/h[dhdh�h�hUdd hUh\h�h[hcd'));
+      setError(extractApiError(err, 'Ошибка операции'));
     } finally {
       setActionLoadingId(null);
     }
@@ -796,7 +796,7 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�dhUhQdhUdh[h�h�dd hQh[h]h]dh\hUhQh�dhUd'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -810,9 +810,9 @@ const SalesLeadsPage: React.FC = () => {
       if (selectedLead?.id === lead.id) {
         await loadLeadDetails(lead);
       }
-      setToast({ open: true, message: 'h'h�h[h\h[hQ hVh�dhUhQdhUdh[h�h�h\', severity: 'success' });
+      setToast({ open: true, message: 'Звонок зафиксирован', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�dhUhQdhUdh[h�h�dd hVh�h[h\h[hQ'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -826,16 +826,16 @@ const SalesLeadsPage: React.FC = () => {
       if (selectedLead?.id === lead.id) {
         await loadLeadDetails(lead);
       }
-      setToast({ open: true, message: 'h1h[h[h�dhah\hUha hVh�dhUhQdhUdh[h�h�h\h[', severity: 'info' });
+      setToast({ open: true, message: 'Сообщение зафиксировано', severity: 'info' });
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�dhUhQdhUdh[h�h�dd dh[h[h�dhah\hUha'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
   const handleRowQuickFollowUp = async (lead: Lead) => {
     const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('h1h\h�dh�hWh� h$h[h�h�h�ddha dh�h�hWh[h\ hVh�h$h�dhU h� dhdh�h�h[dh\hUhQh�d');
+      setError('Ошибка операции');
       return;
     }
     const due = new Date();
@@ -858,7 +858,7 @@ const SalesLeadsPage: React.FC = () => {
         severity: 'warning',
       });
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h\h�hVh\h�dhUdd follow-up'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -901,12 +901,12 @@ const SalesLeadsPage: React.FC = () => {
 
   const handleBatchAssignFollowUp = async () => {
     if (!batchFollowUpAt) {
-      setError('h3hQh�hbhUdha h$h�dd follow-up');
+      setError('Ошибка операции');
       return;
     }
     const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('h1h\h�dh�hWh� h$h[h�h�h�ddha dh�h�hWh[h\ hVh�h$h�dhU h� dhdh�h�h[dh\hUhQh�d');
+      setError('Ошибка операции');
       return;
     }
     const dueIso = new Date(batchFollowUpAt).toISOString();
@@ -955,11 +955,11 @@ const SalesLeadsPage: React.FC = () => {
 
   const handleBatchSendTemplate = async () => {
     if (!batchSendMessage.trim()) {
-      setError('h"h�hah$hUdha dh[h[h�dhah\hUha hUhWhU h�dh�hadhUdha dh�h�hWh[h\');
+      setError('Ошибка операции');
       return;
     }
     if (!batchSendFollowUpAt) {
-      setError('h3hQh�hbhUdha follow-up h$h�dd');
+      setError('Ошибка операции');
       return;
     }
     const followUpIso = new Date(batchSendFollowUpAt).toISOString();
@@ -1002,7 +1002,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleSaveContactResult = async () => {
     if (!selectedLead) return;
     if ((contactOutcome === 'no_answer' || contactOutcome === 'callback') && !contactFollowUpAt) {
-      setError('h$hWd "h-ha h$h[hVh�h[h\" hU "h/hadhahVh�h[h\hUdd" dhQh�hbhUdha follow-up h$h�dd');
+      setError('Ошибка операции');
       return;
     }
     try {
@@ -1016,7 +1016,7 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd dhahVdhWddh�d hQh[h\dh�hQdh�'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1042,7 +1042,7 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
       if (outcome === 'connected') {
-        setToast({ open: true, message: 'h$h[hVh�h[h\ dh[ddh�h\hah\', severity: 'success' });
+        setToast({ open: true, message: 'Звонок зафиксирован', severity: 'success' });
       } else if (outcome === 'no_answer') {
         setToast({
           open: true,
@@ -1057,7 +1057,7 @@ const SalesLeadsPage: React.FC = () => {
         });
       }
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd h�dddddhc dhahVdhWddh�d'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1125,7 +1125,7 @@ const SalesLeadsPage: React.FC = () => {
         setSelectedLead((prev) => (prev ? { ...prev, comment: updated.comment } : prev));
         setLeads((prev) => prev.map((l) => (l.id === updated.id ? { ...l, comment: updated.comment } : l)));
       } catch (err: any) {
-        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h�h�dh[dh[ddh�h\hUdd hVh�h]hadhQd'));
+        setError(extractApiError(err, 'Ошибка операции'));
       } finally {
         setLeadCommentSaving(false);
       }
@@ -1157,7 +1157,7 @@ const SalesLeadsPage: React.FC = () => {
           )
         );
       } catch (err: any) {
-        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h�h�dh[dh[ddh�h\hUdd dh�hhQd hWhUh$h�'));
+        setError(extractApiError(err, 'Ошибка операции'));
       } finally {
         setLeadHeaderSaving(false);
       }
@@ -1181,9 +1181,9 @@ const SalesLeadsPage: React.FC = () => {
       });
       setSelectedLead(updated);
       setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-      setToast({ open: true, message: 'h(h\dh[dh]h�dhUd hWhUh$h� h[h�h\h[h�hWhah\h�', severity: 'success' });
+      setToast({ open: true, message: 'Звонок зафиксирован', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd hUh\dh[dh]h�dhUd hWhUh$h�'));
+      setError(extractApiError(err, 'Ошибка операции'));
     } finally {
       setLeadInfoSaving(false);
     }
@@ -1201,15 +1201,15 @@ const SalesLeadsPage: React.FC = () => {
   const handleSendInfo = async () => {
     if (!selectedLead) return;
     if (!sendInfoForm.message.trim()) {
-      setError('h"h�hah$hUdha dhahQdd h[dhdh�h�hQhU');
+      setError('Ошибка операции');
       return;
     }
     if (!sendInfoForm.follow_up_at) {
-      setError('h3hQh�hbhUdha h[h�dhVh�dhahWdh\dhc follow-up');
+      setError('Ошибка операции');
       return;
     }
     if (sendInfoForm.pause_reason && !['hbh$d!h] h[dh�had', 'hh[h$dh]h�dd', 'h\had h�dhah]hah\hU'].includes(sendInfoForm.pause_reason)) {
-      setError('h-hah$h[hdddhUh]h�d hdhUdhUh\h� hh�dhVd');
+      setError('Ошибка операции');
       return;
     }
     try {
@@ -1224,7 +1224,7 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[dhdh�h�hUdd hUh\dh['));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1232,7 +1232,7 @@ const SalesLeadsPage: React.FC = () => {
     if (!selectedLead) return;
     const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('h1h\h�dh�hWh� h$h[h�h�h�ddha dh�h�hWh[h\ hVh�h$h�dhU h� dhdh�h�h[dh\hUhQh�d');
+      setError('Ошибка операции');
       return;
     }
     const due = new Date();
@@ -1247,7 +1247,7 @@ const SalesLeadsPage: React.FC = () => {
       });
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h\h�hVh\h�dhUdd h$h[hbhUh]'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1255,7 +1255,7 @@ const SalesLeadsPage: React.FC = () => {
     if (!selectedLead) return;
     const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('h1h\h�dh�hWh� h$h[h�h�h�ddha dh�h�hWh[h\ hVh�h$h�dhU h� dhdh�h�h[dh\hUhQh�d');
+      setError('Ошибка операции');
       return;
     }
     const due = new Date();
@@ -1281,11 +1281,11 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       setToast({
         open: true,
-        message: `${note} h$h[h�h�h�hWhah\`,
+        message: `${note} (заметка сохранена)`,
         severity: 'success',
       });
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h$h[h�h�h�hUdd dh�h h$h[hbhUh]h�'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1311,7 +1311,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleRegisterToEvent = async () => {
     if (!selectedLead) return;
     if (!registerEventId) {
-      setError('h"dh�hadhUdha h]hadh[hdhUddhUha');
+      setError('Ошибка операции');
       return;
     }
     try {
@@ -1320,9 +1320,9 @@ const SalesLeadsPage: React.FC = () => {
         note: registerEventNote.trim() || undefined,
       });
       setRegisterEventOpen(false);
-      setToast({ open: true, message: 'h+hUh$ hVh�hhUdh�h\ h\h� h]hadh[hdhUddhUha', severity: 'success' });
+      setToast({ open: true, message: 'Звонок зафиксирован', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hhUdh�dd h\h� h]hadh[hdhUddhUha'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1336,7 +1336,7 @@ const SalesLeadsPage: React.FC = () => {
       })
       .sort((a, b) => parseISO(a.starts_at).getTime() - parseISO(b.starts_at).getTime())[0];
     if (!nearest) {
-      setError('h-had h�hWhUhbh�hcdhUd h�hQdhUh�h\dd h]hadh[hdhUddhUhc');
+      setError('Ошибка операции');
       return;
     }
     try {
@@ -1347,7 +1347,7 @@ const SalesLeadsPage: React.FC = () => {
         severity: 'success',
       });
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hhUdh�dd h\h� h�hWhUhbh�hcdhaha h]hadh[hdhUddhUha'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1370,7 +1370,7 @@ const SalesLeadsPage: React.FC = () => {
         setError(`h(h]hh[dd hVh�h�haddhah\: dh[hVh$h�h\h[ ${result.created}, hdh[hddhah\h[ ${result.skipped}`);
       }
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hUh]hh[ddhUdh[h�h�dd Excel'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1386,7 +1386,7 @@ const SalesLeadsPage: React.FC = () => {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dhQh�dh�dd dh�h�hWh[h\ Excel'));
+      setError(extractApiError(err, 'Ошибка операции'));
     }
   };
 
@@ -1490,7 +1490,7 @@ const SalesLeadsPage: React.FC = () => {
         await loadLeads();
         setToast({ open: true, message: `h+hUh$ "${lead.contact_name}"  h-hah$h[hVh�h[h\ 1`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[h�h\h[h�hUdd'));
+        setError(extractApiError(err, 'Ошибка операции'));
       }
       return;
     }
@@ -1501,7 +1501,7 @@ const SalesLeadsPage: React.FC = () => {
         setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hhadhah\hadd!h\ h� h h\hQhadd ddhah\hUhQh�`, severity: 'success' });
         navigate('/sales/agreed');
       } catch (err: any) {
-        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[h�h\h[h�hUdd'));
+        setError(extractApiError(err, 'Ошибка операции'));
       }
       return;
     }
@@ -1542,12 +1542,12 @@ const SalesLeadsPage: React.FC = () => {
     setError('');
     if (dropTargetStatus === 'thinking') {
       if (!dropCallbackAt) {
-        setError('h3hQh�hbhUdha h$h�dd hhadhahVh�h[h\h�');
+        setError('Ошибка операции');
         return;
       }
       const d = new Date(dropCallbackAt);
       if (!isValid(d)) {
-        setError('h-hah�hadh\h�d 40B0');
+        setError('Ошибка операции');
         return;
       }
       try {
@@ -1560,13 +1560,13 @@ const SalesLeadsPage: React.FC = () => {
         setDropCallbackAt('');
         setToast({ open: true, message: `0B0 hhadhahVh�h[h\h� dh[ddh�h\hah\h� h$hWd "${lead.contact_name}"`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd'));
+        setError(extractApiError(err, 'Ошибка операции'));
       }
       return;
     }
     if (dropTargetStatus === 'refused') {
       if (!dropRefusedReason.trim()) {
-        setError('h"dh�hadhUdha hdhUdhUh\d h[dhQh�hVh�');
+        setError('Ошибка операции');
         return;
       }
       try {
@@ -1578,18 +1578,18 @@ const SalesLeadsPage: React.FC = () => {
         setDropRefusedReason('');
         setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" h[dhdh�h�hWhah\ h� h�ddhUh�`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[h�h\h[h�hUdd'));
+        setError(extractApiError(err, 'Ошибка операции'));
       }
       return;
     }
     if (dropTargetStatus === 'trial_scheduled') {
       if (!dropTrialAt) {
-        setError('h3hQh�hbhUdha h$h�dd 8 2@5<O hdh[h�h\h[hh[');
+        setError('Ошибка операции');
         return;
       }
       const d = new Date(dropTrialAt);
       if (!isValid(d)) {
-        setError('h-hah�hadh\h�d 40B0');
+        setError('Ошибка операции');
         return;
       }
       try {
@@ -1605,13 +1605,13 @@ const SalesLeadsPage: React.FC = () => {
         setDropTrialAt('');
         setToast({ open: true, message: `h/dh[h�h\h[ha hVh�hhWh�h\hUdh[h�h�h\h[ h$hWd "${lead.contact_name}"`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd'));
+        setError(extractApiError(err, 'Ошибка операции'));
       }
       return;
     }
     if (dropTargetStatus === 'event_registered') {
       if (!dropEventId) {
-        setError('h"dh�hadhUdha h]hadh[hdhUddhUha');
+        setError('Ошибка операции');
         return;
       }
       try {
@@ -1625,19 +1625,19 @@ const SalesLeadsPage: React.FC = () => {
         setDropEventNote('');
         setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hVh�hhUdh�h\ h\h� h]hadh[hdhUddhUha`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hhUdh�dd'));
+        setError(extractApiError(err, 'Ошибка операции'));
       }
       return;
     }
     let nextContactAtIso: string | undefined;
     if (requiresFollowUpOnDrop(dropTargetStatus) && !lead.next_contact_at) {
       if (!dropFollowUpAt) {
-        setError('h$hWd ddh[hc ddh�h$hUhU dhQh�hbhUdha follow-up');
+        setError('Ошибка операции');
         return;
       }
       const d = new Date(dropFollowUpAt);
       if (!isValid(d)) {
-        setError('h-hah�hadh\h�d 40B0 follow-up');
+        setError('Ошибка операции');
         return;
       }
       nextContactAtIso = d.toISOString();
@@ -1652,7 +1652,7 @@ const SalesLeadsPage: React.FC = () => {
           await salesApi.registerLeadToEvent(Number(dropEventId), { lead_id: lead.id, note: dropEventNote || undefined });
           setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hVh�hhUdh�h\ h\h� hdh[h�h\h[ha hVh�h\ddhUha`, severity: 'success' });
         } catch (regErr: any) {
-          setError(extractApiError(regErr, 'h-ha dh$h�hWh[dd hVh�hhUdh�dd h\h� h]hadh[hdhUddhUha'));
+          setError(extractApiError(regErr, 'Ошибка операции'));
         }
       }
       await loadLeads();

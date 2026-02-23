@@ -23,7 +23,7 @@ from app.models import (
     AbsenceFollowUp,
     StudentFreeze,
 )
-from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave
+from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave, MoveLessonPayload
 from app.student_display import get_students_display_names
 
 router = APIRouter()
@@ -40,13 +40,16 @@ async def get_lessons_for_date(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """╨Ч╨░╨╜╤П╤В╨╕╤П ╤В╤А╨╡╨╜╨╡╤А╨░ ╨╜╨░ ╤Г╨║╨░╨╖╨░╨╜╨╜╤Г╤О ╨┤╨░╤В╤Г (╨┐╨╛ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤О ╨│╤А╤Г╨┐╨┐). ╨в╨╛╨╗╤М╨║╨╛ ╨┤╨╗╤П ╤В╤А╨╡╨╜╨╡╤А╨░."""
-    if current_user.role != UserRole.TRAINER:
-        raise HTTPException(status_code=403, detail="Only for trainers")
     weekday = lesson_date.weekday()  # 0=Monday, 6=Sunday
-    groups = db.query(Group).filter(
-        Group.trainer_id == current_user.id,
-        Group.status == GroupStatus.ACTIVE,
-    ).all()
+    if current_user.role == UserRole.TRAINER:
+        groups = db.query(Group).filter(
+            Group.trainer_id == current_user.id,
+            Group.status == GroupStatus.ACTIVE,
+        ).all()
+    elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        groups = db.query(Group).filter(Group.status == GroupStatus.ACTIVE).all()
+    else:
+        raise HTTPException(status_code=403, detail="Only for trainers or admin/owner/sales")
     result: List[TrainerLessonSlotResponse] = []
     for group in groups:
         schedules = db.query(GroupSchedule).filter(
@@ -230,3 +233,43 @@ async def save_attendance(
                     ))
     db.commit()
     return {"ok": True}
+
+
+@router.post("/move")
+async def move_lesson(
+    payload: MoveLessonPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Перенос занятия группы с from_date на to_date. Только admin/owner/sales."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Only admin, owner or sales can move lessons")
+    if payload.from_date == payload.to_date:
+        raise HTTPException(status_code=400, detail="from_date and to_date must differ")
+    group = db.query(Group).filter(Group.id == payload.group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    attendances = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.from_date,
+    ).all()
+    if not attendances:
+        raise HTTPException(status_code=404, detail="No lesson on from_date for this group")
+    existing = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.to_date,
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Group already has a lesson on to_date; cannot move",
+        )
+    att_ids = [a.id for a in attendances]
+    for att in attendances:
+        att.lesson_date = payload.to_date
+    for abs_follow in db.query(AbsenceFollowUp).filter(
+        AbsenceFollowUp.lesson_attendance_id.in_(att_ids),
+    ).all():
+        abs_follow.lesson_date = payload.to_date
+    db.commit()
+    return {"ok": True, "moved_count": len(attendances)}

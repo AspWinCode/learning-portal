@@ -24,6 +24,7 @@ import { Book as BookIcon, People as PeopleIcon } from '@mui/icons-material';
 import { format, addDays, subDays, startOfDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
 import { trainerLessonsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { TrainerLessonSlot, AbsenceReason } from '../types';
@@ -40,6 +41,8 @@ const ABSENCE_REASONS: { value: AbsenceReason; label: string }[] = [
 ];
 
 const TrainerLessonsPage: React.FC = () => {
+  const { user } = useAuth();
+  const canMoveLessons = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
   const [searchParams] = useSearchParams();
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
   const [slots, setSlots] = useState<TrainerLessonSlot[]>([]);
@@ -52,6 +55,11 @@ const TrainerLessonsPage: React.FC = () => {
   const [absenceReasonDraft, setAbsenceReasonDraft] = useState<Record<number, AbsenceReason>>({});
   const [absenceCommentDraft, setAbsenceCommentDraft] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [moveSlot, setMoveSlot] = useState<TrainerLessonSlot | null>(null);
+  const [moveToDate, setMoveToDate] = useState('');
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
 
   useEffect(() => {
     const dateParam = searchParams.get('date');
@@ -81,6 +89,39 @@ const TrainerLessonsPage: React.FC = () => {
   const handlePrevDay = () => setViewDate((d) => format(subDays(new Date(d), 1), 'yyyy-MM-dd'));
   const handleNextDay = () => setViewDate((d) => format(addDays(new Date(d), 1), 'yyyy-MM-dd'));
   const handleToday = () => setViewDate(format(startOfDay(new Date()), 'yyyy-MM-dd'));
+
+  const openMoveDialog = (e: React.MouseEvent, slot: TrainerLessonSlot) => {
+    e.stopPropagation();
+    setMoveSlot(slot);
+    setMoveToDate(format(addDays(new Date(slot.lesson_date || viewDate), 1), 'yyyy-MM-dd'));
+    setMoveError(null);
+    setMoveDialogOpen(true);
+  };
+
+  const handleMoveLesson = async () => {
+    if (!moveSlot || !moveToDate) return;
+    const fromDate = moveSlot.lesson_date || viewDate;
+    if (moveToDate === fromDate) {
+      setMoveError('Выберите другую дату');
+      return;
+    }
+    setMoving(true);
+    setMoveError(null);
+    try {
+      await trainerLessonsApi.moveLesson({
+        group_id: moveSlot.group_id,
+        from_date: fromDate,
+        to_date: moveToDate,
+      });
+      setMoveDialogOpen(false);
+      setMoveSlot(null);
+      loadSlots();
+    } catch (err: any) {
+      setMoveError(extractApiError(err, 'Не удалось перенести занятие'));
+    } finally {
+      setMoving(false);
+    }
+  };
 
   const openPopup = (slot: TrainerLessonSlot) => {
     setSelectedSlot(slot);
@@ -203,6 +244,16 @@ const TrainerLessonsPage: React.FC = () => {
                       Отмечено: {slot.students.filter((s) => s.attended === true).length}/{slot.students.length}
                     </Typography>
                   )}
+                  {canMoveLessons && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      sx={{ mt: 1 }}
+                      onClick={(e) => openMoveDialog(e, slot)}
+                    >
+                      Перенести на другой день
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -286,6 +337,36 @@ const TrainerLessonsPage: React.FC = () => {
           <Button onClick={() => setPopupOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={handleSaveAttendance} disabled={saving}>
             {saving ? 'Сохранение...' : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={moveDialogOpen} onClose={() => !moving && setMoveDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Перенести занятие на другой день</DialogTitle>
+        <DialogContent>
+          {moveSlot && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Группа «{moveSlot.group_name}», текущая дата: {format(new Date((moveSlot.lesson_date || viewDate) + 'T12:00:00'), 'd.MM.yyyy')}
+            </Typography>
+          )}
+          <TextField
+            label="Перенести на дату"
+            type="date"
+            value={moveToDate}
+            onChange={(e) => setMoveToDate(e.target.value)}
+            fullWidth
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            sx={{ mt: 1 }}
+          />
+          {moveError && (
+            <Alert severity="error" sx={{ mt: 1 }}>{moveError}</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMoveDialogOpen(false)} disabled={moving}>Отмена</Button>
+          <Button variant="contained" onClick={handleMoveLesson} disabled={moving || !moveToDate}>
+            {moving ? 'Перенос...' : 'Перенести'}
           </Button>
         </DialogActions>
       </Dialog>

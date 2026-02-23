@@ -340,6 +340,14 @@ export const trainerLessonsApi = {
   }): Promise<void> => {
     await api.post('/api/trainer-lessons/attendance', data);
   },
+  moveLesson: async (data: {
+    group_id: number;
+    from_date: string;
+    to_date: string;
+  }): Promise<{ ok: boolean; moved_count: number }> => {
+    const response = await api.post('/api/trainer-lessons/move', data);
+    return response.data;
+  },
 };
 
 export const programsApi = {

@@ -1164,6 +1164,13 @@ class LessonAttendanceSave(BaseModel):
     attendances: List[LessonAttendanceItem]
 
 
+class MoveLessonPayload(BaseModel):
+    """Перенос занятия группы с одной даты на другую (только admin/owner/sales)."""
+    group_id: int
+    from_date: date
+    to_date: date
+
+
 class LessonCallResultUpdate(BaseModel):
     """Результат дозвона по одному ученику (менеджер)."""
     group_id: int

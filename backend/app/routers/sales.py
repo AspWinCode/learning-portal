@@ -541,7 +541,12 @@ def _normalize_name(s: str) -> str:
 
 
 def _payer_matches_parent(payer_name: str, parent_full_name: Optional[str]) -> bool:
-    """Совпадает ли плательщик с ФИО родителя (имя+отчество в банке часто без фамилии)."""
+    """
+    Совпадает ли плательщик с ФИО родителя.
+    В Точка Банк часто пишут «Имя Отчество Ф.» (например «Наталья Георгиевна М.»),
+    в карточке — «Фамилия Имя Отчество» (например «Медведева Наталья Георгиевна»).
+    Инициал (одна буква или «Х.») сопоставляется с первой буквой любого слова у родителя (обычно фамилии).
+    """
     if not parent_full_name or not payer_name:
         return False
     p = _normalize_name(payer_name)
@@ -552,10 +557,26 @@ def _payer_matches_parent(payer_name: str, parent_full_name: Optional[str]) -> b
         return True
     if p in parent or parent in p:
         return True
-    # Все слова из плательщика есть в ФИО родителя (например "Елена Владимировна" в "Князева Елена Владимировна")
-    p_words = set(p.split())
-    parent_words = set(parent.split())
-    return p_words <= parent_words
+    p_words = p.split()
+    parent_words = parent.split()
+    parent_word_set = set(parent_words)
+    # Слова-инициалы: одна буква или буква с точкой («м», «м.»)
+    initials = []
+    full_words = []
+    for w in p_words:
+        w_clean = w.rstrip(".")
+        if len(w_clean) == 1 and w_clean.isalpha():
+            initials.append(w_clean)
+        else:
+            full_words.append(w)
+    # Все не-инициалы из плательщика должны быть в ФИО родителя
+    if not all(w in parent_word_set for w in full_words):
+        return False
+    # Каждый инициал должен совпадать с первой буквой какого-то слова у родителя (фамилия «Медведева» → «м»)
+    for letter in initials:
+        if not any(pw.startswith(letter) for pw in parent_words):
+            return False
+    return True
 
 
 def _tochka_payment_already_applied(
@@ -598,6 +619,7 @@ def do_tochka_import_and_apply(
     cards = (
         db.query(StudentCard)
         .filter(StudentCard.archived.is_(False), StudentCard.student_id.isnot(None))
+        .options(joinedload(StudentCard.student).joinedload(Student.parent))
         .all()
     )
 
@@ -613,7 +635,14 @@ def do_tochka_import_and_apply(
         if _tochka_payment_already_applied(db, account_id, tx_date, amount, payer_name):
             continue
 
-        matches = [c for c in cards if _payer_matches_parent(payer_name, c.parent_full_name)]
+        def card_matches_payer(c: StudentCard) -> bool:
+            if _payer_matches_parent(payer_name, c.parent_full_name):
+                return True
+            if c.student and c.student.parent and c.student.parent.full_name:
+                return _payer_matches_parent(payer_name, c.student.parent.full_name)
+            return False
+
+        matches = [c for c in cards if card_matches_payer(c)]
         if len(matches) == 0:
             no_match.append({"payer_name": payer_name, "amount": amount, "date": tx_date})
             continue

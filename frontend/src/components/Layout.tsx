@@ -196,6 +196,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       return [
         { text: 'Дашборд продаж', icon: <Dashboard />, path: '/sales/dashboard' },
         { text: 'Ученики', icon: <People />, path: '/students' },
+        { text: 'Уроки', icon: <EventAvailable />, path: '/lessons' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
         { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
@@ -217,7 +218,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       { text: 'Главная', icon: <Dashboard />, path: '/dashboard' },
       { text: 'Ученики', icon: <People />, path: '/students' },
       { text: 'Группы', icon: <Group />, path: '/groups' },
-      ...(role !== 'owner' ? [{ text: 'Уроки', icon: <EventAvailable />, path: '/lessons' }] : []),
+      { text: 'Уроки', icon: <EventAvailable />, path: '/lessons' },
       { text: 'Программы', icon: <Book />, path: '/programs' },
       { text: 'Оценки', icon: <Grade />, path: '/grades' },
       { text: 'Характеристики', icon: <Description />, path: '/characteristics' },

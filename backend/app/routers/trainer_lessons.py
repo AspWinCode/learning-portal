@@ -1,9 +1,10 @@
 """API для тренера: занятия по расписанию и посещаемость."""
-from datetime import date, time, datetime
-from typing import List, Optional
+import calendar
+from datetime import date, time, datetime, timedelta
+from typing import List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app import auth
@@ -15,6 +16,7 @@ from app.models import (
     GroupStudent,
     LessonAttendance,
     LessonCancellation,
+    LessonTrainerOverride,
     UserRole,
     Student,
     Abonement,
@@ -24,10 +26,45 @@ from app.models import (
     AbsenceFollowUp,
     StudentFreeze,
 )
-from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave, MoveLessonPayload, CancelLessonPayload, AddStudentToLessonPayload
+from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave, MoveLessonPayload, CancelLessonPayload, AddStudentToLessonPayload, SetLessonTrainerPayload
 from app.student_display import get_students_display_names
 
 router = APIRouter()
+
+LESSONS_PER_MONTH = 8
+
+
+def _first_n_slots_per_group_in_month(
+    db: Session,
+    group_ids: List[int],
+    year: int,
+    month: int,
+    cancellations: List,
+) -> Tuple[Set[Tuple[int, date, time, time]], dict]:
+    """Для каждой группы возвращает множество (group_id, date, start_time, end_time) первых 8 слотов в месяце и маппинг (group_id, date, st, et) -> index 1..8."""
+    cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations}
+    allowed: Set[Tuple[int, date, time, time]] = set()
+    index_map: dict = {}
+    month_start = date(year, month, 1)
+    if month == 12:
+        month_end = date(year, 12, 31)
+    else:
+        month_end = date(year, month + 1, 1) - timedelta(days=1)
+    for gid in group_ids:
+        schedules = db.query(GroupSchedule).filter(GroupSchedule.group_id == gid).order_by(GroupSchedule.day_of_week, GroupSchedule.start_time).all()
+        slots_in_month: List[Tuple[date, time, time]] = []
+        for sched in schedules:
+            for d in calendar.Calendar().itermonthdates(year, month):
+                if d.month != month:
+                    continue
+                if d.weekday() == sched.day_of_week:
+                    if (gid, d, sched.start_time, sched.end_time) not in cancelled_set:
+                        slots_in_month.append((d, sched.start_time, sched.end_time))
+        slots_in_month.sort(key=lambda x: (x[0], x[1]))
+        for i, (d, st, et) in enumerate(slots_in_month[:LESSONS_PER_MONTH]):
+            allowed.add((gid, d, st, et))
+            index_map[(gid, d, st, et)] = i + 1
+    return allowed, index_map
 
 
 def _serialize_time(t: time) -> str:
@@ -43,12 +80,12 @@ async def get_lessons_for_date(
     """╨Ч╨░╨╜╤П╤В╨╕╤П ╤В╤А╨╡╨╜╨╡╤А╨░ ╨╜╨░ ╤Г╨║╨░╨╖╨░╨╜╨╜╤Г╤О ╨┤╨░╤В╤Г (╨┐╨╛ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤О ╨│╤А╤Г╨┐╨┐). ╨в╨╛╨╗╤М╨║╨╛ ╨┤╨╗╤П ╤В╤А╨╡╨╜╨╡╤А╨░."""
     weekday = lesson_date.weekday()  # 0=Monday, 6=Sunday
     if current_user.role == UserRole.TRAINER:
-        groups = db.query(Group).filter(
+        groups = db.query(Group).options(selectinload(Group.trainer)).filter(
             Group.trainer_id == current_user.id,
             Group.status == GroupStatus.ACTIVE,
         ).all()
     elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        groups = db.query(Group).filter(Group.status == GroupStatus.ACTIVE).all()
+        groups = db.query(Group).options(selectinload(Group.trainer)).filter(Group.status == GroupStatus.ACTIVE).all()
     else:
         raise HTTPException(status_code=403, detail="Only for trainers or admin/owner/sales")
     def _time_eq(a: Optional[time], b: Optional[time]) -> bool:
@@ -59,11 +96,30 @@ async def get_lessons_for_date(
         return a == b
 
     group_ids = [g.id for g in groups]
-    cancellations = db.query(LessonCancellation).filter(
+    cancellations_for_day = db.query(LessonCancellation).filter(
         LessonCancellation.group_id.in_(group_ids),
         LessonCancellation.lesson_date == lesson_date,
     ).all()
-    cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations}
+    cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations_for_day}
+
+    year, month = lesson_date.year, lesson_date.month
+    month_start = date(year, month, 1)
+    month_end = month_start.replace(day=28) + timedelta(days=4)
+    month_end = month_end.replace(day=1) - timedelta(days=1)
+    cancellations_month = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id.in_(group_ids),
+        LessonCancellation.lesson_date >= month_start,
+        LessonCancellation.lesson_date <= month_end,
+    ).all()
+    first_8_allowed, lesson_index_in_month_map = _first_n_slots_per_group_in_month(db, group_ids, year, month, cancellations_month)
+
+    overrides = db.query(LessonTrainerOverride).filter(
+        LessonTrainerOverride.group_id.in_(group_ids),
+        LessonTrainerOverride.lesson_date == lesson_date,
+    ).all()
+    override_map = {(o.group_id, o.start_time, o.end_time): o for o in overrides}
+    override_trainer_ids = [o.trainer_id for o in overrides]
+    override_trainers = {u.id: u for u in db.query(User).filter(User.id.in_(override_trainer_ids)).all()} if override_trainer_ids else {}
 
     result: List[TrainerLessonSlotResponse] = []
     for group in groups:
@@ -90,6 +146,18 @@ async def get_lessons_for_date(
         program_name = group.programs[0].name if group.programs else None
 
         def build_slot(slot_start: time, slot_end: time, atts: list) -> None:
+            if (group.id, lesson_date, slot_start, slot_end) not in first_8_allowed:
+                return
+            override = override_map.get((group.id, slot_start, slot_end))
+            if override and override.trainer_id in override_trainers:
+                trainer_user = override_trainers[override.trainer_id]
+                slot_trainer_id = trainer_user.id
+                slot_trainer_name = trainer_user.full_name or ""
+            else:
+                slot_trainer_id = group.trainer_id
+                slot_trainer_name = (group.trainer.full_name if group.trainer else "") or ""
+            lesson_index = lesson_index_in_month_map.get((group.id, lesson_date, slot_start, slot_end))
+
             attendance_map = {
                 att.student_id: {
                     "attended": att.attended,
@@ -142,6 +210,9 @@ async def get_lessons_for_date(
                 end_time=slot_end,
                 lesson_date=lesson_date,
                 students=students_data,
+                trainer_id=slot_trainer_id,
+                trainer_name=slot_trainer_name or None,
+                lesson_index_in_month=lesson_index,
             ))
 
         for sched in schedules:
@@ -495,5 +566,49 @@ async def cancel_lesson(
     db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id.in_(att_ids)).delete(synchronize_session=False)
     for a in attendances_to_delete:
         db.delete(a)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/set-trainer")
+async def set_lesson_trainer(
+    payload: SetLessonTrainerPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Подменить преподавателя на конкретный урок. Тренер — своя группа; admin/owner/sales — любая."""
+    if current_user.role == UserRole.TRAINER:
+        group = db.query(Group).filter(Group.id == payload.group_id).first()
+        if not group or group.trainer_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not your group")
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Only trainer (own group) or admin/owner/sales")
+    try:
+        start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+        end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+    group = db.query(Group).filter(Group.id == payload.group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    trainer = db.query(User).filter(User.id == payload.trainer_id, User.role == UserRole.TRAINER).first()
+    if not trainer:
+        raise HTTPException(status_code=404, detail="Trainer not found")
+    existing = db.query(LessonTrainerOverride).filter(
+        LessonTrainerOverride.group_id == payload.group_id,
+        LessonTrainerOverride.lesson_date == payload.lesson_date,
+        LessonTrainerOverride.start_time == start_t,
+        LessonTrainerOverride.end_time == end_t,
+    ).first()
+    if existing:
+        existing.trainer_id = payload.trainer_id
+    else:
+        db.add(LessonTrainerOverride(
+            group_id=payload.group_id,
+            lesson_date=payload.lesson_date,
+            start_time=start_t,
+            end_time=end_t,
+            trainer_id=payload.trainer_id,
+        ))
     db.commit()
     return {"ok": True}

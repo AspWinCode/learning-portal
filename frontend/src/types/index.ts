@@ -155,6 +155,9 @@ export interface TrainerLessonSlot {
     absence_comment?: string | null;
     freeze_badge?: string | null;
   }>;
+  trainer_id?: number | null;
+  trainer_name?: string | null;
+  lesson_index_in_month?: number | null;
 }
 
 export interface Topic {

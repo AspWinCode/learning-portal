@@ -308,7 +308,12 @@ const StudentsPage: React.FC = () => {
       if (statusFilter !== 'all') params.status = statusFilter;
       if (searchQuery.trim()) params.q = searchQuery.trim();
       const data = await studentsApi.getAll(Object.keys(params).length ? params : undefined);
-      setStudents(data);
+      // Один ученик — одна строка (дедупликация по id на случай дублей из API)
+      const byId = new Map<number, Student>();
+      (Array.isArray(data) ? data : []).forEach((s: Student) => {
+        if (!byId.has(s.id)) byId.set(s.id, s);
+      });
+      setStudents(Array.from(byId.values()));
     } catch (err) {
       setError('Ошибка загрузки данных');
     }

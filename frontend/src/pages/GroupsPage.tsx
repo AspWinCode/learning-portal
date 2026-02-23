@@ -22,6 +22,8 @@ import {
   FormControl,
   InputLabel,
   Stack,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon } from '@mui/icons-material';
 import { groupsApi, usersApi, studentsApi } from '../services/api';
@@ -46,7 +48,10 @@ const GroupsPage: React.FC = () => {
     direction: '',
   });
   const [formSchedules, setFormSchedules] = useState<Array<{ day_of_week: number; start_time: string; end_time: string }>>([]);
+  const [groupsTab, setGroupsTab] = useState<'active' | 'archive'>('active');
   const { user } = useAuth();
+
+  const displayedGroups = groups.filter((g) => (groupsTab === 'active' ? g.status === 'active' : g.status === 'archived'));
   const WEEKDAY_OPTIONS = [
     { value: 0, label: 'Понедельник' },
     { value: 1, label: 'Вторник' },
@@ -253,9 +258,15 @@ const GroupsPage: React.FC = () => {
 
   return (
     <Layout>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tabs value={groupsTab} onChange={(_, v: 'active' | 'archive') => setGroupsTab(v)}>
+          <Tab label="Активные" value="active" />
+          <Tab label="Архив" value="archive" />
+        </Tabs>
+      </Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Группы</Typography>
-        {isAdminLike && (
+        {isAdminLike && groupsTab === 'active' && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -289,7 +300,7 @@ const GroupsPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {groups.map((group) => (
+            {displayedGroups.map((group) => (
               <TableRow key={group.id}>
                 <TableCell>{group.name}</TableCell>
                 <TableCell>{DIRECTION_OPTIONS.find((o) => o.value === group.direction)?.label ?? group.direction ?? '-'}</TableCell>

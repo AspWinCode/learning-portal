@@ -638,6 +638,7 @@ class Group(Base):
     lesson_attendances = relationship("LessonAttendance", back_populates="group", cascade="all, delete-orphan")
     # ╨г╨┤╨╛╨▒╨╜╨░╤П ╤Б╨▓╤П╨╖╤М ╨┤╨╗╤П ╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╤Е ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ ╨│╤А╤Г╨┐╨┐╤Л
     lesson_cancellations = relationship("LessonCancellation", back_populates="group", cascade="all, delete-orphan")
+    lesson_trainer_overrides = relationship("LessonTrainerOverride", back_populates="group", cascade="all, delete-orphan")
     programs = relationship("Program", secondary="group_programs", viewonly=True)
 
 
@@ -755,6 +756,23 @@ class LessonCancellation(Base):
     end_time = Column(Time, nullable=False)
 
     group = relationship("Group", back_populates="lesson_cancellations")
+
+
+class LessonTrainerOverride(Base):
+    """Подмена преподавателя на конкретный урок (группа, дата, время)."""
+    __tablename__ = "lesson_trainer_overrides"
+    __table_args__ = (
+        UniqueConstraint("group_id", "lesson_date", "start_time", "end_time", name="uq_lesson_trainer_override_group_date_time"),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    lesson_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    group = relationship("Group", back_populates="lesson_trainer_overrides")
+    trainer = relationship("User", foreign_keys=[trainer_id])
 
 
 class AbsenceFollowUpStage(str, enum.Enum):

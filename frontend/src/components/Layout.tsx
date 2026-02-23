@@ -207,7 +207,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
         { text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' },
-        { text: 'Долги', icon: <ReceiptLong />, path: '/sales/debts' },
+        { text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' },
         { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' },
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
@@ -227,16 +227,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (isAdminLike) items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     if (isAdminLike) {
-      items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
-      items.push({ text: 'Продажи: лиды', icon: <WorkOutline />, path: '/sales/leads' });
-      items.push({ text: 'Продажи: события', icon: <EventAvailable />, path: '/sales/events' });
-      items.push({ text: 'Позвать снова на мероприятие', icon: <EventAvailable />, path: '/sales/reinvite-event' });
-      items.push({ text: 'Решили сразу', icon: <EventAvailable />, path: '/sales/agreed' });
-      items.push({ text: 'Продажи: инструкции', icon: <Description />, path: '/sales/instructions' });
-      items.push({ text: 'Продажи: пропуски', icon: <PendingActions />, path: '/sales/absences' });
-      items.push({ text: 'Продажи: долги', icon: <ReceiptLong />, path: '/sales/debts' });
+      items.push({ text: 'Инструкции', icon: <Description />, path: '/sales/instructions' });
+      items.push({ text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' });
+      items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' });
       items.push({ text: 'Совместимость программ (отработки)', icon: <Assignment />, path: '/sales/program-makeup' });
-      items.push({ text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
     }

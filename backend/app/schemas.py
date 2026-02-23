@@ -1210,9 +1210,21 @@ class TrainerLessonSlotResponse(BaseModel):
     end_time: time
     lesson_date: date
     students: List[Dict[str, Any]]  # [{ id, full_name, attended: bool | None }]
+    trainer_id: Optional[int] = None
+    trainer_name: Optional[str] = None
+    lesson_index_in_month: Optional[int] = None  # 1..8 — показываем; 9, 10 — скрыты
 
     class Config:
         from_attributes = True
+
+
+class SetLessonTrainerPayload(BaseModel):
+    """Подмена преподавателя на урок."""
+    group_id: int
+    lesson_date: date
+    start_time: str  # "HH:MM"
+    end_time: str    # "HH:MM"
+    trainer_id: int
 
 
 # Program schemas

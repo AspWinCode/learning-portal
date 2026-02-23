@@ -176,7 +176,7 @@ async def create_student(
 @router.get("/", response_model=List[StudentResponse])
 async def read_students(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 2000,
     status_filter: Optional[StudentStatus] = Query(None, alias="status"),
     q: Optional[str] = Query(None, description="Поиск по ФИО (подстрока)"),
     ids: Optional[str] = Query(None, description="Список ID через запятую (вернуть только этих учеников)"),

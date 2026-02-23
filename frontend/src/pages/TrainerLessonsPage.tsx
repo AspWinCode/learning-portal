@@ -25,7 +25,7 @@ import { format, addDays, subDays, startOfDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
-import { trainerLessonsApi, studentsApi } from '../services/api';
+import { trainerLessonsApi, studentsApi, usersApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { TrainerLessonSlot, AbsenceReason } from '../types';
 
@@ -69,6 +69,9 @@ const TrainerLessonsPage: React.FC = () => {
   const [addStudentToLessonId, setAddStudentToLessonId] = useState('');
   const [allStudents, setAllStudents] = useState<Array<{ id: number; full_name: string }>>([]);
   const [addingToLesson, setAddingToLesson] = useState(false);
+  const [trainers, setTrainers] = useState<Array<{ id: number; full_name: string }>>([]);
+  const [lessonTrainerId, setLessonTrainerId] = useState<number | ''>('');
+  const [settingTrainer, setSettingTrainer] = useState(false);
 
   useEffect(() => {
     const dateParam = searchParams.get('date');
@@ -175,6 +178,7 @@ const TrainerLessonsPage: React.FC = () => {
   const openPopup = (slot: TrainerLessonSlot) => {
     setSelectedSlot(slot);
     setAddStudentToLessonId('');
+    setLessonTrainerId(slot.trainer_id ?? '');
     const draft: Record<number, boolean> = {};
     const late: Record<number, boolean> = {};
     const reasonDraft: Record<number, AbsenceReason> = {};
@@ -198,6 +202,42 @@ const TrainerLessonsPage: React.FC = () => {
       studentsApi.getAll({ status: 'active' }).then((data) => setAllStudents(data)).catch(() => {});
     }
   }, [popupOpen, selectedSlot, allStudents.length]);
+
+  useEffect(() => {
+    if (popupOpen && canAddStudentToLesson && trainers.length === 0) {
+      usersApi.getAll('trainer').then((data) => setTrainers(data)).catch(() => {});
+    }
+  }, [popupOpen, canAddStudentToLesson, trainers.length]);
+
+  const handleSetLessonTrainer = async () => {
+    if (!selectedSlot || lessonTrainerId === '' || Number(lessonTrainerId) === selectedSlot.trainer_id) return;
+    const slotStart = (selectedSlot.start_time || '').toString().slice(0, 5);
+    const slotEnd = (selectedSlot.end_time || '').toString().slice(0, 5);
+    if (!slotStart || !slotEnd) return;
+    setSettingTrainer(true);
+    setError(null);
+    try {
+      await trainerLessonsApi.setLessonTrainer({
+        group_id: selectedSlot.group_id,
+        lesson_date: selectedSlot.lesson_date || viewDate,
+        start_time: slotStart,
+        end_time: slotEnd,
+        trainer_id: Number(lessonTrainerId),
+      });
+      const newSlots = await loadSlots();
+      const updated = newSlots.find(
+        (s) =>
+          s.group_id === selectedSlot.group_id &&
+          (s.start_time || '').toString().slice(0, 5) === slotStart &&
+          (s.end_time || '').toString().slice(0, 5) === slotEnd
+      );
+      if (updated) setSelectedSlot(updated);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось сменить преподавателя'));
+    } finally {
+      setSettingTrainer(false);
+    }
+  };
 
   const handleAddStudentToLesson = async () => {
     if (!selectedSlot || !addStudentToLessonId) return;
@@ -377,6 +417,37 @@ const TrainerLessonsPage: React.FC = () => {
           Занятие: {selectedSlot?.group_name} — {selectedSlot?.lesson_date && format(new Date(selectedSlot.lesson_date + 'T12:00:00'), 'd.MM.yyyy')}
         </DialogTitle>
         <DialogContent>
+          {canAddStudentToLesson && (
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }} flexWrap="wrap">
+              <Typography variant="body2" fontWeight={500}>Преподаватель:</Typography>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <Select
+                  value={lessonTrainerId ?? selectedSlot?.trainer_id ?? ''}
+                  onChange={(e) => setLessonTrainerId(e.target.value === '' ? '' : Number(e.target.value))}
+                  displayEmpty
+                  renderValue={(v) => {
+                    if (v === '' || v == null) return selectedSlot?.trainer_name || '—';
+                    const t = trainers.find((x) => x.id === Number(v));
+                    return t?.full_name ?? selectedSlot?.trainer_name ?? '—';
+                  }}
+                >
+                  {trainers.map((t) => (
+                    <MenuItem key={t.id} value={t.id}>
+                      {t.full_name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={settingTrainer || lessonTrainerId === '' || lessonTrainerId === selectedSlot?.trainer_id}
+                onClick={handleSetLessonTrainer}
+              >
+                {settingTrainer ? 'Сохранение...' : 'Сменить'}
+              </Button>
+            </Stack>
+          )}
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Статус каждого ученика: Был / причина отсутствия (ТЗ п.3.1)
           </Typography>

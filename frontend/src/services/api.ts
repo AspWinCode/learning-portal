@@ -371,6 +371,16 @@ export const trainerLessonsApi = {
     const response = await api.post('/api/trainer-lessons/add-student-to-lesson', data);
     return response.data;
   },
+  setLessonTrainer: async (data: {
+    group_id: number;
+    lesson_date: string;
+    start_time: string;
+    end_time: string;
+    trainer_id: number;
+  }): Promise<{ ok: boolean }> => {
+    const response = await api.post('/api/trainer-lessons/set-trainer', data);
+    return response.data;
+  },
 };
 
 export const programsApi = {

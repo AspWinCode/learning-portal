@@ -277,8 +277,6 @@ async def move_lesson(
         LessonAttendance.group_id == payload.group_id,
         LessonAttendance.lesson_date == payload.from_date,
     ).all()
-    if not attendances:
-        raise HTTPException(status_code=404, detail="No lesson on from_date for this group")
     existing = db.query(LessonAttendance).filter(
         LessonAttendance.group_id == payload.group_id,
         LessonAttendance.lesson_date == payload.to_date,
@@ -298,16 +296,37 @@ async def move_lesson(
                 to_end = datetime.strptime(payload.to_end_time.strip(), "%H:%M").time()
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
-    att_ids = [a.id for a in attendances]
-    for att in attendances:
-        att.lesson_date = payload.to_date
-        if to_start is not None:
-            att.lesson_start_time = to_start
-        if to_end is not None:
-            att.lesson_end_time = to_end
-    for abs_follow in db.query(AbsenceFollowUp).filter(
-        AbsenceFollowUp.lesson_attendance_id.in_(att_ids),
-    ).all():
-        abs_follow.lesson_date = payload.to_date
+    if attendances:
+        att_ids = [a.id for a in attendances]
+        for att in attendances:
+            att.lesson_date = payload.to_date
+            if to_start is not None:
+                att.lesson_start_time = to_start
+            if to_end is not None:
+                att.lesson_end_time = to_end
+        for abs_follow in db.query(AbsenceFollowUp).filter(
+            AbsenceFollowUp.lesson_attendance_id.in_(att_ids),
+        ).all():
+            abs_follow.lesson_date = payload.to_date
+    else:
+        students_in_group = db.query(GroupStudent).filter(
+            GroupStudent.group_id == payload.group_id,
+        ).all()
+        created = 0
+        for gs in students_in_group:
+            if not gs.student_id:
+                continue
+            db.add(LessonAttendance(
+                group_id=payload.group_id,
+                lesson_date=payload.to_date,
+                student_id=gs.student_id,
+                attended=True,
+                late=False,
+                lesson_start_time=to_start,
+                lesson_end_time=to_end,
+            ))
+            created += 1
+        db.commit()
+        return {"ok": True, "moved_count": created}
     db.commit()
     return {"ok": True, "moved_count": len(attendances)}

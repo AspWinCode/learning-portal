@@ -109,6 +109,13 @@ const SalesEventsPage: React.FC = () => {
     return map;
   }, [leads]);
 
+  /** Полное ФИО: родитель / ребёнок или contact_name */
+  const leadDisplayName = (lead: Lead | null | undefined, fallbackId?: number): string => {
+    if (!lead) return fallbackId != null ? `Лид #${fallbackId}` : '—';
+    const name = [lead.parent_full_name || lead.contact_name, lead.child_full_name].filter(Boolean).join(' / ');
+    return name || lead.phone || `Лид #${lead.id}`;
+  };
+
   const conversion = useMemo(() => {
     const registered = registrations.filter((r) => r.status === 'registered');
     const hasTag = (note: string | null | undefined, tag: string) => (note || '').toLowerCase().includes(tag);
@@ -263,7 +270,7 @@ const SalesEventsPage: React.FC = () => {
       await salesApi.markEventRegistrationNoShow(Number(selectedEventId), reg.id);
       await loadRegistrations(Number(selectedEventId));
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось отметить "no-show"'));
+      setError(extractApiError(err, 'Не удалось отметить «не явились»'));
     }
   };
 
@@ -426,7 +433,7 @@ const SalesEventsPage: React.FC = () => {
               <Grid item xs={6} md={4}>
                 <Card variant="outlined">
                   <CardContent>
-                    <Typography variant="caption">No-show</Typography>
+                    <Typography variant="caption">Не явились</Typography>
                     <Typography variant="h6">{conversion.noShow}</Typography>
                     <Chip
                       size="small"
@@ -486,7 +493,7 @@ const SalesEventsPage: React.FC = () => {
                 onClick={() => runBulkAction('no-show')}
                 disabled={selectedRegistrationIds.length === 0 || bulkBusy}
               >
-                No-show ({selectedRegistrationIds.length})
+                Не явились ({selectedRegistrationIds.length})
               </Button>
               <Button
                 size="small"
@@ -534,7 +541,7 @@ const SalesEventsPage: React.FC = () => {
                         onClick={() => navigate(`/sales/leads?detail=${reg.lead_id}`)}
                         sx={{ textAlign: 'left', cursor: 'pointer' }}
                       >
-                        {reg.lead?.contact_name || `Lead #${reg.lead_id}`}
+                        {leadDisplayName(reg.lead, reg.lead_id)}
                       </Link>
                     </TableCell>
                     <TableCell>{reg.lead?.phone ?? '—'}</TableCell>
@@ -549,7 +556,7 @@ const SalesEventsPage: React.FC = () => {
                             Пришел
                           </Button>
                           <Button size="small" color="warning" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleMarkNoShow(reg)}>
-                            No-show
+                            Не явились
                           </Button>
                           <Button size="small" color="error" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleCancelRegistration(reg)}>
                             Отменить
@@ -647,7 +654,7 @@ const SalesEventsPage: React.FC = () => {
             >
               {leads.map((lead) => (
                 <MenuItem key={lead.id} value={lead.id}>
-                  {lead.contact_name} ({lead.phone})
+                  {leadDisplayName(lead)} ({lead.phone})
                 </MenuItem>
               ))}
             </Select>

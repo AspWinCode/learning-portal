@@ -82,7 +82,7 @@ const statusLabels: Record<LeadStatus, string> = {
   decided_immediately: '\u0420\u0435\u0448\u0438\u043b \u0437\u0430\u043d\u0438\u043c\u0430\u0442\u044c\u0441\u044f \u0441\u0440\u0430\u0437\u0443',
 };
 
-/** ╨б╤В╨░╤В╤Г╤Б╤Л ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨┐╤А╨╛╨┤╨░╨╢ тАФ ╨╡╨┤╨╕╨╜╤Л╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╨┤╨╗╤П ╨╗╨╕╨┤╨╛╨▓ ╨╕ ╨▓╨╛╤А╨╛╨╜╨║╨╕ */
+/** h1dh�dddd h�h[dh[h\hQhU hdh[h$h�hb B$ hah$hUh\dhc dhhUdh[hQ h$hWd hWhUh$h[h� hU h�h[dh[h\hQhU */
 const PIPELINE_STATUSES: LeadStatus[] = [
   'new',
   'thinking',
@@ -93,7 +93,7 @@ const PIPELINE_STATUSES: LeadStatus[] = [
   'decided_immediately',
 ];
 
-/** ╨б╤В╨░╤В╤Г╤Б╤Л ╨╗╨╕╨┤╨░ ╨╛╤В╨╛╨▒╤А╨░╨╢╨░╤О╤В╤Б╤П ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨╡ ╨▓╨╛╤А╨╛╨╜╨║╨╕ (╨┤╨╗╤П ╤Б╤В╨░╤А╤Л╤Е ╤Б╤В╨░╤В╤Г╤Б╨╛╨▓ тАФ ╨╝╨░╨┐╨┐╨╕╨╜╨│) */
+/** h1dh�dddd hWhUh$h� h[dh[h�dh�hbh�dddd h� hQh[hWh[h\hQha h�h[dh[h\hQhU (h$hWd ddh�ddd ddh�dddh[h� B$ h]h�hhhUh\h) */
 function getPipelineColumnForStatus(status: LeadStatus): LeadStatus {
   const map: Partial<Record<LeadStatus, LeadStatus>> = {
     contacted: 'thinking',
@@ -309,7 +309,7 @@ const SalesLeadsPage: React.FC = () => {
     loadSalesMeta();
   }, [loadLeads, loadSalesMeta]);
 
-  // ╨Ы╨╕╨┤╤Л ╤Б ╨╜╨╡╤П╨▓╨║╨╛╨╣ ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ тАФ ╨┤╨╗╤П ╨║╨╛╨╗╨╛╨╜╨║╨╕ ┬л╨б╨╗╨╡╨┤ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡┬╗ ╨╕ ╨▓╨║╨╗╨░╨┤╨║╨╕ ┬л╨Я╨╛╨╖╨▓╨░╤В╤М ╨╡╤Й╨╡ ╤А╨░╨╖┬╗
+  // h+hUh$d d h\hadh�hQh[hc h\h� h]hadh[hdhUddhUha B$ h$hWd hQh[hWh[h\hQhU ,;h1hWhah$ h]hadh[hdhUddhUha,W hU h�hQhWh�h$hQhU ,;h/h[hVh�h�dd hadha dh�hV,W
   useEffect(() => {
     if (viewMode !== 'kanban') return;
     let cancelled = false;
@@ -569,7 +569,7 @@ const SalesLeadsPage: React.FC = () => {
       setCreateOpen(false);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╨╖╨┤╨░╤В╤М ╨╗╨╕╨┤'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[hVh$h�dd hWhUh$'));
     }
   };
 
@@ -652,7 +652,7 @@ const SalesLeadsPage: React.FC = () => {
         );
       }
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М ╨║╨░╨╜╨░╨╗ ╨╛╨▒╤Й╨╡╨╜╨╕╤П'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[h�h\h[h�hUdd hQh�h\h�hW h[h�dhah\hUd'));
     } finally {
       setActionLoadingId(null);
     }
@@ -661,7 +661,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleConfirmLost = async () => {
     if (!pendingLostLead) return;
     if (!lostReason.trim()) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┐╤А╨╕╤З╨╕╨╜╤Г ╨╖╨░╨║╤А╤Л╤В╨╕╤П ╨╗╨╕╨┤╨░');
+      setError('h3hQh�hbhUdha hdhUdhUh\d hVh�hQdddhUd hWhUh$h�');
       return;
     }
     setActionLoadingId(pendingLostLead.id);
@@ -677,7 +677,7 @@ const SalesLeadsPage: React.FC = () => {
         setSelectedLead({ ...selectedLead, status: 'lost', lost_reason: lostReason.trim() });
       }
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨║╤А╤Л╤В╤М ╨╗╨╕╨┤'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hQdddd hWhUh$'));
     } finally {
       setActionLoadingId(null);
       setPendingLostLead(null);
@@ -696,7 +696,7 @@ const SalesLeadsPage: React.FC = () => {
       setInvoices(invoicesData);
       setCommunications(commData);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨│╤А╤Г╨╖╨╕╤В╤М ╨║╨░╤А╤В╨╛╤З╨║╤Г ╨╗╨╕╨┤╨░'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hddhVhUdd hQh�ddh[dhQd hWhUh$h�'));
     }
   };
 
@@ -725,7 +725,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleCreateTask = async () => {
     if (!selectedLead) return;
     if (!taskTemplateId) {
-      setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╖╨░╨┤╨░╤З╤Г ╨╕╨╖ ╤Б╨┐╨╕╤Б╨║╨░');
+      setError('h"dh�hadhUdha hVh�h$h�dd hUhV dhhUdhQh�');
       return;
     }
     try {
@@ -740,7 +740,7 @@ const SalesLeadsPage: React.FC = () => {
       setTaskDueAt('');
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╨╖╨┤╨░╤В╤М ╨╖╨░╨┤╨░╤З╤Г'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[hVh$h�dd hVh�h$h�dd'));
     }
   };
 
@@ -750,7 +750,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.closeTask(selectedLead.id, task.id);
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨║╤А╤Л╤В╤М ╨╖╨░╨┤╨░╤З╤Г'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hQdddd hVh�h$h�dd'));
     }
   };
 
@@ -759,7 +759,7 @@ const SalesLeadsPage: React.FC = () => {
     setError(null);
     try {
       if (!lead.abonement_id) {
-        setError('╨Ф╨╗╤П ╤Б╨╛╨╖╨┤╨░╨╜╨╕╤П ╨╕╨╜╨▓╨╛╨╣╤Б╨░ ╤Г ╨╗╨╕╨┤╨░ ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╨▓╤Л╨▒╤А╨░╨╜ ╨░╨▒╨╛╨╜╨╡╨╝╨╡╨╜╤В');
+        setError('h$hWd dh[hVh$h�h\hUd hUh\h�h[hcdh� d hWhUh$h� h$h[hWhbhah\ h�ddd h�dh�dh�h\ h�h�h[h\hah]hah\d');
         return;
       }
       const invoice = await salesApi.createInvoice(lead.id, {
@@ -769,7 +769,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.sendInvoiceEmail(invoice.id);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╨╖╨┤╨░╤В╤М/╨╛╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨╕╨╜╨▓╨╛╨╣╤Б'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[hVh$h�dd/h[dhdh�h�hUdd hUh\h�h[hcd'));
     } finally {
       setActionLoadingId(null);
     }
@@ -791,12 +791,12 @@ const SalesLeadsPage: React.FC = () => {
     try {
       await salesApi.logLeadCommunication(selectedLead.id, {
         channel,
-        message: channel === 'call' ? '[quick-call] ╨С╤Л╤Б╤В╤А╤Л╨╣ ╨╖╨▓╨╛╨╜╨╛╨║' : '[quick-messenger] ╨С╤Л╤Б╤В╤А╨╛╨╡ ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡',
+        message: channel === 'call' ? '[quick-call] h!dddddhc hVh�h[h\h[hQ' : '[quick-messenger] h!ddddh[ha dh[h[h�dhah\hUha',
       });
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╤В╤М ╨║╨╛╨╝╨╝╤Г╨╜╨╕╨║╨░╤Ж╨╕╤О'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�dhUhQdhUdh[h�h�dd hQh[h]h]dh\hUhQh�dhUd'));
     }
   };
 
@@ -810,9 +810,9 @@ const SalesLeadsPage: React.FC = () => {
       if (selectedLead?.id === lead.id) {
         await loadLeadDetails(lead);
       }
-      setToast({ open: true, message: '╨Ч╨▓╨╛╨╜╨╛╨║ ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╨╜', severity: 'success' });
+      setToast({ open: true, message: 'h'h�h[h\h[hQ hVh�dhUhQdhUdh[h�h�h\', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╤В╤М ╨╖╨▓╨╛╨╜╨╛╨║'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�dhUhQdhUdh[h�h�dd hVh�h[h\h[hQ'));
     }
   };
 
@@ -826,16 +826,16 @@ const SalesLeadsPage: React.FC = () => {
       if (selectedLead?.id === lead.id) {
         await loadLeadDetails(lead);
       }
-      setToast({ open: true, message: '╨б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡ ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╨╜╨╛', severity: 'info' });
+      setToast({ open: true, message: 'h1h[h[h�dhah\hUha hVh�dhUhQdhUdh[h�h�h\h[', severity: 'info' });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╤Д╨╕╨║╤Б╨╕╤А╨╛╨▓╨░╤В╤М ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�dhUhQdhUdh[h�h�dd dh[h[h�dhah\hUha'));
     }
   };
 
   const handleRowQuickFollowUp = async (lead: Lead) => {
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('╨┤╨╛╨╢╨╕╨╝')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('╨б╨╜╨░╤З╨░╨╗╨░ ╨┤╨╛╨▒╨░╨▓╤М╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜ ╨╖╨░╨┤╨░╤З╨╕ ╨▓ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨░╤Е');
+      setError('h1h\h�dh�hWh� h$h[h�h�h�ddha dh�h�hWh[h\ hVh�h$h�dhU h� dhdh�h�h[dh\hUhQh�d');
       return;
     }
     const due = new Date();
@@ -854,11 +854,11 @@ const SalesLeadsPage: React.FC = () => {
       }
       setToast({
         open: true,
-        message: `Follow-up ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜: ${format(due, 'dd.MM.yyyy HH:mm')}`,
+        message: `Follow-up h\h�hVh\h�dhah\: ${format(due, 'dd.MM.yyyy HH:mm')}`,
         severity: 'warning',
       });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╜╨░╨╖╨╜╨░╤З╨╕╤В╤М follow-up'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h\h�hVh\h�dhUdd follow-up'));
     }
   };
 
@@ -901,12 +901,12 @@ const SalesLeadsPage: React.FC = () => {
 
   const handleBatchAssignFollowUp = async () => {
     if (!batchFollowUpAt) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┤╨░╤В╤Г follow-up');
+      setError('h3hQh�hbhUdha h$h�dd follow-up');
       return;
     }
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('╨┤╨╛╨╢╨╕╨╝')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('╨б╨╜╨░╤З╨░╨╗╨░ ╨┤╨╛╨▒╨░╨▓╤М╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜ ╨╖╨░╨┤╨░╤З╨╕ ╨▓ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨░╤Е');
+      setError('h1h\h�dh�hWh� h$h[h�h�h�ddha dh�h�hWh[h\ hVh�h$h�dhU h� dhdh�h�h[dh\hUhQh�d');
       return;
     }
     const dueIso = new Date(batchFollowUpAt).toISOString();
@@ -939,8 +939,8 @@ const SalesLeadsPage: React.FC = () => {
     setToast({
       open: true,
       message: failed
-        ? `Follow-up ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜: ${success}, ╨╛╤И╨╕╨▒╨╛╨║: ${failed}. ${failedNames.length ? `╨Я╤А╨╛╨▒╨╗╨╡╨╝╨╜╤Л╨╡ ╨╗╨╕╨┤╤Л: ${failedNames.join(', ')}` : ''}`
-        : `Follow-up ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜: ${success}`,
+        ? `Follow-up h\h�hVh\h�dhah\: ${success}, h[dhUh�h[hQ: ${failed}. ${failedNames.length ? `h/dh[h�hWhah]h\dha hWhUh$d: ${failedNames.join(', ')}` : ''}`
+        : `Follow-up h\h�hVh\h�dhah\: ${success}`,
       severity: failed ? 'warning' : 'success',
     });
   };
@@ -955,11 +955,11 @@ const SalesLeadsPage: React.FC = () => {
 
   const handleBatchSendTemplate = async () => {
     if (!batchSendMessage.trim()) {
-      setError('╨Т╨▓╨╡╨┤╨╕╤В╨╡ ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡ ╨╕╨╗╨╕ ╨▓╤Л╨▒╨╡╤А╨╕╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜');
+      setError('h"h�hah$hUdha dh[h[h�dhah\hUha hUhWhU h�dh�hadhUdha dh�h�hWh[h\');
       return;
     }
     if (!batchSendFollowUpAt) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ follow-up ╨┤╨░╤В╤Г');
+      setError('h3hQh�hbhUdha follow-up h$h�dd');
       return;
     }
     const followUpIso = new Date(batchSendFollowUpAt).toISOString();
@@ -993,8 +993,8 @@ const SalesLeadsPage: React.FC = () => {
     setToast({
       open: true,
       message: failed
-        ? `╨Ш╨╜╤Д╨╛ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╨╛: ${success}, ╨╛╤И╨╕╨▒╨╛╨║: ${failed}. ${failedNames.length ? `╨Я╤А╨╛╨▒╨╗╨╡╨╝╨╜╤Л╨╡ ╨╗╨╕╨┤╤Л: ${failedNames.join(', ')}` : ''}`
-        : `╨Ш╨╜╤Д╨╛ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╨╛: ${success}`,
+        ? `h(h\dh[ h[dhdh�h�hWhah\h[: ${success}, h[dhUh�h[hQ: ${failed}. ${failedNames.length ? `h/dh[h�hWhah]h\dha hWhUh$d: ${failedNames.join(', ')}` : ''}`
+        : `h(h\dh[ h[dhdh�h�hWhah\h[: ${success}`,
       severity: failed ? 'warning' : 'success',
     });
   };
@@ -1002,7 +1002,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleSaveContactResult = async () => {
     if (!selectedLead) return;
     if ((contactOutcome === 'no_answer' || contactOutcome === 'callback') && !contactFollowUpAt) {
-      setError('╨Ф╨╗╤П "╨Э╨╡ ╨┤╨╛╨╖╨▓╨╛╨╜" ╨╕ "╨Я╨╡╤А╨╡╨╖╨▓╨╛╨╜╨╕╤В╤М" ╤Г╨║╨░╨╢╨╕╤В╨╡ follow-up ╨┤╨░╤В╤Г');
+      setError('h$hWd "h-ha h$h[hVh�h[h\" hU "h/hadhahVh�h[h\hUdd" dhQh�hbhUdha follow-up h$h�dd');
       return;
     }
     try {
@@ -1016,7 +1016,7 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В ╨║╨╛╨╜╤В╨░╨║╤В╨░'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd dhahVdhWddh�d hQh[h\dh�hQdh�'));
     }
   };
 
@@ -1042,22 +1042,22 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
       if (outcome === 'connected') {
-        setToast({ open: true, message: '╨Ф╨╛╨╖╨▓╨╛╨╜ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜', severity: 'success' });
+        setToast({ open: true, message: 'h$h[hVh�h[h\ dh[ddh�h\hah\', severity: 'success' });
       } else if (outcome === 'no_answer') {
         setToast({
           open: true,
-          message: `╨Э╨╡ ╨┤╨╛╨╖╨▓╨╛╨╜ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
+          message: `h-ha h$h[hVh�h[h\ dh[ddh�h\hah\, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
           severity: 'warning',
         });
       } else {
         setToast({
           open: true,
-          message: `╨Я╨╡╤А╨╡╨╖╨▓╨╛╨╜ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
+          message: `h/hadhahVh�h[h\ dh[ddh�h\hah\, follow-up: ${format(new Date(followUpIso as string), 'dd.MM.yyyy HH:mm')}`,
           severity: 'info',
         });
       }
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨▒╤Л╤Б╤В╤А╤Л╨╣ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd h�dddddhc dhahVdhWddh�d'));
     }
   };
 
@@ -1125,7 +1125,7 @@ const SalesLeadsPage: React.FC = () => {
         setSelectedLead((prev) => (prev ? { ...prev, comment: updated.comment } : prev));
         setLeads((prev) => prev.map((l) => (l.id === updated.id ? { ...l, comment: updated.comment } : l)));
       } catch (err: any) {
-        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨░╨▓╤В╨╛╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╖╨░╨╝╨╡╤В╨║╤Г'));
+        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h�h�dh[dh[ddh�h\hUdd hVh�h]hadhQd'));
       } finally {
         setLeadCommentSaving(false);
       }
@@ -1157,7 +1157,7 @@ const SalesLeadsPage: React.FC = () => {
           )
         );
       } catch (err: any) {
-        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨░╨▓╤В╨╛╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╤И╨░╨┐╨║╤Г ╨╗╨╕╨┤╨░'));
+        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h�h�dh[dh[ddh�h\hUdd dh�hhQd hWhUh$h�'));
       } finally {
         setLeadHeaderSaving(false);
       }
@@ -1181,9 +1181,9 @@ const SalesLeadsPage: React.FC = () => {
       });
       setSelectedLead(updated);
       setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-      setToast({ open: true, message: '╨Ш╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤П ╨╗╨╕╨┤╨░ ╨╛╨▒╨╜╨╛╨▓╨╗╨╡╨╜╨░', severity: 'success' });
+      setToast({ open: true, message: 'h(h\dh[dh]h�dhUd hWhUh$h� h[h�h\h[h�hWhah\h�', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤О ╨╗╨╕╨┤╨░'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd hUh\dh[dh]h�dhUd hWhUh$h�'));
     } finally {
       setLeadInfoSaving(false);
     }
@@ -1201,15 +1201,15 @@ const SalesLeadsPage: React.FC = () => {
   const handleSendInfo = async () => {
     if (!selectedLead) return;
     if (!sendInfoForm.message.trim()) {
-      setError('╨Т╨▓╨╡╨┤╨╕╤В╨╡ ╤В╨╡╨║╤Б╤В ╨╛╤В╨┐╤А╨░╨▓╨║╨╕');
+      setError('h"h�hah$hUdha dhahQdd h[dhdh�h�hQhU');
       return;
     }
     if (!sendInfoForm.follow_up_at) {
-      setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╤Л╨╣ follow-up');
+      setError('h3hQh�hbhUdha h[h�dhVh�dhahWdh\dhc follow-up');
       return;
     }
-    if (sendInfoForm.pause_reason && !['╨╢╨┤╤С╨╝ ╨╛╤В╨▓╨╡╤В', '╨┐╨╛╨┤╤Г╨╝╨░╤В╤М', '╨╜╨╡╤В ╨▓╤А╨╡╨╝╨╡╨╜╨╕'].includes(sendInfoForm.pause_reason)) {
-      setError('╨Э╨╡╨┤╨╛╨┐╤Г╤Б╤В╨╕╨╝╨░╤П ╨┐╤А╨╕╤З╨╕╨╜╨░ ╨┐╨░╤Г╨╖╤Л');
+    if (sendInfoForm.pause_reason && !['hbh$d!h] h[dh�had', 'hh[h$dh]h�dd', 'h\had h�dhah]hah\hU'].includes(sendInfoForm.pause_reason)) {
+      setError('h-hah$h[hdddhUh]h�d hdhUdhUh\h� hh�dhVd');
       return;
     }
     try {
@@ -1224,15 +1224,15 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       await loadLeads();
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨╕╨╜╤Д╨╛'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[dhdh�h�hUdd hUh\dh['));
     }
   };
 
   const handleAssignPush = async () => {
     if (!selectedLead) return;
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('╨┤╨╛╨╢╨╕╨╝')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('╨б╨╜╨░╤З╨░╨╗╨░ ╨┤╨╛╨▒╨░╨▓╤М╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜ ╨╖╨░╨┤╨░╤З╨╕ ╨▓ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨░╤Е');
+      setError('h1h\h�dh�hWh� h$h[h�h�h�ddha dh�h�hWh[h\ hVh�h$h�dhU h� dhdh�h�h[dh\hUhQh�d');
       return;
     }
     const due = new Date();
@@ -1241,34 +1241,34 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.createTask(selectedLead.id, {
         template_id: pushTemplate.id,
         status_option_id: taskStatusOptionId ? Number(taskStatusOptionId) : undefined,
-        note: '╨С╤Л╤Б╤В╤А╤Л╨╣ ╨┤╨╛╨╢╨╕╨╝',
+        note: 'h!dddddhc h$h[hbhUh]',
         channel: 'call',
         due_at: due.toISOString(),
       });
       await loadLeadDetails(selectedLead);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╜╨░╨╖╨╜╨░╤З╨╕╤В╤М ╨┤╨╛╨╢╨╕╨╝'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h\h�hVh\h�dhUdd h$h[hbhUh]'));
     }
   };
 
   const handleAssignPushTemplateStep = async (step: 'first' | 'second' | 'final') => {
     if (!selectedLead) return;
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('╨┤╨╛╨╢╨╕╨╝')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
     if (!pushTemplate) {
-      setError('╨б╨╜╨░╤З╨░╨╗╨░ ╨┤╨╛╨▒╨░╨▓╤М╤В╨╡ ╤И╨░╨▒╨╗╨╛╨╜ ╨╖╨░╨┤╨░╤З╨╕ ╨▓ ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨░╤Е');
+      setError('h1h\h�dh�hWh� h$h[h�h�h�ddha dh�h�hWh[h\ hVh�h$h�dhU h� dhdh�h�h[dh\hUhQh�d');
       return;
     }
     const due = new Date();
     let note = '';
     if (step === 'first') {
       due.setHours(due.getHours() + 24);
-      note = '╨Ф╨╛╨╢╨╕╨╝: 1-╨╣ ╨║╨╛╨╜╤В╨░╨║╤В';
+      note = 'h$h[hbhUh]: 1-hc hQh[h\dh�hQd';
     } else if (step === 'second') {
       due.setHours(due.getHours() + 48);
-      note = '╨Ф╨╛╨╢╨╕╨╝: 2-╨╣ ╨║╨╛╨╜╤В╨░╨║╤В';
+      note = 'h$h[hbhUh]: 2-hc hQh[h\dh�hQd';
     } else {
       due.setHours(due.getHours() + 72);
-      note = '╨Ф╨╛╨╢╨╕╨╝: ╤Д╨╕╨╜╨░╨╗╤М╨╜╤Л╨╣ ╨║╨╛╨╜╤В╨░╨║╤В';
+      note = 'h$h[hbhUh]: dhUh\h�hWdh\dhc hQh[h\dh�hQd';
     }
     try {
       await salesApi.createTask(selectedLead.id, {
@@ -1281,11 +1281,11 @@ const SalesLeadsPage: React.FC = () => {
       await loadLeadDetails(selectedLead);
       setToast({
         open: true,
-        message: `${note} ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜`,
+        message: `${note} h$h[h�h�h�hWhah\`,
         severity: 'success',
       });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┤╨╛╨▒╨░╨▓╨╕╤В╤М ╤И╨░╨│ ╨┤╨╛╨╢╨╕╨╝╨░'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd h$h[h�h�h�hUdd dh�h h$h[hbhUh]h�'));
     }
   };
 
@@ -1311,7 +1311,7 @@ const SalesLeadsPage: React.FC = () => {
   const handleRegisterToEvent = async () => {
     if (!selectedLead) return;
     if (!registerEventId) {
-      setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡');
+      setError('h"dh�hadhUdha h]hadh[hdhUddhUha');
       return;
     }
     try {
@@ -1320,9 +1320,9 @@ const SalesLeadsPage: React.FC = () => {
         note: registerEventNote.trim() || undefined,
       });
       setRegisterEventOpen(false);
-      setToast({ open: true, message: '╨Ы╨╕╨┤ ╨╖╨░╨┐╨╕╤Б╨░╨╜ ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡', severity: 'success' });
+      setToast({ open: true, message: 'h+hUh$ hVh�hhUdh�h\ h\h� h]hadh[hdhUddhUha', severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hhUdh�dd h\h� h]hadh[hdhUddhUha'));
     }
   };
 
@@ -1336,18 +1336,18 @@ const SalesLeadsPage: React.FC = () => {
       })
       .sort((a, b) => parseISO(a.starts_at).getTime() - parseISO(b.starts_at).getTime())[0];
     if (!nearest) {
-      setError('╨Э╨╡╤В ╨▒╨╗╨╕╨╢╨░╨╣╤И╨╕╤Е ╨░╨║╤В╨╕╨▓╨╜╤Л╤Е ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣');
+      setError('h-had h�hWhUhbh�hcdhUd h�hQdhUh�h\dd h]hadh[hdhUddhUhc');
       return;
     }
     try {
       await salesApi.registerLeadToEvent(nearest.id, { lead_id: selectedLead.id });
       setToast({
         open: true,
-        message: `╨Ы╨╕╨┤ ╨╖╨░╨┐╨╕╤Б╨░╨╜: ${formatEventOptionLabel(nearest)}`,
+        message: `h+hUh$ hVh�hhUdh�h\: ${formatEventOptionLabel(nearest)}`,
         severity: 'success',
       });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨▒╨╗╨╕╨╢╨░╨╣╤И╨╡╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hhUdh�dd h\h� h�hWhUhbh�hcdhaha h]hadh[hdhUddhUha'));
     }
   };
 
@@ -1365,12 +1365,12 @@ const SalesLeadsPage: React.FC = () => {
       const result = await salesApi.importLeadsXlsx(file);
       await loadLeads();
       if (result.errors?.length) {
-        setError(`╨Ш╨╝╨┐╨╛╤А╤В ╨╖╨░╨▓╨╡╤А╤И╨╡╨╜: ╤Б╨╛╨╖╨┤╨░╨╜╨╛ ${result.created}, ╨┐╤А╨╛╨┐╤Г╤Й╨╡╨╜╨╛ ${result.skipped}. ╨Ю╤И╨╕╨▒╨║╨╕: ${result.errors.join('; ')}`);
+        setError(`h(h]hh[dd hVh�h�haddhah\: dh[hVh$h�h\h[ ${result.created}, hdh[hddhah\h[ ${result.skipped}. h.dhUh�hQhU: ${result.errors.join('; ')}`);
       } else {
-        setError(`╨Ш╨╝╨┐╨╛╤А╤В ╨╖╨░╨▓╨╡╤А╤И╨╡╨╜: ╤Б╨╛╨╖╨┤╨░╨╜╨╛ ${result.created}, ╨┐╤А╨╛╨┐╤Г╤Й╨╡╨╜╨╛ ${result.skipped}`);
+        setError(`h(h]hh[dd hVh�h�haddhah\: dh[hVh$h�h\h[ ${result.created}, hdh[hddhah\h[ ${result.skipped}`);
       }
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╕╨╝╨┐╨╛╤А╤В╨╕╤А╨╛╨▓╨░╤В╤М Excel'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd hUh]hh[ddhUdh[h�h�dd Excel'));
     }
   };
 
@@ -1386,7 +1386,7 @@ const SalesLeadsPage: React.FC = () => {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨║╨░╤З╨░╤В╤М ╤И╨░╨▒╨╗╨╛╨╜ Excel'));
+      setError(extractApiError(err, 'h-ha dh$h�hWh[dd dhQh�dh�dd dh�h�hWh[h\ Excel'));
     }
   };
 
@@ -1488,9 +1488,9 @@ const SalesLeadsPage: React.FC = () => {
       try {
         await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1 });
         await loadLeads();
-        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" — ╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜ 1`, severity: 'success' });
+        setToast({ open: true, message: `h+hUh$ "${lead.contact_name}"  h-hah$h[hVh�h[h\ 1`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[h�h\h[h�hUdd'));
       }
       return;
     }
@@ -1498,10 +1498,10 @@ const SalesLeadsPage: React.FC = () => {
       try {
         await salesApi.updateLead(lead.id, { status: 'decided_immediately', questionnaire_filled: false });
         await loadLeads();
-        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨┐╨╡╤А╨╡╨╜╨╡╤Б╤С╨╜ ╨▓ ╨Р╨╜╨║╨╡╤В╤Г ╤Г╤З╨╡╨╜╨╕╨║╨░`, severity: 'success' });
+        setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hhadhah\hadd!h\ h� h h\hQhadd ddhah\hUhQh�`, severity: 'success' });
         navigate('/sales/agreed');
       } catch (err: any) {
-        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[h�h\h[h�hUdd'));
       }
       return;
     }
@@ -1542,12 +1542,12 @@ const SalesLeadsPage: React.FC = () => {
     setError('');
     if (dropTargetStatus === 'thinking') {
       if (!dropCallbackAt) {
-        setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┤╨░╤В╤Г ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░');
+        setError('h3hQh�hbhUdha h$h�dd hhadhahVh�h[h\h�');
         return;
       }
       const d = new Date(dropCallbackAt);
       if (!isValid(d)) {
-        setError('╨Э╨╡╨▓╨╡╤А╨╜╨░╤П ╨┤╨░╤В╨░');
+        setError('h-hah�hadh\h�d 40B0');
         return;
       }
       try {
@@ -1558,15 +1558,15 @@ const SalesLeadsPage: React.FC = () => {
         setDropLeadId(null);
         setDropTargetStatus(null);
         setDropCallbackAt('');
-        setToast({ open: true, message: `╨Ф╨░╤В╨░ ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜╨░ ╨┤╨╗╤П "${lead.contact_name}"`, severity: 'success' });
+        setToast({ open: true, message: `0B0 hhadhahVh�h[h\h� dh[ddh�h\hah\h� h$hWd "${lead.contact_name}"`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'));
+        setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd'));
       }
       return;
     }
     if (dropTargetStatus === 'refused') {
       if (!dropRefusedReason.trim()) {
-        setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨┐╤А╨╕╤З╨╕╨╜╤Г ╨╛╤В╨║╨░╨╖╨░');
+        setError('h"dh�hadhUdha hdhUdhUh\d h[dhQh�hVh�');
         return;
       }
       try {
@@ -1576,20 +1576,20 @@ const SalesLeadsPage: React.FC = () => {
         setDropLeadId(null);
         setDropTargetStatus(null);
         setDropRefusedReason('');
-        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜ ╨▓ ╨░╤А╤Е╨╕╨▓`, severity: 'success' });
+        setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" h[dhdh�h�hWhah\ h� h�ddhUh�`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╨▒╨╜╨╛╨▓╨╕╤В╤М'));
+        setError(extractApiError(err, 'h-ha dh$h�hWh[dd h[h�h\h[h�hUdd'));
       }
       return;
     }
     if (dropTargetStatus === 'trial_scheduled') {
       if (!dropTrialAt) {
-        setError('╨г╨║╨░╨╢╨╕╤В╨╡ ╨┤╨░╤В╤Г ╨╕ ╨▓╤А╨╡╨╝╤П ╨┐╤А╨╛╨▒╨╜╨╛╨│╨╛');
+        setError('h3hQh�hbhUdha h$h�dd 8 2@5<O hdh[h�h\h[hh[');
         return;
       }
       const d = new Date(dropTrialAt);
       if (!isValid(d)) {
-        setError('╨Э╨╡╨▓╨╡╤А╨╜╨░╤П ╨┤╨░╤В╨░');
+        setError('h-hah�hadh\h�d 40B0');
         return;
       }
       try {
@@ -1603,15 +1603,15 @@ const SalesLeadsPage: React.FC = () => {
         setDropLeadId(null);
         setDropTargetStatus(null);
         setDropTrialAt('');
-        setToast({ open: true, message: `╨Я╤А╨╛╨▒╨╜╨╛╨╡ ╨╖╨░╨┐╨╗╨░╨╜╨╕╤А╨╛╨▓╨░╨╜╨╛ ╨┤╨╗╤П "${lead.contact_name}"`, severity: 'success' });
+        setToast({ open: true, message: `h/dh[h�h\h[ha hVh�hhWh�h\hUdh[h�h�h\h[ h$hWd "${lead.contact_name}"`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'));
+        setError(extractApiError(err, 'h-ha dh$h�hWh[dd dh[ddh�h\hUdd'));
       }
       return;
     }
     if (dropTargetStatus === 'event_registered') {
       if (!dropEventId) {
-        setError('╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡');
+        setError('h"dh�hadhUdha h]hadh[hdhUddhUha');
         return;
       }
       try {
@@ -1623,21 +1623,21 @@ const SalesLeadsPage: React.FC = () => {
         setDropTargetStatus(null);
         setDropEventId('');
         setDropEventNote('');
-        setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨╖╨░╨┐╨╕╤Б╨░╨╜ ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡`, severity: 'success' });
+        setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hVh�hhUdh�h\ h\h� h]hadh[hdhUddhUha`, severity: 'success' });
       } catch (err: any) {
-        setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╨╕╤Б╨░╤В╤М'));
+        setError(extractApiError(err, 'h-ha dh$h�hWh[dd hVh�hhUdh�dd'));
       }
       return;
     }
     let nextContactAtIso: string | undefined;
     if (requiresFollowUpOnDrop(dropTargetStatus) && !lead.next_contact_at) {
       if (!dropFollowUpAt) {
-        setError('╨Ф╨╗╤П ╤Н╤В╨╛╨╣ ╤Б╤В╨░╨┤╨╕╨╕ ╤Г╨║╨░╨╢╨╕╤В╨╡ follow-up');
+        setError('h$hWd ddh[hc ddh�h$hUhU dhQh�hbhUdha follow-up');
         return;
       }
       const d = new Date(dropFollowUpAt);
       if (!isValid(d)) {
-        setError('╨Э╨╡╨▓╨╡╤А╨╜╨░╤П ╨┤╨░╤В╨░ follow-up');
+        setError('h-hah�hadh\h�d 40B0 follow-up');
         return;
       }
       nextContactAtIso = d.toISOString();
@@ -1650,9 +1650,9 @@ const SalesLeadsPage: React.FC = () => {
       if (dropTargetStatus === 'demo' && dropEventId) {
         try {
           await salesApi.registerLeadToEvent(Number(dropEventId), { lead_id: lead.id, note: dropEventNote || undefined });
-          setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨╖╨░╨┐╨╕╤Б╨░╨╜ ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╡`, severity: 'success' });
+          setToast({ open: true, message: `h+hUh$ "${lead.contact_name}" hVh�hhUdh�h\ h\h� hdh[h�h\h[ha hVh�h\ddhUha`, severity: 'success' });
         } catch (regErr: any) {
-          setError(extractApiError(regErr, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╨╕╤Б╨░╤В╤М ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'));
+          setError(extractApiError(regErr, 'h-ha dh$h�hWh[dd hVh�hhUdh�dd h\h� h]hadh[hdhUddhUha'));
         }
       }
       await loadLeads();
@@ -1667,9 +1667,9 @@ const SalesLeadsPage: React.FC = () => {
       setDropFollowUpAt('');
       setDropEventId('');
       setDropEventNote('');
-      setToast({ open: true, message: `╨Ы╨╕╨┤ "${lead.contact_name}" ╨┐╨╡╤А╨╡╨╜╨╡╤Б╨╡╨╜ ╨▓ "${statusLabels[dropTargetStatus]}"`, severity: 'success' });
+      setToast({ open: true, message: `Лид "${lead.contact_name}" перенесён в "${statusLabels[dropTargetStatus]}"`, severity: 'success' });
     } catch (err: any) {
-      setError(extractApiError(err, '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨┐╨╡╤А╨╡╨╜╨╡╤Б╤В╨╕ ╨╗╨╕╨┤ ╨▓ ╤Б╤В╨░╨┤╨╕╤О'));
+      setError(extractApiError(err, 'Не удалось перенести лид в стадию'));
     }
   };
 
@@ -1684,9 +1684,9 @@ const SalesLeadsPage: React.FC = () => {
   const kanbanColumns = useMemo(
     () => {
       const source = isPipelineRoute ? pipelineLeads : leads;
-      // ╨Ъ╨╛╨│╨┤╨░ ╨░╤А╤Е╨╕╨▓ ╤Б╨║╤А╤Л╤В тАФ ╨╗╨╕╨┤╤Л ╤Б╨╛ ╤Б╤В╨░╤В╤Г╤Б╨╛╨╝ ┬л╨Ч╨░╨║╤А╤Л╤В┬╗ ╨╜╨╡ ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╨╝ ╨▓ ╨▓╨╛╤А╨╛╨╜╨║╨╡ ╨▓╨╛╨╛╨▒╤Й╨╡
+      // h*h[hh$h� h�ddhUh� dhQddd B$ hWhUh$d dh[ ddh�dddh[h] ,;h'h�hQddd,W h\ha hh[hQh�hVdh�h�hah] h� h�h[dh[h\hQha h�h[h[h�dha
       const visibleSource = showArchiveColumn ? source : source.filter((l) => l.status !== 'lost');
-      // ╨Ы╨╕╨┤╤Л ╤Б ╨╜╨╡╤П╨▓╨║╨╛╨╣ ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╨╝ ╤В╨╛╨╗╤М╨║╨╛ ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨╡ ┬л╨б╨╗╨╡╨┤ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡┬╗, ╨╕╨╖ ╨╛╤Б╤В╨░╨╗╤М╨╜╤Л╤Е ╨║╨╛╨╗╨╛╨╜╨╛╨║ ╤Г╨▒╨╕╤А╨░╨╡╨╝
+      // h+hUh$d d h\hadh�hQh[hc hh[hQh�hVdh�h�hah] dh[hWdhQh[ h� hQh[hWh[h\hQha ,;h1hWhah$ h]hadh[hdhUddhUha,W, hUhV h[ddh�hWdh\dd hQh[hWh[h\h[hQ dh�hUdh�hah]
       const notNoShow = (l: Lead) => !noShowLeadIds.has(l.id);
       const base = PIPELINE_STATUSES.map((st) => ({
         status: st as LeadStatus | 'archive' | 'next_event',
@@ -2737,18 +2737,18 @@ const SalesLeadsPage: React.FC = () => {
       </Dialog>
       <Dialog open={dropConfirmOpen} onClose={() => setDropConfirmOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {dropTargetStatus === 'thinking' && '╨Я╨╛╨┤╤Г╨╝╨░╤О╤В — ╨┤╨░╤В╨░ ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░'}
-          {dropTargetStatus === 'refused' && '╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П — ╨┐╤А╨╕╤З╨╕╨╜╨░'}
-          {dropTargetStatus === 'trial_scheduled' && '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡'}
-          {dropTargetStatus === 'event_registered' && '╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡'}
-          {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && '╨Я╨╛╨┤╤В╨▓╨╡╤А╨┤╨╕╤В╤М ╨┐╨╡╤А╨╡╨╜╨╛╤Б ╤Б╤В╨░╨┤╨╕╨╕'}
+          {dropTargetStatus === 'thinking' && 'Подумают — дата перезвона'}
+          {dropTargetStatus === 'refused' && 'Отказали — причина'}
+          {dropTargetStatus === 'trial_scheduled' && 'Запись на пробное'}
+          {dropTargetStatus === 'event_registered' && 'Запись на мероприятие'}
+          {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && 'Подтвердить перенос стадии'}
         </DialogTitle>
         <DialogContent>
           {dropTargetStatus === 'thinking' && (
             <TextField
               fullWidth
               type="datetime-local"
-              label="╨Ф╨░╤В╨░ ╨╕ ╨▓╤А╨╡╨╝╤П ╨┐╨╡╤А╨╡╨╖╨▓╨╛╨╜╨░"
+              label="Дата и время перезвона"
               InputLabelProps={{ shrink: true }}
               sx={{ mt: 2 }}
               value={dropCallbackAt}
@@ -2757,9 +2757,9 @@ const SalesLeadsPage: React.FC = () => {
           )}
           {dropTargetStatus === 'refused' && (
             <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel id="drop-refused-label">╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╛╤В╨║╨░╨╖╨░</InputLabel>
-              <Select labelId="drop-refused-label" label="╨Я╤А╨╕╤З╨╕╨╜╨░ ╨╛╤В╨║╨░╨╖╨░" value={dropRefusedReason} onChange={(e) => setDropRefusedReason(e.target.value)}>
-                <MenuItem value=""><em>╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡</em></MenuItem>
+              <InputLabel id="drop-refused-label">Причина отказа</InputLabel>
+              <Select labelId="drop-refused-label" label="Причина отказа" value={dropRefusedReason} onChange={(e) => setDropRefusedReason(e.target.value)}>
+                <MenuItem value=""><em>Выберите</em></MenuItem>
                 {REFUSED_REASONS.map((r) => (
                   <MenuItem key={r} value={r}>{r}</MenuItem>
                 ))}
@@ -2770,7 +2770,7 @@ const SalesLeadsPage: React.FC = () => {
             <TextField
               fullWidth
               type="datetime-local"
-              label="╨Ф╨░╤В╨░ ╨╕ ╨▓╤А╨╡╨╝╤П ╨┐╤А╨╛╨▒╨╜╨╛╨│╨╛"
+              label="Дата и время пробного"
               InputLabelProps={{ shrink: true }}
               sx={{ mt: 2 }}
               value={dropTrialAt}
@@ -2780,23 +2780,23 @@ const SalesLeadsPage: React.FC = () => {
           {dropTargetStatus === 'event_registered' && (
             <>
               <FormControl fullWidth sx={{ mt: 2 }}>
-                <InputLabel id="drop-event-reg-label">╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡</InputLabel>
-                <Select labelId="drop-event-reg-label" label="╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡" value={dropEventId} onChange={(e) => setDropEventId((e.target.value as number) || '')}>
-                  <MenuItem value=""><em>╨Т╤Л╨▒╨╡╤А╨╕╤В╨╡</em></MenuItem>
+                <InputLabel id="drop-event-reg-label">Мероприятие</InputLabel>
+                <Select labelId="drop-event-reg-label" label="Мероприятие" value={dropEventId} onChange={(e) => setDropEventId((e.target.value as number) || '')}>
+                  <MenuItem value=""><em>Выберите</em></MenuItem>
                   {events.map((ev) => (
                     <MenuItem key={ev.id} value={ev.id}>{formatEventOptionLabel(ev)}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
               {dropEventId && (
-                <TextField fullWidth multiline minRows={2} label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣ ╨║ ╨╖╨░╨┐╨╕╤Б╨╕" sx={{ mt: 2 }} value={dropEventNote} onChange={(e) => setDropEventNote(e.target.value)} />
+                <TextField fullWidth multiline minRows={2} label="Комментарий к записи" sx={{ mt: 2 }} value={dropEventNote} onChange={(e) => setDropEventNote(e.target.value)} />
               )}
             </>
           )}
           {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                ╨Э╨╛╨▓╨░╤П ╤Б╤В╨░╨┤╨╕╤П: {dropTargetStatus ? statusLabels[dropTargetStatus] : '—'}
+                Новая стадия: {dropTargetStatus ? statusLabels[dropTargetStatus] : '—'}
               </Typography>
               {(() => {
                 const lead = dropLeadId ? leads.find((l) => l.id === dropLeadId) : null;
@@ -2806,7 +2806,7 @@ const SalesLeadsPage: React.FC = () => {
                   <TextField
                     fullWidth
                     type="datetime-local"
-                    label="Follow-up (╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛)"
+                    label="Follow-up (обязательно)"
                     InputLabelProps={{ shrink: true }}
                     sx={{ mt: 2 }}
                     value={dropFollowUpAt}
@@ -2817,15 +2817,15 @@ const SalesLeadsPage: React.FC = () => {
           {dropTargetStatus === 'demo' && (
             <>
               <FormControl fullWidth sx={{ mt: 2 }}>
-                <InputLabel id="drop-event-label">╨Я╤А╨╛╨▒╨╜╨╛╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╡ (╨╛╨┐╤Ж╨╕╨╛╨╜╨░╨╗╤М╨╜╨╛)</InputLabel>
+                <InputLabel id="drop-event-label">Пробное занятие (опционально)</InputLabel>
                 <Select
                   labelId="drop-event-label"
-                  label="╨Я╤А╨╛╨▒╨╜╨╛╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╡ (╨╛╨┐╤Ж╨╕╨╛╨╜╨░╨╗╤М╨╜╨╛)"
+                  label="Пробное занятие (опционально)"
                   value={dropEventId}
                   onChange={(e) => setDropEventId((e.target.value as number) || '')}
                 >
                   <MenuItem value="">
-                    <em>╨Э╨╡ ╨╖╨░╨┐╨╕╤Б╤Л╨▓╨░╤В╤М</em>
+                    <em>Не записывать</em>
                   </MenuItem>
                   {events.map((ev) => (
                     <MenuItem key={ev.id} value={ev.id}>
@@ -2839,7 +2839,7 @@ const SalesLeadsPage: React.FC = () => {
                   fullWidth
                   multiline
                   minRows={2}
-                  label="╨Ъ╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╣ ╨║ ╨╖╨░╨┐╨╕╤Б╨╕"
+                  label="Комментарий к записи"
                   sx={{ mt: 2 }}
                   value={dropEventNote}
                   onChange={(e) => setDropEventNote(e.target.value)}
@@ -2851,21 +2851,21 @@ const SalesLeadsPage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDropConfirmOpen(false)}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => setDropConfirmOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleConfirmKanbanDrop()}>
-            {dropTargetStatus === 'refused' ? '╨Т ╨░╤А╤Е╨╕╨▓' : '╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М'}
+            {dropTargetStatus === 'refused' ? 'В архив' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={noAnswerArchiveConfirmOpen} onClose={() => { setNoAnswerArchiveConfirmOpen(false); setPendingNoAnswerArchiveLead(null); }}>
-        <DialogTitle>╨Ю╤В╨┐╤А╨░╨▓╨╕╤В╤М ╨▓ ╨░╤А╤Е╨╕╨▓?</DialogTitle>
+        <DialogTitle>Отправить в архив?</DialogTitle>
         <DialogContent>
-          <Typography>╨Я╨╛╤Б╨╗╨╡ ╨╜╨╡╨┤╨╛╨╖╨▓╨╛╨╜╨░ 3 ╨╗╨╕╨┤ ╨▒╤Г╨┤╨╡╤В ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜ ╨▓ ╨░╤А╤Е╨╕╨▓.</Typography>
+          <Typography>После недозвона 3 лид будет отправлен в архив.</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setNoAnswerArchiveConfirmOpen(false); setPendingNoAnswerArchiveLead(null); }}>╨Ю╤В╨╝╨╡╨╜╨░</Button>
+          <Button onClick={() => { setNoAnswerArchiveConfirmOpen(false); setPendingNoAnswerArchiveLead(null); }}>Отмена</Button>
           <Button variant="contained" color="error" onClick={() => void handleNoAnswerArchiveConfirm()}>
-            ╨Т ╨░╤А╤Е╨╕╨▓
+            В архив
           </Button>
         </DialogActions>
       </Dialog>

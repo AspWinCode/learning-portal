@@ -28,12 +28,18 @@ import {
   FormControlLabel,
   Switch,
   Autocomplete,
+  Tabs,
+  Tab,
+  CircularProgress,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
 import { Student, User, Group, Program, Abonement, StudentAccount, StudentCard as StudentCardType } from '../types';
+import type { AnketaConvertConflict } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
+import AnketaFormDrawer from '../components/AnketaFormDrawer';
+import { studentCardsApi } from '../services/api';
 import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
 
 const StudentsPage: React.FC = () => {
@@ -127,7 +133,121 @@ const StudentsPage: React.FC = () => {
   const canAssignAbonement = isAdminLike || user?.role === 'sales';
   const canManageAccounts = isAdminLike || user?.role === 'parent' || user?.role === 'sales';
   const canCreateCard = isAdminLike || user?.role === 'sales';
+  const canSeeAnkety = isAdminLike || user?.role === 'sales';
   const [citiesList, setCitiesList] = useState<string[]>([]);
+
+  const studentsTab = searchParams.get('tab') !== 'ankety' ? 'students' : 'ankety';
+  const setStudentsTab = (tab: 'students' | 'ankety') => {
+    const next = new URLSearchParams(searchParams);
+    if (tab === 'ankety') next.set('tab', 'ankety');
+    else next.delete('tab');
+    setSearchParams(next, { replace: true });
+  };
+
+  const [anketyItems, setAnketyItems] = useState<StudentCardType[]>([]);
+  const [anketyLoading, setAnketyLoading] = useState(false);
+  const [anketyError, setAnketyError] = useState<string | null>(null);
+  const [anketyStatusTab, setAnketyStatusTab] = useState<'all' | 'draft' | 'filled' | 'converted' | 'cancelled'>('all');
+  const [anketaFormOpen, setAnketaFormOpen] = useState(false);
+  const [anketaFormMode, setAnketaFormMode] = useState<'create' | 'edit' | 'addStudent'>('create');
+  const [anketaFormCardId, setAnketaFormCardId] = useState<number | null>(null);
+  const [convertLoading, setConvertLoading] = useState<number | null>(null);
+  const [convertCardId, setConvertCardId] = useState<number | null>(null);
+  const [convertConflict, setConvertConflict] = useState<AnketaConvertConflict | null>(null);
+  const [conflictChoice, setConflictChoice] = useState<'existing_parent' | 'existing_student' | 'new_student' | null>(null);
+  const [selectedExistingStudentId, setSelectedExistingStudentId] = useState<number | ''>('');
+
+  const ANKETA_STATUS_LABELS: Record<string, string> = {
+    draft: 'Новая',
+    filled: 'Заполнена',
+    converted: 'Конвертирована',
+    cancelled: 'Отменена',
+  };
+
+  const loadAnkety = async () => {
+    if (!canSeeAnkety) return;
+    setAnketyLoading(true);
+    setAnketyError(null);
+    try {
+      const params: { archived?: boolean; anketa_status?: string[] } = { archived: false };
+      if (anketyStatusTab !== 'all') params.anketa_status = [anketyStatusTab];
+      const data = await studentCardsApi.list(params);
+      setAnketyItems(data);
+    } catch (err: any) {
+      setAnketyError(err.response?.data?.detail || 'Не удалось загрузить анкеты');
+    } finally {
+      setAnketyLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (canSeeAnkety && studentsTab === 'ankety') void loadAnkety();
+  }, [canSeeAnkety, studentsTab, anketyStatusTab]);
+
+  const cardIdFromUrl = searchParams.get('cardId');
+  useEffect(() => {
+    if (!cardIdFromUrl) return;
+    const id = parseInt(cardIdFromUrl, 10);
+    if (Number.isNaN(id)) return;
+    setStudentsTab('ankety');
+    setAnketaFormMode('edit');
+    setAnketaFormCardId(id);
+    setAnketaFormOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('cardId');
+    setSearchParams(next, { replace: true });
+  }, [cardIdFromUrl]);
+
+  const handleConvert = async (card: StudentCardType, body?: { use_existing_parent_id?: number; use_existing_student_id?: number }) => {
+    setConvertLoading(card.id);
+    setAnketyError(null);
+    setConvertConflict(null);
+    setConvertCardId(card.id);
+    setConflictChoice(null);
+    setSelectedExistingStudentId('');
+    try {
+      const res = await studentCardsApi.convert(card.id, body);
+      setConvertCardId(null);
+      await loadAnkety();
+      if (res.student_id) setStudentDetailId(res.student_id);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      if (err.response?.status === 409 && detail && (detail.code === 'existing_parent' || detail.code === 'existing_student')) {
+        setConvertConflict(detail as AnketaConvertConflict);
+      } else {
+        setAnketyError(typeof detail === 'string' ? detail : detail?.message || 'Ошибка конверсии');
+      }
+    } finally {
+      setConvertLoading(null);
+    }
+  };
+
+  const handleConflictResolve = async () => {
+    if (!convertCardId || !convertConflict) return;
+    if (convertConflict.code === 'existing_parent' && conflictChoice === 'existing_parent' && convertConflict.existing_parent_id) {
+      await handleConvert({ id: convertCardId } as StudentCardType, { use_existing_parent_id: convertConflict.existing_parent_id });
+      setConvertConflict(null);
+      setConvertCardId(null);
+      return;
+    }
+    if (convertConflict.code === 'existing_student') {
+      if (conflictChoice === 'existing_student' && (convertConflict.existing_student_id || selectedExistingStudentId)) {
+        const sid = Number(selectedExistingStudentId || convertConflict.existing_student_id);
+        await handleConvert({ id: convertCardId } as StudentCardType, { use_existing_student_id: sid });
+        setConvertConflict(null);
+        setConvertCardId(null);
+        setSelectedExistingStudentId('');
+        return;
+      }
+      if (conflictChoice === 'new_student' && convertConflict.existing_parent_id) {
+        await handleConvert({ id: convertCardId } as StudentCardType, { use_existing_parent_id: convertConflict.existing_parent_id });
+        setConvertConflict(null);
+        setConvertCardId(null);
+        return;
+      }
+    }
+    setAnketyError('Выберите вариант');
+  };
 
   const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || '').trim());
 
@@ -791,6 +911,15 @@ const StudentsPage: React.FC = () => {
 
   return (
     <Layout>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tabs value={studentsTab} onChange={(_, v) => setStudentsTab(v)}>
+          <Tab label="Ученики" value="students" />
+          {canSeeAnkety && <Tab label="Анкеты" value="ankety" />}
+        </Tabs>
+      </Box>
+
+      {studentsTab === 'students' && (
+        <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Ученики</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -837,12 +966,9 @@ const StudentsPage: React.FC = () => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => {
-              if (canCreateCard) {
-                navigate('/sales/ankety?addStudent=1');
-              } else {
-                resetCreateForm();
-                setOpen(true);
-              }
+              setAnketaFormMode('addStudent');
+              setAnketaFormCardId(null);
+              setAnketaFormOpen(true);
             }}
           >
             Добавить ученика
@@ -1127,6 +1253,155 @@ const StudentsPage: React.FC = () => {
           </TableContainer>
         </>
       )}
+
+        </>
+      )}
+
+      {studentsTab === 'ankety' && canSeeAnkety && (
+        <>
+          {anketyError && (
+            <Alert severity="error" onClose={() => setAnketyError(null)} sx={{ mb: 2 }}>
+              {anketyError}
+            </Alert>
+          )}
+          <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }} flexWrap="wrap">
+            <Tabs value={anketyStatusTab} onChange={(_, v) => setAnketyStatusTab(v)}>
+              <Tab label="Все" value="all" />
+              <Tab label="Новая / В работе" value="draft" />
+              <Tab label="Заполнена" value="filled" />
+              <Tab label="Конвертирована" value="converted" />
+              <Tab label="Отменена" value="cancelled" />
+            </Tabs>
+            <Button variant="contained" onClick={() => { setAnketaFormMode('create'); setAnketaFormCardId(null); setAnketaFormOpen(true); }}>
+              Новая анкета
+            </Button>
+          </Stack>
+          {anketyLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : anketyItems.length === 0 ? (
+            <Typography color="textSecondary">Нет анкет по выбранному фильтру.</Typography>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>ФИО ребёнка</TableCell>
+                    <TableCell>Родитель</TableCell>
+                    <TableCell>Контакты</TableCell>
+                    <TableCell>Город</TableCell>
+                    <TableCell>Класс</TableCell>
+                    <TableCell>Формат</TableCell>
+                    <TableCell>Источник</TableCell>
+                    <TableCell>Статус анкеты</TableCell>
+                    <TableCell>Привязан ученик</TableCell>
+                    <TableCell align="right">Действия</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {anketyItems.map((card) => (
+                    <TableRow key={card.id}>
+                      <TableCell>{card.student_full_name}</TableCell>
+                      <TableCell>{card.parent_full_name || '—'}</TableCell>
+                      <TableCell>{card.parent_phone || card.parent_email || '—'}</TableCell>
+                      <TableCell>{card.city || '—'}</TableCell>
+                      <TableCell>{card.grade || '—'}</TableCell>
+                      <TableCell>{card.format_type === 'group' ? 'Группа' : card.format_type === 'individual' ? 'Индивидуальное' : '—'}</TableCell>
+                      <TableCell>{card.source || '—'}</TableCell>
+                      <TableCell>{ANKETA_STATUS_LABELS[card.anketa_status || ''] || card.anketa_status || '—'}</TableCell>
+                      <TableCell>{card.student_id ? 'Да' : 'Нет'}</TableCell>
+                      <TableCell align="right">
+                        <Button size="small" onClick={() => { setAnketaFormMode('edit'); setAnketaFormCardId(card.id); setAnketaFormOpen(true); }}>
+                          Открыть анкету
+                        </Button>
+                        {(card.anketa_status === 'draft' || card.anketa_status === 'filled') && !card.student_id && (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="primary"
+                            disabled={convertLoading !== null}
+                            onClick={() => handleConvert(card)}
+                          >
+                            {convertLoading === card.id ? '...' : 'Создать ученика'}
+                          </Button>
+                        )}
+                        {card.anketa_status === 'converted' && card.student_id && (
+                          <Button size="small" variant="outlined" onClick={() => setStudentDetailId(card.student_id!)}>
+                            Открыть ученика
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+
+        </>
+      )}
+
+      <Dialog open={!!convertConflict} onClose={() => { setConvertConflict(null); setConvertCardId(null); setConflictChoice(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Есть совпадение</DialogTitle>
+        <DialogContent>
+          {convertConflict && (
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Typography>{convertConflict.message}</Typography>
+              {convertConflict.code === 'existing_parent' && (
+                <Button variant={conflictChoice === 'existing_parent' ? 'contained' : 'outlined'} size="small" onClick={() => setConflictChoice('existing_parent')}>
+                  Привязать к существующему родителю
+                </Button>
+              )}
+              {convertConflict.code === 'existing_student' && (
+                <Stack spacing={1}>
+                  <Button variant={conflictChoice === 'existing_student' ? 'contained' : 'outlined'} size="small" onClick={() => setConflictChoice('existing_student')}>
+                    Привязать к существующему ученику
+                  </Button>
+                  {convertConflict.existing_students && convertConflict.existing_students.length > 1 && (
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Ученик</InputLabel>
+                      <Select value={selectedExistingStudentId} label="Ученик" onChange={(e) => setSelectedExistingStudentId(e.target.value === '' ? '' : Number(e.target.value))}>
+                        {convertConflict.existing_students.map((s) => (
+                          <MenuItem key={s.id} value={s.id}>{s.full_name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                  <Button variant={conflictChoice === 'new_student' ? 'contained' : 'outlined'} size="small" onClick={() => setConflictChoice('new_student')}>
+                    Создать нового ученика
+                  </Button>
+                </Stack>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setConvertConflict(null); setConvertCardId(null); setConflictChoice(null); }}>Отмена</Button>
+          <Button variant="contained" onClick={handleConflictResolve}>Применить</Button>
+        </DialogActions>
+      </Dialog>
+
+      <AnketaFormDrawer
+        open={anketaFormOpen}
+        onClose={() => { setAnketaFormOpen(false); setAnketaFormCardId(null); }}
+        mode={anketaFormMode}
+        cardId={anketaFormCardId}
+        isOwner={!!isOwner}
+        abonements={abonements}
+        onSuccess={(studentId) => {
+          if (studentId != null) setStudentDetailId(studentId);
+          if (studentsTab === 'ankety') loadAnkety();
+        }}
+        onConvertConflict={(cardId, conflict) => {
+          setConvertCardId(cardId);
+          setConvertConflict(conflict);
+        }}
+        onError={(msg) => {
+          setAnketyError(msg);
+          setError(msg);
+        }}
+      />
 
       {/* Диалог добавления */}
       <Dialog open={open} onClose={() => { setOpen(false); setError(''); }} maxWidth="sm" fullWidth>
@@ -1813,6 +2088,11 @@ const StudentsPage: React.FC = () => {
           setSearchParams(searchParams, { replace: true });
         }}
         studentId={studentDetailId}
+        onOpenAnketa={(cardId) => {
+          setAnketaFormMode('edit');
+          setAnketaFormCardId(cardId);
+          setAnketaFormOpen(true);
+        }}
       />
     </Layout>
   );

@@ -211,22 +211,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route
-              path="/sales/student-cards"
-              element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
-                  <StudentCardsPage />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/sales/ankety"
-              element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
-                  <AnketyPage />
-                </PrivateRoute>
-              }
-            />
+            <Route path="/sales/student-cards" element={<Navigate to="/students?tab=ankety" replace />} />
+            <Route path="/sales/ankety" element={<Navigate to="/students?tab=ankety" replace />} />
             <Route
               path="/sales/debts"
               element={

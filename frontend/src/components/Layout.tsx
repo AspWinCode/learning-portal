@@ -196,14 +196,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       return [
         { text: 'Дашборд продаж', icon: <Dashboard />, path: '/sales/dashboard' },
         { text: 'Ученики', icon: <People />, path: '/students' },
-        { text: 'Карточки учеников', icon: <People />, path: '/sales/student-cards' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
         { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
         { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'Позвать снова на мероприятие', icon: <EventAvailable />, path: '/sales/reinvite-event' },
         { text: 'Решили сразу', icon: <EventAvailable />, path: '/sales/agreed' },
-        { text: 'Анкеты', icon: <Description />, path: '/sales/ankety' },
         { text: 'Счета', icon: <ReceiptLong />, path: '/sales/invoices' },
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
@@ -229,12 +227,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
     if (isAdminLike) {
       items.push({ text: 'Продажи: дашборд', icon: <Dashboard />, path: '/sales/dashboard' });
-      items.push({ text: 'Карточки учеников', icon: <People />, path: '/sales/student-cards' });
       items.push({ text: 'Продажи: лиды', icon: <WorkOutline />, path: '/sales/leads' });
       items.push({ text: 'Продажи: события', icon: <EventAvailable />, path: '/sales/events' });
       items.push({ text: 'Позвать снова на мероприятие', icon: <EventAvailable />, path: '/sales/reinvite-event' });
       items.push({ text: 'Решили сразу', icon: <EventAvailable />, path: '/sales/agreed' });
-      items.push({ text: 'Анкеты', icon: <Description />, path: '/sales/ankety' });
       items.push({ text: 'Продажи: инструкции', icon: <Description />, path: '/sales/instructions' });
       items.push({ text: 'Продажи: пропуски', icon: <PendingActions />, path: '/sales/absences' });
       items.push({ text: 'Продажи: долги', icon: <ReceiptLong />, path: '/sales/debts' });

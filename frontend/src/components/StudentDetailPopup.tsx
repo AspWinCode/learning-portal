@@ -44,9 +44,10 @@ interface StudentDetailPopupProps {
   open: boolean;
   onClose: () => void;
   studentId: number | null;
+  onOpenAnketa?: (cardId: number) => void;
 }
 
-const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, studentId }) => {
+const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, studentId, onOpenAnketa }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [student, setStudent] = useState<Student | null>(null);
@@ -258,7 +259,18 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   <Typography variant="body2"><strong>Формат:</strong> {studentCard.format_type === 'group' ? 'Группа' : studentCard.format_type === 'individual' ? 'Индивидуальное' : '—'}</Typography>
                 </Box>
                 {studentCard.comment && <Typography variant="body2" sx={{ mb: 1 }}><strong>Комментарий:</strong> {studentCard.comment}</Typography>}
-                <Button size="small" variant="outlined" onClick={() => { onClose(); navigate(`/sales/ankety?cardId=${studentCard.id}`); }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    if (onOpenAnketa) {
+                      onOpenAnketa(studentCard.id);
+                      onClose();
+                    } else {
+                      navigate(`/students?tab=ankety&cardId=${studentCard.id}`);
+                    }
+                  }}
+                >
                   Открыть анкету
                 </Button>
               </Paper>

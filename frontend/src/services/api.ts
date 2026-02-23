@@ -442,7 +442,7 @@ export const salesInstructionImagesApi = {
 };
 
 export const studentCardsApi = {
-  list: async (params?: { archived?: boolean }): Promise<StudentCard[]> => {
+  list: async (params?: { archived?: boolean; anketa_status?: string[]; student_id?: number }): Promise<StudentCard[]> => {
     const response = await api.get('/api/sales/student-cards', { params: params ?? {} });
     return response.data;
   },
@@ -480,6 +480,13 @@ export const studentCardsApi = {
   },
   openParentCabinet: async (cardId: number): Promise<{ already_open: boolean; student_id: number; parent_id: number; invite_link?: string }> => {
     const response = await api.post(`/api/sales/student-cards/${cardId}/open-parent-cabinet`);
+    return response.data;
+  },
+  convert: async (
+    cardId: number,
+    body?: { use_existing_parent_id?: number; use_existing_student_id?: number }
+  ): Promise<{ card: StudentCard; student_id: number }> => {
+    const response = await api.post(`/api/sales/student-cards/${cardId}/convert`, body ?? {});
     return response.data;
   },
 };

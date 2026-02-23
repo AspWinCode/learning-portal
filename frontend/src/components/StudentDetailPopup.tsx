@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -28,8 +29,8 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { studentsApi, salesApi } from '../services/api';
-import { Student, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount } from '../types';
+import { studentsApi, salesApi, studentCardsApi } from '../services/api';
+import { Student, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentCard } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const ABSENCE_STAGES: { value: AbsenceFollowUpStage; label: string }[] = [
@@ -47,7 +48,9 @@ interface StudentDetailPopupProps {
 
 const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, studentId }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [student, setStudent] = useState<Student | null>(null);
+  const [studentCard, setStudentCard] = useState<StudentCard | null>(null);
   const [attendances, setAttendances] = useState<Array<{ lesson_date: string; group_name: string; attended: boolean }>>([]);
   const [absences, setAbsences] = useState<AbsenceFollowUp[]>([]);
   const [accounts, setAccounts] = useState<StudentAccount[]>([]);
@@ -76,26 +79,34 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setInviteLink(null);
     setLoading(true);
     setStudent(null);
+    setStudentCard(null);
     setAttendances([]);
     setAbsences([]);
     setAccounts([]);
     setNewAccountName('');
     setFreezes([]);
     setCloseByFactPreview(null);
-    const promises: [Promise<any>, Promise<any>, Promise<any>, Promise<any>, Promise<any>?] = [
+    const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),
       canSeeAbsences ? salesApi.getAbsences({ student_id: studentId }) : Promise.resolve([]),
       canManageAccounts ? studentsApi.getAccounts(studentId) : Promise.resolve([]),
+      canSeeAbsences ? studentCardsApi.list({ student_id: studentId }).then((cards) => (cards && cards[0]) || null) : Promise.resolve(null),
     ];
     if (isOwner) promises.push(salesApi.getStudentFreezes(studentId));
     Promise.all(promises)
       .then((results) => {
-        const [s, att, abs, acc, frz] = results;
+        const s = results[0];
+        const att = results[1];
+        const abs = results[2];
+        const acc = results[3];
+        const card = results[4] as StudentCard | null;
+        const frz = results[5];
         setStudent(s);
         setAttendances(att);
         setAbsences(abs as AbsenceFollowUp[]);
         setAccounts((acc || []) as StudentAccount[]);
+        setStudentCard(card ?? null);
         if (isOwner && Array.isArray(frz)) setFreezes(frz.map((f: any) => ({ id: f.id, freeze_start: f.freeze_start, freeze_end: f.freeze_end })));
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Ошибка загрузки'))
@@ -230,6 +241,28 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                 )}
               </Box>
             </Paper>
+
+            {canSeeAbsences && studentCard && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Анкета
+                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 1.5 }}>
+                  <Typography variant="body2"><strong>ФИО:</strong> {studentCard.student_full_name || '—'}</Typography>
+                  <Typography variant="body2"><strong>Дата рождения:</strong> {studentCard.birth_date ? studentCard.birth_date.slice(0, 10) : '—'}</Typography>
+                  <Typography variant="body2"><strong>Родитель:</strong> {studentCard.parent_full_name || '—'}</Typography>
+                  <Typography variant="body2"><strong>Телефон:</strong> {studentCard.parent_phone || studentCard.student_phone || '—'}</Typography>
+                  <Typography variant="body2"><strong>Email:</strong> {studentCard.parent_email || '—'}</Typography>
+                  <Typography variant="body2"><strong>Город:</strong> {studentCard.city || '—'}</Typography>
+                  <Typography variant="body2"><strong>Откуда пришел:</strong> {studentCard.source || '—'}</Typography>
+                  <Typography variant="body2"><strong>Формат:</strong> {studentCard.format_type === 'group' ? 'Группа' : studentCard.format_type === 'individual' ? 'Индивидуальное' : '—'}</Typography>
+                </Box>
+                {studentCard.comment && <Typography variant="body2" sx={{ mb: 1 }}><strong>Комментарий:</strong> {studentCard.comment}</Typography>}
+                <Button size="small" variant="outlined" onClick={() => { onClose(); navigate(`/sales/ankety?cardId=${studentCard.id}`); }}>
+                  Открыть анкету
+                </Button>
+              </Paper>
+            )}
 
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>

@@ -764,6 +764,7 @@ class StudentCardBase(BaseModel):
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
+    anketa_status: Optional[str] = None  # draft | filled | converted | cancelled
 
 
 class StudentCardCreate(StudentCardBase):
@@ -794,11 +795,13 @@ class StudentCardUpdate(BaseModel):
     abonement_id: Optional[int] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
+    anketa_status: Optional[str] = None
 
 
 class StudentCardResponse(StudentCardBase):
     id: int
     archived: bool
+    anketa_status: str = "converted"
     parent_cabinet_open: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -806,6 +809,26 @@ class StudentCardResponse(StudentCardBase):
 
     class Config:
         from_attributes = True
+
+
+class AnketaConvertRequest(BaseModel):
+    """При конверсии анкеты: привязать к существующему родителю и/или ученику (при дублях)."""
+    use_existing_parent_id: Optional[int] = None
+    use_existing_student_id: Optional[int] = None
+
+
+class AnketaConvertResponse(BaseModel):
+    card: "StudentCardResponse"
+    student_id: int
+
+
+class AnketaConvertConflictResponse(BaseModel):
+    """409: есть дубли — нужно выбрать привязку к существующему родителю/ученику."""
+    code: Literal["existing_parent", "existing_student"]
+    message: str
+    existing_parent_id: Optional[int] = None
+    existing_students: Optional[List[Dict[str, Any]]] = None  # [{"id": int, "full_name": str}]
+    existing_student_id: Optional[int] = None
 
 
 class OpenParentCabinetResponse(BaseModel):

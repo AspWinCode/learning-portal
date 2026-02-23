@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import {
   Typography,
@@ -113,6 +113,7 @@ const StudentsPage: React.FC = () => {
   const [accountsError, setAccountsError] = useState('');
   const [studentDetailId, setStudentDetailId] = useState<number | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   useEffect(() => {
     const detailId = searchParams.get('detail');
@@ -836,8 +837,12 @@ const StudentsPage: React.FC = () => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => {
-              resetCreateForm();
-              setOpen(true);
+              if (canCreateCard) {
+                navigate('/sales/ankety?addStudent=1');
+              } else {
+                resetCreateForm();
+                setOpen(true);
+              }
             }}
           >
             Добавить ученика

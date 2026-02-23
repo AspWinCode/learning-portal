@@ -440,6 +440,8 @@ class StudentCard(Base):
     learning_period_start = Column(Date, nullable=True)  # дата старта периода (ТЗ п.2.2)
     next_payment_date = Column(Date, nullable=True)  # дата следующей оплаты
     archived = Column(Boolean, default=False, nullable=False, index=True)
+    # Жизненный цикл анкеты: draft (черновик), filled (готова к конверсии), converted (ученик создан), cancelled
+    anketa_status = Column(String(32), default="converted", nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

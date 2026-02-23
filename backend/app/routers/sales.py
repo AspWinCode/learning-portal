@@ -12,7 +12,7 @@ from openpyxl import Workbook, load_workbook
 from app import auth
 from app.database import get_db
 from app.student_display import get_student_display_name, get_students_display_names
-from app.services.parent_invite import create_parent_with_invite
+from app.services.parent_invite import create_parent_with_invite, create_parent_user_no_invite
 from app.models import (
     Lead,
     LeadStatus,
@@ -113,6 +113,9 @@ from app.schemas import (
     AbsenceFollowUpResponse,
     AbsenceFollowUpStageUpdate,
     OpenParentCabinetResponse,
+    AnketaConvertRequest,
+    AnketaConvertResponse,
+    AnketaConvertConflictResponse,
     LessonCallResultUpdate,
     TochkaImportRequest,
     BankPaymentImportResponse,
@@ -508,6 +511,7 @@ def _student_card_response(card: StudentCard, user: User, db: Session) -> Studen
         "comment": getattr(card, "comment", None),
         "source": getattr(card, "source", None),
         "archived": card.archived,
+        "anketa_status": getattr(card, "anketa_status", "converted"),
         "created_at": card.created_at,
         "updated_at": card.updated_at,
     }
@@ -738,6 +742,8 @@ async def tochka_import_and_apply(
 @router.get("/student-cards", response_model=List[StudentCardResponse])
 async def list_student_cards(
     archived: Optional[bool] = Query(None, description="Фильтр по архиву: true/false или не передавать — все"),
+    anketa_status: Optional[List[str]] = Query(None, description="Фильтр по статусу анкеты: draft, filled, converted, cancelled"),
+    student_id: Optional[int] = Query(None, description="Фильтр по привязанному ученику"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -745,6 +751,10 @@ async def list_student_cards(
     query = db.query(StudentCard)
     if archived is not None:
         query = query.filter(StudentCard.archived == archived)
+    if anketa_status:
+        query = query.filter(StudentCard.anketa_status.in_(anketa_status))
+    if student_id is not None:
+        query = query.filter(StudentCard.student_id == student_id)
     items = query.order_by(StudentCard.created_at.desc()).all()
     return [_student_card_response(c, current_user, db) for c in items]
 
@@ -760,6 +770,8 @@ async def create_student_card(
     if not name:
         raise HTTPException(status_code=400, detail="ФИО ученика обязательно")
     data = payload.model_dump()
+    if data.get("student_id") is None and not data.get("anketa_status"):
+        data["anketa_status"] = "draft"
     if current_user.role != UserRole.OWNER:
         data["abonement_id"] = None
         data["discount_type"] = DiscountType.NONE
@@ -1031,6 +1043,131 @@ async def update_student_card(
     db.commit()
     db.refresh(card)
     return _student_card_response(card, current_user, db)
+
+
+@router.post("/student-cards/{card_id}/convert", response_model=AnketaConvertResponse)
+async def convert_anketa_to_student(
+    card_id: int,
+    payload: Optional[AnketaConvertRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """
+    Конверсия анкеты в ученика: создаёт/привязывает Student, не создаёт кабинет родителя.
+    При дублях по email родителя или ФИО ученика возвращает 409 с выбором привязки к существующему.
+    """
+    _require_sales_admin_owner(current_user)
+    body = payload or AnketaConvertRequest()
+    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Карточка не найдена")
+    if getattr(card, "student_id", None) and getattr(card, "anketa_status", None) == "converted":
+        return AnketaConvertResponse(
+            card=_student_card_response(card, current_user, db),
+            student_id=card.student_id,
+        )
+    student_full_name = (card.student_full_name or "").strip() or "Ученик"
+    parent_email = (getattr(card, "parent_email", None) or "").strip().lower()
+    parent_full_name = (getattr(card, "parent_full_name", None) or "").strip() or "Родитель"
+
+    # Явная привязка к существующему ученику
+    if body.use_existing_student_id:
+        student = db.query(Student).filter(Student.id == body.use_existing_student_id).first()
+        if not student:
+            raise HTTPException(status_code=404, detail="Ученик не найден")
+        card.student_id = student.id
+        card.anketa_status = "converted"
+        db.commit()
+        db.refresh(card)
+        return AnketaConvertResponse(
+            card=_student_card_response(card, current_user, db),
+            student_id=student.id,
+        )
+
+    parent_user = None
+    if body.use_existing_parent_id:
+        parent_user = db.query(User).filter(User.id == body.use_existing_parent_id, User.role == UserRole.PARENT).first()
+        if not parent_user:
+            raise HTTPException(status_code=404, detail="Родитель не найден")
+        # Проверка дубля ученика по ФИО у этого родителя
+        same_name = db.query(Student).filter(
+            Student.parent_id == parent_user.id,
+            Student.full_name == student_full_name,
+            Student.status == StudentStatus.ACTIVE,
+        ).first()
+        if same_name:
+            raise HTTPException(
+                status_code=409,
+                detail=AnketaConvertConflictResponse(
+                    code="existing_student",
+                    message="У этого родителя уже есть ученик с таким ФИО. Привяжите анкету к существующему ученику или создайте нового.",
+                    existing_student_id=same_name.id,
+                    existing_students=[{"id": same_name.id, "full_name": same_name.full_name}],
+                ).model_dump(),
+            )
+        # Создаём нового ученика у выбранного родителя
+        student = Student(full_name=student_full_name, parent_id=parent_user.id, status=StudentStatus.ACTIVE)
+        db.add(student)
+        db.flush()
+        card.student_id = student.id
+        card.anketa_status = "converted"
+        db.commit()
+        db.refresh(card)
+        return AnketaConvertResponse(
+            card=_student_card_response(card, current_user, db),
+            student_id=student.id,
+        )
+
+    # Без явного выбора: ищем/создаём родителя по email
+    if not parent_email:
+        raise HTTPException(status_code=400, detail="Укажите email родителя в анкете для конверсии")
+    existing_parent = db.query(User).filter(User.email == parent_email, User.role == UserRole.PARENT).first()
+    if existing_parent:
+        same_name = db.query(Student).filter(
+            Student.parent_id == existing_parent.id,
+            Student.full_name == student_full_name,
+            Student.status == StudentStatus.ACTIVE,
+        ).first()
+        if same_name:
+            raise HTTPException(
+                status_code=409,
+                detail=AnketaConvertConflictResponse(
+                    code="existing_student",
+                    message="У найденного родителя уже есть ученик с таким ФИО.",
+                    existing_parent_id=existing_parent.id,
+                    existing_student_id=same_name.id,
+                    existing_students=[{"id": same_name.id, "full_name": same_name.full_name}],
+                ).model_dump(),
+                headers={"X-Conflict-Code": "existing_student"},
+            )
+        raise HTTPException(
+            status_code=409,
+            detail=AnketaConvertConflictResponse(
+                code="existing_parent",
+                message="Родитель с таким email уже есть. Привяжите анкету к нему или создайте нового ученика.",
+                existing_parent_id=existing_parent.id,
+                existing_students=[{"id": s.id, "full_name": s.full_name} for s in existing_parent.students or []],
+            ).model_dump(),
+            headers={"X-Conflict-Code": "existing_parent"},
+        )
+
+    # Создаём нового родителя (без приглашения) и ученика
+    try:
+        parent_user = create_parent_user_no_invite(db, parent_email, parent_full_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.flush()
+    student = Student(full_name=student_full_name, parent_id=parent_user.id, status=StudentStatus.ACTIVE)
+    db.add(student)
+    db.flush()
+    card.student_id = student.id
+    card.anketa_status = "converted"
+    db.commit()
+    db.refresh(card)
+    return AnketaConvertResponse(
+        card=_student_card_response(card, current_user, db),
+        student_id=student.id,
+    )
 
 
 @router.post("/student-cards/{card_id}/archive")

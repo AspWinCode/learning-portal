@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import {
   Box,
@@ -34,8 +35,16 @@ import { useAuth } from '../contexts/AuthContext';
 
 type TabFilter = 'all' | 'active' | 'archived';
 
+const ANKETA_STATUS_LABELS: Record<string, string> = {
+  draft: 'Новая',
+  filled: 'Заполнена',
+  converted: 'Конвертирована',
+  cancelled: 'Отменена',
+};
+
 const StudentCardsPage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isOwner = user?.role === 'owner';
 
   const [items, setItems] = useState<StudentCardType[]>([]);
@@ -322,7 +331,7 @@ const StudentCardsPage: React.FC = () => {
         )}
 
         <Alert severity="info" sx={{ mb: 2 }}>
-          Удобнее создавать карточку при добавлении ученика: Ученики → Добавить ученика → отметьте «Также создать личную карточку». Здесь — карточка без ученика или привязка к существующему.
+          Заявки и ввод данных: раздел «Анкеты». Создание ученика: Ученики → Добавить ученика (откроется форма анкеты). Здесь — все карточки, привязка к ученику и открытие кабинета родителя.
         </Alert>
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }} flexWrap="wrap">
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
@@ -330,6 +339,9 @@ const StudentCardsPage: React.FC = () => {
             <Tab label="В архиве" value="archived" />
             <Tab label="Все" value="all" />
           </Tabs>
+          <Button variant="outlined" onClick={() => navigate('/sales/ankety')}>
+            Анкеты
+          </Button>
           <Button variant="contained" onClick={openCreate}>
             Новая карточка
           </Button>
@@ -367,6 +379,7 @@ const StudentCardsPage: React.FC = () => {
                 <TableCell>Формат</TableCell>
                 <TableCell>На гранте</TableCell>
                 <TableCell>Откуда пришел</TableCell>
+                <TableCell>Статус анкеты</TableCell>
                 <TableCell>Кабинет родителя</TableCell>
                 {isOwner && <TableCell>Абонемент</TableCell>}
                 <TableCell align="right">Действия</TableCell>
@@ -382,6 +395,7 @@ const StudentCardsPage: React.FC = () => {
                   <TableCell>{card.format_type === 'group' ? 'Группа' : card.format_type === 'individual' ? 'Индивидуальное' : '—'}</TableCell>
                   <TableCell>{card.on_grant ? 'Да' : 'Нет'}</TableCell>
                   <TableCell>{card.source || '—'}</TableCell>
+                  <TableCell>{ANKETA_STATUS_LABELS[card.anketa_status || ''] || card.anketa_status || '—'}</TableCell>
                   <TableCell>
                     {card.parent_cabinet_open ? (
                       <Typography variant="body2" color="success.main">Открыт</Typography>
@@ -393,7 +407,13 @@ const StudentCardsPage: React.FC = () => {
                   </TableCell>
                   {isOwner && <TableCell>{card.abonement?.name ?? '—'}</TableCell>}
                   <TableCell align="right">
+                    <Button size="small" onClick={() => navigate(`/sales/ankety?cardId=${card.id}`)}>Анкета</Button>
                     <Button size="small" onClick={() => openEdit(card)}>Редактировать</Button>
+                    {card.student_id && (
+                      <Button size="small" variant="outlined" onClick={() => navigate(`/students?detail=${card.student_id}`)}>
+                        Ученик
+                      </Button>
+                    )}
                     {card.archived ? (
                       <Button size="small" color="primary" onClick={() => handleArchive(card.id, true)}>Разархивировать</Button>
                     ) : (

@@ -371,9 +371,28 @@ export interface StudentCard {
   discount_type: 'none' | 'amount' | 'percent';
   discount_value: number;
   archived: boolean;
+  anketa_status?: string; // draft | filled | converted | cancelled
   created_at: string;
   updated_at?: string | null;
   abonement?: Abonement | null;
+}
+
+export interface AnketaConvertRequest {
+  use_existing_parent_id?: number | null;
+  use_existing_student_id?: number | null;
+}
+
+export interface AnketaConvertResponse {
+  card: StudentCard;
+  student_id: number;
+}
+
+export interface AnketaConvertConflict {
+  code: 'existing_parent' | 'existing_student';
+  message: string;
+  existing_parent_id?: number | null;
+  existing_students?: { id: number; full_name: string }[];
+  existing_student_id?: number | null;
 }
 
 export interface LeadTaskTemplate {

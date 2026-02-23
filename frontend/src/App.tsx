@@ -40,6 +40,7 @@ import SalesDebtsPage from './pages/SalesDebtsPage';
 import SalesProgramMakeupPage from './pages/SalesProgramMakeupPage';
 import SalesTaxDeductionPage from './pages/SalesTaxDeductionPage';
 import StudentCardsPage from './pages/StudentCardsPage';
+import AnketyPage from './pages/AnketyPage';
 import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
@@ -215,6 +216,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <StudentCardsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/ankety"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <AnketyPage />
                 </PrivateRoute>
               }
             />

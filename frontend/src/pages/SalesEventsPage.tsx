@@ -153,15 +153,13 @@ const SalesEventsPage: React.FC = () => {
     return 'error';
   };
 
-  /** Status tag from note → Russian label. Backend prepends new tags, so the first tag is the latest. */
+  /** Status by presence of tags in note (priority: came > no-show > confirmed). */
   const getStatusLabel = (reg: EventRegistration): string => {
     if (reg.status === 'cancelled') return 'Отменён';
-    const note = (reg.note || '').trim();
-    const matches = [...note.matchAll(/\[([^\]]+)\]/g)];
-    const firstTag = matches.length ? matches[0][1].toLowerCase() : '';
-    if (firstTag === 'came') return 'Пришли';
-    if (firstTag === 'no-show') return 'Не явились';
-    if (firstTag === 'confirmed') return 'Подтвердили';
+    const note = (reg.note || '').toLowerCase();
+    if (note.includes('[came]')) return 'Пришли';
+    if (note.includes('[no-show]')) return 'Не явились';
+    if (note.includes('[confirmed]')) return 'Подтвердили';
     return 'Записан';
   };
 
@@ -272,17 +270,20 @@ const SalesEventsPage: React.FC = () => {
   const handleMarkCame = async (reg: EventRegistration) => {
     if (!selectedEventId || reg.id == null) return;
     const eventId = Number(selectedEventId);
+    const registrationId = reg.id;
     const optimisticNote = prependNoteTag(reg.note, '[came]');
-    setRegistrations((prev) =>
-      prev.map((r) => (r.id === reg.id ? { ...r, note: optimisticNote } : r))
-    );
     setError(null);
+    setRegistrations((prev) =>
+      prev.map((r) => (r.id === registrationId ? { ...r, note: optimisticNote } : r))
+    );
     try {
-      const updated = await salesApi.markEventRegistrationCame(eventId, reg.id);
+      const updated = await salesApi.markEventRegistrationCame(eventId, registrationId);
       const note = updated?.note ?? optimisticNote;
-      setRegistrations((prev) => prev.map((r) => (r.id === reg.id ? { ...r, note } : r)));
+      setRegistrations((prev) =>
+        prev.map((r) => (r.id === registrationId ? { ...r, note } : r))
+      );
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось отметить "пришел" (статус обновлён на экране)'));
+      setError(extractApiError(err, 'Не удалось отметить "пришел"'));
     }
   };
 
@@ -587,13 +588,13 @@ const SalesEventsPage: React.FC = () => {
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       {reg.status === 'registered' && (
                         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                          <Button size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleConfirmRegistration(reg)}>
+                          <Button size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleConfirmRegistration(reg)} disabled={!!(reg.note || '').toLowerCase().includes('[confirmed]')}>
                             Подтвердить
                           </Button>
-                          <Button size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleMarkCame(reg)}>
+                          <Button size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleMarkCame(reg)} disabled={!!(reg.note || '').toLowerCase().includes('[came]')}>
                             Пришел
                           </Button>
-                          <Button size="small" color="warning" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleMarkNoShow(reg)}>
+                          <Button size="small" color="warning" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleMarkNoShow(reg)} disabled={!!(reg.note || '').toLowerCase().includes('[no-show]')}>
                             Не явились
                           </Button>
                           <Button size="small" color="error" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleCancelRegistration(reg)}>

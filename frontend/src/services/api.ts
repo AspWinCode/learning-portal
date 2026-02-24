@@ -372,6 +372,15 @@ export const trainerLessonsApi = {
     const response = await api.post('/api/trainer-lessons/add-student-to-lesson', data);
     return response.data;
   },
+  createLessonSlot: async (data: {
+    group_id: number;
+    lesson_date: string;
+    start_time: string;
+    end_time: string;
+  }): Promise<{ ok: boolean }> => {
+    const response = await api.post('/api/trainer-lessons/create-slot', data);
+    return response.data;
+  },
   setLessonTrainer: async (data: {
     group_id: number;
     lesson_date: string;
@@ -931,6 +940,14 @@ export const salesApi = {
     const response = await api.post('/api/sales/tochka/import-and-apply', params);
     return response.data;
   },
+  importBankTransactionsXlsx: async (file: File): Promise<{ imported: number; skipped: number; errors?: string[] }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/api/sales/bank-transactions/import-xlsx', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
   listLeadTaskTemplates: async (active_only = true): Promise<LeadTaskTemplate[]> => {
     const response = await api.get('/api/sales/lead-task-templates', { params: { active_only } });
     return response.data;
@@ -1434,6 +1451,7 @@ export const tasksApi = {
   },
   createTask: async (payload: {
     title?: string;
+    description?: string;
     template_id?: number;
     assigned_to_id?: number;
     subtasks?: { text: string; order?: number }[];
@@ -1450,6 +1468,7 @@ export const tasksApi = {
   },
   updateTask: async (id: number, payload: {
     title?: string;
+    description?: string;
     status?: string;
     assigned_to_id?: number | null;
     student_ids?: number[];

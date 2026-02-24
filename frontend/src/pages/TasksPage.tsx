@@ -38,6 +38,8 @@ import {
   Edit as EditIcon,
   ExpandLess,
   ExpandMore,
+  ArrowUpward,
+  ArrowDownward,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { tasksApi, studentsApi, salesApi } from '../services/api';
@@ -99,6 +101,7 @@ const TasksPage: React.FC = () => {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskEditId, setTaskEditId] = useState<number | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
   const [taskTemplateId, setTaskTemplateId] = useState<number | ''>('');
   const [taskSubtasks, setTaskSubtasks] = useState<{ text: string; order: number }[]>([]);
   const [taskStudentIds, setTaskStudentIds] = useState<number[]>([]);
@@ -273,6 +276,7 @@ const TasksPage: React.FC = () => {
   const openTaskDialog = (task?: TaskResponse, templateId?: number) => {
     setTaskEditId(task?.id ?? null);
     setTaskTitle(task?.title ?? '');
+    setTaskDescription(task?.description ?? '');
     setTaskTemplateId(task?.template_id ?? templateId ?? '');
     setTaskSubtasks(task?.subtasks?.map((s) => ({ text: s.text, order: s.order })) ?? []);
     setTaskStudentIds(task?.student_ids ?? []);
@@ -302,12 +306,14 @@ const TasksPage: React.FC = () => {
       if (taskEditId) {
         await tasksApi.updateTask(taskEditId, {
           title: taskTitle.trim(),
+          description: taskDescription.trim() || undefined,
           student_ids: studentIds,
           ...taskRepeatPayload,
         });
       } else {
         await tasksApi.createTask({
           title: taskTitle.trim() || undefined,
+          description: taskDescription.trim() || undefined,
           template_id: taskTemplateId || undefined,
           subtasks: taskTemplateId ? undefined : (subtasks.length ? subtasks.map((s, i) => ({ text: s.text.trim(), order: i })) : undefined),
           student_ids: studentIds,
@@ -343,6 +349,16 @@ const TasksPage: React.FC = () => {
   };
 
   const addTemplateSubtask = () => setTemplateSubtasks((prev) => [...prev, { text: '', order: prev.length }]);
+  const moveTemplateSubtask = (index: number, delta: number) => {
+    setTemplateSubtasks((prev) => {
+      const newIndex = index + delta;
+      if (newIndex < 0 || newIndex >= prev.length) return prev;
+      const arr = [...prev];
+      const [item] = arr.splice(index, 1);
+      arr.splice(newIndex, 0, item);
+      return arr.map((s, i) => ({ ...s, order: i }));
+    });
+  };
   const addTaskSubtask = () => setTaskSubtasks((prev) => [...prev, { text: '', order: prev.length }]);
 
   useEffect(() => {
@@ -589,6 +605,11 @@ const TasksPage: React.FC = () => {
                           {expandedTaskId === task.id ? <ExpandLess /> : <ExpandMore />}
                           <Box sx={{ flex: 1 }}>
                             <Typography variant="subtitle1">{task.title}</Typography>
+                            {task.description && (
+                              <Typography variant="body2" color="text.secondary" noWrap>
+                                {task.description}
+                              </Typography>
+                            )}
                             <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
                               <Chip size="small" label={task.status === 'active' ? 'Активна' : 'Архив'} color={task.status === 'active' ? 'primary' : 'default'} />
                               <Typography variant="caption" color="text.secondary">
@@ -616,6 +637,11 @@ const TasksPage: React.FC = () => {
                       </ListItemButton>
                       {expandedTaskId === task.id && (
                         <CardContent sx={{ pt: 0, borderTop: '1px solid', borderColor: 'divider' }}>
+                          {task.description && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                              {task.description}
+                            </Typography>
+                          )}
                           <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
                             Подзадачи
                           </Typography>
@@ -1007,15 +1033,32 @@ const TasksPage: React.FC = () => {
           />
           <Typography variant="subtitle2" sx={{ mt: 2 }}>Подзадачи</Typography>
           {templateSubtasks.map((s, i) => (
-            <TextField
-              key={i}
-              fullWidth
-              size="small"
-              value={s.text}
-              onChange={(e) => setTemplateSubtasks((prev) => prev.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
-              placeholder={`Подзадача ${i + 1}`}
-              margin="dense"
-            />
+            <Stack key={i} direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+              <TextField
+                fullWidth
+                size="small"
+                value={s.text}
+                onChange={(e) => setTemplateSubtasks((prev) => prev.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
+                placeholder={`Подзадача ${i + 1}`}
+                margin="dense"
+              />
+              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                <IconButton
+                  size="small"
+                  onClick={() => moveTemplateSubtask(i, -1)}
+                  disabled={i === 0}
+                >
+                  <ArrowUpward fontSize="inherit" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={() => moveTemplateSubtask(i, 1)}
+                  disabled={i === templateSubtasks.length - 1}
+                >
+                  <ArrowDownward fontSize="inherit" />
+                </IconButton>
+              </Box>
+            </Stack>
           ))}
           <Button size="small" onClick={addTemplateSubtask} sx={{ mt: 0.5 }}>+ Подзадача</Button>
 
@@ -1142,6 +1185,15 @@ const TasksPage: React.FC = () => {
             value={taskTitle}
             onChange={(e) => setTaskTitle(e.target.value)}
             margin="normal"
+          />
+          <TextField
+            fullWidth
+            label="Описание задачи"
+            value={taskDescription}
+            onChange={(e) => setTaskDescription(e.target.value)}
+            margin="normal"
+            multiline
+            minRows={2}
           />
           {!taskEditId && (
             <>

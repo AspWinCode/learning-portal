@@ -1214,6 +1214,7 @@ class Task(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(512), nullable=False)
+    description = Column(Text, nullable=True)
     template_id = Column(Integer, ForeignKey("task_templates.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     assigned_to_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)

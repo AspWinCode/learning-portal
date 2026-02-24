@@ -26,7 +26,15 @@ from app.models import (
     AbsenceFollowUp,
     StudentFreeze,
 )
-from app.schemas import TrainerLessonSlotResponse, LessonAttendanceSave, MoveLessonPayload, CancelLessonPayload, AddStudentToLessonPayload, SetLessonTrainerPayload
+from app.schemas import (
+    TrainerLessonSlotResponse,
+    LessonAttendanceSave,
+    MoveLessonPayload,
+    CancelLessonPayload,
+    CreateLessonSlotPayload,
+    AddStudentToLessonPayload,
+    SetLessonTrainerPayload,
+)
 from app.student_display import get_students_display_names
 
 router = APIRouter()
@@ -333,7 +341,41 @@ async def save_attendance(
             amount_per_lesson = 0.0
             if abonement and abonement.price is not None and (abonement.lessons_count or default_lessons) > 0:
                 amount_per_lesson = float(abonement.price) / (abonement.lessons_count or default_lessons)
-            account = db.query(StudentAccount).filter(StudentAccount.student_id == att.student_id).order_by(StudentAccount.id).first()
+
+            account = None
+            if amount_per_lesson > 0:
+                accounts = db.query(StudentAccount).filter(
+                    StudentAccount.student_id == att.student_id
+                ).order_by(StudentAccount.id).all()
+                if accounts:
+                    # Пытаемся подобрать счёт по направлению / программе группы,
+                    # чтобы разные направления ученика списывались с "своих" счетов.
+                    direction_hint: str | None = None
+                    group = att.group
+                    if group:
+                        # Сначала пробуем привязанные программы группы (если есть)
+                        try:
+                            programs = list(getattr(group, "programs", []) or [])
+                        except Exception:
+                            programs = []
+                        if programs:
+                            prog_name = (programs[0].name or "").strip()
+                            if prog_name:
+                                direction_hint = prog_name.lower()
+                        # Если программ нет, используем строковое поле direction группы
+                        if not direction_hint and getattr(group, "direction", None):
+                            direction_hint = str(group.direction).strip().lower()
+
+                    if direction_hint:
+                        for acc in accounts:
+                            acc_name = (acc.name or "").strip().lower()
+                            if acc_name and direction_hint in acc_name:
+                                account = acc
+                                break
+                    # Фолбэк: первый счёт, как было раньше
+                    if account is None:
+                        account = accounts[0]
+
             if account and amount_per_lesson > 0 and account.balance >= amount_per_lesson:
                 account.balance -= amount_per_lesson
                 db.add(StudentAccountTransaction(
@@ -415,6 +457,62 @@ async def add_student_to_lesson(
         lesson_start_time=lesson_start_time,
         lesson_end_time=lesson_end_time,
     ))
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/create-slot")
+async def create_lesson_slot(
+    payload: CreateLessonSlotPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Создать дополнительный слот урока для группы на указанную дату и время.
+
+    Для тренера — только свои группы; для admin/owner/sales — любая активная группа.
+    """
+    group = db.query(Group).filter(Group.id == payload.group_id, Group.status == GroupStatus.ACTIVE).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if current_user.role == UserRole.TRAINER:
+        if group.trainer_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not your group")
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Only trainer (own group) or admin/owner/sales")
+
+    try:
+        start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+        end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+
+    if start_t >= end_t:
+        raise HTTPException(status_code=400, detail="start_time must be before end_time")
+
+    existing_slot = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.lesson_date,
+        LessonAttendance.lesson_start_time == start_t,
+        LessonAttendance.lesson_end_time == end_t,
+    ).first()
+    if existing_slot:
+        return {"ok": True}
+
+    first_student = db.query(GroupStudent).filter(GroupStudent.group_id == payload.group_id).first()
+    if not first_student or not first_student.student_id:
+        raise HTTPException(status_code=400, detail="Group has no students to attach lesson to")
+
+    db.add(
+        LessonAttendance(
+            group_id=payload.group_id,
+            lesson_date=payload.lesson_date,
+            student_id=first_student.student_id,
+            attended=True,
+            late=False,
+            lesson_start_time=start_t,
+            lesson_end_time=end_t,
+        )
+    )
     db.commit()
     return {"ok": True}
 

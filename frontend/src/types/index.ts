@@ -712,6 +712,7 @@ export interface TaskSubtaskResponse {
 export interface TaskResponse {
   id: number;
   title: string;
+  description?: string | null;
   template_id?: number | null;
   created_by_id: number;
   assigned_to_id?: number | null;

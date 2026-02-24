@@ -1213,6 +1213,14 @@ class CancelLessonPayload(BaseModel):
     end_time: str   # "HH:MM"
 
 
+class CreateLessonSlotPayload(BaseModel):
+    """Создать дополнительный урок (слот) для группы на конкретную дату и время."""
+    group_id: int
+    lesson_date: date
+    start_time: str  # "HH:MM"
+    end_time: str    # "HH:MM"
+
+
 class AddStudentToLessonPayload(BaseModel):
     """Добавить ученика на урок (вручную): создать запись посещаемости."""
     group_id: int
@@ -1752,6 +1760,7 @@ class TaskSubtaskUpdate(BaseModel):
 
 class TaskCreate(BaseModel):
     title: Optional[str] = None
+    description: Optional[str] = None
     template_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
     subtasks: Optional[List[dict]] = None
@@ -1766,6 +1775,7 @@ class TaskCreate(BaseModel):
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
+    description: Optional[str] = None
     status: Optional[str] = None
     assigned_to_id: Optional[int] = None
     student_ids: Optional[List[int]] = None
@@ -1780,6 +1790,7 @@ class TaskUpdate(BaseModel):
 class TaskResponse(BaseModel):
     id: int
     title: str
+    description: Optional[str] = None
     template_id: Optional[int] = None
     created_by_id: int
     assigned_to_id: Optional[int] = None

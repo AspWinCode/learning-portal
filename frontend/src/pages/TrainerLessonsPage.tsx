@@ -25,9 +25,9 @@ import { format, addDays, subDays, startOfDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
-import { trainerLessonsApi, studentsApi, usersApi } from '../services/api';
+import { trainerLessonsApi, studentsApi, usersApi, groupsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { TrainerLessonSlot, AbsenceReason } from '../types';
+import type { TrainerLessonSlot, AbsenceReason, Group } from '../types';
 
 const WEEKDAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
@@ -72,6 +72,14 @@ const TrainerLessonsPage: React.FC = () => {
   const [trainers, setTrainers] = useState<Array<{ id: number; full_name: string }>>([]);
   const [lessonTrainerId, setLessonTrainerId] = useState<number | ''>('');
   const [settingTrainer, setSettingTrainer] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createGroupId, setCreateGroupId] = useState<number | ''>('');
+  const [createDate, setCreateDate] = useState('');
+  const [createStartTime, setCreateStartTime] = useState('');
+  const [createEndTime, setCreateEndTime] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     const dateParam = searchParams.get('date');
@@ -100,9 +108,50 @@ const TrainerLessonsPage: React.FC = () => {
     loadSlots();
   }, [loadSlots]);
 
+  useEffect(() => {
+    if (!user) return;
+    if (!(canMoveLessons || user.role === 'trainer')) return;
+    groupsApi
+      .getAll()
+      .then((data) => setGroups(data))
+      .catch(() => {});
+  }, [user, canMoveLessons]);
+
   const handlePrevDay = () => setViewDate((d) => format(subDays(new Date(d), 1), 'yyyy-MM-dd'));
   const handleNextDay = () => setViewDate((d) => format(addDays(new Date(d), 1), 'yyyy-MM-dd'));
   const handleToday = () => setViewDate(format(startOfDay(new Date()), 'yyyy-MM-dd'));
+
+  const openCreateLessonDialog = () => {
+    setCreateGroupId('');
+    setCreateDate(viewDate);
+    setCreateStartTime('15:00');
+    setCreateEndTime('17:00');
+    setCreateError(null);
+    setCreateDialogOpen(true);
+  };
+
+  const handleCreateLesson = async () => {
+    if (!createGroupId || !createDate || !createStartTime || !createEndTime) {
+      setCreateError('Заполните группу, дату и время');
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await trainerLessonsApi.createLessonSlot({
+        group_id: Number(createGroupId),
+        lesson_date: createDate,
+        start_time: createStartTime,
+        end_time: createEndTime,
+      });
+      setCreateDialogOpen(false);
+      await loadSlots();
+    } catch (err: any) {
+      setCreateError(extractApiError(err, 'Не удалось создать урок'));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const openMoveDialog = (e: React.MouseEvent, slot: TrainerLessonSlot) => {
     e.stopPropagation();
@@ -336,13 +385,19 @@ const TrainerLessonsPage: React.FC = () => {
           <Button size="small" onClick={handleToday}>Сегодня</Button>
           <Button size="small" onClick={handleNextDay}>{'>'}</Button>
           <Typography variant="h6">{displayDate} ({displayWeekday})</Typography>
+          {(canMoveLessons || user?.role === 'trainer') && (
+            <Button size="small" variant="outlined" onClick={openCreateLessonDialog}>
+              Добавить урок
+            </Button>
+          )}
         </Stack>
         {error && <Alert severity="error">{error}</Alert>}
         {loading ? (
           <Typography color="text.secondary">Загрузка...</Typography>
         ) : slots.length === 0 ? (
           <Typography color="text.secondary">
-            На эту дату нет занятий по расписанию. Добавьте расписание в карточке группы (Группы → группа → расписание).
+            На эту дату нет занятий по расписанию. Добавьте расписание в карточке группы (Группы → группа → расписание)
+            или создайте разовое занятие через кнопку «Добавить урок».
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -619,6 +674,78 @@ const TrainerLessonsPage: React.FC = () => {
           <Button onClick={() => setCancelDialogOpen(false)} disabled={cancelling}>Нет</Button>
           <Button variant="contained" color="error" onClick={handleCancelLesson} disabled={cancelling}>
             {cancelling ? 'Отмена...' : 'Да, отменить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={createDialogOpen} onClose={() => !creating && setCreateDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Добавить урок</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+            <InputLabel>Группа</InputLabel>
+            <Select
+              value={createGroupId === '' ? '' : createGroupId}
+              label="Группа"
+              onChange={(e) => setCreateGroupId(e.target.value === '' ? '' : Number(e.target.value))}
+            >
+              <MenuItem value="">
+                <em>Выберите группу</em>
+              </MenuItem>
+              {groups.map((g) => (
+                <MenuItem key={g.id} value={g.id}>
+                  {g.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            label="Дата"
+            type="date"
+            value={createDate}
+            onChange={(e) => setCreateDate(e.target.value)}
+            fullWidth
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            sx={{ mt: 2 }}
+          />
+          <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+            <TextField
+              label="Время начала"
+              type="time"
+              value={createStartTime}
+              onChange={(e) => setCreateStartTime(e.target.value)}
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 300 }}
+              sx={{ flex: 1 }}
+            />
+            <TextField
+              label="Время окончания"
+              type="time"
+              value={createEndTime}
+              onChange={(e) => setCreateEndTime(e.target.value)}
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 300 }}
+              sx={{ flex: 1 }}
+            />
+          </Stack>
+          {createError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {createError}
+            </Alert>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Дополнительный слот появится на странице «Уроки» для выбранной группы и даты. По умолчанию все ученики
+            считаются присутствующими — скорректируйте статусы в карточке урока при необходимости.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)} disabled={creating}>
+            Отмена
+          </Button>
+          <Button variant="contained" onClick={handleCreateLesson} disabled={creating}>
+            {creating ? 'Создание...' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>

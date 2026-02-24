@@ -1259,6 +1259,116 @@ async def import_student_cards_from_excel(
     return StudentCardImportResponse(created=created, skipped=skipped, errors=errors)
 
 
+@router.post("/bank-transactions/import-xlsx")
+async def import_bank_transactions_from_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """
+    Импорт банковской выписки из .xlsx, когда файл скачан вручную (Точка или другой банк).
+    Создаёт записи в bank_transactions со статусом new; дальше менеджер распределяет их по ученикам во вкладке «Операции банка».
+    Ожидаемые заголовки (регистр не важен): Дата, Сумма, ФИО плательщика, Телефон (можно на русском или английском).
+    """
+    _require_sales_admin_owner(current_user)
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Поддерживается только формат .xlsx")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    wb = load_workbook(filename=BytesIO(data), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return {"imported": 0, "skipped": 0, "errors": ["Пустой лист"]}
+    headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
+    header_map = {name: idx for idx, name in enumerate(headers)}
+
+    def col(row, keys: List[str]) -> Optional[str]:
+        for key in keys:
+            for name, idx in header_map.items():
+                if key in name and idx < len(row):
+                    raw = row[idx]
+                    if raw is None:
+                        continue
+                    txt = str(raw).strip()
+                    if txt:
+                        return txt
+        return None
+
+    def parse_date_any(raw_value) -> Optional[str]:
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, datetime):
+            try:
+                d = raw_value.date() if hasattr(raw_value, "date") else raw_value
+                return d.isoformat()
+            except Exception:
+                pass
+        text = str(raw_value).strip()
+        if not text:
+            return None
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(text, fmt).date().isoformat()
+            except ValueError:
+                continue
+        try:
+            return datetime.fromisoformat(text[:10]).date().isoformat()
+        except (ValueError, TypeError):
+            return text  # сохраняем как есть
+
+    def parse_amount(raw_value) -> Optional[float]:
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, (int, float)):
+            return float(raw_value)
+        text = str(raw_value).strip().replace(" ", "").replace("\u00a0", "")
+        if not text:
+            return None
+        text = text.replace(",", ".")
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    imported = 0
+    skipped = 0
+    for idx, row in enumerate(rows[1:], start=2):
+        row = list(row) if row else []
+        date_str = parse_date_any(col(row, ["дата", "date"]))
+        amount = parse_amount(col(row, ["сумма", "amount"]))
+        payer_name = col(row, ["фио", "плательщик", "payer"])
+        payer_phone_raw = col(row, ["телефон", "phone"])
+        if amount is None or amount <= 0 or not date_str or not payer_name:
+            skipped += 1
+            continue
+
+        payer_phone = normalize_phone(payer_phone_raw or "")
+        op_id_source = f"manual_xlsx|{date_str}|{amount}|{payer_name}|{payer_phone}|{idx}"
+        operation_id = hashlib.sha256(op_id_source.encode("utf-8")).hexdigest()
+
+        exists = db.query(BankTransaction.id).filter(BankTransaction.operation_id == operation_id).first()
+        if exists:
+            skipped += 1
+            continue
+
+        bt = BankTransaction(
+            operation_id=operation_id,
+            tochka_account_id=None,
+            amount=amount,
+            payer_phone=payer_phone or None,
+            payer_name=payer_name[:512] if payer_name else None,
+            payment_date=date_str,
+            status=BankTransactionStatus.NEW.value,
+        )
+        db.add(bt)
+        imported += 1
+
+    db.commit()
+    return {"imported": imported, "skipped": skipped, "errors": []}
+
 @router.get("/student-cards/{card_id}", response_model=StudentCardResponse)
 async def get_student_card(
     card_id: int,

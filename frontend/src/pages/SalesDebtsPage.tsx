@@ -65,6 +65,8 @@ const SalesDebtsPage: React.FC = () => {
     no_match: number;
     ambiguous: number;
   } | null>(null);
+  const [importFileRunning, setImportFileRunning] = useState(false);
+  const [importFileResult, setImportFileResult] = useState<{ imported: number; skipped: number } | null>(null);
 
   const statusFilter = tab === 0 ? undefined : tab === 1 ? 'overdue' : tab === 2 ? 'due_soon' : undefined;
 
@@ -191,10 +193,50 @@ const SalesDebtsPage: React.FC = () => {
                 То же делает авто-импорт каждые 10 мин. Если здесь пусто — нажмите кнопку или проверьте настройки Точка Банк на сервере.
               </Typography>
             </Box>
+            <Box sx={{ p: 2, pt: 1, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                component="label"
+                disabled={importFileRunning}
+              >
+                {importFileRunning ? 'Импорт выписки из файла…' : 'Импортировать выписку из XLSX'}
+                <input
+                  type="file"
+                  accept=".xlsx"
+                  hidden
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      setImportFileRunning(true);
+                      setImportFileResult(null);
+                      const res = await salesApi.importBankTransactionsXlsx(file);
+                      setImportFileResult({ imported: res.imported ?? 0, skipped: res.skipped ?? 0 });
+                      await loadBankTransactions();
+                    } catch (err: any) {
+                      setError(extractApiError(err, 'Ошибка импорта из файла'));
+                    } finally {
+                      setImportFileRunning(false);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </Button>
+              <Typography variant="body2" color="text.secondary">
+                Можно загрузить выписку, скачанную из банка в формате .xlsx. Новые операции появятся в списке ниже.
+              </Typography>
+            </Box>
             {importResult && (
               <Box sx={{ px: 2, pb: 1 }}>
                 <Typography variant="body2">
                   Зачислено: <strong>{importResult.applied}</strong>, без совпадения: {importResult.no_match}, несколько кандидатов: {importResult.ambiguous}.
+                </Typography>
+              </Box>
+            )}
+            {importFileResult && (
+              <Box sx={{ px: 2, pb: 1 }}>
+                <Typography variant="body2">
+                  Из файла добавлено операций: <strong>{importFileResult.imported}</strong>, пропущено (дубли или некорректные строки): {importFileResult.skipped}.
                 </Typography>
               </Box>
             )}

@@ -68,11 +68,16 @@ def _task_to_response(task: Task) -> TaskResponse:
     ]
     total = len(subtasks)
     completed = sum(1 for s in subtasks if s.completed)
-    progress = round(100.0 * completed / total, 1) if total else 100.0
+    if total:
+        progress = round(100.0 * completed / total, 1)
+    else:
+        # Без подзадач: считаем 0% для активных задач и 100% для архивных
+        progress = 0.0 if getattr(task, "status", TaskStatus.ACTIVE.value) == TaskStatus.ACTIVE.value else 100.0
     student_ids = [ts.student_id for ts in task.students] if hasattr(task, "students") else []
     return TaskResponse(
         id=task.id,
         title=task.title,
+        description=getattr(task, "description", None),
         template_id=task.template_id,
         created_by_id=task.created_by_id,
         assigned_to_id=task.assigned_to_id,
@@ -287,6 +292,7 @@ async def create_task(
     repeat_end_until = payload.repeat_end_until if payload.repeat_end_until is not None else (getattr(template, "repeat_end_until", None) if template else None)
     task = Task(
         title=title,
+        description=(payload.description or "").strip() or None,
         template_id=payload.template_id,
         created_by_id=current_user.id,
         assigned_to_id=payload.assigned_to_id,
@@ -371,6 +377,8 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Task not found")
     if payload.title is not None:
         task.title = payload.title.strip()
+    if payload.description is not None:
+        task.description = (payload.description or "").strip() or None
     if payload.status is not None:
         task.status = getattr(payload.status, "value", payload.status) or "active"
     if payload.assigned_to_id is not None:
@@ -438,6 +446,41 @@ async def update_task_subtask(
         raise HTTPException(status_code=404, detail="Subtask not found")
     if payload.completed is not None:
         st.completed = payload.completed
+    # Автозакрытие задач и повторяющихся задач при 100% прогрессе
+    total = len(task.subtasks)
+    completed = sum(1 for s in task.subtasks if s.completed)
+    all_done = total > 0 and completed == total
+    if all_done and task.status == TaskStatus.ACTIVE.value:
+        # Повторяющаяся задача: создаём новую копию, текущую отправляем в архив
+        if getattr(task, "repeat_enabled", False):
+            new_task = Task(
+                title=task.title,
+                description=task.description,
+                template_id=task.template_id,
+                created_by_id=task.created_by_id,
+                assigned_to_id=task.assigned_to_id,
+                status=TaskStatus.ACTIVE.value,
+                repeat_enabled=task.repeat_enabled,
+                repeat_frequency=task.repeat_frequency,
+                repeat_days=task.repeat_days,
+                repeat_end_type=task.repeat_end_type,
+                repeat_end_after_count=task.repeat_end_after_count,
+                repeat_end_until=task.repeat_end_until,
+            )
+            db.add(new_task)
+            db.flush()
+            for s in sorted(task.subtasks, key=lambda x: (x.order, x.id)):
+                db.add(
+                    TaskSubtask(
+                        task_id=new_task.id,
+                        text=s.text,
+                        order=s.order,
+                        completed=False,
+                    )
+                )
+            for ts in task.students:
+                db.add(TaskStudent(task_id=new_task.id, student_id=ts.student_id))
+        task.status = TaskStatus.ARCHIVED.value
     db.commit()
     db.refresh(st)
     return TaskSubtaskResponse(

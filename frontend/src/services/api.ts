@@ -41,6 +41,7 @@ import {
   SalesInstruction,
   StudentCard,
   AbsenceFollowUp,
+  BankTransaction,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -908,6 +909,14 @@ export const salesApi = {
   },
   updateSalesSchool: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesSchool> => {
     const response = await api.put(`/api/sales/schools/${id}`, payload);
+    return response.data;
+  },
+  listBankTransactions: async (params?: { status?: string[] }): Promise<BankTransaction[]> => {
+    const response = await api.get('/api/sales/bank-transactions', { params });
+    return response.data;
+  },
+  applyBankTransaction: async (transactionId: number, payload: { student_id: number }): Promise<BankTransaction> => {
+    const response = await api.post(`/api/sales/bank-transactions/${transactionId}/apply`, payload);
     return response.data;
   },
   getTochkaStatus: async (): Promise<{ configured: boolean; auto_import_configured?: boolean }> => {

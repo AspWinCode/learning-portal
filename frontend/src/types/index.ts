@@ -339,6 +339,18 @@ export interface SalesSchool {
   created_at: string;
 }
 
+export interface BankTransaction {
+  id: number;
+  operation_id: string;
+  amount: number;
+  payer_phone?: string | null;
+  payer_name?: string | null;
+  payment_date?: string | null;
+  status: string;
+  student_id?: number | null;
+  created_at: string;
+}
+
 export interface SalesInstruction {
   id: number;
   title: string;

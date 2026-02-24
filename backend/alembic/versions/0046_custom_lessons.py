@@ -7,6 +7,7 @@ Create Date: 2026-02-24
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = "0046_custom_lessons"
@@ -16,9 +17,25 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Enum type for custom lesson type
-    custom_type = sa.Enum("makeup", "paid_extra", "free_trial", name="customlessontype")
-    custom_type.create(op.get_bind(), checkfirst=True)
+    # Enum type for custom lesson type.
+    # Создаём в БД, если ещё не существует (чтобы миграция была идемпотентной).
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'customlessontype') THEN
+                CREATE TYPE customlessontype AS ENUM ('makeup', 'paid_extra', 'free_trial');
+            END IF;
+        END$$;
+        """
+    )
+    custom_type = postgresql.ENUM(
+        "makeup",
+        "paid_extra",
+        "free_trial",
+        name="customlessontype",
+        create_type=False,
+    )
 
     op.create_table(
         "custom_lessons",
@@ -104,6 +121,11 @@ def downgrade() -> None:
     op.drop_index("ix_custom_lessons_id", table_name="custom_lessons")
     op.drop_table("custom_lessons")
 
-    custom_type = sa.Enum("makeup", "paid_extra", "free_trial", name="customlessontype")
+    custom_type = postgresql.ENUM(
+        "makeup",
+        "paid_extra",
+        "free_trial",
+        name="customlessontype",
+    )
     custom_type.drop(op.get_bind(), checkfirst=True)
 

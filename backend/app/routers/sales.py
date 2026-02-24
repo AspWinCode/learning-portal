@@ -59,6 +59,9 @@ from app.models import (
     StudentProgram,
     ProgramMakeupCompatibility,
     StudentFreeze,
+    CustomLesson,
+    CustomLessonStudent,
+    CustomLessonType,
 )
 from app.utils.phone import normalize_phone
 from app.schemas import (
@@ -137,6 +140,9 @@ from app.schemas import (
     CloseByFactPreview,
     CloseByFactConfirm,
     LeadPostVisitStageUpdate,
+    CustomLessonCreate,
+    CustomLessonUpdate,
+    CustomLessonResponse,
 )
 from app.routers.action_log import log_action
 
@@ -187,6 +193,10 @@ def _fix_lead_strings(lead: Lead) -> Lead:
         if fixed is not None and fixed != value:
             setattr(lead, field, fixed)
     return lead
+
+
+def _serialize_time_for_api(t: Optional[dt_time]) -> Optional[str]:
+    return t.strftime("%H:%M") if t else None
 
 
 def _lesson_task_status(lesson_start: datetime, lesson_end: datetime, now: datetime, call_window_min: int = 25) -> str:
@@ -1688,6 +1698,9 @@ def _absence_to_response(db: Session, a: AbsenceFollowUp) -> AbsenceFollowUpResp
     student = db.query(Student).filter(Student.id == a.student_id).first()
     group = db.query(Group).filter(Group.id == a.group_id).first()
     makeup_group = db.query(Group).filter(Group.id == a.makeup_group_id).first() if a.makeup_group_id else None
+    makeup_custom_lesson = None
+    if getattr(a, "makeup_custom_lesson_id", None):
+        makeup_custom_lesson = db.query(CustomLesson).filter(CustomLesson.id == a.makeup_custom_lesson_id).first()
     return AbsenceFollowUpResponse(
         id=a.id,
         lesson_attendance_id=a.lesson_attendance_id,
@@ -1699,6 +1712,8 @@ def _absence_to_response(db: Session, a: AbsenceFollowUp) -> AbsenceFollowUpResp
         absence_comment=getattr(a, "absence_comment", None),
         makeup_group_id=getattr(a, "makeup_group_id", None),
         makeup_lesson_date=getattr(a, "makeup_lesson_date", None),
+        makeup_custom_lesson_id=getattr(a, "makeup_custom_lesson_id", None),
+        makeup_custom_lesson_title=makeup_custom_lesson.title if makeup_custom_lesson else None,
         created_at=a.created_at,
         updated_at=a.updated_at,
         student_name=get_student_display_name(db, student) if student else None,
@@ -1915,6 +1930,248 @@ async def list_payment_status(
         ))
     result.sort(key=lambda x: (x.next_payment_date or date.max, x.student_name))
     return result
+
+
+# --- Custom (manual) lessons for sales/admin/owner ---
+
+
+def _custom_lesson_to_response(db: Session, lesson: CustomLesson) -> CustomLessonResponse:
+    trainer = db.query(User).filter(User.id == lesson.trainer_id).first()
+    students_rows = (
+        db.query(CustomLessonStudent, Student)
+        .join(Student, Student.id == CustomLessonStudent.student_id)
+        .filter(CustomLessonStudent.lesson_id == lesson.id)
+        .all()
+    )
+    students = []
+    for cls, s in students_rows:
+        students.append(
+            {
+                "id": cls.id,
+                "student_id": cls.student_id,
+                "student_name": get_student_display_name(db, s) if s else None,
+                "planned_absence_id": cls.planned_absence_id,
+                "attended": bool(getattr(cls, "attended", False)),
+                "absence_reason": getattr(cls, "absence_reason", None),
+                "absence_comment": getattr(cls, "absence_comment", None),
+            }
+        )
+    return CustomLessonResponse(
+        id=lesson.id,
+        title=lesson.title,
+        lesson_date=lesson.lesson_date,
+        start_time=_serialize_time_for_api(lesson.start_time) or "",
+        end_time=_serialize_time_for_api(lesson.end_time),
+        trainer_id=lesson.trainer_id,
+        trainer_name=trainer.full_name if trainer else None,
+        lesson_type=lesson.lesson_type.value if isinstance(lesson.lesson_type, CustomLessonType) else str(lesson.lesson_type),
+        comment=lesson.comment,
+        students=students,
+    )
+
+
+@router.post("/custom-lessons", response_model=CustomLessonResponse, status_code=status.HTTP_201_CREATED)
+async def create_custom_lesson(
+    payload: CustomLessonCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Создать ручной урок без группы (отработка / доп.урок / пробное). Только admin/owner/sales."""
+    _require_sales_admin_owner(current_user)
+
+    trainer = db.query(User).filter(User.id == payload.trainer_id).first()
+    if not trainer:
+        raise HTTPException(status_code=404, detail="Тренер не найден")
+
+    try:
+        start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+        end_t = None
+        if payload.end_time:
+            end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Время укажите в формате HH:MM")
+
+    lesson_type_value = payload.lesson_type or "makeup"
+    if lesson_type_value not in {t.value for t in CustomLessonType}:
+        raise HTTPException(status_code=400, detail=f"lesson_type должен быть одним из: {[t.value for t in CustomLessonType]}")
+
+    lesson = CustomLesson(
+        title=payload.title.strip(),
+        lesson_date=payload.lesson_date,
+        start_time=start_t,
+        end_time=end_t,
+        trainer_id=payload.trainer_id,
+        lesson_type=CustomLessonType(lesson_type_value),
+        comment=(payload.comment or "").strip() or None,
+        created_by_id=current_user.id,
+    )
+    db.add(lesson)
+    db.flush()
+
+    # Добавляем учеников
+    for item in payload.students or []:
+        student = db.query(Student).filter(Student.id == item.student_id).first()
+        if not student:
+            raise HTTPException(status_code=404, detail=f"Ученик {item.student_id} не найден")
+        planned_absence_id = item.planned_absence_id
+        if planned_absence_id is not None:
+            absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == planned_absence_id).first()
+            if not absence or absence.student_id != item.student_id:
+                raise HTTPException(status_code=400, detail=f"Пропуск {planned_absence_id} не найден для этого ученика")
+        cls = CustomLessonStudent(
+            lesson_id=lesson.id,
+            student_id=item.student_id,
+            planned_absence_id=planned_absence_id,
+            attended=False,
+        )
+        db.add(cls)
+        # Для типа «Отработка» помечаем пропуск как «назначена отработка»
+        if lesson_type_value == "makeup" and planned_absence_id is not None:
+            absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == planned_absence_id).first()
+            if absence and absence.student_id == item.student_id:
+                absence.stage = "assigned"
+                absence.makeup_custom_lesson_id = lesson.id
+                absence.makeup_group_id = None
+                absence.makeup_lesson_date = None
+
+    db.commit()
+    db.refresh(lesson)
+    return _custom_lesson_to_response(db, lesson)
+
+
+@router.get("/custom-lessons", response_model=List[CustomLessonResponse])
+async def list_custom_lessons(
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    trainer_id: Optional[int] = Query(None),
+    student_id: Optional[int] = Query(None),
+    lesson_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Список ручных уроков для менеджера (admin/owner/sales)."""
+    _require_sales_admin_owner(current_user)
+    query = db.query(CustomLesson)
+    if date_from:
+        query = query.filter(CustomLesson.lesson_date >= date_from)
+    if date_to:
+        query = query.filter(CustomLesson.lesson_date <= date_to)
+    if trainer_id:
+        query = query.filter(CustomLesson.trainer_id == trainer_id)
+    if lesson_type:
+        query = query.filter(CustomLesson.lesson_type == lesson_type)
+    lessons = query.order_by(CustomLesson.lesson_date.desc(), CustomLesson.start_time.asc()).all()
+
+    # Фильтр по ученику через связку
+    if student_id is not None:
+        lesson_ids = {
+            ls.lesson_id
+            for ls in db.query(CustomLessonStudent).filter(CustomLessonStudent.student_id == student_id).all()
+        }
+        lessons = [l for l in lessons if l.id in lesson_ids]
+
+    return [_custom_lesson_to_response(db, l) for l in lessons]
+
+
+@router.get("/custom-lessons/{lesson_id}", response_model=CustomLessonResponse)
+async def get_custom_lesson(
+    lesson_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    _require_sales_admin_owner(current_user)
+    lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Ручной урок не найден")
+    return _custom_lesson_to_response(db, lesson)
+
+
+@router.put("/custom-lessons/{lesson_id}", response_model=CustomLessonResponse)
+async def update_custom_lesson(
+    lesson_id: int,
+    payload: CustomLessonUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Редактирование ручного урока. Только admin/owner/sales."""
+    _require_sales_admin_owner(current_user)
+    lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Ручной урок не найден")
+
+    if payload.title is not None:
+        lesson.title = payload.title.strip()
+    if payload.lesson_date is not None:
+        lesson.lesson_date = payload.lesson_date
+    if payload.start_time is not None:
+        try:
+            lesson.start_time = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="start_time: формат HH:MM")
+    if payload.end_time is not None:
+        if payload.end_time == "":
+            lesson.end_time = None
+        else:
+            try:
+                lesson.end_time = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="end_time: формат HH:MM")
+    if payload.trainer_id is not None:
+        trainer = db.query(User).filter(User.id == payload.trainer_id).first()
+        if not trainer:
+            raise HTTPException(status_code=404, detail="Тренер не найден")
+        lesson.trainer_id = payload.trainer_id
+    if payload.lesson_type is not None:
+        if payload.lesson_type not in {t.value for t in CustomLessonType}:
+            raise HTTPException(status_code=400, detail=f"lesson_type должен быть одним из: {[t.value for t in CustomLessonType]}")
+        lesson.lesson_type = CustomLessonType(payload.lesson_type)
+    if payload.comment is not None:
+        lesson.comment = payload.comment.strip() or None
+
+    # Обновление списка учеников: если передан payload.students — пересобираем список
+    if payload.students is not None:
+        existing = db.query(CustomLessonStudent).filter(CustomLessonStudent.lesson_id == lesson.id).all()
+        existing_by_student = {(e.student_id, e.planned_absence_id): e for e in existing}
+        db.query(CustomLessonStudent).filter(CustomLessonStudent.lesson_id == lesson.id).delete(synchronize_session=False)
+
+        for item in payload.students:
+            student = db.query(Student).filter(Student.id == item.student_id).first()
+            if not student:
+                raise HTTPException(status_code=404, detail=f"Ученик {item.student_id} не найден")
+            planned_absence_id = item.planned_absence_id
+            if planned_absence_id is not None:
+                absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == planned_absence_id).first()
+                if not absence or absence.student_id != item.student_id:
+                    raise HTTPException(status_code=400, detail=f"Пропуск {planned_absence_id} не найден для этого ученика")
+            # Сбрасываем посещаемость при полном пересборе списка
+            cls = CustomLessonStudent(
+                lesson_id=lesson.id,
+                student_id=item.student_id,
+                planned_absence_id=planned_absence_id,
+                attended=False,
+            )
+            db.add(cls)
+
+    db.commit()
+    db.refresh(lesson)
+    return _custom_lesson_to_response(db, lesson)
+
+
+@router.delete("/custom-lessons/{lesson_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_custom_lesson(
+    lesson_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Удалить ручной урок. Только admin/owner/sales."""
+    _require_sales_admin_owner(current_user)
+    lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Ручной урок не найден")
+    db.query(CustomLessonStudent).filter(CustomLessonStudent.lesson_id == lesson.id).delete(synchronize_session=False)
+    db.delete(lesson)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/program-makeup-compatibility", response_model=List[ProgramMakeupCompatibilityResponse])

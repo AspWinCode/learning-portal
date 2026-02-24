@@ -78,6 +78,8 @@ export interface AbsenceFollowUp {
   absence_comment?: string | null;
   makeup_group_id?: number | null;
   makeup_lesson_date?: string | null;
+  makeup_custom_lesson_id?: number | null;
+  makeup_custom_lesson_title?: string | null;
   created_at: string;
   updated_at?: string | null;
   student_name?: string | null;

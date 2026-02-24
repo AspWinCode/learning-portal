@@ -80,6 +80,11 @@ const TrainerLessonsPage: React.FC = () => {
   const [createEndTime, setCreateEndTime] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [customLessons, setCustomLessons] = useState<any[]>([]);
+  const [customLessonsLoading, setCustomLessonsLoading] = useState(false);
+  const [customAttendanceLesson, setCustomAttendanceLesson] = useState<any | null>(null);
+  const [customAttendanceDraft, setCustomAttendanceDraft] = useState<Record<number, { attended: boolean; reason: string; comment: string }>>({});
+  const [customAttendanceSaving, setCustomAttendanceSaving] = useState(false);
 
   useEffect(() => {
     const dateParam = searchParams.get('date');
@@ -116,6 +121,18 @@ const TrainerLessonsPage: React.FC = () => {
       .then((data) => setGroups(data))
       .catch(() => {});
   }, [user, canMoveLessons]);
+
+  useEffect(() => {
+    if (user?.role !== 'trainer') return;
+    const from = format(subDays(new Date(viewDate), 3), 'yyyy-MM-dd');
+    const to = format(addDays(new Date(viewDate), 3), 'yyyy-MM-dd');
+    setCustomLessonsLoading(true);
+    trainerLessonsApi
+      .getCustomLessons({ date_from: from, date_to: to })
+      .then((data) => setCustomLessons(data))
+      .catch(() => setCustomLessons([]))
+      .finally(() => setCustomLessonsLoading(false));
+  }, [viewDate, user?.role]);
 
   const handlePrevDay = () => setViewDate((d) => format(subDays(new Date(d), 1), 'yyyy-MM-dd'));
   const handleNextDay = () => setViewDate((d) => format(addDays(new Date(d), 1), 'yyyy-MM-dd'));
@@ -749,6 +766,148 @@ const TrainerLessonsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {user?.role === 'trainer' && (
+        <>
+          <Card variant="outlined" sx={{ mt: 2 }}>
+            <CardContent>
+              <Typography variant="subtitle1" gutterBottom>
+                Ручные уроки (без группы)
+              </Typography>
+              {customLessonsLoading ? (
+                <Typography variant="body2" color="text.secondary">Загрузка…</Typography>
+              ) : customLessons.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">Нет ручных уроков на эту неделю.</Typography>
+              ) : (
+                <Stack spacing={1} sx={{ mt: 1 }}>
+                  {customLessons.map((lesson) => (
+                    <Stack key={lesson.id} direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+                      <Typography variant="body2">
+                        {format(new Date(lesson.lesson_date + 'T12:00:00'), 'd MMM', { locale: ru })} {lesson.start_time}
+                        {lesson.end_time ? `–${lesson.end_time}` : ''} · {lesson.title}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {lesson.students?.length || 0} уч.
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          setCustomAttendanceLesson(lesson);
+                          const draft: Record<number, { attended: boolean; reason: string; comment: string }> = {};
+                          (lesson.students || []).forEach((s: any) => {
+                            draft[s.id] = {
+                              attended: s.attended ?? false,
+                              reason: s.absence_reason || 'not_was',
+                              comment: s.absence_comment || '',
+                            };
+                          });
+                          setCustomAttendanceDraft(draft);
+                        }}
+                      >
+                        Посещаемость
+                      </Button>
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+
+          <Dialog open={!!customAttendanceLesson} onClose={() => setCustomAttendanceLesson(null)} maxWidth="sm" fullWidth>
+            <DialogTitle>{customAttendanceLesson?.title} — посещаемость</DialogTitle>
+            <DialogContent>
+              {customAttendanceLesson?.students?.map((s: any) => (
+                <Box key={s.id} sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={customAttendanceDraft[s.id]?.attended ?? false}
+                        onChange={(e) =>
+                          setCustomAttendanceDraft((prev) => ({
+                            ...prev,
+                            [s.id]: { ...prev[s.id], attended: e.target.checked },
+                          }))
+                        }
+                      />
+                    }
+                    label={`Был: ${s.student_name || s.student_id}`}
+                  />
+                  {!(customAttendanceDraft[s.id]?.attended ?? false) && (
+                    <Stack direction="row" spacing={1} sx={{ ml: 4, mt: 0.5 }} flexWrap="wrap">
+                      <FormControl size="small" sx={{ minWidth: 140 }}>
+                        <InputLabel>Причина</InputLabel>
+                        <Select
+                          value={customAttendanceDraft[s.id]?.reason || 'not_was'}
+                          label="Причина"
+                          onChange={(e) =>
+                            setCustomAttendanceDraft((prev) => ({
+                              ...prev,
+                              [s.id]: { ...prev[s.id], reason: e.target.value },
+                            }))
+                          }
+                        >
+                          {ABSENCE_REASONS.filter((r) => r.value !== 'was').map((r) => (
+                            <MenuItem key={r.value} value={r.value}>
+                              {r.label}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        size="small"
+                        placeholder="Комментарий"
+                        value={customAttendanceDraft[s.id]?.comment || ''}
+                        onChange={(e) =>
+                          setCustomAttendanceDraft((prev) => ({
+                            ...prev,
+                            [s.id]: { ...prev[s.id], comment: e.target.value },
+                          }))
+                        }
+                        sx={{ minWidth: 160 }}
+                      />
+                    </Stack>
+                  )}
+                </Box>
+              ))}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setCustomAttendanceLesson(null)}>Отмена</Button>
+              <Button
+                variant="contained"
+                disabled={customAttendanceSaving || !customAttendanceLesson}
+                onClick={async () => {
+                  if (!customAttendanceLesson) return;
+                  setCustomAttendanceSaving(true);
+                  setError(null);
+                  try {
+                    await trainerLessonsApi.saveCustomLessonAttendance({
+                      lesson_id: customAttendanceLesson.id,
+                      items: (customAttendanceLesson.students || []).map((s: any) => ({
+                        lesson_student_id: s.id,
+                        attended: customAttendanceDraft[s.id]?.attended ?? false,
+                        absence_reason: customAttendanceDraft[s.id]?.attended ? undefined : (customAttendanceDraft[s.id]?.reason || undefined),
+                        absence_comment: customAttendanceDraft[s.id]?.attended ? undefined : (customAttendanceDraft[s.id]?.comment || undefined),
+                      })),
+                    });
+                    setCustomAttendanceLesson(null);
+                    const from = format(subDays(new Date(viewDate), 3), 'yyyy-MM-dd');
+                    const to = format(addDays(new Date(viewDate), 3), 'yyyy-MM-dd');
+                    const data = await trainerLessonsApi.getCustomLessons({ date_from: from, date_to: to });
+                    setCustomLessons(data);
+                  } catch (err: any) {
+                    setError(extractApiError(err, 'Не удалось сохранить посещаемость'));
+                  } finally {
+                    setCustomAttendanceSaving(false);
+                  }
+                }}
+              >
+                {customAttendanceSaving ? 'Сохранение…' : 'Сохранить'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </>
+      )}
     </Layout>
   );
 };

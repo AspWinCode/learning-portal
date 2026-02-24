@@ -25,6 +25,8 @@ from app.models import (
     StudentAccountTransactionKind,
     AbsenceFollowUp,
     StudentFreeze,
+    CustomLesson,
+    CustomLessonStudent,
 )
 from app.schemas import (
     TrainerLessonSlotResponse,
@@ -34,8 +36,10 @@ from app.schemas import (
     CreateLessonSlotPayload,
     AddStudentToLessonPayload,
     SetLessonTrainerPayload,
+    CustomLessonAttendancePayload,
+    CustomLessonResponse,
 )
-from app.student_display import get_students_display_names
+from app.student_display import get_student_display_name, get_students_display_names
 
 router = APIRouter()
 
@@ -254,6 +258,51 @@ async def get_lessons_for_date(
     return result
 
 
+def _close_absence_for_custom_lesson(
+    db: Session,
+    *,
+    lesson: CustomLesson,
+    lesson_student: CustomLessonStudent,
+) -> None:
+    """Закрыть один пропуск для ученика по ручному уроку (FIFO или заданный явно)."""
+    # Если у урока тип не "отработка" — пропуски не трогаем.
+    if getattr(lesson, "lesson_type", None) and str(lesson.lesson_type) not in ("makeup", "CustomLessonType.MAKEUP"):
+        return
+
+    student_id = lesson_student.student_id
+
+    # Сначала пробуем явно привязанный пропуск
+    absence = None
+    if lesson_student.planned_absence_id:
+        absence = (
+            db.query(AbsenceFollowUp)
+            .filter(
+                AbsenceFollowUp.id == lesson_student.planned_absence_id,
+                AbsenceFollowUp.student_id == student_id,
+                AbsenceFollowUp.stage.in_(("missed", "assigned")),
+            )
+            .first()
+        )
+
+    # Если не нашли или не задан — берём самый ранний открытый пропуск (FIFO)
+    if not absence:
+        absence = (
+            db.query(AbsenceFollowUp)
+            .filter(
+                AbsenceFollowUp.student_id == student_id,
+                AbsenceFollowUp.stage.in_(("missed", "assigned")),
+            )
+            .order_by(AbsenceFollowUp.lesson_date.asc(), AbsenceFollowUp.id.asc())
+            .first()
+        )
+
+    if not absence:
+        return
+
+    absence.stage = "made_up"
+    absence.makeup_custom_lesson_id = lesson.id
+
+
 @router.post("/attendance")
 async def save_attendance(
     payload: LessonAttendanceSave,
@@ -408,6 +457,102 @@ async def save_attendance(
                         absence_reason=att.absence_reason,
                         absence_comment=att.absence_comment,
                     ))
+    db.commit()
+    return {"ok": True}
+
+
+def _custom_lesson_to_response(db: Session, lesson: CustomLesson) -> CustomLessonResponse:
+    trainer = db.query(User).filter(User.id == lesson.trainer_id).first()
+    students_rows = (
+        db.query(CustomLessonStudent, Student)
+        .join(Student, Student.id == CustomLessonStudent.student_id)
+        .filter(CustomLessonStudent.lesson_id == lesson.id)
+        .all()
+    )
+    students = [
+        {
+            "id": cls.id,
+            "student_id": cls.student_id,
+            "student_name": get_student_display_name(db, s) if s else None,
+            "planned_absence_id": cls.planned_absence_id,
+            "attended": bool(getattr(cls, "attended", False)),
+            "absence_reason": getattr(cls, "absence_reason", None),
+            "absence_comment": getattr(cls, "absence_comment", None),
+        }
+        for cls, s in students_rows
+    ]
+    start_str = lesson.start_time.strftime("%H:%M") if lesson.start_time else ""
+    end_str = lesson.end_time.strftime("%H:%M") if lesson.end_time else None
+    return CustomLessonResponse(
+        id=lesson.id,
+        title=lesson.title,
+        lesson_date=lesson.lesson_date,
+        start_time=start_str,
+        end_time=end_str,
+        trainer_id=lesson.trainer_id,
+        trainer_name=trainer.full_name if trainer else None,
+        lesson_type=lesson.lesson_type.value if hasattr(lesson.lesson_type, "value") else str(lesson.lesson_type),
+        comment=lesson.comment,
+        students=students,
+    )
+
+
+@router.get("/custom-lessons", response_model=List[CustomLessonResponse])
+async def list_trainer_custom_lessons(
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Список ручных уроков, где текущий пользователь — ведущий тренер. Только для тренера."""
+    if current_user.role != UserRole.TRAINER:
+        raise HTTPException(status_code=403, detail="Only for trainers")
+    query = db.query(CustomLesson).filter(CustomLesson.trainer_id == current_user.id)
+    if date_from:
+        query = query.filter(CustomLesson.lesson_date >= date_from)
+    if date_to:
+        query = query.filter(CustomLesson.lesson_date <= date_to)
+    lessons = query.order_by(CustomLesson.lesson_date.desc(), CustomLesson.start_time.asc()).all()
+    return [_custom_lesson_to_response(db, l) for l in lessons]
+
+
+@router.post("/custom-lessons/attendance")
+async def save_custom_lesson_attendance(
+    payload: CustomLessonAttendancePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Посещаемость по ручному уроку (без группы). Только для тренера этого урока."""
+    if current_user.role != UserRole.TRAINER:
+        raise HTTPException(status_code=403, detail="Only for trainers")
+
+    lesson = db.query(CustomLesson).filter(CustomLesson.id == payload.lesson_id).first()
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Урок не найден")
+    if lesson.trainer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Не ваш урок")
+
+    # Обновляем посещаемость по ученикам
+    for item in payload.items:
+        row = db.query(CustomLessonStudent).filter(
+            CustomLessonStudent.id == item.lesson_student_id,
+            CustomLessonStudent.lesson_id == payload.lesson_id,
+        ).first()
+        if not row:
+            continue
+        row.attended = item.attended
+        row.absence_reason = (item.absence_reason or "").strip() or None
+        row.absence_comment = (item.absence_comment or "").strip() or None
+
+    # После обновления — закрываем пропуски для тех, кто был
+    db.flush()
+    rows = db.query(CustomLessonStudent).filter(
+        CustomLessonStudent.lesson_id == payload.lesson_id,
+        CustomLessonStudent.attended.is_(True),
+    ).all()
+    for row in rows:
+        _close_absence_for_custom_lesson(db, lesson=lesson, lesson_student=row)
+
     db.commit()
     return {"ok": True}
 

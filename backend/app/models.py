@@ -818,6 +818,54 @@ class LessonTrainerOverride(Base):
     trainer = relationship("User", foreign_keys=[trainer_id])
 
 
+class CustomLessonType(str, enum.Enum):
+    MAKEUP = "makeup"          # Отработка
+    PAID_EXTRA = "paid_extra"  # Дополнительное платное
+    FREE_TRIAL = "free_trial"  # Бесплатное / пробное
+
+
+class CustomLesson(Base):
+    """Ручной урок без группы (отработка / доп.урок / пробное занятие)."""
+    __tablename__ = "custom_lessons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    lesson_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=True)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    lesson_type = Column(
+        SQLEnum(CustomLessonType, name="customlessontype", values_callable=_enum_values),
+        default=CustomLessonType.MAKEUP,
+        nullable=False,
+        index=True,
+    )
+    comment = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    trainer = relationship("User", foreign_keys=[trainer_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class CustomLessonStudent(Base):
+    """Участник ручного урока + настройки отработки / посещаемости."""
+    __tablename__ = "custom_lesson_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey("custom_lessons.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    planned_absence_id = Column(Integer, ForeignKey("absence_follow_ups.id"), nullable=True, index=True)
+    attended = Column(Boolean, default=False, nullable=False)
+    absence_reason = Column(String(64), nullable=True)
+    absence_comment = Column(Text, nullable=True)
+
+    lesson = relationship("CustomLesson", backref="students")
+    student = relationship("Student")
+    planned_absence = relationship("AbsenceFollowUp", foreign_keys=[planned_absence_id])
+
+
 class AbsenceFollowUpStage(str, enum.Enum):
     MISSED = "missed"           # Пропустил
     ASSIGNED = "assigned"       # Назначили отработку
@@ -836,6 +884,7 @@ class AbsenceFollowUp(Base):
     lesson_date = Column(Date, nullable=False, index=True)
     stage = Column(String, nullable=False, index=True, server_default="missed")  # missed / assigned / made_up / missed_makeup
     makeup_group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
+    makeup_custom_lesson_id = Column(Integer, ForeignKey("custom_lessons.id"), nullable=True, index=True)
     makeup_lesson_date = Column(Date, nullable=True)
     absence_reason = Column(String(64), nullable=True)
     absence_comment = Column(Text, nullable=True)
@@ -846,6 +895,7 @@ class AbsenceFollowUp(Base):
     student = relationship("Student")
     group = relationship("Group", foreign_keys=[group_id])
     makeup_group = relationship("Group", foreign_keys=[makeup_group_id])
+    makeup_custom_lesson = relationship("CustomLesson", foreign_keys=[makeup_custom_lesson_id])
 
 
 class StudentFreeze(Base):

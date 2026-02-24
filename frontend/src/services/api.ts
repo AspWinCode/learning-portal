@@ -391,6 +391,43 @@ export const trainerLessonsApi = {
     const response = await api.post('/api/trainer-lessons/set-trainer', data);
     return response.data;
   },
+  getCustomLessons: async (params?: { date_from?: string; date_to?: string }): Promise<
+    Array<{
+      id: number;
+      title: string;
+      lesson_date: string;
+      start_time: string;
+      end_time?: string | null;
+      trainer_id: number;
+      trainer_name?: string | null;
+      lesson_type: string;
+      comment?: string | null;
+      students: Array<{
+        id: number;
+        student_id: number;
+        student_name?: string | null;
+        planned_absence_id?: number | null;
+        attended: boolean;
+        absence_reason?: string | null;
+        absence_comment?: string | null;
+      }>;
+    }>
+  > => {
+    const response = await api.get('/api/trainer-lessons/custom-lessons', { params: params || {} });
+    return response.data;
+  },
+  saveCustomLessonAttendance: async (data: {
+    lesson_id: number;
+    items: Array<{
+      lesson_student_id: number;
+      attended: boolean;
+      absence_reason?: string | null;
+      absence_comment?: string | null;
+    }>;
+  }): Promise<{ ok: boolean }> => {
+    const response = await api.post('/api/trainer-lessons/custom-lessons/attendance', data);
+    return response.data;
+  },
 };
 
 export const programsApi = {
@@ -1152,6 +1189,69 @@ export const salesApi = {
       responseType: 'blob',
     });
     return response.data as Blob;
+  },
+  listCustomLessons: async (params?: {
+    date_from?: string;
+    date_to?: string;
+    trainer_id?: number;
+    student_id?: number;
+    lesson_type?: string;
+  }): Promise<
+    Array<{
+      id: number;
+      title: string;
+      lesson_date: string;
+      start_time: string;
+      end_time?: string | null;
+      trainer_id: number;
+      trainer_name?: string | null;
+      lesson_type: string;
+      comment?: string | null;
+      students: Array<{
+        id: number;
+        student_id: number;
+        student_name?: string | null;
+        planned_absence_id?: number | null;
+        attended: boolean;
+        absence_reason?: string | null;
+        absence_comment?: string | null;
+      }>;
+    }>
+  > => {
+    const response = await api.get('/api/sales/custom-lessons', { params: params || {} });
+    return response.data;
+  },
+  createCustomLesson: async (data: {
+    title: string;
+    lesson_date: string;
+    start_time: string;
+    end_time?: string | null;
+    trainer_id: number;
+    lesson_type: string;
+    comment?: string | null;
+    students: Array<{ student_id: number; planned_absence_id?: number | null }>;
+  }): Promise<any> => {
+    const response = await api.post('/api/sales/custom-lessons', data);
+    return response.data;
+  },
+  updateCustomLesson: async (
+    id: number,
+    data: Partial<{
+      title: string;
+      lesson_date: string;
+      start_time: string;
+      end_time?: string | null;
+      trainer_id: number;
+      lesson_type: string;
+      comment?: string | null;
+      students: Array<{ student_id: number; planned_absence_id?: number | null }>;
+    }>
+  ): Promise<any> => {
+    const response = await api.put(`/api/sales/custom-lessons/${id}`, data);
+    return response.data;
+  },
+  deleteCustomLesson: async (id: number): Promise<void> => {
+    await api.delete(`/api/sales/custom-lessons/${id}`);
   },
 };
 

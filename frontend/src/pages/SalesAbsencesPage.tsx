@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -44,6 +45,7 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 const SalesAbsencesPage: React.FC = () => {
+  const navigate = useNavigate();
   const [items, setItems] = useState<AbsenceFollowUp[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +114,15 @@ const SalesAbsencesPage: React.FC = () => {
     } finally {
       setAssigning(false);
     }
+  };
+
+  const handleOpenManualLesson = () => {
+    if (!suggestAbsence) return;
+    setSuggestOpen(false);
+    setSuggestAbsence(null);
+    navigate(
+      `/sales/manual-lessons?create=1&absence_id=${suggestAbsence.id}&student_id=${suggestAbsence.student_id}`
+    );
   };
 
   const byStage = STAGES.reduce(
@@ -244,13 +255,21 @@ const SalesAbsencesPage: React.FC = () => {
         )}
 
         <Dialog open={suggestOpen} onClose={() => { setSuggestOpen(false); setSuggestAbsence(null); }} maxWidth="sm" fullWidth>
-          <DialogTitle>Подобрать отработку</DialogTitle>
+          <DialogTitle>Назначить отработку</DialogTitle>
           <DialogContent>
             {suggestAbsence && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 {suggestAbsence.student_name} · {suggestAbsence.program_name || '—'}
               </Typography>
             )}
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              <Button size="small" variant="outlined" color="primary" onClick={handleOpenManualLesson} disabled={!suggestAbsence}>
+                Ручной урок (без группы)
+              </Button>
+            </Stack>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+              Или выбрать занятие в группе:
+            </Typography>
             {suggestLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
                 <CircularProgress size={24} />

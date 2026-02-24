@@ -332,6 +332,15 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                   <Typography variant="body2">
                                     {a.group_name || `Группа #${a.group_id}`} · {formatDate(a.lesson_date)}
                                   </Typography>
+                                  {(a.stage === 'assigned' || a.stage === 'made_up') && (
+                                    <Typography variant="caption" color="primary" display="block" sx={{ mt: 0.5 }}>
+                                      {a.makeup_group_name && a.makeup_lesson_date
+                                        ? `Отработка: ${a.makeup_group_name} · ${formatDate(a.makeup_lesson_date)}`
+                                        : a.makeup_custom_lesson_title
+                                          ? `Ручной урок: ${a.makeup_custom_lesson_title}`
+                                          : 'Отработка назначена'}
+                                    </Typography>
+                                  )}
                                   <FormControl size="small" fullWidth sx={{ mt: 0.5 }}>
                                     <Select
                                       value={a.stage}

@@ -358,12 +358,15 @@ class AbsenceFollowUpResponse(BaseModel):
     absence_comment: Optional[str] = None
     makeup_group_id: Optional[int] = None
     makeup_lesson_date: Optional[date] = None
+    makeup_custom_lesson_id: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     student_name: Optional[str] = None
     group_name: Optional[str] = None
     program_name: Optional[str] = None
     makeup_group_name: Optional[str] = None
+    makeup_custom_lesson_id: Optional[int] = None
+    makeup_custom_lesson_title: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -389,6 +392,74 @@ class MakeupSuggestionItem(BaseModel):
     start_time: Optional[str] = None
 
 
+# --- Custom (manual) lessons ---
+
+
+class CustomLessonStudentItem(BaseModel):
+    student_id: int
+    planned_absence_id: Optional[int] = None
+
+
+class CustomLessonCreate(BaseModel):
+    title: str
+    lesson_date: date
+    start_time: str  # HH:MM
+    end_time: Optional[str] = None  # HH:MM
+    trainer_id: int
+    lesson_type: str = "makeup"  # makeup | paid_extra | free_trial
+    comment: Optional[str] = None
+    students: List[CustomLessonStudentItem]
+
+
+class CustomLessonUpdate(BaseModel):
+    title: Optional[str] = None
+    lesson_date: Optional[date] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    trainer_id: Optional[int] = None
+    lesson_type: Optional[str] = None
+    comment: Optional[str] = None
+    students: Optional[List[CustomLessonStudentItem]] = None
+
+
+class CustomLessonStudentResponse(BaseModel):
+    id: int
+    student_id: int
+    student_name: Optional[str] = None
+    planned_absence_id: Optional[int] = None
+    attended: bool
+    absence_reason: Optional[str] = None
+    absence_comment: Optional[str] = None
+
+
+class CustomLessonResponse(BaseModel):
+    id: int
+    title: str
+    lesson_date: date
+    start_time: str
+    end_time: Optional[str] = None
+    trainer_id: int
+    trainer_name: Optional[str] = None
+    lesson_type: str
+    comment: Optional[str] = None
+    students: List[CustomLessonStudentResponse]
+
+    class Config:
+        from_attributes = True
+
+
+class CustomLessonAttendanceItem(BaseModel):
+    lesson_student_id: int
+    attended: bool
+    absence_reason: Optional[str] = None
+    absence_comment: Optional[str] = None
+
+
+class CustomLessonAttendancePayload(BaseModel):
+    lesson_id: int
+    items: List[CustomLessonAttendanceItem]
+
+
 class ProgramMakeupCompatibilityResponse(BaseModel):
     id: int
     source_program_id: int
@@ -412,7 +483,7 @@ class PaymentStatusItem(BaseModel):
     card_id: Optional[int] = None
     next_payment_date: Optional[date] = None
     learning_period_start: Optional[date] = None
-    status: str  # ok | due_soon | overdue
+    status: str  # ok | due_soon | overdue | unpaid
 
 
 class StudentFreezeCreate(BaseModel):

@@ -671,7 +671,10 @@ const TasksPage: React.FC = () => {
                           </List>
                           {task.student_ids?.length > 0 && (
                             <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                              Ученики: {task.student_ids.length}
+                              Ученики:{' '}
+                              {task.student_ids
+                                .map((id) => students.find((s) => s.id === id)?.full_name || `#${id}`)
+                                .join(', ')}
                             </Typography>
                           )}
                         </CardContent>

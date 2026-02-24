@@ -746,6 +746,24 @@ export const salesApi = {
     const response = await api.post(`/api/sales/leads/${leadId}/post-visit-outcome`, payload);
     return response.data;
   },
+  updatePostVisitStage: async (
+    leadId: number,
+    payload: {
+      stage:
+        | 'new'
+        | 'project_offer'
+        | 'course_offer'
+        | 'project_agreed'
+        | 'course_agreed'
+        | 'declined';
+      review?: string;
+      project_date?: string;
+      decline_reason?: string;
+    }
+  ): Promise<Lead> => {
+    const response = await api.post(`/api/sales/leads/${leadId}/post-visit-stage`, payload);
+    return response.data;
+  },
   updateLead: async (
     id: number,
     payload: {

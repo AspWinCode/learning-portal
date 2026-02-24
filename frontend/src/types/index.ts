@@ -300,6 +300,9 @@ export interface Lead {
   created_at: string;
   updated_at?: string | null;
   abonement?: Abonement | null;
+  post_visit_stage?: string | null;
+  post_visit_review?: string | null;
+  post_visit_project_date?: string | null;
 }
 
 export type LeadTaskStatus = 'open' | 'done';

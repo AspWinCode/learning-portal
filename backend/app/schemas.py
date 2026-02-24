@@ -566,6 +566,9 @@ class LeadResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     abonement: Optional[AbonementResponse] = None
+    post_visit_stage: Optional[str] = None
+    post_visit_review: Optional[str] = None
+    post_visit_project_date: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -898,6 +901,21 @@ class LeadPostVisitOutcomeRequest(BaseModel):
     outcome: Literal["agreed", "thinking", "declined"]
     follow_up_at: Optional[datetime] = None
     lost_reason: Optional[str] = None
+
+
+class LeadPostVisitStageUpdate(BaseModel):
+    """Обновление стадии воронки «Дожать на обучение» после мероприятия."""
+    stage: Literal[
+        "new",
+        "project_offer",
+        "course_offer",
+        "project_agreed",
+        "course_agreed",
+        "declined",
+    ]
+    review: Optional[str] = None
+    project_date: Optional[datetime] = None
+    decline_reason: Optional[str] = None
 
 
 class LeadCommunicationResponse(BaseModel):

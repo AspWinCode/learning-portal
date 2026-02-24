@@ -136,6 +136,7 @@ from app.schemas import (
     StudentFreezeResponse,
     CloseByFactPreview,
     CloseByFactConfirm,
+    LeadPostVisitStageUpdate,
 )
 from app.routers.action_log import log_action
 
@@ -218,7 +219,8 @@ def _lesson_tasks_for_date(
         .order_by(GroupSchedule.start_time)
         .all()
     )
-    out = []
+    out: List[dict] = []
+    seen_keys = set()
     for sched in schedules:
         group = db.query(Group).options(
             joinedload(Group.trainer),
@@ -226,6 +228,11 @@ def _lesson_tasks_for_date(
         ).filter(Group.id == sched.group_id).first()
         if not group:
             continue
+        key = (group.id, sched.start_time, sched.end_time)
+        if key in seen_keys:
+            # Защита от случайных дублей расписания: один слот в день показываем один раз
+            continue
+        seen_keys.add(key)
         trainer = group.trainer
         lesson_start = datetime.combine(target_date, sched.start_time)
         lesson_end = datetime.combine(target_date, sched.end_time)
@@ -311,6 +318,9 @@ async def list_lesson_tasks_today(
     """Уроки на сегодня для раздела «Позвать детей на занятие»."""
     today = date.today()
     out = _lesson_tasks_for_date(db, today)
+    # Для вкладки «Сегодня» менеджеру показываем только актуальные уроки:
+    # ожидаются / скоро / идут / идёт дозвон. Завершённые убираем.
+    out = [item for item in out if item.get("status") != "completed"]
     return {"items": out}
 
 
@@ -3945,6 +3955,11 @@ async def mark_event_registration_came(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
     reg.note = _append_note_tag(reg.note, "[came]")
+    # Обновляем статус лида и стартовую стадию воронки «Дожать на обучение»
+    lead.status = LeadStatus.DEMO
+    lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.DEMO)
+    if not getattr(lead, "post_visit_stage", None):
+        lead.post_visit_stage = "new"
     db.commit()
     db.refresh(reg)
     log_action(db, current_user.id, "mark_came", "event_registration", reg.id, {"event_id": event_id, "lead_id": reg.lead_id})
@@ -4040,6 +4055,84 @@ async def list_lead_event_registrations(
         .order_by(EventRegistration.created_at.desc())
         .all()
     )
+
+
+@router.post("/leads/{lead_id}/post-visit-stage", response_model=LeadResponse)
+async def update_lead_post_visit_stage(
+    lead_id: int,
+    payload: LeadPostVisitStageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+):
+    """Обновление стадии воронки «Дожать на обучение» после мероприятия."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+
+    stage = payload.stage
+    lead.post_visit_stage = stage
+
+    if stage == "project_offer" or stage == "course_offer":
+        # Промежуточные этапы — только меняем стадию
+        pass
+    elif stage == "project_agreed":
+        if not (payload.review or "").strip():
+            raise HTTPException(status_code=400, detail="Укажите отзыв по проекту")
+        if payload.project_date is None:
+            raise HTTPException(status_code=400, detail="Укажите дату проведения проекта")
+        lead.post_visit_review = payload.review.strip()
+        lead.post_visit_project_date = payload.project_date
+    elif stage == "course_agreed":
+        if not (payload.review or "").strip():
+            raise HTTPException(status_code=400, detail="Укажите отзыв перед записью на курс")
+        lead.post_visit_review = payload.review.strip()
+        # Переводим лида в этап «Согласился заниматься» — выставляем статус, как после успешного визита
+        lead.status = LeadStatus.INVOICE_SENT
+        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.INVOICE_SENT)
+        # Авто‑задача «контроль оплаты» (аналогично auto_post_visit_agreed)
+        if not _has_open_task_like(db, lead.id, "[auto_post_visit_agreed]"):
+            due_at = datetime.utcnow() + timedelta(hours=48)
+            auto_task = _create_auto_event_task(
+                db,
+                lead=lead,
+                owner_id=lead.owner_id,
+                note="[auto_post_visit_agreed] Контроль оплаты",
+                due_at=due_at,
+                preferred_template_keywords=["оплат", "контроль", "дожим"],
+            )
+            db.add(auto_task)
+            db.flush()
+            log_action(db, current_user.id, "create", "lead_task", auto_task.id, {"lead_id": lead.id, "type": "auto_post_visit_agreed"})
+            if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
+                lead.next_contact_at = auto_task.due_at
+    elif stage == "declined":
+        reason = (payload.decline_reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail="Укажите причину отказа")
+        lead.lost_reason = reason
+        lead.status = LeadStatus.LOST
+        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.LOST)
+    else:
+        # new — просто стартовая стадия
+        pass
+
+    db.commit()
+    db.refresh(lead)
+    log_action(
+        db,
+        current_user.id,
+        "post_visit_stage",
+        "lead",
+        lead.id,
+        {
+            "stage": stage,
+            "review": payload.review,
+            "project_date": payload.project_date.isoformat() if payload.project_date else None,
+            "decline_reason": payload.decline_reason,
+        },
+    )
+    return _fix_lead_strings(lead)
 
 
 # --- Справка для налогового вычета (форма КНД 1151158) ---

@@ -309,6 +309,10 @@ class Lead(Base):
     b2b_event_id = Column(Integer, ForeignKey("b2b_school_events.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    # Воронка «Дожать на обучение» после мероприятия
+    post_visit_stage = Column(String(64), nullable=True, index=True)
+    post_visit_review = Column(Text, nullable=True)
+    post_visit_project_date = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     owner = relationship("User")

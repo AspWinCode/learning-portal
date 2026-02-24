@@ -618,19 +618,27 @@ const TasksPage: React.FC = () => {
                               <LinearProgress variant="determinate" value={task.progress} sx={{ width: 80, height: 6, borderRadius: 1 }} />
                             </Stack>
                           </Box>
-                          {isAdminOrOwner && (
+                          {(isAdminOrOwner || isSales) && (
                             <Stack direction="row" spacing={0.5} onClick={(e) => e.stopPropagation()}>
-                              <IconButton size="small" onClick={() => openTaskDialog(task)} title="Редактировать">
-                                <EditIcon />
-                              </IconButton>
-                              {task.status === 'active' && (
-                                <IconButton size="small" onClick={() => archiveTask(task.id)} title="В архив">
-                                  <ArchiveIcon />
+                              {isAdminOrOwner && (
+                                <IconButton size="small" onClick={() => openTaskDialog(task)} title="Редактировать">
+                                  <EditIcon />
                                 </IconButton>
                               )}
-                              <IconButton size="small" onClick={() => deleteTask(task.id)} color="error" title="Удалить">
-                                <DeleteIcon />
-                              </IconButton>
+                              {task.status === 'active' && (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => tasksApi.completeTask(task.id).then(() => loadTasks()).catch((e) => setError(extractApiError(e, 'Не удалось завершить задачу')))}
+                                >
+                                  Завершить
+                                </Button>
+                              )}
+                              {isAdminOrOwner && (
+                                <IconButton size="small" onClick={() => deleteTask(task.id)} color="error" title="Удалить">
+                                  <DeleteIcon />
+                                </IconButton>
+                              )}
                             </Stack>
                           )}
                         </Stack>

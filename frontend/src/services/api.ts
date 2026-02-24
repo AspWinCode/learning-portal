@@ -1489,6 +1489,10 @@ export const tasksApi = {
     const response = await api.patch(`/api/tasks/${taskId}/subtasks/${subtaskId}`, payload);
     return response.data;
   },
+  completeTask: async (taskId: number): Promise<import('../types').TaskResponse> => {
+    const response = await api.post(`/api/tasks/${taskId}/complete`);
+    return response.data;
+  },
 };
 
 export default api;

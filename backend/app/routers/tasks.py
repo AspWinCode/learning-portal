@@ -446,12 +446,11 @@ async def update_task_subtask(
         raise HTTPException(status_code=404, detail="Subtask not found")
     if payload.completed is not None:
         st.completed = payload.completed
-    # Автозакрытие задач и повторяющихся задач при 100% прогрессе
+    # Автозакрытие задач и повторяющихся задач при 100% прогрессе (по подзадачам)
     total = len(task.subtasks)
     completed = sum(1 for s in task.subtasks if s.completed)
     all_done = total > 0 and completed == total
     if all_done and task.status == TaskStatus.ACTIVE.value:
-        # Повторяющаяся задача: создаём новую копию, текущую отправляем в архив
         if getattr(task, "repeat_enabled", False):
             new_task = Task(
                 title=task.title,
@@ -490,3 +489,63 @@ async def update_task_subtask(
         completed=st.completed,
         order=st.order,
     )
+
+
+@router.post("/tasks/{task_id}/complete", response_model=TaskResponse)
+async def complete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Ручное завершение задачи менеджером: отправить в архив и при необходимости создать повтор."""
+    task = (
+        db.query(Task)
+        .options(joinedload(Task.subtasks), joinedload(Task.students))
+        .filter(Task.id == task_id)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.status != TaskStatus.ACTIVE.value:
+        return _task_to_response(task)
+
+    total = len(task.subtasks)
+    completed = sum(1 for s in task.subtasks if s.completed)
+    # Для задач без подзадач считаем, что менеджер вручную довёл прогресс до 100%
+    all_done = total == 0 or (total > 0 and completed == total)
+
+    if all_done:
+        if getattr(task, "repeat_enabled", False):
+            new_task = Task(
+                title=task.title,
+                description=task.description,
+                template_id=task.template_id,
+                created_by_id=task.created_by_id,
+                assigned_to_id=task.assigned_to_id,
+                status=TaskStatus.ACTIVE.value,
+                repeat_enabled=task.repeat_enabled,
+                repeat_frequency=task.repeat_frequency,
+                repeat_days=task.repeat_days,
+                repeat_end_type=task.repeat_end_type,
+                repeat_end_after_count=task.repeat_end_after_count,
+                repeat_end_until=task.repeat_end_until,
+            )
+            db.add(new_task)
+            db.flush()
+            for s in sorted(task.subtasks, key=lambda x: (x.order, x.id)):
+                db.add(
+                    TaskSubtask(
+                        task_id=new_task.id,
+                        text=s.text,
+                        order=s.order,
+                        completed=False,
+                    )
+                )
+            for ts in task.students:
+                db.add(TaskStudent(task_id=new_task.id, student_id=ts.student_id))
+        task.status = TaskStatus.ARCHIVED.value
+        db.commit()
+        db.refresh(task)
+
+    return _task_to_response(task)

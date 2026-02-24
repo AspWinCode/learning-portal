@@ -668,7 +668,7 @@ def do_tochka_import_and_apply(
     cards = (
         db.query(StudentCard)
         .filter(StudentCard.archived.is_(False), StudentCard.student_id.isnot(None))
-        .options(joinedload(StudentCard.student))
+        .options(joinedload(StudentCard.student).joinedload(Student.parent))
         .all()
     )
     bindings = {b.payer_phone_normalized: b.parent_id for b in db.query(PhonePaymentBinding).all()}
@@ -720,6 +720,18 @@ def do_tochka_import_and_apply(
                         if c.student_id:
                             student_ids.append(c.student_id)
                 student_ids = list(dict.fromkeys(student_ids))
+
+        # Если телефон в выписке не пришёл или по телефону не нашли — пробуем матч по ФИО (fallback)
+        if not student_ids and payer_name:
+            for c in cards:
+                if _payer_matches_parent(payer_name, c.parent_full_name):
+                    if c.student_id:
+                        student_ids.append(c.student_id)
+                elif c.student and c.student.parent and c.student.parent.full_name:
+                    if _payer_matches_parent(payer_name, c.student.parent.full_name):
+                        if c.student_id:
+                            student_ids.append(c.student_id)
+            student_ids = list(dict.fromkeys(student_ids))
 
         if not student_ids:
             bt.status = BankTransactionStatus.NO_MATCH.value

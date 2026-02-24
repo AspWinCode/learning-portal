@@ -15,7 +15,7 @@ app = FastAPI(
 )
 
 def _run_tochka_auto_import() -> None:
-    """Периодическая задача: импорт выписки Точка Банк и начисление по матчу ФИО. Запускается каждые 10 минут."""
+    """Периодическая задача: импорт выписки Точка Банк, матч по телефону (и ФИО как fallback), за последние 14 дней. Каждые 10 мин."""
     try:
         from app.services.tochka_client import is_configured
         if not is_configured():

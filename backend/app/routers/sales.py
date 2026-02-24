@@ -2188,6 +2188,21 @@ def _get_default_open_status_option_id(db: Session) -> Optional[int]:
     return default_open.id if default_open else None
 
 
+def _get_default_lead_status_option_id(db: Session, base_status: LeadStatus) -> Optional[int]:
+    """Возвращает id первой активной опции статуса лида для данного base_status."""
+    status_str = base_status.value if hasattr(base_status, "value") else str(base_status)
+    opt = (
+        db.query(LeadStatusOption)
+        .filter(
+            LeadStatusOption.base_status == status_str,
+            LeadStatusOption.is_active.is_(True),
+        )
+        .order_by(LeadStatusOption.id.asc())
+        .first()
+    )
+    return opt.id if opt else None
+
+
 def _create_auto_event_task(
     db: Session,
     *,

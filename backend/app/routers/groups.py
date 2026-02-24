@@ -42,6 +42,10 @@ def _group_to_response(db: Session, g: Group) -> GroupResponse:
     base["students"] = students_out
     base["schedules"] = [GroupScheduleResponse.model_validate(s) for s in schedules]
     base["programs"] = getattr(g, "programs", None) or []
+    if "units_per_session" not in base or base.get("units_per_session") is None:
+        base["units_per_session"] = getattr(g, "units_per_session", 1) or 1
+    if "extra_rate_per_unit" not in base:
+        base["extra_rate_per_unit"] = getattr(g, "extra_rate_per_unit", None)
     return GroupResponse(**base)
 
 
@@ -241,16 +245,22 @@ async def get_lesson_slot_extra_policy(
         raise HTTPException(status_code=404, detail="Group not found")
     st = _parse_time_str(start_time)
     et = _parse_time_str(end_time)
-    policy = (
-        db.query(LessonSlotExtraPolicy)
-        .filter(
-            LessonSlotExtraPolicy.group_id == group_id,
-            LessonSlotExtraPolicy.lesson_date == lesson_date,
-            LessonSlotExtraPolicy.start_time == st,
-            LessonSlotExtraPolicy.end_time == et,
+    try:
+        policy = (
+            db.query(LessonSlotExtraPolicy)
+            .filter(
+                LessonSlotExtraPolicy.group_id == group_id,
+                LessonSlotExtraPolicy.lesson_date == lesson_date,
+                LessonSlotExtraPolicy.start_time == st,
+                LessonSlotExtraPolicy.end_time == et,
+            )
+            .first()
         )
-        .first()
-    )
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Lesson slot extra policy table not available. Run migration: alembic upgrade head",
+        ) from e
     if not policy:
         return LessonSlotExtraPolicyResponse(
             lesson_date=lesson_date,
@@ -283,16 +293,22 @@ async def set_lesson_slot_extra_policy(
         raise HTTPException(status_code=400, detail="extra_policy must be 'free' or 'paid'")
     st = _parse_time_str(payload.start_time)
     et = _parse_time_str(payload.end_time)
-    policy = (
-        db.query(LessonSlotExtraPolicy)
-        .filter(
-            LessonSlotExtraPolicy.group_id == group_id,
-            LessonSlotExtraPolicy.lesson_date == payload.lesson_date,
-            LessonSlotExtraPolicy.start_time == st,
-            LessonSlotExtraPolicy.end_time == et,
+    try:
+        policy = (
+            db.query(LessonSlotExtraPolicy)
+            .filter(
+                LessonSlotExtraPolicy.group_id == group_id,
+                LessonSlotExtraPolicy.lesson_date == payload.lesson_date,
+                LessonSlotExtraPolicy.start_time == st,
+                LessonSlotExtraPolicy.end_time == et,
+            )
+            .first()
         )
-        .first()
-    )
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Lesson slot extra policy table not available. Run migration: alembic upgrade head",
+        ) from e
     if policy:
         policy.extra_policy = payload.extra_policy
         policy.extra_rate_per_unit = payload.extra_rate_per_unit

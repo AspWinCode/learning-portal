@@ -502,16 +502,19 @@ async def save_attendance(
                         )
                     )
                 if extra_units_to_apply > 0:
-                    policy = (
-                        db.query(LessonSlotExtraPolicy)
-                        .filter(
-                            LessonSlotExtraPolicy.group_id == att.group_id,
-                            LessonSlotExtraPolicy.lesson_date == att.lesson_date,
-                            LessonSlotExtraPolicy.start_time == start_t,
-                            LessonSlotExtraPolicy.end_time == end_t,
+                    try:
+                        policy = (
+                            db.query(LessonSlotExtraPolicy)
+                            .filter(
+                                LessonSlotExtraPolicy.group_id == att.group_id,
+                                LessonSlotExtraPolicy.lesson_date == att.lesson_date,
+                                LessonSlotExtraPolicy.start_time == start_t,
+                                LessonSlotExtraPolicy.end_time == end_t,
+                            )
+                            .first()
                         )
-                        .first()
-                    )
+                    except Exception:
+                        policy = None
                     extra_policy = (policy.extra_policy if policy else None) or "free"
                     if extra_policy == "paid":
                         extra_rate = None

@@ -36,6 +36,25 @@ def _run_tochka_auto_import() -> None:
         traceback.print_exc()
 
 
+@app.on_event("startup")
+def _run_migrations_on_startup() -> None:
+    """При старте приложения применить миграции (чтобы не было 502 из-за отсутствующих колонок)."""
+    run_migrate = os.getenv("RUN_MIGRATIONS_ON_STARTUP", "1").strip().lower() in ("1", "true", "yes")
+    if not run_migrate:
+        return
+    try:
+        from alembic import command
+        from alembic.config import Config
+        _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        _ini = os.path.join(_root, "alembic.ini")
+        alembic_cfg = Config(_ini)
+        alembic_cfg.set_main_option("script_location", os.path.join(_root, "alembic"))
+        command.upgrade(alembic_cfg, "head")
+    except Exception as e:
+        traceback.print_exc()
+        print(f"[startup] Migrations on startup skipped or failed: {e}")
+
+
 # Safety checks for production env
 @app.on_event("startup")
 def _validate_production_env() -> None:
@@ -84,6 +103,30 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def catch_all_exceptions_middleware(request: Request, call_next):
+    """Ловим любые исключения, чтобы не падать с 502, а отдавать 500/503."""
+    try:
+        return await call_next(request)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        tb = traceback.format_exc()
+        detail = f"{type(exc).__name__}: {str(exc)}"
+        err_str = str(exc).lower()
+        if "does not exist" in err_str and ("column" in err_str or "relation" in err_str):
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": "Database schema is outdated. Run: cd backend && alembic upgrade head",
+                    "error": detail[:500],
+                },
+            )
+        if os.getenv("APP_ENV", "").lower() != "production":
+            detail += " | " + tb.replace("\n", " ")[:500]
+        return JSONResponse(status_code=500, content={"detail": detail})
+
 # Подключение роутеров
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
@@ -113,6 +156,15 @@ async def global_exception_handler(request: Request, exc: Exception):
         raise exc
     tb = traceback.format_exc()
     detail = f"{type(exc).__name__}: {str(exc)}"
+    err_str = str(exc).lower()
+    if ("does not exist" in err_str and ("column" in err_str or "relation" in err_str)):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Database schema is outdated. Run migrations: cd backend && alembic upgrade head",
+                "error": detail[:500],
+            },
+        )
     if os.getenv("APP_ENV", "").lower() != "production":
         detail += " | " + tb.replace("\n", " ")[:800]
     return JSONResponse(status_code=500, content={"detail": detail})

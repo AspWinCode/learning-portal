@@ -59,6 +59,12 @@ const SalesDebtsPage: React.FC = () => {
   const [studentOptions, setStudentOptions] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [applyLoading, setApplyLoading] = useState(false);
+  const [importRunning, setImportRunning] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    applied: number;
+    no_match: number;
+    ambiguous: number;
+  } | null>(null);
 
   const statusFilter = tab === 0 ? undefined : tab === 1 ? 'overdue' : tab === 2 ? 'due_soon' : undefined;
 
@@ -89,6 +95,29 @@ const SalesDebtsPage: React.FC = () => {
       setLoading(false);
     }
   }, []);
+
+  const runTochkaImportNow = useCallback(async () => {
+    setImportRunning(true);
+    setImportResult(null);
+    setError(null);
+    const today = new Date().toISOString().slice(0, 10);
+    const from = new Date();
+    from.setDate(from.getDate() - 14);
+    const dateFrom = from.toISOString().slice(0, 10);
+    try {
+      const res = await salesApi.tochkaImportAndApply({ date_from: dateFrom, date_to: today });
+      setImportResult({
+        applied: res.applied?.length ?? 0,
+        no_match: res.no_match?.length ?? 0,
+        ambiguous: res.ambiguous?.length ?? 0,
+      });
+      await loadBankTransactions();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Ошибка импорта Точка Банк. Проверьте TOCHKA_CLIENT_ID, TOCHKA_CLIENT_SECRET, TOCHKA_ACCOUNT_ID на сервере.'));
+    } finally {
+      setImportRunning(false);
+    }
+  }, [loadBankTransactions]);
 
   useEffect(() => {
     if (tab === 3) {
@@ -149,7 +178,26 @@ const SalesDebtsPage: React.FC = () => {
             <CircularProgress />
           </Box>
         ) : tab === 3 ? (
-          <Card variant="outlined">
+          <Card variant="outlined" sx={{ overflow: 'visible' }}>
+            <Box sx={{ p: 2, pb: 0, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                disabled={importRunning}
+                onClick={() => void runTochkaImportNow()}
+              >
+                {importRunning ? 'Загрузка выписки…' : 'Загрузить выписку сейчас (14 дней)'}
+              </Button>
+              <Typography variant="body2" color="text.secondary">
+                То же делает авто-импорт каждые 10 мин. Если здесь пусто — нажмите кнопку или проверьте настройки Точка Банк на сервере.
+              </Typography>
+            </Box>
+            {importResult && (
+              <Box sx={{ px: 2, pb: 1 }}>
+                <Typography variant="body2">
+                  Зачислено: <strong>{importResult.applied}</strong>, без совпадения: {importResult.no_match}, несколько кандидатов: {importResult.ambiguous}.
+                </Typography>
+              </Box>
+            )}
             <Table size="small">
               <TableHead>
                 <TableRow>

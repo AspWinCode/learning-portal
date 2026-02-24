@@ -7,6 +7,7 @@ import {
   Card,
   CardContent,
   Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -21,13 +22,14 @@ import {
   Typography,
 } from '@mui/material';
 import { Book as BookIcon, People as PeopleIcon } from '@mui/icons-material';
-import { format, addDays, subDays, startOfDay } from 'date-fns';
+import { format, addDays, subDays, startOfDay, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
-import { trainerLessonsApi, studentsApi, usersApi, groupsApi } from '../services/api';
+import { trainerLessonsApi, studentsApi, usersApi, groupsApi, salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { TrainerLessonSlot, AbsenceReason, Group } from '../types';
+import type { TrainerLessonSlot, AbsenceReason, Group, Student } from '../types';
+import type { AbsenceFollowUp } from '../types';
 
 const WEEKDAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
@@ -39,6 +41,21 @@ const ABSENCE_REASONS: { value: AbsenceReason; label: string }[] = [
   { value: 'event', label: 'Мероприятие' },
   { value: 'other', label: 'Другое' },
 ];
+
+const MANUAL_LESSON_TYPES = [
+  { value: 'makeup', label: 'Отработка' },
+  { value: 'paid_extra', label: 'Дополнительное платное' },
+  { value: 'free_trial', label: 'Бесплатное / пробное' },
+] as const;
+
+const REASON_LABELS: Record<string, string> = {
+  was: 'Был',
+  not_was: 'Не был',
+  sick: 'Болел',
+  olympiad: 'Олимпиада',
+  event: 'Мероприятие',
+  other: 'Другое',
+};
 
 const TrainerLessonsPage: React.FC = () => {
   const { user } = useAuth();
@@ -85,6 +102,25 @@ const TrainerLessonsPage: React.FC = () => {
   const [customAttendanceLesson, setCustomAttendanceLesson] = useState<any | null>(null);
   const [customAttendanceDraft, setCustomAttendanceDraft] = useState<Record<number, { attended: boolean; reason: string; comment: string }>>({});
   const [customAttendanceSaving, setCustomAttendanceSaving] = useState(false);
+
+  const canCreateManualLesson = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
+  const [addLessonChoiceOpen, setAddLessonChoiceOpen] = useState(false);
+  const [manualLessonDialogOpen, setManualLessonDialogOpen] = useState(false);
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualDate, setManualDate] = useState('');
+  const [manualStartTime, setManualStartTime] = useState('15:00');
+  const [manualEndTime, setManualEndTime] = useState('');
+  const [manualTrainerId, setManualTrainerId] = useState<string>('');
+  const [manualLessonType, setManualLessonType] = useState<string>('makeup');
+  const [manualComment, setManualComment] = useState('');
+  const [manualStudentQuery, setManualStudentQuery] = useState('');
+  const [manualStudentOptions, setManualStudentOptions] = useState<Student[]>([]);
+  const [manualSelectedStudents, setManualSelectedStudents] = useState<Student[]>([]);
+  const [manualPlannedAbsenceByStudentId, setManualPlannedAbsenceByStudentId] = useState<Record<number, number | null>>({});
+  const [manualOpenAbsencesByStudentId, setManualOpenAbsencesByStudentId] = useState<Record<number, AbsenceFollowUp[]>>({});
+  const [manualCreateLoading, setManualCreateLoading] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [trainerOptions, setTrainerOptions] = useState<Array<{ id: number; full_name: string }>>([]);
 
   useEffect(() => {
     const dateParam = searchParams.get('date');
@@ -145,6 +181,95 @@ const TrainerLessonsPage: React.FC = () => {
     setCreateEndTime('17:00');
     setCreateError(null);
     setCreateDialogOpen(true);
+  };
+
+  const openAddLessonChoice = () => {
+    if (canCreateManualLesson) {
+      setAddLessonChoiceOpen(true);
+    } else {
+      openCreateLessonDialog();
+    }
+  };
+
+  const openManualLessonDialog = () => {
+    setAddLessonChoiceOpen(false);
+    setManualTitle('');
+    setManualDate(viewDate);
+    setManualStartTime('15:00');
+    setManualEndTime('');
+    setManualTrainerId('');
+    setManualLessonType('makeup');
+    setManualComment('');
+    setManualStudentQuery('');
+    setManualStudentOptions([]);
+    setManualSelectedStudents([]);
+    setManualPlannedAbsenceByStudentId({});
+    setManualOpenAbsencesByStudentId({});
+    setManualError(null);
+    setManualLessonDialogOpen(true);
+    usersApi.getAll('trainer').then((list) => setTrainerOptions(list.map((u) => ({ id: u.id, full_name: u.full_name || '' })))).catch(() => setTrainerOptions([]));
+  };
+
+  useEffect(() => {
+    if (!manualLessonDialogOpen || !manualStudentQuery.trim()) {
+      setManualStudentOptions([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      studentsApi.getAll({ q: manualStudentQuery.trim(), limit: 20 }).then(setManualStudentOptions).catch(() => setManualStudentOptions([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [manualLessonDialogOpen, manualStudentQuery]);
+
+  useEffect(() => {
+    if (manualLessonType !== 'makeup' || manualSelectedStudents.length === 0) {
+      setManualOpenAbsencesByStudentId({});
+      return;
+    }
+    const load = async () => {
+      const byId: Record<number, AbsenceFollowUp[]> = {};
+      await Promise.all(
+        manualSelectedStudents.map(async (s) => {
+          const list = await salesApi.getAbsences({ student_id: s.id }).catch(() => []);
+          const open = (list as AbsenceFollowUp[]).filter((a) => a.stage === 'missed' || a.stage === 'missed_makeup');
+          byId[s.id] = open.sort((a, b) => new Date(a.lesson_date).getTime() - new Date(b.lesson_date).getTime());
+        })
+      );
+      setManualOpenAbsencesByStudentId((prev) => ({ ...prev, ...byId }));
+    };
+    void load();
+  }, [manualLessonType, manualSelectedStudents]);
+
+  const handleCreateManualLesson = async () => {
+    if (!manualTitle.trim() || !manualDate || !manualStartTime || !manualTrainerId || manualSelectedStudents.length === 0) {
+      setManualError('Заполните название, дату, время, тренера и выберите учеников');
+      return;
+    }
+    setManualCreateLoading(true);
+    setManualError(null);
+    try {
+      await salesApi.createCustomLesson({
+        title: manualTitle.trim(),
+        lesson_date: manualDate,
+        start_time: manualStartTime,
+        end_time: manualEndTime || null,
+        trainer_id: parseInt(manualTrainerId, 10),
+        lesson_type: manualLessonType,
+        comment: manualComment || null,
+        students: manualSelectedStudents.map((s) => ({ student_id: s.id, planned_absence_id: manualPlannedAbsenceByStudentId[s.id] ?? null })),
+      });
+      setManualLessonDialogOpen(false);
+      if (user?.role === 'trainer') {
+        const from = format(subDays(new Date(viewDate), 3), 'yyyy-MM-dd');
+        const to = format(addDays(new Date(viewDate), 3), 'yyyy-MM-dd');
+        const data = await trainerLessonsApi.getCustomLessons({ date_from: from, date_to: to });
+        setCustomLessons(data);
+      }
+    } catch (err: any) {
+      setManualError(extractApiError(err, 'Не удалось создать урок'));
+    } finally {
+      setManualCreateLoading(false);
+    }
   };
 
   const handleCreateLesson = async () => {
@@ -403,7 +528,7 @@ const TrainerLessonsPage: React.FC = () => {
           <Button size="small" onClick={handleNextDay}>{'>'}</Button>
           <Typography variant="h6">{displayDate} ({displayWeekday})</Typography>
           {(canMoveLessons || user?.role === 'trainer') && (
-            <Button size="small" variant="outlined" onClick={openCreateLessonDialog}>
+            <Button size="small" variant="outlined" onClick={openAddLessonChoice}>
               Добавить урок
             </Button>
           )}
@@ -763,6 +888,219 @@ const TrainerLessonsPage: React.FC = () => {
           </Button>
           <Button variant="contained" onClick={handleCreateLesson} disabled={creating}>
             {creating ? 'Создание...' : 'Создать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={addLessonChoiceOpen} onClose={() => setAddLessonChoiceOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Добавить урок</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Создать групповой урок по расписанию или ручной урок без группы?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddLessonChoiceOpen(false)}>Отмена</Button>
+          <Button variant="outlined" onClick={() => { setAddLessonChoiceOpen(false); openCreateLessonDialog(); }}>
+            Групповой (по группе)
+          </Button>
+          <Button variant="contained" onClick={openManualLessonDialog}>
+            Ручной (без группы)
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={manualLessonDialogOpen} onClose={() => !manualCreateLoading && setManualLessonDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Создать ручной урок</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="Название урока *"
+            fullWidth
+            sx={{ mt: 1 }}
+            value={manualTitle}
+            onChange={(e) => setManualTitle(e.target.value)}
+          />
+          <Box sx={{ display: 'flex', gap: 2, mt: 2, flexWrap: 'wrap' }}>
+            <TextField
+              type="date"
+              label="Дата *"
+              size="small"
+              value={manualDate}
+              onChange={(e) => setManualDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              type="time"
+              label="Время начала *"
+              size="small"
+              value={manualStartTime}
+              onChange={(e) => setManualStartTime(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              type="time"
+              label="Время окончания"
+              size="small"
+              value={manualEndTime}
+              onChange={(e) => setManualEndTime(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2, mt: 2, flexWrap: 'wrap' }}>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Тренер *</InputLabel>
+              <Select
+                label="Тренер *"
+                value={manualTrainerId}
+                onChange={(e) => setManualTrainerId(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>Выберите тренера</em>
+                </MenuItem>
+                {trainerOptions.map((t) => (
+                  <MenuItem key={t.id} value={String(t.id)}>
+                    {t.full_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Тип урока</InputLabel>
+              <Select
+                label="Тип урока"
+                value={manualLessonType}
+                onChange={(e) => setManualLessonType(e.target.value)}
+              >
+                {MANUAL_LESSON_TYPES.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+          <TextField
+            label="Комментарий"
+            fullWidth
+            multiline
+            minRows={2}
+            sx={{ mt: 2 }}
+            value={manualComment}
+            onChange={(e) => setManualComment(e.target.value)}
+          />
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Ученики *
+            </Typography>
+            <TextField
+              label="Поиск ученика по ФИО"
+              fullWidth
+              size="small"
+              value={manualStudentQuery}
+              onChange={(e) => setManualStudentQuery(e.target.value)}
+            />
+            {manualStudentOptions.length > 0 && (
+              <Box sx={{ maxHeight: 200, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1, mt: 1 }}>
+                {manualStudentOptions.map((s) => (
+                  <Typography
+                    key={s.id}
+                    variant="body2"
+                    sx={{
+                      py: 0.5,
+                      px: 1,
+                      borderRadius: 1,
+                      cursor: 'pointer',
+                      '&:hover': { backgroundColor: 'action.hover' },
+                    }}
+                    onClick={() => {
+                      if (!manualSelectedStudents.find((x) => x.id === s.id)) {
+                        setManualSelectedStudents((prev) => [...prev, s]);
+                      }
+                    }}
+                  >
+                    {s.full_name || s.id}
+                  </Typography>
+                ))}
+              </Box>
+            )}
+            {manualSelectedStudents.length > 0 && (
+              <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {manualSelectedStudents.map((s) => (
+                  <Chip
+                    key={s.id}
+                    label={s.full_name || s.id}
+                    onDelete={() => {
+                      setManualSelectedStudents((prev) => prev.filter((x) => x.id !== s.id));
+                      setManualPlannedAbsenceByStudentId((prev) => {
+                        const next = { ...prev };
+                        delete next[s.id];
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
+              </Box>
+            )}
+            {manualLessonType === 'makeup' && manualSelectedStudents.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Какой пропуск закрыть (по умолчанию — самый ранний)
+                </Typography>
+                {manualSelectedStudents.map((s) => {
+                  const openList = manualOpenAbsencesByStudentId[s.id] || [];
+                  const raw = manualPlannedAbsenceByStudentId[s.id];
+                  const value = raw == null ? 'earliest' : raw;
+                  const formatAbsenceDate = (d: string | null | undefined) => {
+                    if (!d) return '—';
+                    try {
+                      return format(parseISO(d), 'd MMM yyyy', { locale: ru });
+                    } catch {
+                      return d;
+                    }
+                  };
+                  return (
+                    <Box key={s.id} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      <Typography variant="body2" sx={{ minWidth: 120 }}>
+                        {s.full_name || s.id}
+                      </Typography>
+                      <FormControl size="small" sx={{ minWidth: 260 }}>
+                        <Select
+                          value={value}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setManualPlannedAbsenceByStudentId((prev) => ({
+                              ...prev,
+                              [s.id]: v === 'earliest' ? null : Number(v),
+                            }));
+                          }}
+                          displayEmpty
+                        >
+                          <MenuItem value="earliest">Самый ранний</MenuItem>
+                          {openList.map((a) => (
+                            <MenuItem key={a.id} value={a.id}>
+                              {formatAbsenceDate(a.lesson_date)} ({REASON_LABELS[a.absence_reason || ''] || a.absence_reason || '—'})
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+          </Box>
+          {manualError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {manualError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManualLessonDialogOpen(false)} disabled={manualCreateLoading}>
+            Отмена
+          </Button>
+          <Button variant="contained" onClick={() => void handleCreateManualLesson()} disabled={manualCreateLoading}>
+            {manualCreateLoading ? 'Создание...' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>

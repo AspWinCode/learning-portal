@@ -1183,6 +1183,8 @@ class GroupUpdate(BaseModel):
     trainer_id: Optional[int] = None
     status: Optional[str] = None
     schedules: Optional[List[GroupScheduleCreate]] = None
+    units_per_session: Optional[int] = None  # 1 или 2 (лимит «8 занятий»)
+    extra_rate_per_unit: Optional[float] = None  # ставка за доп. юнит при extra_policy=paid
 
 
 class GroupResponse(GroupBase):
@@ -1190,6 +1192,8 @@ class GroupResponse(GroupBase):
     trainer_id: int
     status: str
     created_at: datetime
+    units_per_session: Optional[int] = 1
+    extra_rate_per_unit: Optional[float] = None
     trainer: Optional[UserResponse] = None
     students: Optional[List[StudentResponse]] = []
     programs: Optional[List["ProgramSummaryResponse"]] = []
@@ -1280,6 +1284,8 @@ class LessonAttendanceItem(BaseModel):
 class LessonAttendanceSave(BaseModel):
     group_id: int
     lesson_date: date
+    start_time: Optional[str] = None  # HH:MM — слот занятия (для лимита 8 и extra_policy)
+    end_time: Optional[str] = None   # HH:MM
     attendances: List[LessonAttendanceItem]
 
 
@@ -1300,6 +1306,26 @@ class CancelLessonPayload(BaseModel):
     lesson_date: date
     start_time: str  # "HH:MM"
     end_time: str   # "HH:MM"
+
+
+class LessonSlotExtraPolicyPayload(BaseModel):
+    """Режим доп. занятий (сверх 8) для слота: free | paid. Owner/admin/sales."""
+    lesson_date: date
+    start_time: str  # "HH:MM"
+    end_time: str    # "HH:MM"
+    extra_policy: str = "free"  # free | paid
+    extra_rate_per_unit: Optional[float] = None
+
+
+class LessonSlotExtraPolicyResponse(BaseModel):
+    lesson_date: date
+    start_time: str
+    end_time: str
+    extra_policy: str
+    extra_rate_per_unit: Optional[float] = None
+
+    class Config:
+        from_attributes = True
 
 
 class CreateLessonSlotPayload(BaseModel):

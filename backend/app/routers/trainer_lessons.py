@@ -6,6 +6,7 @@ from typing import List, Optional, Set, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
 
+from app.academic_month import get_academic_window
 from app.database import get_db
 from app import auth
 from app.models import (
@@ -17,6 +18,7 @@ from app.models import (
     LessonAttendance,
     LessonCancellation,
     LessonTrainerOverride,
+    LessonSlotExtraPolicy,
     UserRole,
     Student,
     Abonement,
@@ -81,6 +83,13 @@ def _first_n_slots_per_group_in_month(
 
 def _serialize_time(t: time) -> str:
     return t.strftime("%H:%M") if t else ""
+
+
+def _slot_key(att: LessonAttendance) -> Tuple[date, time, time]:
+    """Ключ для упорядочивания посещаемости по слотам (дата, начало, конец)."""
+    st = getattr(att, "lesson_start_time", None) or time(0, 0)
+    et = getattr(att, "lesson_end_time", None) or time(0, 0)
+    return (att.lesson_date, st, et)
 
 
 @router.get("/", response_model=List[TrainerLessonSlotResponse])
@@ -317,6 +326,38 @@ async def save_attendance(
         raise HTTPException(status_code=404, detail="Group not found")
     if group.trainer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your group")
+
+    start_t: Optional[time] = None
+    end_t: Optional[time] = None
+    if getattr(payload, "start_time", None) and str(payload.start_time).strip():
+        try:
+            start_t = datetime.strptime(str(payload.start_time).strip(), "%H:%M").time()
+        except ValueError:
+            pass
+    if getattr(payload, "end_time", None) and str(payload.end_time).strip():
+        try:
+            end_t = datetime.strptime(str(payload.end_time).strip(), "%H:%M").time()
+        except ValueError:
+            pass
+    if start_t is None or end_t is None:
+        weekday = payload.lesson_date.weekday()
+        sched = (
+            db.query(GroupSchedule)
+            .filter(
+                GroupSchedule.group_id == payload.group_id,
+                GroupSchedule.day_of_week == weekday,
+            )
+            .order_by(GroupSchedule.start_time)
+            .first()
+        )
+        if sched:
+            start_t = start_t or sched.start_time
+            end_t = end_t or sched.end_time
+    if start_t is None:
+        start_t = time(0, 0)
+    if end_t is None:
+        end_t = time(0, 0)
+
     for item in payload.attendances:
         att = db.query(LessonAttendance).filter(
             LessonAttendance.group_id == payload.group_id,
@@ -331,6 +372,8 @@ async def save_attendance(
             att.late = late
             att.absence_reason = reason
             att.absence_comment = comment
+            att.lesson_start_time = start_t
+            att.lesson_end_time = end_t
         else:
             att = LessonAttendance(
                 group_id=payload.group_id,
@@ -340,24 +383,30 @@ async def save_attendance(
                 late=late,
                 absence_reason=reason,
                 absence_comment=comment,
+                lesson_start_time=start_t,
+                lesson_end_time=end_t,
             )
             db.add(att)
     db.commit()
 
-    # ТЗ п.3.2: списываем только если "Был" (attended + reason was); иначе — пропуск, не списываем
     attendances_saved = db.query(LessonAttendance).filter(
         LessonAttendance.group_id == payload.group_id,
         LessonAttendance.lesson_date == payload.lesson_date,
     ).all()
-    default_lessons = 8
+    BASE_UNITS = 8
+    U = max(1, getattr(group, "units_per_session", None) or 1)
+    window_start, window_end = get_academic_window(payload.lesson_date)
+
     for att in attendances_saved:
         is_present = att.attended and (not att.absence_reason or att.absence_reason == "was")
         is_absence = not att.attended or (att.absence_reason and att.absence_reason != "was")
 
-        existing_tx = db.query(StudentAccountTransaction).filter(
-            StudentAccountTransaction.lesson_attendance_id == att.id,
-        ).first()
-        if existing_tx:
+        existing_txs = list(
+            db.query(StudentAccountTransaction).filter(
+                StudentAccountTransaction.lesson_attendance_id == att.id,
+            )
+        )
+        if existing_txs:
             if is_absence:
                 in_freeze = db.query(StudentFreeze).filter(
                     StudentFreeze.student_id == att.student_id,
@@ -384,59 +433,106 @@ async def save_attendance(
         if not student:
             continue
         if is_present:
-            abonement = student.abonement
+            all_in_window = (
+                db.query(LessonAttendance)
+                .filter(
+                    LessonAttendance.group_id == att.group_id,
+                    LessonAttendance.student_id == att.student_id,
+                    LessonAttendance.lesson_date >= window_start,
+                    LessonAttendance.lesson_date <= window_end,
+                )
+                .all()
+            )
+            current_key = _slot_key(att)
+            base_used = sum(
+                (att2.base_units_applied or 0)
+                for att2 in all_in_window
+                if _slot_key(att2) < current_key
+            )
+            base_left = max(0, BASE_UNITS - base_used)
+            base_units_to_apply = min(base_left, U)
+            extra_units_to_apply = U - base_units_to_apply
+            att.base_units_applied = base_units_to_apply
+            att.extra_units_applied = extra_units_to_apply
+
+            abonement = getattr(student, "abonement", None)
             if not abonement:
                 abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
-            amount_per_lesson = 0.0
-            if abonement and abonement.price is not None and (abonement.lessons_count or default_lessons) > 0:
-                amount_per_lesson = float(abonement.price) / (abonement.lessons_count or default_lessons)
+            price_per_unit = 0.0
+            if abonement and abonement.price is not None and BASE_UNITS > 0:
+                price_per_unit = float(abonement.price) / BASE_UNITS
 
             account = None
-            if amount_per_lesson > 0:
-                accounts = db.query(StudentAccount).filter(
-                    StudentAccount.student_id == att.student_id
-                ).order_by(StudentAccount.id).all()
-                if accounts:
-                    # Пытаемся подобрать счёт по направлению / программе группы,
-                    # чтобы разные направления ученика списывались с "своих" счетов.
-                    direction_hint: str | None = None
-                    group = att.group
-                    if group:
-                        # Сначала пробуем привязанные программы группы (если есть)
-                        try:
-                            programs = list(getattr(group, "programs", []) or [])
-                        except Exception:
-                            programs = []
-                        if programs:
-                            prog_name = (programs[0].name or "").strip()
-                            if prog_name:
-                                direction_hint = prog_name.lower()
-                        # Если программ нет, используем строковое поле direction группы
-                        if not direction_hint and getattr(group, "direction", None):
-                            direction_hint = str(group.direction).strip().lower()
+            accounts = db.query(StudentAccount).filter(
+                StudentAccount.student_id == att.student_id
+            ).order_by(StudentAccount.id).all()
+            if accounts:
+                direction_hint = None
+                gr = att.group
+                if gr:
+                    try:
+                        programs = list(getattr(gr, "programs", []) or [])
+                    except Exception:
+                        programs = []
+                    if programs:
+                        prog_name = (programs[0].name or "").strip()
+                        if prog_name:
+                            direction_hint = prog_name.lower()
+                    if not direction_hint and getattr(gr, "direction", None):
+                        direction_hint = str(gr.direction).strip().lower()
+                for acc in accounts:
+                    acc_name = (acc.name or "").strip().lower()
+                    if acc_name and direction_hint and direction_hint in acc_name:
+                        account = acc
+                        break
+                if account is None:
+                    account = accounts[0]
 
-                    if direction_hint:
-                        for acc in accounts:
-                            acc_name = (acc.name or "").strip().lower()
-                            if acc_name and direction_hint in acc_name:
-                                account = acc
-                                break
-                    # Фолбэк: первый счёт, как было раньше
-                    if account is None:
-                        account = accounts[0]
-
-            if account and amount_per_lesson > 0:
-                # Абонемент может уходить в минус: списываем даже при недостаточном балансе.
-                account.balance -= amount_per_lesson
-                db.add(
-                    StudentAccountTransaction(
-                        account_id=account.id,
-                        amount=-amount_per_lesson,
-                        kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
-                        note=f"Занятие {att.lesson_date}",
-                        lesson_attendance_id=att.id,
+            if account:
+                if base_units_to_apply > 0 and price_per_unit > 0:
+                    deduct_base = price_per_unit * base_units_to_apply
+                    account.balance -= deduct_base
+                    db.add(
+                        StudentAccountTransaction(
+                            account_id=account.id,
+                            amount=-deduct_base,
+                            kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
+                            note=f"Занятие {att.lesson_date} (база)",
+                            lesson_attendance_id=att.id,
+                        )
                     )
-                )
+                if extra_units_to_apply > 0:
+                    policy = (
+                        db.query(LessonSlotExtraPolicy)
+                        .filter(
+                            LessonSlotExtraPolicy.group_id == att.group_id,
+                            LessonSlotExtraPolicy.lesson_date == att.lesson_date,
+                            LessonSlotExtraPolicy.start_time == start_t,
+                            LessonSlotExtraPolicy.end_time == end_t,
+                        )
+                        .first()
+                    )
+                    extra_policy = (policy.extra_policy if policy else None) or "free"
+                    if extra_policy == "paid":
+                        extra_rate = None
+                        if policy and getattr(policy, "extra_rate_per_unit", None) is not None:
+                            extra_rate = float(policy.extra_rate_per_unit)
+                        if extra_rate is None and getattr(group, "extra_rate_per_unit", None) is not None:
+                            extra_rate = float(group.extra_rate_per_unit)
+                        if extra_rate is None:
+                            extra_rate = price_per_unit
+                        deduct_extra = extra_rate * extra_units_to_apply
+                        if deduct_extra > 0:
+                            account.balance -= deduct_extra
+                            db.add(
+                                StudentAccountTransaction(
+                                    account_id=account.id,
+                                    amount=-deduct_extra,
+                                    kind=StudentAccountTransactionKind.EXTRA_LESSON_DEDUCTION,
+                                    note=f"Доп. занятие (сверх 8) {att.lesson_date}",
+                                    lesson_attendance_id=att.id,
+                                )
+                            )
         if is_absence:
             in_freeze = db.query(StudentFreeze).filter(
                 StudentFreeze.student_id == att.student_id,

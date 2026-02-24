@@ -331,6 +331,8 @@ export const trainerLessonsApi = {
   saveAttendance: async (data: {
     group_id: number;
     lesson_date: string;
+    start_time?: string;
+    end_time?: string;
     attendances: Array<{
       student_id: number;
       attended: boolean;

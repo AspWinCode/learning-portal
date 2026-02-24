@@ -184,6 +184,7 @@ class Student(Base):
 class StudentAccountTransactionKind(str, enum.Enum):
     PAYMENT = "payment"
     LESSON_DEDUCTION = "lesson_deduction"
+    EXTRA_LESSON_DEDUCTION = "extra_lesson_deduction"  # списание за доп. занятие (сверх 8)
 
 
 class StudentAccount(Base):
@@ -668,6 +669,10 @@ class Group(Base):
     direction = Column(String, nullable=True, index=True)  # first_step, specialist, expert, backend, frontend, oge, ege
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(_GroupStatusType(), default=GroupStatus.ACTIVE)
+    # Лимит «8 занятий»: сколько юнитов даёт одна встреча (обычно 1; «Первый шаг» 2ч=2 занятия → 2)
+    units_per_session = Column(Integer, default=1, nullable=False, server_default="1")
+    # Ставка за доп. юнит (сверх 8), когда extra_policy=paid; если NULL — берём price/8
+    extra_rate_per_unit = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -682,6 +687,7 @@ class Group(Base):
     # ╨г╨┤╨╛╨▒╨╜╨░╤П ╤Б╨▓╤П╨╖╤М ╨┤╨╗╤П ╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╤Е ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ ╨│╤А╤Г╨┐╨┐╤Л
     lesson_cancellations = relationship("LessonCancellation", back_populates="group", cascade="all, delete-orphan")
     lesson_trainer_overrides = relationship("LessonTrainerOverride", back_populates="group", cascade="all, delete-orphan")
+    lesson_slot_extra_policies = relationship("LessonSlotExtraPolicy", back_populates="group", cascade="all, delete-orphan")
     programs = relationship("Program", secondary="group_programs", viewonly=True)
 
 
@@ -780,6 +786,9 @@ class LessonAttendance(Base):
     absence_comment = Column(Text, nullable=True)
     lesson_start_time = Column(Time, nullable=True)  # при переносе с изменением времени
     lesson_end_time = Column(Time, nullable=True)
+    # Лимит 8: сколько юнитов списано как base (в пакете) и как extra (сверх пакета)
+    base_units_applied = Column(Integer, nullable=True)
+    extra_units_applied = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group", back_populates="lesson_attendances")
@@ -816,6 +825,23 @@ class LessonTrainerOverride(Base):
 
     group = relationship("Group", back_populates="lesson_trainer_overrides")
     trainer = relationship("User", foreign_keys=[trainer_id])
+
+
+class LessonSlotExtraPolicy(Base):
+    """Режим доп. занятий (сверх 8) для слота: free (бесплатно) или paid (списание). Owner/admin/sales."""
+    __tablename__ = "lesson_slot_extra_policy"
+    __table_args__ = (
+        UniqueConstraint("group_id", "lesson_date", "start_time", "end_time", name="uq_lesson_slot_extra_policy_slot"),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    lesson_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    extra_policy = Column(String(16), nullable=False, default="free", server_default="free")  # free | paid
+    extra_rate_per_unit = Column(Float, nullable=True)  # если NULL — из группы или price/8
+
+    group = relationship("Group", back_populates="lesson_slot_extra_policies")
 
 
 class CustomLessonType(str, enum.Enum):

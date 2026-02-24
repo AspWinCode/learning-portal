@@ -1,11 +1,19 @@
-from datetime import time as dt_time
+from datetime import date, time as dt_time, datetime
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
-from app.schemas import GroupCreate, GroupResponse, GroupUpdate, StudentResponse, GroupScheduleResponse
-from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule
+from app.schemas import (
+    GroupCreate,
+    GroupResponse,
+    GroupUpdate,
+    StudentResponse,
+    GroupScheduleResponse,
+    LessonSlotExtraPolicyPayload,
+    LessonSlotExtraPolicyResponse,
+)
+from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy
 from app.routers.action_log import log_action
 from app.student_display import get_students_display_names
 
@@ -168,9 +176,9 @@ async def update_group(
     group_id: int,
     group_update: GroupUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
-    """Обновление группы (только администратор)"""
+    """Обновление группы (admin/owner/sales). В т.ч. units_per_session, extra_rate_per_unit для лимита 8."""
     db_group = db.query(Group).filter(Group.id == group_id).first()
     if db_group is None:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -209,6 +217,104 @@ async def update_group(
 
     log_action(db, current_user.id, "update", "group", group_id, {**update_data, "schedules_updated": group_update.schedules is not None})
     return _group_to_response(db, db_group)
+
+
+def _parse_time_str(s: str) -> dt_time:
+    parts = str(s).strip().split(":")
+    h = int(parts[0]) if len(parts) > 0 else 0
+    m = int(parts[1]) if len(parts) > 1 else 0
+    return dt_time(hour=h, minute=m, second=0)
+
+
+@router.get("/{group_id}/lesson-slot-extra-policy", response_model=LessonSlotExtraPolicyResponse)
+async def get_lesson_slot_extra_policy(
+    group_id: int,
+    lesson_date: date = Query(...),
+    start_time: str = Query(..., description="HH:MM"),
+    end_time: str = Query(..., description="HH:MM"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Получить режим доп. занятий (сверх 8) для слота. По умолчанию free."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    st = _parse_time_str(start_time)
+    et = _parse_time_str(end_time)
+    policy = (
+        db.query(LessonSlotExtraPolicy)
+        .filter(
+            LessonSlotExtraPolicy.group_id == group_id,
+            LessonSlotExtraPolicy.lesson_date == lesson_date,
+            LessonSlotExtraPolicy.start_time == st,
+            LessonSlotExtraPolicy.end_time == et,
+        )
+        .first()
+    )
+    if not policy:
+        return LessonSlotExtraPolicyResponse(
+            lesson_date=lesson_date,
+            start_time=start_time,
+            end_time=end_time,
+            extra_policy="free",
+            extra_rate_per_unit=None,
+        )
+    return LessonSlotExtraPolicyResponse(
+        lesson_date=policy.lesson_date,
+        start_time=policy.start_time.strftime("%H:%M") if policy.start_time else start_time,
+        end_time=policy.end_time.strftime("%H:%M") if policy.end_time else end_time,
+        extra_policy=policy.extra_policy or "free",
+        extra_rate_per_unit=policy.extra_rate_per_unit,
+    )
+
+
+@router.put("/{group_id}/lesson-slot-extra-policy", response_model=LessonSlotExtraPolicyResponse)
+async def set_lesson_slot_extra_policy(
+    group_id: int,
+    payload: LessonSlotExtraPolicyPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Установить режим доп. занятий (сверх 8) для слота: free или paid. Owner/admin/sales."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if payload.extra_policy not in ("free", "paid"):
+        raise HTTPException(status_code=400, detail="extra_policy must be 'free' or 'paid'")
+    st = _parse_time_str(payload.start_time)
+    et = _parse_time_str(payload.end_time)
+    policy = (
+        db.query(LessonSlotExtraPolicy)
+        .filter(
+            LessonSlotExtraPolicy.group_id == group_id,
+            LessonSlotExtraPolicy.lesson_date == payload.lesson_date,
+            LessonSlotExtraPolicy.start_time == st,
+            LessonSlotExtraPolicy.end_time == et,
+        )
+        .first()
+    )
+    if policy:
+        policy.extra_policy = payload.extra_policy
+        policy.extra_rate_per_unit = payload.extra_rate_per_unit
+    else:
+        policy = LessonSlotExtraPolicy(
+            group_id=group_id,
+            lesson_date=payload.lesson_date,
+            start_time=st,
+            end_time=et,
+            extra_policy=payload.extra_policy,
+            extra_rate_per_unit=payload.extra_rate_per_unit,
+        )
+        db.add(policy)
+    db.commit()
+    db.refresh(policy)
+    return LessonSlotExtraPolicyResponse(
+        lesson_date=policy.lesson_date,
+        start_time=policy.start_time.strftime("%H:%M") if policy.start_time else payload.start_time,
+        end_time=policy.end_time.strftime("%H:%M") if policy.end_time else payload.end_time,
+        extra_policy=policy.extra_policy or "free",
+        extra_rate_per_unit=policy.extra_rate_per_unit,
+    )
 
 
 @router.post("/{group_id}/students/{student_id}")

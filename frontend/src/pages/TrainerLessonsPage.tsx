@@ -482,9 +482,22 @@ const TrainerLessonsPage: React.FC = () => {
     setError(null);
     try {
       const reason = absenceReasonDraft;
+      const startTime =
+        typeof selectedSlot.start_time === 'string'
+          ? selectedSlot.start_time.slice(0, 5)
+          : selectedSlot.start_time
+            ? `${String((selectedSlot.start_time as { hour?: number }).hour ?? 0).padStart(2, '0')}:${String((selectedSlot.start_time as { minute?: number }).minute ?? 0).padStart(2, '0')}`
+            : undefined;
+      const endTime =
+        typeof selectedSlot.end_time === 'string'
+          ? selectedSlot.end_time.slice(0, 5)
+          : selectedSlot.end_time
+            ? `${String((selectedSlot.end_time as { hour?: number }).hour ?? 0).padStart(2, '0')}:${String((selectedSlot.end_time as { minute?: number }).minute ?? 0).padStart(2, '0')}`
+            : undefined;
       await trainerLessonsApi.saveAttendance({
         group_id: selectedSlot.group_id,
         lesson_date: selectedSlot.lesson_date,
+        ...(startTime && endTime ? { start_time: startTime, end_time: endTime } : {}),
         attendances: selectedSlot.students.map((s) => {
           const r = reason[s.id] ?? 'was';
           const attended = r === 'was';

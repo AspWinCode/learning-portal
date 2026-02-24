@@ -746,6 +746,10 @@ export const salesApi = {
     const response = await api.post(`/api/sales/leads/${leadId}/post-visit-outcome`, payload);
     return response.data;
   },
+  listPostVisitLeads: async (): Promise<Lead[]> => {
+    const response = await api.get('/api/sales/post-visit/leads');
+    return response.data;
+  },
   updatePostVisitStage: async (
     leadId: number,
     payload: {

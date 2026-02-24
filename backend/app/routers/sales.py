@@ -4159,6 +4159,41 @@ async def update_lead_post_visit_stage(
     return _fix_lead_strings(lead)
 
 
+@router.get("/post-visit/leads", response_model=List[LeadResponse])
+async def list_post_visit_leads(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """
+    Лиды для страницы «Дожать на обучение».
+
+    Логика:
+    - берём лидов, по которым есть регистрация на мероприятие с тегом [came] (нажали «Пришел»);
+    - ограничиваем по правам (admin/owner/sales видят только свои лиды);
+    - если post_visit_stage ещё не задана — проставляем 'new' (однократно).
+    """
+    leads_q = _filter_query_by_role(db.query(Lead), current_user)
+    leads_q = (
+        leads_q.join(EventRegistration, EventRegistration.lead_id == Lead.id)
+        .filter(cast(EventRegistration.note, Text).ilike("%[came]%"))
+        .distinct(Lead.id)
+        .order_by(Lead.created_at.desc())
+    )
+    leads = leads_q.all()
+
+    updated = False
+    for lead in leads:
+        if not getattr(lead, "post_visit_stage", None):
+            lead.post_visit_stage = "new"
+            updated = True
+    if updated:
+        db.commit()
+        for lead in leads:
+            db.refresh(lead)
+
+    return [_fix_lead_strings(l) for l in leads]
+
+
 # --- Справка для налогового вычета (форма КНД 1151158) ---
 try:
     from reportlab.pdfgen import canvas

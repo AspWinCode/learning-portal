@@ -33,7 +33,7 @@ const SalesPostVisitPage: React.FC = () => {
 
   const loadLeads = useCallback(async () => {
     try {
-      const data = await salesApi.listLeads({ status_filter: 'demo' });
+      const data = await salesApi.listPostVisitLeads();
       setLeads(data);
       setError(null);
     } catch (err: any) {

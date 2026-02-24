@@ -43,6 +43,7 @@ const STATUS_LABELS: Record<string, { label: string; color: 'default' | 'warning
   overdue: { label: 'Просрочено', color: 'error' },
   due_soon: { label: 'Скоро', color: 'warning' },
   ok: { label: 'Оплачено', color: 'success' },
+  unpaid: { label: 'Не оплачено', color: 'warning' },
 };
 
 const SalesDebtsPage: React.FC = () => {

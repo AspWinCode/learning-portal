@@ -1882,12 +1882,27 @@ async def list_payment_status(
             continue
         if hasattr(next_pay, "date"):
             next_pay = next_pay.date()
-        if next_pay < today:
+
+        # Проверяем, были ли вообще оплаты по ученику
+        has_payments = (
+            db.query(StudentAccountTransaction.id)
+            .join(StudentAccount, StudentAccount.id == StudentAccountTransaction.account_id)
+            .filter(
+                StudentAccount.student_id == card.student_id,
+                StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
+            )
+            .first()
+        )
+
+        if not has_payments:
+            st = "unpaid"
+        elif next_pay < today:
             st = "overdue"
         elif next_pay <= due_soon_end:
             st = "due_soon"
         else:
             st = "ok"
+
         if status_filter and status_filter not in ("", "все", "all") and st != status_filter:
             continue
         result.append(PaymentStatusItem(

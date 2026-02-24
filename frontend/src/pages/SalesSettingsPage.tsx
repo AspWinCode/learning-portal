@@ -63,6 +63,14 @@ const SalesSettingsPage: React.FC = () => {
   const [newCity, setNewCity] = useState('');
   const [schools, setSchools] = useState<SalesSchool[]>([]);
   const [newSchool, setNewSchool] = useState('');
+  const [tochkaDateFrom, setTochkaDateFrom] = useState('');
+  const [tochkaDateTo, setTochkaDateTo] = useState('');
+  const [tochkaImportLoading, setTochkaImportLoading] = useState(false);
+  const [tochkaImportResult, setTochkaImportResult] = useState<{
+    applied: Array<{ payer_name: string; amount: number; date: string; student_name?: string }>;
+    no_match: Array<{ payer_name: string; amount: number; date: string }>;
+    ambiguous: Array<{ payer_name: string; amount: number; date: string; candidates?: Array<{ student_name?: string; parent_full_name?: string }> }>;
+  } | null>(null);
 
   const loadData = async () => {
     const errors: string[] = [];
@@ -213,6 +221,69 @@ const SalesSettingsPage: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Точка Банк — ручной импорт платежей</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Загружает выписку за период и зачисляет входящие платежи на счета учеников по совпадению ФИО плательщика с родителем в карточке. Авто-импорт раз в 10 мин берёт только последние 3 дня; здесь можно указать любой период.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
+            <TextField
+              size="small"
+              label="Дата с"
+              type="date"
+              value={tochkaDateFrom}
+              onChange={(e) => setTochkaDateFrom(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              size="small"
+              label="Дата по"
+              type="date"
+              value={tochkaDateTo}
+              onChange={(e) => setTochkaDateTo(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <Button
+              variant="contained"
+              disabled={!tochkaDateFrom || !tochkaDateTo || tochkaImportLoading}
+              onClick={async () => {
+                setTochkaImportResult(null);
+                setTochkaImportLoading(true);
+                try {
+                  const res = await salesApi.tochkaImportAndApply({
+                    date_from: tochkaDateFrom,
+                    date_to: tochkaDateTo,
+                  });
+                  setTochkaImportResult(res);
+                  setError('');
+                } catch (err: any) {
+                  setError(extractApiError(err, 'Ошибка импорта Точка Банк'));
+                } finally {
+                  setTochkaImportLoading(false);
+                }
+              }}
+            >
+              {tochkaImportLoading ? 'Загрузка...' : 'Загрузить выписку и зачислить'}
+            </Button>
+          </Box>
+          {tochkaImportResult && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="subtitle2">Результат:</Typography>
+              <Typography variant="body2">Зачислено: {tochkaImportResult.applied.length}. Без совпадения (no match): {tochkaImportResult.no_match.length}. Несколько кандидатов (ambiguous): {tochkaImportResult.ambiguous.length}.</Typography>
+              {tochkaImportResult.no_match.length > 0 && (
+                <Typography variant="body2" color="warning.main" sx={{ mt: 0.5 }}>
+                  Не найдена карточка с таким плательщиком: {tochkaImportResult.no_match.map((n) => `${n.payer_name} (${n.amount} ₽, ${n.date})`).join('; ')}. Проверьте ФИО родителя в карточке ученика или добавьте карточку.
+                </Typography>
+              )}
+              {tochkaImportResult.ambiguous.length > 0 && (
+                <Typography variant="body2" color="info.main" sx={{ mt: 0.5 }}>
+                  Несколько учеников с одинаковым ФИО плательщика: {tochkaImportResult.ambiguous.map((a) => a.payer_name).join(', ')}. Зачислите вручную или уточните плательщика в выписке.
+                </Typography>
+              )}
+            </Box>
+          )}
         </Paper>
 
         <Paper sx={{ p: 2 }}>

@@ -24,7 +24,7 @@ def _run_tochka_auto_import() -> None:
         if not account_id:
             return
         date_to = date.today()
-        date_from = date_to - timedelta(days=3)
+        date_from = date_to - timedelta(days=14)
         db = SessionLocal()
         try:
             from app.routers.sales import do_tochka_import_and_apply

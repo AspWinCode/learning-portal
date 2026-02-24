@@ -314,10 +314,36 @@ class BankPaymentImportResponse(BaseModel):
 
 
 class TochkaImportRequest(BaseModel):
-    """Запрос выписки из Точка Банк за период и зачисление по матчу ФИО плательщика с родителем в карточке."""
+    """Запрос выписки из Точка Банк за период и зачисление по матчу телефона плательщика."""
     date_from: str  # YYYY-MM-DD
     date_to: str    # YYYY-MM-DD
     account_id: Optional[str] = None  # ID счёта в Точка Банк; если не передан — берётся из TOCHKA_ACCOUNT_ID
+
+
+class PhonePaymentBindingCreate(BaseModel):
+    """Привязка телефона плательщика из банка к родителю для автозачисления следующих платежей."""
+    payer_phone: str
+    parent_id: int
+
+
+class BankTransactionResponse(BaseModel):
+    id: int
+    operation_id: str
+    amount: float
+    payer_phone: Optional[str] = None
+    payer_name: Optional[str] = None
+    payment_date: Optional[str] = None
+    status: str
+    student_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BankTransactionApplyRequest(BaseModel):
+    """Зачислить спорную операцию на выбранного ученика (и при no_match создать привязку телефона к родителю)."""
+    student_id: int
 
 
 # Пропуски (воронка для sales)
@@ -767,6 +793,7 @@ class StudentCardBase(BaseModel):
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
     anketa_status: Optional[str] = None  # draft | filled | converted | cancelled
+    primary_for_bank_payments: bool = False  # при автозачислении из банка: платёж пойдёт на этого ученика, если у родителя несколько детей
 
 
 class StudentCardCreate(StudentCardBase):
@@ -798,6 +825,7 @@ class StudentCardUpdate(BaseModel):
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
     anketa_status: Optional[str] = None
+    primary_for_bank_payments: Optional[bool] = None
 
 
 class StudentCardResponse(StudentCardBase):

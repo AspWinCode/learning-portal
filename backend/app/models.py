@@ -443,6 +443,8 @@ class StudentCard(Base):
     archived = Column(Boolean, default=False, nullable=False, index=True)
     # Жизненный цикл анкеты: draft (черновик), filled (готова к конверсии), converted (ученик создан), cancelled
     anketa_status = Column(String(32), default="converted", nullable=False, index=True)
+    # При автозачислении из банка: если у родителя несколько детей, платёж пойдёт на счёт этого ученика
+    primary_for_bank_payments = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -450,8 +452,44 @@ class StudentCard(Base):
     student = relationship("Student", backref="student_card")
 
 
+class BankTransactionStatus(str, enum.Enum):
+    NEW = "new"
+    APPLIED = "applied"
+    AMBIGUOUS = "ambiguous"
+    NO_MATCH = "no_match"
+
+
+class BankTransaction(Base):
+    """Операции из банка (Точка и др.): дедупликация по operation_id, матчинг по телефону."""
+    __tablename__ = "bank_transactions"
+    __table_args__ = (UniqueConstraint("operation_id", name="uq_bank_transactions_operation_id"),)
+    id = Column(Integer, primary_key=True, index=True)
+    operation_id = Column(String(256), nullable=False, unique=True, index=True)
+    tochka_account_id = Column(String(64), nullable=True, index=True)
+    amount = Column(Float, nullable=False)
+    payer_phone = Column(String(32), nullable=True, index=True)
+    payer_name = Column(String(512), nullable=True)
+    payment_date = Column(String(32), nullable=True)
+    status = Column(String(32), nullable=False, default=BankTransactionStatus.NEW.value, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
+    student_account_id = Column(Integer, ForeignKey("student_accounts.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PhonePaymentBinding(Base):
+    """Ручная привязка: телефон плательщика из банка → родитель (user). Для автозачисления при следующих платежах."""
+    __tablename__ = "phone_payment_bindings"
+    __table_args__ = (UniqueConstraint("payer_phone_normalized", name="uq_phone_payment_bindings_phone"),)
+    id = Column(Integer, primary_key=True, index=True)
+    payer_phone_normalized = Column(String(32), nullable=False, unique=True, index=True)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    parent = relationship("User", backref="phone_payment_bindings")
+
+
 class TochkaAppliedPayment(Base):
-    """Уже зачисленные платежи из Точка Банк — чтобы не дублировать при автоматическом импорте."""
+    """Уже зачисленные платежи из Точка Банк — чтобы не дублировать при автоматическом импорте (legacy по ФИО)."""
     __tablename__ = "tochka_applied_payments"
     __table_args__ = (
         UniqueConstraint(
@@ -461,7 +499,7 @@ class TochkaAppliedPayment(Base):
     )
     id = Column(Integer, primary_key=True, index=True)
     tochka_account_id = Column(String(64), nullable=False, index=True)
-    payment_date = Column(String(32), nullable=False)  # как в выписке (YYYY-MM-DD или ISO)
+    payment_date = Column(String(32), nullable=False)
     amount = Column(Float, nullable=False)
     payer_name = Column(String(512), nullable=False)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)

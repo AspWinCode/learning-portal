@@ -199,11 +199,36 @@ def extract_incoming_transactions(statement: Dict[str, Any]) -> List[Dict[str, A
                 or tx.get("payer_name")
                 or ""
             )
+        # Телефон плательщика (если банк отдаёт в выписке)
+        payer_phone_raw = ""
+        if isinstance(debtor, dict):
+            payer_phone_raw = (
+                debtor.get("phone")
+                or debtor.get("phoneNumber")
+                or debtor.get("mobile")
+                or debtor.get("contact")
+                or ""
+            )
+        if not payer_phone_raw:
+            payer_phone_raw = tx.get("payerPhone") or tx.get("payer_phone") or tx.get("remitterPhone") or ""
         tx_date = tx.get("bookingDate") or tx.get("date") or tx.get("valueDate") or tx.get("chargeDate") or ""
+        # Уникальный идентификатор операции (дедупликация)
+        operation_id = (
+            tx.get("transactionId")
+            or tx.get("instructionId")
+            or tx.get("endToEndId")
+            or tx.get("id")
+            or tx.get("transaction_id")
+        )
+        if isinstance(operation_id, dict):
+            operation_id = operation_id.get("id") or operation_id.get("value") or ""
+        operation_id = str(operation_id).strip() if operation_id else ""
         result.append({
             "date": tx_date,
             "amount": amount_float,
             "payer_name": (payer_name or "").strip(),
+            "payer_phone_raw": (payer_phone_raw or "").strip(),
+            "operation_id": operation_id,
             "raw": tx,
         })
     return result

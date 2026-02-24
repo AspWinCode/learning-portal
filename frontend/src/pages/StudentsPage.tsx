@@ -295,13 +295,15 @@ const StudentsPage: React.FC = () => {
   }, [parentCreateMode, parentSearchQuery]);
 
   useEffect(() => {
+    // Не перезаписывать карточку при редактировании — там уже подставлены данные из карточки ученика
+    if (editOpen) return;
     setCardFields((prev) => ({
       ...prev,
       student_full_name: newStudent.full_name,
       parent_full_name: parentCreateMode === 'new' ? newParent.full_name : (selectedParentForCreate?.full_name ?? ''),
       parent_email: parentCreateMode === 'new' ? newParent.email : (selectedParentForCreate?.email ?? ''),
     }));
-  }, [newStudent.full_name, parentCreateMode, newParent.full_name, newParent.email, selectedParentForCreate?.full_name, selectedParentForCreate?.email]);
+  }, [editOpen, newStudent.full_name, parentCreateMode, newParent.full_name, newParent.email, selectedParentForCreate?.full_name, selectedParentForCreate?.email]);
 
   const loadStudents = async () => {
     try {
@@ -775,13 +777,17 @@ const StudentsPage: React.FC = () => {
           } else {
             await studentCardsApi.create({ ...cardPayload, discount_type: 'none', discount_value: 0 });
           }
-          const updatedCards = await studentCardsApi.list({});
-          setStudentCards(updatedCards);
         } catch (cardErr: any) {
           setError(cardErr.response?.data?.detail || 'Ученик сохранён, но не удалось сохранить карточку');
           return;
         }
       }
+
+      // Сначала обновляем списки с сервера, потом закрываем — чтобы при повторном «Редактировать» отображались сохранённые данные
+      const updatedCards = await studentCardsApi.list({});
+      setStudentCards(updatedCards);
+      await loadStudents();
+      await loadGroups();
 
       setEditOpen(false);
       setEditingStudent(null);
@@ -789,7 +795,6 @@ const StudentsPage: React.FC = () => {
       setEditParentCabinetLink(null);
       setEditParentCabinetMessage(null);
       setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '', training_start_date: '' });
-      loadStudents();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка обновления');
     }

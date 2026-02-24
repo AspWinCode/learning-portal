@@ -910,6 +910,18 @@ export const salesApi = {
     const response = await api.put(`/api/sales/schools/${id}`, payload);
     return response.data;
   },
+  getTochkaStatus: async (): Promise<{ configured: boolean; auto_import_configured?: boolean }> => {
+    const response = await api.get('/api/sales/tochka/status');
+    return response.data;
+  },
+  tochkaImportAndApply: async (params: { date_from: string; date_to: string; account_id?: string }): Promise<{
+    applied: Array<{ payer_name: string; amount: number; date: string; student_id: number; student_name?: string }>;
+    no_match: Array<{ payer_name: string; amount: number; date: string }>;
+    ambiguous: Array<{ payer_name: string; amount: number; date: string; candidates?: Array<{ student_id: number; student_name?: string; parent_full_name?: string }> }>;
+  }> => {
+    const response = await api.post('/api/sales/tochka/import-and-apply', params);
+    return response.data;
+  },
   listLeadTaskTemplates: async (active_only = true): Promise<LeadTaskTemplate[]> => {
     const response = await api.get('/api/sales/lead-task-templates', { params: { active_only } });
     return response.data;

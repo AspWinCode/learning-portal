@@ -203,6 +203,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'Позвать снова на мероприятие', icon: <EventAvailable />, path: '/sales/reinvite-event' },
         { text: 'Решили сразу', icon: <EventAvailable />, path: '/sales/agreed' },
+        { text: 'Дожать на обучение', icon: <PendingActions />, path: '/sales/post-visit' },
         { text: 'Счета', icon: <ReceiptLong />, path: '/sales/invoices' },
         { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },

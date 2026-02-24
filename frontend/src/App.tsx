@@ -150,7 +150,7 @@ function App() {
             <Route
               path="/sales/post-visit"
               element={
-                <PrivateRoute allowedRoles={['sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesPostVisitPage />
                 </PrivateRoute>
               }

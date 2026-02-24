@@ -3378,6 +3378,30 @@ async def list_leads(
     if next_contact_to:
         query = query.filter(Lead.next_contact_at <= next_contact_to)
     leads = query.all()
+
+    # One-time/gradual бэкаповка старых лидов в воронку «Дожать на обучение»:
+    # если статус demo, по лиду уже есть [came] в регистрациях события, но post_visit_stage ещё не задана,
+    # проставляем stage='new', чтобы такие лиды появились на странице дожима.
+    if status_filter == LeadStatus.DEMO:
+        updated = False
+        for lead in leads:
+            if not getattr(lead, "post_visit_stage", None):
+                has_came = (
+                    db.query(EventRegistration)
+                    .filter(
+                        EventRegistration.lead_id == lead.id,
+                        cast(EventRegistration.note, Text).ilike("%[came]%"),
+                    )
+                    .first()
+                )
+                if has_came:
+                    lead.post_visit_stage = "new"
+                    updated = True
+        if updated:
+            db.commit()
+            for lead in leads:
+                db.refresh(lead)
+
     return [_fix_lead_strings(l) for l in leads]
 
 

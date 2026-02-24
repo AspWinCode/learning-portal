@@ -20,6 +20,20 @@ def upgrade() -> None:
     op.add_column("leads", sa.Column("post_visit_review", sa.Text(), nullable=True))
     op.add_column("leads", sa.Column("post_visit_project_date", sa.DateTime(timezone=True), nullable=True))
     op.create_index("ix_leads_post_visit_stage", "leads", ["post_visit_stage"])
+    # Заполнить стартовую стадию для лидов, по которым уже нажимали «Пришел» на мероприятии
+    op.execute(
+        """
+        UPDATE leads
+        SET post_visit_stage = 'new'
+        WHERE post_visit_stage IS NULL
+          AND status = 'demo'
+          AND id IN (
+            SELECT DISTINCT lead_id
+            FROM event_registrations
+            WHERE note ILIKE '%[came]%'
+          )
+        """
+    )
 
 
 def downgrade() -> None:

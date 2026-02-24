@@ -376,15 +376,18 @@ async def save_attendance(
                     if account is None:
                         account = accounts[0]
 
-            if account and amount_per_lesson > 0 and account.balance >= amount_per_lesson:
+            if account and amount_per_lesson > 0:
+                # Абонемент может уходить в минус: списываем даже при недостаточном балансе.
                 account.balance -= amount_per_lesson
-                db.add(StudentAccountTransaction(
-                    account_id=account.id,
-                    amount=-amount_per_lesson,
-                    kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
-                    note=f"Занятие {att.lesson_date}",
-                    lesson_attendance_id=att.id,
-                ))
+                db.add(
+                    StudentAccountTransaction(
+                        account_id=account.id,
+                        amount=-amount_per_lesson,
+                        kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
+                        note=f"Занятие {att.lesson_date}",
+                        lesson_attendance_id=att.id,
+                    )
+                )
         if is_absence:
             in_freeze = db.query(StudentFreeze).filter(
                 StudentFreeze.student_id == att.student_id,

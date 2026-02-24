@@ -1,7 +1,13 @@
 """Обновление периода обучения и даты следующей оплаты на карточке ученика (ТЗ п.2.2)."""
 from datetime import date, timedelta
 from sqlalchemy.orm import Session
-from app.models import StudentCard
+
+from app.models import (
+    StudentCard,
+    StudentAccount,
+    StudentAccountTransaction,
+    StudentAccountTransactionKind,
+)
 
 
 # Стандарт: 8 занятий в абонементе = 30 дней периода оплаты
@@ -27,12 +33,15 @@ def update_card_payment_dates(db: Session, student_id: int, payment_date: date) 
 
 
 def set_card_payment_dates_from_training_start(db: Session, student_id: int, start_date: date) -> None:
-    """Установить learning_period_start и next_payment_date на карточке от даты начала обучения.
-    Вызывается при сохранении training_start_date у ученика. Напоминания об оплате считаются от next_payment_date."""
+    """Установить learning_period_start и next_payment_date от даты начала обучения.
+
+    Напоминания об оплате считаются от даты начала посещения занятий,
+    даже если оплата ещё не внесена."""
     card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
     if not card or not hasattr(card, "learning_period_start"):
         return
     card.learning_period_start = start_date
+
     period_days = 30
     abonement = getattr(card, "abonement", None)
     if not abonement and getattr(card, "abonement_id", None):

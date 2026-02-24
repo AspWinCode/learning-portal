@@ -131,8 +131,6 @@ async def deduct_lesson(
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма списания должна быть больше 0")
-    if account.balance < amount:
-        raise HTTPException(status_code=400, detail="Недостаточно средств на счете")
     tx = StudentAccountTransaction(
         account_id=account_id,
         amount=-amount,

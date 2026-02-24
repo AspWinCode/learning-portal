@@ -233,6 +233,7 @@ const SalesLeadsPage: React.FC = () => {
     child_full_name: '',
     child_phone: '',
     email: '',
+    city: '',
     communication_channel: '' as '' | LeadCommunicationChannel,
     source: '',
     referral_name: '',
@@ -501,6 +502,8 @@ const SalesLeadsPage: React.FC = () => {
       comment: '',
     });
     setCreateOpen(true);
+    // Подтягиваем актуальный список городов из Настройки Sales → Города при открытии формы
+    salesApi.listSalesCities(true).then(setSalesCities).catch(() => setSalesCities([]));
   };
 
   const handleCreate = async () => {
@@ -712,6 +715,7 @@ const SalesLeadsPage: React.FC = () => {
       child_full_name: lead.child_full_name || '',
       child_phone: lead.child_phone || '',
       email: lead.email || '',
+      city: lead.city || '',
       communication_channel: (lead.communication_channel as LeadCommunicationChannel | null) || '',
       source: lead.source || '',
       referral_name: lead.referral_name || '',
@@ -1091,6 +1095,12 @@ const SalesLeadsPage: React.FC = () => {
   }, [selectedLead?.id]);
 
   useEffect(() => {
+    if (detailsOpen && selectedLead) {
+      salesApi.listSalesCities(true).then(setSalesCities).catch(() => setSalesCities([]));
+    }
+  }, [detailsOpen, selectedLead?.id]);
+
+  useEffect(() => {
     if (!selectedLead) return;
     setLeadInfoDraft({
       parent_full_name: selectedLead.parent_full_name || '',
@@ -1098,6 +1108,7 @@ const SalesLeadsPage: React.FC = () => {
       child_full_name: selectedLead.child_full_name || '',
       child_phone: selectedLead.child_phone || '',
       email: selectedLead.email || '',
+      city: selectedLead.city || '',
       communication_channel: (selectedLead.communication_channel as LeadCommunicationChannel | null) || '',
       source: selectedLead.source || '',
       referral_name: selectedLead.referral_name || '',
@@ -1172,6 +1183,7 @@ const SalesLeadsPage: React.FC = () => {
         child_full_name: leadInfoDraft.child_full_name.trim() || undefined,
         child_phone: normalizeRuPhone(leadInfoDraft.child_phone) || undefined,
         email: leadInfoDraft.email.trim() || undefined,
+        city: leadInfoDraft.city.trim() || undefined,
         communication_channel: leadInfoDraft.communication_channel || undefined,
         source: leadInfoDraft.source.trim() || undefined,
         referral_name: leadInfoDraft.referral_name.trim() || undefined,
@@ -2305,6 +2317,26 @@ const SalesLeadsPage: React.FC = () => {
                       </Grid>
                       <Grid item xs={12}>
                         <FormControl size="small" fullWidth>
+                          <InputLabel id="lead-card-city-label">Город</InputLabel>
+                          <Select
+                            labelId="lead-card-city-label"
+                            label="Город"
+                            value={leadInfoDraft.city}
+                            onChange={(e) => setLeadInfoDraft((s) => ({ ...s, city: e.target.value as string }))}
+                          >
+                            <MenuItem value="">
+                              <em>Не выбран</em>
+                            </MenuItem>
+                            {cityOptions.map((city) => (
+                              <MenuItem key={city} value={city}>
+                                {city}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <FormControl size="small" fullWidth>
                           <InputLabel id="lead-communication-channel-label">Канал общения</InputLabel>
                           <Select
                             labelId="lead-communication-channel-label"
@@ -2457,6 +2489,11 @@ const SalesLeadsPage: React.FC = () => {
                 {salesCities.length === 0 && cityOptions.length > 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                     Список из существующих лидов. Для полного списка добавьте города в Настройки Sales → Города.
+                  </Typography>
+                )}
+                {salesCities.length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Список из раздела Настройки Sales → Города.
                   </Typography>
                 )}
               </FormControl>

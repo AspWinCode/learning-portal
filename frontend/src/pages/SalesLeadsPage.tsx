@@ -274,16 +274,16 @@ const SalesLeadsPage: React.FC = () => {
   }, [statusFilter, qFilter, sourceFilter, tagFilter, overdueOnly]);
 
   const loadSalesMeta = useCallback(async () => {
+    // Города подгружаем отдельно, чтобы при ошибке других запросов список городов всё равно обновился
+    salesApi.listSalesCities(true).then(setSalesCities).catch(() => setSalesCities([]));
     try {
-      const [sources, cities, templates, statuses, leadStatuses] = await Promise.all([
+      const [sources, templates, statuses, leadStatuses] = await Promise.all([
         salesApi.listLeadSources(true),
-        salesApi.listSalesCities(true),
         salesApi.listLeadTaskTemplates(true),
         salesApi.listLeadTaskStatuses(true),
         salesApi.listLeadStatuses(true),
       ]);
       setLeadSources(sources);
-      setSalesCities(cities);
       setTaskTemplates(templates);
       setTaskStatusOptions(statuses);
       setLeadStatusOptions(leadStatuses);
@@ -2449,6 +2449,16 @@ const SalesLeadsPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {salesCities.length === 0 && cityOptions.length === 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Добавьте города в Настройки Sales → Города.
+                  </Typography>
+                )}
+                {salesCities.length === 0 && cityOptions.length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Список из существующих лидов. Для полного списка добавьте города в Настройки Sales → Города.
+                  </Typography>
+                )}
               </FormControl>
             </Grid>
             <Grid item xs={12} md={6}>

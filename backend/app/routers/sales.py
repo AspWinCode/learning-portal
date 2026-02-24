@@ -4172,11 +4172,14 @@ async def list_post_visit_leads(
     - ограничиваем по правам (admin/owner/sales видят только свои лиды);
     - если post_visit_stage ещё не задана — проставляем 'new' (однократно).
     """
-    leads_q = _filter_query_by_role(db.query(Lead), current_user)
-    leads_q = (
-        leads_q.join(EventRegistration, EventRegistration.lead_id == Lead.id)
+    came_lead_ids = (
+        db.query(EventRegistration.lead_id)
         .filter(cast(EventRegistration.note, Text).ilike("%[came]%"))
-        .distinct(Lead.id)
+        .distinct()
+    )
+    leads_q = (
+        _filter_query_by_role(db.query(Lead), current_user)
+        .filter(Lead.id.in_(came_lead_ids))
         .order_by(Lead.created_at.desc())
     )
     leads = leads_q.all()

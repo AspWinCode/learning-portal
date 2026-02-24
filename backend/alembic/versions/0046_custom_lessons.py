@@ -37,56 +37,76 @@ def upgrade() -> None:
         create_type=False,
     )
 
-    op.create_table(
-        "custom_lessons",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("title", sa.String(), nullable=False),
-        sa.Column("lesson_date", sa.Date(), nullable=False),
-        sa.Column("start_time", sa.Time(), nullable=False),
-        sa.Column("end_time", sa.Time(), nullable=True),
-        sa.Column("trainer_id", sa.Integer(), nullable=False),
-        sa.Column("lesson_type", custom_type, nullable=False, server_default="makeup"),
-        sa.Column("comment", sa.Text(), nullable=True),
-        sa.Column("created_by_id", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), onupdate=sa.func.now()),
-        sa.ForeignKeyConstraint(["trainer_id"], ["users.id"]),
-        sa.ForeignKeyConstraint(["created_by_id"], ["users.id"]),
-    )
-    op.create_index("ix_custom_lessons_id", "custom_lessons", ["id"])
-    op.create_index("ix_custom_lessons_lesson_date", "custom_lessons", ["lesson_date"])
-    op.create_index("ix_custom_lessons_trainer_id", "custom_lessons", ["trainer_id"])
-    op.create_index("ix_custom_lessons_lesson_type", "custom_lessons", ["lesson_type"])
-    op.create_index("ix_custom_lessons_created_by_id", "custom_lessons", ["created_by_id"])
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = inspector.get_table_names()
 
-    op.create_table(
-        "custom_lesson_students",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("lesson_id", sa.Integer(), nullable=False),
-        sa.Column("student_id", sa.Integer(), nullable=False),
-        sa.Column("planned_absence_id", sa.Integer(), nullable=True),
-        sa.Column("attended", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("absence_reason", sa.String(length=64), nullable=True),
-        sa.Column("absence_comment", sa.Text(), nullable=True),
-        sa.ForeignKeyConstraint(["lesson_id"], ["custom_lessons.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["student_id"], ["students.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["planned_absence_id"], ["absence_follow_ups.id"]),
+    # Таблица custom_lessons
+    if "custom_lessons" not in tables:
+        op.create_table(
+            "custom_lessons",
+            sa.Column("id", sa.Integer(), primary_key=True, index=True),
+            sa.Column("title", sa.String(), nullable=False),
+            sa.Column("lesson_date", sa.Date(), nullable=False),
+            sa.Column("start_time", sa.Time(), nullable=False),
+            sa.Column("end_time", sa.Time(), nullable=True),
+            sa.Column("trainer_id", sa.Integer(), nullable=False),
+            sa.Column("lesson_type", custom_type, nullable=False, server_default="makeup"),
+            sa.Column("comment", sa.Text(), nullable=True),
+            sa.Column("created_by_id", sa.Integer(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.Column("updated_at", sa.DateTime(timezone=True), onupdate=sa.func.now()),
+            sa.ForeignKeyConstraint(["trainer_id"], ["users.id"]),
+            sa.ForeignKeyConstraint(["created_by_id"], ["users.id"]),
+        )
+
+    # Индексы для custom_lessons (idempotent)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_custom_lessons_id ON custom_lessons (id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_custom_lessons_lesson_date ON custom_lessons (lesson_date)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_custom_lessons_trainer_id ON custom_lessons (trainer_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_custom_lessons_lesson_type ON custom_lessons (lesson_type)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_custom_lessons_created_by_id ON custom_lessons (created_by_id)")
+
+    # Таблица custom_lesson_students
+    if "custom_lesson_students" not in tables:
+        op.create_table(
+            "custom_lesson_students",
+            sa.Column("id", sa.Integer(), primary_key=True, index=True),
+            sa.Column("lesson_id", sa.Integer(), nullable=False),
+            sa.Column("student_id", sa.Integer(), nullable=False),
+            sa.Column("planned_absence_id", sa.Integer(), nullable=True),
+            sa.Column("attended", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+            sa.Column("absence_reason", sa.String(length=64), nullable=True),
+            sa.Column("absence_comment", sa.Text(), nullable=True),
+            sa.ForeignKeyConstraint(["lesson_id"], ["custom_lessons.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(["student_id"], ["students.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(["planned_absence_id"], ["absence_follow_ups.id"]),
+        )
+
+    op.execute("CREATE INDEX IF NOT EXISTS ix_custom_lesson_students_id ON custom_lesson_students (id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_custom_lesson_students_lesson_id ON custom_lesson_students (lesson_id)"
     )
-    op.create_index("ix_custom_lesson_students_id", "custom_lesson_students", ["id"])
-    op.create_index("ix_custom_lesson_students_lesson_id", "custom_lesson_students", ["lesson_id"])
-    op.create_index("ix_custom_lesson_students_student_id", "custom_lesson_students", ["student_id"])
-    op.create_index("ix_custom_lesson_students_planned_absence_id", "custom_lesson_students", ["planned_absence_id"])
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_custom_lesson_students_student_id ON custom_lesson_students (student_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_custom_lesson_students_planned_absence_id "
+        "ON custom_lesson_students (planned_absence_id)"
+    )
 
     # Link from absence to custom lesson used as makeup
-    op.add_column(
-        "absence_follow_ups",
-        sa.Column("makeup_custom_lesson_id", sa.Integer(), nullable=True),
+    cols = [c["name"] for c in inspector.get_columns("absence_follow_ups")]
+    if "makeup_custom_lesson_id" not in cols:
+        op.add_column(
+            "absence_follow_ups",
+            sa.Column("makeup_custom_lesson_id", sa.Integer(), nullable=True),
+        )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_absence_follow_ups_makeup_custom_lesson_id "
+        "ON absence_follow_ups (makeup_custom_lesson_id)"
     )
-    op.create_index(
-        "ix_absence_follow_ups_makeup_custom_lesson_id",
-        "absence_follow_ups",
-        ["makeup_custom_lesson_id"],
-    )
+    # Внешний ключ создаём обычным способом; на уже существующую БД он будет создан один раз.
     op.create_foreign_key(
         "fk_absence_follow_ups_makeup_custom_lesson_id",
         "absence_follow_ups",

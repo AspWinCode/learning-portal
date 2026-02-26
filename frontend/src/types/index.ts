@@ -68,6 +68,14 @@ export interface StudentAccount {
   transactions?: StudentAccountTransaction[];
 }
 
+export type AbonementFormat = 'individual' | 'package' | 'group';
+
+export const ABONEMENT_FORMAT_LABELS: Record<AbonementFormat, string> = {
+  individual: 'Индивидуальный',
+  package: 'Пакет',
+  group: 'Групповой',
+};
+
 export interface Abonement {
   id: number;
   name: string;
@@ -76,6 +84,7 @@ export interface Abonement {
   discount_value: number;
   status: 'active' | 'archived';
   created_at: string;
+  abonement_format?: AbonementFormat | null;
 }
 
 export interface Group {

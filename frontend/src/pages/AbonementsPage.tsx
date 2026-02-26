@@ -23,9 +23,9 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
 import { abonementsApi } from '../services/api';
-import { Abonement } from '../types';
+import { Abonement, ABONEMENT_FORMAT_LABELS, AbonementFormat } from '../types';
 
-const emptyForm = { name: '', price: 0, discount_type: 'none', discount_value: 0 };
+const emptyForm = { name: '', price: 0, discount_type: 'none', discount_value: 0, abonement_format: '' as '' | AbonementFormat };
 
 const AbonementsPage: React.FC = () => {
   const [abonements, setAbonements] = useState<Abonement[]>([]);
@@ -38,6 +38,7 @@ const AbonementsPage: React.FC = () => {
     price: 0,
     discount_type: 'none',
     discount_value: 0,
+    abonement_format: '' as '' | AbonementFormat,
   });
 
   const loadAbonements = async () => {
@@ -64,6 +65,7 @@ const AbonementsPage: React.FC = () => {
         price: Number(form.price) || 0,
         discount_type: form.discount_type as Abonement['discount_type'],
         discount_value: Number(form.discount_value) || 0,
+        abonement_format: form.abonement_format || undefined,
       });
       setOpen(false);
       setForm(emptyForm);
@@ -85,6 +87,7 @@ const AbonementsPage: React.FC = () => {
         price: Number(form.price) || 0,
         discount_type: form.discount_type as Abonement['discount_type'],
         discount_value: Number(form.discount_value) || 0,
+        abonement_format: form.abonement_format || undefined,
       });
       setEditOpen(false);
       setEditing(null);
@@ -129,6 +132,7 @@ const AbonementsPage: React.FC = () => {
             <TableRow>
               <TableCell>Название</TableCell>
               <TableCell>Цена</TableCell>
+              <TableCell>Формат</TableCell>
               <TableCell>Тип скидки</TableCell>
               <TableCell>Скидка</TableCell>
               <TableCell>Статус</TableCell>
@@ -140,6 +144,9 @@ const AbonementsPage: React.FC = () => {
               <TableRow key={abonement.id}>
                 <TableCell>{abonement.name}</TableCell>
                 <TableCell>{abonement.price} ₽</TableCell>
+                <TableCell>
+                  {abonement.abonement_format ? ABONEMENT_FORMAT_LABELS[abonement.abonement_format] : '—'}
+                </TableCell>
                 <TableCell>{abonement.discount_type}</TableCell>
                 <TableCell>{renderDiscount(abonement)}</TableCell>
                 <TableCell>{abonement.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>
@@ -154,6 +161,7 @@ const AbonementsPage: React.FC = () => {
                         price: abonement.price,
                         discount_type: abonement.discount_type,
                         discount_value: abonement.discount_value,
+                        abonement_format: abonement.abonement_format || '',
                       });
                       setEditOpen(true);
                     }}
@@ -221,6 +229,24 @@ const AbonementsPage: React.FC = () => {
             onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
             sx={{ mt: 2 }}
           />
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Формат абонемента</InputLabel>
+            <Select
+              value={form.abonement_format}
+              label="Формат абонемента"
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  abonement_format: (e.target.value || '') as '' | AbonementFormat,
+                })
+              }
+            >
+              <MenuItem value="">Не указан</MenuItem>
+              <MenuItem value="individual">{ABONEMENT_FORMAT_LABELS.individual}</MenuItem>
+              <MenuItem value="package">{ABONEMENT_FORMAT_LABELS.package}</MenuItem>
+              <MenuItem value="group">{ABONEMENT_FORMAT_LABELS.group}</MenuItem>
+            </Select>
+          </FormControl>
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Тип скидки</InputLabel>
             <Select

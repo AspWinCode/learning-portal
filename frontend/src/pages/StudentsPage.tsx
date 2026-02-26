@@ -112,6 +112,7 @@ const StudentsPage: React.FC = () => {
   const [accountsStudent, setAccountsStudent] = useState<Student | null>(null);
   const [accounts, setAccounts] = useState<StudentAccount[]>([]);
   const [newAccountName, setNewAccountName] = useState('');
+  const [newAccountFormat, setNewAccountFormat] = useState<'' | 'individual' | 'package' | 'group'>('');
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState<{ account: StudentAccount; type: 'payment' | 'deduct' } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -340,12 +341,24 @@ const StudentsPage: React.FC = () => {
   };
 
   const handleCreateAccount = async () => {
-    if (!accountsStudent || !newAccountName.trim()) return;
+    if (!accountsStudent) return;
+    const baseName = newAccountName.trim();
+    const formatLabel =
+      newAccountFormat === 'individual'
+        ? 'Индивидуальный'
+        : newAccountFormat === 'package'
+        ? 'Пакет'
+        : newAccountFormat === 'group'
+        ? 'Групповой'
+        : '';
+    const finalName = baseName || formatLabel;
+    if (!finalName) return;
     setAccountsLoading(true);
     try {
-      const created = await studentsApi.createAccount(accountsStudent.id, { name: newAccountName.trim() });
+      const created = await studentsApi.createAccount(accountsStudent.id, { name: finalName });
       setAccounts((prev) => [...prev, created]);
       setNewAccountName('');
+      setNewAccountFormat('');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка создания счета');
     } finally {
@@ -2043,7 +2056,7 @@ const StudentsPage: React.FC = () => {
           ) : (
             <>
               {(isAdminLike || user?.role === 'sales') && (
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
                   <TextField
                     size="small"
                     label="Название счета"
@@ -2052,7 +2065,28 @@ const StudentsPage: React.FC = () => {
                     placeholder="Группа / Индивидуально"
                     sx={{ flex: 1 }}
                   />
-                  <Button variant="outlined" onClick={handleCreateAccount} disabled={!newAccountName.trim() || accountsLoading}>
+                  <FormControl size="small" sx={{ minWidth: 180 }}>
+                    <InputLabel>Формат счета</InputLabel>
+                    <Select
+                      label="Формат счета"
+                      value={newAccountFormat}
+                      onChange={(e) =>
+                        setNewAccountFormat(
+                          (e.target.value as 'individual' | 'package' | 'group' | '') || '',
+                        )
+                      }
+                    >
+                      <MenuItem value="">Не выбран</MenuItem>
+                      <MenuItem value="individual">Индивидуальный</MenuItem>
+                      <MenuItem value="package">Пакет</MenuItem>
+                      <MenuItem value="group">Групповой</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Button
+                    variant="outlined"
+                    onClick={handleCreateAccount}
+                    disabled={(!newAccountName.trim() && !newAccountFormat) || accountsLoading}
+                  >
                     Создать счет
                   </Button>
                 </Stack>

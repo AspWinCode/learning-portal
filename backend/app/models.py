@@ -245,6 +245,8 @@ class Abonement(Base):
     name = Column(String, nullable=False)
     price = Column(Float, default=0.0, nullable=False)
     lessons_count = Column(Integer, nullable=True)  # число занятий в абонементе (для расчёта списания за занятие); по умолчанию 8
+    # Формат абонемента: индивидуальный, пакет, групповой (используется при создании счетов/счетов ученика)
+    abonement_format = Column(String(32), nullable=True)  # individual | package | group
     discount_type = Column(
         SQLEnum(DiscountType, name="discounttype", values_callable=_enum_values),
         default=DiscountType.NONE,

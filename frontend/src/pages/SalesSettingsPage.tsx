@@ -23,9 +23,21 @@ import { Add as AddIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { salesApi } from '../services/api';
+import { abonementsApi, salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import { LeadInfoTemplate, LeadSource, LeadStatus, LeadStatusOption, LeadTaskStatusOption, LeadTaskTemplate, SalesCity, SalesSchool } from '../types';
+import {
+  Abonement,
+  ABONEMENT_FORMAT_LABELS,
+  AbonementFormat,
+  LeadInfoTemplate,
+  LeadSource,
+  LeadStatus,
+  LeadStatusOption,
+  LeadTaskStatusOption,
+  LeadTaskTemplate,
+  SalesCity,
+  SalesSchool,
+} from '../types';
 
 const leadStatusLabels: Record<LeadStatus, string> = {
   new: 'Новый',
@@ -71,6 +83,12 @@ const SalesSettingsPage: React.FC = () => {
     no_match: Array<{ payer_name: string; amount: number; date: string }>;
     ambiguous: Array<{ payer_name: string; amount: number; date: string; candidates?: Array<{ student_name?: string; parent_full_name?: string }> }>;
   } | null>(null);
+  const [abonements, setAbonements] = useState<Abonement[]>([]);
+  const [newAbonement, setNewAbonement] = useState<{
+    name: string;
+    price: number | '';
+    abonement_format: '' | AbonementFormat;
+  }>({ name: '', price: '', abonement_format: '' });
 
   const loadData = async () => {
     const errors: string[] = [];
@@ -91,6 +109,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Статусы лида', () => salesApi.listLeadStatuses(false), setLeadStatuses),
       load('Города', () => salesApi.listSalesCities(false), setCities),
       load('Школы', () => salesApi.listSalesSchools(false), setSchools),
+      load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
     ]);
     if (errors.length) {
       const hint = errors.some((e) => e.includes('Not Found') || e.includes('404'))
@@ -217,6 +236,91 @@ const SalesSettingsPage: React.FC = () => {
                       onChange={(e) => safeAction(() => salesApi.updateSalesSchool(s.id, { is_active: e.target.checked }))}
                     />
                   </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Абонементы для счетов</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Здесь можно завести типовые абонементы, которые потом будут использоваться при создании счетов ученика.
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
+            <TextField
+              size="small"
+              label="Наименование абонемента"
+              value={newAbonement.name}
+              onChange={(e) => setNewAbonement((prev) => ({ ...prev, name: e.target.value }))}
+              sx={{ flex: 2 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Формат абонемента</InputLabel>
+              <Select
+                label="Формат абонемента"
+                value={newAbonement.abonement_format}
+                onChange={(e) =>
+                  setNewAbonement((prev) => ({
+                    ...prev,
+                    abonement_format: (e.target.value || '') as '' | AbonementFormat,
+                  }))
+                }
+              >
+                <MenuItem value="">Не указан</MenuItem>
+                <MenuItem value="individual">{ABONEMENT_FORMAT_LABELS.individual}</MenuItem>
+                <MenuItem value="package">{ABONEMENT_FORMAT_LABELS.package}</MenuItem>
+                <MenuItem value="group">{ABONEMENT_FORMAT_LABELS.group}</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              size="small"
+              label="Сумма (₽)"
+              type="number"
+              value={newAbonement.price}
+              onChange={(e) =>
+                setNewAbonement((prev) => ({
+                  ...prev,
+                  price: e.target.value === '' ? '' : Number(e.target.value),
+                }))
+              }
+              sx={{ flex: 1 }}
+              inputProps={{ min: 0, step: 0.01 }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() =>
+                safeAction(async () => {
+                  if (!newAbonement.name.trim()) return;
+                  await abonementsApi.create({
+                    name: newAbonement.name.trim(),
+                    price: newAbonement.price === '' ? 0 : Number(newAbonement.price),
+                    discount_type: 'none',
+                    discount_value: 0,
+                    abonement_format: newAbonement.abonement_format || undefined,
+                  });
+                  setNewAbonement({ name: '', price: '', abonement_format: '' });
+                })
+              }
+            >
+              Создать
+            </Button>
+          </Stack>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Наименование</TableCell>
+                <TableCell>Формат</TableCell>
+                <TableCell>Сумма</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {abonements.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell>{a.name}</TableCell>
+                  <TableCell>{a.abonement_format ? ABONEMENT_FORMAT_LABELS[a.abonement_format] : '—'}</TableCell>
+                  <TableCell>{a.price.toFixed(2)} ₽</TableCell>
                 </TableRow>
               ))}
             </TableBody>

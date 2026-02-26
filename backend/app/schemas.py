@@ -190,11 +190,15 @@ class UserResponse(UserBase):
 
 
 # Abonement schemas
+AbonementFormat = Literal["individual", "package", "group"]
+
+
 class AbonementBase(BaseModel):
     name: str
     price: float = 0.0
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
+    abonement_format: Optional[AbonementFormat] = None
 
 
 class AbonementCreate(AbonementBase):
@@ -206,6 +210,7 @@ class AbonementUpdate(BaseModel):
     price: Optional[float] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
+    abonement_format: Optional[AbonementFormat] = None
     status: Optional[AbonementStatus] = None
 
 

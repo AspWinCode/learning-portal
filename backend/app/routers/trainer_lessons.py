@@ -37,6 +37,7 @@ from app.schemas import (
     CancelLessonPayload,
     CreateLessonSlotPayload,
     AddStudentToLessonPayload,
+    RemoveStudentFromLessonPayload,
     SetLessonTrainerPayload,
     CustomLessonAttendancePayload,
     CustomLessonResponse,
@@ -726,6 +727,48 @@ async def add_student_to_lesson(
         lesson_start_time=lesson_start_time,
         lesson_end_time=lesson_end_time,
     ))
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/remove-student-from-lesson")
+async def remove_student_from_lesson(
+    payload: RemoveStudentFromLessonPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Удалить ученика из урока. Только owner и admin."""
+    if current_user.role not in (UserRole.OWNER, UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Only owner or admin can remove a student from a lesson")
+    group = db.query(Group).filter(Group.id == payload.group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    q = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.lesson_date,
+        LessonAttendance.student_id == payload.student_id,
+    )
+    if payload.start_time and payload.end_time:
+        try:
+            start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+            end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+            q = q.filter(
+                LessonAttendance.lesson_start_time == start_t,
+                LessonAttendance.lesson_end_time == end_t,
+            )
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+    attendances = q.all()
+    if not attendances:
+        raise HTTPException(status_code=404, detail="Student not found on this lesson")
+    for att in attendances:
+        db.query(StudentAccountTransaction).filter(
+            StudentAccountTransaction.lesson_attendance_id == att.id,
+        ).update({StudentAccountTransaction.lesson_attendance_id: None}, synchronize_session=False)
+        db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id == att.id).delete(
+            synchronize_session=False
+        )
+        db.delete(att)
     db.commit()
     return {"ok": True}
 

@@ -1353,6 +1353,15 @@ class AddStudentToLessonPayload(BaseModel):
     end_time: Optional[str] = None   # "HH:MM"
 
 
+class RemoveStudentFromLessonPayload(BaseModel):
+    """Удалить ученика из урока (только owner/admin)."""
+    group_id: int
+    lesson_date: date
+    student_id: int
+    start_time: Optional[str] = None  # "HH:MM" — слот
+    end_time: Optional[str] = None   # "HH:MM"
+
+
 class LessonCallResultUpdate(BaseModel):
     """Результат дозвона по одному ученику (менеджер)."""
     group_id: int

@@ -392,6 +392,16 @@ export const trainerLessonsApi = {
     const response = await api.post('/api/trainer-lessons/add-student-to-lesson', data);
     return response.data;
   },
+  removeStudentFromLesson: async (data: {
+    group_id: number;
+    lesson_date: string;
+    student_id: number;
+    start_time?: string;
+    end_time?: string;
+  }): Promise<{ ok: boolean }> => {
+    const response = await api.post('/api/trainer-lessons/remove-student-from-lesson', data);
+    return response.data;
+  },
   createLessonSlot: async (data: {
     group_id: number;
     lesson_date: string;

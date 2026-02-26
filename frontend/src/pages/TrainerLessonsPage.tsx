@@ -21,7 +21,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Book as BookIcon, People as PeopleIcon } from '@mui/icons-material';
+import { Book as BookIcon, People as PeopleIcon, PersonRemove as PersonRemoveIcon } from '@mui/icons-material';
 import { format, addDays, subDays, startOfDay, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
@@ -61,6 +61,7 @@ const TrainerLessonsPage: React.FC = () => {
   const { user } = useAuth();
   const canMoveLessons = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
   const canAddStudentToLesson = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales' || user?.role === 'trainer';
+  const canRemoveStudentFromLesson = user?.role === 'admin' || user?.role === 'owner';
   const [searchParams] = useSearchParams();
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
   const [slots, setSlots] = useState<TrainerLessonSlot[]>([]);
@@ -86,6 +87,7 @@ const TrainerLessonsPage: React.FC = () => {
   const [addStudentToLessonId, setAddStudentToLessonId] = useState('');
   const [allStudents, setAllStudents] = useState<Array<{ id: number; full_name: string }>>([]);
   const [addingToLesson, setAddingToLesson] = useState(false);
+  const [removingStudentId, setRemovingStudentId] = useState<number | null>(null);
   const [trainers, setTrainers] = useState<Array<{ id: number; full_name: string }>>([]);
   const [lessonTrainerId, setLessonTrainerId] = useState<number | ''>('');
   const [settingTrainer, setSettingTrainer] = useState(false);
@@ -476,6 +478,54 @@ const TrainerLessonsPage: React.FC = () => {
     }
   };
 
+  const handleRemoveStudentFromLesson = async (studentId: number) => {
+    if (!selectedSlot) return;
+    setRemovingStudentId(studentId);
+    setError(null);
+    try {
+      const slotStart = (selectedSlot.start_time || '').toString().slice(0, 5);
+      const slotEnd = (selectedSlot.end_time || '').toString().slice(0, 5);
+      await trainerLessonsApi.removeStudentFromLesson({
+        group_id: selectedSlot.group_id,
+        lesson_date: selectedSlot.lesson_date || viewDate,
+        student_id: studentId,
+        ...(slotStart && slotEnd ? { start_time: slotStart, end_time: slotEnd } : {}),
+      });
+      const newSlots = await loadSlots();
+      const updated = newSlots.find(
+        (s) =>
+          s.group_id === selectedSlot.group_id &&
+          (s.start_time || '').toString().slice(0, 5) === slotStart &&
+          (s.end_time || '').toString().slice(0, 5) === slotEnd
+      );
+      if (updated) {
+        setSelectedSlot(updated);
+        const draft: Record<number, boolean> = {};
+        const late: Record<number, boolean> = {};
+        const reasonDraft: Record<number, AbsenceReason> = {};
+        const commentDraft: Record<number, string> = {};
+        updated.students.forEach((s) => {
+          const attended = s.attended ?? true;
+          draft[s.id] = attended;
+          late[s.id] = !!s.late;
+          reasonDraft[s.id] = (s.absence_reason as AbsenceReason) || (attended ? 'was' : 'not_was');
+          commentDraft[s.id] = s.absence_comment || '';
+        });
+        setAttendanceDraft(draft);
+        setLateDraft(late);
+        setAbsenceReasonDraft(reasonDraft);
+        setAbsenceCommentDraft(commentDraft);
+      } else {
+        setPopupOpen(false);
+        setSelectedSlot(null);
+      }
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось удалить ученика с урока'));
+    } finally {
+      setRemovingStudentId(null);
+    }
+  };
+
   const handleSaveAttendance = async () => {
     if (!selectedSlot) return;
     setSaving(true);
@@ -722,6 +772,21 @@ const TrainerLessonsPage: React.FC = () => {
                       <Typography variant="caption" color="info.main">
                         {student.freeze_badge}
                       </Typography>
+                    )}
+                    {canRemoveStudentFromLesson && (
+                      <Button
+                        size="small"
+                        color="error"
+                        startIcon={<PersonRemoveIcon />}
+                        disabled={removingStudentId === student.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveStudentFromLesson(student.id);
+                        }}
+                        sx={{ ml: 1 }}
+                      >
+                        {removingStudentId === student.id ? 'Удаление...' : 'Удалить из урока'}
+                      </Button>
                     )}
                   </Stack>
                   {!isPresent && (

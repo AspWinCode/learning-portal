@@ -19,8 +19,7 @@ import FinancialModelPage from './pages/FinancialModelPage';
 import AbonementsPage from './pages/AbonementsPage';
 import TrainersPage from './pages/TrainersPage';
 import CalculationsPage from './pages/CalculationsPage';
-import B2BSchoolsPage from './pages/B2BSchoolsPage';
-import B2BSchoolCreatePage from './pages/B2BSchoolCreatePage';
+import B2BSchoolsWorkPage from './pages/B2BSchoolsWorkPage';
 import B2BPlanForTodayPage from './pages/B2BPlanForTodayPage';
 import OwnerFunnelsPage from './pages/OwnerFunnelsPage';
 import ParentDashboardPage from './pages/ParentDashboardPage';
@@ -320,18 +319,14 @@ function App() {
               }
             />
             <Route
+              path="/b2b-schools/new"
+              element={<Navigate to="/b2b-schools?tab=new" replace />}
+            />
+            <Route
               path="/b2b-schools"
               element={
                 <PrivateRoute allowedRoles={['owner']}>
-                  <B2BSchoolsPage />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/b2b-schools/new"
-              element={
-                <PrivateRoute allowedRoles={['owner']}>
-                  <B2BSchoolCreatePage />
+                  <B2BSchoolsWorkPage />
                 </PrivateRoute>
               }
             />

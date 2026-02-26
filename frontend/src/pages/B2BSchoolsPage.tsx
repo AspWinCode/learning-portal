@@ -56,7 +56,7 @@ const FRIENDSHIP_DEGREES: { value: string; label: string }[] = [
   { value: 'enemies', label: 'Враги' },
 ];
 
-const B2BSchoolsPage: React.FC = () => {
+export const B2BSchoolsContent: React.FC = () => {
   const [schools, setSchools] = useState<B2BSchool[]>([]);
   const [cities, setCities] = useState<string[]>([]);
   const [selectedCity, setSelectedCity] = useState<string>('');
@@ -744,9 +744,9 @@ const B2BSchoolsPage: React.FC = () => {
   };
 
   return (
-    <Layout>
+    <>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} spacing={2}>
-        <Typography variant="h4">B2B (школы)</Typography>
+        <Typography variant="h4">Работа со школами</Typography>
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
           <TextField
             size="small"
@@ -1763,8 +1763,14 @@ const B2BSchoolsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Layout>
+    </>
   );
 };
+
+const B2BSchoolsPage: React.FC = () => (
+  <Layout>
+    <B2BSchoolsContent />
+  </Layout>
+);
 
 export default B2BSchoolsPage;

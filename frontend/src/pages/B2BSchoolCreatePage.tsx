@@ -68,7 +68,7 @@ const initialEditForm = {
   walkthrough_scheduled_at: '',
 };
 
-const B2BSchoolCreatePage: React.FC = () => {
+export const B2BSchoolCreateContent: React.FC = () => {
   const [form, setForm] = useState({
     name: '',
     director: '',
@@ -459,11 +459,10 @@ const B2BSchoolCreatePage: React.FC = () => {
   };
 
   return (
-    <Layout>
-      <Box>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h4">Создать школу (B2B)</Typography>
-        </Stack>
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h4">Новая B2B школа</Typography>
+      </Stack>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -1049,10 +1048,15 @@ const B2BSchoolCreatePage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-      </Box>
-    </Layout>
+    </Box>
   );
 };
+
+const B2BSchoolCreatePage: React.FC = () => (
+  <Layout>
+    <B2BSchoolCreateContent />
+  </Layout>
+);
 
 export default B2BSchoolCreatePage;
 

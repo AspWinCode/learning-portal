@@ -124,10 +124,8 @@ async def get_calculations_trainers(
         lessons = trainer_lessons.get(tid, 0)
         hours = trainer_hours.get(tid, 0.0)
         is_ind = trainer_has_individual.get(tid, False)
-        if is_ind:
-            base = (rate_hour or 0) * hours
-        else:
-            base = (rate_lesson or 0) * lessons
+        # Оплата: уроки × ставка_урока + часы × ставка_часа (тренер может вести и группы, и индивид)
+        base = (rate_lesson or 0) * lessons + (rate_hour or 0) * hours
         bonus = bonuses.get((tid, month), 0.0)
         total = base + bonus
         result.append(
@@ -292,17 +290,8 @@ async def pay_trainer(
     bonus = (getattr(bonus_rec, "bonus", None) or 0) if bonus_rec else 0
     rate_lesson = getattr(user, "trainer_rate", None)
     rate_hour = getattr(user, "trainer_rate_per_hour", None)
-    has_ind = (
-        db.query(Group)
-        .filter(Group.trainer_id == trainer_id, Group.status == GroupStatus.ACTIVE, Group.lesson_format == "individual")
-        .limit(1)
-        .first()
-        is not None
-    )
-    if has_ind:
-        base_payment = (rate_hour or 0) * hours_count
-    else:
-        base_payment = (rate_lesson or 0) * lessons_count
+    # Оплата: уроки × ставка_урока + часы × ставка_часа (тренер может вести и группы, и индивид)
+    base_payment = (rate_lesson or 0) * lessons_count + (rate_hour or 0) * hours_count
     total = base_payment + bonus
     db.add(
         TrainerPayout(

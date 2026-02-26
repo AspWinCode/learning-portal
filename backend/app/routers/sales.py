@@ -1330,13 +1330,15 @@ async def import_bank_transactions_from_excel(
     headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
     header_map = {name: idx for idx, name in enumerate(headers)}
 
-    def col(row, keys: List[str]) -> Optional[str]:
+    def col(row, keys: List[str], allow_number: bool = True):
         for key in keys:
             for name, idx in header_map.items():
                 if key in name and idx < len(row):
-                    raw = row[idx]
+                    raw = row[idx] if idx < len(row) else None
                     if raw is None:
                         continue
+                    if allow_number and isinstance(raw, (int, float)):
+                        return str(raw).strip() if raw != 0 else None
                     txt = str(raw).strip()
                     if txt:
                         return txt
@@ -1351,7 +1353,24 @@ async def import_bank_transactions_from_excel(
                 return d.isoformat()
             except Exception:
                 pass
+        if isinstance(raw_value, (int, float)):
+            try:
+                from datetime import timedelta
+                base = date(1899, 12, 30)
+                d = base + timedelta(days=int(float(raw_value)))
+                return d.isoformat()
+            except (ValueError, TypeError, OverflowError):
+                pass
         text = str(raw_value).strip()
+        try:
+            serial = float(text)
+            if 1000 < serial < 100000:
+                from datetime import timedelta
+                base = date(1899, 12, 30)
+                d = base + timedelta(days=int(serial))
+                return d.isoformat()
+        except (ValueError, TypeError):
+            pass
         if not text:
             return None
         for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
@@ -1438,10 +1457,16 @@ async def import_bank_transactions_from_excel(
     for idx, row in enumerate(rows[1:], start=2):
         row = list(row) if row else []
         date_str = parse_date_any(col(row, ["дата", "date"]))
-        amount_raw = col(row, ["сумма", "amount", "зачисление"])
+        if not date_str:
+            for name, idx in header_map.items():
+                if "дата" in name and idx < len(row) and row[idx] is not None:
+                    date_str = parse_date_any(row[idx])
+                    if date_str:
+                        break
+        amount_raw = col(row, ["сумма", "amount", "зачисление", "кредит"])
         amount = parse_amount(amount_raw)
         if amount is None or amount <= 0:
-            amount = parse_amount(col(row, ["списание"]))
+            amount = parse_amount(col(row, ["списание", "дебет"]))
             if amount is not None and amount > 0:
                 amount = -amount
         payer_name = col(row, ["фио", "плательщик", "payer"])
@@ -1489,7 +1514,12 @@ async def import_bank_transactions_from_excel(
         imported += 1
 
     db.commit()
-    return {"imported": imported, "skipped": skipped, "errors": []}
+    errors: List[str] = []
+    if imported == 0 and skipped > 0:
+        errors.append(
+            "Ни одна строка не подошла. Проверьте: в первой строке — заголовки (Дата, Зачисление/Списание или Кредит/Дебет, Назначение/Контрагент); даты в формате ДД.ММ.ГГГГ или число Excel; суммы — числа с запятой или точкой."
+        )
+    return {"imported": imported, "skipped": skipped, "errors": errors}
 
 @router.get("/student-cards/{card_id}", response_model=StudentCardResponse)
 async def get_student_card(

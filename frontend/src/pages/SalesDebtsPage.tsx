@@ -69,7 +69,11 @@ const SalesDebtsPage: React.FC = () => {
     ambiguous: number;
   } | null>(null);
   const [importFileRunning, setImportFileRunning] = useState(false);
-  const [importFileResult, setImportFileResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [importFileResult, setImportFileResult] = useState<{
+    imported: number;
+    skipped: number;
+    errors?: string[];
+  } | null>(null);
 
   const statusFilter = tab === 0 ? undefined : tab === 1 ? 'overdue' : tab === 2 ? 'due_soon' : undefined;
 
@@ -214,7 +218,11 @@ const SalesDebtsPage: React.FC = () => {
                       setImportFileRunning(true);
                       setImportFileResult(null);
                       const res = await salesApi.importBankTransactionsXlsx(file);
-                      setImportFileResult({ imported: res.imported ?? 0, skipped: res.skipped ?? 0 });
+                      setImportFileResult({
+                        imported: res.imported ?? 0,
+                        skipped: res.skipped ?? 0,
+                        errors: res.errors,
+                      });
                       await loadBankTransactions();
                     } catch (err: any) {
                       setError(extractApiError(err, 'Ошибка импорта из файла'));
@@ -241,6 +249,11 @@ const SalesDebtsPage: React.FC = () => {
                 <Typography variant="body2">
                   Из файла добавлено операций: <strong>{importFileResult.imported}</strong>, пропущено (дубли или некорректные строки): {importFileResult.skipped}.
                 </Typography>
+                {importFileResult.errors && importFileResult.errors.length > 0 && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    {importFileResult.errors.join(' ')}
+                  </Typography>
+                )}
               </Box>
             )}
             <Table size="small">

@@ -102,7 +102,7 @@ async def get_lessons_for_date(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """╨Ч╨░╨╜╤П╤В╨╕╤П ╤В╤А╨╡╨╜╨╡╤А╨░ ╨╜╨░ ╤Г╨║╨░╨╖╨░╨╜╨╜╤Г╤О ╨┤╨░╤В╤Г (╨┐╨╛ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤О ╨│╤А╤Г╨┐╨┐). ╨в╨╛╨╗╤М╨║╨╛ ╨┤╨╗╤П ╤В╤А╨╡╨╜╨╡╤А╨░."""
+    """Занятия тренера на указанную дату (по расписанию групп). Только для тренера."""
     weekday = lesson_date.weekday()  # 0=Monday, 6=Sunday
     if current_user.role == UserRole.TRAINER:
         groups = db.query(Group).options(selectinload(Group.trainer)).filter(
@@ -112,7 +112,7 @@ async def get_lessons_for_date(
     elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         groups = db.query(Group).options(selectinload(Group.trainer)).filter(Group.status == GroupStatus.ACTIVE).all()
     else:
-        raise HTTPException(status_code=403, detail="Only for trainers or admin/owner/sales")
+        raise HTTPException(status_code=403, detail="Только для тренера или администратора/владельца/менеджера")
     # Не показывать слоты раньше начала группы
     groups_for_day = [
         g for g in groups
@@ -334,14 +334,15 @@ async def save_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """╨б╨╛╤Е╤А╨░╨╜╨╕╤В╤М ╨┐╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М ╨┐╨╛ ╨╖╨░╨╜╤П╤В╨╕╤О. ╨в╨╛╨╗╤М╨║╨╛ ╤В╤А╨╡╨╜╨╡╤А ╤Б╨▓╨╛╨╡╨╣ ╨│╤А╤Г╨┐╨┐╤Л."""
-    if current_user.role != UserRole.TRAINER:
-        raise HTTPException(status_code=403, detail="Only for trainers")
+    """Сохранить посещаемость по занятию. Тренер — только своей группы; admin/owner/sales — любой группы."""
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    if group.trainer_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your group")
+    if current_user.role == UserRole.TRAINER:
+        if group.trainer_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not your group")
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Only trainer (own group) or admin/owner/sales")
 
     if getattr(group, "start_date", None) and payload.lesson_date < group.start_date:
         raise HTTPException(
@@ -628,7 +629,7 @@ async def list_trainer_custom_lessons(
 ):
     """Список ручных уроков, где текущий пользователь — ведущий тренер. Только для тренера."""
     if current_user.role != UserRole.TRAINER:
-        raise HTTPException(status_code=403, detail="Only for trainers")
+        raise HTTPException(status_code=403, detail="Только для тренеров")
     query = db.query(CustomLesson).filter(CustomLesson.trainer_id == current_user.id)
     if date_from:
         query = query.filter(CustomLesson.lesson_date >= date_from)
@@ -646,7 +647,7 @@ async def save_custom_lesson_attendance(
 ):
     """Посещаемость по ручному уроку (без группы). Только для тренера этого урока."""
     if current_user.role != UserRole.TRAINER:
-        raise HTTPException(status_code=403, detail="Only for trainers")
+        raise HTTPException(status_code=403, detail="Только для тренеров")
 
     lesson = db.query(CustomLesson).filter(CustomLesson.id == payload.lesson_id).first()
     if not lesson:

@@ -520,12 +520,12 @@ class CloseByFactConfirm(BaseModel):
 class LeadBase(BaseModel):
     contact_name: str
     phone: str
-    parent_full_name: str = Field(..., min_length=1)  # ╨д╨Ш╨Ю ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П тАФ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛
-    parent_phone: str = Field(..., min_length=1)  # ╨в╨╡╨╗╨╡╤Д╨╛╨╜ ╤А╨╛╨┤╨╕╤В╨╡╨╗╤П тАФ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜
+    parent_full_name: str = Field(..., min_length=1)  # ФИО родителя — обязательно
+    parent_phone: str = Field(..., min_length=1)  # Телефон родителя — обязательно
     child_full_name: Optional[str] = None
     child_phone: Optional[str] = None
     email: Optional[EmailStr] = None
-    city: str = Field(..., min_length=1)  # ╨У╨╛╤А╨╛╨┤ тАФ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜
+    city: str = Field(..., min_length=1)  # Город — обязательно
     school_name: Optional[str] = None
     school_class: Optional[str] = None
     outreach_at: Optional[datetime] = None
@@ -603,7 +603,7 @@ class LeadStatusOptionResponse(LeadStatusOptionBase):
 
 
 class LeadResponse(BaseModel):
-    """╨б╤Е╨╡╨╝╨░ ╨╛╤В╨▓╨╡╤В╨░ ╨┐╨╛ ╨╗╨╕╨┤╤Г: ╨▓╤Б╨╡ ╨┐╨╛╨╗╤П ╨║╨╛╨╜╤В╨░╨║╤В╨░ ╨┤╨╛╨┐╤Г╤Б╨║╨░╤О╤В None ╨┤╨╗╤П ╤Б╤В╨░╤А╤Л╤Е ╨╖╨░╨┐╨╕╤Б╨╡╨╣ ╨▓ ╨С╨Ф."""
+    """Схема ответа по лиду: все поля контакта допускают None для старых записей в БД."""
     id: int
     owner_id: int
     contact_name: str
@@ -1370,7 +1370,7 @@ class LessonCallResultUpdate(BaseModel):
     call_result: str  # contacted | no_answer | cancelled | technical | messenger
 
 
-# ╨Ч╨░╨╜╤П╤В╨╕╨╡ ╨┤╨╗╤П ╨║╨░╨╗╨╡╨╜╨┤╨░╤А╤П ╤В╤А╨╡╨╜╨╡╤А╨░ (╨│╤А╤Г╨┐╨┐╨░ + ╤Б╨╗╨╛╤В ╨┐╨╛ ╤А╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╤О + ╤Г╤З╨╡╨╜╨╕╨║╨╕ ╨╕ ╨╛╤В╨╝╨╡╤В╨║╨╕)
+# Занятия для календаря тренера (группа + слот по расписанию + ученики и отметки)
 class TrainerLessonSlotResponse(BaseModel):
     group_id: int
     group_name: str
@@ -1945,10 +1945,10 @@ class TaskResponse(BaseModel):
 
 # Owner funnels (support letters, thank you letters, events)
 class OwnerFunnelTypeInfo(BaseModel):
-    """╨в╨╕╨┐ ╨▓╨╛╤А╨╛╨╜╨║╨╕: id ╨╕ ╤Н╤В╨░╨┐╤Л ╨┤╨╗╤П ╨▓╤Л╨▒╨╛╤А╨░ ╨▓ UI."""
+    """Тип воронки: id и этапы для выбора в UI."""
     id: str
     label: str
-    stages: List[dict]  # [{"value": "new", "label": "╨Э╨╛╨▓╨╛╨╡"}, ...]
+    stages: List[dict]  # [{"value": "new", "label": "Новое"}, ...]
 
 
 class OwnerFunnelEventCreate(BaseModel):
@@ -1971,7 +1971,7 @@ class OwnerFunnelItemCreate(BaseModel):
     stage: str = "new"
     title: Optional[str] = None
     comment: Optional[str] = None
-    event_id: Optional[int] = None  # ╨┤╨╗╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П тАФ ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛
+    event_id: Optional[int] = None  # для воронки Мероприятие — обязательно
     card_data: Optional[dict] = None
 
 
@@ -1980,7 +1980,7 @@ class OwnerFunnelItemUpdate(BaseModel):
     title: Optional[str] = None
     comment: Optional[str] = None
     card_data: Optional[dict] = None
-    # ╨┐╨╛╨╗╤П popup ╨┤╨╗╤П ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П (╨╝╨╡╤А╨╢╨░╤В╤Б╤П ╨▓ card_data ╨┐╤А╨╕ ╤Б╨╝╨╡╨╜╨╡ ╤Н╤В╨░╨┐╨░)
+    # поля для воронки Мероприятие: мержатся при смене этапа
     contact_fio: Optional[str] = None
     contact_phone: Optional[str] = None
     contact_comment: Optional[str] = None

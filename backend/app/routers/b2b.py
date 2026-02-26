@@ -107,7 +107,7 @@ async def list_b2b_school_cities(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨б╨┐╨╕╤Б╨╛╨║ ╨│╨╛╤А╨╛╨┤╨╛╨▓, ╨▓ ╨║╨╛╤В╨╛╤А╤Л╤Е ╨╡╤Б╤В╤М B2B ╤И╨║╨╛╨╗╤Л (╨┤╨╗╤П ╨▓╤Л╨▒╨╛╤А╨░ ╨┐╤А╨╕ ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╨╕ ╤И╨║╨╛╨╗ ╨▓ ╨▓╨╛╤А╨╛╨╜╨║╤Г)."""
+    """╨б╨┐╨╕╤Б╨╛╨║╨│╨╛╤А╨╛╨┤╨╛╨▓╨▓╨║╨╛╤В╨╛╤А╤Л╤Е╨╡╤Б╤В╤М╤И╨║╨╛╨╗╤Л╨┤╨╗╤П╨▓╤Л╨▒╨╛╤А╨░╨┐╤А╨╕╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╨╕╤И╨║╨╛╨╗╨▓╨▓╨╛╤А╨╛╨╜╨║╤Г"""
     rows = db.query(distinct(B2BSchool.city)).filter(B2BSchool.city.isnot(None)).filter(B2BSchool.city != "").order_by(B2BSchool.city).all()
     return [r[0] for r in rows if r[0] and r[0].strip()]
 

@@ -1,4 +1,4 @@
-"""╨Т╨╛╤А╨╛╨╜╨║╨╕ ╨┤╨╗╤П ╤А╨╛╨╗╨╕ owner: ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕, ╨┐╨╕╤Б╤М╨╝╨░ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕, ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П."""
+"""Воронки для роли owner: письма поддержки, письма благодарности, мероприятия"""
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -29,7 +29,7 @@ from app.models import User
 
 router = APIRouter()
 
-# ╨б╨┐╨╕╤Б╨╛╨║ ╨▓╨╛╤А╨╛╨╜╨╛╨║ ╨┤╨╗╤П ╨▓╤Л╨▒╨╛╤А╨░ (id, label, stages)
+# ╨б╨┐╨╕╤Б╨╛╨║╨▓╨╛╤А╨╛╨╜╨╛╨║╨┤╨╗╤П╨▓╤Л╨▒╨╛╤А╨░
 
 # Russian labels as Unicode escapes (no file encoding issues)
 FUNNEL_TYPE_LABELS = {
@@ -113,7 +113,7 @@ def _validate_funnel_and_stage(funnel_type: str, stage: str) -> None:
 async def list_owner_funnel_types(
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨б╨┐╨╕╤Б╨╛╨║ ╤В╨╕╨┐╨╛╨▓ ╨▓╨╛╤А╨╛╨╜╨╛╨║ ╤Б ╤Н╤В╨░╨┐╨░╨╝╨╕ ╨┤╨╗╤П ╨▓╤Л╨▒╨╛╤А╨░ ╨▓╨╛╤А╨╛╨╜╨║╨╕."""
+    """╨б╨┐╨╕╤Б╨╛╨║╤В╨╕╨┐╨╛╨▓╨▓╨╛╤А╨╛╨╜╨╛╨║╤Б╤Н╤В╨░╨┐╨░╨╝╨╕╨┤╨╗╤П╨▓╤Л╨▒╨╛╤А╨░╨▓╨╛╤А╨╛╨╜╨║╨╕"""
     return [
         OwnerFunnelTypeInfo(
             id=ft,
@@ -129,7 +129,7 @@ async def list_owner_funnel_events(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨б╨┐╨╕╤Б╨╛╨║ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣ (╨▓╨╛╤А╨╛╨╜╨╛╨║). ╨Ъ╨░╨╢╨┤╨╛╨╡ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ тАФ ╨┤╨╛╤Б╨║╨░ ╤Б ╤Н╤В╨░╨┐╨░╨╝╨╕."""
+    """╨б╨┐╨╕╤Б╨╛╨║╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣╨▓╨╛╤А╨╛╨╜╨╛╨║╨Ъ╨░╨╢╨┤╨╛╨╡╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡╨┤╨╛╤Б╨║╨░╤Б╤Н╤В╨░╨┐╨░╨╝╨╕"""
     events = db.query(OwnerFunnelEvent).order_by(OwnerFunnelEvent.created_at.desc()).all()
     return [
         OwnerFunnelEventResponse(
@@ -153,7 +153,7 @@ async def add_schools_by_city_to_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╨▓ ╨▓╨╛╤А╨╛╨╜╨║╤Г ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П ╨▓╤Б╨╡ B2B ╤И╨║╨╛╨╗╤Л ╨╕╨╖ ╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨│╨╛ ╨│╨╛╤А╨╛╨┤╨░. ╨и╨║╨╛╨╗╤Л, ╤Г╨╢╨╡ ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╜╤Л╨╡ ╨▓ ╨▓╨╛╤А╨╛╨╜╨║╤Г (╨┐╨╛ b2b_school_id ╨▓ card_data), ╨┐╤А╨╛╨┐╤Г╤Б╨║╨░╤О╤В╤Б╤П."""
+    """╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М╨▓╨▓╨╛╤А╨╛╨╜╨║╤Г╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П╨▓╤Б╨╡╤И╨║╨╛╨╗╤Л╨╕╨╖╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨│╨╛╨│╨╛╤А╨╛╨┤╨░╨и╨║╨╛╨╗╤Л╤Г╨╢╨╡╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╜╤Л╨╡╨▓╨▓╨╛╤А╨╛╨╜╨║╤Г╨┐╨╛╨▓╨┐╤А╨╛╨┐╤Г╤Б╨║╨░╤О╤В╤Б╤П"""
     event = db.query(OwnerFunnelEvent).filter(OwnerFunnelEvent.id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -197,7 +197,7 @@ async def create_owner_funnel_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨б╨╛╨╖╨┤╨░╤В╤М ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ (╨▓╨╛╤А╨╛╨╜╨║╤Г ╤Б ╨╜╨░╨╖╨▓╨░╨╜╨╕╨╡╨╝ ╨╕ ╨┤╨░╤В╨░╨╝╨╕). ╨Ъ╨░╤А╤В╨╛╤З╨║╨╕ ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨░╤Е ╨┤╨╛╨▒╨░╨▓╨╗╤П╤О╤В╤Б╤П ╨╛╤В╨┤╨╡╨╗╤М╨╜╨╛."""
+    """╨б╨╛╨╖╨┤╨░╤В╤М╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡╨▓╨╛╤А╨╛╨╜╨║╤Г╤Б╨╜╨░╨╖╨▓╨░╨╜╨╕╨╡╨╝╨╕╨┤╨░╤В╨░╨╝╨╕╨Ъ╨░╤А╤В╨╛╤З╨║╨╕╨▓╨║╨╛╨╗╨╛╨╜╨║╨░╤Е╨┤╨╛╨▒╨░╨▓╨╗╤П╤О╤В╤Б╤П╨╛╤В╨┤╨╡╨╗╤М╨╜╨╛"""
     event = OwnerFunnelEvent(
         event_name=payload.event_name.strip(),
         event_dates=payload.event_dates.strip() if payload.event_dates else None,
@@ -216,12 +216,12 @@ async def create_owner_funnel_event(
 @router.get("/owner-funnels/items", response_model=List[OwnerFunnelItemResponse])
 async def list_owner_funnel_items(
     funnel_type: str = Query(..., description="support_letters | thank_you_letters | events"),
-    event_id: Optional[int] = Query(default=None, description="╨Ф╨╗╤П funnel_type=events ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛"),
+    event_id: Optional[int] = Query(default=None, description="╨Ф╨╗╤П╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛"),
     stage: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨б╨┐╨╕╤Б╨╛╨║ ╤Н╨╗╨╡╨╝╨╡╨╜╤В╨╛╨▓ ╨▓╨╛╤А╨╛╨╜╨║╨╕. ╨Ф╨╗╤П events ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜ event_id тАФ ╨║╨░╤А╤В╨╛╤З╨║╨╕ ╨▓╨╜╤Г╤В╤А╨╕ ╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨│╨╛ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П."""
+    """╨б╨┐╨╕╤Б╨╛╨║╤Н╨╗╨╡╨╝╨╡╨╜╤В╨╛╨▓╨▓╨╛╤А╨╛╨╜╨║╨╕╨Ф╨╗╤П╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜╨║╨░╤А╤В╨╛╤З╨║╨╕╨▓╨╜╤Г╤В╤А╨╕╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨│╨╛╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П"""
     if funnel_type not in OWNER_FUNNEL_STAGES:
         raise HTTPException(status_code=400, detail=f"Unknown funnel_type: {funnel_type}")
     if funnel_type == OWNER_FUNNEL_EVENTS and event_id is None:
@@ -255,12 +255,12 @@ async def create_owner_funnel_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨б╨╛╨╖╨┤╨░╤В╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В ╨▓╨╛╤А╨╛╨╜╨║╨╕ (╨║╨░╤А╤В╨╛╤З╨║╤Г). ╨Ф╨╗╤П events ╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜ event_id тАФ ╨║╨░╤А╤В╨╛╤З╨║╨░ ╨▓╨╜╤Г╤В╤А╨╕ ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П."""
+    """╨б╨╛╨╖╨┤╨░╤В╤М╤Н╨╗╨╡╨╝╨╡╨╜╤В╨▓╨╛╤А╨╛╨╜╨║╨╕╨║╨░╤А╤В╨╛╤З╨║╤Г╨Ф╨╗╤П╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜╨║╨░╤А╤В╨╛╤З╨║╨░╨▓╨╜╤Г╤В╤А╨╕╨▓╨╛╤А╨╛╨╜╨║╨╕╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П"""
     _validate_funnel_and_stage(payload.funnel_type, payload.stage)
     if payload.funnel_type == OWNER_FUNNEL_EVENTS:
         if payload.event_id is None:
             raise HTTPException(status_code=400, detail="For events funnel event_id is required")
-        # ╨║╨░╤А╤В╨╛╤З╨║╨░ ╨▓╨╜╤Г╤В╤А╨╕ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П: stage_dates ╨┐╤А╨╕ ╨┐╨╡╤А╨▓╨╛╨╝ ╨┐╨╡╤А╨╡╤Е╨╛╨┤╨╡ ╨╖╨░╨┐╨╛╨╗╨╜╤П╤В╤Б╤П
+        # ╨║╨░╤А╤В╨╛╤З╨║╨░╨▓╨╜╤Г╤В╤А╨╕╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П╨┐╤А╨╕╨┐╨╡╤А╨▓╨╛╨╝╨┐╨╡╤А╨╡╤Е╨╛╨┤╨╡╨╖╨░╨┐╨╛╨╗╨╜╤П╤В╤Б╤П
         card_data = dict(payload.card_data or {})
         card_data.setdefault("stage_dates", {})[payload.stage] = datetime.now(timezone.utc).isoformat()
     else:
@@ -295,7 +295,7 @@ async def get_owner_funnel_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨Я╨╛╨╗╤Г╤З╨╕╤В╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В ╨┐╨╛ id."""
+    """╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╤Н╨╗╨╡╨╝╨╡╨╜╤В╨┐╨╛"""
     item = db.query(OwnerFunnelItem).filter(OwnerFunnelItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -313,7 +313,7 @@ async def get_owner_funnel_item(
 
 
 def _merge_events_card_data(item: OwnerFunnelItem, payload: OwnerFunnelItemUpdate) -> None:
-    """╨Я╤А╨╕ ╤Б╨╝╨╡╨╜╨╡ ╤Н╤В╨░╨┐╨░ ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П ╨╝╨╡╤А╨╢╨╕╨╝ popup-╨┐╨╛╨╗╤П ╨▓ card_data ╨╕ ╤Д╨╕╨║╤Б╨╕╤А╤Г╨╡╨╝ ╨┤╨░╤В╤Г ╤Н╤В╨░╨┐╨░."""
+    """╨Я╤А╨╕╤Б╨╝╨╡╨╜╨╡╤Н╤В╨░╨┐╨░╨▓╨╛╤А╨╛╨╜╨║╨╕╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П╨╝╨╡╤А╨╢╨╕╨╝╨┐╨╛╨╗╤П╨▓╨╕╤Д╨╕╨║╤Б╨╕╤А╤Г╨╡╨╝╨┤╨░╤В╤Г╤Н╤В╨░╨┐╨░"""
     if item.funnel_type != OWNER_FUNNEL_EVENTS:
         if payload.card_data is not None:
             item.card_data = payload.card_data
@@ -353,7 +353,7 @@ async def update_owner_funnel_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨Ю╨▒╨╜╨╛╨▓╨╕╤В╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В (╨▓ ╤В.╤З. ╨┐╨╡╤А╨╡╨╜╨╛╤Б ╨┐╨╛ ╤Н╤В╨░╨┐╨░╨╝). ╨Ф╨╗╤П events popup-╨┐╨╛╨╗╤П ╤Б╨╛╤Е╤А╨░╨╜╤П╤О╤В╤Б╤П ╨▓ card_data."""
+    """╨Ю╨▒╨╜╨╛╨▓╨╕╤В╤М╤Н╨╗╨╡╨╝╨╡╨╜╤В╨▓╤В╤З╨┐╨╡╤А╨╡╨╜╨╛╤Б╨┐╨╛╤Н╤В╨░╨┐╨░╨╝╨Ф╨╗╤П╨┐╨╛╨╗╤П╤Б╨╛╤Е╤А╨░╨╜╤П╤О╤В╤Б╤П╨▓"""
     item = db.query(OwnerFunnelItem).filter(OwnerFunnelItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -388,7 +388,7 @@ async def delete_owner_funnel_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    """╨г╨┤╨░╨╗╨╕╤В╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В."""
+    """╨г╨┤╨░╨╗╨╕╤В╤М╤Н╨╗╨╡╨╝╨╡╨╜╤В"""
     item = db.query(OwnerFunnelItem).filter(OwnerFunnelItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")

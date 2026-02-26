@@ -7,8 +7,8 @@ import os
 import enum
 from app.database import Base
 
-# ╨Я╤А╨╕ ╨╖╨░╨┐╨╕╤Б╨╕ ╨▓ PostgreSQL ╨▓╤Б╨╡╨│╨┤╨░ ╨╛╤В╨┐╤А╨░╨▓╨╗╤П╨╡╨╝ lowercase (value), ╤В.╨║. ╨╝╨╕╨│╤А╨░╤Ж╨╕╨╕ ╤Б╨╛╨╖╨┤╨░╤О╤В enum ╤Б 'active', 'archived'.
-# ╨Я╤А╨╕ ╤З╤В╨╡╨╜╨╕╨╕ ╨┤╤А╨░╨╣╨▓╨╡╤А ╨╝╨╛╨╢╨╡╤В ╨▓╨╡╤А╨╜╤Г╤В╤М 'ACTIVE' тАФ ╨╜╨╛╤А╨╝╨░╨╗╨╕╨╖╤Г╨╡╨╝ ╨▓ TypeDecorator.
+# При записи в PostgreSQL всегда отправляем lowercase (value), т.к. миграции создают enum с 'active', 'archived'.
+# При чтении драйвер может вернуть 'ACTIVE' — нормализуем в TypeDecorator.
 
 
 class UserRole(str, enum.Enum):
@@ -71,8 +71,8 @@ def _enum_values(enum_cls):
 
 
 def _lowercase_enum_type(enum_cls, size=20, use_uppercase_for_pg=False):
-    """TypeDecorator: ╨┐╤А╨╕ ╨╖╨░╨┐╨╕╤Б╨╕ ╨▓ PostgreSQL (╨╡╤Б╨╗╨╕ use_uppercase_for_pg=True) тАФ ╨╕╨╝╤П (ACTIVE), ╨╕╨╜╨░╤З╨╡ value (active);
-    ╨┐╤А╨╕ ╤З╤В╨╡╨╜╨╕╨╕ ╨┐╤А╨╕╨╜╨╕╨╝╨░╨╡╤В ╨╗╤О╨▒╨╛╨╣ ╤А╨╡╨│╨╕╤Б╤В╤А."""
+    """TypeDecorator: ╨┐╤А╨╕╨╖╨░╨┐╨╕╤Б╨╕╨▓╨╡╤Б╨╗╨╕╨╕╨╝╤П╨╕╨╜╨░╤З╨╡
+    ╨┐╤А╨╕╤З╤В╨╡╨╜╨╕╨╕╨┐╤А╨╕╨╜╨╕╨╝╨░╨╡╤В╨╗╤О╨▒╨╛╨╣╤А╨╡╨│╨╕╤Б╤В╤А"""
     enum_map = {e.value.lower(): e for e in enum_cls}
     name_to_enum = {e.name.upper(): e for e in enum_cls}
 
@@ -165,7 +165,7 @@ class Student(Base):
     group_students = relationship("GroupStudent", back_populates="student")
     student_programs = relationship("StudentProgram", back_populates="student")
     lesson_attendances = relationship("LessonAttendance", back_populates="student", cascade="all, delete-orphan")
-    # ╨Р╨║╤В╨╕╨▓╨╜╤Л╨╡ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ (╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╤Г╤О╤В╤Б╤П ╨▓ programs ╤З╨╡╤А╨╡╨╖ property ╨╜╨╕╨╢╨╡)
+    # ╨Р╨║╤В╨╕╨▓╨╜╤Л╨╡╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П╨┐╤А╨╛╨│╤А╨░╨╝╨╝╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╤Г╤О╤В╤Б╤П╨▓╤З╨╡╤А╨╡╨╖╨╜╨╕╨╢╨╡
     grades = relationship("Grade", back_populates="student")
     characteristics = relationship("Characteristic", back_populates="student")
     abonement = relationship("Abonement", back_populates="students")
@@ -173,7 +173,7 @@ class Student(Base):
 
     @property
     def programs(self):
-        """╨б╨┐╨╕╤Б╨╛╨║ ╨░╨║╤В╨╕╨▓╨╜╤Л╤Е ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ ╤Г╤З╨╡╨╜╨╕╨║╨░ (╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╤Б╨╛ status=active)."""
+        """╨б╨┐╨╕╤Б╨╛╨║╨░╨║╤В╨╕╨▓╨╜╤Л╤Е╨┐╤А╨╛╨│╤А╨░╨╝╨╝╤Г╤З╨╡╨╜╨╕╨║╨░╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╤П╤Б╨╛"""
         from app.models import StudentProgramLinkStatus
         return [
             sp.program for sp in self.student_programs
@@ -261,12 +261,12 @@ class LeadStatus(str, enum.Enum):
     INVOICE_SENT = "invoice_sent"
     WON = "won"
     LOST = "lost"
-    # ╨Т╨╛╤А╨╛╨╜╨║╨░ ╨┐╤А╨╛╨┤╨░╨╢ (╨╜╨╛╨▓╨░╤П)
+    # ╨Т╨╛╤А╨╛╨╜╨║╨░╨┐╤А╨╛╨┤╨░╨╢╨╜╨╛╨▓╨░╤П
     THINKING = "thinking"  # ╨Я╨╛╨┤╤Г╨╝╨░╤О╤В
     REFUSED = "refused"  # ╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П
-    TRIAL_SCHEDULED = "trial_scheduled"  # ╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨┐╤А╨╛╨▒╨╜╨╛╨╡
-    EVENT_REGISTERED = "event_registered"  # ╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П ╨╜╨░ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡
-    DECIDED_IMMEDIATELY = "decided_immediately"  # ╨а╨╡╤И╨╕╨╗ ╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П ╤Б╤А╨░╨╖╤Г
+    TRIAL_SCHEDULED = "trial_scheduled"  # ╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П╨╜╨░╨┐╤А╨╛╨▒╨╜╨╛╨╡
+    EVENT_REGISTERED = "event_registered"  # ╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П╨╜╨░╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡
+    DECIDED_IMMEDIATELY = "decided_immediately"  # ╨а╨╡╤И╨╕╨╗╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П╤Б╤А╨░╨╖╤Г
 
 
 class Lead(Base):
@@ -302,7 +302,7 @@ class Lead(Base):
     desired_slot = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
     next_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    no_answer_attempt = Column(Integer, nullable=True, index=True)  # 1, 2 ╨╕╨╗╨╕ 3 ╨┤╨╗╤П ╨║╨╛╨╗╨╛╨╜╨║╨╕ ╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜
+    no_answer_attempt = Column(Integer, nullable=True, index=True)  # 1, 2 ╨╕╨╗╨╕╨┤╨╗╤П╨║╨╛╨╗╨╛╨╜╨║╨╕╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜
     pause_reason = Column(String, nullable=True)
     lost_reason = Column(String, nullable=True)
     questionnaire_filled = Column(Boolean, default=False, nullable=False, index=True)
@@ -683,12 +683,12 @@ class Group(Base):
     # Relationships
     trainer = relationship("User", back_populates="trainer_groups", foreign_keys=[trainer_id])
     group_students = relationship("GroupStudent", back_populates="group")
-    # ╨г╨┤╨╛╨▒╨╜╨░╤П ╤Б╨▓╤П╨╖╤М "╨╝╨╜╨╛╨│╨╕╨╡-╨║╨╛-╨╝╨╜╨╛╨│╨╕╨╝" ╨┤╨╗╤П ╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕ ╨▓ GroupResponse.students
+    # ╨г╨┤╨╛╨▒╨╜╨░╤П╤Б╨▓╤П╨╖╤М"╨╝╨╜╨╛╨│╨╕╨╡╨║╨╛╨╝╨╜╨╛╨│╨╕╨╝" ╨┤╨╗╤П╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕╨▓
     students = relationship("Student", secondary="group_students", viewonly=True)
     group_programs = relationship("GroupProgram", back_populates="group")
     group_schedules = relationship("GroupSchedule", back_populates="group", cascade="all, delete-orphan")
     lesson_attendances = relationship("LessonAttendance", back_populates="group", cascade="all, delete-orphan")
-    # ╨г╨┤╨╛╨▒╨╜╨░╤П ╤Б╨▓╤П╨╖╤М ╨┤╨╗╤П ╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕ ╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╤Е ╨┐╤А╨╛╨│╤А╨░╨╝╨╝ ╨│╤А╤Г╨┐╨┐╤Л
+    # ╨г╨┤╨╛╨▒╨╜╨░╤П╤Б╨▓╤П╨╖╤М╨┤╨╗╤П╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╤Е╨┐╤А╨╛╨│╤А╨░╨╝╨╝╨│╤А╤Г╨┐╨┐╤Л
     lesson_cancellations = relationship("LessonCancellation", back_populates="group", cascade="all, delete-orphan")
     lesson_trainer_overrides = relationship("LessonTrainerOverride", back_populates="group", cascade="all, delete-orphan")
     lesson_slot_extra_policies = relationship("LessonSlotExtraPolicy", back_populates="group", cascade="all, delete-orphan")
@@ -709,7 +709,7 @@ class GroupStudent(Base):
 
 
 class GroupSchedule(Base):
-    """╨а╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡ ╨╖╨░╨╜╤П╤В╨╕╨╣ ╨│╤А╤Г╨┐╨┐╤Л: ╨┤╨╡╨╜╤М ╨╜╨╡╨┤╨╡╨╗╨╕ ╨╕ ╨▓╤А╨╡╨╝╤П (0=╨Я╨╜, 6=╨Т╤Б)."""
+    """╨а╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡╨╖╨░╨╜╤П╤В╨╕╨╣╨│╤А╤Г╨┐╨┐╤Л╨┤╨╡╨╜╤М╨╜╨╡╨┤╨╡╨╗╨╕╨╕╨▓╤А╨╡╨╝╤П╨Я╨╜╨Т╤Б"""
     __tablename__ = "group_schedules"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -774,7 +774,7 @@ class ProjectCard(Base):
 
 
 class LessonAttendance(Base):
-    """╨Я╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М: ╨║╤В╨╛ ╨▒╤Л╨╗ ╨╜╨░ ╨╖╨░╨╜╤П╤В╨╕╨╕ (╨│╤А╤Г╨┐╨┐╨░ + ╨┤╨░╤В╨░)."""
+    """╨Я╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М╨║╤В╨╛╨▒╤Л╨╗╨╜╨░╨╖╨░╨╜╤П╤В╨╕╨╕╨│╤А╤Г╨┐╨┐╨░╨┤╨░╤В╨░"""
     __tablename__ = "lesson_attendance"
     __table_args__ = (UniqueConstraint("group_id", "lesson_date", "student_id", name="uq_lesson_attendance_group_date_student"),)
 
@@ -994,7 +994,7 @@ class Topic(Base):
     module_id = Column(Integer, ForeignKey("modules.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    final_result = Column(Text, nullable=True)  # ╨Ш╤В╨╛╨│ ╤В╨╡╨╝╤Л ╨┤╨╗╤П ╤Г╤З╨╡╨╜╨╕╨║╨░
+    final_result = Column(Text, nullable=True)  # ╨Ш╤В╨╛╨│╤В╨╡╨╝╤Л╨┤╨╗╤П╤Г╤З╨╡╨╜╨╕╨║╨░
     order = Column(Integer, default=0)
     status = Column(_TopicStatusType(), default=TopicStatus.ACTIVE)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -1074,7 +1074,7 @@ class Characteristic(Base):
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     month = Column(Integer, nullable=False)  # 1-12
     year = Column(Integer, nullable=False)
-    data = Column(JSON, nullable=False)  # ╨Ф╨╕╨╜╨░╨╝╨╕╤З╨╡╤Б╨║╨╕╨╡ ╨┐╨╛╨╗╤П ╤Д╨╛╤А╨╝╤Л
+    data = Column(JSON, nullable=False)  # ╨Ф╨╕╨╜╨░╨╝╨╕╤З╨╡╤Б╨║╨╕╨╡╨┐╨╛╨╗╤П╤Д╨╛╤А╨╝╤Л
     status = Column(_CharacteristicStatusType(), default=CharacteristicStatus.DRAFT)
     admin_comment = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -1091,7 +1091,7 @@ class CharacteristicTemplate(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    fields = Column(JSON, nullable=False)  # ╨б╤Е╨╡╨╝╨░ ╨┐╨╛╨╗╨╡╨╣ ╤Д╨╛╤А╨╝╤Л
+    fields = Column(JSON, nullable=False)  # ╨б╤Е╨╡╨╝╨░╨┐╨╛╨╗╨╡╨╣╤Д╨╛╤А╨╝╤Л
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -1144,8 +1144,8 @@ class B2BSchoolPipelineStage(str, enum.Enum):
 
 
 class B2BSchoolFriendshipDegree(str, enum.Enum):
-    UNKNOWN = "unknown"           # ╨╜╨╡ ╨╖╨╜╨░╨╡╨╝ ╨┤╤А╤Г╨│ ╨┤╤А╤Г╨│╨░
-    INDIRECT = "indirect"         # ╨╖╨╜╨░╨╡╨╝ ╨║╨╛╤Б╨▓╨╡╨╜╨╜╨╛
+    UNKNOWN = "unknown"           # ╨╜╨╡╨╖╨╜╨░╨╡╨╝╨┤╤А╤Г╨│╨┤╤А╤Г╨│╨░
+    INDIRECT = "indirect"         # ╨╖╨╜╨░╨╡╨╝╨║╨╛╤Б╨▓╨╡╨╜╨╜╨╛
     FRIENDS = "friends"           # ╨┤╤А╤Г╨╢╨╕╨╝
     ENEMIES = "enemies"           # ╨▓╤А╨░╨│╨╕
 
@@ -1244,12 +1244,12 @@ class B2BProject(Base):
     name = Column(String, nullable=False, index=True)
     location = Column(String, nullable=True)
     main_city = Column(String, nullable=True, index=True)
-    cities = Column(JSON, nullable=True)  # ╤Б╨┐╨╕╤Б╨╛╨║ ╨│╨╛╤А╨╛╨┤╨╛╨▓, ╨║╨╛╤В╨╛╤А╤Л╨╡ ╨▓╤Е╨╛╨┤╤П╤В ╨▓ ╨┐╤А╨╛╨╡╨║╤В
+    cities = Column(JSON, nullable=True)  # ╤Б╨┐╨╕╤Б╨╛╨║╨│╨╛╤А╨╛╨┤╨╛╨▓╨║╨╛╤В╨╛╤А╤Л╨╡╨▓╤Е╨╛╨┤╤П╤В╨▓╨┐╤А╨╛╨╡╨║╤В
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
-# ╨Т╨╛╤А╨╛╨╜╨║╨╕ ╨┤╨╗╤П ╤А╨╛╨╗╨╕ owner: ╤В╨╕╨┐╤Л ╨╕ ╤Н╤В╨░╨┐╤Л ╨╖╨░╨┤╨░╨╜╤Л ╨▓ ╨║╨╛╨┤╨╡ (owner_funnels router)
+# ╨Т╨╛╤А╨╛╨╜╨║╨╕╨┤╨╗╤П╤А╨╛╨╗╨╕╤В╨╕╨┐╤Л╨╕╤Н╤В╨░╨┐╤Л╨╖╨░╨┤╨░╨╜╤Л╨▓╨║╨╛╨┤╨╡
 class TaskStatus(str, enum.Enum):
     ACTIVE = "active"
     ARCHIVED = "archived"
@@ -1338,43 +1338,43 @@ class TaskStudent(Base):
 
 
 # Owner funnel constants (owner_funnels router)
-OWNER_FUNNEL_SUPPORT_LETTERS = "support_letters"   # ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕ ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М ╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕
-OWNER_FUNNEL_THANK_YOU_LETTERS = "thank_you_letters"  # ╨Я╨╕╤Б╤М╨╝╨░ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕
+OWNER_FUNNEL_SUPPORT_LETTERS = "support_letters"   # ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╨┐╨╕╤Б╤М╨╝╨░╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╨┐╨╕╤Б╤М╨╝╨░╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕
+OWNER_FUNNEL_THANK_YOU_LETTERS = "thank_you_letters"  # ╨Я╨╕╤Б╤М╨╝╨░╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕
 OWNER_FUNNEL_EVENTS = "events"  # ╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П
 
-# ╨н╤В╨░╨┐╤Л ╨┐╨╛ ╤В╨╕╨┐╨░╨╝ ╨▓╨╛╤А╨╛╨╜╨╛╨║ (value ╨┤╨╗╤П ╨С╨Ф -> label ╨┤╨╗╤П UI)
+# ╨н╤В╨░╨┐╤Л╨┐╨╛╤В╨╕╨┐╨░╨╝╨▓╨╛╤А╨╛╨╜╨╛╨║╨┤╨╗╤П╨С╨Ф╨┤╨╗╤П
 OWNER_FUNNEL_STAGES = {
     OWNER_FUNNEL_SUPPORT_LETTERS: [
         ("new", "╨Э╨╛╨▓╨╛╨╡"),
-        ("letter_created", "╨б╨╛╨╖╨┤╨░╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
-        ("letter_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
-        ("letter_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗ ╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("letter_created", "╨б╨╛╨╖╨┤╨░╨╗╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("letter_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("letter_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨┐╨╕╤Б╤М╨╝╨╛"),
     ],
     OWNER_FUNNEL_THANK_YOU_LETTERS: [
         ("new", "╨Э╨╛╨▓╨╛╨╡"),
-        ("thank_you_formed", "╨б╤Д╨╛╤А╨╝╨╕╤А╨╛╨▓╨░╨╗╨╕ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╤М"),
-        ("thank_you_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╤М"),
-        ("school_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨░ ╤И╨║╨╛╨╗╨░"),
+        ("thank_you_formed", "╨б╤Д╨╛╤А╨╝╨╕╤А╨╛╨▓╨░╨╗╨╕╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╤М"),
+        ("thank_you_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╤М"),
+        ("school_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨░╤И╨║╨╛╨╗╨░"),
     ],
     OWNER_FUNNEL_EVENTS: [
         ("new", "╨Э╨╛╨▓╤Л╨╡"),
-        ("contact_found", "╨Ъ╨╛╨╜╤В╨░╨║╤В ╨╜╨░╨╣╨┤╨╡╨╜"),
-        ("letter_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨┐╨╕╤Б╤М╨╝╨╛"),
-        ("reply_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨╕ ╨╛╤В╨▓╨╡╤В╨╜╨╛╨╡ ╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("contact_found", "╨Ъ╨╛╨╜╤В╨░╨║╤В╨╜╨░╨╣╨┤╨╡╨╜"),
+        ("letter_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕╨┐╨╕╤Б╤М╨╝╨╛"),
+        ("reply_received", "╨Я╨╛╨╗╤Г╤З╨╕╨╗╨╕╨╛╤В╨▓╨╡╤В╨╜╨╛╨╡╨┐╨╕╤Б╤М╨╝╨╛"),
         ("reached_by_phone", "╨Ф╨╛╨╖╨▓╨╛╨╜╨╕╨╗╨╕╤Б╤М"),
         ("not_reached", "╨Э╨╡╨┤╨╛╨╖╨▓╨╛╨╜╨╕╨╗╨╕╤Б╤М"),
-        ("meeting_agreed", "╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М ╨╜╨░ ╨▓╤Б╤В╤А╨╡╤З╤Г"),
-        ("agreement_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡ ╨╜╨░ ╤Б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╜╨╕╨╡"),
-        ("agreement_approved", "╨б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡"),
-        ("agreement_signed", "╨Я╨╛╨┤╨┐╨╕╤Б╨░╨╗╨╕ ╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡"),
-        ("trip_agreed", "╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М ╨╜╨░ ╨┐╨╛╤Е╨╛╨┤"),
-        ("info_sent_to_parents", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕ ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤О ╨▓ ╤З╨░╤В╤Л ╤А╨╛╨┤╨╕╤В╨╡╨╗╨╡╨╣"),
-        ("leads_collected", "╨б╨╛╨▒╤А╨░╨╗╨╕ ╨╗╨╕╨┤╨╛╨▓"),
+        ("meeting_agreed", "╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М╨╜╨░╨▓╤Б╤В╤А╨╡╤З╤Г"),
+        ("agreement_sent", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡╨╜╨░╤Б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╜╨╕╨╡"),
+        ("agreement_approved", "╨б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╗╨╕╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡"),
+        ("agreement_signed", "╨Я╨╛╨┤╨┐╨╕╤Б╨░╨╗╨╕╤Б╨╛╨│╨╗╨░╤И╨╡╨╜╨╕╨╡"),
+        ("trip_agreed", "╨Ф╨╛╨│╨╛╨▓╨╛╤А╨╕╨╗╨╕╤Б╤М╨╜╨░╨┐╨╛╤Е╨╛╨┤"),
+        ("info_sent_to_parents", "╨Ю╤В╨┐╤А╨░╨▓╨╕╨╗╨╕╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤О╨▓╤З╨░╤В╤Л╤А╨╛╨┤╨╕╤В╨╡╨╗╨╡╨╣"),
+        ("leads_collected", "╨б╨╛╨▒╤А╨░╨╗╨╕╨╗╨╕╨┤╨╛╨▓"),
         ("rejected", "╨Ю╤В╨║╨░╨╖╨░╨╗╨╕"),
     ],
 }
 
-# ╨н╤В╨░╨┐╤Л ╨▓╨╛╤А╨╛╨╜╨║╨╕ ┬л╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П┬╗, ╨┐╤А╨╕ ╨┐╨╡╤А╨╡╤Е╨╛╨┤╨╡ ╨╜╨░ ╨║╨╛╤В╨╛╤А╤Л╨╡ ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╤В╤Б╤П popup ╨╕ ╤Б╨╛╤Е╤А╨░╨╜╤П╤О╤В╤Б╤П ╨┤╨░╨╜╨╜╤Л╨╡ ╨▓ card_data
+# ╨н╤В╨░╨┐╤Л╨▓╨╛╤А╨╛╨╜╨║╨╕╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П╗,╨┐╤А╨╕╨┐╨╡╤А╨╡╤Е╨╛╨┤╨╡╨╜╨░╨║╨╛╤В╨╛╤А╤Л╨╡╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╤В╤Б╤П╨╕╤Б╨╛╤Е╤А╨░╨╜╤П╤О╤В╤Б╤П╨┤╨░╨╜╨╜╤Л╨╡╨▓
 OWNER_FUNNEL_EVENTS_POPUP_STAGES = {
     "contact_found": ["contact_fio", "contact_phone", "contact_comment"],
     "reply_received": ["reply_comment"],
@@ -1385,7 +1385,7 @@ OWNER_FUNNEL_EVENTS_POPUP_STAGES = {
 
 
 class OwnerFunnelEvent(Base):
-    """╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡ тАФ ╤Б╨░╨╝╨░ ╨▓╨╛╤А╨╛╨╜╨║╨░ (╨┤╨╛╤Б╨║╨░ ╤Б ╤Н╤В╨░╨┐╨░╨╝╨╕). ╨Ъ╨░╤А╤В╨╛╤З╨║╨╕ ╨▓ ╨║╨╛╨╗╨╛╨╜╨║╨░╤Е тАФ ╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л owner_funnel_items ╤Б event_id."""
+    """╨Ь╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡╤Б╨░╨╝╨░╨▓╨╛╤А╨╛╨╜╨║╨░╨┤╨╛╤Б╨║╨░╤Б╤Н╤В╨░╨┐╨░╨╝╨╕╨Ъ╨░╤А╤В╨╛╤З╨║╨╕╨▓╨║╨╛╨╗╨╛╨╜╨║╨░╤Е╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л╤Б"""
     __tablename__ = "owner_funnel_events"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -1395,16 +1395,16 @@ class OwnerFunnelEvent(Base):
 
 
 class OwnerFunnelItem(Base):
-    """╨н╨╗╨╡╨╝╨╡╨╜╤В ╨▓╨╛╤А╨╛╨╜╨║╨╕ owner (╨┐╨╕╤Б╤М╨╝╨░ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕, ╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕; ╨┤╨╗╤П ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣ тАФ ╨║╨░╤А╤В╨╛╤З╨║╨░ ╨▓╨╜╤Г╤В╤А╨╕ ╨▓╨╛╤А╨╛╨╜╨║╨╕ ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П)."""
+    """╨н╨╗╨╡╨╝╨╡╨╜╤В╨▓╨╛╤А╨╛╨╜╨║╨╕╨┐╨╕╤Б╤М╨╝╨░╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕╨┤╨╗╤П╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣╨║╨░╤А╤В╨╛╤З╨║╨░╨▓╨╜╤Г╤В╤А╨╕╨▓╨╛╤А╨╛╨╜╨║╨╕╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П"""
     __tablename__ = "owner_funnel_items"
 
     id = Column(Integer, primary_key=True, index=True)
     funnel_type = Column(String(64), nullable=False, index=True)  # support_letters | thank_you_letters | events
-    event_id = Column(Integer, ForeignKey("owner_funnel_events.id", ondelete="CASCADE"), nullable=True, index=True)  # ╤В╨╛╨╗╤М╨║╨╛ ╨┤╨╗╤П events
+    event_id = Column(Integer, ForeignKey("owner_funnel_events.id", ondelete="CASCADE"), nullable=True, index=True)  # ╤В╨╛╨╗╤М╨║╨╛╨┤╨╗╤П
     stage = Column(String(64), nullable=False, index=True)
     title = Column(String(512), nullable=True)
     comment = Column(Text, nullable=True)
-    card_data = Column(JSON, nullable=True)  # ╨┤╨╗╤П events: ╨║╨╛╨╜╤В╨░╨║╤В, ╨┤╨░╤В╤Л ╤Н╤В╨░╨┐╨╛╨▓ ╨╕ ╤В.╨┤. (event_name/event_dates тАФ ╤Г ╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П)
+    card_data = Column(JSON, nullable=True)  # ╨┤╨╗╤П╨║╨╛╨╜╤В╨░╨║╤В╨┤╨░╤В╤Л╤Н╤В╨░╨┐╨╛╨▓╨╕╤В╨┤╤Г╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

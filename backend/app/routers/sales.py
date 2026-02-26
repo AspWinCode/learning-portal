@@ -1302,6 +1302,119 @@ async def import_student_cards_from_excel(
     return StudentCardImportResponse(created=created, skipped=skipped, errors=errors)
 
 
+def _parse_vertical_date(text: str, today: date) -> Optional[str]:
+    """Парсит дату из строки вида 'Сегодня, 26 февраля', 'Вчера, 25 февраля', '25 февраля, 19:51', '24 февраля'."""
+    if not text or not str(text).strip():
+        return None
+    s = str(text).strip()
+    year = today.year
+    months_ru = {
+        "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+        "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
+    }
+    if "сегодня" in s.lower():
+        return today.isoformat()
+    if "вчера" in s.lower():
+        from datetime import timedelta
+        return (today - timedelta(days=1)).isoformat()
+    for month_name, month_num in months_ru.items():
+        if month_name in s.lower():
+            parts = re.findall(r"\d+", s)
+            if parts:
+                day = int(parts[0])
+                try:
+                    return date(year, month_num, day).isoformat()
+                except ValueError:
+                    return None
+            return None
+    return None
+
+
+def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
+    """Импорт выписки в вертикальном формате (одна колонка, блоки: дата, сумма, статус, контрагент, описание)."""
+    lines = []
+    for row in rows:
+        val = row[0] if row and len(row) > 0 else None
+        lines.append(str(val).strip() if val is not None else "")
+    today = date.today()
+    amount_re = re.compile(r"^[+\-–]\s*([\d\s,]+)\s*[₽р]", re.IGNORECASE)
+    imported = 0
+    skipped = 0
+    last_date_str = None
+    for i, line in enumerate(lines):
+        if not line:
+            continue
+        line_norm = line.replace("\xa0", " ")
+        if "₽" not in line_norm and " р" not in line_norm.lower():
+            maybe_date = _parse_vertical_date(line, today)
+            if maybe_date:
+                last_date_str = maybe_date
+            continue
+        m = amount_re.match(line_norm)
+        if not m:
+            continue
+        amount_str = m.group(1).replace(" ", "").replace(",", ".")
+        try:
+            amount_val = float(amount_str)
+        except ValueError:
+            skipped += 1
+            continue
+        if amount_val <= 0:
+            amount_val = -abs(amount_val)
+        else:
+            amount_val = abs(amount_val)
+        if line.strip().startswith(("-", "–")):
+            amount_val = -abs(amount_val)
+        date_str = last_date_str
+        counterparty = ""
+        description = ""
+        if i + 1 < len(lines):
+            counterparty = (lines[i + 2] or "").strip() if i + 2 < len(lines) else ""
+            description = (lines[i + 3] or "").strip() if i + 3 < len(lines) else ""
+            time_line = (lines[i + 4] or "").strip() if i + 4 < len(lines) else ""
+            if time_line:
+                parsed = _parse_vertical_date(time_line, today)
+                if parsed:
+                    date_str = parsed
+        if not date_str:
+            date_str = today.isoformat()
+        payer_name = counterparty or "Списание" if amount_val < 0 else "Из выписки (без ФИО)"
+        payer_phone = None
+        if amount_val > 0 and counterparty:
+            phone_m = re.search(r"\+7\s*\(?\d{3}\)?\s*\d{3}[- ]?\d{2}[- ]?\d{2}", counterparty)
+            if phone_m:
+                payer_phone = normalize_phone(re.sub(r"\D", "", phone_m.group(0)))
+            if "," in counterparty:
+                rest = counterparty.split(",", 1)[1].strip()
+                if rest and len(rest) >= 2:
+                    payer_name = rest[:512]
+        if amount_val > 0 and not payer_name:
+            payer_name = counterparty or "Из выписки (без ФИО)"
+        op_id_source = f"vertical_xlsx|{date_str}|{amount_val}|{payer_name}|{payer_phone or ''}|{i}"
+        operation_id = hashlib.sha256(op_id_source.encode("utf-8")).hexdigest()
+        if db.query(BankTransaction.id).filter(BankTransaction.operation_id == operation_id).first():
+            skipped += 1
+            continue
+        status = BankTransactionStatus.EXPENSE.value if amount_val < 0 else BankTransactionStatus.NEW.value
+        bt = BankTransaction(
+            operation_id=operation_id,
+            tochka_account_id=None,
+            amount=amount_val,
+            payer_phone=payer_phone,
+            payer_name=(payer_name or "")[:512] or None,
+            payment_date=date_str,
+            status=status,
+            expense_category=None,
+        )
+        db.add(bt)
+        imported += 1
+    db.commit()
+    errors = []
+    if imported == 0 and skipped == 0 and len(lines) > 1:
+        errors.append("В файле не найдено строк с суммой вида «+ 3 200 ₽» или «– 102 ₽».")
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
 @router.post("/bank-transactions/import-xlsx")
 async def import_bank_transactions_from_excel(
     file: UploadFile = File(...),
@@ -1327,6 +1440,17 @@ async def import_bank_transactions_from_excel(
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
         return {"imported": 0, "skipped": 0, "errors": ["Пустой лист"]}
+    first_row = rows[0]
+    is_vertical = (
+        len(first_row) == 1
+        and first_row[0] is not None
+        and not any(
+            k in str(first_row[0]).strip().lower()
+            for k in ("дата", "сумма", "зачисление", "списание", "кредит", "дебет", "назначение")
+        )
+    )
+    if is_vertical:
+        return _import_bank_transactions_vertical(rows, db)
     headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
     header_map = {name: idx for idx, name in enumerate(headers)}
 

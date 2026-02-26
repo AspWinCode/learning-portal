@@ -737,28 +737,28 @@ const StudentsPage: React.FC = () => {
       await studentsApi.update(editingStudent.id, updateData);
 
       // Обновление группы
-      // Сначала удаляем из всех групп
-      const studentGroups = groups.filter(g => 
-        g.students?.some(s => s.id === editingStudent.id)
-      );
-      for (const group of studentGroups) {
-        try {
-          await groupsApi.removeStudent(group.id, editingStudent.id);
-        } catch (err) {
-          // Игнорируем ошибки, если ученик не в группе
-        }
+      // Сначала удаляем из всех групп (делаем параллельно, чтобы не блокировать UI по одной группе)
+      const studentGroups = groups.filter((g) => g.students?.some((s) => s.id === editingStudent.id));
+      if (studentGroups.length) {
+        await Promise.all(
+          studentGroups.map(async (group) => {
+            try {
+              await groupsApi.removeStudent(group.id, editingStudent.id);
+            } catch {
+              // Игнорируем ошибки, если ученик не в группе
+            }
+          }),
+        );
       }
-      
+
       // Добавляем в новую группу, если выбрана
       if (newStudent.group_id) {
         try {
-          await groupsApi.addStudent(parseInt(newStudent.group_id), editingStudent.id);
+          await groupsApi.addStudent(parseInt(newStudent.group_id, 10), editingStudent.id);
         } catch (err) {
           console.error('Ошибка добавления в группу', err);
         }
       }
-      
-      loadGroups();
 
       if (canCreateCard && editingStudent) {
         const parentInfo = newStudent.parent_id ? parents.find((p) => p.id.toString() === newStudent.parent_id) : null;
@@ -796,11 +796,13 @@ const StudentsPage: React.FC = () => {
         }
       }
 
-      // Сначала обновляем списки с сервера, потом закрываем — чтобы при повторном «Редактировать» отображались сохранённые данные
-      const updatedCards = await studentCardsApi.list({});
+      // Сначала обновляем списки с сервера (параллельно), потом закрываем — чтобы при повторном «Редактировать» отображались сохранённые данные
+      const [updatedCards] = await Promise.all([
+        studentCardsApi.list({}),
+        loadStudents(),
+        loadGroups(),
+      ]);
       setStudentCards(updatedCards);
-      await loadStudents();
-      await loadGroups();
 
       setEditOpen(false);
       setEditingStudent(null);

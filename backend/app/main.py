@@ -14,6 +14,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Если при старте не прошла проверка production (SECRET_KEY/DATABASE_URL), не падаем с 502, а отдаём 503 на запросах
+_startup_config_error: str | None = None
+
 def _run_tochka_auto_import() -> None:
     """Периодическая задача: импорт выписки Точка Банк, матч по телефону (и ФИО как fallback), за последние 14 дней. Каждые 10 мин."""
     try:
@@ -55,19 +58,24 @@ def _run_migrations_on_startup() -> None:
         print(f"[startup] Migrations on startup skipped or failed: {e}")
 
 
-# Safety checks for production env
+# Safety checks for production env (не падаем с 502, а выставляем флаг и отдаём 503 на запросах)
 @app.on_event("startup")
 def _validate_production_env() -> None:
+    global _startup_config_error
     app_env = (os.getenv("APP_ENV") or "development").lower().strip()
     if app_env != "production":
         pass  # continue to scheduler
     else:
         secret = os.getenv("SECRET_KEY") or ""
         if (not secret) or secret == "your-secret-key-change-in-production" or len(secret) < 32:
-            raise RuntimeError("APP_ENV=production: SECRET_KEY must be set and at least 32 characters long")
+            _startup_config_error = "APP_ENV=production: SECRET_KEY must be set and at least 32 characters long"
+            print(f"[startup] {_startup_config_error}")
+            return
         db_url = os.getenv("DATABASE_URL") or ""
         if (not db_url) or ("user:password" in db_url) or ("YOUR_PASSWORD" in db_url):
-            raise RuntimeError("APP_ENV=production: DATABASE_URL must be set (no placeholder credentials)")
+            _startup_config_error = "APP_ENV=production: DATABASE_URL must be set (no placeholder credentials)"
+            print(f"[startup] {_startup_config_error}")
+            return
         cors_raw = os.getenv("CORS_ORIGINS") or ""
         if "localhost" in cors_raw or "127.0.0.1" in cors_raw:
             pass
@@ -107,6 +115,11 @@ app.add_middleware(
 @app.middleware("http")
 async def catch_all_exceptions_middleware(request: Request, call_next):
     """Ловим любые исключения, чтобы не падать с 502, а отдавать 500/503."""
+    if _startup_config_error:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Server misconfiguration. Check backend logs.", "error": _startup_config_error},
+        )
     try:
         return await call_next(request)
     except HTTPException:

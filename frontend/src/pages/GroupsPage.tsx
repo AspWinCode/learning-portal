@@ -46,6 +46,8 @@ const GroupsPage: React.FC = () => {
     name: '',
     trainer_id: '',
     direction: '',
+    units_per_session: 1,
+    extra_rate_per_unit: '' as number | '',
   });
   const [formSchedules, setFormSchedules] = useState<Array<{ day_of_week: number; start_time: string; end_time: string }>>([]);
   const [groupsTab, setGroupsTab] = useState<'active' | 'archive'>('active');
@@ -131,6 +133,8 @@ const GroupsPage: React.FC = () => {
         name: full.name,
         trainer_id: full.trainer_id?.toString?.() || '',
         direction: full.direction ?? '',
+        units_per_session: full.units_per_session ?? 1,
+        extra_rate_per_unit: full.extra_rate_per_unit != null ? full.extra_rate_per_unit : '',
       });
       setFormSchedules(
         (full.schedules || []).map((s) => ({
@@ -174,6 +178,8 @@ const GroupsPage: React.FC = () => {
         name: newGroup.name.trim(),
         trainer_id: parseInt(newGroup.trainer_id),
         direction: newGroup.direction || undefined,
+        units_per_session: Number(newGroup.units_per_session) || 1,
+        extra_rate_per_unit: newGroup.extra_rate_per_unit === '' ? undefined : Number(newGroup.extra_rate_per_unit) || undefined,
         schedules: formSchedules.map((s) => ({
           day_of_week: s.day_of_week,
           start_time: normalizeTime(s.start_time),
@@ -181,7 +187,7 @@ const GroupsPage: React.FC = () => {
         })),
       });
       setOpen(false);
-      setNewGroup({ name: '', trainer_id: '', direction: '' });
+      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '' });
       setFormSchedules([]);
       setError('');
       loadGroups();
@@ -206,6 +212,8 @@ const GroupsPage: React.FC = () => {
         name: newGroup.name.trim(),
         trainer_id: parseInt(newGroup.trainer_id),
         direction: newGroup.direction || undefined,
+        units_per_session: Number(newGroup.units_per_session) || 1,
+        extra_rate_per_unit: newGroup.extra_rate_per_unit === '' ? null : Number(newGroup.extra_rate_per_unit) || null,
         schedules: formSchedules.map((s) => ({
           day_of_week: s.day_of_week,
           start_time: normalizeTime(s.start_time),
@@ -214,7 +222,7 @@ const GroupsPage: React.FC = () => {
       });
       setEditOpen(false);
       setSelectedGroup(null);
-      setNewGroup({ name: '', trainer_id: '', direction: '' });
+      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '' });
       setFormSchedules([]);
       setError('');
       loadGroups();
@@ -272,7 +280,7 @@ const GroupsPage: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => {
               setOpen(true);
-              setNewGroup({ name: '', trainer_id: '', direction: '' });
+              setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '' });
               setFormSchedules([]);
             }}
           >
@@ -294,6 +302,7 @@ const GroupsPage: React.FC = () => {
               <TableCell>Название</TableCell>
               <TableCell>Направление</TableCell>
               <TableCell>Тренер</TableCell>
+              <TableCell>Юниты</TableCell>
               <TableCell>Ученики</TableCell>
               <TableCell>Статус</TableCell>
               {(isAdminLike || user?.role === 'trainer') && <TableCell>Действия</TableCell>}
@@ -305,6 +314,7 @@ const GroupsPage: React.FC = () => {
                 <TableCell>{group.name}</TableCell>
                 <TableCell>{DIRECTION_OPTIONS.find((o) => o.value === group.direction)?.label ?? group.direction ?? '-'}</TableCell>
                 <TableCell>{group.trainer?.full_name || '-'}</TableCell>
+                <TableCell>{(group.units_per_session ?? 1) + (group.extra_rate_per_unit != null ? ` · ${group.extra_rate_per_unit} ₽/доп` : '')}</TableCell>
                 <TableCell>{group.students?.length ?? '-'}</TableCell>
                 <TableCell>{group.status === 'active' ? 'Активна' : 'В архиве'}</TableCell>
                 {(isAdminLike || user?.role === 'trainer') && (
@@ -389,6 +399,30 @@ const GroupsPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
+            <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+              8 занятий (юниты)
+            </Typography>
+            <Stack direction="row" spacing={2} sx={{ mb: 1 }}>
+              <TextField
+                type="number"
+                label="Юнитов за занятие"
+                value={newGroup.units_per_session}
+                onChange={(e) => setNewGroup({ ...newGroup, units_per_session: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                inputProps={{ min: 1, max: 10 }}
+                sx={{ width: 160 }}
+                helperText="Обычно 1 или 2"
+              />
+              <TextField
+                type="number"
+                label="Ставка за доп. юнит, ₽"
+                value={newGroup.extra_rate_per_unit}
+                onChange={(e) => setNewGroup({ ...newGroup, extra_rate_per_unit: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
+                inputProps={{ min: 0, step: 0.01 }}
+                sx={{ width: 180 }}
+                placeholder="Не задано"
+                helperText="Сверх лимита; пусто — как базовая"
+              />
+            </Stack>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
               Расписание
             </Typography>
@@ -525,6 +559,30 @@ const GroupsPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
+            <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+              8 занятий (юниты)
+            </Typography>
+            <Stack direction="row" spacing={2} sx={{ mb: 1 }}>
+              <TextField
+                type="number"
+                label="Юнитов за занятие"
+                value={newGroup.units_per_session}
+                onChange={(e) => setNewGroup({ ...newGroup, units_per_session: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                inputProps={{ min: 1, max: 10 }}
+                sx={{ width: 160 }}
+                helperText="Обычно 1 или 2"
+              />
+              <TextField
+                type="number"
+                label="Ставка за доп. юнит, ₽"
+                value={newGroup.extra_rate_per_unit}
+                onChange={(e) => setNewGroup({ ...newGroup, extra_rate_per_unit: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
+                inputProps={{ min: 0, step: 0.01 }}
+                sx={{ width: 180 }}
+                placeholder="Не задано"
+                helperText="Сверх лимита; пусто — как базовая"
+              />
+            </Stack>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
               Расписание
             </Typography>

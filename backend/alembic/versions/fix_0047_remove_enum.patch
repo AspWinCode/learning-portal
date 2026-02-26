@@ -1,0 +1,14 @@
+--- a/backend/alembic/versions/0047_eight_lessons_units_extra.py
++++ b/backend/alembic/versions/0047_eight_lessons_units_extra.py
+@@ -24,10 +24,7 @@ def upgrade() -> None:
+     op.add_column("lesson_attendance", sa.Column("base_units_applied", sa.Integer(), nullable=True))
+     op.add_column("lesson_attendance", sa.Column("extra_units_applied", sa.Integer(), nullable=True))
+ 
+-    # studentaccounttransactionkind: add 'extra_lesson_deduction'
+-    op.execute("""
+-        ALTER TYPE studentaccounttransactionkind ADD VALUE IF NOT EXISTS 'extra_lesson_deduction';
+-    """)
++    # kind в student_account_transactions — обычный VARCHAR (миграция 0022), не PG ENUM; значение 'extra_lesson_deduction' пишем как строку, менять тип не нужно
+ 
+     # lesson_slot_extra_policy
+     op.create_table(

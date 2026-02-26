@@ -84,3 +84,50 @@ git push origin main
 ```powershell
 ssh root@80.87.201.25 "cd ~/learning-portal; git pull origin main; docker compose run --rm backend python -m alembic upgrade head; docker compose up -d --build; docker compose ps"
 ```
+
+---
+
+## 4. Если 502 после деплоя
+
+На сервере выполните и пришлите вывод:
+
+```bash
+cd ~/learning-portal
+docker compose ps
+docker compose logs backend --tail 80
+curl -s http://127.0.0.1:8000/api/health || echo "backend не ответил"
+```
+
+- **Логи backend** покажут: падение миграций, `SECRET_KEY`/`DATABASE_URL`, или другую ошибку при старте.
+- Если `curl` к порту 8000 не отвечает — контейнер падает до прослушивания порта; смотрите логи.
+- После правок в коде (идемпотентная миграция 0047, проверка конфига без падения) обновите код на сервере и пересоберите:  
+  `git pull origin main && docker compose build backend --no-cache && docker compose up -d backend`
+
+---
+
+## 5. Если на сайте «Database schema is outdated» (красный баннер)
+
+Это значит: миграция 0047 была помечена как выполненная (`stamp`), но сама не применялась — в БД нет нужных колонок и таблиц. Нужно **реально выполнить** миграцию с исправленным файлом.
+
+**На сервере по шагам:**
+
+```bash
+cd ~/learning-portal
+
+# 1) Подтянуть код с идемпотентной миграцией 0047
+git pull origin main
+
+# 2) Пересобрать backend (чтобы в образ попал новый 0047)
+docker compose build backend --no-cache
+
+# 3) Откатить штамп до 0046, чтобы 0047 снова выполнилась
+docker compose run --rm backend python -m alembic stamp 0046_custom_lessons
+
+# 4) Запустить миграции (теперь 0047 применится без ошибки)
+docker compose run --rm backend python -m alembic upgrade head
+
+# 5) Перезапустить backend
+docker compose up -d backend
+```
+
+После этого обновите страницу — красный баннер должен исчезнуть.

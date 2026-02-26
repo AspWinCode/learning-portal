@@ -63,6 +63,16 @@ export interface Group {
   students?: Student[];
   programs?: ProgramSummary[];
   schedules?: GroupSchedule[];
+  /** Юнитов за одно занятие (лимит «8 занятий»). По умолчанию 1. */
+  units_per_session?: number | null;
+  /** Ставка за доп. юнит (сверх лимита), ₽. Если не задано — как базовая. */
+  extra_rate_per_unit?: number | null;
+}
+
+/** Политика доп. юнитов по слоту (дата + время). */
+export interface LessonSlotExtraPolicy {
+  extra_policy: 'free' | 'paid';
+  extra_rate_per_unit?: number | null;
 }
 
 export type AbsenceFollowUpStage = 'missed' | 'assigned' | 'made_up' | 'missed_makeup';
@@ -161,6 +171,8 @@ export interface TrainerLessonSlot {
   trainer_id?: number | null;
   trainer_name?: string | null;
   lesson_index_in_month?: number | null;
+  /** Юнитов за занятие (лимит 8 занятий). Может приходить с бэкенда. */
+  units_per_session?: number | null;
 }
 
 export interface Topic {

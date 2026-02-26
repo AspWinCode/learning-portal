@@ -233,17 +233,33 @@ export const groupsApi = {
     trainer_id: number;
     direction?: string | null;
     schedules?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
+    units_per_session?: number;
+    extra_rate_per_unit?: number | null;
   }): Promise<Group> => {
     const response = await api.post('/api/groups/', data);
     return response.data;
   },
   update: async (
     id: number,
-    data: Partial<Pick<Group, 'name' | 'trainer_id' | 'status' | 'direction'>> & {
+    data: Partial<Pick<Group, 'name' | 'trainer_id' | 'status' | 'direction' | 'units_per_session' | 'extra_rate_per_unit'>> & {
       schedules?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
     }
   ): Promise<Group> => {
     const response = await api.put(`/api/groups/${id}`, data);
+    return response.data;
+  },
+  getLessonSlotExtraPolicy: async (
+    groupId: number,
+    params: { lesson_date: string; start_time: string; end_time: string }
+  ): Promise<import('../types').LessonSlotExtraPolicy> => {
+    const response = await api.get(`/api/groups/${groupId}/lesson-slot-extra-policy`, { params });
+    return response.data;
+  },
+  putLessonSlotExtraPolicy: async (
+    groupId: number,
+    data: { lesson_date: string; start_time: string; end_time: string; extra_policy: 'free' | 'paid'; extra_rate_per_unit?: number | null }
+  ): Promise<import('../types').LessonSlotExtraPolicy> => {
+    const response = await api.put(`/api/groups/${groupId}/lesson-slot-extra-policy`, data);
     return response.data;
   },
   addStudent: async (groupId: number, studentId: number): Promise<void> => {

@@ -1,3 +1,15 @@
+#!/bin/bash
+# На сервере: заменить миграцию 0047 на идемпотентную версию (без git pull).
+# Запустить из корня проекта:  cd ~/learning-portal && bash backend/alembic/versions/apply_0047_fix.sh
+# Затем: docker compose build backend --no-cache && docker compose run --rm backend python -m alembic stamp 0046_custom_lessons && docker compose run --rm backend python -m alembic upgrade head && docker compose up -d backend
+
+set -e
+# Перейти в корень проекта (каталог, где лежит docker-compose.yml)
+cd "$(dirname "$0")/../.."
+F="backend/alembic/versions/0047_eight_lessons_units_extra.py"
+cp "$F" "$F.bak.$(date +%s)"
+
+cat > "$F" << 'ENDOFFILE'
 """8 занятий: units_per_session, base/extra units, lesson_slot_extra_policy.
 
 Revision ID: 0047_eight_lessons
@@ -71,3 +83,12 @@ def downgrade() -> None:
     op.drop_column("groups", "units_per_session")
     # Postgres does not support removing enum value easily; leave extra_lesson_deduction
     pass
+ENDOFFILE
+
+echo "Файл заменён на идемпотентную версию. Проверка:"
+grep -n "CREATE INDEX IF NOT EXISTS" "$F" | head -3
+echo "Дальше выполните:"
+echo "  docker compose build backend --no-cache"
+echo "  docker compose run --rm backend python -m alembic stamp 0046_custom_lessons"
+echo "  docker compose run --rm backend python -m alembic upgrade head"
+echo "  docker compose up -d backend"

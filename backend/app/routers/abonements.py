@@ -38,7 +38,7 @@ async def read_abonements(
 async def create_abonement(
     abonement: AbonementCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     _validate_discount(abonement.discount_type, abonement.discount_value)
     _validate_price(float(abonement.price))
@@ -47,7 +47,8 @@ async def create_abonement(
         price=abonement.price,
         discount_type=abonement.discount_type,
         discount_value=abonement.discount_value,
-        status=AbonementStatus.ACTIVE
+        status=AbonementStatus.ACTIVE,
+        abonement_format=abonement.abonement_format,
     )
     db.add(db_abonement)
     db.commit()
@@ -61,7 +62,7 @@ async def update_abonement(
     abonement_id: int,
     abonement_update: AbonementUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     db_abonement = db.query(Abonement).filter(Abonement.id == abonement_id).first()
     if not db_abonement:

@@ -796,20 +796,29 @@ const StudentsPage: React.FC = () => {
         }
       }
 
-      // Сначала обновляем списки с сервера (параллельно), потом закрываем — чтобы при повторном «Редактировать» отображались сохранённые данные
-      const [updatedCards] = await Promise.all([
-        studentCardsApi.list({}),
-        loadStudents(),
-        loadGroups(),
-      ]);
-      setStudentCards(updatedCards);
+      // Обновляем списки с сервера в фоне, чтобы не блокировать UI
+      studentCardsApi
+        .list({})
+        .then((updated) => setStudentCards(updated))
+        .catch(() => {});
+      loadStudents();
+      loadGroups();
 
+      // Закрываем диалог сразу после успешного сохранения
       setEditOpen(false);
       setEditingStudent(null);
       setEditingCardId(null);
       setEditParentCabinetLink(null);
       setEditParentCabinetMessage(null);
-      setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '', training_start_date: '' });
+      setNewStudent({
+        full_name: '',
+        parent_id: '',
+        trainer_id: '',
+        group_id: '',
+        program_id: '',
+        abonement_id: '',
+        training_start_date: '',
+      });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка обновления');
     }

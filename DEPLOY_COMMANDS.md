@@ -85,6 +85,15 @@ git push origin main
 ssh root@80.87.201.25 "cd ~/learning-portal; git pull origin main; docker compose run --rm backend python -m alembic upgrade head; docker compose up -d --build; docker compose ps"
 ```
 
+**Важно:** изменения в интерфейсе (например, страница «Группы» — юниты, ставка) лежат во **фронтенде**. Чтобы они появились на сайте, после `git pull` нужно пересобрать контейнер **web** (без кэша), иначе отдаётся старая сборка:
+```bash
+cd ~/learning-portal
+git pull origin main
+docker compose build web --no-cache
+docker compose up -d
+```
+После деплоя обновите страницу в браузере с принудительной перезагрузкой (Ctrl+Shift+R или Ctrl+F5).
+
 ---
 
 ## 4. Если 502 после деплоя

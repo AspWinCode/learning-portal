@@ -156,3 +156,23 @@ async def list_account_transactions(
         raise HTTPException(status_code=403, detail="Тренер по ТЗ не видит счета и оплаты")
     account = _get_account_and_check(db, account_id, current_user)
     return account.transactions
+
+
+@router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_student_account(
+    account_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Удалить счёт ученика, если по нему нет операций."""
+    account = db.query(StudentAccount).filter(StudentAccount.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Счет не найден")
+    if account.transactions:
+        raise HTTPException(status_code=400, detail="Нельзя удалить счет с операциями")
+    if not _can_access_student(db, current_user, account.student_id):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    db.delete(account)
+    db.commit()
+    log_action(db, current_user.id, "delete", "student_account", account_id, {})
+    return None

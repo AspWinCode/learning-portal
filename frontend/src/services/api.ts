@@ -235,6 +235,9 @@ export const studentAccountsApi = {
     const response = await api.get(`/api/student-accounts/${accountId}/transactions`);
     return response.data;
   },
+  remove: async (accountId: number): Promise<void> => {
+    await api.delete(`/api/student-accounts/${accountId}`);
+  },
 };
 
 export const groupsApi = {

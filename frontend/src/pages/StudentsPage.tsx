@@ -34,7 +34,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
-import { Student, User, Group, Program, Abonement, StudentAccount, StudentCard as StudentCardType } from '../types';
+import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType } from '../types';
 import type { AnketaConvertConflict } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
@@ -113,6 +113,8 @@ const StudentsPage: React.FC = () => {
   const [accounts, setAccounts] = useState<StudentAccount[]>([]);
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountFormat, setNewAccountFormat] = useState<'' | 'individual' | 'package' | 'group'>('');
+  const [accountTemplates, setAccountTemplates] = useState<AccountTemplate[]>([]);
+  const [selectedAccountTemplateId, setSelectedAccountTemplateId] = useState<number | ''>('');
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState<{ account: StudentAccount; type: 'payment' | 'deduct' } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -327,11 +329,17 @@ const StudentsPage: React.FC = () => {
     setAccountsStudent(student);
     setAccountsDialogOpen(true);
     setNewAccountName('');
+    setNewAccountFormat('');
+    setSelectedAccountTemplateId('');
     setAccountsError('');
     setAccountsLoading(true);
     try {
-      const list = await studentsApi.getAccounts(student.id);
+      const [list, templates] = await Promise.all([
+        studentsApi.getAccounts(student.id),
+        salesApi.listAccountTemplates().catch(() => [] as AccountTemplate[]),
+      ]);
       setAccounts(list);
+      setAccountTemplates(templates);
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Не удалось загрузить счета. Убедитесь, что на сервере выполнена миграция: alembic upgrade head';
       setAccountsError(Array.isArray(msg) ? msg.join(', ') : msg);
@@ -354,13 +362,45 @@ const StudentsPage: React.FC = () => {
     const finalName = baseName || formatLabel;
     if (!finalName) return;
     setAccountsLoading(true);
+    setAccountsError('');
     try {
       const created = await studentsApi.createAccount(accountsStudent.id, { name: finalName });
       setAccounts((prev) => [...prev, created]);
       setNewAccountName('');
       setNewAccountFormat('');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка создания счета');
+      setAccountsError(err.response?.data?.detail || 'Ошибка создания счета');
+    } finally {
+      setAccountsLoading(false);
+    }
+  };
+
+  const handleCreateAccountFromTemplate = async () => {
+    if (!accountsStudent || !selectedAccountTemplateId) return;
+    const template = accountTemplates.find((t) => t.id === selectedAccountTemplateId);
+    if (!template) return;
+    setAccountsLoading(true);
+    setAccountsError('');
+    try {
+      const created = await studentsApi.createAccount(accountsStudent.id, { name: template.name });
+      setAccounts((prev) => [...prev, created]);
+      setSelectedAccountTemplateId('');
+    } catch (err: any) {
+      setAccountsError(err.response?.data?.detail || 'Ошибка создания счета');
+    } finally {
+      setAccountsLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async (acc: StudentAccount) => {
+    if (!accountsStudent) return;
+    setAccountsLoading(true);
+    setAccountsError('');
+    try {
+      await studentAccountsApi.remove(acc.id);
+      setAccounts((prev) => prev.filter((a) => a.id !== acc.id));
+    } catch (err: any) {
+      setAccountsError(err.response?.data?.detail || 'Не удалось удалить счёт');
     } finally {
       setAccountsLoading(false);
     }
@@ -2067,40 +2107,68 @@ const StudentsPage: React.FC = () => {
           ) : (
             <>
               {(isAdminLike || user?.role === 'sales') && (
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
-                  <TextField
-                    size="small"
-                    label="Название счета"
-                    value={newAccountName}
-                    onChange={(e) => setNewAccountName(e.target.value)}
-                    placeholder="Группа / Индивидуально"
-                    sx={{ flex: 1 }}
-                  />
-                  <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Формат счета</InputLabel>
-                    <Select
-                      label="Формат счета"
-                      value={newAccountFormat}
-                      onChange={(e) =>
-                        setNewAccountFormat(
-                          (e.target.value as 'individual' | 'package' | 'group' | '') || '',
-                        )
-                      }
+                <>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                    <TextField
+                      size="small"
+                      label="Название счета"
+                      value={newAccountName}
+                      onChange={(e) => setNewAccountName(e.target.value)}
+                      placeholder="Группа / Индивидуально"
+                      sx={{ flex: 1 }}
+                    />
+                    <FormControl size="small" sx={{ minWidth: 180 }}>
+                      <InputLabel>Формат счета</InputLabel>
+                      <Select
+                        label="Формат счета"
+                        value={newAccountFormat}
+                        onChange={(e) =>
+                          setNewAccountFormat(
+                            (e.target.value as 'individual' | 'package' | 'group' | '') || '',
+                          )
+                        }
+                      >
+                        <MenuItem value="">Не выбран</MenuItem>
+                        <MenuItem value="individual">Индивидуальный</MenuItem>
+                        <MenuItem value="package">Пакет</MenuItem>
+                        <MenuItem value="group">Групповой</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant="outlined"
+                      onClick={handleCreateAccount}
+                      disabled={(!newAccountName.trim() && !newAccountFormat) || accountsLoading}
                     >
-                      <MenuItem value="">Не выбран</MenuItem>
-                      <MenuItem value="individual">Индивидуальный</MenuItem>
-                      <MenuItem value="package">Пакет</MenuItem>
-                      <MenuItem value="group">Групповой</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <Button
-                    variant="outlined"
-                    onClick={handleCreateAccount}
-                    disabled={(!newAccountName.trim() && !newAccountFormat) || accountsLoading}
-                  >
-                    Создать счет
-                  </Button>
-                </Stack>
+                      Создать счет
+                    </Button>
+                  </Stack>
+                  {accountTemplates.length > 0 && (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                      <FormControl size="small" sx={{ minWidth: 220 }}>
+                        <InputLabel>Добавить из списка</InputLabel>
+                        <Select
+                          label="Добавить из списка"
+                          value={selectedAccountTemplateId}
+                          onChange={(e) => setSelectedAccountTemplateId(e.target.value === '' ? '' : Number(e.target.value))}
+                        >
+                          <MenuItem value="">— выберите шаблон</MenuItem>
+                          {accountTemplates.map((t) => (
+                            <MenuItem key={t.id} value={t.id}>
+                              {t.name} ({t.format === 'group' ? 'Групповой' : 'Индивидуальный'})
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Button
+                        variant="contained"
+                        onClick={handleCreateAccountFromTemplate}
+                        disabled={!selectedAccountTemplateId || accountsLoading}
+                      >
+                        Создать из шаблона
+                      </Button>
+                    </Stack>
+                  )}
+                </>
               )}
               {accounts.length === 0 ? (
                 <Typography color="textSecondary">Нет счетов. {(isAdminLike || user?.role === 'sales') ? 'Создайте первый счет.' : ''}</Typography>
@@ -2121,7 +2189,10 @@ const StudentsPage: React.FC = () => {
                         <TableCell align="right">
                           <Button size="small" onClick={() => { setPaymentDialog({ account: acc, type: 'payment' }); setPaymentAmount(''); setPaymentNote(''); }}>Пополнить</Button>
                           {(isAdminLike || user?.role === 'sales') && (
-                            <Button size="small" color="secondary" onClick={() => { setPaymentDialog({ account: acc, type: 'deduct' }); setPaymentAmount(''); setPaymentNote(''); }} disabled={acc.balance <= 0}>Списать</Button>
+                            <>
+                              <Button size="small" color="secondary" onClick={() => { setPaymentDialog({ account: acc, type: 'deduct' }); setPaymentAmount(''); setPaymentNote(''); }} disabled={acc.balance <= 0} sx={{ ml: 0.5 }}>Списать</Button>
+                              <Button size="small" color="error" onClick={() => handleDeleteAccount(acc)} disabled={accountsLoading} sx={{ ml: 0.5 }}>Удалить</Button>
+                            </>
                           )}
                         </TableCell>
                       </TableRow>

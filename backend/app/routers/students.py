@@ -15,7 +15,7 @@ from app.schemas import (
     StudentWithParentResponse,
     InviteParentResponse,
 )
-from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, LessonAttendance, Group
+from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group
 from app.routers.action_log import log_action
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
@@ -577,4 +577,30 @@ async def create_student_account(
     db.refresh(account)
     log_action(db, current_user.id, "create", "student_account", account.id, {"student_id": student_id, "name": name})
     return account
+
+
+@router.delete("/{student_id}/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_student_account(
+    student_id: int,
+    account_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Удалить счёт ученика. Только счёт без операций."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    account = db.query(StudentAccount).filter(
+        StudentAccount.id == account_id,
+        StudentAccount.student_id == student_id,
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Счет не найден")
+    has_tx = db.query(StudentAccountTransaction).filter(StudentAccountTransaction.account_id == account_id).first()
+    if has_tx:
+        raise HTTPException(status_code=400, detail="Нельзя удалить счет с операциями")
+    db.delete(account)
+    db.commit()
+    log_action(db, current_user.id, "delete", "student_account", account_id, {})
+    return None
 

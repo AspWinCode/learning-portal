@@ -208,6 +208,9 @@ export const studentsApi = {
     const response = await api.post(`/api/students/${studentId}/accounts`, data);
     return response.data;
   },
+  deleteAccount: async (studentId: number, accountId: number): Promise<void> => {
+    await api.delete(`/api/students/${studentId}/accounts/${accountId}`);
+  },
   getAttendances: async (studentId: number, limit?: number): Promise<Array<{ lesson_date: string; group_name: string; attended: boolean }>> => {
     const response = await api.get(`/api/students/${studentId}/attendances`, { params: limit ? { limit } : {} });
     return response.data;

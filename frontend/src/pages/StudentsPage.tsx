@@ -398,7 +398,7 @@ const StudentsPage: React.FC = () => {
     setAccountsLoading(true);
     setAccountsError('');
     try {
-      await (studentAccountsApi as any).remove(acc.id);
+      await studentsApi.deleteAccount(accountsStudent.id, acc.id);
       setAccounts((prev) => prev.filter((a) => a.id !== acc.id));
     } catch (err: any) {
       setAccountsError(err.response?.data?.detail || 'Не удалось удалить счёт');

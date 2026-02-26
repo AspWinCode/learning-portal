@@ -67,6 +67,10 @@ export interface Group {
   units_per_session?: number | null;
   /** Ставка за доп. юнит (сверх лимита), ₽. Если не задано — как базовая. */
   extra_rate_per_unit?: number | null;
+  /** Дата начала работы группы; уроки не создаются раньше неё. */
+  start_date?: string | null;
+  /** Формат: групповой (лимит 8 занятий, юниты) или индивидуальный. */
+  lesson_format?: 'group' | 'individual';
 }
 
 /** Политика доп. юнитов по слоту (дата + время). */

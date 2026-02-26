@@ -1175,6 +1175,10 @@ class GroupCreate(GroupBase):
     trainer_id: int
     student_ids: Optional[List[int]] = []
     schedules: Optional[List[GroupScheduleCreate]] = []
+    start_date: Optional[date] = None
+    lesson_format: Optional[str] = "group"  # group | individual
+    units_per_session: Optional[int] = 1
+    extra_rate_per_unit: Optional[float] = None
 
 
 class GroupUpdate(BaseModel):
@@ -1183,6 +1187,8 @@ class GroupUpdate(BaseModel):
     trainer_id: Optional[int] = None
     status: Optional[str] = None
     schedules: Optional[List[GroupScheduleCreate]] = None
+    start_date: Optional[date] = None
+    lesson_format: Optional[str] = None  # group | individual
     units_per_session: Optional[int] = None  # 1 или 2 (лимит «8 занятий»)
     extra_rate_per_unit: Optional[float] = None  # ставка за доп. юнит при extra_policy=paid
 
@@ -1192,6 +1198,8 @@ class GroupResponse(GroupBase):
     trainer_id: int
     status: str
     created_at: datetime
+    start_date: Optional[date] = None
+    lesson_format: Optional[str] = "group"
     units_per_session: Optional[int] = 1
     extra_rate_per_unit: Optional[float] = None
     trainer: Optional[UserResponse] = None

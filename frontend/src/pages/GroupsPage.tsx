@@ -48,6 +48,8 @@ const GroupsPage: React.FC = () => {
     direction: '',
     units_per_session: 1,
     extra_rate_per_unit: '' as number | '',
+    start_date: '' as string,
+    lesson_format: 'group' as 'group' | 'individual',
   });
   const [formSchedules, setFormSchedules] = useState<Array<{ day_of_week: number; start_time: string; end_time: string }>>([]);
   const [groupsTab, setGroupsTab] = useState<'active' | 'archive'>('active');
@@ -135,6 +137,8 @@ const GroupsPage: React.FC = () => {
         direction: full.direction ?? '',
         units_per_session: full.units_per_session ?? 1,
         extra_rate_per_unit: full.extra_rate_per_unit != null ? full.extra_rate_per_unit : '',
+        start_date: full.start_date ? full.start_date.slice(0, 10) : '',
+        lesson_format: (full.lesson_format === 'individual' ? 'individual' : 'group'),
       });
       setFormSchedules(
         (full.schedules || []).map((s) => ({
@@ -180,6 +184,8 @@ const GroupsPage: React.FC = () => {
         direction: newGroup.direction || undefined,
         units_per_session: Number(newGroup.units_per_session) || 1,
         extra_rate_per_unit: newGroup.extra_rate_per_unit === '' ? undefined : Number(newGroup.extra_rate_per_unit) || undefined,
+        start_date: newGroup.start_date || undefined,
+        lesson_format: newGroup.lesson_format,
         schedules: formSchedules.map((s) => ({
           day_of_week: s.day_of_week,
           start_time: normalizeTime(s.start_time),
@@ -187,7 +193,7 @@ const GroupsPage: React.FC = () => {
         })),
       });
       setOpen(false);
-      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '' });
+      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group' });
       setFormSchedules([]);
       setError('');
       loadGroups();
@@ -214,6 +220,8 @@ const GroupsPage: React.FC = () => {
         direction: newGroup.direction || undefined,
         units_per_session: Number(newGroup.units_per_session) || 1,
         extra_rate_per_unit: newGroup.extra_rate_per_unit === '' ? null : Number(newGroup.extra_rate_per_unit) || null,
+        start_date: newGroup.start_date || null,
+        lesson_format: newGroup.lesson_format,
         schedules: formSchedules.map((s) => ({
           day_of_week: s.day_of_week,
           start_time: normalizeTime(s.start_time),
@@ -222,7 +230,7 @@ const GroupsPage: React.FC = () => {
       });
       setEditOpen(false);
       setSelectedGroup(null);
-      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '' });
+      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group' });
       setFormSchedules([]);
       setError('');
       loadGroups();
@@ -280,7 +288,7 @@ const GroupsPage: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => {
               setOpen(true);
-              setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '' });
+              setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group' });
               setFormSchedules([]);
             }}
           >
@@ -314,7 +322,7 @@ const GroupsPage: React.FC = () => {
                 <TableCell>{group.name}</TableCell>
                 <TableCell>{DIRECTION_OPTIONS.find((o) => o.value === group.direction)?.label ?? group.direction ?? '-'}</TableCell>
                 <TableCell>{group.trainer?.full_name || '-'}</TableCell>
-                <TableCell>{(group.units_per_session ?? 1) + (group.extra_rate_per_unit != null ? ` · ${group.extra_rate_per_unit} ₽/доп` : '')}</TableCell>
+                <TableCell>{(group.lesson_format === 'individual') ? '—' : (group.units_per_session ?? 1) + (group.extra_rate_per_unit != null ? ` · ${group.extra_rate_per_unit} ₽/доп` : '')}</TableCell>
                 <TableCell>{group.students?.length ?? '-'}</TableCell>
                 <TableCell>{group.status === 'active' ? 'Активна' : 'В архиве'}</TableCell>
                 {(isAdminLike || user?.role === 'trainer') && (
@@ -399,6 +407,29 @@ const GroupsPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
+            <TextField
+              fullWidth
+              label="Начало группы"
+              type="date"
+              value={newGroup.start_date}
+              onChange={(e) => setNewGroup({ ...newGroup, start_date: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              sx={{ mt: 2 }}
+              helperText="С какой даты группа считается работающей; уроки нельзя создавать раньше"
+            />
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Формат</InputLabel>
+              <Select
+                value={newGroup.lesson_format}
+                label="Формат"
+                onChange={(e) => setNewGroup({ ...newGroup, lesson_format: e.target.value as 'group' | 'individual' })}
+              >
+                <MenuItem value="group">Групповой формат</MenuItem>
+                <MenuItem value="individual">Индивидуальный формат</MenuItem>
+              </Select>
+            </FormControl>
+            {newGroup.lesson_format !== 'individual' && (
+              <>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
               8 занятий (юниты)
             </Typography>
@@ -423,6 +454,8 @@ const GroupsPage: React.FC = () => {
                 helperText="Сверх лимита; пусто — как базовая"
               />
             </Stack>
+            </>
+            )}
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
               Расписание
             </Typography>
@@ -559,6 +592,29 @@ const GroupsPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
+            <TextField
+              fullWidth
+              label="Начало группы"
+              type="date"
+              value={newGroup.start_date}
+              onChange={(e) => setNewGroup({ ...newGroup, start_date: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              sx={{ mt: 2 }}
+              helperText="С какой даты группа считается работающей; уроки нельзя создавать раньше"
+            />
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Формат</InputLabel>
+              <Select
+                value={newGroup.lesson_format}
+                label="Формат"
+                onChange={(e) => setNewGroup({ ...newGroup, lesson_format: e.target.value as 'group' | 'individual' })}
+              >
+                <MenuItem value="group">Групповой формат</MenuItem>
+                <MenuItem value="individual">Индивидуальный формат</MenuItem>
+              </Select>
+            </FormControl>
+            {newGroup.lesson_format !== 'individual' && (
+              <>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
               8 занятий (юниты)
             </Typography>
@@ -583,6 +639,8 @@ const GroupsPage: React.FC = () => {
                 helperText="Сверх лимита; пусто — как базовая"
               />
             </Stack>
+            </>
+            )}
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
               Расписание
             </Typography>

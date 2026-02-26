@@ -673,6 +673,10 @@ class Group(Base):
     units_per_session = Column(Integer, default=1, nullable=False, server_default="1")
     # Ставка за доп. юнит (сверх 8), когда extra_policy=paid; если NULL — берём price/8
     extra_rate_per_unit = Column(Float, nullable=True)
+    # С какой даты группа считается работающей — уроки нельзя создавать раньше этой даты
+    start_date = Column(Date, nullable=True)
+    # group = групповой (лимит 8 занятий/юнитов), individual = индивидуальный (без лимита 8)
+    lesson_format = Column(String(16), nullable=False, default="group", server_default="group")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

@@ -46,6 +46,8 @@ def _group_to_response(db: Session, g: Group) -> GroupResponse:
         base["units_per_session"] = getattr(g, "units_per_session", 1) or 1
     if "extra_rate_per_unit" not in base:
         base["extra_rate_per_unit"] = getattr(g, "extra_rate_per_unit", None)
+    base["start_date"] = getattr(g, "start_date", None)
+    base["lesson_format"] = getattr(g, "lesson_format", None) or "group"
     return GroupResponse(**base)
 
 
@@ -67,7 +69,11 @@ async def create_group(
         name=group.name,
         direction=group.direction,
         trainer_id=group.trainer_id,
-        status=GroupStatus.ACTIVE
+        status=GroupStatus.ACTIVE,
+        start_date=group.start_date,
+        lesson_format=(group.lesson_format or "group").strip().lower() or "group",
+        units_per_session=group.units_per_session if group.units_per_session is not None else 1,
+        extra_rate_per_unit=group.extra_rate_per_unit,
     )
     db.add(db_group)
     db.flush()
@@ -205,6 +211,10 @@ async def update_group(
             update_data["status"] = GroupStatus(update_data["status"])
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid group status")
+
+    if "lesson_format" in update_data and update_data["lesson_format"] is not None:
+        v = (update_data["lesson_format"] or "").strip().lower()
+        update_data["lesson_format"] = "individual" if v == "individual" else "group"
 
     for field, value in update_data.items():
         setattr(db_group, field, value)

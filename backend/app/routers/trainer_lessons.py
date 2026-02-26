@@ -54,8 +54,10 @@ def _first_n_slots_per_group_in_month(
     year: int,
     month: int,
     cancellations: List,
+    individual_group_ids: Optional[Set[int]] = None,
 ) -> Tuple[Set[Tuple[int, date, time, time]], dict]:
-    """Для каждой группы возвращает множество (group_id, date, start_time, end_time) первых 8 слотов в месяце и маппинг (group_id, date, st, et) -> index 1..8."""
+    """Для каждой группы возвращает множество (group_id, date, start_time, end_time) первых 8 слотов в месяце (или все слоты для индивидуальных групп) и маппинг (group_id, date, st, et) -> index 1..8."""
+    individual_group_ids = individual_group_ids or set()
     cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations}
     allowed: Set[Tuple[int, date, time, time]] = set()
     index_map: dict = {}
@@ -75,7 +77,8 @@ def _first_n_slots_per_group_in_month(
                     if (gid, d, sched.start_time, sched.end_time) not in cancelled_set:
                         slots_in_month.append((d, sched.start_time, sched.end_time))
         slots_in_month.sort(key=lambda x: (x[0], x[1]))
-        for i, (d, st, et) in enumerate(slots_in_month[:LESSONS_PER_MONTH]):
+        n = len(slots_in_month) if gid in individual_group_ids else min(LESSONS_PER_MONTH, len(slots_in_month))
+        for i, (d, st, et) in enumerate(slots_in_month[:n]):
             allowed.add((gid, d, st, et))
             index_map[(gid, d, st, et)] = i + 1
     return allowed, index_map
@@ -109,6 +112,16 @@ async def get_lessons_for_date(
         groups = db.query(Group).options(selectinload(Group.trainer)).filter(Group.status == GroupStatus.ACTIVE).all()
     else:
         raise HTTPException(status_code=403, detail="Only for trainers or admin/owner/sales")
+    # Не показывать слоты раньше начала группы
+    groups_for_day = [
+        g for g in groups
+        if getattr(g, "start_date", None) is None or lesson_date >= g.start_date
+    ]
+    group_ids = [g.id for g in groups_for_day]
+    individual_group_ids = {
+        g.id for g in groups_for_day
+        if (getattr(g, "lesson_format", None) or "group").strip().lower() == "individual"
+    }
     def _time_eq(a: Optional[time], b: Optional[time]) -> bool:
         if a is None and b is None:
             return True
@@ -132,7 +145,9 @@ async def get_lessons_for_date(
         LessonCancellation.lesson_date >= month_start,
         LessonCancellation.lesson_date <= month_end,
     ).all()
-    first_8_allowed, lesson_index_in_month_map = _first_n_slots_per_group_in_month(db, group_ids, year, month, cancellations_month)
+    first_8_allowed, lesson_index_in_month_map = _first_n_slots_per_group_in_month(
+        db, group_ids, year, month, cancellations_month, individual_group_ids=individual_group_ids
+    )
 
     overrides = db.query(LessonTrainerOverride).filter(
         LessonTrainerOverride.group_id.in_(group_ids),
@@ -143,7 +158,7 @@ async def get_lessons_for_date(
     override_trainers = {u.id: u for u in db.query(User).filter(User.id.in_(override_trainer_ids)).all()} if override_trainer_ids else {}
 
     result: List[TrainerLessonSlotResponse] = []
-    for group in groups:
+    for group in groups_for_day:
         schedules = db.query(GroupSchedule).filter(
             GroupSchedule.group_id == group.id,
             GroupSchedule.day_of_week == weekday,
@@ -327,6 +342,12 @@ async def save_attendance(
     if group.trainer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your group")
 
+    if getattr(group, "start_date", None) and payload.lesson_date < group.start_date:
+        raise HTTPException(
+            status_code=400,
+            detail="Дата урока не может быть раньше начала группы",
+        )
+
     start_t: Optional[time] = None
     end_t: Optional[time] = None
     if getattr(payload, "start_time", None) and str(payload.start_time).strip():
@@ -393,6 +414,7 @@ async def save_attendance(
         LessonAttendance.group_id == payload.group_id,
         LessonAttendance.lesson_date == payload.lesson_date,
     ).all()
+    is_individual = (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
     BASE_UNITS = 8
     U = max(1, getattr(group, "units_per_session", None) or 1)
     window_start, window_end = get_academic_window(payload.lesson_date)
@@ -432,7 +454,7 @@ async def save_attendance(
         student = db.query(Student).filter(Student.id == att.student_id).first()
         if not student:
             continue
-        if is_present:
+        if is_present and not is_individual:
             all_in_window = (
                 db.query(LessonAttendance)
                 .filter(
@@ -721,6 +743,11 @@ async def create_lesson_slot(
     group = db.query(Group).filter(Group.id == payload.group_id, Group.status == GroupStatus.ACTIVE).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
+    if getattr(group, "start_date", None) and payload.lesson_date < group.start_date:
+        raise HTTPException(
+            status_code=400,
+            detail="Дата урока не может быть раньше начала группы",
+        )
     if current_user.role == UserRole.TRAINER:
         if group.trainer_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not your group")

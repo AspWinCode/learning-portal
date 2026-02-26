@@ -235,13 +235,15 @@ export const groupsApi = {
     schedules?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
     units_per_session?: number;
     extra_rate_per_unit?: number | null;
+    start_date?: string | null;
+    lesson_format?: 'group' | 'individual';
   }): Promise<Group> => {
     const response = await api.post('/api/groups/', data);
     return response.data;
   },
   update: async (
     id: number,
-    data: Partial<Pick<Group, 'name' | 'trainer_id' | 'status' | 'direction' | 'units_per_session' | 'extra_rate_per_unit'>> & {
+    data: Partial<Pick<Group, 'name' | 'trainer_id' | 'status' | 'direction' | 'units_per_session' | 'extra_rate_per_unit' | 'start_date' | 'lesson_format'>> & {
       schedules?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
     }
   ): Promise<Group> => {

@@ -196,6 +196,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       return [
         { text: 'Дашборд продаж', icon: <Dashboard />, path: '/sales/dashboard' },
         { text: 'Ученики', icon: <People />, path: '/students' },
+        { text: 'Тренеры', icon: <People />, path: '/trainers' },
         { text: 'Уроки', icon: <EventAvailable />, path: '/lessons' },
         { text: 'Ручные уроки', icon: <EventAvailable />, path: '/sales/manual-lessons' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
@@ -245,7 +246,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
       items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
     }
-    if (role === 'admin' || role === 'sales') {
+    // Тренеры: owner уже выше; здесь только admin (sales получают пункт в своём return)
+    if (role === 'admin') {
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
     }
     return items;

@@ -6,6 +6,7 @@ export interface User {
   is_active: boolean;
   created_at: string;
   trainer_rate?: number | null;
+  trainer_rate_per_hour?: number | null;
   trainer_lessons?: number | null;
 }
 

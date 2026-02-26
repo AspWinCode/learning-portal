@@ -243,6 +243,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Новая B2B-школа', icon: <Add />, path: '/b2b-schools/new' });
       items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+      items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
     }
     return items;
   })();

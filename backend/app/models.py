@@ -137,7 +137,8 @@ class User(Base):
     invite_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    trainer_rate = Column(Float, nullable=True)
+    trainer_rate = Column(Float, nullable=True)  # ставка за урок (групповой формат)
+    trainer_rate_per_hour = Column(Float, nullable=True)  # ставка за час (индивидуальный формат)
     trainer_lessons = Column(Integer, nullable=True)
 
     # Relationships
@@ -846,6 +847,41 @@ class LessonSlotExtraPolicy(Base):
     extra_rate_per_unit = Column(Float, nullable=True)  # если NULL — из группы или price/8
 
     group = relationship("Group", back_populates="lesson_slot_extra_policies")
+
+
+class TrainerPeriodBonus(Base):
+    """Премия тренеру за период (месяц) для страницы «Расчёты». Owner."""
+    __tablename__ = "trainer_period_bonuses"
+    __table_args__ = (UniqueConstraint("trainer_id", "period", name="uq_trainer_period_bonus"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    period = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    bonus = Column(Float, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    trainer = relationship("User", foreign_keys=[trainer_id])
+
+
+class TrainerPayout(Base):
+    """Табель выплаты тренеру за период: уроки/часы, ставки, премия, итог. Owner."""
+    __tablename__ = "trainer_payouts"
+    __table_args__ = (UniqueConstraint("trainer_id", "period", name="uq_trainer_payout_period"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    period = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    lessons_count = Column(Integer, nullable=False, default=0)
+    hours_count = Column(Float, nullable=False, default=0)
+    rate_per_lesson = Column(Float, nullable=True)
+    rate_per_hour = Column(Float, nullable=True)
+    base_payment = Column(Float, nullable=False, default=0)
+    bonus = Column(Float, nullable=False, default=0)
+    total = Column(Float, nullable=False, default=0)
+    paid_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    trainer = relationship("User", foreign_keys=[trainer_id])
 
 
 class CustomLessonType(str, enum.Enum):

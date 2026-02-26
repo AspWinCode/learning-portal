@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.database import SessionLocal
-from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, owner_funnels, trainer_lessons, student_accounts, projects
+from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects
 
 app = FastAPI(
     title="Learning Portal API",
@@ -157,6 +157,7 @@ app.include_router(sales.router, prefix="/api/sales", tags=["sales"])
 app.include_router(tasks.router, prefix="/api", tags=["tasks"])
 app.include_router(b2b.router, prefix="/api", tags=["b2b"])
 app.include_router(owner_funnels.router, prefix="/api", tags=["owner_funnels"])
+app.include_router(owner_calculations.router, prefix="/api", tags=["owner_calculations"])
 app.include_router(trainer_lessons.router, prefix="/api/trainer-lessons", tags=["trainer_lessons"])
 app.include_router(student_accounts.router, prefix="/api/student-accounts", tags=["student_accounts"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])

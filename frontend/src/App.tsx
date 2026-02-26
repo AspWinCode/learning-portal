@@ -18,6 +18,7 @@ import ReportsPage from './pages/ReportsPage';
 import FinancialModelPage from './pages/FinancialModelPage';
 import AbonementsPage from './pages/AbonementsPage';
 import TrainersPage from './pages/TrainersPage';
+import CalculationsPage from './pages/CalculationsPage';
 import B2BSchoolsPage from './pages/B2BSchoolsPage';
 import B2BSchoolCreatePage from './pages/B2BSchoolCreatePage';
 import B2BPlanForTodayPage from './pages/B2BPlanForTodayPage';
@@ -291,6 +292,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']}>
                   <TrainersPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/calculations"
+              element={
+                <PrivateRoute allowedRoles={['owner']}>
+                  <CalculationsPage />
                 </PrivateRoute>
               }
             />

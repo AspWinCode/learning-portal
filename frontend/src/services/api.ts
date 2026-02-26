@@ -54,7 +54,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30s — для входа и тяжёлых запросов после деплоя
+  timeout: 45000, // 45s — для тяжёлых запросов и холодного старта бэкенда
 });
 
 // Interceptor ╨┤╨╗╤П ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╤П ╤В╨╛╨║╨╡╨╜╨░
@@ -86,6 +86,7 @@ export const authApi = {
     body.append('password', password);
     const response = await api.post('/api/auth/login', body.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 60000, // 60s — бэкенд после деплоя или при холодном старте может отвечать долго
     });
     return response.data;
   },

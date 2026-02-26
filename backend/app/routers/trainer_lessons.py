@@ -206,9 +206,14 @@ async def get_lessons_for_date(
             }
             slot_student_ids = {att.student_id for att in atts}
             students_data = []
+            # Если по слоту уже есть записи посещаемости — показываем только этих учеников
+            # (удалённые через «Удалить из урока» не отображаются). Если записей ещё нет — показываем всех по группе.
+            only_with_attendance = len(slot_student_ids) > 0
             for gs in students_in_group:
                 student = gs.student
                 if not student:
+                    continue
+                if only_with_attendance and student.id not in slot_student_ids:
                     continue
                 training_start = getattr(student, "training_start_date", None)
                 if training_start is not None and lesson_date < training_start:

@@ -245,6 +245,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
       items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
     }
+    if (role === 'admin' || role === 'sales') {
+      items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+    }
     return items;
   })();
 

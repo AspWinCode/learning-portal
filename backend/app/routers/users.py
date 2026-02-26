@@ -11,28 +11,45 @@ from app.services.parent_invite import create_parent_with_invite
 router = APIRouter()
 
 
+def _apply_trainer_profile(db_user: User, data: dict) -> None:
+    """Записать поля профиля тренера из словаря (create/update)."""
+    for key in (
+        "phone", "phone_extra", "trainer_lesson_formats", "trainer_banks",
+        "city", "trainer_telegram", "is_self_employed", "is_ip",
+        "work_schedule", "qualification", "trainer_comment",
+    ):
+        if key in data and data[key] is not None:
+            setattr(db_user, key, data[key])
+
+
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_role(["admin", "owner"]))
 ):
-    """Создание пользователя (только администратор)"""
+    """Создание пользователя (admin, owner). Для тренера можно сразу заполнить профиль."""
     db_user = auth.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     hashed_password = auth.get_password_hash(user.password)
     db_user = User(
         email=user.email,
         hashed_password=hashed_password,
         full_name=user.full_name,
-        role=UserRole(user.role)
+        role=UserRole(user.role),
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    
+    if user.role == UserRole.TRAINER:
+        payload = user.model_dump(exclude_unset=True)
+        for k in ("email", "full_name", "role", "password"):
+            payload.pop(k, None)
+        _apply_trainer_profile(db_user, payload)
+        db.commit()
+        db.refresh(db_user)
     log_action(db, current_user.id, "create", "user", db_user.id)
     return db_user
 
@@ -70,9 +87,13 @@ async def read_users(
     limit: int = 100,
     role: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"]))
+    current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Получение списка пользователей (admin, owner)"""
+    """Список пользователей. Admin, owner — любые; sales — только тренеры (role=trainer)."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    if current_user.role == UserRole.SALES:
+        role = "trainer"
     query = db.query(User)
     if role:
         query = query.filter(User.role == UserRole(role))
@@ -84,16 +105,19 @@ async def read_users(
 async def read_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user)
+    current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Получение пользователя по ID"""
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER) and current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
+    """Получение пользователя по ID. Профиль тренера виден owner, admin, sales."""
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+    if current_user.id == user_id:
+        return user
+    if current_user.role in (UserRole.ADMIN, UserRole.OWNER):
+        return user
+    if current_user.role == UserRole.SALES and user.role == UserRole.TRAINER:
+        return user
+    raise HTTPException(status_code=403, detail="Not enough permissions")
 
 
 @router.put("/{user_id}", response_model=UserResponse)
@@ -101,20 +125,23 @@ async def update_user(
     user_id: int,
     user_update: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"]))
+    current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Обновление пользователя (admin, owner)"""
+    """Обновление пользователя. Admin, owner — любые; sales — только тренеры (профиль)."""
     db_user = db.query(User).filter(User.id == user_id).first()
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    update_data = user_update.dict(exclude_unset=True)
+    if current_user.role == UserRole.SALES:
+        if db_user.role != UserRole.TRAINER:
+            raise HTTPException(status_code=403, detail="Sales can only update trainers")
+    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    update_data = user_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_user, field, value)
-    
     db.commit()
     db.refresh(db_user)
-    
     log_action(db, current_user.id, "update", "user", user_id, update_data)
     return db_user
 

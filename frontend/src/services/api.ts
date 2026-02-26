@@ -127,7 +127,23 @@ export const usersApi = {
     const response = await api.get(`/api/users/${id}`);
     return response.data;
   },
-  create: async (data: { full_name: string; email: string; password: string; role: string }): Promise<User> => {
+  create: async (data: {
+    full_name: string;
+    email: string;
+    password: string;
+    role: string;
+    phone?: string | null;
+    phone_extra?: string | null;
+    trainer_lesson_formats?: string | null;
+    trainer_banks?: string[] | null;
+    city?: string | null;
+    trainer_telegram?: string | null;
+    is_self_employed?: boolean | null;
+    is_ip?: boolean | null;
+    work_schedule?: string | null;
+    qualification?: string | null;
+    trainer_comment?: string | null;
+  }): Promise<User> => {
     const response = await api.post('/api/users/', data);
     return response.data;
   },

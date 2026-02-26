@@ -118,6 +118,12 @@ class SetPasswordByInvite(BaseModel):
 
 
 # User schemas
+# Банки для перевода тренера (профиль, виден owner/admin/sales)
+TRAINER_BANK_KEYS = ["alfa", "tinkoff", "sberbank", "vtb", "ozon"]
+# Формат ведения занятий
+TrainerLessonFormat = Literal["group", "individual", "both"]
+
+
 class UserBase(BaseModel):
     email: EmailStr
     full_name: str
@@ -126,6 +132,18 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    # Профиль тренера (опционально при создании)
+    phone: Optional[str] = None
+    phone_extra: Optional[str] = None
+    trainer_lesson_formats: Optional[TrainerLessonFormat] = None
+    trainer_banks: Optional[List[str]] = None
+    city: Optional[str] = None
+    trainer_telegram: Optional[str] = None
+    is_self_employed: Optional[bool] = None
+    is_ip: Optional[bool] = None
+    work_schedule: Optional[str] = None
+    qualification: Optional[str] = None
+    trainer_comment: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -135,6 +153,17 @@ class UserUpdate(BaseModel):
     trainer_rate: Optional[float] = None
     trainer_rate_per_hour: Optional[float] = None
     trainer_lessons: Optional[int] = None
+    phone: Optional[str] = None
+    phone_extra: Optional[str] = None
+    trainer_lesson_formats: Optional[TrainerLessonFormat] = None
+    trainer_banks: Optional[List[str]] = None
+    city: Optional[str] = None
+    trainer_telegram: Optional[str] = None
+    is_self_employed: Optional[bool] = None
+    is_ip: Optional[bool] = None
+    work_schedule: Optional[str] = None
+    qualification: Optional[str] = None
+    trainer_comment: Optional[str] = None
 
 
 class UserResponse(UserBase):
@@ -144,6 +173,17 @@ class UserResponse(UserBase):
     trainer_rate: Optional[float] = None
     trainer_rate_per_hour: Optional[float] = None
     trainer_lessons: Optional[int] = None
+    phone: Optional[str] = None
+    phone_extra: Optional[str] = None
+    trainer_lesson_formats: Optional[str] = None
+    trainer_banks: Optional[List[str]] = None
+    city: Optional[str] = None
+    trainer_telegram: Optional[str] = None
+    is_self_employed: Optional[bool] = None
+    is_ip: Optional[bool] = None
+    work_schedule: Optional[str] = None
+    qualification: Optional[str] = None
+    trainer_comment: Optional[str] = None
 
     class Config:
         from_attributes = True

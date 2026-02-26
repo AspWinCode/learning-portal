@@ -1,3 +1,16 @@
+/** Формат ведения занятий тренера */
+export type TrainerLessonFormat = 'group' | 'individual' | 'both';
+/** Коды банков для перевода (профиль тренера) */
+export const TRAINER_BANK_KEYS = ['alfa', 'tinkoff', 'sberbank', 'vtb', 'ozon'] as const;
+export type TrainerBankKey = (typeof TRAINER_BANK_KEYS)[number];
+export const TRAINER_BANK_LABELS: Record<TrainerBankKey, string> = {
+  alfa: 'Альфа-Банк',
+  tinkoff: 'Тинькофф',
+  sberbank: 'Сбербанк',
+  vtb: 'ВТБ',
+  ozon: 'Озон',
+};
+
 export interface User {
   id: number;
   email: string;
@@ -8,6 +21,18 @@ export interface User {
   trainer_rate?: number | null;
   trainer_rate_per_hour?: number | null;
   trainer_lessons?: number | null;
+  // Профиль тренера (виден owner, admin, sales)
+  phone?: string | null;
+  phone_extra?: string | null;
+  trainer_lesson_formats?: TrainerLessonFormat | null;
+  trainer_banks?: string[] | null;
+  city?: string | null;
+  trainer_telegram?: string | null;
+  is_self_employed?: boolean | null;
+  is_ip?: boolean | null;
+  work_schedule?: string | null;
+  qualification?: string | null;
+  trainer_comment?: string | null;
 }
 
 export interface Student {

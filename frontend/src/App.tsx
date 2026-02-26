@@ -290,7 +290,7 @@ function App() {
             <Route
               path="/trainers"
               element={
-                <PrivateRoute allowedRoles={['owner']}>
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales']}>
                   <TrainersPage />
                 </PrivateRoute>
               }

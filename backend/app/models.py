@@ -140,6 +140,18 @@ class User(Base):
     trainer_rate = Column(Float, nullable=True)  # ставка за урок (групповой формат)
     trainer_rate_per_hour = Column(Float, nullable=True)  # ставка за час (индивидуальный формат)
     trainer_lessons = Column(Integer, nullable=True)
+    # Профиль тренера (виден owner, admin, sales)
+    phone = Column(String(32), nullable=True)
+    phone_extra = Column(String(32), nullable=True)
+    trainer_lesson_formats = Column(String(32), nullable=True)  # group | individual | both
+    trainer_banks = Column(JSON, nullable=True)  # ["alfa","tinkoff","sberbank","vtb","ozon"]
+    city = Column(String(64), nullable=True)
+    trainer_telegram = Column(String(128), nullable=True)
+    is_self_employed = Column(Boolean, default=False)
+    is_ip = Column(Boolean, default=False)
+    work_schedule = Column(Text, nullable=True)
+    qualification = Column(Text, nullable=True)
+    trainer_comment = Column(Text, nullable=True)
 
     # Relationships
     students = relationship("Student", back_populates="parent", foreign_keys="Student.parent_id")

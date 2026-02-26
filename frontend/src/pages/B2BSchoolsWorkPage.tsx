@@ -2,7 +2,7 @@ import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Box, Tab, Tabs } from '@mui/material';
 import Layout from '../components/Layout';
-import { B2BSchoolsContent } from './B2BSchoolsPage';
+import { B2BSchoolsMVPContent } from './B2BSchoolsMVPPage';
 import { B2BSchoolCreateContent } from './B2BSchoolCreatePage';
 
 const TAB_LIST = 'list';
@@ -23,7 +23,7 @@ const B2BSchoolsWorkPage: React.FC = () => {
           <Tab label="Работа со школами" value={TAB_LIST} />
           <Tab label="Новая B2B школа" value={TAB_NEW} />
         </Tabs>
-        {tab === TAB_LIST && <B2BSchoolsContent />}
+        {tab === TAB_LIST && <B2BSchoolsMVPContent />}
         {tab === TAB_NEW && <B2BSchoolCreateContent />}
       </Box>
     </Layout>

@@ -23,6 +23,7 @@ import {
   LeadSource,
   SalesCity,
   SalesSchool,
+  AccountTemplate,
   LeadTaskTemplate,
   LeadStatusOption,
   LeadTaskStatusOption,
@@ -1025,6 +1026,17 @@ export const salesApi = {
   updateSalesSchool: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesSchool> => {
     const response = await api.put(`/api/sales/schools/${id}`, payload);
     return response.data;
+  },
+  listAccountTemplates: async (): Promise<AccountTemplate[]> => {
+    const response = await api.get('/api/sales/account-templates');
+    return response.data;
+  },
+  createAccountTemplate: async (data: { name: string; format: 'group' | 'individual' }): Promise<AccountTemplate> => {
+    const response = await api.post('/api/sales/account-templates', data);
+    return response.data;
+  },
+  deleteAccountTemplate: async (id: number): Promise<void> => {
+    await api.delete(`/api/sales/account-templates/${id}`);
   },
   listBankTransactions: async (params?: { status?: string[] }): Promise<BankTransaction[]> => {
     const response = await api.get('/api/sales/bank-transactions', { params });

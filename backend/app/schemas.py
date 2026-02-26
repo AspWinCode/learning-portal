@@ -795,6 +795,21 @@ class SalesSchoolResponse(SalesSchoolBase):
         from_attributes = True
 
 
+class AccountTemplateCreate(BaseModel):
+    name: str
+    format: Literal["group", "individual"]
+
+
+class AccountTemplateResponse(BaseModel):
+    id: int
+    name: str
+    format: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class LeadTaskTemplateBase(BaseModel):
     name: str
     is_active: bool = True

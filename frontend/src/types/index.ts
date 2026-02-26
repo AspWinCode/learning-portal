@@ -395,6 +395,16 @@ export interface SalesSchool {
   created_at: string;
 }
 
+/** Шаблон счёта (Настройки Sales): название + формат групповой/индивидуальный */
+export type AccountTemplateFormat = 'group' | 'individual';
+
+export interface AccountTemplate {
+  id: number;
+  name: string;
+  format: AccountTemplateFormat;
+  created_at: string;
+}
+
 export interface BankTransaction {
   id: number;
   operation_id: string;

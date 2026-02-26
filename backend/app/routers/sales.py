@@ -36,6 +36,7 @@ from app.models import (
     Abonement,
     User,
     UserRole,
+    AccountTemplate,
     SalesCity,
     SalesSchool,
     SalesInstruction,
@@ -102,6 +103,8 @@ from app.schemas import (
     SalesSchoolCreate,
     SalesSchoolResponse,
     SalesSchoolUpdate,
+    AccountTemplateCreate,
+    AccountTemplateResponse,
     LeadQuickCommunicationCreate,
     LeadContactResultRequest,
     LeadCommunicationResponse,
@@ -3427,6 +3430,49 @@ async def update_sales_school(
     db.refresh(item)
     log_action(db, current_user.id, "update", "sales_school", item.id, data)
     return item
+
+
+# --- Шаблоны счетов (название + формат: групповой/индивидуальный) ---
+@router.get("/account-templates", response_model=List[AccountTemplateResponse])
+async def list_account_templates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    return db.query(AccountTemplate).order_by(AccountTemplate.id.asc()).all()
+
+
+@router.post("/account-templates", response_model=AccountTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_account_template(
+    payload: AccountTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название счёта обязательно")
+    if payload.format not in ("group", "individual"):
+        raise HTTPException(status_code=400, detail="Формат должен быть group или individual")
+    item = AccountTemplate(name=name, format=payload.format)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "create", "account_template", item.id, {"name": name, "format": payload.format})
+    return item
+
+
+@router.delete("/account-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    item = db.query(AccountTemplate).filter(AccountTemplate.id == template_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Шаблон счёта не найден")
+    db.delete(item)
+    db.commit()
+    log_action(db, current_user.id, "delete", "account_template", template_id, {})
+    return None
 
 
 # --- Lead status options (кастомные статусы лида) ---

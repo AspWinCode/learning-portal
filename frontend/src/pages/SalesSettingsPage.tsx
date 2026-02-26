@@ -29,6 +29,7 @@ import {
   Abonement,
   ABONEMENT_FORMAT_LABELS,
   AbonementFormat,
+  AccountTemplate,
   LeadInfoTemplate,
   LeadSource,
   LeadStatus,
@@ -89,6 +90,11 @@ const SalesSettingsPage: React.FC = () => {
     price: number | '';
     abonement_format: '' | AbonementFormat;
   }>({ name: '', price: '', abonement_format: '' });
+  const [accountTemplates, setAccountTemplates] = useState<AccountTemplate[]>([]);
+  const [newAccountTemplate, setNewAccountTemplate] = useState<{ name: string; format: '' | 'group' | 'individual' }>({
+    name: '',
+    format: '',
+  });
 
   const loadData = async () => {
     const errors: string[] = [];
@@ -110,6 +116,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Города', () => salesApi.listSalesCities(false), setCities),
       load('Школы', () => salesApi.listSalesSchools(false), setSchools),
       load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
+      load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
     ]);
     if (errors.length) {
       const hint = errors.some((e) => e.includes('Not Found') || e.includes('404'))
@@ -321,6 +328,82 @@ const SalesSettingsPage: React.FC = () => {
                   <TableCell>{a.name}</TableCell>
                   <TableCell>{a.abonement_format ? ABONEMENT_FORMAT_LABELS[a.abonement_format] : '—'}</TableCell>
                   <TableCell>{a.price.toFixed(2)} ₽</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Шаблоны счетов</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Название и формат счёта (Групповой / Индивидуальный) для использования при создании счетов учеников.
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
+            <TextField
+              size="small"
+              label="Название счёта"
+              value={newAccountTemplate.name}
+              onChange={(e) => setNewAccountTemplate((prev) => ({ ...prev, name: e.target.value }))}
+              sx={{ flex: 2 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Формат счёта</InputLabel>
+              <Select
+                label="Формат счёта"
+                value={newAccountTemplate.format}
+                onChange={(e) =>
+                  setNewAccountTemplate((prev) => ({
+                    ...prev,
+                    format: (e.target.value || '') as '' | 'group' | 'individual',
+                  }))
+                }
+              >
+                <MenuItem value="">Не выбран</MenuItem>
+                <MenuItem value="group">Групповой</MenuItem>
+                <MenuItem value="individual">Индивидуальный</MenuItem>
+              </Select>
+            </FormControl>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() =>
+                safeAction(async () => {
+                  if (!newAccountTemplate.name.trim() || !newAccountTemplate.format) return;
+                  await salesApi.createAccountTemplate({
+                    name: newAccountTemplate.name.trim(),
+                    format: newAccountTemplate.format,
+                  });
+                  setNewAccountTemplate({ name: '', format: '' });
+                })
+              }
+              disabled={!newAccountTemplate.name.trim() || !newAccountTemplate.format}
+            >
+              Создать
+            </Button>
+          </Stack>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название счёта</TableCell>
+                <TableCell>Формат</TableCell>
+                <TableCell align="right">Действия</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {accountTemplates.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell>{t.name}</TableCell>
+                  <TableCell>{t.format === 'group' ? 'Групповой' : 'Индивидуальный'}</TableCell>
+                  <TableCell align="right">
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => safeAction(() => salesApi.deleteAccountTemplate(t.id))}
+                    >
+                      Удалить
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

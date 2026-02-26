@@ -401,6 +401,16 @@ class SalesSchool(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class AccountTemplate(Base):
+    """Шаблон счёта для настройки Sales: название + формат (групповой/индивидуальный)."""
+    __tablename__ = "account_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    format = Column(String(32), nullable=False)  # group | individual
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class SalesInstruction(Base):
     __tablename__ = "sales_instructions"
 

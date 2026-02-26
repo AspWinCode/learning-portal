@@ -12,6 +12,8 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  MenuItem,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -89,7 +91,7 @@ const SalesDebtsPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await salesApi.listBankTransactions({ status: ['new', 'no_match', 'ambiguous'] });
+      const data = await salesApi.listBankTransactions();
       setBankItems(data);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить операции банка'));
@@ -245,55 +247,103 @@ const SalesDebtsPage: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>Дата</TableCell>
+                  <TableCell>Тип</TableCell>
                   <TableCell>Сумма</TableCell>
-                  <TableCell>ФИО плательщика</TableCell>
+                  <TableCell>ФИО плательщика / Контрагент</TableCell>
                   <TableCell>Телефон</TableCell>
+                  <TableCell>Категория расхода</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell>Ученик</TableCell>
                   <TableCell />
                 </TableRow>
               </TableHead>
               <TableBody>
-                {bankItems.map((tx) => (
-                  <TableRow key={tx.id} hover>
-                    <TableCell>{tx.payment_date || '—'}</TableCell>
-                    <TableCell>{tx.amount.toFixed(2)}</TableCell>
-                    <TableCell>{tx.payer_name || '—'}</TableCell>
-                    <TableCell>{tx.payer_phone || '—'}</TableCell>
-                    <TableCell>{tx.status}</TableCell>
-                    <TableCell>
-                      {tx.student_id ? (
-                        <Typography
-                          component="button"
-                          variant="body2"
-                          color="primary"
-                          sx={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-                          onClick={() => navigate(`/students?detail=${tx.student_id}`)}
-                        >
-                          Открыть ученика
-                        </Typography>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {tx.status !== 'applied' && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => {
-                            setSelectedTx(tx);
-                            setSelectedStudent(null);
-                            setStudentQuery('');
-                            setApplyDialogOpen(true);
-                          }}
-                        >
-                          Зачислить
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {bankItems.map((tx) => {
+                  const isExpense = tx.status === 'expense' || tx.amount < 0;
+                  const expenseCategorized = isExpense && !!(tx.expense_category ?? '').trim();
+                  return (
+                    <TableRow
+                      key={tx.id}
+                      hover
+                      sx={{
+                        ...(expenseCategorized && {
+                          bgcolor: 'success.light',
+                          '&:hover': { bgcolor: 'success.light' },
+                        }),
+                      }}
+                    >
+                      <TableCell>{tx.payment_date || '—'}</TableCell>
+                      <TableCell>{isExpense ? 'Расход' : 'Приход'}</TableCell>
+                      <TableCell sx={{ color: isExpense ? 'error.main' : undefined }}>
+                        {isExpense ? '−' : '+'} {Math.abs(tx.amount).toFixed(2)} ₽
+                      </TableCell>
+                      <TableCell>{tx.payer_name || '—'}</TableCell>
+                      <TableCell>{tx.payer_phone || '—'}</TableCell>
+                      <TableCell>
+                        {isExpense ? (
+                          <Select
+                            size="small"
+                            value={tx.expense_category ?? ''}
+                            displayEmpty
+                            sx={{ minWidth: 140 }}
+                            onChange={async (e) => {
+                              const value = e.target.value as string;
+                              try {
+                                await salesApi.updateBankTransactionExpenseCategory(tx.id, {
+                                  expense_category: value || null,
+                                });
+                                await loadBankTransactions();
+                              } catch (err: any) {
+                                setError(extractApiError(err, 'Не удалось сохранить категорию'));
+                              }
+                            }}
+                          >
+                            <MenuItem value="">—</MenuItem>
+                            <MenuItem value="комиссия">Комиссия</MenuItem>
+                            <MenuItem value="типография">Типография</MenuItem>
+                            <MenuItem value="аренда">Аренда</MenuItem>
+                            <MenuItem value="канцтовары">Канцтовары</MenuItem>
+                            <MenuItem value="прочее">Прочее</MenuItem>
+                          </Select>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
+                      <TableCell>{isExpense ? '—' : tx.status}</TableCell>
+                      <TableCell>
+                        {tx.student_id ? (
+                          <Typography
+                            component="button"
+                            variant="body2"
+                            color="primary"
+                            sx={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                            onClick={() => navigate(`/students?detail=${tx.student_id}`)}
+                          >
+                            Открыть ученика
+                          </Typography>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {!isExpense && tx.status !== 'applied' && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => {
+                              setSelectedTx(tx);
+                              setSelectedStudent(null);
+                              setStudentQuery('');
+                              setApplyDialogOpen(true);
+                            }}
+                          >
+                            Зачислить
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
             {bankItems.length === 0 && (

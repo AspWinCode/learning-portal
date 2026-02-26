@@ -376,11 +376,17 @@ class BankTransactionResponse(BaseModel):
     payer_name: Optional[str] = None
     payment_date: Optional[str] = None
     status: str
+    expense_category: Optional[str] = None
     student_id: Optional[int] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class BankTransactionExpenseCategoryUpdate(BaseModel):
+    """Установить категорию расхода (комиссия, типография и т.д.)."""
+    expense_category: Optional[str] = None
 
 
 class BankTransactionApplyRequest(BaseModel):

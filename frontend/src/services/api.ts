@@ -1034,6 +1034,16 @@ export const salesApi = {
     const response = await api.post(`/api/sales/bank-transactions/${transactionId}/apply`, payload);
     return response.data;
   },
+  updateBankTransactionExpenseCategory: async (
+    transactionId: number,
+    payload: { expense_category?: string | null }
+  ): Promise<BankTransaction> => {
+    const response = await api.patch(
+      `/api/sales/bank-transactions/${transactionId}/expense-category`,
+      payload
+    );
+    return response.data;
+  },
   getTochkaStatus: async (): Promise<{ configured: boolean; auto_import_configured?: boolean }> => {
     const response = await api.get('/api/sales/tochka/status');
     return response.data;

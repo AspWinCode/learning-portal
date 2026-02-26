@@ -475,20 +475,22 @@ class BankTransactionStatus(str, enum.Enum):
     APPLIED = "applied"
     AMBIGUOUS = "ambiguous"
     NO_MATCH = "no_match"
+    EXPENSE = "expense"  # расход (списание); категория в expense_category
 
 
 class BankTransaction(Base):
-    """Операции из банка (Точка и др.): дедупликация по operation_id, матчинг по телефону."""
+    """Операции из банка (Точка и др.): приход и расход; дедупликация по operation_id, матчинг по телефону для прихода."""
     __tablename__ = "bank_transactions"
     __table_args__ = (UniqueConstraint("operation_id", name="uq_bank_transactions_operation_id"),)
     id = Column(Integer, primary_key=True, index=True)
     operation_id = Column(String(256), nullable=False, unique=True, index=True)
     tochka_account_id = Column(String(64), nullable=True, index=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Float, nullable=False)  # приход > 0, расход < 0
     payer_phone = Column(String(32), nullable=True, index=True)
-    payer_name = Column(String(512), nullable=True)
+    payer_name = Column(String(512), nullable=True)  # для расхода — контрагент/назначение
     payment_date = Column(String(32), nullable=True)
     status = Column(String(32), nullable=False, default=BankTransactionStatus.NEW.value, index=True)
+    expense_category = Column(String(64), nullable=True, index=True)  # комиссия, типография, аренда и т.д.
     student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
     student_account_id = Column(Integer, ForeignKey("student_accounts.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

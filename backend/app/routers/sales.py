@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 from datetime import date, datetime, timedelta, time as dt_time
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
@@ -130,6 +131,7 @@ from app.schemas import (
     PhonePaymentBindingCreate,
     BankTransactionResponse,
     BankTransactionApplyRequest,
+    BankTransactionExpenseCategoryUpdate,
     AbsenceMakeupAssign,
     MakeupSuggestionItem,
     ProgramMakeupCompatibilityResponse,
@@ -918,7 +920,7 @@ async def tochka_import_and_apply(
 
 @router.get("/bank-transactions", response_model=List[BankTransactionResponse])
 async def list_bank_transactions(
-    status: Optional[List[str]] = Query(None, description="Фильтр: new, no_match, ambiguous, applied"),
+    status: Optional[List[str]] = Query(None, description="Фильтр: new, no_match, ambiguous, applied, expense; без параметра — все операции"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -1012,6 +1014,27 @@ async def apply_bank_transaction(
     bt.status = BankTransactionStatus.APPLIED.value
     bt.student_id = payload.student_id
     bt.student_account_id = account.id
+    db.commit()
+    db.refresh(bt)
+    return BankTransactionResponse.model_validate(bt)
+
+
+@router.patch("/bank-transactions/{transaction_id}/expense-category", response_model=BankTransactionResponse)
+async def update_bank_transaction_expense_category(
+    transaction_id: int,
+    payload: BankTransactionExpenseCategoryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Установить категорию расхода (комиссия, типография, аренда и т.д.). Только для операций со статусом expense."""
+    _require_sales_admin_owner(current_user)
+    bt = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
+    if not bt:
+        raise HTTPException(status_code=404, detail="Операция не найдена")
+    if bt.status != BankTransactionStatus.EXPENSE.value:
+        raise HTTPException(status_code=400, detail="Категорию можно задать только для расхода (списание)")
+    if payload.expense_category is not None:
+        bt.expense_category = (payload.expense_category or "").strip() or None
     db.commit()
     db.refresh(bt)
     return BankTransactionResponse.model_validate(bt)
@@ -1288,7 +1311,9 @@ async def import_bank_transactions_from_excel(
     """
     Импорт банковской выписки из .xlsx, когда файл скачан вручную (Точка или другой банк).
     Создаёт записи в bank_transactions со статусом new; дальше менеджер распределяет их по ученикам во вкладке «Операции банка».
-    Ожидаемые заголовки (регистр не важен): Дата, Сумма, ФИО плательщика, Телефон (можно на русском или английском).
+    Поддерживаются два формата:
+    1) Универсальный: колонки Дата, Сумма, ФИО плательщика, Телефон (регистр не важен).
+    2) Выписка Точка Банк: Дата операции/Дата документа, Зачисление (приход) или Сумма, Назначение платежа (из него извлекаются телефон и «Получатель …»/«Плательщик …»); при отсутствии ФИО/телефона в колонках используется разбор назначения.
     """
     _require_sales_admin_owner(current_user)
     filename = (file.filename or "").lower()
@@ -1353,19 +1378,95 @@ async def import_bank_transactions_from_excel(
         except ValueError:
             return None
 
+    def parse_payment_purpose(purpose: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Из «Назначение платежа» извлечь телефон и ФИО. Поддерживает:
+        - «Получатель X» / «Плательщик X»;
+        - формат Точка/СБП: «+7 (950) 112-78-38 Дмитрий Андреевич П. Заказ 767: …» (ФИО сразу после телефона).
+        Возвращает (payer_name, payer_phone_raw)."""
+        if not purpose or not str(purpose).strip():
+            return None, None
+        text = str(purpose).strip()
+        phone_raw = None
+        phone_end = 0
+        for pattern in (
+            r"\+7\s*\(?\d{3}\)?\s*\d{3}[- ]?\d{2}[- ]?\d{2}",
+            r"8\s*\(?\d{3}\)?\s*\d{3}[- ]?\d{2}[- ]?\d{2}",
+            r"\+7\d{10}",
+            r"8\d{10}",
+        ):
+            m = re.search(pattern, text)
+            if m:
+                phone_raw = re.sub(r"\D", "", m.group(0))
+                if phone_raw.startswith("8") and len(phone_raw) == 11:
+                    phone_raw = "7" + phone_raw[1:]
+                elif phone_raw.startswith("7") and len(phone_raw) == 11:
+                    pass
+                elif len(phone_raw) == 10:
+                    phone_raw = "7" + phone_raw
+                else:
+                    phone_raw = None
+                if phone_raw:
+                    phone_end = m.end()
+                    break
+        name = None
+        for prefix in ("Получатель ", "Плательщик "):
+            if prefix in text:
+                start = text.find(prefix) + len(prefix)
+                end = text.find(" через", start)
+                if end == -1:
+                    end = text.find(".", start)
+                if end == -1:
+                    end = len(text)
+                name = text[start:end].strip()
+                if name:
+                    break
+        if not name and phone_end > 0:
+            rest = text[phone_end:].strip()
+            for stop in ("Заказ ", "Order ", " заказ ", " №", " N "):
+                if stop in rest:
+                    idx = rest.find(stop)
+                    candidate = rest[:idx].strip()
+                    if candidate and len(candidate) >= 3 and re.search(r"[\u0400-\u04FF]", candidate):
+                        name = candidate
+                        break
+            if not name and rest and re.search(r"[\u0400-\u04FF]", rest):
+                name = rest[:80].strip()
+        return name or None, phone_raw
+
     imported = 0
     skipped = 0
     for idx, row in enumerate(rows[1:], start=2):
         row = list(row) if row else []
         date_str = parse_date_any(col(row, ["дата", "date"]))
-        amount = parse_amount(col(row, ["сумма", "amount"]))
+        amount_raw = col(row, ["сумма", "amount", "зачисление"])
+        amount = parse_amount(amount_raw)
+        if amount is None or amount <= 0:
+            amount = parse_amount(col(row, ["списание"]))
+            if amount is not None and amount > 0:
+                amount = -amount
         payer_name = col(row, ["фио", "плательщик", "payer"])
         payer_phone_raw = col(row, ["телефон", "phone"])
-        if amount is None or amount <= 0 or not date_str or not payer_name:
+        purpose = col(row, ["назначение", "payment purpose", "назначение платежа"])
+        if (not payer_name or not payer_phone_raw) and purpose:
+            name_from_purpose, phone_from_purpose = parse_payment_purpose(purpose)
+            if not payer_name and name_from_purpose:
+                payer_name = name_from_purpose
+            if not payer_phone_raw and phone_from_purpose:
+                payer_phone_raw = phone_from_purpose
+        if not payer_name and amount and amount > 0 and date_str:
+            payer_name = "Из выписки (без ФИО)"
+        if amount is None or not date_str:
             skipped += 1
             continue
+        is_expense = amount < 0
+        if is_expense:
+            payer_name = payer_name or col(row, ["контрагент", "counterparty"]) or (purpose[:512] if purpose else "Списание")
+        else:
+            if not payer_name:
+                skipped += 1
+                continue
 
-        payer_phone = normalize_phone(payer_phone_raw or "")
+        payer_phone = (normalize_phone(payer_phone_raw or "") or None) if not is_expense else None
         op_id_source = f"manual_xlsx|{date_str}|{amount}|{payer_name}|{payer_phone}|{idx}"
         operation_id = hashlib.sha256(op_id_source.encode("utf-8")).hexdigest()
 
@@ -1378,10 +1479,11 @@ async def import_bank_transactions_from_excel(
             operation_id=operation_id,
             tochka_account_id=None,
             amount=amount,
-            payer_phone=payer_phone or None,
-            payer_name=payer_name[:512] if payer_name else None,
+            payer_phone=payer_phone or None if not is_expense else None,
+            payer_name=(payer_name or "")[:512] or None,
             payment_date=date_str,
-            status=BankTransactionStatus.NEW.value,
+            status=BankTransactionStatus.EXPENSE.value if is_expense else BankTransactionStatus.NEW.value,
+            expense_category=None,
         )
         db.add(bt)
         imported += 1

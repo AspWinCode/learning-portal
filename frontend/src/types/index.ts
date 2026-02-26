@@ -394,6 +394,7 @@ export interface BankTransaction {
   payer_name?: string | null;
   payment_date?: string | null;
   status: string;
+  expense_category?: string | null;
   student_id?: number | null;
   created_at: string;
 }

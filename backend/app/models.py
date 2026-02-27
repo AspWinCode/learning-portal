@@ -1248,6 +1248,7 @@ class B2BSchool(Base):
     school_contacts = relationship("B2BSchoolContact", back_populates="school", cascade="all, delete-orphan")
     interactions = relationship("B2BSchoolInteraction", back_populates="school", cascade="all, delete-orphan")
     school_events = relationship("B2BSchoolEvent", back_populates="school", cascade="all, delete-orphan")
+    school_campaigns = relationship("SchoolCampaign", back_populates="school", cascade="all, delete-orphan")
 
 
 class B2BSchoolInteractionType(str, enum.Enum):
@@ -1312,6 +1313,40 @@ class B2BProject(Base):
 
 
 # ╨Т╨╛╤А╨╛╨╜╨║╨╕╨┤╨╗╤П╤А╨╛╨╗╨╕╤В╨╕╨┐╤Л╨╕╤Н╤В╨░╨┐╤Л╨╖╨░╨┤╨░╨╜╤Л╨▓╨║╨╛╨┤╨╡
+class Campaign(Base):
+    __tablename__ = "campaigns"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(512), nullable=False)
+    type = Column(String(32), nullable=False, index=True)
+    format = Column(String(32), nullable=False)
+    city = Column(String(256), nullable=True, index=True)
+    region = Column(String(256), nullable=True)
+    date_from = Column(Date, nullable=True)
+    date_to = Column(Date, nullable=True)
+    responsible_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(32), nullable=False, server_default="draft", index=True)
+    mode = Column(String(32), nullable=False, server_default="city")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    responsible = relationship("User", foreign_keys=[responsible_id])
+    school_campaigns = relationship("SchoolCampaign", back_populates="campaign", cascade="all, delete-orphan")
+
+
+class SchoolCampaign(Base):
+    __tablename__ = "school_campaigns"
+    id = Column(Integer, primary_key=True, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
+    stage = Column(String(64), nullable=False, server_default="not_contacted", index=True)
+    support_letter_status = Column(String(32), nullable=True)
+    thank_you_sent = Column(Boolean, nullable=False, server_default="false")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    __table_args__ = (UniqueConstraint("b2b_school_id", "campaign_id", name="uq_school_campaigns_school_campaign"),)
+    school = relationship("B2BSchool", back_populates="school_campaigns")
+    campaign = relationship("Campaign", back_populates="school_campaigns")
+
+
 class TaskStatus(str, enum.Enum):
     ACTIVE = "active"
     ARCHIVED = "archived"

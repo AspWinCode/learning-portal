@@ -1890,6 +1890,91 @@ class B2BProjectResponse(BaseModel):
         from_attributes = True
 
 
+# --- Campaigns & SchoolCampaigns ---
+class CampaignBase(BaseModel):
+    name: str
+    type: str  # game_jam, olympiad, league, online_event
+    format: str  # offline, online
+    city: Optional[str] = None
+    region: Optional[str] = None
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    responsible_id: Optional[int] = None
+    status: Optional[str] = "draft"
+    mode: Optional[str] = "city"  # city, region, all_russia
+
+
+class CampaignCreate(CampaignBase):
+    pass
+
+
+class CampaignUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    format: Optional[str] = None
+    city: Optional[str] = None
+    region: Optional[str] = None
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    responsible_id: Optional[int] = None
+    status: Optional[str] = None
+    mode: Optional[str] = None
+
+
+class CampaignResponse(BaseModel):
+    id: int
+    name: str
+    type: str
+    format: str
+    city: Optional[str] = None
+    region: Optional[str] = None
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    responsible_id: Optional[int] = None
+    responsible_full_name: Optional[str] = None
+    status: str
+    mode: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SchoolCampaignBase(BaseModel):
+    stage: Optional[str] = "not_contacted"
+    support_letter_status: Optional[str] = None
+    thank_you_sent: Optional[bool] = False
+
+
+class SchoolCampaignCreate(BaseModel):
+    b2b_school_id: int
+    campaign_id: int
+    stage: Optional[str] = "not_contacted"
+
+
+class SchoolCampaignUpdate(BaseModel):
+    stage: Optional[str] = None
+    support_letter_status: Optional[str] = None
+    thank_you_sent: Optional[bool] = None
+
+
+class SchoolCampaignResponse(BaseModel):
+    id: int
+    b2b_school_id: int
+    campaign_id: int
+    stage: str
+    support_letter_status: Optional[str] = None
+    thank_you_sent: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    school_name: Optional[str] = None
+    school_city: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 # --- Task manager (admin/owner/sales) ---
 class TaskTemplateSubtaskResponse(BaseModel):
     id: int

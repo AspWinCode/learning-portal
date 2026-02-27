@@ -1543,6 +1543,82 @@ export const b2bApi = {
   },
 };
 
+export const campaignsApi = {
+  list: async (params?: { status?: string; city?: string; type?: string }): Promise<import('../types').Campaign[]> => {
+    const response = await api.get('/api/campaigns', { params: params || {} });
+    return response.data;
+  },
+  get: async (id: number): Promise<import('../types').Campaign> => {
+    const response = await api.get(`/api/campaigns/${id}`);
+    return response.data;
+  },
+  create: async (payload: {
+    name: string;
+    type: string;
+    format: string;
+    city?: string | null;
+    region?: string | null;
+    date_from?: string | null;
+    date_to?: string | null;
+    responsible_id?: number | null;
+    status?: string;
+    mode?: string;
+  }): Promise<import('../types').Campaign> => {
+    const response = await api.post('/api/campaigns', payload);
+    return response.data;
+  },
+  update: async (
+    id: number,
+    payload: Partial<{
+      name: string;
+      type: string;
+      format: string;
+      city: string;
+      region: string;
+      date_from: string;
+      date_to: string;
+      responsible_id: number | null;
+      status: string;
+      mode: string;
+    }>
+  ): Promise<import('../types').Campaign> => {
+    const response = await api.put(`/api/campaigns/${id}`, payload);
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/campaigns/${id}`);
+  },
+  listSchoolCampaigns: async (campaignId: number): Promise<import('../types').SchoolCampaign[]> => {
+    const response = await api.get(`/api/campaigns/${campaignId}/school-campaigns`);
+    return response.data;
+  },
+  addSchools: async (
+    campaignId: number,
+    body: { school_ids: number[]; create_contact_task?: boolean }
+  ): Promise<import('../types').SchoolCampaign[]> => {
+    const response = await api.post(`/api/campaigns/${campaignId}/school-campaigns/add-schools`, body);
+    return response.data;
+  },
+  listSchoolsAvailable: async (
+    campaignId: number,
+    params?: { city?: string; search?: string }
+  ): Promise<{ id: number; name: string; city: string | null }[]> => {
+    const response = await api.get(`/api/campaigns/${campaignId}/schools-available`, { params: params || {} });
+    return response.data;
+  },
+  updateSchoolCampaign: async (
+    campaignId: number,
+    scId: number,
+    payload: { stage?: string; support_letter_status?: string; thank_you_sent?: boolean }
+  ): Promise<import('../types').SchoolCampaign> => {
+    const response = await api.patch(`/api/campaigns/${campaignId}/school-campaigns/${scId}`, payload);
+    return response.data;
+  },
+  removeSchoolFromCampaign: async (campaignId: number, scId: number): Promise<void> => {
+    await api.delete(`/api/campaigns/${campaignId}/school-campaigns/${scId}`);
+  },
+};
+
 export const ownerFunnelsApi = {
   listTypes: async (): Promise<OwnerFunnelTypeInfo[]> => {
     const response = await api.get('/api/owner-funnels/types');

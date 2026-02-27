@@ -697,6 +697,36 @@ export interface B2BProject {
   updated_at?: string | null;
 }
 
+export interface Campaign {
+  id: number;
+  name: string;
+  type: string;
+  format: string;
+  city?: string | null;
+  region?: string | null;
+  date_from?: string | null;
+  date_to?: string | null;
+  responsible_id?: number | null;
+  responsible_full_name?: string | null;
+  status: string;
+  mode: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface SchoolCampaign {
+  id: number;
+  b2b_school_id: number;
+  campaign_id: number;
+  stage: string;
+  support_letter_status?: string | null;
+  thank_you_sent: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+  school_name?: string | null;
+  school_city?: string | null;
+}
+
 // Owner funnels (support letters, thank you letters)
 export interface OwnerFunnelStageOption {
   value: string;

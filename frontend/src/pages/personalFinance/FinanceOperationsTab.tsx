@@ -14,8 +14,9 @@ import {
   Typography,
   Paper,
   Alert,
+  Checkbox,
 } from '@mui/material';
-import { UploadFile } from '@mui/icons-material';
+import { UploadFile, Delete } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
@@ -27,6 +28,7 @@ export const FinanceOperationsTab: React.FC = () => {
     operations,
     updateOperation,
     addOperations,
+    deleteOperations,
     incomeArticles,
     expenseArticles,
     getDisplayDescription,
@@ -34,6 +36,7 @@ export const FinanceOperationsTab: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,12 +62,46 @@ export const FinanceOperationsTab: React.FC = () => {
   };
 
   const sortedOps = [...operations].sort((a, b) => b.date.localeCompare(a.date));
+  const allIds = sortedOps.map((o) => o.id);
+  const allSelected = sortedOps.length > 0 && selectedIds.size === sortedOps.length;
+  const someSelected = selectedIds.size > 0;
+
+  const handleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(allIds));
+  };
+
+  const handleToggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    if (!someSelected) return;
+    if (window.confirm(`Удалить выбранные операции (${selectedIds.size})?`)) {
+      deleteOperations(Array.from(selectedIds));
+      setSelectedIds(new Set());
+    }
+  };
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 2 }}>
         <Typography variant="h6">Операции</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<Delete />}
+            onClick={handleDeleteSelected}
+            disabled={!someSelected}
+          >
+            Удалить выбранные {someSelected ? `(${selectedIds.size})` : ''}
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
@@ -101,6 +138,15 @@ export const FinanceOperationsTab: React.FC = () => {
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  indeterminate={someSelected && !allSelected}
+                  checked={allSelected}
+                  onChange={handleSelectAll}
+                  disabled={sortedOps.length === 0}
+                  size="small"
+                />
+              </TableCell>
               <TableCell>Дата</TableCell>
               <TableCell>Сумма</TableCell>
               <TableCell>Описание</TableCell>
@@ -111,7 +157,7 @@ export const FinanceOperationsTab: React.FC = () => {
           <TableBody>
             {sortedOps.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   Нет операций. Загрузите XLSX с колонками: дата, сумма, описание.
                 </TableCell>
               </TableRow>
@@ -123,6 +169,8 @@ export const FinanceOperationsTab: React.FC = () => {
                 incomeArticles={incomeArticles}
                 expenseArticles={expenseArticles}
                 getDisplayDescription={getDisplayDescription}
+                selected={selectedIds.has(op.id)}
+                onToggleSelect={() => handleToggleOne(op.id)}
                 onUpdate={(patch) => updateOperation(op.id, patch)}
               />
             ))}
@@ -138,12 +186,16 @@ function OperationRow({
   incomeArticles,
   expenseArticles,
   getDisplayDescription,
+  selected,
+  onToggleSelect,
   onUpdate,
 }: {
   operation: FinanceOperation;
   incomeArticles: { id: string; name: string }[];
   expenseArticles: { id: string; name: string }[];
   getDisplayDescription: (description: string) => string;
+  selected: boolean;
+  onToggleSelect: () => void;
   onUpdate: (patch: Partial<FinanceOperation>) => void;
 }) {
   const isIncome = operation.amount > 0;
@@ -152,7 +204,15 @@ function OperationRow({
   const hasRecognition = displayDesc !== operation.description;
 
   return (
-    <TableRow>
+    <TableRow hover selected={selected}>
+      <TableCell padding="checkbox">
+        <Checkbox
+          checked={selected}
+          onChange={onToggleSelect}
+          size="small"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </TableCell>
       <TableCell>{format(new Date(operation.date + 'T12:00:00'), 'dd.MM.yyyy', { locale: ru })}</TableCell>
       <TableCell sx={{ color: isIncome ? 'success.main' : 'error.main', fontWeight: 600 }}>
         {isIncome ? '+' : ''}{operation.amount}

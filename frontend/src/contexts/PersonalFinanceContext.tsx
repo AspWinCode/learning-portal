@@ -64,6 +64,7 @@ interface PersonalFinanceContextValue {
   addOperations: (ops: Omit<FinanceOperation, 'id' | 'createdAt'>[]) => void;
   updateOperation: (id: string, patch: Partial<FinanceOperation>) => void;
   deleteOperation: (id: string) => void;
+  deleteOperations: (ids: string[]) => void;
   incomeArticles: FinanceArticle[];
   expenseArticles: FinanceArticle[];
   recognitionRules: RecognitionRule[];
@@ -161,6 +162,14 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
     [operations, persistOperations]
   );
 
+  const deleteOperations = useCallback(
+    (ids: string[]) => {
+      const set = new Set(ids);
+      persistOperations(operations.filter((o) => !set.has(o.id)));
+    },
+    [operations, persistOperations]
+  );
+
   const incomeArticles = useMemo(
     () => articles.filter((a) => a.type === 'income').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
     [articles]
@@ -228,6 +237,7 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
       addOperations,
       updateOperation,
       deleteOperation,
+      deleteOperations,
       incomeArticles,
       expenseArticles,
       recognitionRules,
@@ -247,6 +257,7 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
       addOperations,
       updateOperation,
       deleteOperation,
+      deleteOperations,
       incomeArticles,
       expenseArticles,
       recognitionRules,

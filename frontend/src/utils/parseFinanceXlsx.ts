@@ -145,30 +145,40 @@ function parseVertical(
   flush();
 }
 
-/** Краткие названия месяцев по-русски (феврал, янв, мар и т.д.) */
+/** Названия месяцев по-русски (именительный и родительный падеж) */
 const RU_MONTHS: Record<string, number> = {
-  январ: 0, янв: 0,
-  феврал: 1, фев: 1,
-  мар: 2, март: 2,
-  апрел: 3, апр: 3,
-  май: 4, ма: 4,
-  июн: 5, июнь: 5,
-  июл: 6, июль: 6,
-  август: 7, авг: 7,
-  сентябр: 8, сен: 8,
-  октябр: 9, окт: 9,
-  ноябр: 10, ноя: 10,
-  декабр: 11, дек: 11,
+  январ: 0, янв: 0, января: 0,
+  феврал: 1, фев: 1, февраля: 1,
+  мар: 2, март: 2, марта: 2,
+  апрел: 3, апр: 3, апреля: 3,
+  май: 4, ма: 4, мая: 4,
+  июн: 5, июнь: 5, июня: 5,
+  июл: 6, июль: 6, июля: 6,
+  август: 7, авг: 7, августа: 7,
+  сентябр: 8, сен: 8, сентября: 8,
+  октябр: 9, окт: 9, октября: 9,
+  ноябр: 10, ноя: 10, ноября: 10,
+  декабр: 11, дек: 11, декабря: 11,
 };
 
-/** Проверка, что строка — заголовок даты выписки (Сегодня, Вчера, 27 феврал и т.д.) */
+/** Проверка, что строка — заголовок даты выписки (Сегодня, Вчера, 27 феврал, 27.02 и т.д.) */
 function parseStatementDateHeader(text: string, today: Date): string | null {
   const t = text.trim().toLowerCase();
   if (t === 'сегодня') return formatDate(today);
   if (t === 'вчера') {
     const d = new Date(today); d.setDate(d.getDate() - 1); return formatDate(d);
   }
-  const match = t.match(/^(\d{1,2})\s*(январ|феврал|фев|март|мар|апрел|апр|май|июн|июль|июл|август|авг|сентябр|сен|октябр|окт|ноябр|ноя|декабр|дек)/);
+  const dotMatch = t.match(/^(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?$/);
+  if (dotMatch) {
+    const day = parseInt(dotMatch[1], 10);
+    const month = parseInt(dotMatch[2], 10) - 1;
+    const y = dotMatch[3] ? (dotMatch[3].length === 2 ? 2000 + parseInt(dotMatch[3], 10) : parseInt(dotMatch[3], 10)) : today.getFullYear();
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+      const d = new Date(y, month, day);
+      return formatDate(d);
+    }
+  }
+  const match = t.match(/^(\d{1,2})\s*(январ|января|феврал|февраля|фев|март|марта|мар|апрел|апреля|апр|май|мая|июн|июня|июль|июля|июл|август|августа|авг|сентябр|сентября|сен|октябр|октября|окт|ноябр|ноября|ноя|декабр|декабря|дек)/);
   if (match) {
     const day = parseInt(match[1], 10);
     const monthKey = match[2];
@@ -182,14 +192,43 @@ function parseStatementDateHeader(text: string, today: Date): string | null {
   return null;
 }
 
+/** Первая непустая ячейка в строке (для выписки данные могут быть в A или B) */
+function getFirstCell(row: unknown[]): string {
+  for (let j = 0; j < row.length; j++) {
+    const v = row[j];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+/** Развернуть строки: если в ячейке есть переносы строк — каждая строка становится отдельной записью */
+function flattenStatementRows(rows: unknown[][]): unknown[][] {
+  const out: unknown[][] = [];
+  for (const row of rows) {
+    if (!Array.isArray(row)) continue;
+    const cell = getFirstCell(row);
+    if (!cell) continue;
+    const lines = cell.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (lines.length > 1) {
+      for (const line of lines) out.push([line]);
+    } else {
+      out.push(row);
+    }
+  }
+  return out;
+}
+
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Извлечь сумму из строки вида "+4 900 ₽", "499,62 ₽", "-100 ₽" */
+/** Извлечь сумму из строки вида "+4 900 ₽", "499,62 ₽", "-100 ₽", "100 руб" */
 function parseAmountFromStatement(text: string): number | null {
-  const cleaned = text.replace(/\s/g, '').replace(',', '.').replace('₽', '').trim();
-  const hasPlus = /^\+/.test(cleaned);
+  const raw = text.trim();
+  const hasPlus = /\+/.test(raw);
+  const cleaned = raw.replace(/\s/g, '').replace(',', '.').replace(/[₽руб]/gi, '').replace(/\u2212/g, '-').trim();
   const numMatch = cleaned.replace(/^\+/, '').match(/(-?\d+\.?\d*)/);
   if (!numMatch) return null;
   const n = parseFloat(numMatch[1]);
@@ -213,9 +252,16 @@ function isStatementTypeLine(text: string): boolean {
   return STATEMENT_TYPE_PREFIXES.some((p) => t.startsWith(p) || t === p);
 }
 
+/** Строка выглядит как итог за день (только число без ₽ и без +), а не как операция */
+function isDayTotalLine(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.includes('₽') || t.includes('+') || t.includes('−')) return false;
+  return /^\s*[\d\s]+[,.]?\d*\s*$/.test(t) && /\d/.test(t);
+}
+
 /**
  * Парсинг формата выписки: одна колонка, заголовки дат (Сегодня/Вчера/27 феврал),
- * затем блоки «сумма ₽», контрагент, тип операции. Сумма может дублироваться (сумма, контрагент, сумма, тип).
+ * затем строка с итогом за день (пропускаем), затем блоки «сумма ₽», контрагент, тип операции.
  */
 function parseBankStatement(
   rows: unknown[][],
@@ -226,27 +272,18 @@ function parseBankStatement(
   let currentDate: string | null = null;
   let lastDescription = '';
   let pendingAmount: number | null = null;
-
-  const flushPending = () => {
-    if (pendingAmount !== null && currentDate && lastDescription) {
-      operations.push({
-        date: currentDate,
-        amount: pendingAmount,
-        description: lastDescription,
-        target: 'personal',
-        articleId: null,
-        raw: {},
-      });
-      pendingAmount = null;
-      lastDescription = '';
-    }
-  };
+  let skipNextIfDayTotal = false;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (!Array.isArray(row)) continue;
-    const cell = row[0] != null ? String(row[0]).trim() : (row[1] != null ? String(row[1]).trim() : '');
+    const cell = getFirstCell(row);
     if (!cell) continue;
+
+    if (skipNextIfDayTotal) {
+      skipNextIfDayTotal = false;
+      if (isDayTotalLine(cell)) continue;
+    }
 
     const dateFromHeader = parseStatementDateHeader(cell, today);
     if (dateFromHeader) {
@@ -263,6 +300,7 @@ function parseBankStatement(
       currentDate = dateFromHeader;
       lastDescription = '';
       pendingAmount = null;
+      skipNextIfDayTotal = true;
       continue;
     }
 
@@ -386,7 +424,8 @@ export function parseFinanceXlsx(file: File): Promise<ParseXlsxResult> {
           parseVertical(rows, operations, errors);
         }
         if (operations.length === 0 && rows.length >= 1) {
-          parseBankStatement(rows, operations, errors, new Date());
+          const flattenedRows = flattenStatementRows(rows);
+          parseBankStatement(flattenedRows, operations, errors, new Date());
         }
 
         resolve({ operations, errors });

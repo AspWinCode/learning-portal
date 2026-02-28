@@ -29,6 +29,7 @@ export const FinanceOperationsTab: React.FC = () => {
     addOperations,
     incomeArticles,
     expenseArticles,
+    getDisplayDescription,
   } = usePersonalFinance();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -121,6 +122,7 @@ export const FinanceOperationsTab: React.FC = () => {
                 operation={op}
                 incomeArticles={incomeArticles}
                 expenseArticles={expenseArticles}
+                getDisplayDescription={getDisplayDescription}
                 onUpdate={(patch) => updateOperation(op.id, patch)}
               />
             ))}
@@ -135,15 +137,19 @@ function OperationRow({
   operation,
   incomeArticles,
   expenseArticles,
+  getDisplayDescription,
   onUpdate,
 }: {
   operation: FinanceOperation;
   incomeArticles: { id: string; name: string }[];
   expenseArticles: { id: string; name: string }[];
+  getDisplayDescription: (description: string) => string;
   onUpdate: (patch: Partial<FinanceOperation>) => void;
 }) {
   const isIncome = operation.amount > 0;
   const articles = isIncome ? incomeArticles : expenseArticles;
+  const displayDesc = getDisplayDescription(operation.description);
+  const hasRecognition = displayDesc !== operation.description;
 
   return (
     <TableRow>
@@ -151,7 +157,9 @@ function OperationRow({
       <TableCell sx={{ color: isIncome ? 'success.main' : 'error.main', fontWeight: 600 }}>
         {isIncome ? '+' : ''}{operation.amount}
       </TableCell>
-      <TableCell>{operation.description}</TableCell>
+      <TableCell title={hasRecognition ? operation.description : undefined}>
+        {displayDesc}
+      </TableCell>
       <TableCell>
         <Select
           size="small"

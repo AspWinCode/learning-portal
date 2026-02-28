@@ -19,17 +19,19 @@ import {
   DialogActions,
   Typography,
   Paper,
+  Checkbox,
 } from '@mui/material';
 import { Add, Edit, Delete } from '@mui/icons-material';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
 import { FinanceArticle, FinanceArticleType } from '../../types/personalFinance';
 
 export const FinanceArticlesTab: React.FC = () => {
-  const { articles, addArticle, updateArticle, deleteArticle } = usePersonalFinance();
+  const { articles, addArticle, updateArticle, deleteArticle, deleteArticles } = usePersonalFinance();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [type, setType] = useState<FinanceArticleType>('expense');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleOpenAdd = () => {
     setEditingId(null);
@@ -60,22 +62,68 @@ export const FinanceArticlesTab: React.FC = () => {
     if (window.confirm('Удалить статью?')) deleteArticle(id);
   };
 
+  const allIds = articles.map((a) => a.id);
+  const allSelected = articles.length > 0 && selectedIds.size === articles.length;
+  const someSelected = selectedIds.size > 0;
+
+  const handleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(allIds));
+  };
+
+  const handleToggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    if (!someSelected) return;
+    if (window.confirm(`Удалить выбранные статьи (${selectedIds.size})?`)) {
+      deleteArticles(Array.from(selectedIds));
+      setSelectedIds(new Set());
+    }
+  };
+
   const incomeArticles = articles.filter((a) => a.type === 'income');
   const expenseArticles = articles.filter((a) => a.type === 'expense');
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
         <Typography variant="h6">Настройки статей</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={handleOpenAdd}>
-          Добавить статью
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<Delete />}
+            onClick={handleDeleteSelected}
+            disabled={!someSelected}
+          >
+            Удалить выбранные {someSelected ? `(${selectedIds.size})` : ''}
+          </Button>
+          <Button variant="contained" startIcon={<Add />} onClick={handleOpenAdd}>
+            Добавить статью
+          </Button>
+        </Box>
       </Box>
 
       <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
         <Table size="small">
           <TableHead>
             <TableRow>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  indeterminate={someSelected && !allSelected}
+                  checked={allSelected}
+                  onChange={handleSelectAll}
+                  disabled={articles.length === 0}
+                  size="small"
+                />
+              </TableCell>
               <TableCell>Название</TableCell>
               <TableCell>Тип</TableCell>
               <TableCell align="right">Действия</TableCell>
@@ -84,13 +132,21 @@ export const FinanceArticlesTab: React.FC = () => {
           <TableBody>
             {articles.length === 0 && (
               <TableRow>
-                <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
                   Нет статей. Добавьте статью дохода или расхода.
                 </TableCell>
               </TableRow>
             )}
             {incomeArticles.map((a) => (
-              <TableRow key={a.id}>
+              <TableRow key={a.id} hover selected={selectedIds.has(a.id)}>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    checked={selectedIds.has(a.id)}
+                    onChange={() => handleToggleOne(a.id)}
+                    size="small"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </TableCell>
                 <TableCell>{a.name}</TableCell>
                 <TableCell>Доход</TableCell>
                 <TableCell align="right">
@@ -104,7 +160,15 @@ export const FinanceArticlesTab: React.FC = () => {
               </TableRow>
             ))}
             {expenseArticles.map((a) => (
-              <TableRow key={a.id}>
+              <TableRow key={a.id} hover selected={selectedIds.has(a.id)}>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    checked={selectedIds.has(a.id)}
+                    onChange={() => handleToggleOne(a.id)}
+                    size="small"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </TableCell>
                 <TableCell>{a.name}</TableCell>
                 <TableCell>Расход</TableCell>
                 <TableCell align="right">

@@ -27,5 +27,15 @@ export interface FinanceOperation {
   createdAt: string;
 }
 
+/** Правило опознавания: если в операции описание совпадает с pattern — показывать как displayName */
+export interface RecognitionRule {
+  id: string;
+  /** Точное совпадение или подстрока в описании операции */
+  pattern: string;
+  /** Как отображать в списке операций */
+  displayName: string;
+}
+
 export const STORAGE_ARTICLES = 'personal_finance_articles';
 export const STORAGE_OPERATIONS = 'personal_finance_operations';
+export const STORAGE_RECOGNITION = 'personal_finance_recognition';

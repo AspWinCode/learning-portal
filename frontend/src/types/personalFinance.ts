@@ -24,7 +24,10 @@ export interface FinanceOperation {
   date: string;
   /** Сумма: положительная = доход, отрицательная = расход */
   amount: number;
+  /** Контрагент (название из выписки или распознанное) */
   description: string;
+  /** Тип операции из выписки (Оплата товаров и услуг, Входящий перевод и т.д.) */
+  typeDescription?: string;
   /** На счёт академии или личная операция */
   target: OperationTarget;
   /** ID статьи (доход/расход); null = не распределено */

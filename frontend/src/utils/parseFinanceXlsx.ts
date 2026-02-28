@@ -495,9 +495,10 @@ export function parseFinanceXlsx(file: File): Promise<ParseXlsxResult> {
             date: dateVal,
             amount: amountVal,
             description: counterparty.trim() || 'Без описания',
+            typeDescription: typeDesc || undefined,
             target: 'personal',
             articleId: null,
-            raw: typeDesc ? { row: i + 1, rawRow: row, typeDescription: typeDesc } : { row: i + 1, rawRow: row },
+            raw: { row: i + 1, rawRow: row },
           });
         }
 

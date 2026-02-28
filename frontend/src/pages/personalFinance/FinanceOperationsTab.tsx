@@ -221,8 +221,8 @@ function OperationRow({
       <TableCell title={hasRecognition ? operation.description : undefined}>
         {displayDesc}
       </TableCell>
-      <TableCell sx={{ maxWidth: 200 }} title={operation.description}>
-        {hasRecognition ? operation.description : '—'}
+      <TableCell sx={{ maxWidth: 200 }} title={operation.typeDescription || operation.description}>
+        {operation.typeDescription || (hasRecognition ? operation.description : '—')}
       </TableCell>
       <TableCell>
         <Select

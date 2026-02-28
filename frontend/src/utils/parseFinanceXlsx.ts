@@ -236,6 +236,27 @@ function parseAmountFromStatement(text: string): number | null {
   return hasPlus ? Math.abs(n) : -Math.abs(n);
 }
 
+/**
+ * Если в одной ячейке сумма и контрагент (например "−684,56 Абсолют" или "-135 Яндекс"),
+ * извлечь и то и другое. Иначе только сумму, counterparty = ''.
+ */
+function parseAmountAndCounterparty(text: string): { amount: number; counterparty: string } | null {
+  const raw = text.trim();
+  const hasPlus = /\+/.test(raw);
+  const normalized = raw.replace(/\u2212/g, '-');
+  const numMatch = normalized.match(/^([+\-]?\s*\d[\d\s]*[,.]?\d*)\s*([₽руб.\s]*)(.*)$/i);
+  if (!numMatch) {
+    const amount = parseAmountFromStatement(raw);
+    return amount !== null ? { amount, counterparty: '' } : null;
+  }
+  const amountStr = numMatch[1].replace(/\s/g, '').replace(',', '.');
+  const n = parseFloat(amountStr.replace(/^\+/, ''));
+  if (Number.isNaN(n)) return null;
+  const amount = hasPlus ? Math.abs(n) : -Math.abs(n);
+  const counterparty = (numMatch[3] || '').replace(/[₽руб.]/gi, '').trim();
+  return { amount, counterparty };
+}
+
 /** Проверка, что строка похожа на сумму из выписки (содержит число и ₽ или просто число с +) */
 function isStatementAmountLine(text: string): boolean {
   const t = text.trim();
@@ -244,7 +265,7 @@ function isStatementAmountLine(text: string): boolean {
 }
 
 /** Известные типы операций — не использовать как описание контрагента */
-const STATEMENT_TYPE_PREFIXES = ['оплата то', 'входящий', 'перевод', 'комиссия', 'прочие сг', 'прочие сп', 'недостато', 'оплата'];
+const STATEMENT_TYPE_PREFIXES = ['оплата товаров', 'оплата то', 'входящий', 'перевод', 'комиссия', 'прочие сг', 'прочие сп', 'недостато', 'оплата'];
 
 function isStatementTypeLine(text: string): boolean {
   const t = text.trim().toLowerCase();
@@ -304,13 +325,18 @@ function parseBankStatement(
       continue;
     }
 
-    const amount = parseAmountFromStatement(cell);
+    const amountWithCounterparty = parseAmountAndCounterparty(cell);
+    const amount = amountWithCounterparty ? amountWithCounterparty.amount : parseAmountFromStatement(cell);
+    const inlineCounterparty = amountWithCounterparty?.counterparty ?? '';
+    const useCounterparty = inlineCounterparty && !isStatementTypeLine(inlineCounterparty) ? inlineCounterparty : '';
+
     if (amount !== null && amount !== 0 && currentDate) {
-      if (lastDescription) {
+      const description = useCounterparty || lastDescription;
+      if (description) {
         operations.push({
           date: currentDate,
           amount,
-          description: lastDescription,
+          description,
           target: 'personal',
           articleId: null,
           raw: { row: i + 1 },

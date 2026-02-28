@@ -185,13 +185,13 @@ export const FinanceDashboardTab: React.FC = () => {
                 />
               </Box>
               <Typography variant="body2">
-                Доходы: <strong sx={{ color: 'success.main' }}>{periodIncome.toFixed(2)}</strong>
+                Доходы: <Box component="strong" sx={{ color: 'success.main' }}>{periodIncome.toFixed(2)}</Box>
               </Typography>
               <Typography variant="body2">
-                Расходы: <strong sx={{ color: 'error.main' }}>{periodExpense.toFixed(2)}</strong>
+                Расходы: <Box component="strong" sx={{ color: 'error.main' }}>{periodExpense.toFixed(2)}</Box>
               </Typography>
               <Typography variant="body2">
-                Сальдо: <strong>{periodBalance.toFixed(2)}</strong>
+                Сальдо: <Box component="strong">{periodBalance.toFixed(2)}</Box>
               </Typography>
             </CardContent>
           </Card>
@@ -203,10 +203,10 @@ export const FinanceDashboardTab: React.FC = () => {
                 Общие показатели (все операции)
               </Typography>
               <Typography variant="body2">
-                Свободный остаток: <strong>{freeRemainder.toFixed(2)}</strong>
+                Свободный остаток: <Box component="strong">{freeRemainder.toFixed(2)}</Box>
               </Typography>
               <Typography variant="body2">
-                Осталось нераспределённым: <strong>{unallocated.toFixed(2)}</strong>
+                Осталось нераспределённым: <Box component="strong">{unallocated.toFixed(2)}</Box>
               </Typography>
             </CardContent>
           </Card>

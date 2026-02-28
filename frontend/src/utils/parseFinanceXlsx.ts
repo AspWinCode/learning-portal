@@ -85,10 +85,10 @@ export function parseFinanceXlsx(file: File): Promise<ParseXlsxResult> {
           resolve({ operations: [], errors: ['Нет листов в файле'] });
           return;
         }
-        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
+        const rows = XLSX.utils.sheet_to_json(firstSheet, {
           header: 1,
           defval: '',
-        }) as unknown[][];
+        }) as unknown as unknown[][];
 
         if (rows.length < 2) {
           resolve({ operations: [], errors: ['Нужна хотя бы строка заголовков и одна строка данных'] });

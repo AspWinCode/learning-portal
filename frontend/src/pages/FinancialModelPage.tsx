@@ -25,6 +25,7 @@ import {
 import { Add, Delete } from '@mui/icons-material';
 import { usersApi, groupsApi } from '../services/api';
 import { User, Group as ApiGroup, Student as ApiStudent } from '../types';
+import { AcademyOperationsTab } from './AcademyOperationsTab';
 
 type Inputs = {
   selectedTax: string;
@@ -855,6 +856,7 @@ const FinancialModelPage: React.FC = () => {
               'Прибыли и убытки',
               'Дашборд',
               'Финансовая модель по тренерам',
+              'Операции по расходам и доходам',
             ].map((label) => (
               <Tab key={label} label={label} />
             ))}
@@ -1758,6 +1760,10 @@ const FinancialModelPage: React.FC = () => {
               Диапазон 50-60% считается здоровым, 70%+ указывает на хорошо масштабируемую модель.
             </Typography>
           </Paper>
+        )}
+
+        {sheetIndex === 8 && (
+          <AcademyOperationsTab />
         )}
       </Box>
     </Layout>

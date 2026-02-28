@@ -7,6 +7,7 @@ import {
   STORAGE_OPERATIONS,
   STORAGE_RECOGNITION,
 } from '../types/personalFinance';
+import { addAcademyOperation } from '../utils/academyOperationsStorage';
 
 function loadArticles(): FinanceArticle[] {
   try {
@@ -148,6 +149,14 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
 
   const updateOperation = useCallback(
     (id: string, patch: Partial<FinanceOperation>) => {
+      if (patch.target === 'academy') {
+        const op = operations.find((o) => o.id === id);
+        if (op) {
+          addAcademyOperation({ ...op, target: 'academy' });
+          persistOperations(operations.filter((o) => o.id !== id));
+        }
+        return;
+      }
       persistOperations(
         operations.map((o) => (o.id === id ? { ...o, ...patch } : o))
       );

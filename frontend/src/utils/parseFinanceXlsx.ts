@@ -17,11 +17,16 @@
 import * as XLSX from 'xlsx';
 import { FinanceOperation } from '../types/personalFinance';
 
-function normalizeDate(value: unknown): string | null {
+function normalizeDate(value: unknown, today: Date = new Date()): string | null {
   if (value == null) return null;
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    if (lower === 'сегодня') return today.toISOString().slice(0, 10);
+    if (lower === 'вчера') {
+      const d = new Date(today); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10);
+    }
     const d = new Date(trimmed);
     if (!Number.isNaN(d.getTime())) {
       return d.toISOString().slice(0, 10);
@@ -203,6 +208,21 @@ function getFirstCell(row: unknown[]): string {
   return '';
 }
 
+/** Вторая непустая ячейка (для табличного формата: A = сумма, B = контрагент) */
+function getSecondCell(row: unknown[]): string {
+  let found = 0;
+  for (let j = 0; j < row.length; j++) {
+    const v = row[j];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) {
+      found++;
+      if (found === 2) return s;
+    }
+  }
+  return '';
+}
+
 /** Развернуть строки: если в ячейке есть переносы строк — каждая строка становится отдельной записью */
 function flattenStatementRows(rows: unknown[][]): unknown[][] {
   const out: unknown[][] = [];
@@ -325,14 +345,27 @@ function parseBankStatement(
       continue;
     }
 
+    const secondCell = getSecondCell(row);
     const amountWithCounterparty = parseAmountAndCounterparty(cell);
     const amount = amountWithCounterparty ? amountWithCounterparty.amount : parseAmountFromStatement(cell);
     const inlineCounterparty = amountWithCounterparty?.counterparty ?? '';
-    const useCounterparty = inlineCounterparty && !isStatementTypeLine(inlineCounterparty) ? inlineCounterparty : '';
+    const fromSecondCol = secondCell && !isStatementTypeLine(secondCell) && !isDayTotalLine(secondCell) ? secondCell : '';
+    const useCounterparty = fromSecondCol || (inlineCounterparty && !isStatementTypeLine(inlineCounterparty) ? inlineCounterparty : '');
 
     if (amount !== null && amount !== 0 && currentDate) {
       const description = useCounterparty || lastDescription;
       if (description) {
+        if (pendingAmount !== null) {
+          operations.push({
+            date: currentDate,
+            amount: pendingAmount,
+            description: lastDescription || 'Без описания',
+            target: 'personal',
+            articleId: null,
+            raw: {},
+          });
+          pendingAmount = null;
+        }
         operations.push({
           date: currentDate,
           amount,
@@ -343,7 +376,18 @@ function parseBankStatement(
         });
         lastDescription = '';
       } else {
+        if (pendingAmount !== null) {
+          operations.push({
+            date: currentDate,
+            amount: pendingAmount,
+            description: lastDescription || 'Без описания',
+            target: 'personal',
+            articleId: null,
+            raw: {},
+          });
+        }
         pendingAmount = amount;
+        lastDescription = '';
       }
       continue;
     }
@@ -411,21 +455,26 @@ export function parseFinanceXlsx(file: File): Promise<ParseXlsxResult> {
         const headers = rows[0].map((c) => normalizeString(c));
         const dateCol = findColumnIndex(headers, ['дата', 'date', 'дата операции']);
         const amountCol = findColumnIndex(headers, ['сумма', 'amount', 'сумм']);
+        const counterpartyCol = findColumnIndex(headers, ['контрагент', 'counterparty']);
         const descCol = findColumnIndex(headers, ['описание', 'description', 'назначение', 'комментарий', 'примечание']);
+        const categoryCol = findColumnIndex(headers, ['статья', 'категория', 'доход', 'расход', 'category']);
 
         const useDateCol = dateCol >= 0 ? dateCol : 0;
         const useAmountCol = amountCol >= 0 ? amountCol : 1;
-        const useDescCol = descCol >= 0 ? descCol : 2;
+        const useDescCol = counterpartyCol >= 0 ? counterpartyCol : (descCol >= 0 ? descCol : 2);
+        const useCategoryCol = categoryCol >= 0 ? categoryCol : -1;
 
         const operations: Array<Omit<FinanceOperation, 'id' | 'createdAt'>> = [];
         const errors: string[] = [];
+        const today = new Date();
 
         for (let i = 1; i < rows.length; i++) {
           const row = rows[i];
           if (!Array.isArray(row)) continue;
-          const dateVal = normalizeDate(row[useDateCol]);
-          const amountVal = normalizeAmount(row[useAmountCol]);
-          const desc = normalizeString(row[useDescCol] ?? '');
+          const dateVal = normalizeDate(row[useDateCol], today);
+          let amountVal = normalizeAmount(row[useAmountCol]);
+          const counterparty = normalizeString(row[useDescCol] ?? '');
+          const typeDesc = descCol >= 0 && descCol !== counterpartyCol ? normalizeString(row[descCol] ?? '') : '';
 
           if (!dateVal) {
             errors.push(`Строка ${i + 1}: не удалось определить дату`);
@@ -436,13 +485,19 @@ export function parseFinanceXlsx(file: File): Promise<ParseXlsxResult> {
             continue;
           }
 
+          if (useCategoryCol >= 0) {
+            const cat = normalizeString(row[useCategoryCol]).toLowerCase();
+            if (cat === 'доход' && amountVal < 0) amountVal = Math.abs(amountVal);
+            else if (cat === 'расход' && amountVal > 0) amountVal = -Math.abs(amountVal);
+          }
+
           operations.push({
             date: dateVal,
             amount: amountVal,
-            description: desc || 'Без описания',
+            description: counterparty.trim() || 'Без описания',
             target: 'personal',
             articleId: null,
-            raw: { row: i + 1, rawRow: row },
+            raw: typeDesc ? { row: i + 1, rawRow: row, typeDescription: typeDesc } : { row: i + 1, rawRow: row },
           });
         }
 

@@ -1,7 +1,17 @@
 /**
  * Парсинг XLSX для импорта операций.
- * Ожидаемые колонки (по возможности): дата, сумма, описание.
- * Поддерживаются варианты: первая строка — заголовки, данные со 2-й строки.
+ *
+ * Поддерживаются три формата:
+ *
+ * 1) Горизонтальный (таблица): первая строка — заголовки (Дата, Сумма, Описание),
+ *    каждая следующая строка — одна операция.
+ *
+ * 2) Вертикальный A/B: в столбце A — подписи (Дата, Сумма, Описание), в B — значения.
+ *
+ * 3) Выписка (одна колонка): заголовки дат («Сегодня», «Вчера», «27 феврал» и т.д.),
+ *    под каждым — блоки: сумма с ₽ (например +4 900 ₽ или 499,62 ₽), контрагент (AZS KRAISI,
+ *    Наталья Ю), тип («Оплата то», «Входящий», «Перевод»). Одна операция = сумма + контрагент
+ *    (строка перед или после суммы, не являющаяся датой и не типом).
  */
 
 import * as XLSX from 'xlsx';
@@ -62,6 +72,245 @@ function findColumnIndex(headers: string[], keys: string[]): number {
     if (idx >= 0) return idx;
   }
   return -1;
+}
+
+/** Проверка, что строка похожа на подпись "дата" */
+function isDateLabel(cell: unknown): boolean {
+  const s = normalizeString(cell).toLowerCase().replace(/\s/g, '');
+  return /^(дата|date|дата\s*операции)$/.test(s) || s.includes('дата') || s === 'date';
+}
+
+/** Проверка, что строка похожа на подпись "сумма" */
+function isAmountLabel(cell: unknown): boolean {
+  const s = normalizeString(cell).toLowerCase().replace(/\s/g, '');
+  return /^(сумма|amount|сумм)$/.test(s) || s.includes('сумм');
+}
+
+/** Проверка, что строка похожа на подпись "описание/назначение" */
+function isDescLabel(cell: unknown): boolean {
+  const s = normalizeString(cell).toLowerCase().replace(/\s/g, '');
+  return /^(описание|назначение|description|комментарий|примечание)$/.test(s) ||
+    s.includes('описан') || s.includes('назначен') || s.includes('comment');
+}
+
+/**
+ * Парсинг вертикального формата: колонка A — подписи (Дата, Сумма, Описание), колонка B — значения.
+ * Одна операция может идти тремя подряд строками в любом порядке; накапливаем поля и при полном наборе добавляем операцию.
+ */
+function parseVertical(
+  rows: unknown[][],
+  operations: Array<Omit<FinanceOperation, 'id' | 'createdAt'>>,
+  errors: string[]
+): void {
+  let dateVal: string | null = null;
+  let amountVal: number | null = null;
+  let desc = '';
+
+  const flush = () => {
+    if (dateVal && amountVal !== null && amountVal !== 0) {
+      operations.push({
+        date: dateVal,
+        amount: amountVal,
+        description: desc || 'Без описания',
+        target: 'personal',
+        articleId: null,
+        raw: {},
+      });
+    }
+    dateVal = null;
+    amountVal = null;
+    desc = '';
+  };
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+    const label = normalizeString(row[0]);
+    const value = row[1];
+    if (!label) continue;
+
+    if (isDateLabel(row[0])) {
+      const d = normalizeDate(value);
+      if (d) {
+        flush();
+        dateVal = d;
+      }
+    } else if (isAmountLabel(row[0])) {
+      const a = normalizeAmount(value);
+      if (a !== null) amountVal = a;
+    } else if (isDescLabel(row[0])) {
+      desc = normalizeString(value);
+    }
+  }
+  flush();
+}
+
+/** Краткие названия месяцев по-русски (феврал, янв, мар и т.д.) */
+const RU_MONTHS: Record<string, number> = {
+  январ: 0, янв: 0,
+  феврал: 1, фев: 1,
+  мар: 2, март: 2,
+  апрел: 3, апр: 3,
+  май: 4, ма: 4,
+  июн: 5, июнь: 5,
+  июл: 6, июль: 6,
+  август: 7, авг: 7,
+  сентябр: 8, сен: 8,
+  октябр: 9, окт: 9,
+  ноябр: 10, ноя: 10,
+  декабр: 11, дек: 11,
+};
+
+/** Проверка, что строка — заголовок даты выписки (Сегодня, Вчера, 27 феврал и т.д.) */
+function parseStatementDateHeader(text: string, today: Date): string | null {
+  const t = text.trim().toLowerCase();
+  if (t === 'сегодня') return formatDate(today);
+  if (t === 'вчера') {
+    const d = new Date(today); d.setDate(d.getDate() - 1); return formatDate(d);
+  }
+  const match = t.match(/^(\d{1,2})\s*(январ|феврал|фев|март|мар|апрел|апр|май|июн|июль|июл|август|авг|сентябр|сен|октябр|окт|ноябр|ноя|декабр|дек)/);
+  if (match) {
+    const day = parseInt(match[1], 10);
+    const monthKey = match[2];
+    const month = RU_MONTHS[monthKey];
+    if (month !== undefined && day >= 1 && day <= 31) {
+      const y = today.getFullYear();
+      const d = new Date(y, month, day);
+      return formatDate(d);
+    }
+  }
+  return null;
+}
+
+function formatDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** Извлечь сумму из строки вида "+4 900 ₽", "499,62 ₽", "-100 ₽" */
+function parseAmountFromStatement(text: string): number | null {
+  const cleaned = text.replace(/\s/g, '').replace(',', '.').replace('₽', '').trim();
+  const hasPlus = /^\+/.test(cleaned);
+  const numMatch = cleaned.replace(/^\+/, '').match(/(-?\d+\.?\d*)/);
+  if (!numMatch) return null;
+  const n = parseFloat(numMatch[1]);
+  if (Number.isNaN(n)) return null;
+  return hasPlus ? Math.abs(n) : -Math.abs(n);
+}
+
+/** Проверка, что строка похожа на сумму из выписки (содержит число и ₽ или просто число с +) */
+function isStatementAmountLine(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return (/\d/.test(t) && (t.includes('₽') || /^[+\-]?\s*\d/.test(t)));
+}
+
+/** Известные типы операций — не использовать как описание контрагента */
+const STATEMENT_TYPE_PREFIXES = ['оплата то', 'входящий', 'перевод', 'комиссия', 'прочие сг', 'прочие сп', 'недостато', 'оплата'];
+
+function isStatementTypeLine(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (t.length < 5) return false;
+  return STATEMENT_TYPE_PREFIXES.some((p) => t.startsWith(p) || t === p);
+}
+
+/**
+ * Парсинг формата выписки: одна колонка, заголовки дат (Сегодня/Вчера/27 феврал),
+ * затем блоки «сумма ₽», контрагент, тип операции. Сумма может дублироваться (сумма, контрагент, сумма, тип).
+ */
+function parseBankStatement(
+  rows: unknown[][],
+  operations: Array<Omit<FinanceOperation, 'id' | 'createdAt'>>,
+  _errors: string[],
+  today: Date
+): void {
+  let currentDate: string | null = null;
+  let lastDescription = '';
+  let pendingAmount: number | null = null;
+
+  const flushPending = () => {
+    if (pendingAmount !== null && currentDate && lastDescription) {
+      operations.push({
+        date: currentDate,
+        amount: pendingAmount,
+        description: lastDescription,
+        target: 'personal',
+        articleId: null,
+        raw: {},
+      });
+      pendingAmount = null;
+      lastDescription = '';
+    }
+  };
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+    const cell = row[0] != null ? String(row[0]).trim() : (row[1] != null ? String(row[1]).trim() : '');
+    if (!cell) continue;
+
+    const dateFromHeader = parseStatementDateHeader(cell, today);
+    if (dateFromHeader) {
+      if (pendingAmount !== null && currentDate) {
+        operations.push({
+          date: currentDate,
+          amount: pendingAmount,
+          description: lastDescription || 'Без описания',
+          target: 'personal',
+          articleId: null,
+          raw: {},
+        });
+      }
+      currentDate = dateFromHeader;
+      lastDescription = '';
+      pendingAmount = null;
+      continue;
+    }
+
+    const amount = parseAmountFromStatement(cell);
+    if (amount !== null && amount !== 0 && currentDate) {
+      if (lastDescription) {
+        operations.push({
+          date: currentDate,
+          amount,
+          description: lastDescription,
+          target: 'personal',
+          articleId: null,
+          raw: { row: i + 1 },
+        });
+        lastDescription = '';
+      } else {
+        pendingAmount = amount;
+      }
+      continue;
+    }
+
+    if (!isStatementAmountLine(cell) && !isStatementTypeLine(cell)) {
+      if (pendingAmount !== null && currentDate) {
+        operations.push({
+          date: currentDate,
+          amount: pendingAmount,
+          description: cell,
+          target: 'personal',
+          articleId: null,
+          raw: {},
+        });
+        pendingAmount = null;
+      } else {
+        lastDescription = cell;
+      }
+    }
+  }
+
+  if (pendingAmount !== null && currentDate) {
+    operations.push({
+      date: currentDate,
+      amount: pendingAmount,
+      description: lastDescription || 'Без описания',
+      target: 'personal',
+      articleId: null,
+      raw: {},
+    });
+  }
 }
 
 export interface ParseXlsxResult {
@@ -131,6 +380,13 @@ export function parseFinanceXlsx(file: File): Promise<ParseXlsxResult> {
             articleId: null,
             raw: { row: i + 1, rawRow: row },
           });
+        }
+
+        if (operations.length === 0 && rows.length >= 2) {
+          parseVertical(rows, operations, errors);
+        }
+        if (operations.length === 0 && rows.length >= 1) {
+          parseBankStatement(rows, operations, errors, new Date());
         }
 
         resolve({ operations, errors });

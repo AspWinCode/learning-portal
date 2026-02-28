@@ -80,6 +80,10 @@ export const FinanceOperationsTab: React.FC = () => {
           </Button>
         </Box>
       </Box>
+      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+        Поддерживаются форматы: 1) Таблица — первая строка: заголовки (Дата, Сумма, Описание), далее по одной операции в строке.
+        2) Вертикальный A/B — подписи в колонке A, значения в B. 3) Выписка — одна колонка: заголовки дат («Сегодня», «Вчера», «27 феврал»), под каждым блоки «сумма ₽», контрагент (AZS KRAISI, Наталья Ю), тип (Оплата то, Входящий).
+      </Typography>
 
       {importError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setImportError(null)}>

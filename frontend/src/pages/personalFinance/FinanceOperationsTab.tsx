@@ -20,7 +20,7 @@ import { UploadFile, Delete } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
-import { FinanceOperation } from '../../types/personalFinance';
+import { FinanceOperation, OperationTarget, OPERATION_TARGET_LABELS } from '../../types/personalFinance';
 import { parseFinanceXlsx } from '../../utils/parseFinanceXlsx';
 
 export const FinanceOperationsTab: React.FC = () => {
@@ -149,6 +149,7 @@ export const FinanceOperationsTab: React.FC = () => {
               </TableCell>
               <TableCell>Дата</TableCell>
               <TableCell>Сумма</TableCell>
+              <TableCell>Контрагент</TableCell>
               <TableCell>Описание</TableCell>
               <TableCell>Куда</TableCell>
               <TableCell>Статья (доход/расход)</TableCell>
@@ -157,7 +158,7 @@ export const FinanceOperationsTab: React.FC = () => {
           <TableBody>
             {sortedOps.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   Нет операций. Загрузите XLSX с колонками: дата, сумма, описание.
                 </TableCell>
               </TableRow>
@@ -220,15 +221,21 @@ function OperationRow({
       <TableCell title={hasRecognition ? operation.description : undefined}>
         {displayDesc}
       </TableCell>
+      <TableCell sx={{ maxWidth: 200 }} title={operation.description}>
+        {hasRecognition ? operation.description : '—'}
+      </TableCell>
       <TableCell>
         <Select
           size="small"
-          value={operation.target}
-          onChange={(e) => onUpdate({ target: e.target.value as 'academy' | 'personal' })}
-          sx={{ minWidth: 140 }}
+          value={operation.target in OPERATION_TARGET_LABELS ? operation.target : 'personal'}
+          onChange={(e) => onUpdate({ target: e.target.value as OperationTarget })}
+          sx={{ minWidth: 160 }}
         >
-          <MenuItem value="academy">Счёт академии</MenuItem>
-          <MenuItem value="personal">Личная</MenuItem>
+          {(Object.keys(OPERATION_TARGET_LABELS) as OperationTarget[]).map((t) => (
+            <MenuItem key={t} value={t}>
+              {OPERATION_TARGET_LABELS[t]}
+            </MenuItem>
+          ))}
         </Select>
       </TableCell>
       <TableCell>

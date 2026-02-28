@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -16,7 +17,9 @@ import {
   Card,
   CardContent,
   TextField,
+  Button,
 } from '@mui/material';
+import { ArrowForward } from '@mui/icons-material';
 import { format, startOfDay, startOfWeek, startOfMonth, startOfYear, isWithinInterval } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
@@ -53,6 +56,7 @@ function getPeriodRange(period: PeriodKey, baseDate: Date): { start: Date; end: 
 
 export const FinanceDashboardTab: React.FC = () => {
   const { operations, incomeArticles, expenseArticles } = usePersonalFinance();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [summaryPeriod, setSummaryPeriod] = useState<PeriodKey>('month');
   const [summaryBaseDate, setSummaryBaseDate] = useState(() => new Date());
 
@@ -60,6 +64,17 @@ export const FinanceDashboardTab: React.FC = () => {
     () => operations.filter((o) => o.target === 'personal'),
     [operations]
   );
+
+  const leninetsOps = useMemo(() => operations.filter((o) => o.target === 'leninets'), [operations]);
+  const gogolMogolOps = useMemo(() => operations.filter((o) => o.target === 'gogol_mogol'), [operations]);
+  const academyOps = useMemo(() => operations.filter((o) => o.target === 'academy'), [operations]);
+
+  const leninetsIncome = useMemo(() => leninetsOps.filter((o) => o.amount > 0).reduce((s, o) => s + o.amount, 0), [leninetsOps]);
+  const leninetsExpense = useMemo(() => leninetsOps.filter((o) => o.amount < 0).reduce((s, o) => s + Math.abs(o.amount), 0), [leninetsOps]);
+  const gogolIncome = useMemo(() => gogolMogolOps.filter((o) => o.amount > 0).reduce((s, o) => s + o.amount, 0), [gogolMogolOps]);
+  const gogolExpense = useMemo(() => gogolMogolOps.filter((o) => o.amount < 0).reduce((s, o) => s + Math.abs(o.amount), 0), [gogolMogolOps]);
+  const academyIncome = useMemo(() => academyOps.filter((o) => o.amount > 0).reduce((s, o) => s + o.amount, 0), [academyOps]);
+  const academyExpense = useMemo(() => academyOps.filter((o) => o.amount < 0).reduce((s, o) => s + Math.abs(o.amount), 0), [academyOps]);
 
   const dates = useMemo(() => {
     const set = new Set<string>();
@@ -151,6 +166,71 @@ export const FinanceDashboardTab: React.FC = () => {
       <Typography variant="h6" sx={{ mb: 2 }}>
         Дашборд по финансам
       </Typography>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={4}>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography color="text.secondary" gutterBottom fontWeight={600}>
+                Ленинец
+              </Typography>
+              <Typography variant="body2">
+                Доходы: <Box component="span" sx={{ color: 'success.main', fontWeight: 600 }}>{leninetsIncome.toFixed(2)}</Box>
+              </Typography>
+              <Typography variant="body2">
+                Расходы: <Box component="span" sx={{ color: 'error.main', fontWeight: 600 }}>{leninetsExpense.toFixed(2)}</Box>
+              </Typography>
+              <Typography variant="body2">
+                Итого: <Box component="strong">{(leninetsIncome - leninetsExpense).toFixed(2)}</Box>
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography color="text.secondary" gutterBottom fontWeight={600}>
+                Гоголь Моголь
+              </Typography>
+              <Typography variant="body2">
+                Доходы: <Box component="span" sx={{ color: 'success.main', fontWeight: 600 }}>{gogolIncome.toFixed(2)}</Box>
+              </Typography>
+              <Typography variant="body2">
+                Расходы: <Box component="span" sx={{ color: 'error.main', fontWeight: 600 }}>{gogolExpense.toFixed(2)}</Box>
+              </Typography>
+              <Typography variant="body2">
+                Итого: <Box component="strong">{(gogolIncome - gogolExpense).toFixed(2)}</Box>
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography color="text.secondary" gutterBottom fontWeight={600}>
+                Счёт академии
+              </Typography>
+              <Typography variant="body2">
+                Доходы: <Box component="span" sx={{ color: 'success.main', fontWeight: 600 }}>{academyIncome.toFixed(2)}</Box>
+              </Typography>
+              <Typography variant="body2">
+                Расходы: <Box component="span" sx={{ color: 'error.main', fontWeight: 600 }}>{academyExpense.toFixed(2)}</Box>
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Итого: <Box component="strong">{(academyIncome - academyExpense).toFixed(2)}</Box>
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                endIcon={<ArrowForward />}
+                onClick={() => setSearchParams({ tab: 'articles' })}
+              >
+                Настройки статей
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} md={6}>

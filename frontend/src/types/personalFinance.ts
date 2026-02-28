@@ -8,8 +8,15 @@ export interface FinanceArticle {
   order?: number;
 }
 
-/** Направление операции: счёт академии или личная */
-export type OperationTarget = 'academy' | 'personal';
+/** Направление операции: куда относится операция */
+export type OperationTarget = 'academy' | 'personal' | 'gogol_mogol' | 'leninets';
+
+export const OPERATION_TARGET_LABELS: Record<OperationTarget, string> = {
+  personal: 'Личная',
+  academy: 'Счёт академии',
+  gogol_mogol: 'Гоголь Моголь',
+  leninets: 'Ленинец',
+};
 
 export interface FinanceOperation {
   id: string;

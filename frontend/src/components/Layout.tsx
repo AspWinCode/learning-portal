@@ -35,6 +35,7 @@ import {
   Description,
   Assessment,
   AccountBalance,
+  AccountBalanceWallet,
   LocalOffer,
   Home,
   ExitToApp,
@@ -215,6 +216,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' },
+        { text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' },
       ];
 
     const items = [
@@ -229,6 +231,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     if (isAdminLike) items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
+    items.push({ text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' });
     if (isAdminLike) {
       items.push({ text: 'Инструкции', icon: <Description />, path: '/sales/instructions' });
       items.push({ text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' });

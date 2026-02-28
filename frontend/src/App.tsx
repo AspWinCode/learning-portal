@@ -45,6 +45,7 @@ import AnketyPage from './pages/AnketyPage';
 import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
+import PersonalFinancePage from './pages/PersonalFinancePage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
 
@@ -375,6 +376,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['parent']}>
                   <ParentDashboardPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/personal-finance"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']}>
+                  <PersonalFinancePage />
                 </PrivateRoute>
               }
             />

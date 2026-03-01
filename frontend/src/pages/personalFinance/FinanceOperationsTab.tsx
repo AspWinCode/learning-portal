@@ -15,8 +15,13 @@ import {
   Paper,
   Alert,
   Checkbox,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material';
-import { UploadFile, Delete } from '@mui/icons-material';
+import { UploadFile, Delete, AccountBalanceWallet } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
@@ -27,7 +32,9 @@ export const FinanceOperationsTab: React.FC = () => {
   const {
     operations,
     updateOperation,
+    addOperation,
     addOperations,
+    addArticle,
     deleteOperations,
     incomeArticles,
     expenseArticles,
@@ -37,6 +44,13 @@ export const FinanceOperationsTab: React.FC = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const [initialBalanceOpen, setInitialBalanceOpen] = useState(false);
+  const [initialBalanceDate, setInitialBalanceDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-01-01`;
+  });
+  const [initialBalanceAmount, setInitialBalanceAmount] = useState<string>('');
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -88,6 +102,31 @@ export const FinanceOperationsTab: React.FC = () => {
     }
   };
 
+  const handleAddInitialBalance = () => {
+    const amount = Number(initialBalanceAmount.replace(/\s/g, '').replace(',', '.'));
+    if (!initialBalanceDate || !Number.isFinite(amount) || amount <= 0) return;
+    let articleId = incomeArticles.find((a) => a.name === 'Начальный остаток')?.id ?? null;
+    if (!articleId) {
+      articleId = addArticle({ name: 'Начальный остаток', type: 'income' });
+    }
+    addOperation({
+      date: initialBalanceDate,
+      amount: Math.abs(amount),
+      description: 'Начальный остаток',
+      target: 'personal',
+      articleId,
+    });
+    setInitialBalanceOpen(false);
+    setInitialBalanceAmount('');
+  };
+
+  const openInitialBalanceDialog = () => {
+    const d = new Date();
+    setInitialBalanceDate(`${d.getFullYear()}-01-01`);
+    setInitialBalanceAmount('');
+    setInitialBalanceOpen(true);
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 2 }}>
@@ -101,6 +140,13 @@ export const FinanceOperationsTab: React.FC = () => {
             disabled={!someSelected}
           >
             Удалить выбранные {someSelected ? `(${selectedIds.size})` : ''}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<AccountBalanceWallet />}
+            onClick={openInitialBalanceDialog}
+          >
+            Добавить начальный остаток
           </Button>
           <input
             ref={fileInputRef}
@@ -178,6 +224,44 @@ export const FinanceOperationsTab: React.FC = () => {
           </TableBody>
         </Table>
       </Paper>
+
+      <Dialog open={initialBalanceOpen} onClose={() => setInitialBalanceOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Добавить начальный остаток</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Свободные деньги, оставшиеся с прошлого периода (например, с декабря). Будет добавлена одна операция «доход» с датой и суммой.
+          </Typography>
+          <TextField
+            label="Дата"
+            type="date"
+            value={initialBalanceDate}
+            onChange={(e) => setInitialBalanceDate(e.target.value)}
+            fullWidth
+            size="small"
+            sx={{ mb: 2 }}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            label="Сумма (руб)"
+            value={initialBalanceAmount}
+            onChange={(e) => setInitialBalanceAmount(e.target.value)}
+            fullWidth
+            size="small"
+            placeholder="Например, 50000"
+            inputProps={{ inputMode: 'decimal' }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInitialBalanceOpen(false)}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={handleAddInitialBalance}
+            disabled={!initialBalanceDate || !initialBalanceAmount.trim() || !(Number(initialBalanceAmount.replace(/\s/g, '').replace(',', '.')) > 0)}
+          >
+            Добавить
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

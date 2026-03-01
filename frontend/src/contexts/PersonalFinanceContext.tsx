@@ -57,7 +57,7 @@ function saveRecognition(rules: RecognitionRule[]) {
 interface PersonalFinanceContextValue {
   articles: FinanceArticle[];
   operations: FinanceOperation[];
-  addArticle: (article: Omit<FinanceArticle, 'id'>) => void;
+  addArticle: (article: Omit<FinanceArticle, 'id'>) => string;
   updateArticle: (id: string, patch: Partial<FinanceArticle>) => void;
   deleteArticle: (id: string) => void;
   deleteArticles: (ids: string[]) => void;
@@ -97,6 +97,7 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
       const id = `art_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       const newArt: FinanceArticle = { ...article, id, order: articles.length };
       persistArticles([...articles, newArt]);
+      return id;
     },
     [articles, persistArticles]
   );

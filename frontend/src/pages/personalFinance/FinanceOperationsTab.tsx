@@ -21,7 +21,7 @@ import {
   DialogActions,
   TextField,
 } from '@mui/material';
-import { UploadFile, Delete, AccountBalanceWallet } from '@mui/icons-material';
+import { UploadFile, Delete, AccountBalanceWallet, Add } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
@@ -51,6 +51,16 @@ export const FinanceOperationsTab: React.FC = () => {
     return `${d.getFullYear()}-01-01`;
   });
   const [initialBalanceAmount, setInitialBalanceAmount] = useState<string>('');
+
+  const [manualOpOpen, setManualOpOpen] = useState(false);
+  const [manualOpDate, setManualOpDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [manualOpAmount, setManualOpAmount] = useState<string>('');
+  const [manualOpDescription, setManualOpDescription] = useState<string>('');
+  const [manualOpTarget, setManualOpTarget] = useState<OperationTarget>('personal');
+  const [manualOpArticleId, setManualOpArticleId] = useState<string>('');
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -127,6 +137,35 @@ export const FinanceOperationsTab: React.FC = () => {
     setInitialBalanceOpen(true);
   };
 
+  const parsedManualAmount = (() => {
+    const n = Number(manualOpAmount.replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  })();
+  const manualOpIsIncome = parsedManualAmount >= 0;
+  const manualOpArticles = manualOpIsIncome ? incomeArticles : expenseArticles;
+
+  const openManualOpDialog = () => {
+    const d = new Date();
+    setManualOpDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    setManualOpAmount('');
+    setManualOpDescription('');
+    setManualOpTarget('personal');
+    setManualOpArticleId('');
+    setManualOpOpen(true);
+  };
+
+  const handleAddManualOperation = () => {
+    if (!manualOpDate || parsedManualAmount === 0) return;
+    addOperation({
+      date: manualOpDate,
+      amount: parsedManualAmount,
+      description: manualOpDescription.trim() || 'Вручную',
+      target: manualOpTarget,
+      articleId: manualOpArticleId || null,
+    });
+    setManualOpOpen(false);
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 2 }}>
@@ -146,7 +185,14 @@ export const FinanceOperationsTab: React.FC = () => {
             startIcon={<AccountBalanceWallet />}
             onClick={openInitialBalanceDialog}
           >
-            Добавить начальный остаток
+            Начальный остаток
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<Add />}
+            onClick={openManualOpDialog}
+          >
+            Добавить операцию
           </Button>
           <input
             ref={fileInputRef}
@@ -257,6 +303,84 @@ export const FinanceOperationsTab: React.FC = () => {
             variant="contained"
             onClick={handleAddInitialBalance}
             disabled={!initialBalanceDate || !initialBalanceAmount.trim() || !(Number(initialBalanceAmount.replace(/\s/g, '').replace(',', '.')) > 0)}
+          >
+            Добавить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={manualOpOpen} onClose={() => setManualOpOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Добавить операцию</DialogTitle>
+        <DialogContent sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Доход — укажите положительную сумму, расход — отрицательную (например, -500). Подойдёт для наличных и прочих операций без выписки.
+          </Typography>
+          <TextField
+            label="Дата"
+            type="date"
+            value={manualOpDate}
+            onChange={(e) => setManualOpDate(e.target.value)}
+            fullWidth
+            size="small"
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            label="Сумма (руб)"
+            value={manualOpAmount}
+            onChange={(e) => setManualOpAmount(e.target.value)}
+            fullWidth
+            size="small"
+            placeholder="5000 или -300"
+            inputProps={{ inputMode: 'decimal' }}
+          />
+          <TextField
+            label="Описание (контрагент)"
+            value={manualOpDescription}
+            onChange={(e) => setManualOpDescription(e.target.value)}
+            fullWidth
+            size="small"
+            placeholder="Наличные, подарок и т.д."
+          />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Куда</InputLabel>
+            <Select
+              value={manualOpTarget}
+              label="Куда"
+              onChange={(e) => setManualOpTarget(e.target.value as OperationTarget)}
+            >
+              {(Object.keys(OPERATION_TARGET_LABELS) as OperationTarget[]).map((t) => (
+                <MenuItem key={t} value={t}>
+                  {OPERATION_TARGET_LABELS[t]}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Статья ({manualOpIsIncome ? 'доход' : 'расход'})</InputLabel>
+            <Select
+              value={manualOpArticleId}
+              label={`Статья (${manualOpIsIncome ? 'доход' : 'расход'})`}
+              onChange={(e) => setManualOpArticleId(e.target.value)}
+              displayEmpty
+              renderValue={(v) => manualOpArticles.find((a) => a.id === v)?.name ?? (v ? v : 'Не выбрано')}
+            >
+              <MenuItem value="">
+                <em>Не выбрано</em>
+              </MenuItem>
+              {manualOpArticles.map((a) => (
+                <MenuItem key={a.id} value={a.id}>
+                  {a.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManualOpOpen(false)}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={handleAddManualOperation}
+            disabled={!manualOpDate || parsedManualAmount === 0}
           >
             Добавить
           </Button>

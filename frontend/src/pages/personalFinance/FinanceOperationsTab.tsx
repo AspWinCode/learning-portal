@@ -20,6 +20,9 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from '@mui/material';
 import { UploadFile, Delete, AccountBalanceWallet, Add } from '@mui/icons-material';
 import { format } from 'date-fns';
@@ -53,6 +56,7 @@ export const FinanceOperationsTab: React.FC = () => {
   const [initialBalanceAmount, setInitialBalanceAmount] = useState<string>('');
 
   const [manualOpOpen, setManualOpOpen] = useState(false);
+  const [manualOpType, setManualOpType] = useState<'income' | 'expense'>('income');
   const [manualOpDate, setManualOpDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -139,13 +143,14 @@ export const FinanceOperationsTab: React.FC = () => {
 
   const parsedManualAmount = (() => {
     const n = Number(manualOpAmount.replace(/\s/g, '').replace(',', '.'));
-    return Number.isFinite(n) ? n : 0;
+    return Number.isFinite(n) ? Math.abs(n) : 0;
   })();
-  const manualOpIsIncome = parsedManualAmount >= 0;
+  const manualOpIsIncome = manualOpType === 'income';
   const manualOpArticles = manualOpIsIncome ? incomeArticles : expenseArticles;
 
   const openManualOpDialog = () => {
     const d = new Date();
+    setManualOpType('income');
     setManualOpDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
     setManualOpAmount('');
     setManualOpDescription('');
@@ -156,9 +161,10 @@ export const FinanceOperationsTab: React.FC = () => {
 
   const handleAddManualOperation = () => {
     if (!manualOpDate || parsedManualAmount === 0) return;
+    const amount = manualOpType === 'income' ? parsedManualAmount : -parsedManualAmount;
     addOperation({
       date: manualOpDate,
-      amount: parsedManualAmount,
+      amount,
       description: manualOpDescription.trim() || 'Вручную',
       target: manualOpTarget,
       articleId: manualOpArticleId || null,
@@ -313,8 +319,22 @@ export const FinanceOperationsTab: React.FC = () => {
         <DialogTitle>Добавить операцию</DialogTitle>
         <DialogContent sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            Доход — укажите положительную сумму, расход — отрицательную (например, -500). Подойдёт для наличных и прочих операций без выписки.
+            Подойдёт для наличных и прочих операций без выписки.
           </Typography>
+          <FormControl component="fieldset" size="small">
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Тип операции</Typography>
+            <RadioGroup
+              row
+              value={manualOpType}
+              onChange={(e) => {
+                setManualOpType(e.target.value as 'income' | 'expense');
+                setManualOpArticleId('');
+              }}
+            >
+              <FormControlLabel value="income" control={<Radio size="small" />} label="Доход" />
+              <FormControlLabel value="expense" control={<Radio size="small" />} label="Расход" />
+            </RadioGroup>
+          </FormControl>
           <TextField
             label="Дата"
             type="date"
@@ -330,7 +350,7 @@ export const FinanceOperationsTab: React.FC = () => {
             onChange={(e) => setManualOpAmount(e.target.value)}
             fullWidth
             size="small"
-            placeholder="5000 или -300"
+            placeholder={manualOpType === 'income' ? 'Например, 5000' : 'Например, 300'}
             inputProps={{ inputMode: 'decimal' }}
           />
           <TextField

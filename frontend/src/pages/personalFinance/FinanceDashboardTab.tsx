@@ -59,6 +59,9 @@ export const FinanceDashboardTab: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [summaryPeriod, setSummaryPeriod] = useState<PeriodKey>('month');
   const [summaryBaseDate, setSummaryBaseDate] = useState(() => new Date());
+  const [rangeFrom, setRangeFrom] = useState<string>('');
+  const [rangeTo, setRangeTo] = useState<string>('');
+  const [monthFilter, setMonthFilter] = useState<string>('all');
 
   const personalOps = useMemo(
     () => operations.filter((o) => o.target === 'personal'),
@@ -82,13 +85,27 @@ export const FinanceDashboardTab: React.FC = () => {
     return Array.from(set).sort();
   }, [personalOps]);
 
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    personalOps.forEach((o) => {
+      if (o.date.length >= 7) {
+        set.add(o.date.slice(0, 7)); // YYYY-MM
+      }
+    });
+    return Array.from(set).sort();
+  }, [personalOps]);
+
   const tableDates = useMemo(() => {
-    if (dates.length === 0) {
+    let filtered = dates;
+    if (monthFilter !== 'all') {
+      filtered = dates.filter((d) => d.startsWith(monthFilter));
+    }
+    if (filtered.length === 0) {
       const today = format(new Date(), 'yyyy-MM-dd');
       return [today];
     }
-    return dates;
-  }, [dates]);
+    return filtered;
+  }, [dates, monthFilter]);
 
   const byDateAndArticle = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
@@ -114,6 +131,38 @@ export const FinanceDashboardTab: React.FC = () => {
     });
     return map;
   }, [personalOps]);
+
+  const rangeIncome = useMemo(() => {
+    if (!rangeFrom && !rangeTo) return 0;
+    const from = rangeFrom ? new Date(rangeFrom + 'T00:00:00') : null;
+    const to = rangeTo ? new Date(rangeTo + 'T23:59:59') : null;
+    return personalOps
+      .filter((o) => {
+        if (o.amount <= 0) return false;
+        const d = new Date(o.date + 'T12:00:00');
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      })
+      .reduce((s, o) => s + o.amount, 0);
+  }, [personalOps, rangeFrom, rangeTo]);
+
+  const rangeExpense = useMemo(() => {
+    if (!rangeFrom && !rangeTo) return 0;
+    const from = rangeFrom ? new Date(rangeFrom + 'T00:00:00') : null;
+    const to = rangeTo ? new Date(rangeTo + 'T23:59:59') : null;
+    return personalOps
+      .filter((o) => {
+        if (o.amount >= 0) return false;
+        const d = new Date(o.date + 'T12:00:00');
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      })
+      .reduce((s, o) => s + Math.abs(o.amount), 0);
+  }, [personalOps, rangeFrom, rangeTo]);
+
+  const rangeBalance = rangeIncome - rangeExpense;
 
   const { start, end } = useMemo(
     () => getPeriodRange(summaryPeriod, summaryBaseDate),
@@ -264,6 +313,41 @@ export const FinanceDashboardTab: React.FC = () => {
                   sx={{ width: 160 }}
                 />
               </Box>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 1 }}>
+                <TextField
+                  size="small"
+                  label="От"
+                  type="date"
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 150 }}
+                />
+                <TextField
+                  size="small"
+                  label="До"
+                  type="date"
+                  value={rangeTo}
+                  onChange={(e) => setRangeTo(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 150 }}
+                />
+                <FormControl size="small" sx={{ minWidth: 180 }}>
+                  <InputLabel>Месяц (таблица)</InputLabel>
+                  <Select
+                    value={monthFilter}
+                    label="Месяц (таблица)"
+                    onChange={(e) => setMonthFilter(e.target.value)}
+                  >
+                    <MenuItem value="all">Все месяцы</MenuItem>
+                    {monthOptions.map((m) => (
+                      <MenuItem key={m} value={m}>
+                        {format(new Date(m + '-01T12:00:00'), 'LLLL yyyy', { locale: ru })}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
               <Typography variant="body2">
                 Доходы: <Box component="strong" sx={{ color: 'success.main' }}>{periodIncome.toFixed(2)}</Box>
               </Typography>
@@ -273,6 +357,22 @@ export const FinanceDashboardTab: React.FC = () => {
               <Typography variant="body2">
                 Сальдо: <Box component="strong">{periodBalance.toFixed(2)}</Box>
               </Typography>
+              {(rangeFrom || rangeTo) && (
+                <>
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    По фильтру от/до:
+                  </Typography>
+                  <Typography variant="body2">
+                    Доходы: <Box component="strong" sx={{ color: 'success.main' }}>{rangeIncome.toFixed(2)}</Box>
+                  </Typography>
+                  <Typography variant="body2">
+                    Расходы: <Box component="strong" sx={{ color: 'error.main' }}>{rangeExpense.toFixed(2)}</Box>
+                  </Typography>
+                  <Typography variant="body2">
+                    Сальдо: <Box component="strong">{rangeBalance.toFixed(2)}</Box>
+                  </Typography>
+                </>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -297,7 +397,18 @@ export const FinanceDashboardTab: React.FC = () => {
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ minWidth: 200, fontWeight: 700 }}>Статья</TableCell>
+              <TableCell
+                sx={{
+                  minWidth: 200,
+                  fontWeight: 700,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 3,
+                  bgcolor: 'background.paper',
+                }}
+              >
+                Статья
+              </TableCell>
               {tableDates.map((d) => (
                 <TableCell key={d} align="right" sx={{ minWidth: 90 }}>
                   {format(new Date(d + 'T12:00:00'), 'dd.MM', { locale: ru })}
@@ -318,7 +429,17 @@ export const FinanceDashboardTab: React.FC = () => {
               const rowTotal = tableDates.reduce((s, date) => s + getCell(date, art.id), 0);
               return (
                 <TableRow key={art.id}>
-                  <TableCell sx={{ pl: 3 }}>{art.name}</TableCell>
+                  <TableCell
+                    sx={{
+                      pl: 3,
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 2,
+                      bgcolor: 'background.paper',
+                    }}
+                  >
+                    {art.name}
+                  </TableCell>
                   {tableDates.map((d) => (
                     <TableCell key={d} align="right" sx={{ color: 'success.main' }}>
                       {getCell(d, art.id) !== 0 ? getCell(d, art.id).toFixed(2) : '—'}
@@ -331,7 +452,18 @@ export const FinanceDashboardTab: React.FC = () => {
               );
             })}
             <TableRow>
-              <TableCell sx={{ pl: 3, fontStyle: 'italic' }}>Без статьи</TableCell>
+              <TableCell
+                sx={{
+                  pl: 3,
+                  fontStyle: 'italic',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 2,
+                  bgcolor: 'background.paper',
+                }}
+              >
+                Без статьи
+              </TableCell>
               {tableDates.map((d) => {
                 const v = byDateAndArticle.get(d)?.get('__income__') ?? 0;
                 return (
@@ -351,7 +483,17 @@ export const FinanceDashboardTab: React.FC = () => {
               const rowTotal = tableDates.reduce((s, date) => s + getCell(date, art.id), 0);
               return (
                 <TableRow key={art.id}>
-                  <TableCell sx={{ pl: 3 }}>{art.name}</TableCell>
+                  <TableCell
+                    sx={{
+                      pl: 3,
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 2,
+                      bgcolor: 'background.paper',
+                    }}
+                  >
+                    {art.name}
+                  </TableCell>
                   {tableDates.map((d) => (
                     <TableCell key={d} align="right" sx={{ color: 'error.main' }}>
                       {getCell(d, art.id) !== 0 ? (-getCell(d, art.id)).toFixed(2) : '—'}
@@ -364,7 +506,18 @@ export const FinanceDashboardTab: React.FC = () => {
               );
             })}
             <TableRow>
-              <TableCell sx={{ pl: 3, fontStyle: 'italic' }}>Без статьи</TableCell>
+              <TableCell
+                sx={{
+                  pl: 3,
+                  fontStyle: 'italic',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 2,
+                  bgcolor: 'background.paper',
+                }}
+              >
+                Без статьи
+              </TableCell>
               {tableDates.map((d) => {
                 const v = byDateAndArticle.get(d)?.get('__expense__') ?? 0;
                 return (
@@ -376,7 +529,17 @@ export const FinanceDashboardTab: React.FC = () => {
               <TableCell align="right">—</TableCell>
             </TableRow>
             <TableRow sx={{ bgcolor: 'action.selected' }}>
-              <TableCell sx={{ fontWeight: 700 }}>Итого по дням</TableCell>
+              <TableCell
+                sx={{
+                  fontWeight: 700,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 2,
+                  bgcolor: 'background.paper',
+                }}
+              >
+                Итого по дням
+              </TableCell>
               {tableDates.map((d) => {
                 const t = getDateTotal(d);
                 const saldo = t.income - t.expense;

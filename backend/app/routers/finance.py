@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional, Set, Tuple
 import csv
 import hashlib
 from datetime import date, datetime
@@ -535,6 +535,7 @@ async def migrate_personal_finance(
 
     # --- Операции ---
     created_ops = 0
+    seen_dedup_in_batch: Set[Tuple[str, str]] = set()  # (bank_source, dedup_hash) уже добавленные в этом запросе
     for op in ops_in:
         date_str = op.get("date")
         try:
@@ -564,6 +565,9 @@ async def migrate_personal_finance(
         dedup_seed = f"{bank_source}|{date_str or ''}|{amount}|{description}"
         dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
 
+        dedup_key = (bank_source, dedup_hash)
+        if dedup_key in seen_dedup_in_batch:
+            continue
         existing = (
             db.query(FinanceTransaction.id)
             .filter(
@@ -575,6 +579,7 @@ async def migrate_personal_finance(
         if existing:
             continue
 
+        seen_dedup_in_batch.add(dedup_key)
         tx = FinanceTransaction(
             occurred_at=occurred_at,
             amount=amount,

@@ -77,8 +77,6 @@ const TrainerLessonsPage: React.FC = () => {
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [moveSlot, setMoveSlot] = useState<TrainerLessonSlot | null>(null);
   const [moveToDate, setMoveToDate] = useState('');
-  const [moveToStartTime, setMoveToStartTime] = useState('');
-  const [moveToEndTime, setMoveToEndTime] = useState('');
   const [moveError, setMoveError] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -327,10 +325,6 @@ const TrainerLessonsPage: React.FC = () => {
     e.stopPropagation();
     setMoveSlot(slot);
     setMoveToDate(format(addDays(new Date(slot.lesson_date || viewDate), 1), 'yyyy-MM-dd'));
-    const start = (slot.start_time || '').toString().slice(0, 5);
-    const end = (slot.end_time || '').toString().slice(0, 5);
-    setMoveToStartTime(start || '15:00');
-    setMoveToEndTime(end || '17:00');
     setMoveError(null);
     setMoveDialogOpen(true);
   };
@@ -351,17 +345,21 @@ const TrainerLessonsPage: React.FC = () => {
         group_id: moveSlot.group_id,
         from_date: fromDate,
         to_date: moveToDate,
-        ...(fromStart && fromEnd ? { from_start_time: fromStart, from_end_time: fromEnd } : {}),
-        ...(moveToStartTime && moveToEndTime
-          ? { to_start_time: moveToStartTime, to_end_time: moveToEndTime }
+        ...(fromStart && fromEnd
+          ? {
+              from_start_time: fromStart,
+              from_end_time: fromEnd,
+              to_start_time: fromStart,
+              to_end_time: fromEnd,
+            }
           : {}),
       });
       setMoveDialogOpen(false);
       setAutoOpenTarget({
         group_id: moveSlot.group_id,
         lesson_date: moveToDate,
-        start_time: moveToStartTime || fromStart,
-        end_time: moveToEndTime || fromEnd,
+        start_time: fromStart,
+        end_time: fromEnd,
       });
       setMoveSlot(null);
       loadSlots();
@@ -891,8 +889,8 @@ const TrainerLessonsPage: React.FC = () => {
         <DialogTitle>Перенести занятие на другой день</DialogTitle>
         <DialogContent>
           {moveSlot && (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Группа «{moveSlot.group_name}», текущая дата: {format(new Date((moveSlot.lesson_date || viewDate) + 'T12:00:00'), 'd.MM.yyyy')}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Группа «{moveSlot.group_name}». Время занятия сохранится: {(moveSlot.start_time || '').toString().slice(0, 5)} – {(moveSlot.end_time || '').toString().slice(0, 5)}.
             </Typography>
           )}
           <TextField
@@ -903,32 +901,9 @@ const TrainerLessonsPage: React.FC = () => {
             fullWidth
             size="small"
             InputLabelProps={{ shrink: true }}
-            sx={{ mt: 1 }}
           />
-          <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
-            <TextField
-              label="Время начала"
-              type="time"
-              value={moveToStartTime}
-              onChange={(e) => setMoveToStartTime(e.target.value)}
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ step: 300 }}
-              sx={{ flex: 1 }}
-            />
-            <TextField
-              label="Время окончания"
-              type="time"
-              value={moveToEndTime}
-              onChange={(e) => setMoveToEndTime(e.target.value)}
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ step: 300 }}
-              sx={{ flex: 1 }}
-            />
-          </Stack>
           {moveError && (
-            <Alert severity="error" sx={{ mt: 1 }}>{moveError}</Alert>
+            <Alert severity="error" sx={{ mt: 1.5 }}>{moveError}</Alert>
           )}
         </DialogContent>
         <DialogActions>

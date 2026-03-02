@@ -440,6 +440,8 @@ export interface FinanceLedgerBankRow {
   to_account_code?: string | null;
   to_account_name?: string | null;
 
+  transfer_group_id?: string | null;
+
   counterparty_name?: string | null;
   counterparty_phone?: string | null;
 

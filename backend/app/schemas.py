@@ -416,6 +416,8 @@ class FinanceLedgerBankRow(BaseModel):
     to_account_code: Optional[str] = None
     to_account_name: Optional[str] = None
 
+    transfer_group_id: Optional[str] = None
+
     counterparty_name: Optional[str] = None
     counterparty_phone: Optional[str] = None
 
@@ -478,6 +480,7 @@ class FinanceTransactionUpdate(BaseModel):
     status: Optional[str] = None  # new | classified | applied
     account_id: Optional[int] = None
     to_account_id: Optional[int] = None
+    transfer_group_id: Optional[str] = None
     target_id: Optional[int] = None
     article_id: Optional[int] = None
 

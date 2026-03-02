@@ -935,6 +935,7 @@ async def list_finance_ledger_bank(
                 to_account_id=tx.to_account_id,
                 to_account_code=getattr(to_account, "code", None),
                 to_account_name=getattr(to_account, "name", None),
+                transfer_group_id=tx.transfer_group_id,
                 counterparty_name=tx.counterparty_name,
                 counterparty_phone=tx.counterparty_phone,
                 bank_source=tx.bank_source,
@@ -1006,6 +1007,9 @@ async def update_finance_transaction(
         if payload.article_id and not db.query(FinanceArticle.id).filter(FinanceArticle.id == payload.article_id).first():
             raise HTTPException(status_code=400, detail="article_id не найден")
         tx.article_id = payload.article_id
+
+    if payload.transfer_group_id is not None:
+        tx.transfer_group_id = payload.transfer_group_id or None
 
     db.commit()
     db.refresh(tx)

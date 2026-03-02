@@ -339,22 +339,35 @@ const SalesDebtsPage: React.FC = () => {
                     window.alert('Суммы выбранных операций должны совпадать по модулю.');
                     return;
                   }
+                  if (tx1.payment_date && tx2.payment_date) {
+                    const d1 = new Date(tx1.payment_date + 'T00:00:00');
+                    const d2 = new Date(tx2.payment_date + 'T00:00:00');
+                    const diffDays = Math.abs(d1.getTime() - d2.getTime()) / (1000 * 60 * 60 * 24);
+                    if (diffDays > 1.0001) {
+                      window.alert('Переводы можно связывать только если разница по дате не более 1 дня.');
+                      return;
+                    }
+                  }
                   const isFirstExpense = l1.amount < 0;
                   const from = isFirstExpense ? l1 : l2;
                   const to = isFirstExpense ? l2 : l1;
+                  const pairIds = [from.id, to.id].sort((a, b) => a - b);
+                  const transfer_group_id = `manual-${pairIds[0]}-${pairIds[1]}`;
                   try {
                     const updatedFrom = await financeApi.updateTransaction(from.id, {
                       direction: 'transfer',
                       to_account_id: to.account_id ?? null,
+                      transfer_group_id,
                     });
                     const updatedTo = await financeApi.updateTransaction(to.id, {
                       direction: 'transfer',
                       to_account_id: from.account_id ?? null,
+                      transfer_group_id,
                     });
                     setLedgerByOperationId((prev) => ({
                       ...prev,
-                      [tx1.operation_id]: tx1.operation_id === updatedFrom.bank_operation_id ? updatedFrom : updatedTo,
-                      [tx2.operation_id]: tx2.operation_id === updatedFrom.bank_operation_id ? updatedFrom : updatedTo,
+                      [tx1.operation_id]: updatedFrom.id === l1.id ? updatedFrom : updatedTo,
+                      [tx2.operation_id]: updatedFrom.id === l2.id ? updatedFrom : updatedTo,
                     }));
                     setSelectedBankOperationIds(new Set());
                   } catch (err: any) {

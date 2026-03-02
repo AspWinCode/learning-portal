@@ -20,45 +20,14 @@ import {
   Button,
 } from '@mui/material';
 import { ArrowForward } from '@mui/icons-material';
-import { format, startOfDay, startOfWeek, startOfMonth, startOfYear, isWithinInterval } from 'date-fns';
+import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
 import { FinanceOperation } from '../../types/personalFinance';
 
-type PeriodKey = 'day' | 'week' | 'month' | 'year';
-
-const PERIOD_OPTIONS: { value: PeriodKey; label: string }[] = [
-  { value: 'day', label: 'День' },
-  { value: 'week', label: 'Неделя' },
-  { value: 'month', label: 'Месяц' },
-  { value: 'year', label: 'Год' },
-];
-
-function getPeriodRange(period: PeriodKey, baseDate: Date): { start: Date; end: Date } {
-  const start = startOfDay(baseDate);
-  let end: Date;
-  if (period === 'day') {
-    end = new Date(start);
-    end.setDate(end.getDate() + 1);
-  } else if (period === 'week') {
-    const weekStart = startOfWeek(start, { weekStartsOn: 1 });
-    end = new Date(weekStart);
-    end.setDate(end.getDate() + 7);
-  } else if (period === 'month') {
-    const monthStart = startOfMonth(start);
-    end = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
-  } else {
-    const yearStart = startOfYear(start);
-    end = new Date(yearStart.getFullYear() + 1, 0, 1);
-  }
-  return { start, end };
-}
-
 export const FinanceDashboardTab: React.FC = () => {
   const { operations, incomeArticles, expenseArticles } = usePersonalFinance();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [summaryPeriod, setSummaryPeriod] = useState<PeriodKey>('month');
-  const [summaryBaseDate, setSummaryBaseDate] = useState(() => new Date());
   const [rangeFrom, setRangeFrom] = useState<string>('');
   const [rangeTo, setRangeTo] = useState<string>('');
   const [monthFilter, setMonthFilter] = useState<string>('all');
@@ -173,29 +142,19 @@ export const FinanceDashboardTab: React.FC = () => {
     }, 0);
   }, [tableDates, totalsByDate]);
 
-  const { start, end } = useMemo(() => {
-    if (summaryPeriod === 'month' && monthFilter !== 'all') {
-      const [y, m] = monthFilter.split('-').map((v) => Number(v));
-      if (Number.isFinite(y) && Number.isFinite(m)) {
-        const start = new Date(y, m - 1, 1);
-        const end = new Date(y, m, 1);
-        return { start, end };
-      }
-    }
-    return getPeriodRange(summaryPeriod, summaryBaseDate);
-  }, [summaryPeriod, summaryBaseDate, monthFilter]);
-
   const periodIncome = useMemo(() => {
+    const hasMonth = monthFilter !== 'all';
     return personalOps
-      .filter((o) => o.amount > 0 && isWithinInterval(new Date(o.date + 'T12:00:00'), { start, end }))
+      .filter((o) => o.amount > 0 && (!hasMonth || o.date.startsWith(monthFilter)))
       .reduce((s, o) => s + o.amount, 0);
-  }, [personalOps, start, end]);
+  }, [personalOps, monthFilter]);
 
   const periodExpense = useMemo(() => {
+    const hasMonth = monthFilter !== 'all';
     return personalOps
-      .filter((o) => o.amount < 0 && isWithinInterval(new Date(o.date + 'T12:00:00'), { start, end }))
+      .filter((o) => o.amount < 0 && (!hasMonth || o.date.startsWith(monthFilter)))
       .reduce((s, o) => s + Math.abs(o.amount), 0);
-  }, [personalOps, start, end]);
+  }, [personalOps, monthFilter]);
 
   const periodBalance = periodIncome - periodExpense;
 
@@ -302,33 +261,8 @@ export const FinanceDashboardTab: React.FC = () => {
           <Card variant="outlined">
             <CardContent>
               <Typography color="text.secondary" gutterBottom>
-                Сводка за период
+                Сводка
               </Typography>
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 1 }}>
-                <FormControl size="small" sx={{ minWidth: 100 }}>
-                  <InputLabel>Период</InputLabel>
-                  <Select
-                    value={summaryPeriod}
-                    label="Период"
-                    onChange={(e) => setSummaryPeriod(e.target.value as PeriodKey)}
-                  >
-                    {PERIOD_OPTIONS.map((o) => (
-                      <MenuItem key={o.value} value={o.value}>
-                        {o.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <TextField
-                  size="small"
-                  label="Дата"
-                  type="date"
-                  value={summaryBaseDate.toISOString().slice(0, 10)}
-                  onChange={(e) => setSummaryBaseDate(new Date(e.target.value))}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: 160 }}
-                />
-              </Box>
               <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 1 }}>
                 <TextField
                   size="small"
@@ -356,11 +290,6 @@ export const FinanceDashboardTab: React.FC = () => {
                     onChange={(e) => {
                       const value = e.target.value as string;
                       setMonthFilter(value);
-                      if (value !== 'all') {
-                        // синхронизируем сводку за период с выбранным месяцем
-                        setSummaryPeriod('month');
-                        setSummaryBaseDate(new Date(value + '-01T12:00:00'));
-                      }
                     }}
                   >
                     <MenuItem value="all">Все месяцы</MenuItem>

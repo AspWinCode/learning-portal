@@ -288,6 +288,7 @@ export const financeApi = {
       to_account_id?: number | null;
       target_id?: number | null;
       article_id?: number | null;
+      transfer_group_id?: string | null;
     }
   ): Promise<FinanceLedgerBankRow> => {
     const response = await api.patch(`/api/finance/transactions/${transactionId}`, payload);

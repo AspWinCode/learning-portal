@@ -809,6 +809,9 @@ class LessonAttendance(Base):
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
     lesson_date = Column(Date, nullable=False)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    # Фактический тренер, который вёл занятие (для истории и расчётов).
+    # Может отличаться от current group.trainer_id, если были подмены или смена тренера в середине месяца.
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     attended = Column(Boolean, default=True, nullable=False)
     late = Column(Boolean, default=False, nullable=False)  # опоздает / в пути
     call_result = Column(String(32), nullable=True)  # contacted | no_answer | cancelled | technical | messenger
@@ -824,6 +827,7 @@ class LessonAttendance(Base):
 
     group = relationship("Group", back_populates="lesson_attendances")
     student = relationship("Student", back_populates="lesson_attendances")
+    trainer = relationship("User", foreign_keys=[trainer_id])
 
 
 class LessonCancellation(Base):

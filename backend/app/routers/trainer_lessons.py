@@ -157,6 +157,8 @@ async def get_lessons_for_date(
     override_map = {(o.group_id, o.start_time, o.end_time): o for o in overrides}
     override_trainer_ids = [o.trainer_id for o in overrides]
     override_trainers = {u.id: u for u in db.query(User).filter(User.id.in_(override_trainer_ids)).all()} if override_trainer_ids else {}
+    # Кэш тренеров, взятых из LessonAttendance.trainer_id, чтобы не делать лишние запросы.
+    attendance_trainers: dict[int, User] = {}
 
     result: List[TrainerLessonSlotResponse] = []
     for group in groups_for_day:
@@ -185,14 +187,36 @@ async def get_lessons_for_date(
         def build_slot(slot_start: time, slot_end: time, atts: list) -> None:
             if (group.id, lesson_date, slot_start, slot_end) not in first_8_allowed:
                 return
-            override = override_map.get((group.id, slot_start, slot_end))
-            if override and override.trainer_id in override_trainers:
-                trainer_user = override_trainers[override.trainer_id]
-                slot_trainer_id = trainer_user.id
-                slot_trainer_name = trainer_user.full_name or ""
+            # 1) Если в LessonAttendance уже зафиксирован тренер — используем его (исторические данные).
+            att_trainer_ids = {
+                getattr(att, "trainer_id", None)
+                for att in atts
+                if getattr(att, "trainer_id", None)
+            }
+            slot_trainer_id: Optional[int]
+            slot_trainer_name: str
+            trainer_user: Optional[User] = None
+            if att_trainer_ids:
+                # На случай, если вдруг разные тренеры — берём детерминированно минимальный id.
+                tid = sorted(att_trainer_ids)[0]
+                slot_trainer_id = tid
+                trainer_user = attendance_trainers.get(tid)
+                if not trainer_user:
+                    trainer_user = db.query(User).filter(User.id == tid).first()
+                    if trainer_user:
+                        attendance_trainers[tid] = trainer_user
+                slot_trainer_name = (trainer_user.full_name if trainer_user and trainer_user.full_name else "") or ""
             else:
-                slot_trainer_id = group.trainer_id
-                slot_trainer_name = (group.trainer.full_name if group.trainer else "") or ""
+                # 2) Иначе смотрим подмену тренера на слот (LessonTrainerOverride).
+                override = override_map.get((group.id, slot_start, slot_end))
+                if override and override.trainer_id in override_trainers:
+                    trainer_user = override_trainers[override.trainer_id]
+                    slot_trainer_id = trainer_user.id
+                    slot_trainer_name = trainer_user.full_name or ""
+                else:
+                    # 3) Фолбэк — текущий тренер группы (для будущих уроков без посещаемости).
+                    slot_trainer_id = group.trainer_id
+                    slot_trainer_name = (group.trainer.full_name if group.trainer else "") or ""
             lesson_index = lesson_index_in_month_map.get((group.id, lesson_date, slot_start, slot_end))
 
             attendance_map = {
@@ -386,6 +410,19 @@ async def save_attendance(
     if end_t is None:
         end_t = time(0, 0)
 
+    # Фактический тренер для этого слота на момент сохранения посещаемости.
+    slot_trainer_override = (
+        db.query(LessonTrainerOverride)
+        .filter(
+            LessonTrainerOverride.group_id == payload.group_id,
+            LessonTrainerOverride.lesson_date == payload.lesson_date,
+            LessonTrainerOverride.start_time == start_t,
+            LessonTrainerOverride.end_time == end_t,
+        )
+        .first()
+    )
+    effective_trainer_id = slot_trainer_override.trainer_id if slot_trainer_override else group.trainer_id
+
     for item in payload.attendances:
         att = db.query(LessonAttendance).filter(
             LessonAttendance.group_id == payload.group_id,
@@ -402,6 +439,10 @@ async def save_attendance(
             att.absence_comment = comment
             att.lesson_start_time = start_t
             att.lesson_end_time = end_t
+            # Не переписываем тренера, если он уже зафиксирован (история),
+            # но заполняем, если поле ещё пустое.
+            if getattr(att, "trainer_id", None) is None:
+                att.trainer_id = effective_trainer_id
         else:
             att = LessonAttendance(
                 group_id=payload.group_id,
@@ -413,6 +454,7 @@ async def save_attendance(
                 absence_comment=comment,
                 lesson_start_time=start_t,
                 lesson_end_time=end_t,
+                trainer_id=effective_trainer_id,
             )
             db.add(att)
     db.commit()
@@ -724,6 +766,21 @@ async def add_student_to_lesson(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
 
+    # Фактический тренер для этого слота (учитываем подмены).
+    slot_trainer_override = None
+    if lesson_start_time is not None and lesson_end_time is not None:
+        slot_trainer_override = (
+            db.query(LessonTrainerOverride)
+            .filter(
+                LessonTrainerOverride.group_id == payload.group_id,
+                LessonTrainerOverride.lesson_date == payload.lesson_date,
+                LessonTrainerOverride.start_time == lesson_start_time,
+                LessonTrainerOverride.end_time == lesson_end_time,
+            )
+            .first()
+        )
+    effective_trainer_id = slot_trainer_override.trainer_id if slot_trainer_override else group.trainer_id
+
     db.add(LessonAttendance(
         group_id=payload.group_id,
         lesson_date=payload.lesson_date,
@@ -732,6 +789,7 @@ async def add_student_to_lesson(
         late=False,
         lesson_start_time=lesson_start_time,
         lesson_end_time=lesson_end_time,
+        trainer_id=effective_trainer_id,
     ))
     db.commit()
     return {"ok": True}
@@ -825,6 +883,19 @@ async def create_lesson_slot(
     if not first_student or not first_student.student_id:
         raise HTTPException(status_code=400, detail="Group has no students to attach lesson to")
 
+    # Фактический тренер для создаваемого слота (учитываем возможные подмены, если они будут заданы позже).
+    slot_trainer_override = (
+        db.query(LessonTrainerOverride)
+        .filter(
+            LessonTrainerOverride.group_id == payload.group_id,
+            LessonTrainerOverride.lesson_date == payload.lesson_date,
+            LessonTrainerOverride.start_time == start_t,
+            LessonTrainerOverride.end_time == end_t,
+        )
+        .first()
+    )
+    effective_trainer_id = slot_trainer_override.trainer_id if slot_trainer_override else group.trainer_id
+
     db.add(
         LessonAttendance(
             group_id=payload.group_id,
@@ -834,6 +905,7 @@ async def create_lesson_slot(
             late=False,
             lesson_start_time=start_t,
             lesson_end_time=end_t,
+            trainer_id=effective_trainer_id,
         )
     )
     db.commit()
@@ -934,6 +1006,20 @@ async def move_lesson(
             GroupStudent.group_id == payload.group_id,
         ).all()
         created = 0
+        # Фактический тренер для нового слота (учитываем подмены на дату переноса, если они уже заданы).
+        slot_trainer_override = None
+        if to_start is not None and to_end is not None:
+            slot_trainer_override = (
+                db.query(LessonTrainerOverride)
+                .filter(
+                    LessonTrainerOverride.group_id == payload.group_id,
+                    LessonTrainerOverride.lesson_date == payload.to_date,
+                    LessonTrainerOverride.start_time == to_start,
+                    LessonTrainerOverride.end_time == to_end,
+                )
+                .first()
+            )
+        effective_trainer_id = slot_trainer_override.trainer_id if slot_trainer_override else group.trainer_id
         for gs in students_in_group:
             if not gs.student_id:
                 continue
@@ -945,6 +1031,7 @@ async def move_lesson(
                 late=False,
                 lesson_start_time=to_start,
                 lesson_end_time=to_end,
+                trainer_id=effective_trainer_id,
             ))
             created += 1
         db.commit()
@@ -1037,5 +1124,13 @@ async def set_lesson_trainer(
             end_time=end_t,
             trainer_id=payload.trainer_id,
         ))
+    # Обновляем trainer_id у уже созданных записей посещаемости для этого слота,
+    # чтобы расчёты и история использовали нового тренера.
+    db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.lesson_date,
+        LessonAttendance.lesson_start_time == start_t,
+        LessonAttendance.lesson_end_time == end_t,
+    ).update({LessonAttendance.trainer_id: payload.trainer_id}, synchronize_session=False)
     db.commit()
     return {"ok": True}

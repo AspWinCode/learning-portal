@@ -243,7 +243,11 @@ def _compute_trainer_lessons_hours(
         seen.add(key)
         fmt = (getattr(group, "lesson_format", None) or "group").strip().lower()
         is_ind = fmt == "individual"
-        tid = override_map.get(key, group.trainer_id)
+        # Исторический тренер слота:
+        # 1) Если в LessonAttendance зафиксирован trainer_id — используем его.
+        # 2) Иначе — подмена по LessonTrainerOverride.
+        # 3) Фолбэк — текущий trainer_id у группы (для старых данных без trainer_id).
+        tid = getattr(att, "trainer_id", None) or override_map.get(key, group.trainer_id)
         if tid not in slots_by_trainer:
             continue
         h = _slot_duration_hours(start_t, end_t) if is_ind else 0.0

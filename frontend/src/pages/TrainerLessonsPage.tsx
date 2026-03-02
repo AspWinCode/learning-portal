@@ -422,6 +422,10 @@ const TrainerLessonsPage: React.FC = () => {
     setPopupOpen(true);
   };
 
+  const handleCancelledSlotClick = (slot: TrainerLessonSlot) => {
+    openPopup(slot);
+  };
+
   useEffect(() => {
     if (popupOpen && selectedSlot && allStudents.length === 0) {
       studentsApi.getAll({ status: 'active' }).then((data) => setAllStudents(data)).catch(() => {});

@@ -728,13 +728,26 @@ def _custom_lesson_to_response(db: Session, lesson: CustomLesson) -> CustomLesso
 async def list_trainer_custom_lessons(
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
+    trainer_id: Optional[int] = Query(
+        None,
+        description="ID тренера. Для admin/owner/sales: можно ограничить выборку уроками конкретного тренера.",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Список ручных уроков, где текущий пользователь — ведущий тренер. Только для тренера."""
-    if current_user.role != UserRole.TRAINER:
-        raise HTTPException(status_code=403, detail="Только для тренеров")
-    query = db.query(CustomLesson).filter(CustomLesson.trainer_id == current_user.id)
+    """Список ручных уроков.
+
+    - Для тренера: только его уроки.
+    - Для admin/owner/sales: все уроки или по указанному trainer_id.
+    """
+    query = db.query(CustomLesson)
+    if current_user.role == UserRole.TRAINER:
+        query = query.filter(CustomLesson.trainer_id == current_user.id)
+    elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        if trainer_id is not None:
+            query = query.filter(CustomLesson.trainer_id == trainer_id)
+    else:
+        raise HTTPException(status_code=403, detail="Только для тренеров или admin/owner/sales")
     if date_from:
         query = query.filter(CustomLesson.lesson_date >= date_from)
     if date_to:

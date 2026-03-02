@@ -165,7 +165,8 @@ const TrainerLessonsPage: React.FC = () => {
   }, [user, canMoveLessons]);
 
   useEffect(() => {
-    if (user?.role !== 'trainer') return;
+    if (!user) return;
+    if (!['trainer', 'admin', 'owner', 'sales'].includes(user.role)) return;
     const from = format(subDays(new Date(viewDate), 3), 'yyyy-MM-dd');
     const to = format(addDays(new Date(viewDate), 3), 'yyyy-MM-dd');
     setCustomLessonsLoading(true);

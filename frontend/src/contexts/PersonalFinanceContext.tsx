@@ -1,12 +1,14 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   FinanceArticle,
   FinanceOperation,
   RecognitionRule,
   STORAGE_ARTICLES,
-  STORAGE_OPERATIONS,
   STORAGE_RECOGNITION,
+  OperationTarget,
 } from '../types/personalFinance';
+import type { FinanceLedgerTransactionRow } from '../types';
+import { financeApi } from '../services/api';
 import { addAcademyOperation } from '../utils/academyOperationsStorage';
 
 function loadArticles(): FinanceArticle[] {
@@ -24,19 +26,24 @@ function saveArticles(articles: FinanceArticle[]) {
   localStorage.setItem(STORAGE_ARTICLES, JSON.stringify(articles));
 }
 
-function loadOperations(): FinanceOperation[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_OPERATIONS);
-    if (!raw) return [];
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveOperations(operations: FinanceOperation[]) {
-  localStorage.setItem(STORAGE_OPERATIONS, JSON.stringify(operations));
+function mapLedgerToOperation(tx: FinanceLedgerTransactionRow): FinanceOperation {
+  const occurred = tx.occurred_at ? String(tx.occurred_at).slice(0, 10) : '';
+  const amount =
+    tx.direction === 'income' ? Math.abs(tx.amount) : tx.direction === 'expense' ? -Math.abs(tx.amount) : tx.amount;
+  const rawTarget = (tx.target_code || 'personal') as OperationTarget;
+  const target: OperationTarget =
+    rawTarget === 'academy' || rawTarget === 'personal' || rawTarget === 'gogol_mogol' || rawTarget === 'leninets'
+      ? rawTarget
+      : 'personal';
+  return {
+    id: `ledger_${tx.id}`,
+    date: occurred,
+    amount,
+    description: tx.counterparty_name || tx.description_raw || '',
+    target,
+    articleId: tx.article_id != null ? String(tx.article_id) : null,
+    createdAt: tx.occurred_at || new Date().toISOString(),
+  };
 }
 
 function loadRecognition(): RecognitionRule[] {
@@ -79,7 +86,7 @@ const PersonalFinanceContext = createContext<PersonalFinanceContextValue | null>
 
 export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [articles, setArticles] = useState<FinanceArticle[]>(loadArticles);
-  const [operations, setOperations] = useState<FinanceOperation[]>(loadOperations);
+  const [operations, setOperations] = useState<FinanceOperation[]>([]);
   const [recognitionRules, setRecognitionRules] = useState<RecognitionRule[]>(loadRecognition);
 
   const persistArticles = useCallback((next: FinanceArticle[]) => {
@@ -89,7 +96,23 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
 
   const persistOperations = useCallback((next: FinanceOperation[]) => {
     setOperations(next);
-    saveOperations(next);
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const txs = await financeApi.listLedgerTransactions({
+          target_codes: ['personal', 'leninets', 'gogol_mogol', 'academy'],
+          limit: 10000,
+        });
+        const mapped = txs.map(mapLedgerToOperation);
+        setOperations(mapped);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load personal finance operations from ledger', err);
+      }
+    };
+    void load();
   }, []);
 
   const addArticle = useCallback(
@@ -128,25 +151,48 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
 
   const addOperation = useCallback(
     (op: Omit<FinanceOperation, 'id' | 'createdAt'>) => {
-      const id = `op_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      const createdAt = new Date().toISOString();
-      persistOperations([...operations, { ...op, id, createdAt }]);
+      financeApi
+        .createPersonalOperation({
+          date: op.date,
+          amount: op.amount,
+          description: op.description,
+          target_code: op.target,
+        })
+        .then((tx) => {
+          setOperations((prev) => [...prev, mapLedgerToOperation(tx)]);
+        })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error('Failed to create personal operation in ledger', err);
+          const id = `op_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+          const createdAt = new Date().toISOString();
+          setOperations((prev) => [...prev, { ...op, id, createdAt }]);
+        });
     },
-    [operations, persistOperations]
+    []
   );
 
-  const addOperations = useCallback(
-    (ops: Omit<FinanceOperation, 'id' | 'createdAt'>[]) => {
-      const now = new Date().toISOString();
-      const newOps: FinanceOperation[] = ops.map((op, i) => ({
-        ...op,
-        id: `op_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 9)}`,
-        createdAt: now,
-      }));
-      persistOperations([...operations, ...newOps]);
-    },
-    [operations, persistOperations]
-  );
+  const addOperations = useCallback((ops: Omit<FinanceOperation, 'id' | 'createdAt'>[]) => {
+    ops.forEach((op, index) => {
+      financeApi
+        .createPersonalOperation({
+          date: op.date,
+          amount: op.amount,
+          description: op.description,
+          target_code: op.target,
+        })
+        .then((tx) => {
+          setOperations((prev) => [...prev, mapLedgerToOperation(tx)]);
+        })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error('Failed to create personal operation in ledger (bulk)', err);
+          const id = `op_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 9)}`;
+          const createdAt = new Date().toISOString();
+          setOperations((prev) => [...prev, { ...op, id, createdAt }]);
+        });
+    });
+  }, []);
 
   const updateOperation = useCallback(
     (id: string, patch: Partial<FinanceOperation>) => {
@@ -158,16 +204,53 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
         }
         return;
       }
-      persistOperations(
-        operations.map((o) => (o.id === id ? { ...o, ...patch } : o))
-      );
+      const isLedger = id.startsWith('ledger_');
+      const txId = isLedger ? Number(id.replace('ledger_', '')) : null;
+      if (isLedger && txId) {
+        const payload: { target_id?: number | null; article_id?: number | null } = {};
+        if (patch.target !== undefined) {
+          // target_id подставляем по коду через API listTargets только при создании; здесь ограничимся локальным обновлением
+        }
+        if (patch.articleId !== undefined) {
+          payload.article_id = patch.articleId ? Number(patch.articleId) : null;
+        }
+        if (Object.keys(payload).length > 0) {
+          financeApi
+            .updateTransaction(txId, payload)
+            .then((updated) => {
+              setOperations((prev) =>
+                prev.map((o) => (o.id === id ? mapLedgerToOperation(updated as any) : o))
+              );
+            })
+            .catch((err) => {
+              // eslint-disable-next-line no-console
+              console.error('Failed to update personal operation in ledger', err);
+            });
+          return;
+        }
+      }
+      persistOperations(operations.map((o) => (o.id === id ? { ...o, ...patch } : o)));
     },
     [operations, persistOperations]
   );
 
   const deleteOperation = useCallback(
     (id: string) => {
-      persistOperations(operations.filter((o) => o.id !== id));
+      const isLedger = id.startsWith('ledger_');
+      const txId = isLedger ? Number(id.replace('ledger_', '')) : null;
+      if (isLedger && txId) {
+        financeApi
+          .deleteTransaction(txId)
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.error('Failed to delete personal operation in ledger', err);
+          })
+          .finally(() => {
+            setOperations((prev) => prev.filter((o) => o.id !== id));
+          });
+      } else {
+        persistOperations(operations.filter((o) => o.id !== id));
+      }
     },
     [operations, persistOperations]
   );
@@ -175,7 +258,27 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
   const deleteOperations = useCallback(
     (ids: string[]) => {
       const set = new Set(ids);
-      persistOperations(operations.filter((o) => !set.has(o.id)));
+      const ledgerIds: number[] = [];
+      ids.forEach((id) => {
+        if (id.startsWith('ledger_')) {
+          const txId = Number(id.replace('ledger_', ''));
+          if (txId) ledgerIds.push(txId);
+        }
+      });
+      if (ledgerIds.length > 0) {
+        Promise.all(
+          ledgerIds.map((txId) =>
+            financeApi.deleteTransaction(txId).catch((err) => {
+              // eslint-disable-next-line no-console
+              console.error('Failed to delete personal operation in ledger (bulk)', err);
+            })
+          )
+        ).finally(() => {
+          setOperations((prev) => prev.filter((o) => !set.has(o.id)));
+        });
+      } else {
+        persistOperations(operations.filter((o) => !set.has(o.id)));
+      }
     },
     [operations, persistOperations]
   );

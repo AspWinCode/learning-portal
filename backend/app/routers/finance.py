@@ -1039,3 +1039,21 @@ async def update_finance_transaction(
         student_id=tx.student_id,
     )
 
+
+@router.delete("/transactions/{transaction_id}")
+async def delete_finance_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> Dict[str, bool]:
+    """Удаление транзакции журнала (используется только в личных финансах)."""
+    _require_finance_access(current_user)
+
+    tx = db.query(FinanceTransaction).filter(FinanceTransaction.id == transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+
+    db.delete(tx)
+    db.commit()
+    return {"ok": True}
+

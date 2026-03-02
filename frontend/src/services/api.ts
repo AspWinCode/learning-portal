@@ -293,6 +293,9 @@ export const financeApi = {
     const response = await api.patch(`/api/finance/transactions/${transactionId}`, payload);
     return response.data;
   },
+  deleteTransaction: async (transactionId: number): Promise<void> => {
+    await api.delete(`/api/finance/transactions/${transactionId}`);
+  },
   listAccounts: async (): Promise<
     Array<{ id: number; code: string; name: string; owner_scope: string; is_active: boolean }>
   > => {

@@ -29,7 +29,6 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
 import { FinanceOperation, FinanceArticle, OperationTarget, OPERATION_TARGET_LABELS } from '../../types/personalFinance';
-import { financeApi } from '../../services/api';
 import { parseFinanceXlsx } from '../../utils/parseFinanceXlsx';
 
 interface FinanceOperationsTabProps {
@@ -137,7 +136,7 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
     }
   };
 
-  const handleAddInitialBalance = async () => {
+  const handleAddInitialBalance = () => {
     const amount = Number(initialBalanceAmount.replace(/\s/g, '').replace(',', '.'));
     if (!initialBalanceDate || !Number.isFinite(amount) || amount <= 0) return;
     let articleId = incomeArticles.find((a) => a.name === 'Начальный остаток')?.id ?? null;
@@ -151,17 +150,6 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
       target: 'personal',
       articleId,
     });
-    // Записываем в единый журнал как ручную личную операцию (без привязки к статье)
-    try {
-      await financeApi.createPersonalOperation({
-        date: initialBalanceDate,
-        amount: Math.abs(amount),
-        description: 'Начальный остаток',
-        target_code: 'personal',
-      });
-    } catch {
-      // В случае ошибки журнал не обновится, но локальные данные останутся
-    }
     setInitialBalanceOpen(false);
     setInitialBalanceAmount('');
   };
@@ -191,7 +179,7 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
     setManualOpOpen(true);
   };
 
-  const handleAddManualOperation = async () => {
+  const handleAddManualOperation = () => {
     if (!manualOpDate || parsedManualAmount === 0) return;
     const amount = manualOpType === 'income' ? parsedManualAmount : -parsedManualAmount;
     addOperation({
@@ -201,16 +189,6 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
       target: manualOpTarget,
       articleId: manualOpArticleId || null,
     });
-    try {
-      await financeApi.createPersonalOperation({
-        date: manualOpDate,
-        amount,
-        description: manualOpDescription.trim() || 'Вручную',
-        target_code: manualOpTarget,
-      });
-    } catch {
-      // Не блокируем локальное добавление при ошибке сохранения в журнал
-    }
     setManualOpOpen(false);
   };
 

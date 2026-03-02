@@ -164,10 +164,17 @@ export const FinanceDashboardTab: React.FC = () => {
 
   const rangeBalance = rangeIncome - rangeExpense;
 
-  const { start, end } = useMemo(
-    () => getPeriodRange(summaryPeriod, summaryBaseDate),
-    [summaryPeriod, summaryBaseDate]
-  );
+  const { start, end } = useMemo(() => {
+    if (summaryPeriod === 'month' && monthFilter !== 'all') {
+      const [y, m] = monthFilter.split('-').map((v) => Number(v));
+      if (Number.isFinite(y) && Number.isFinite(m)) {
+        const start = new Date(y, m - 1, 1);
+        const end = new Date(y, m, 1);
+        return { start, end };
+      }
+    }
+    return getPeriodRange(summaryPeriod, summaryBaseDate);
+  }, [summaryPeriod, summaryBaseDate, monthFilter]);
 
   const periodIncome = useMemo(() => {
     return personalOps
@@ -337,7 +344,15 @@ export const FinanceDashboardTab: React.FC = () => {
                   <Select
                     value={monthFilter}
                     label="Месяц (таблица)"
-                    onChange={(e) => setMonthFilter(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value as string;
+                      setMonthFilter(value);
+                      if (value !== 'all') {
+                        // синхронизируем сводку за период с выбранным месяцем
+                        setSummaryPeriod('month');
+                        setSummaryBaseDate(new Date(value + '-01T12:00:00'));
+                      }
+                    }}
                   >
                     <MenuItem value="all">Все месяцы</MenuItem>
                     {monthOptions.map((m) => (

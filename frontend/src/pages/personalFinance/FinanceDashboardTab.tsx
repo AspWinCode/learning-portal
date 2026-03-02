@@ -23,10 +23,28 @@ import { ArrowForward } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
-import { FinanceOperation } from '../../types/personalFinance';
+import { FinanceOperation, FinanceArticle } from '../../types/personalFinance';
 
-export const FinanceDashboardTab: React.FC = () => {
-  const { operations, incomeArticles, expenseArticles } = usePersonalFinance();
+export interface FinanceDashboardTabProps {
+  /** Данные из единого журнала: при включённом переключателе дашборд показывает их вместо localStorage */
+  useLedgerSource?: boolean;
+  ledgerLoading?: boolean;
+  ledgerOperations?: FinanceOperation[];
+  ledgerIncomeArticles?: FinanceArticle[];
+  ledgerExpenseArticles?: FinanceArticle[];
+}
+
+export const FinanceDashboardTab: React.FC<FinanceDashboardTabProps> = ({
+  useLedgerSource = false,
+  ledgerLoading = false,
+  ledgerOperations = [],
+  ledgerIncomeArticles = [],
+  ledgerExpenseArticles = [],
+}) => {
+  const ctx = usePersonalFinance();
+  const operations = useLedgerSource ? ledgerOperations : ctx.operations;
+  const incomeArticles = useLedgerSource ? ledgerIncomeArticles : ctx.incomeArticles;
+  const expenseArticles = useLedgerSource ? ledgerExpenseArticles : ctx.expenseArticles;
   const [searchParams, setSearchParams] = useSearchParams();
   const [rangeFrom, setRangeFrom] = useState<string>('');
   const [rangeTo, setRangeTo] = useState<string>('');
@@ -187,9 +205,19 @@ export const FinanceDashboardTab: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        Дашборд по финансам
-      </Typography>
+      <Box sx={{ mb: 2, display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
+        <Typography variant="h6">Дашборд по финансам</Typography>
+        {useLedgerSource && (
+          <Typography component="span" variant="body2" color="text.secondary">
+            (из единого журнала)
+          </Typography>
+        )}
+      </Box>
+      {useLedgerSource && ledgerLoading && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Загрузка данных из журнала…
+        </Typography>
+      )}
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} md={4}>

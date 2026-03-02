@@ -242,6 +242,26 @@ const TrainerLessonsPage: React.FC = () => {
     void load();
   }, [manualLessonType, manualSelectedStudents]);
 
+  // После смены даты (viewDate) и загрузки слотов автоматически открываем перенесённый урок.
+  useEffect(() => {
+    if (!autoOpenTarget) return;
+    if (!slots || slots.length === 0) return;
+    const { group_id, lesson_date, start_time, end_time } = autoOpenTarget;
+    const target = slots.find((s) => {
+      if (s.group_id !== group_id) return false;
+      if (s.lesson_date !== lesson_date) return false;
+      const sStart = (s.start_time || '').toString().slice(0, 5);
+      const sEnd = (s.end_time || '').toString().slice(0, 5);
+      if (start_time && sStart !== start_time) return false;
+      if (end_time && sEnd !== end_time) return false;
+      return true;
+    });
+    if (target) {
+      openPopup(target);
+      setAutoOpenTarget(null);
+    }
+  }, [slots, autoOpenTarget]);
+
   const handleCreateManualLesson = async () => {
     if (!manualTitle.trim() || !manualDate || !manualStartTime || !manualTrainerId || manualSelectedStudents.length === 0) {
       setManualError('Заполните название, дату, время, тренера и выберите учеников');
@@ -615,14 +635,18 @@ const TrainerLessonsPage: React.FC = () => {
                   key={`${slot.group_id}-${slot.start_time}-${isCancelled ? 'cancelled' : 'active'}`}
                   variant="outlined"
                   sx={{
-                    cursor: isCancelled ? 'default' : 'pointer',
-                    '&:hover': isCancelled ? undefined : { bgcolor: 'action.hover' },
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'action.hover' },
                     borderLeft: '4px solid',
                     borderLeftColor: isCancelled ? 'grey.400' : 'primary.main',
                     opacity: isCancelled ? 0.7 : 1,
                   }}
                   onClick={() => {
-                    if (!isCancelled) openPopup(slot);
+                    if (isCancelled) {
+                      handleCancelledSlotClick(slot);
+                    } else {
+                      openPopup(slot);
+                    }
                   }}
                 >
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>

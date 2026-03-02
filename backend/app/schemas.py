@@ -467,6 +467,41 @@ class FinanceTransactionUpdate(BaseModel):
     article_id: Optional[int] = None
 
 
+class FinanceAccountBalance(BaseModel):
+    """Остаток и обороты по счёту."""
+
+    account_id: int
+    account_code: str
+    account_name: str
+    income_total: float
+    expense_total: float
+    balance: float
+
+
+class FinancePnlRow(BaseModel):
+    """P&L по проекту (target) за период."""
+
+    period: str  # например, "2026-03" для помесячной агрегации
+    income: float
+    expense: float
+    profit: float
+
+
+class FinanceLedgerTransactionRow(BaseModel):
+    """Строка транзакции журнала для дашборда личных финансов (по target)."""
+
+    id: int
+    occurred_at: Optional[datetime] = None
+    amount: float
+    direction: str  # income | expense | transfer
+    target_code: Optional[str] = None
+    target_name: Optional[str] = None
+    article_id: Optional[int] = None
+    article_name: Optional[str] = None
+    counterparty_name: Optional[str] = None
+    description_raw: Optional[str] = None
+
+
 # Пропуски (воронка для sales)
 class AbsenceFollowUpResponse(BaseModel):
     id: int
@@ -1521,6 +1556,10 @@ class TrainerLessonSlotResponse(BaseModel):
     lesson_index_in_month: Optional[int] = None  # 1..8 — показываем; 9, 10 — скрыты
     # Флаг: слот отменён/перенесён (LessonCancellation). Используется только для отображения в UI.
     is_cancelled: bool = False
+    # Если перенесён: целевая дата/время слота.
+    moved_to_date: Optional[date] = None
+    moved_to_start_time: Optional[time] = None
+    moved_to_end_time: Optional[time] = None
 
     class Config:
         from_attributes = True

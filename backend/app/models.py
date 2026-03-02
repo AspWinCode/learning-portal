@@ -1028,6 +1028,10 @@ class LessonCancellation(Base):
     lesson_date = Column(Date, nullable=False, index=True)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
+    # Целевая дата/время, если урок был перенесён (move_lesson).
+    moved_to_date = Column(Date, nullable=True, index=True)
+    moved_to_start_time = Column(Time, nullable=True)
+    moved_to_end_time = Column(Time, nullable=True)
 
     group = relationship("Group", back_populates="lesson_cancellations")
 

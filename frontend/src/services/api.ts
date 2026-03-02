@@ -44,6 +44,7 @@ import {
   AbsenceFollowUp,
   BankTransaction,
   FinanceLedgerBankRow,
+  FinanceLedgerTransactionRow,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -246,6 +247,22 @@ export const studentAccountsApi = {
 
 // Unified Finance Ledger API
 export const financeApi = {
+  listLedgerTransactions: async (params?: {
+    target_codes?: string[];
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+  }): Promise<FinanceLedgerTransactionRow[]> => {
+    const response = await api.get('/api/finance/ledger/transactions', {
+      params: {
+        target_codes: params?.target_codes,
+        date_from: params?.date_from,
+        date_to: params?.date_to,
+        limit: params?.limit,
+      },
+    });
+    return response.data;
+  },
   listLedgerBank: async (params?: {
     status_filter?: string[];
     unclassified_only?: boolean;
@@ -290,6 +307,21 @@ export const financeApi = {
     const response = await api.get('/api/finance/articles', {
       params: { only_active: true, scope: params?.scope, direction: params?.direction },
     });
+    return response.data;
+  },
+  migratePersonalFinance: async (payload: {
+    articles: Array<{ id: string; name: string; type: 'income' | 'expense' }>;
+    operations: Array<{
+      date: string;
+      amount: number;
+      description: string;
+      target: 'academy' | 'personal' | 'gogol_mogol' | 'leninets';
+      articleId: string | null;
+      createdAt: string;
+    }>;
+    recognitionRules: Array<{ pattern: string; displayName: string }>;
+  }): Promise<{ articles_created: number; operations_created: number; recognition_rules_created: number }> => {
+    const response = await api.post('/api/finance/migrate-personal-finance', payload);
     return response.data;
   },
 };

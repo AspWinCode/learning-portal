@@ -214,6 +214,10 @@ export interface TrainerLessonSlot {
   units_per_session?: number | null;
   /** Флаг: слот отменён/перенесён (LessonCancellation). */
   is_cancelled?: boolean;
+  /** Если перенесён: целевая дата/время. */
+  moved_to_date?: string | null;
+  moved_to_start_time?: string | null;
+  moved_to_end_time?: string | null;
 }
 
 export interface Topic {
@@ -450,6 +454,20 @@ export interface FinanceLedgerBankRow {
   article_name?: string | null;
 
   student_id?: number | null;
+}
+
+/** Строка транзакции журнала для дашборда личных финансов (по target). */
+export interface FinanceLedgerTransactionRow {
+  id: number;
+  occurred_at?: string | null;
+  amount: number;
+  direction: string;
+  target_code?: string | null;
+  target_name?: string | null;
+  article_id?: number | null;
+  article_name?: string | null;
+  counterparty_name?: string | null;
+  description_raw?: string | null;
 }
 
 export interface SalesInstruction {

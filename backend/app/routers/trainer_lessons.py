@@ -359,6 +359,9 @@ async def get_lessons_for_date(
                 trainer_name=trainer_name or None,
                 lesson_index_in_month=lesson_index,
                 is_cancelled=True,
+                moved_to_date=getattr(c, "moved_to_date", None),
+                moved_to_start_time=getattr(c, "moved_to_start_time", None),
+                moved_to_end_time=getattr(c, "moved_to_end_time", None),
             )
         )
 
@@ -1049,12 +1052,17 @@ async def move_lesson(
         LessonCancellation.end_time == from_end,
     ).first()
     if not existing_cancel:
-        db.add(LessonCancellation(
+        existing_cancel = LessonCancellation(
             group_id=payload.group_id,
             lesson_date=payload.from_date,
             start_time=from_start,
             end_time=from_end,
-        ))
+        )
+        db.add(existing_cancel)
+    # Сохраняем целевую дату/время, чтобы на старой дате понимать, куда перенесли урок.
+    existing_cancel.moved_to_date = payload.to_date
+    existing_cancel.moved_to_start_time = to_start
+    existing_cancel.moved_to_end_time = to_end
 
     if attendances:
         att_ids = [a.id for a in attendances]

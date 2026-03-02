@@ -1,6 +1,10 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
+import csv
+import hashlib
+from datetime import date, datetime
+from io import StringIO, BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -14,13 +18,17 @@ from app.models import (
     FinanceArticle,
     FinanceTransactionDirection,
     FinanceTransactionStatus,
+    FinanceRecognitionRule,
 )
 from app.schemas import (
     FinanceLedgerBankRow,
+    FinanceLedgerTransactionRow,
     FinanceTransactionUpdate,
     FinanceAccountResponse,
     FinanceTargetResponse,
     FinanceArticleResponse,
+    FinanceAccountBalance,
+    FinancePnlRow,
 )
 
 
@@ -109,6 +117,525 @@ async def list_finance_articles(
         )
         for a in arts
     ]
+
+
+@router.get("/ledger/transactions", response_model=List[FinanceLedgerTransactionRow])
+async def list_finance_ledger_transactions(
+    target_codes: Optional[List[str]] = Query(
+        None,
+        description="Фильтр по кодам target (personal, leninets, gogol_mogol, academy). Пусто = все эти цели.",
+    ),
+    date_from: Optional[date] = Query(None, description="Начало периода (включительно)"),
+    date_to: Optional[date] = Query(None, description="Конец периода (включительно)"),
+    limit: int = Query(5000, ge=1, le=50000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[FinanceLedgerTransactionRow]:
+    """
+    Список транзакций единого журнала для дашборда личных финансов.
+    По умолчанию возвращаются операции с любым target (personal, leninets, gogol_mogol, academy).
+    """
+    _require_finance_access(current_user)
+
+    q = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(
+            FinanceTransaction.direction.in_(
+                [FinanceTransactionDirection.INCOME, FinanceTransactionDirection.EXPENSE]
+            )
+        )
+    )
+
+    if target_codes:
+        targets = db.query(FinanceTarget.id).filter(FinanceTarget.code.in_(target_codes)).all()
+        target_ids = [t[0] for t in targets]
+        if target_ids:
+            q = q.filter(FinanceTransaction.target_id.in_(target_ids))
+        else:
+            return []
+    else:
+        # по умолчанию — только «личные» цели (для дашборда)
+        default_codes = ["personal", "leninets", "gogol_mogol", "academy"]
+        targets = db.query(FinanceTarget.id).filter(FinanceTarget.code.in_(default_codes)).all()
+        target_ids = [t[0] for t in targets]
+        if target_ids:
+            q = q.filter(FinanceTransaction.target_id.in_(target_ids))
+        else:
+            return []
+
+    if date_from is not None:
+        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time()))
+    if date_to is not None:
+        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time()))
+
+    q = q.order_by(FinanceTransaction.occurred_at.desc())
+    items: List[FinanceTransaction] = q.limit(limit).all()
+
+    rows: List[FinanceLedgerTransactionRow] = []
+    for tx in items:
+        target = getattr(tx, "target", None)
+        article = getattr(tx, "article", None)
+        rows.append(
+            FinanceLedgerTransactionRow(
+                id=tx.id,
+                occurred_at=tx.occurred_at,
+                amount=float(tx.amount or 0.0),
+                direction=str(getattr(tx.direction, "value", tx.direction)),
+                target_code=getattr(target, "code", None) if target else None,
+                target_name=getattr(target, "name", None) if target else None,
+                article_id=tx.article_id,
+                article_name=getattr(article, "name", None) if article else None,
+                counterparty_name=tx.counterparty_name,
+                description_raw=tx.description_raw,
+            )
+        )
+    return rows
+
+
+@router.get("/balances", response_model=List[FinanceAccountBalance])
+async def get_finance_account_balances(
+    as_of: Optional[date] = Query(None, description="Дата, на которую считать остатки (по occurred_at <= as_of)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[FinanceAccountBalance]:
+    """
+    Остатки по счетам (finance_accounts) на указанную дату с оборотами доходов/расходов.
+    Transfer-операции учитываются как перевод между своими счетами и не попадают в обороты.
+    """
+    _require_finance_access(current_user)
+
+    # Базовый набор счетов
+    accounts = db.query(FinanceAccount).filter(FinanceAccount.is_active.is_(True)).all()
+    balance_map: Dict[int, Dict[str, float]] = {}
+    for acc in accounts:
+        balance_map[acc.id] = {
+            "income": 0.0,
+            "expense": 0.0,
+            "balance": 0.0,
+        }
+
+    # Все транзакции до указанной даты
+    q = db.query(FinanceTransaction)
+    if as_of is not None:
+        q = q.filter(FinanceTransaction.occurred_at <= as_of)
+    txs: List[FinanceTransaction] = q.all()
+
+    for tx in txs:
+        # Доход / расход: учитываем только по account_id
+        if tx.direction == FinanceTransactionDirection.INCOME:
+            if tx.account_id and tx.account_id in balance_map:
+                balance_map[tx.account_id]["income"] += float(tx.amount or 0.0)
+                balance_map[tx.account_id]["balance"] += float(tx.amount or 0.0)
+        elif tx.direction == FinanceTransactionDirection.EXPENSE:
+            if tx.account_id and tx.account_id in balance_map:
+                amt = float(tx.amount or 0.0)
+                # amount для расхода может быть отрицательным; расход считаем по модулю
+                balance_map[tx.account_id]["expense"] += abs(amt)
+                balance_map[tx.account_id]["balance"] += amt
+        elif tx.direction == FinanceTransactionDirection.TRANSFER:
+            # Перевод между своими счетами: не считаем в доход/расход, только в балансах
+            amt = abs(float(tx.amount or 0.0))
+            if tx.account_id and tx.account_id in balance_map:
+                balance_map[tx.account_id]["balance"] -= amt
+            if tx.to_account_id and tx.to_account_id in balance_map:
+                balance_map[tx.to_account_id]["balance"] += amt
+
+    result: List[FinanceAccountBalance] = []
+    for acc in accounts:
+        data = balance_map.get(acc.id) or {"income": 0.0, "expense": 0.0, "balance": 0.0}
+        result.append(
+            FinanceAccountBalance(
+                account_id=acc.id,
+                account_code=acc.code,
+                account_name=acc.name,
+                income_total=round(data["income"], 2),
+                expense_total=round(data["expense"], 2),
+                balance=round(data["balance"], 2),
+            )
+        )
+    # Сортируем по коду счета для стабильного вывода
+    result.sort(key=lambda x: x.account_code)
+    return result
+
+
+@router.get("/pnl", response_model=List[FinancePnlRow])
+async def get_finance_pnl(
+    target_code: str = Query("academy", description="Код проекта/кошелька (finance_targets.code)"),
+    date_from: Optional[date] = Query(None, description="Начало периода (включительно)"),
+    date_to: Optional[date] = Query(None, description="Конец периода (включительно)"),
+    group_by: str = Query("month", description="Группировка: 'month' или 'date'"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[FinancePnlRow]:
+    """
+    P&L по операциям журнала для выбранного проекта (target).
+    Учитываются только direction = income/expense; transfer-операции исключаются.
+    """
+    _require_finance_access(current_user)
+
+    target = db.query(FinanceTarget).filter(FinanceTarget.code == target_code).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Target с таким кодом не найден")
+
+    q = db.query(FinanceTransaction).filter(
+        FinanceTransaction.target_id == target.id,
+        FinanceTransaction.direction.in_(
+            [FinanceTransactionDirection.INCOME, FinanceTransactionDirection.EXPENSE]
+        ),
+    )
+    if date_from is not None:
+        q = q.filter(FinanceTransaction.occurred_at >= date_from)
+    if date_to is not None:
+        q = q.filter(FinanceTransaction.occurred_at <= date_to)
+
+    txs: List[FinanceTransaction] = q.all()
+
+    buckets: Dict[str, Dict[str, float]] = {}
+    for tx in txs:
+        if not tx.occurred_at:
+            continue
+        if group_by == "date":
+            key = tx.occurred_at.date().isoformat()
+        else:
+            # month: YYYY-MM
+            key = f"{tx.occurred_at.year:04d}-{tx.occurred_at.month:02d}"
+
+        if key not in buckets:
+            buckets[key] = {"income": 0.0, "expense": 0.0}
+
+        amt = float(tx.amount or 0.0)
+        if tx.direction == FinanceTransactionDirection.INCOME:
+            buckets[key]["income"] += amt
+        elif tx.direction == FinanceTransactionDirection.EXPENSE:
+            buckets[key]["expense"] += abs(amt)
+
+    rows: List[FinancePnlRow] = []
+    for key in sorted(buckets.keys()):
+        income = buckets[key]["income"]
+        expense = buckets[key]["expense"]
+        rows.append(
+            FinancePnlRow(
+                period=key,
+                income=round(income, 2),
+                expense=round(expense, 2),
+                profit=round(income - expense, 2),
+            )
+        )
+    return rows
+
+
+@router.post("/import")
+async def import_finance_transactions(
+    account_code: str = Form(..., description="Код счёта (finance_accounts.code)"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> Dict[str, int]:
+    """
+    Импорт операций из CSV/XLSX напрямую в единый финансовый журнал.
+
+    Минимальный CSV-формат: колонки
+      date,amount,counterparty,description,bank_operation_id(optional)
+    """
+    _require_finance_access(current_user)
+
+    account = db.query(FinanceAccount).filter(FinanceAccount.code == account_code).first()
+    if not account:
+        raise HTTPException(status_code=400, detail="account_code не найден в finance_accounts")
+
+    filename = (file.filename or "").lower()
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+
+    created = 0
+    skipped = 0
+
+    def _upsert_row(
+        date_str: str,
+        amount_val: float,
+        counterparty: str,
+        description: str,
+        bank_operation_id: Optional[str],
+        bank_source: str,
+    ) -> None:
+        nonlocal created, skipped
+        if not date_str or not amount_val:
+            skipped += 1
+            return
+        try:
+            occurred_at = datetime.fromisoformat(date_str + "T12:00:00")
+        except Exception:
+            skipped += 1
+            return
+
+        direction = "income" if amount_val > 0 else "expense"
+        dedup_seed = f"{bank_source}|{date_str}|{amount_val}|{counterparty.strip()}|{description.strip()}"
+        dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
+
+        # Проверка на дубликат по bank_source + (operation_id или dedup_hash)
+        existing = (
+            db.query(FinanceTransaction.id)
+            .filter(
+                FinanceTransaction.bank_source == bank_source,
+                (
+                    (FinanceTransaction.bank_operation_id == bank_operation_id)
+                    if bank_operation_id
+                    else FinanceTransaction.dedup_hash == dedup_hash
+                ),
+            )
+            .first()
+        )
+        if existing:
+            skipped += 1
+            return
+
+        tx = FinanceTransaction(
+            occurred_at=occurred_at,
+            amount=amount_val,
+            direction=direction,
+            account_id=account.id,
+            to_account_id=None,
+            transfer_group_id=None,
+            counterparty_name=counterparty.strip() or None,
+            counterparty_phone=None,
+            description_raw=description.strip() or None,
+            bank_source=bank_source,
+            bank_operation_id=bank_operation_id,
+            dedup_hash=dedup_hash,
+            target_id=None,
+            article_id=None,
+            student_id=None,
+            group_id=None,
+            teacher_id=None,
+            status=FinanceTransactionStatus.NEW,
+        )
+        db.add(tx)
+        created += 1
+
+    if filename.endswith(".csv"):
+        bank_source = "import_csv"
+        text = content.decode("utf-8", errors="ignore")
+        reader = csv.DictReader(StringIO(text))
+        for row in reader:
+            date_str = (row.get("date") or "").strip()
+            amount_raw = (row.get("amount") or "").replace(" ", "").replace(",", ".")
+            try:
+                amount_val = float(amount_raw)
+            except ValueError:
+                skipped += 1
+                continue
+            counterparty = (row.get("counterparty") or "").strip()
+            description = (row.get("description") or "").strip()
+            bank_operation_id = (row.get("bank_operation_id") or "").strip() or None
+            _upsert_row(date_str, amount_val, counterparty, description, bank_operation_id, bank_source)
+    elif filename.endswith(".xlsx"):
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            raise HTTPException(status_code=500, detail="openpyxl не установлен в окружении сервера")
+
+        bank_source = "import_xlsx"
+        wb = load_workbook(filename=BytesIO(content), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            raise HTTPException(status_code=400, detail="Файл .xlsx без строк")
+        header = [str(v).strip().lower() if v is not None else "" for v in rows[0]]
+        col_index = {name: idx for idx, name in enumerate(header)}
+        for r in rows[1:]:
+            if not any(r):
+                continue
+            def _get(col: str) -> str:
+                idx = col_index.get(col)
+                if idx is None or idx >= len(r):
+                    return ""
+                val = r[idx]
+                return "" if val is None else str(val).strip()
+
+            date_str = _get("date")
+            amount_raw = _get("amount").replace(" ", "").replace(",", ".")
+            try:
+                amount_val = float(amount_raw)
+            except ValueError:
+                skipped += 1
+                continue
+            counterparty = _get("counterparty")
+            description = _get("description")
+            bank_operation_id = _get("bank_operation_id") or None
+            _upsert_row(date_str, amount_val, counterparty, description, bank_operation_id, bank_source)
+    else:
+        raise HTTPException(status_code=400, detail="Поддерживаются только форматы .csv и .xlsx")
+
+    db.commit()
+    return {"imported": created, "skipped": skipped}
+
+
+@router.post("/migrate-personal-finance")
+async def migrate_personal_finance(
+    payload: Dict[str, list],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> Dict[str, int]:
+    """
+    Миграция данных «Личных финансов» из localStorage в единый финансовый журнал.
+
+    Ожидаемый формат payload:
+    {
+      "articles": [{ id, name, type: "income"|"expense" }],
+      "operations": [{ date, amount, description, target, articleId, createdAt }],
+      "recognitionRules": [{ pattern, displayName }]
+    }
+    """
+    _require_finance_access(current_user)
+
+    articles_in = payload.get("articles") or []
+    ops_in = payload.get("operations") or []
+    rules_in = payload.get("recognitionRules") or []
+
+    # --- Статьи ---
+    # Мапа: (name, direction, scope) -> article_id
+    existing_articles = db.query(FinanceArticle).all()
+    article_map: Dict[str, int] = {}
+    for a in existing_articles:
+        key = f"{a.name.strip().lower()}|{getattr(a.direction, 'value', a.direction)}|{getattr(a.scope, 'value', a.scope)}"
+        article_map[key] = a.id
+
+    created_articles = 0
+    personal_scope = "personal"
+    for a in articles_in:
+        name = (a.get("name") or "").strip()
+        if not name:
+            continue
+        direction = "income" if a.get("type") == "income" else "expense"
+        key = f"{name.lower()}|{direction}|{personal_scope}"
+        if key in article_map:
+            continue
+        new_article = FinanceArticle(
+            name=name,
+            direction=direction,
+            cost_kind="none",
+            scope=personal_scope,
+            is_active=True,
+        )
+        db.add(new_article)
+        db.flush()
+        article_map[key] = new_article.id
+        created_articles += 1
+
+    # --- Targets (personal / leninets / gogol_mogol / academy) ---
+    targets = {t.code: t.id for t in db.query(FinanceTarget).all()}
+
+    def _target_id_for(op_target: str) -> Optional[int]:
+        return targets.get(op_target)
+
+    # --- Операции ---
+    created_ops = 0
+    for op in ops_in:
+        date_str = op.get("date")
+        try:
+            occurred_at = datetime.fromisoformat(date_str + "T12:00:00") if date_str else None
+        except Exception:
+            occurred_at = None
+        amount = float(op.get("amount") or 0.0)
+        if amount == 0:
+            continue
+        direction = "income" if amount > 0 else "expense"
+        description = (op.get("description") or "").strip()
+        target_code = op.get("target") or "personal"
+        article_id_str = op.get("articleId")
+
+        # Подбор article_id по названию
+        article_id: Optional[int] = None
+        if article_id_str:
+            art = next((a for a in articles_in if a.get("id") == article_id_str), None)
+            if art:
+                art_name = (art.get("name") or "").strip()
+                if art_name:
+                    key = f"{art_name.lower()}|{direction}|{personal_scope}"
+                    article_id = article_map.get(key)
+
+        # dedup_hash для миграции personal_finance
+        bank_source = "personal_legacy"
+        dedup_seed = f"{bank_source}|{date_str or ''}|{amount}|{description}"
+        dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
+
+        existing = (
+            db.query(FinanceTransaction.id)
+            .filter(
+                FinanceTransaction.bank_source == bank_source,
+                FinanceTransaction.dedup_hash == dedup_hash,
+            )
+            .first()
+        )
+        if existing:
+            continue
+
+        tx = FinanceTransaction(
+            occurred_at=occurred_at,
+            amount=amount,
+            direction=direction,
+            account_id=None,
+            to_account_id=None,
+            transfer_group_id=None,
+            counterparty_name=description or None,
+            counterparty_phone=None,
+            description_raw=None,
+            bank_source=bank_source,
+            bank_operation_id=None,
+            dedup_hash=dedup_hash,
+            target_id=_target_id_for(target_code),
+            article_id=article_id,
+            student_id=None,
+            group_id=None,
+            teacher_id=None,
+            status=FinanceTransactionStatus.CLASSIFIED if article_id else FinanceTransactionStatus.NEW,
+        )
+        db.add(tx)
+        created_ops += 1
+
+    # --- Правила опознавания ---
+    created_rules = 0
+    for r in rules_in:
+        pattern = (r.get("pattern") or "").strip()
+        display_name = (r.get("displayName") or "").strip()
+        if not pattern or not display_name:
+            continue
+
+        exists = (
+            db.query(FinanceRecognitionRule.id)
+            .filter(
+                FinanceRecognitionRule.pattern == pattern,
+                FinanceRecognitionRule.target_id.is_(None),
+            )
+            .first()
+        )
+        if exists:
+            continue
+
+        rule = FinanceRecognitionRule(
+            pattern=pattern,
+            match_type="contains",
+            priority=len(pattern),
+            target_id=None,
+            article_id=None,
+            direction_override=None,
+            is_active=True,
+        )
+        db.add(rule)
+        created_rules += 1
+
+    db.commit()
+
+    return {
+        "articles_created": created_articles,
+        "operations_created": created_ops,
+        "recognition_rules_created": created_rules,
+    }
 
 
 @router.get("/ledger/bank", response_model=List[FinanceLedgerBankRow])

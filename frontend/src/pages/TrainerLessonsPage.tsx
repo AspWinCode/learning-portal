@@ -606,68 +606,86 @@ const TrainerLessonsPage: React.FC = () => {
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {slots.map((slot) => (
-              <Card
-                key={`${slot.group_id}-${slot.start_time}`}
-                variant="outlined"
-                sx={{
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: 'action.hover' },
-                  borderLeft: '4px solid',
-                  borderLeftColor: 'primary.main',
-                }}
-                onClick={() => openPopup(slot)}
-              >
-                <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                  <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
-                    <Typography variant="subtitle2" color="primary">
-                      {(slot.start_time || '').slice(0, 5)} – {(slot.end_time || '').slice(0, 5)}
+            {slots.map((slot) => {
+              const isCancelled = !!slot.is_cancelled;
+              const startLabel = (slot.start_time || '').slice(0, 5);
+              const endLabel = (slot.end_time || '').slice(0, 5);
+              return (
+                <Card
+                  key={`${slot.group_id}-${slot.start_time}-${isCancelled ? 'cancelled' : 'active'}`}
+                  variant="outlined"
+                  sx={{
+                    cursor: isCancelled ? 'default' : 'pointer',
+                    '&:hover': isCancelled ? undefined : { bgcolor: 'action.hover' },
+                    borderLeft: '4px solid',
+                    borderLeftColor: isCancelled ? 'grey.400' : 'primary.main',
+                    opacity: isCancelled ? 0.7 : 1,
+                  }}
+                  onClick={() => {
+                    if (!isCancelled) openPopup(slot);
+                  }}
+                >
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                      <Typography variant="subtitle2" color={isCancelled ? 'text.secondary' : 'primary'}>
+                        {startLabel} – {endLabel}
+                      </Typography>
+                      {slot.program_name && (
+                        <>
+                          <BookIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                          <Typography variant="body2" color="text.secondary">
+                            {slot.program_name}
+                          </Typography>
+                        </>
+                      )}
+                    </Stack>
+                    <Typography variant="subtitle1" sx={{ mt: 0.5 }}>
+                      {slot.group_name}
                     </Typography>
-                    {slot.program_name && (
+                    {isCancelled ? (
+                      <Typography variant="body2" color="error.main" sx={{ mt: 0.5 }}>
+                        Занятие отменено / перенесено
+                      </Typography>
+                    ) : (
                       <>
-                        <BookIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                        <Typography variant="body2" color="text.secondary">
-                          {slot.program_name}
-                        </Typography>
+                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
+                          <PeopleIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                          <Typography variant="body2" color="text.secondary">
+                            {slot.students
+                              .map((s) => (s.freeze_badge ? `${s.full_name} (${s.freeze_badge})` : s.full_name))
+                              .join(', ')}
+                          </Typography>
+                        </Stack>
+                        {slot.students.some((s) => s.attended !== null && s.attended !== undefined) && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                            Отмечено: {slot.students.filter((s) => s.attended === true).length}/{slot.students.length}
+                          </Typography>
+                        )}
                       </>
                     )}
-                  </Stack>
-                  <Typography variant="subtitle1" sx={{ mt: 0.5 }}>
-                    {slot.group_name}
-                  </Typography>
-                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
-                    <PeopleIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                    <Typography variant="body2" color="text.secondary">
-                      {slot.students.map((s) => (s.freeze_badge ? `${s.full_name} (${s.freeze_badge})` : s.full_name)).join(', ')}
-                    </Typography>
-                  </Stack>
-                  {slot.students.some((s) => s.attended !== null && s.attended !== undefined) && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      Отмечено: {slot.students.filter((s) => s.attended === true).length}/{slot.students.length}
-                    </Typography>
-                  )}
-                  {canMoveLessons && (
-                    <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={(e) => openMoveDialog(e, slot)}
-                      >
-                        Перенести на другой день
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="error"
-                        onClick={(e) => openCancelDialog(e, slot)}
-                      >
-                        Отменить занятие
-                      </Button>
-                    </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                    {!isCancelled && canMoveLessons && (
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={(e) => openMoveDialog(e, slot)}
+                        >
+                          Перенести на другой день
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={(e) => openCancelDialog(e, slot)}
+                        >
+                          Отменить занятие
+                        </Button>
+                      </Stack>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </Box>
         )}
       </Stack>

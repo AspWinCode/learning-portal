@@ -212,6 +212,8 @@ export interface TrainerLessonSlot {
   lesson_index_in_month?: number | null;
   /** Юнитов за занятие (лимит 8 занятий). Может приходить с бэкенда. */
   units_per_session?: number | null;
+  /** Флаг: слот отменён/перенесён (LessonCancellation). */
+  is_cancelled?: boolean;
 }
 
 export interface Topic {

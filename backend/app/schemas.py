@@ -1451,6 +1451,8 @@ class TrainerLessonSlotResponse(BaseModel):
     trainer_id: Optional[int] = None
     trainer_name: Optional[str] = None
     lesson_index_in_month: Optional[int] = None  # 1..8 — показываем; 9, 10 — скрыты
+    # Флаг: слот отменён/перенесён (LessonCancellation). Используется только для отображения в UI.
+    is_cancelled: bool = False
 
     class Config:
         from_attributes = True

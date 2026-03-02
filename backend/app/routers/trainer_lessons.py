@@ -161,6 +161,7 @@ async def get_lessons_for_date(
     attendance_trainers: dict[int, User] = {}
 
     result: List[TrainerLessonSlotResponse] = []
+    group_by_id = {g.id: g for g in groups_for_day}
     for group in groups_for_day:
         schedules = db.query(GroupSchedule).filter(
             GroupSchedule.group_id == group.id,
@@ -307,6 +308,44 @@ async def get_lessons_for_date(
                 continue
             matching = [att for att in attendances if getattr(att, "lesson_start_time", None) == st and getattr(att, "lesson_end_time", None) == et]
             build_slot(st, et, matching)
+
+    # Добавляем stub-слоты для отменённых/перенесённых занятий (LessonCancellation),
+    # чтобы в истории было видно, что занятие на эту дату отменено/перенесено.
+    existing_keys = {
+        (slot.group_id, slot.lesson_date, slot.start_time, slot.end_time)
+        for slot in result
+    }
+    for c in cancellations_for_day:
+        key = (c.group_id, c.lesson_date, c.start_time, c.end_time)
+        if key in existing_keys:
+            continue
+        # Показываем только первые N слотов по лимиту (как и обычные уроки)
+        if key not in first_8_allowed:
+            continue
+        group = group_by_id.get(c.group_id)
+        if not group:
+            continue
+        program_name = group.programs[0].name if group.programs else None
+        trainer_user = group.trainer
+        trainer_id = getattr(trainer_user, "id", None) or group.trainer_id
+        trainer_name = getattr(trainer_user, "full_name", None) if trainer_user else None
+        lesson_index = lesson_index_in_month_map.get(key)
+        result.append(
+            TrainerLessonSlotResponse(
+                group_id=c.group_id,
+                group_name=group.name,
+                program_name=program_name,
+                day_of_week=weekday,
+                start_time=c.start_time,
+                end_time=c.end_time,
+                lesson_date=c.lesson_date,
+                students=[],
+                trainer_id=trainer_id,
+                trainer_name=trainer_name or None,
+                lesson_index_in_month=lesson_index,
+                is_cancelled=True,
+            )
+        )
 
     result.sort(key=lambda x: (x.start_time, x.group_name))
     return result
@@ -878,6 +917,19 @@ async def create_lesson_slot(
     ).first()
     if existing_slot:
         return {"ok": True}
+
+    # Ограничение в БД: для пары (group_id, lesson_date, student_id) может быть только одна запись.
+    # Поэтому сейчас нельзя создать второй слот на ту же дату для той же группы через LessonAttendance.
+    # Если по этой дате уже есть урок, возвращаем понятную ошибку вместо IntegrityError.
+    existing_for_day = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.lesson_date,
+    ).first()
+    if existing_for_day:
+        raise HTTPException(
+            status_code=400,
+            detail="На эту дату у группы уже есть урок; второй слот в тот же день сейчас не поддерживается",
+        )
 
     first_student = db.query(GroupStudent).filter(GroupStudent.group_id == payload.group_id).first()
     if not first_student or not first_student.student_id:

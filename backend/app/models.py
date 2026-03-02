@@ -539,6 +539,193 @@ class TochkaAppliedPayment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class FinanceAccountOwnerScope(str, enum.Enum):
+    BUSINESS = "business"
+    PERSONAL = "personal"
+    MIXED = "mixed"
+
+
+class FinanceAccount(Base):
+    """Финансовый счёт (банк/карта) для единого финансового журнала."""
+
+    __tablename__ = "finance_accounts"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_finance_accounts_code"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(256), nullable=False)
+    owner_scope = Column(
+        SQLEnum(FinanceAccountOwnerScope, name="financeaccountownerscope", values_callable=_enum_values),
+        nullable=False,
+        default=FinanceAccountOwnerScope.BUSINESS,
+    )
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class FinanceTarget(Base):
+    """Проект / логический кошелёк (academy, personal, leninets, gogol_mogol и т.п.)."""
+
+    __tablename__ = "finance_targets"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_finance_targets_code"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(256), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class FinanceArticleDirection(str, enum.Enum):
+    INCOME = "income"
+    EXPENSE = "expense"
+
+
+class FinanceArticleCostKind(str, enum.Enum):
+    VARIABLE = "variable"
+    FIXED = "fixed"
+    NONE = "none"
+
+
+class FinanceArticleScope(str, enum.Enum):
+    ACADEMY = "academy"
+    PERSONAL = "personal"
+    ANY = "any"
+
+
+class FinanceArticle(Base):
+    """Единый справочник статей доходов/расходов (личные + академия)."""
+
+    __tablename__ = "finance_articles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(256), nullable=False, index=True)
+    direction = Column(
+        SQLEnum(FinanceArticleDirection, name="financearticledirection", values_callable=_enum_values),
+        nullable=False,
+    )
+    cost_kind = Column(
+        SQLEnum(FinanceArticleCostKind, name="financearticlecostkind", values_callable=_enum_values),
+        nullable=False,
+        default=FinanceArticleCostKind.NONE,
+    )
+    scope = Column(
+        SQLEnum(FinanceArticleScope, name="financearticlescope", values_callable=_enum_values),
+        nullable=False,
+        default=FinanceArticleScope.ANY,
+    )
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class FinanceTransactionDirection(str, enum.Enum):
+    INCOME = "income"
+    EXPENSE = "expense"
+    TRANSFER = "transfer"
+
+
+class FinanceTransactionStatus(str, enum.Enum):
+    NEW = "new"
+    CLASSIFIED = "classified"
+    APPLIED = "applied"
+
+
+class FinanceTransaction(Base):
+    """Единый финансовый журнал (Unified Finance Ledger)."""
+
+    __tablename__ = "finance_transactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "bank_source",
+            "bank_operation_id",
+            name="uq_finance_transactions_bank_source_operation_id",
+        ),
+        UniqueConstraint(
+            "bank_source",
+            "dedup_hash",
+            name="uq_finance_transactions_bank_source_dedup_hash",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    amount = Column(Float, nullable=False)
+    direction = Column(
+        SQLEnum(FinanceTransactionDirection, name="financetransactiondirection", values_callable=_enum_values),
+        nullable=False,
+    )
+    account_id = Column(Integer, ForeignKey("finance_accounts.id"), nullable=True, index=True)
+    to_account_id = Column(Integer, ForeignKey("finance_accounts.id"), nullable=True, index=True)
+    transfer_group_id = Column(String(64), nullable=True, index=True)
+
+    counterparty_name = Column(String(512), nullable=True)
+    counterparty_phone = Column(String(32), nullable=True, index=True)
+    description_raw = Column(Text, nullable=True)
+
+    bank_source = Column(String(32), nullable=True, index=True)
+    bank_operation_id = Column(String(256), nullable=True, index=True)
+    dedup_hash = Column(String(64), nullable=True, index=True)
+
+    target_id = Column(Integer, ForeignKey("finance_targets.id"), nullable=True, index=True)
+    article_id = Column(Integer, ForeignKey("finance_articles.id"), nullable=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
+    teacher_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    status = Column(
+        SQLEnum(FinanceTransactionStatus, name="financetransactionstatus", values_callable=_enum_values),
+        nullable=False,
+        default=FinanceTransactionStatus.NEW,
+        index=True,
+    )
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships for convenient joinedload in API
+    account = relationship("FinanceAccount", foreign_keys=[account_id])
+    to_account = relationship("FinanceAccount", foreign_keys=[to_account_id])
+    target = relationship("FinanceTarget", foreign_keys=[target_id])
+    article = relationship("FinanceArticle", foreign_keys=[article_id])
+
+
+class FinanceRecognitionMatchType(str, enum.Enum):
+    CONTAINS = "contains"
+    EQUALS = "equals"
+    REGEX = "regex"
+
+
+class FinanceRecognitionRule(Base):
+    """Правила авто-классификации транзакций единого журнала."""
+
+    __tablename__ = "finance_recognition_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pattern = Column(String(512), nullable=False)
+    match_type = Column(
+        SQLEnum(FinanceRecognitionMatchType, name="financerecognitionmatchtype", values_callable=_enum_values),
+        nullable=False,
+        default=FinanceRecognitionMatchType.CONTAINS,
+    )
+    priority = Column(Integer, nullable=False, default=0, index=True)
+    target_id = Column(Integer, ForeignKey("finance_targets.id"), nullable=True, index=True)
+    article_id = Column(Integer, ForeignKey("finance_articles.id"), nullable=True, index=True)
+    direction_override = Column(
+        SQLEnum(FinanceTransactionDirection, name="financerecognitiondirectionoverride", values_callable=_enum_values),
+        nullable=True,
+    )
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class LeadTaskTemplate(Base):
     __tablename__ = "lead_task_templates"
 

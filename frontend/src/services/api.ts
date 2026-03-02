@@ -43,6 +43,7 @@ import {
   StudentCard,
   AbsenceFollowUp,
   BankTransaction,
+  FinanceLedgerBankRow,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -240,6 +241,56 @@ export const studentAccountsApi = {
   },
   remove: async (accountId: number): Promise<void> => {
     await api.delete(`/api/student-accounts/${accountId}`);
+  },
+};
+
+// Unified Finance Ledger API
+export const financeApi = {
+  listLedgerBank: async (params?: {
+    status_filter?: string[];
+    unclassified_only?: boolean;
+    limit?: number;
+  }): Promise<FinanceLedgerBankRow[]> => {
+    const response = await api.get('/api/finance/ledger/bank', {
+      params: {
+        status_filter: params?.status_filter,
+        unclassified_only: params?.unclassified_only,
+        limit: params?.limit,
+      },
+    });
+    return response.data;
+  },
+  updateTransaction: async (
+    transactionId: number,
+    payload: {
+      direction?: string;
+      status?: string;
+      account_id?: number | null;
+      to_account_id?: number | null;
+      target_id?: number | null;
+      article_id?: number | null;
+    }
+  ): Promise<FinanceLedgerBankRow> => {
+    const response = await api.patch(`/api/finance/transactions/${transactionId}`, payload);
+    return response.data;
+  },
+  listAccounts: async (): Promise<
+    Array<{ id: number; code: string; name: string; owner_scope: string; is_active: boolean }>
+  > => {
+    const response = await api.get('/api/finance/accounts', { params: { only_active: true } });
+    return response.data;
+  },
+  listTargets: async (): Promise<Array<{ id: number; code: string; name: string; is_active: boolean }>> => {
+    const response = await api.get('/api/finance/targets', { params: { only_active: true } });
+    return response.data;
+  },
+  listArticles: async (params?: { scope?: string; direction?: string }): Promise<
+    Array<{ id: number; name: string; direction: string; cost_kind: string; scope: string; is_active: boolean }>
+  > => {
+    const response = await api.get('/api/finance/articles', {
+      params: { only_active: true, scope: params?.scope, direction: params?.direction },
+    });
+    return response.data;
   },
 };
 

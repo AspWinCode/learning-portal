@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import hashlib
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.models import (
+    BankTransaction,
+    BankTransactionStatus,
+    FinanceAccount,
+    FinanceTarget,
+    FinanceTransaction,
+    FinanceTransactionDirection,
+    FinanceTransactionStatus,
+)
+
+
+def _get_finance_account_id(db: Session, code: str) -> Optional[int]:
+    acc = db.query(FinanceAccount.id).filter(FinanceAccount.code == code).first()
+    return acc[0] if acc else None
+
+
+def _get_target_id(db: Session, code: str) -> Optional[int]:
+    tgt = db.query(FinanceTarget.id).filter(FinanceTarget.code == code).first()
+    return tgt[0] if tgt else None
+
+
+def _make_dedup_hash(bank_source: str, payment_date: Optional[str], amount: float, payer_name: Optional[str], payer_phone: Optional[str]) -> str:
+    seed = f"{bank_source}|{payment_date or ''}|{amount}|{(payer_name or '').strip()}|{(payer_phone or '').strip()}"
+    return hashlib.sha1(seed.encode("utf-8")).hexdigest()
+
+
+def ensure_finance_transaction_for_bank_transaction(
+    db: Session,
+    bank_tx: BankTransaction,
+    bank_source: str,
+) -> FinanceTransaction:
+    """
+    Создаёт или обновляет запись в finance_transactions для операции из bank_transactions.
+    Используется при авто‑импорте и ручном импорте выписки.
+    """
+    operation_id = (bank_tx.operation_id or "").strip()
+
+    existing = (
+        db.query(FinanceTransaction)
+        .filter(
+            FinanceTransaction.bank_source == bank_source,
+            FinanceTransaction.bank_operation_id == operation_id,
+        )
+        .first()
+    )
+
+    amount = float(bank_tx.amount or 0)
+    bank_status = (bank_tx.status or "").lower()
+    is_expense = amount < 0 or bank_status == BankTransactionStatus.EXPENSE.value
+    direction = FinanceTransactionDirection.EXPENSE if is_expense else FinanceTransactionDirection.INCOME
+
+    if bank_status == BankTransactionStatus.APPLIED.value:
+        tx_status = FinanceTransactionStatus.APPLIED
+    elif bank_status in (
+        BankTransactionStatus.EXPENSE.value,
+        BankTransactionStatus.NO_MATCH.value,
+        BankTransactionStatus.AMBIGUOUS.value,
+    ):
+        tx_status = FinanceTransactionStatus.CLASSIFIED
+    else:
+        tx_status = FinanceTransactionStatus.NEW
+
+    if existing:
+        # Обновляем базовые поля, не трогая классификацию (target/article/status), если они уже заданы вручную.
+        existing.amount = amount
+        existing.direction = direction
+        existing.counterparty_name = (bank_tx.payer_name or "").strip() or None
+        existing.counterparty_phone = (bank_tx.payer_phone or "").strip() or None
+        existing.bank_source = bank_source
+        existing.bank_operation_id = operation_id or None
+        existing.dedup_hash = _make_dedup_hash(
+            bank_source,
+            bank_tx.payment_date,
+            amount,
+            bank_tx.payer_name,
+            bank_tx.payer_phone,
+        )
+        existing.student_id = bank_tx.student_id
+        # Статус обновляем только из "new" → более конкретного; ручную классификацию не перезатираем.
+        if existing.status == FinanceTransactionStatus.NEW and tx_status != FinanceTransactionStatus.NEW:
+            existing.status = tx_status
+        return existing
+
+    account_id: Optional[int] = None
+    if bank_source == "tochka":
+        account_id = _get_finance_account_id(db, "tochka_ip")
+
+    target_id: Optional[int] = None
+    if bank_tx.student_id:
+        target_id = _get_target_id(db, "academy")
+
+    tx = FinanceTransaction(
+        occurred_at=bank_tx.payment_date,  # строка YYYY-MM-DD; PostgreSQL приведёт к timestamp
+        amount=amount,
+        direction=direction,
+        account_id=account_id,
+        counterparty_name=(bank_tx.payer_name or "").strip() or None,
+        counterparty_phone=(bank_tx.payer_phone or "").strip() or None,
+        description_raw=None,
+        bank_source=bank_source,
+        bank_operation_id=operation_id or None,
+        dedup_hash=_make_dedup_hash(
+            bank_source,
+            bank_tx.payment_date,
+            amount,
+            bank_tx.payer_name,
+            bank_tx.payer_phone,
+        ),
+        target_id=target_id,
+        student_id=bank_tx.student_id,
+        status=tx_status,
+    )
+    db.add(tx)
+    return tx
+

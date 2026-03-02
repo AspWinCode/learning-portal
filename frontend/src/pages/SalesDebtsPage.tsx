@@ -29,8 +29,9 @@ import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
 import { studentsApi } from '../services/api';
 import { salesApi } from '../services/api';
+import { financeApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import { BankTransaction, Student } from '../types';
+import { BankTransaction, FinanceLedgerBankRow, Student } from '../types';
 
 interface PaymentStatusRow {
   student_id: number;
@@ -52,6 +53,9 @@ const SalesDebtsPage: React.FC = () => {
   const navigate = useNavigate();
   const [items, setItems] = useState<PaymentStatusRow[]>([]);
   const [bankItems, setBankItems] = useState<BankTransaction[]>([]);
+  const [ledgerByOperationId, setLedgerByOperationId] = useState<Record<string, FinanceLedgerBankRow>>({});
+  const [financeTargets, setFinanceTargets] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [financeArticles, setFinanceArticles] = useState<Array<{ id: number; name: string; direction: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
@@ -97,9 +101,27 @@ const SalesDebtsPage: React.FC = () => {
     try {
       const data = await salesApi.listBankTransactions();
       setBankItems(data);
+      // Подгружаем сопоставленные записи единого журнала
+      const ledger = await financeApi.listLedgerBank({ limit: 500 });
+      const map: Record<string, FinanceLedgerBankRow> = {};
+      ledger.forEach((row) => {
+        const key = row.bank_operation_id || String(row.id);
+        map[key] = row;
+      });
+      setLedgerByOperationId(map);
+      // Справочники для выбора «Куда» и «Статья»
+      const [targets, articles] = await Promise.all([
+        financeApi.listTargets(),
+        financeApi.listArticles({}), // все активные статьи
+      ]);
+      setFinanceTargets(targets.map((t) => ({ id: t.id, code: t.code, name: t.name })));
+      setFinanceArticles(articles.map((a) => ({ id: a.id, name: a.name, direction: a.direction })));
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить операции банка'));
       setBankItems([]);
+      setLedgerByOperationId({});
+      setFinanceTargets([]);
+      setFinanceArticles([]);
     } finally {
       setLoading(false);
     }
@@ -260,10 +282,13 @@ const SalesDebtsPage: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>Дата</TableCell>
+                  <TableCell>Счёт</TableCell>
                   <TableCell>Тип</TableCell>
                   <TableCell>Сумма</TableCell>
                   <TableCell>ФИО плательщика / Контрагент</TableCell>
                   <TableCell>Телефон</TableCell>
+                  <TableCell>Куда (target)</TableCell>
+                  <TableCell>Статья</TableCell>
                   <TableCell>Категория расхода</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell>Ученик</TableCell>
@@ -272,7 +297,9 @@ const SalesDebtsPage: React.FC = () => {
               </TableHead>
               <TableBody>
                 {bankItems.map((tx) => {
-                  const isExpense = tx.status === 'expense' || tx.amount < 0;
+                  const ledger = ledgerByOperationId[tx.operation_id] || null;
+                  const direction = ledger?.direction || (tx.status === 'expense' || tx.amount < 0 ? 'expense' : 'income');
+                  const isExpense = direction === 'expense';
                   const expenseCategorized = isExpense && !!(tx.expense_category ?? '').trim();
                   return (
                     <TableRow
@@ -286,12 +313,97 @@ const SalesDebtsPage: React.FC = () => {
                       }}
                     >
                       <TableCell>{tx.payment_date || '—'}</TableCell>
-                      <TableCell>{isExpense ? 'Расход' : 'Приход'}</TableCell>
+                      <TableCell>
+                        {ledger?.account_name
+                          ? `${ledger.account_name}${ledger.account_code ? ` (${ledger.account_code})` : ''}`
+                          : '—'}
+                      </TableCell>
+                      <TableCell>{direction === 'transfer' ? 'Перевод' : isExpense ? 'Расход' : 'Приход'}</TableCell>
                       <TableCell sx={{ color: isExpense ? 'error.main' : undefined }}>
                         {isExpense ? '−' : '+'} {Math.abs(tx.amount).toFixed(2)} ₽
                       </TableCell>
                       <TableCell>{tx.payer_name || '—'}</TableCell>
                       <TableCell>{tx.payer_phone || '—'}</TableCell>
+                      <TableCell>
+                        {ledger ? (
+                          <Select
+                            size="small"
+                            value={ledger.target_id ?? ''}
+                            displayEmpty
+                            sx={{ minWidth: 150 }}
+                            onChange={async (e) => {
+                              if (!ledger) return;
+                              const value = e.target.value as number | '';
+                              const target_id = value === '' ? null : Number(value);
+                              try {
+                                const updated = await financeApi.updateTransaction(ledger.id, { target_id });
+                                setLedgerByOperationId((prev) => ({
+                                  ...prev,
+                                  [tx.operation_id]: updated,
+                                }));
+                              } catch (err: any) {
+                                setError(extractApiError(err, 'Не удалось сохранить target'));
+                              }
+                            }}
+                            renderValue={(v) => {
+                              if (!ledger || !v) return <em>Не выбрано</em>;
+                              const t = financeTargets.find((t) => t.id === v);
+                              return t ? t.name : ledger.target_name || v;
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>Не выбрано</em>
+                            </MenuItem>
+                            {financeTargets.map((t) => (
+                              <MenuItem key={t.id} value={t.id}>
+                                {t.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {ledger ? (
+                          <Select
+                            size="small"
+                            value={ledger.article_id ?? ''}
+                            displayEmpty
+                            sx={{ minWidth: 180 }}
+                            onChange={async (e) => {
+                              if (!ledger) return;
+                              const value = e.target.value as number | '';
+                              const article_id = value === '' ? null : Number(value);
+                              try {
+                                const updated = await financeApi.updateTransaction(ledger.id, { article_id });
+                                setLedgerByOperationId((prev) => ({
+                                  ...prev,
+                                  [tx.operation_id]: updated,
+                                }));
+                              } catch (err: any) {
+                                setError(extractApiError(err, 'Не удалось сохранить статью'));
+                              }
+                            }}
+                            renderValue={(v) => {
+                              if (!ledger || !v) return <em>Не выбрано</em>;
+                              const art = financeArticles.find((a) => a.id === v);
+                              return art ? art.name : ledger.article_name || v;
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>Не выбрано</em>
+                            </MenuItem>
+                            {financeArticles.map((a) => (
+                              <MenuItem key={a.id} value={a.id}>
+                                {a.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
                       <TableCell>
                         {isExpense ? (
                           <Select

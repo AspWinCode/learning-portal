@@ -420,6 +420,38 @@ export interface BankTransaction {
   created_at: string;
 }
 
+// Unified Finance Ledger row for bank operations
+export interface FinanceLedgerBankRow {
+  id: number;
+  occurred_at?: string | null;
+  amount: number;
+  direction: string;
+  status: string;
+
+  account_id?: number | null;
+  account_code?: string | null;
+  account_name?: string | null;
+
+  to_account_id?: number | null;
+  to_account_code?: string | null;
+  to_account_name?: string | null;
+
+  counterparty_name?: string | null;
+  counterparty_phone?: string | null;
+
+  bank_source?: string | null;
+  bank_operation_id?: string | null;
+
+  target_id?: number | null;
+  target_code?: string | null;
+  target_name?: string | null;
+
+  article_id?: number | null;
+  article_name?: string | null;
+
+  student_id?: number | null;
+}
+
 export interface SalesInstruction {
   id: number;
   title: string;

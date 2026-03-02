@@ -399,6 +399,74 @@ class BankTransactionApplyRequest(BaseModel):
     student_id: int
 
 
+class FinanceLedgerBankRow(BaseModel):
+    """Строка единого журнала для вкладки «Операции банка»."""
+
+    id: int
+    occurred_at: Optional[datetime] = None
+    amount: float
+    direction: str
+    status: str
+
+    account_id: Optional[int] = None
+    account_code: Optional[str] = None
+    account_name: Optional[str] = None
+
+    to_account_id: Optional[int] = None
+    to_account_code: Optional[str] = None
+    to_account_name: Optional[str] = None
+
+    counterparty_name: Optional[str] = None
+    counterparty_phone: Optional[str] = None
+
+    bank_source: Optional[str] = None
+    bank_operation_id: Optional[str] = None
+
+    target_id: Optional[int] = None
+    target_code: Optional[str] = None
+    target_name: Optional[str] = None
+
+    article_id: Optional[int] = None
+    article_name: Optional[str] = None
+
+    student_id: Optional[int] = None
+
+
+class FinanceAccountResponse(BaseModel):
+  id: int
+  code: str
+  name: str
+  owner_scope: str
+  is_active: bool
+
+
+class FinanceTargetResponse(BaseModel):
+  id: int
+  code: str
+  name: str
+  is_active: bool
+
+
+class FinanceArticleResponse(BaseModel):
+  id: int
+  name: str
+  direction: str
+  cost_kind: str
+  scope: str
+  is_active: bool
+
+
+class FinanceTransactionUpdate(BaseModel):
+    """Частичное обновление транзакции журнала (классификация/перенос)."""
+
+    direction: Optional[str] = None  # income | expense | transfer
+    status: Optional[str] = None  # new | classified | applied
+    account_id: Optional[int] = None
+    to_account_id: Optional[int] = None
+    target_id: Optional[int] = None
+    article_id: Optional[int] = None
+
+
 # Пропуски (воронка для sales)
 class AbsenceFollowUpResponse(BaseModel):
     id: int

@@ -164,6 +164,15 @@ export const FinanceDashboardTab: React.FC = () => {
 
   const rangeBalance = rangeIncome - rangeExpense;
 
+  const visibleBalance = useMemo(() => {
+    // Сальдо только по тем дням, которые сейчас показаны в таблице
+    return tableDates.reduce((sum, d) => {
+      const t = totalsByDate.get(d);
+      if (!t) return sum;
+      return sum + (t.income - t.expense);
+    }, 0);
+  }, [tableDates, totalsByDate]);
+
   const { start, end } = useMemo(() => {
     if (summaryPeriod === 'month' && monthFilter !== 'all') {
       const [y, m] = monthFilter.split('-').map((v) => Number(v));
@@ -565,7 +574,7 @@ export const FinanceDashboardTab: React.FC = () => {
                 );
               })}
               <TableCell align="right" sx={{ fontWeight: 700 }}>
-                {freeRemainder >= 0 ? '+' : ''}{freeRemainder.toFixed(2)}
+                {visibleBalance >= 0 ? '+' : ''}{visibleBalance.toFixed(2)}
               </TableCell>
             </TableRow>
           </TableBody>

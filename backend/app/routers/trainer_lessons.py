@@ -109,8 +109,17 @@ async def get_lessons_for_date(
             Group.trainer_id == current_user.id,
             Group.status == GroupStatus.ACTIVE,
         ).all()
+        cancellation_group_ids: Optional[List[int]] = [g.id for g in groups]
     elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        groups = db.query(Group).options(selectinload(Group.trainer)).filter(Group.status == GroupStatus.ACTIVE).all()
+        # Для owner/admin/sales показываем занятия по активным группам,
+        # но переносы/отмены хотим видеть и по архивным группам.
+        groups = (
+            db.query(Group)
+            .options(selectinload(Group.trainer))
+            .filter(Group.status == GroupStatus.ACTIVE)
+            .all()
+        )
+        cancellation_group_ids = None  # не ограничиваемся только активными группами
     else:
         raise HTTPException(status_code=403, detail="Только для тренера или администратора/владельца/менеджера")
     # Не показывать слоты раньше начала группы
@@ -130,11 +139,17 @@ async def get_lessons_for_date(
             return False
         return a == b
 
-    group_ids = [g.id for g in groups]
-    cancellations_for_day = db.query(LessonCancellation).filter(
-        LessonCancellation.group_id.in_(group_ids),
-        LessonCancellation.lesson_date == lesson_date,
-    ).all()
+    # Отмены/переносы на эту дату.
+    # Для тренеров ограничиваемся их группами; для owner/admin/sales — берём все группы (включая архивные).
+    if cancellation_group_ids:
+        cancellations_for_day = db.query(LessonCancellation).filter(
+            LessonCancellation.group_id.in_(cancellation_group_ids),
+            LessonCancellation.lesson_date == lesson_date,
+        ).all()
+    else:
+        cancellations_for_day = db.query(LessonCancellation).filter(
+            LessonCancellation.lesson_date == lesson_date,
+        ).all()
     cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations_for_day}
 
     year, month = lesson_date.year, lesson_date.month
@@ -319,12 +334,12 @@ async def get_lessons_for_date(
         key = (c.group_id, c.lesson_date, c.start_time, c.end_time)
         if key in existing_keys:
             continue
-        # Показываем только первые N слотов по лимиту (как и обычные уроки)
-        if key not in first_8_allowed:
-            continue
+        # Для активных групп возьмём уже загруженный объект, для остальных (архивные) — дотянем из БД.
         group = group_by_id.get(c.group_id)
         if not group:
-            continue
+            group = db.query(Group).filter(Group.id == c.group_id).first()
+            if not group:
+                continue
         program_name = group.programs[0].name if group.programs else None
         trainer_user = group.trainer
         trainer_id = getattr(trainer_user, "id", None) or group.trainer_id

@@ -278,12 +278,22 @@ def upgrade() -> None:
             """
         )
 
-        for row in rows:
-            amount = row["amount"]
+        for (
+            _id,
+            operation_id,
+            tochka_account_id,
+            amount,
+            payer_phone,
+            payer_name,
+            payment_date,
+            status,
+            student_id,
+        ) in rows:
+            # amount > 0 — приход, < 0 — расход
             if amount is None:
                 continue
 
-            bank_status = (row["status"] or "").lower()
+            bank_status = (status or "").lower()
             is_expense = amount < 0 or bank_status == "expense"
             direction = "expense" if is_expense else "income"
 
@@ -294,26 +304,26 @@ def upgrade() -> None:
             else:
                 tx_status = "new"
 
-            bank_source = "tochka" if row["tochka_account_id"] else "import_xlsx"
+            bank_source = "tochka" if tochka_account_id else "import_xlsx"
 
-            dedup_seed = f"{bank_source}|{row['payment_date'] or ''}|{amount}|{(row['payer_name'] or '').strip()}|{(row['payer_phone'] or '').strip()}"
+            dedup_seed = f"{bank_source}|{payment_date or ''}|{amount}|{(payer_name or '').strip()}|{(payer_phone or '').strip()}"
             dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
 
-            account_id = tochka_finance_account_id if row["tochka_account_id"] and tochka_finance_account_id else None
-            target_id = academy_target_id if row["student_id"] and academy_target_id else None
+            account_id = tochka_finance_account_id if tochka_account_id and tochka_finance_account_id else None
+            target_id = academy_target_id if student_id and academy_target_id else None
 
             params = {
-                "occurred_at": row["payment_date"],
+                "occurred_at": payment_date,
                 "amount": amount,
                 "direction": direction,
                 "account_id": account_id,
-                "counterparty_name": (row["payer_name"] or "").strip() or None,
-                "counterparty_phone": (row["payer_phone"] or "").strip() or None,
+                "counterparty_name": (payer_name or "").strip() or None,
+                "counterparty_phone": (payer_phone or "").strip() or None,
                 "bank_source": bank_source,
-                "bank_operation_id": row["operation_id"],
+                "bank_operation_id": operation_id,
                 "dedup_hash": dedup_hash,
                 "target_id": target_id,
-                "student_id": row["student_id"],
+                "student_id": student_id,
                 "status": tx_status,
             }
             conn.execute(insert_stmt, params)

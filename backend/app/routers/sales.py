@@ -15,6 +15,7 @@ from app import auth
 from app.database import get_db
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_with_invite, create_parent_user_no_invite
+from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
 from app.models import (
     Lead,
     LeadStatus,
@@ -714,20 +715,24 @@ def do_tochka_import_and_apply(
                 f"{account_id}|{tx_date}|{amount}|{payer_name}|{payer_phone}|{idx}".encode()
             ).hexdigest()
 
-        if db.query(BankTransaction.id).filter(BankTransaction.operation_id == operation_id).first():
-            continue
+        existing_bt = db.query(BankTransaction).filter(BankTransaction.operation_id == operation_id).first()
+        if existing_bt:
+            bt = existing_bt
+        else:
+            bt = BankTransaction(
+                operation_id=operation_id,
+                tochka_account_id=account_id,
+                amount=amount,
+                payer_phone=payer_phone or None,
+                payer_name=payer_name[:512] if payer_name else None,
+                payment_date=tx_date,
+                status=BankTransactionStatus.NEW.value,
+            )
+            db.add(bt)
+            db.flush()
 
-        bt = BankTransaction(
-            operation_id=operation_id,
-            tochka_account_id=account_id,
-            amount=amount,
-            payer_phone=payer_phone or None,
-            payer_name=payer_name[:512] if payer_name else None,
-            payment_date=tx_date,
-            status=BankTransactionStatus.NEW.value,
-        )
-        db.add(bt)
-        db.flush()
+        # Отразим операцию в едином финансовом журнале.
+        ensure_finance_transaction_for_bank_transaction(db, bt, bank_source="tochka")
 
         student_ids: List[int] = []
         if payer_phone:
@@ -1410,6 +1415,7 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
             expense_category=None,
         )
         db.add(bt)
+        ensure_finance_transaction_for_bank_transaction(db, bt, bank_source="import_xlsx")
         imported += 1
     db.commit()
     errors = []

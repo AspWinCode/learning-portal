@@ -104,6 +104,12 @@ const TrainerLessonsPage: React.FC = () => {
   const [customAttendanceLesson, setCustomAttendanceLesson] = useState<any | null>(null);
   const [customAttendanceDraft, setCustomAttendanceDraft] = useState<Record<number, { attended: boolean; reason: string; comment: string }>>({});
   const [customAttendanceSaving, setCustomAttendanceSaving] = useState(false);
+  const [autoOpenTarget, setAutoOpenTarget] = useState<{
+    group_id: number;
+    lesson_date: string;
+    start_time: string;
+    end_time: string;
+  } | null>(null);
 
   const canCreateManualLesson = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
   const [addLessonChoiceOpen, setAddLessonChoiceOpen] = useState(false);
@@ -351,6 +357,12 @@ const TrainerLessonsPage: React.FC = () => {
           : {}),
       });
       setMoveDialogOpen(false);
+      setAutoOpenTarget({
+        group_id: moveSlot.group_id,
+        lesson_date: moveToDate,
+        start_time: moveToStartTime || fromStart,
+        end_time: moveToEndTime || fromEnd,
+      });
       setMoveSlot(null);
       loadSlots();
     } catch (err: any) {

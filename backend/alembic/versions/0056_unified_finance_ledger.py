@@ -274,7 +274,6 @@ def upgrade() -> None:
                 :student_id,
                 :status
             )
-            ON CONFLICT (bank_source, bank_operation_id) DO NOTHING
             """
         )
 
@@ -326,6 +325,23 @@ def upgrade() -> None:
                 "student_id": student_id,
                 "status": tx_status,
             }
+            # Если запись с таким bank_source и operation_id или dedup_hash уже есть (частичный запуск миграции),
+            # повторно не вставляем, чтобы не словить UniqueViolation.
+            existing = conn.execute(
+                text(
+                    "SELECT 1 FROM finance_transactions "
+                    "WHERE bank_source = :bank_source "
+                    "AND (bank_operation_id = :bank_operation_id OR dedup_hash = :dedup_hash) "
+                    "LIMIT 1"
+                ),
+                {
+                    "bank_source": bank_source,
+                    "bank_operation_id": operation_id,
+                    "dedup_hash": dedup_hash,
+                },
+            ).fetchone()
+            if existing:
+                continue
             conn.execute(insert_stmt, params)
 
 

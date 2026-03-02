@@ -683,8 +683,15 @@ const TrainerLessonsPage: React.FC = () => {
                     {isCancelled ? (
                       <Typography variant="body2" color="error.main" sx={{ mt: 0.5 }}>
                         {slot.moved_to_date
-                          ? `Перенесено на ${format(new Date(slot.moved_to_date + 'T12:00:00'), 'd.MM.yyyy')}${slot.moved_to_start_time != null ? ` ${(slot.moved_to_start_time as string).toString().slice(0, 5)}` : ''} – нажмите, чтобы перейти
-                        : 'Занятие отменено / перенесено'}
+                          ? `Перенесено на ${format(
+                              new Date(slot.moved_to_date + 'T12:00:00'),
+                              'd.MM.yyyy'
+                            )}${
+                              slot.moved_to_start_time != null
+                                ? ` ${(slot.moved_to_start_time as string).toString().slice(0, 5)}`
+                                : ''
+                            } – нажмите, чтобы перейти`
+                          : 'Занятие отменено / перенесено'}
                       </Typography>
                     ) : (
                       <>

@@ -29,7 +29,18 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, allowedRoles }) =
       effectiveRoles.add('owner');
     }
     if (!effectiveRoles.has(user.role)) {
-      return <Navigate to="/" replace />;
+      return (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+          <Box textAlign="center">
+            <Box component="h1" sx={{ fontSize: 48, m: 0 }}>
+              403
+            </Box>
+            <Box component="p" sx={{ mt: 1, color: 'text.secondary' }}>
+              Недостаточно прав для доступа к этой странице.
+            </Box>
+          </Box>
+        </Box>
+      );
     }
   }
 

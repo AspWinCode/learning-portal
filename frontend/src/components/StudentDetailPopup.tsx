@@ -33,9 +33,10 @@ import { studentsApi, salesApi, studentCardsApi } from '../services/api';
 import { Student, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentCard } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
-const ABSENCE_STAGES: { value: AbsenceFollowUpStage; label: string }[] = [
+const ABSENCE_STAGES: { value: AbsenceFollowUpStage | 'link_sent'; label: string }[] = [
   { value: 'missed', label: 'Пропустил' },
   { value: 'assigned', label: 'Назначили отработку' },
+  { value: 'link_sent', label: 'Отправили ссылку' },
   { value: 'made_up', label: 'Отработал' },
   { value: 'missed_makeup', label: 'Пропустил отработку' },
 ];
@@ -298,7 +299,13 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                       <TableRow key={i}>
                         <TableCell>{formatDate(a.lesson_date)}</TableCell>
                         <TableCell>{a.group_name}</TableCell>
-                        <TableCell>{a.attended ? 'Был' : 'Не был'}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={a.attended ? 'Был' : 'Пропуск'}
+                            color={a.attended ? 'success' : 'error'}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -321,7 +328,33 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                       const items = absences.filter((a) => a.stage === value);
                       if (items.length === 0) return null;
                       return (
-                        <Card key={value} variant="outlined" sx={{ minWidth: 220, bgcolor: 'grey.50' }}>
+                        <Card
+                          key={value}
+                          variant="outlined"
+                          sx={{
+                            minWidth: 220,
+                            bgcolor:
+                              value === 'missed'
+                                ? 'rgba(239,68,68,0.06)' // красный (пропуск)
+                                : value === 'assigned'
+                                ? 'rgba(234,179,8,0.08)' // жёлтый (отработка назначена)
+                                : value === 'link_sent'
+                                ? 'rgba(59,130,246,0.08)' // синий (ссылка отправлена)
+                                : value === 'made_up'
+                                ? 'rgba(34,197,94,0.08)' // зелёный (отработка выполнена)
+                                : 'grey.50',
+                            borderTop:
+                              value === 'missed'
+                                ? '3px solid #ef4444'
+                                : value === 'assigned'
+                                ? '3px solid #eab308'
+                                : value === 'link_sent'
+                                ? '3px solid #3b82f6'
+                                : value === 'made_up'
+                                ? '3px solid #22c55e'
+                                : undefined,
+                          }}
+                        >
                           <CardContent>
                             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
                               {label}

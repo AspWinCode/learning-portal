@@ -1156,6 +1156,7 @@ class CustomLessonStudent(Base):
 class AbsenceFollowUpStage(str, enum.Enum):
     MISSED = "missed"           # Пропустил
     ASSIGNED = "assigned"       # Назначили отработку
+    LINK_SENT = "link_sent"     # Отправили ссылку на отработку
     MADE_UP = "made_up"         # Отработал
     MISSED_MAKEUP = "missed_makeup"  # Пропустил отработку
 

@@ -162,6 +162,13 @@ export const usersApi = {
   },
 };
 
+export const adminToolsApi = {
+  resetTrainerPassword: async (userId: number): Promise<{ temporary_password: string }> => {
+    const response = await api.post(`/api/admin-tools/reset-trainer-password/${userId}`);
+    return response.data;
+  },
+};
+
 export const studentsApi = {
   getAll: async (params?: any): Promise<Student[]> => {
     const response = await api.get('/api/students/', { params });

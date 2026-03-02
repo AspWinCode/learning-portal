@@ -39,7 +39,7 @@ import type { AnketaConvertConflict } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
 import AnketaFormDrawer from '../components/AnketaFormDrawer';
-import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
+import { applyPhoneMask, isValidPhone, isValidGeorgianPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
 
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -253,6 +253,13 @@ const StudentsPage: React.FC = () => {
   };
 
   const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || '').trim());
+
+  const isValidStudentPhone = (s: string) => {
+    const v = (s || '').trim();
+    if (!v) return true;
+    // Разрешаем либо российский формат, либо грузинский +9955XXXXXXXX
+    return isValidPhone(v) || isValidGeorgianPhone(v);
+  };
 
   useEffect(() => {
     if (!hasFullStudentsView) {
@@ -525,9 +532,11 @@ const StudentsPage: React.FC = () => {
         const createdStudent = await studentsApi.create(studentData);
         await assignProgramAndGroup(createdStudent.id);
         if (createCardToo && canCreateCard) {
-          const phoneErr = [cardFields.student_phone, cardFields.parent_phone, cardFields.parent_phone_2].find((p) => p.trim() && !isValidPhone(p));
+          const phoneErr = [cardFields.student_phone, cardFields.parent_phone, cardFields.parent_phone_2].find(
+            (p) => p.trim() && !isValidStudentPhone(p),
+          );
           if (phoneErr) {
-            setError('Введите корректный номер телефона: 10 цифр в формате +7(XXX) XXX-XX-XX');
+            setError('Введите корректный номер телефона: РФ (+7) или Грузия (+9955XXXXXXXX)');
             return;
           }
           if (cardFields.student_email.trim() && !isValidEmail(cardFields.student_email)) {
@@ -577,9 +586,11 @@ const StudentsPage: React.FC = () => {
 
       await assignProgramAndGroup(createdStudent.id);
       if (createCardToo && canCreateCard) {
-        const phoneErr = [cardFields.student_phone, cardFields.parent_phone, cardFields.parent_phone_2].find((p) => p.trim() && !isValidPhone(p));
+        const phoneErr = [cardFields.student_phone, cardFields.parent_phone, cardFields.parent_phone_2].find(
+          (p) => p.trim() && !isValidStudentPhone(p),
+        );
         if (phoneErr) {
-          setError('Введите корректный номер телефона: 10 цифр в формате +7(XXX) XXX-XX-XX');
+          setError('Введите корректный номер телефона: РФ (+7) или Грузия (+9955XXXXXXXX)');
           return;
         }
         if (cardFields.student_email.trim() && !isValidEmail(cardFields.student_email)) {
@@ -1579,7 +1590,20 @@ const StudentsPage: React.FC = () => {
                   <TextField size="small" fullWidth label="ФИО ученика" value={cardFields.student_full_name || newStudent.full_name} onChange={(e) => setCardFields((f) => ({ ...f, student_full_name: e.target.value }))} />
                   <TextField size="small" fullWidth label="Email ученика" type="email" value={cardFields.student_email} onChange={(e) => setCardFields((f) => ({ ...f, student_email: e.target.value }))} error={!!cardFields.student_email.trim() && !isValidEmail(cardFields.student_email)} helperText={cardFields.student_email.trim() && !isValidEmail(cardFields.student_email) ? 'Введите корректный email' : ''} />
                   <TextField size="small" fullWidth label="Дата рождения ученика" type="date" value={cardFields.birth_date} onChange={(e) => setCardFields((f) => ({ ...f, birth_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-                  <TextField size="small" fullWidth label="Мобильный телефон ученика" value={cardFields.student_phone} onChange={(e) => setCardFields((f) => ({ ...f, student_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.student_phone.trim() && !isValidPhone(cardFields.student_phone)} helperText={cardFields.student_phone.trim() && !isValidPhone(cardFields.student_phone) ? '10 цифр номера' : ''} />
+                  <TextField
+                    size="small"
+                    fullWidth
+                    label="Мобильный телефон ученика"
+                    value={cardFields.student_phone}
+                    onChange={(e) => setCardFields((f) => ({ ...f, student_phone: e.target.value }))}
+                    placeholder="+9955XXXXXXXX или +7(XXX) XXX-XX-XX"
+                    error={!!cardFields.student_phone.trim() && !isValidStudentPhone(cardFields.student_phone)}
+                    helperText={
+                      cardFields.student_phone.trim() && !isValidStudentPhone(cardFields.student_phone)
+                        ? 'Формат: РФ (+7) или Грузия (+9955XXXXXXXX)'
+                        : ''
+                    }
+                  />
                   <TextField size="small" fullWidth label="Телеграмм ученика" value={cardFields.telegram} onChange={(e) => setCardFields((f) => ({ ...f, telegram: e.target.value }))} />
                   <FormControl size="small" fullWidth>
                     <InputLabel>Пол</InputLabel>
@@ -1768,7 +1792,20 @@ const StudentsPage: React.FC = () => {
               <TextField size="small" fullWidth label="ФИО ученика" value={cardFields.student_full_name || newStudent.full_name} onChange={(e) => setCardFields((f) => ({ ...f, student_full_name: e.target.value }))} />
               <TextField size="small" fullWidth label="Email ученика" type="email" value={cardFields.student_email} onChange={(e) => setCardFields((f) => ({ ...f, student_email: e.target.value }))} error={!!cardFields.student_email.trim() && !isValidEmail(cardFields.student_email)} helperText={cardFields.student_email.trim() && !isValidEmail(cardFields.student_email) ? 'Введите корректный email' : ''} />
               <TextField size="small" fullWidth label="Дата рождения ученика" type="date" value={cardFields.birth_date} onChange={(e) => setCardFields((f) => ({ ...f, birth_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-              <TextField size="small" fullWidth label="Мобильный телефон ученика" value={cardFields.student_phone} onChange={(e) => setCardFields((f) => ({ ...f, student_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.student_phone.trim() && !isValidPhone(cardFields.student_phone)} helperText={cardFields.student_phone.trim() && !isValidPhone(cardFields.student_phone) ? '10 цифр номера' : ''} />
+              <TextField
+                size="small"
+                fullWidth
+                label="Мобильный телефон ученика"
+                value={cardFields.student_phone}
+                onChange={(e) => setCardFields((f) => ({ ...f, student_phone: e.target.value }))}
+                placeholder="+9955XXXXXXXX или +7(XXX) XXX-XX-XX"
+                error={!!cardFields.student_phone.trim() && !isValidStudentPhone(cardFields.student_phone)}
+                helperText={
+                  cardFields.student_phone.trim() && !isValidStudentPhone(cardFields.student_phone)
+                    ? 'Формат: РФ (+7) или Грузия (+9955XXXXXXXX)'
+                    : ''
+                }
+              />
               <TextField size="small" fullWidth label="Телеграмм ученика" value={cardFields.telegram} onChange={(e) => setCardFields((f) => ({ ...f, telegram: e.target.value }))} />
               <FormControl size="small" fullWidth>
                 <InputLabel>Пол</InputLabel>

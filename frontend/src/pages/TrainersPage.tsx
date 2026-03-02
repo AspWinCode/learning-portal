@@ -25,7 +25,7 @@ import {
   Checkbox,
 } from '@mui/material';
 import { Add as AddIcon, Person as PersonIcon } from '@mui/icons-material';
-import { usersApi, groupsApi } from '../services/api';
+import { usersApi, groupsApi, salesApi, adminToolsApi } from '../services/api';
 import {
   User,
   Group,
@@ -34,11 +34,7 @@ import {
   TRAINER_BANK_LABELS,
   type TrainerBankKey,
 } from '../types';
-
-const toNumber = (value: string) => {
-  const parsed = Number(String(value).replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : 0;
-};
+import { useAuth } from '../contexts/AuthContext';
 
 const LESSON_FORMAT_OPTIONS: { value: TrainerLessonFormat; label: string }[] = [
   { value: 'group', label: 'Групповой' },
@@ -58,6 +54,13 @@ type TrainerProfileForm = {
   work_schedule: string;
   qualification: string;
   trainer_comment: string;
+  lesson_mode_online: boolean;
+  lesson_mode_offline: boolean;
+  qualification_languages: string;
+  qualification_hackathons: string;
+  qualification_olympiads: string;
+  qualification_courses: string;
+  work_experience: string;
 };
 
 const emptyProfileForm: TrainerProfileForm = {
@@ -72,9 +75,59 @@ const emptyProfileForm: TrainerProfileForm = {
   work_schedule: '',
   qualification: '',
   trainer_comment: '',
+  lesson_mode_online: false,
+  lesson_mode_offline: false,
+  qualification_languages: '',
+  qualification_hackathons: '',
+  qualification_olympiads: '',
+  qualification_courses: '',
+  work_experience: '',
 };
 
 function profileFromUser(u: User): TrainerProfileForm {
+  let lesson_mode_online = false;
+  let lesson_mode_offline = false;
+  let qualification_languages = '';
+  let qualification_hackathons = '';
+  let qualification_olympiads = '';
+  let qualification_courses = '';
+  let work_experience = '';
+
+  if (u.qualification) {
+    try {
+      const parsed = JSON.parse(u.qualification as string);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.lesson_modes) {
+          lesson_mode_online = !!parsed.lesson_modes.online;
+          lesson_mode_offline = !!parsed.lesson_modes.offline;
+        }
+        if (Array.isArray(parsed.languages)) {
+          qualification_languages = parsed.languages.join(', ');
+        }
+        if (Array.isArray(parsed.hackathons)) {
+          qualification_hackathons = parsed.hackathons
+            .map((h: any) => [h.name, h.year].filter(Boolean).join(' / '))
+            .join('\n');
+        }
+        if (Array.isArray(parsed.olympiads)) {
+          qualification_olympiads = parsed.olympiads
+            .map((o: any) => [o.name, o.year].filter(Boolean).join(' / '))
+            .join('\n');
+        }
+        if (Array.isArray(parsed.courses)) {
+          qualification_courses = parsed.courses
+            .map((c: any) => [c.name, c.date].filter(Boolean).join(' / '))
+            .join('\n');
+        }
+        if (typeof parsed.work_experience === 'string') {
+          work_experience = parsed.work_experience;
+        }
+      }
+    } catch {
+      work_experience = u.qualification ?? '';
+    }
+  }
+
   return {
     phone: u.phone ?? '',
     phone_extra: u.phone_extra ?? '',
@@ -87,6 +140,13 @@ function profileFromUser(u: User): TrainerProfileForm {
     work_schedule: u.work_schedule ?? '',
     qualification: u.qualification ?? '',
     trainer_comment: u.trainer_comment ?? '',
+    lesson_mode_online,
+    lesson_mode_offline,
+    qualification_languages,
+    qualification_hackathons,
+    qualification_olympiads,
+    qualification_courses,
+    work_experience,
   };
 }
 
@@ -104,25 +164,15 @@ const TrainersPage: React.FC = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileTrainer, setProfileTrainer] = useState<User | null>(null);
   const [profileForm, setProfileForm] = useState<TrainerProfileForm>(emptyProfileForm);
-  const [trainerRates, setTrainerRates] = useState<Record<number, number>>({});
-  const [trainerLessons, setTrainerLessons] = useState<Record<number, number>>({});
+  const { user } = useAuth();
+  const [citiesList, setCitiesList] = useState<string[]>([]);
+  const [resetPasswordInfo, setResetPasswordInfo] = useState<{ trainer?: User | null; password: string } | null>(null);
 
   const loadTrainers = async () => {
     try {
       const data = await usersApi.getAll('trainer');
-      setTrainers(data);
-      setTrainerRates(
-        data.reduce<Record<number, number>>((acc, trainer) => {
-          acc[trainer.id] = trainer.trainer_rate ?? 0;
-          return acc;
-        }, {})
-      );
-      setTrainerLessons(
-        data.reduce<Record<number, number>>((acc, trainer) => {
-          acc[trainer.id] = trainer.trainer_lessons ?? 0;
-          return acc;
-        }, {})
-      );
+      // Скрываем архивных тренеров из основного списка
+      setTrainers(data.filter((t) => t.is_active));
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка загрузки тренеров');
     }
@@ -140,6 +190,10 @@ const TrainersPage: React.FC = () => {
   useEffect(() => {
     loadTrainers();
     loadGroups();
+    salesApi
+      .listSalesCities(true)
+      .then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean)))
+      .catch(() => {});
   }, []);
 
   const handleCreate = async () => {
@@ -188,6 +242,42 @@ const TrainersPage: React.FC = () => {
   const handleSaveProfile = async () => {
     if (!profileTrainer) return;
     try {
+      const qualificationPayload = {
+        lesson_modes: {
+          online: profileForm.lesson_mode_online,
+          offline: profileForm.lesson_mode_offline,
+        },
+        languages: profileForm.qualification_languages
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        hackathons: profileForm.qualification_hackathons
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const [name, year] = line.split('/').map((s) => s.trim());
+            return { name, year };
+          }),
+        olympiads: profileForm.qualification_olympiads
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const [name, year] = line.split('/').map((s) => s.trim());
+            return { name, year };
+          }),
+        courses: profileForm.qualification_courses
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const [name, date] = line.split('/').map((s) => s.trim());
+            return { name, date };
+          }),
+        work_experience: profileForm.work_experience.trim(),
+      };
+
       await usersApi.update(profileTrainer.id, {
         phone: profileForm.phone || null,
         phone_extra: profileForm.phone_extra || null,
@@ -198,7 +288,7 @@ const TrainersPage: React.FC = () => {
         is_self_employed: profileForm.is_self_employed,
         is_ip: profileForm.is_ip,
         work_schedule: profileForm.work_schedule || null,
-        qualification: profileForm.qualification || null,
+        qualification: JSON.stringify(qualificationPayload),
         trainer_comment: profileForm.trainer_comment || null,
       });
       setProfileOpen(false);
@@ -206,17 +296,6 @@ const TrainersPage: React.FC = () => {
       loadTrainers();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка сохранения профиля');
-    }
-  };
-
-  const handleSaveCompensation = async (trainerId: number) => {
-    try {
-      await usersApi.update(trainerId, {
-        trainer_rate: trainerRates[trainerId] ?? 0,
-        trainer_lessons: trainerLessons[trainerId] ?? 0,
-      });
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка сохранения ставки');
     }
   };
 
@@ -282,13 +361,41 @@ const TrainersPage: React.FC = () => {
           />
         ))}
       </FormGroup>
-      <TextField
-        fullWidth
-        label="Город"
-        value={form.city}
-        onChange={(e) => setForm((p: any) => ({ ...p, city: e.target.value }))}
-        sx={{ mt: 1 }}
-      />
+      <Box sx={{ mt: 1 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+          Город
+        </Typography>
+        {/* Город из справочника Sales (с возможностью свободного ввода) */}
+        {/* Используем Autocomplete из StudentsPage по списку городов sales */}
+        {/* Чтобы не тянуть компонент напрямую, заменяем на простой Select при пустом справочнике */}
+        {citiesList.length ? (
+          <FormControl fullWidth size="small">
+            <InputLabel>Город</InputLabel>
+            <Select
+              label="Город"
+              value={form.city || ''}
+              onChange={(e) => setForm((p: any) => ({ ...p, city: e.target.value }))}
+            >
+              <MenuItem value="">
+                <em>Не указан</em>
+              </MenuItem>
+              {citiesList.map((c) => (
+                <MenuItem key={c} value={c}>
+                  {c}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        ) : (
+          <TextField
+            fullWidth
+            label="Город"
+            value={form.city}
+            onChange={(e) => setForm((p: any) => ({ ...p, city: e.target.value }))}
+            size="small"
+          />
+        )}
+      </Box>
       <TextField
         fullWidth
         label="Телеграмм"
@@ -316,20 +423,85 @@ const TrainersPage: React.FC = () => {
           label="ИП"
         />
       </FormGroup>
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2 }}>
+        График работы
+      </Typography>
       <TextField
         fullWidth
-        label="График работы"
+        placeholder="Например: Пн–Пт 08:00–12:00, 14:00–18:00"
         value={form.work_schedule}
         onChange={(e) => setForm((p: any) => ({ ...p, work_schedule: e.target.value }))}
+        multiline
+        minRows={2}
+        sx={{ mt: 0.5 }}
+      />
+
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2 }}>
+        Формат занятий
+      </Typography>
+      <FormGroup row sx={{ mt: 0.5 }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={form.lesson_mode_online}
+              onChange={(e) => setForm((p: any) => ({ ...p, lesson_mode_online: e.target.checked }))}
+            />
+          }
+          label="Онлайн"
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={form.lesson_mode_offline}
+              onChange={(e) => setForm((p: any) => ({ ...p, lesson_mode_offline: e.target.checked }))}
+            />
+          }
+          label="Офлайн"
+        />
+      </FormGroup>
+
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2 }}>
+        Квалификация
+      </Typography>
+      <TextField
+        fullWidth
+        label="Языки программирования (через запятую)"
+        value={form.qualification_languages}
+        onChange={(e) => setForm((p: any) => ({ ...p, qualification_languages: e.target.value }))}
+        sx={{ mt: 0.5 }}
+      />
+      <TextField
+        fullWidth
+        label="Хакатоны (каждый с новой строки: название / год)"
+        value={form.qualification_hackathons}
+        onChange={(e) => setForm((p: any) => ({ ...p, qualification_hackathons: e.target.value }))}
         multiline
         minRows={2}
         sx={{ mt: 1 }}
       />
       <TextField
         fullWidth
-        label="Квалификация"
-        value={form.qualification}
-        onChange={(e) => setForm((p: any) => ({ ...p, qualification: e.target.value }))}
+        label="Олимпиады (каждый с новой строки: название / год)"
+        value={form.qualification_olympiads}
+        onChange={(e) => setForm((p: any) => ({ ...p, qualification_olympiads: e.target.value }))}
+        multiline
+        minRows={2}
+        sx={{ mt: 1 }}
+      />
+      <TextField
+        fullWidth
+        label="Пройденные курсы (каждый с новой строки: курс / дата)"
+        value={form.qualification_courses}
+        onChange={(e) => setForm((p: any) => ({ ...p, qualification_courses: e.target.value }))}
+        multiline
+        minRows={2}
+        sx={{ mt: 1 }}
+      />
+      <TextField
+        fullWidth
+        label="Опыт работы"
+        value={form.work_experience}
+        onChange={(e) => setForm((p: any) => ({ ...p, work_experience: e.target.value }))}
         multiline
         minRows={2}
         sx={{ mt: 1 }}
@@ -350,16 +522,18 @@ const TrainersPage: React.FC = () => {
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Тренеры</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            setOpen(true);
-            setNewTrainer({ full_name: '', email: '', password: '', ...emptyProfileForm });
-          }}
-        >
-          Создать тренера
-        </Button>
+        {(user?.role === 'admin' || user?.role === 'owner') && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setOpen(true);
+              setNewTrainer({ full_name: '', email: '', password: '', ...emptyProfileForm });
+            }}
+          >
+            Создать тренера
+          </Button>
+        )}
       </Box>
 
       {error && (
@@ -374,59 +548,66 @@ const TrainersPage: React.FC = () => {
             <TableRow>
               <TableCell>ФИО</TableCell>
               <TableCell>Email</TableCell>
-              <TableCell>Ставка тренера</TableCell>
-              <TableCell>Количество занятий</TableCell>
-              <TableCell>Оплата за месяц</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Количество групп</TableCell>
+              {user?.role === 'owner' && (
+                <>
+                  <TableCell>Ставка</TableCell>
+                  <TableCell>Занятий в месяц</TableCell>
+                  <TableCell>Оплата за месяц</TableCell>
+                </>
+              )}
               <TableCell>Действия</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {trainers.map((trainer) => {
               const groupsCount = groups.filter((g) => g.trainer_id === trainer.id).length;
-              const rate = trainerRates[trainer.id] ?? 0;
-              const lessons = trainerLessons[trainer.id] ?? 0;
-              const payment = rate * lessons;
+              const rate = trainer.trainer_rate ?? 0;
+              const lessons = trainer.trainer_lessons ?? 0;
+              const monthPay = rate * lessons;
               return (
-                <TableRow key={trainer.id}>
+                <TableRow key={trainer.id} hover onClick={() => openProfile(trainer)} sx={{ cursor: 'pointer' }}>
                   <TableCell>{trainer.full_name}</TableCell>
                   <TableCell>{trainer.email}</TableCell>
-                  <TableCell>
-                    <TextField
-                      size="small"
-                      type="number"
-                      value={rate}
-                      onChange={(e) =>
-                        setTrainerRates((prev) => ({
-                          ...prev,
-                          [trainer.id]: toNumber(e.target.value),
-                        }))
-                      }
-                      onBlur={() => handleSaveCompensation(trainer.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <TextField
-                      size="small"
-                      type="number"
-                      value={lessons}
-                      onChange={(e) =>
-                        setTrainerLessons((prev) => ({
-                          ...prev,
-                          [trainer.id]: toNumber(e.target.value),
-                        }))
-                      }
-                      onBlur={() => handleSaveCompensation(trainer.id)}
-                    />
-                  </TableCell>
-                  <TableCell>{payment.toFixed(2)}</TableCell>
                   <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
                   <TableCell>{groupsCount}</TableCell>
+                  {user?.role === 'owner' && (
+                    <>
+                      <TableCell>{rate ? `${rate.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
+                      <TableCell>{lessons || '—'}</TableCell>
+                      <TableCell>{monthPay ? `${monthPay.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
+                    </>
+                  )}
                   <TableCell>
-                    <Button size="small" startIcon={<PersonIcon />} onClick={() => openProfile(trainer)} sx={{ mr: 1 }}>
+                    <Button
+                      size="small"
+                      startIcon={<PersonIcon />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openProfile(trainer);
+                      }}
+                      sx={{ mr: 1 }}
+                    >
                       Профиль
                     </Button>
+                    {(user?.role === 'admin' || user?.role === 'owner') && (
+                      <Button
+                        size="small"
+                        sx={{ mr: 1 }}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const res = await adminToolsApi.resetTrainerPassword(trainer.id);
+                            setResetPasswordInfo({ trainer, password: res.temporary_password });
+                          } catch (err: any) {
+                            setError(err.response?.data?.detail || 'Не удалось сбросить пароль тренера');
+                          }
+                        }}
+                      >
+                        Сбросить пароль
+                      </Button>
+                    )}
                     {trainer.is_active ? (
                       <Button
                         size="small"
@@ -516,6 +697,34 @@ const TrainersPage: React.FC = () => {
           <Button onClick={handleSaveProfile} variant="contained">
             Сохранить
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={!!resetPasswordInfo}
+        onClose={() => setResetPasswordInfo(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Временный пароль тренера</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            {resetPasswordInfo?.trainer
+              ? `Для тренера «${resetPasswordInfo.trainer.full_name}» создан временный пароль.`
+              : 'Создан временный пароль для тренера.'}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Временный пароль"
+            value={resetPasswordInfo?.password || ''}
+            InputProps={{ readOnly: true }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Пароль также отправлен тренеру в Telegram (если он привязан). Передайте его тренеру любым удобным способом.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetPasswordInfo(null)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
     </Layout>

@@ -26,6 +26,25 @@ export function isValidPhone(displayOrDigits: string): boolean {
   return digits.length === 10;
 }
 
+/**
+ * Валидация грузинского номера телефона.
+ * Формат: +9955XXXXXXXX (всего 13 символов), без пробелов.
+ * Проверка:
+ *  - строка начинается с "+995"
+ *  - далее ровно 9 цифр
+ */
+export function isValidGeorgianPhone(raw: string): boolean {
+  const s = (raw || '').trim();
+  if (!s.startsWith('+995')) {
+    return false;
+  }
+  const rest = s.slice(4);
+  if (rest.length !== 9) {
+    return false;
+  }
+  return /^[0-9]{9}$/.test(rest);
+}
+
 /** Для отправки на API: нормализованный вид 7XXXXXXXXXX */
 export function phoneToApiValue(displayOrDigits: string): string {
   const digits = getPhoneDigits(displayOrDigits);

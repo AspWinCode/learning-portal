@@ -556,7 +556,7 @@ class AbsenceFollowUpResponse(BaseModel):
 
 
 class AbsenceFollowUpStageUpdate(BaseModel):
-    stage: str  # missed / assigned / made_up / missed_makeup
+    stage: str  # missed / assigned / link_sent / made_up / missed_makeup
 
 
 class AbsenceMakeupAssign(BaseModel):

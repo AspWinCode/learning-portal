@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.database import SessionLocal
-from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance
+from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, admin_tools
 
 app = FastAPI(
     title="Learning Portal API",
@@ -92,9 +92,51 @@ def _validate_production_env() -> None:
         except Exception:
             traceback.print_exc()
 
+    def _run_student_class_autopromo() -> None:
+        """Ежегодное автоповышение класса учеников (1 сентября, только активные)."""
+        try:
+            from app.services.student_class_autopromo import auto_promote_student_classes
+
+            db = SessionLocal()
+            try:
+                auto_promote_student_classes(db)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
+    def _run_absence_link_tasks() -> None:
+        """Утренние задачи: отправить ссылки на отработки."""
+        try:
+            from app.services.absence_link_tasks import create_morning_link_tasks
+
+            db = SessionLocal()
+            try:
+                create_morning_link_tasks(db)
+                db.commit()
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
     scheduler.add_job(_run_payment_overdue_tasks, "interval", days=1, id="payment_overdue_tasks")
+    # Автоповышение класса учеников 1 сентября (cron-задача раз в год).
+    scheduler.add_job(
+        _run_student_class_autopromo,
+        "cron",
+        month=9,
+        day=1,
+        hour=3,
+        id="student_class_autopromo",
+    )
+    scheduler.add_job(
+        _run_absence_link_tasks,
+        "cron",
+        hour=8,
+        minute=0,
+        id="absence_link_tasks",
+    )
     scheduler.start()
 
 # CORS origins from env (comma-separated). Defaults to local dev.
@@ -163,6 +205,7 @@ app.include_router(trainer_lessons.router, prefix="/api/trainer-lessons", tags=[
 app.include_router(student_accounts.router, prefix="/api/student-accounts", tags=["student_accounts"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
+app.include_router(admin_tools.router, prefix="/api/admin-tools", tags=["admin_tools"])
 
 
 @app.exception_handler(Exception)

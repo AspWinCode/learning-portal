@@ -195,27 +195,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       ];
     if (role === 'sales')
       return [
-        { text: 'Дашборд продаж', icon: <Dashboard />, path: '/sales/dashboard' },
         { text: 'Ученики', icon: <People />, path: '/students' },
         { text: 'Тренеры', icon: <People />, path: '/trainers' },
         { text: 'Уроки', icon: <EventAvailable />, path: '/lessons' },
-        { text: 'Ручные уроки', icon: <EventAvailable />, path: '/sales/manual-lessons' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
         { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
-        { text: 'Фоллоу-апы', icon: <PendingActions />, path: '/sales/follow-ups' },
         { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'Позвать снова на мероприятие', icon: <EventAvailable />, path: '/sales/reinvite-event' },
         { text: 'Решили сразу', icon: <EventAvailable />, path: '/sales/agreed' },
         { text: 'Дожать на обучение', icon: <PendingActions />, path: '/sales/post-visit' },
         { text: 'Счета', icon: <ReceiptLong />, path: '/sales/invoices' },
-        { text: 'Отчёты', icon: <Assessment />, path: '/sales/reports' },
         { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
         { text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' },
         { text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' },
         { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' },
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
-        { text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' },
       ];
 
     const items = [
@@ -380,7 +375,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </IconButton>
               </Tooltip>
               <Tooltip title="Задачи и напоминания по лидам">
-                <IconButton color="inherit" onClick={() => navigate('/sales/follow-ups?period=overdue')}>
+                <IconButton color="inherit" onClick={() => navigate('/sales/leads?status_filter=new&overdue_only=1')}>
                   <Badge badgeContent={salesAlertsCount} color="error">
                     <NotificationsNone />
                   </Badge>

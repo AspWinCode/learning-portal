@@ -2013,7 +2013,7 @@ async def update_absence_stage(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     _require_sales_admin_owner(current_user)
-    valid_stages = ("missed", "assigned", "made_up", "missed_makeup")
+    valid_stages = ("missed", "assigned", "link_sent", "made_up", "missed_makeup")
     if payload.stage not in valid_stages:
         raise HTTPException(status_code=400, detail=f"stage должен быть один из: {valid_stages}")
     absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
@@ -2046,6 +2046,13 @@ async def assign_makeup(
     absence.makeup_group_id = payload.makeup_group_id
     absence.makeup_lesson_date = payload.makeup_lesson_date
     absence.stage = "assigned"
+    # Автоматически создаём задачу «Отправить ссылку» для sales
+    try:
+        from app.services.absence_link_tasks import create_link_task_on_assign
+        create_link_task_on_assign(db, absence)
+    except Exception:
+        # Логируем, но не блокируем основной поток
+        traceback.print_exc()
     db.commit()
     db.refresh(absence)
     return _absence_to_response(db, absence)

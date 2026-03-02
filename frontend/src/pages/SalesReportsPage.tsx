@@ -420,7 +420,7 @@ const SalesReportsPage: React.FC = () => {
           </Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/follow-ups?period=today')}>
+          <Card variant="outlined">
             <CardContent>
               <Typography variant="caption">Фоллоу-апы сегодня</Typography>
               <Typography variant="h5">{filteredToday.length}</Typography>
@@ -428,7 +428,7 @@ const SalesReportsPage: React.FC = () => {
           </Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/follow-ups?period=week')}>
+          <Card variant="outlined">
             <CardContent>
               <Typography variant="caption">Фоллоу-апы неделя</Typography>
               <Typography variant="h5">{filteredWeek.length}</Typography>
@@ -436,7 +436,7 @@ const SalesReportsPage: React.FC = () => {
           </Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/follow-ups?period=overdue')}>
+          <Card variant="outlined">
             <CardContent>
               <Typography variant="caption">Просроченные</Typography>
               <Typography variant="h5" color={filteredOverdue.length > 0 ? 'error.main' : 'text.primary'}>

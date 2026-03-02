@@ -25,7 +25,7 @@ import OwnerFunnelsPage from './pages/OwnerFunnelsPage';
 import ParentDashboardPage from './pages/ParentDashboardPage';
 import SalesLeadsPage from './pages/SalesLeadsPage';
 import SalesManagersPage from './pages/SalesManagersPage';
-import SalesEventsPage from './pages/SalesEventsPage';
+import SalesEventsHubPage from './pages/SalesEventsHubPage';
 import SalesInvoicesPage from './pages/SalesInvoicesPage';
 import SalesSettingsPage from './pages/SalesSettingsPage';
 import SalesDashboardPage from './pages/SalesDashboardPage';
@@ -54,7 +54,7 @@ const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
   if (user?.role === 'guest') return <Navigate to="/programs" replace />;
   if (user?.role === 'parent') return <Navigate to="/parent-dashboard" replace />;
-  if (user?.role === 'sales') return <Navigate to="/sales/dashboard" replace />;
+  if (user?.role === 'sales') return <Navigate to="/sales/leads" replace />;
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -121,7 +121,7 @@ function App() {
             <Route
               path="/sales/dashboard"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner']}>
                   <SalesDashboardPage />
                 </PrivateRoute>
               }
@@ -146,7 +146,7 @@ function App() {
               path="/sales/events"
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
-                  <SalesEventsPage />
+                  <SalesEventsHubPage />
                 </PrivateRoute>
               }
             />
@@ -185,15 +185,13 @@ function App() {
             <Route
               path="/sales/follow-ups"
               element={
-                <PrivateRoute allowedRoles={['sales']}>
-                  <SalesFollowUpsPage />
-                </PrivateRoute>
+                <Navigate to="/sales/leads?overdue_only=1" replace />
               }
             />
             <Route
               path="/sales/reports"
               element={
-                <PrivateRoute allowedRoles={['sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner']}>
                   <SalesReportsPage />
                 </PrivateRoute>
               }
@@ -251,7 +249,7 @@ function App() {
             <Route
               path="/sales/manual-lessons"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner']}>
                   <ManualLessonsPage />
                 </PrivateRoute>
               }
@@ -351,7 +349,7 @@ function App() {
             <Route
               path="/sales/settings"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner']}>
                   <SalesSettingsPage />
                 </PrivateRoute>
               }

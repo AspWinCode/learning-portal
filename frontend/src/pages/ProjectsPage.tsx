@@ -24,6 +24,8 @@ import {
   InputLabel,
   ToggleButton,
   ToggleButtonGroup,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, ViewKanban as KanbanIcon, Archive as ArchiveIcon } from '@mui/icons-material';
 import { projectsApi } from '../services/api';
@@ -52,6 +54,7 @@ const ProjectsPage: React.FC = () => {
     description: '',
     entity_type: 'parent' as 'parent' | 'student',
   });
+  const [createTask, setCreateTask] = useState<boolean>(false);
 
   const canCreate = user?.role === 'admin' || user?.role === 'owner';
 
@@ -79,6 +82,7 @@ const ProjectsPage: React.FC = () => {
       description: '',
       entity_type: 'parent',
     });
+    setCreateTask(false);
     setOpen(true);
     setError('');
   };
@@ -89,13 +93,24 @@ const ProjectsPage: React.FC = () => {
       return;
     }
     try {
-      await projectsApi.create({
+      const project = await projectsApi.create({
         name: form.name.trim(),
         start_date: form.start_date || undefined,
         end_date: form.end_date || undefined,
         description: form.description || undefined,
         entity_type: form.entity_type,
       });
+      if (createTask) {
+        try {
+          const { tasksApi } = await import('../services/api');
+          await tasksApi.createTask({
+            title: `Необходимо отработать проект ${project.name}`,
+            description: project.description || undefined,
+          });
+        } catch {
+          // если задача не создалась — не блокируем создание проекта
+        }
+      }
       setOpen(false);
       load();
     } catch (err: any) {
@@ -280,6 +295,16 @@ const ProjectsPage: React.FC = () => {
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             sx={{ mt: 2 }}
+          />
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={(
+              <Checkbox
+                checked={createTask}
+                onChange={(e) => setCreateTask(e.target.checked)}
+              />
+            )}
+            label="Поставить в задачи"
           />
         </DialogContent>
         <DialogActions>

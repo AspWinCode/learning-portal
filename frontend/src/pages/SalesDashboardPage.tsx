@@ -59,8 +59,8 @@ const SalesDashboardPage: React.FC = () => {
               key={item.task_id}
               secondaryAction={
                 <Stack direction="row" spacing={0.5}>
-                  <Button size="small" onClick={() => navigate('/sales/follow-ups?period=today')}>написать</Button>
-                  <Button size="small" onClick={() => navigate('/sales/follow-ups?period=today')}>позвонить</Button>
+                  <Button size="small" onClick={() => navigate(`/sales/leads?leadId=${item.lead_id}`)}>написать</Button>
+                  <Button size="small" onClick={() => navigate(`/sales/leads?leadId=${item.lead_id}`)}>позвонить</Button>
                   <Button size="small" onClick={() => navigate(`/sales/leads?leadId=${item.lead_id}`)}>карточка</Button>
                 </Stack>
               }
@@ -157,9 +157,42 @@ const SalesDashboardPage: React.FC = () => {
             <Grid item xs={12} md={2}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/leads?status=new')}><CardContent><Typography variant="caption">Новых лидов</Typography><Typography variant="h5">{data.kpi_new_leads}</Typography></CardContent></Card></Grid>
             <Grid item xs={12} md={2}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/leads?status=contacted')}><CardContent><Typography variant="caption">Дозвон % (7д)</Typography><Typography variant="h5">{data.kpi_dozvon_percent}%</Typography></CardContent></Card></Grid>
             <Grid item xs={12} md={2}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/leads?status=invoice_sent')}><CardContent><Typography variant="caption">Инфо отправлено</Typography><Typography variant="h5">{data.kpi_info_sent}</Typography></CardContent></Card></Grid>
-            <Grid item xs={12} md={2}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/follow-ups?period=overdue')}><CardContent><Typography variant="caption">Дожим срочно</Typography><Typography variant="h5">{data.kpi_need_push_urgent}</Typography></CardContent></Card></Grid>
-            <Grid item xs={12} md={2}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/follow-ups?period=today')}><CardContent><Typography variant="caption">Дожим сегодня</Typography><Typography variant="h5">{data.kpi_need_push_today}</Typography></CardContent></Card></Grid>
-            <Grid item xs={12} md={2}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/follow-ups?period=overdue')}><CardContent><Typography variant="caption">Дожим просрочено</Typography><Typography variant="h5">{data.kpi_need_push_overdue}</Typography></CardContent></Card></Grid>
+            <Grid item xs={12} md={2}>
+              <Card
+                variant="outlined"
+                sx={{ cursor: 'pointer' }}
+                onClick={() => navigate('/sales/leads?overdue_only=1')}
+              >
+                <CardContent>
+                  <Typography variant="caption">Дожим срочно</Typography>
+                  <Typography variant="h5">{data.kpi_need_push_urgent}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <Card
+                variant="outlined"
+                sx={{ cursor: 'pointer' }}
+                onClick={() => navigate('/sales/leads?status_filter=new')}
+              >
+                <CardContent>
+                  <Typography variant="caption">Дожим сегодня</Typography>
+                  <Typography variant="h5">{data.kpi_need_push_today}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <Card
+                variant="outlined"
+                sx={{ cursor: 'pointer' }}
+                onClick={() => navigate('/sales/leads?overdue_only=1')}
+              >
+                <CardContent>
+                  <Typography variant="caption">Дожим просрочено</Typography>
+                  <Typography variant="h5">{data.kpi_need_push_overdue}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
             <Grid item xs={12} md={3}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/events')}><CardContent><Typography variant="caption">Записано на мероприятие</Typography><Typography variant="h5">{data.kpi_registered_event}</Typography></CardContent></Card></Grid>
             <Grid item xs={12} md={3}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/events')}><CardContent><Typography variant="caption">Пришло</Typography><Typography variant="h5">{data.kpi_came_count}</Typography></CardContent></Card></Grid>
             <Grid item xs={12} md={3}><Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => navigate('/sales/events')}><CardContent><Typography variant="caption">No-show</Typography><Typography variant="h5">{data.kpi_no_show_count}</Typography></CardContent></Card></Grid>

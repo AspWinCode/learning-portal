@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -24,14 +24,55 @@ import {
 import { Add, Edit, Delete } from '@mui/icons-material';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
 import { FinanceArticle, FinanceArticleType } from '../../types/personalFinance';
+import { financeApi } from '../../services/api';
 
-export const FinanceArticlesTab: React.FC = () => {
-  const { articles, addArticle, updateArticle, deleteArticle, deleteArticles } = usePersonalFinance();
+interface FinanceArticlesTabProps {
+  /** Режим работы через единый справочник статей (scope=personal). */
+  useLedgerSource?: boolean;
+}
+
+export const FinanceArticlesTab: React.FC<FinanceArticlesTabProps> = ({ useLedgerSource = false }) => {
+  const { articles: ctxArticles, addArticle, updateArticle, deleteArticle, deleteArticles } = usePersonalFinance();
+  const [remoteArticles, setRemoteArticles] = useState<Array<{ id: number; name: string; direction: 'income' | 'expense' }>>([]);
+  const [loadingRemote, setLoadingRemote] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [type, setType] = useState<FinanceArticleType>('expense');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const articles: FinanceArticle[] = useLedgerSource
+    ? remoteArticles.map((a, index) => ({
+        id: String(a.id),
+        name: a.name,
+        type: a.direction,
+        order: index,
+      }))
+    : ctxArticles;
+
+  useEffect(() => {
+    if (!useLedgerSource) return;
+    setLoadingRemote(true);
+    setRemoteError(null);
+    financeApi
+      .listArticles({ scope: 'personal' })
+      .then((list) => {
+        setRemoteArticles(
+          list
+            .filter((a) => a.is_active)
+            .map((a) => ({
+              id: a.id,
+              name: a.name,
+              direction: a.direction as 'income' | 'expense',
+            }))
+        );
+      })
+      .catch((err: any) => {
+        setRemoteError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить статьи из единого справочника');
+      })
+      .finally(() => setLoadingRemote(false));
+  }, [useLedgerSource]);
 
   const handleOpenAdd = () => {
     setEditingId(null);
@@ -47,19 +88,65 @@ export const FinanceArticlesTab: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    if (editingId) {
-      updateArticle(editingId, { name: trimmed, type });
+    if (useLedgerSource) {
+      try {
+        if (editingId) {
+          const numericId = Number(editingId);
+          await financeApi.updateArticle(numericId, { name: trimmed, direction: type });
+        } else {
+          await financeApi.createArticle({ name: trimmed, direction: type, scope: 'personal', cost_kind: 'none' });
+        }
+        // перезагружаем список
+        const list = await financeApi.listArticles({ scope: 'personal' });
+        setRemoteArticles(
+          list
+            .filter((a) => a.is_active)
+            .map((a) => ({
+              id: a.id,
+              name: a.name,
+              direction: a.direction as 'income' | 'expense',
+            }))
+        );
+      } catch (err) {
+        // оставляем локальное состояние, покажем ошибку как alert выше при следующей загрузке
+        // eslint-disable-next-line no-console
+        console.error('Failed to save article in finance journal', err);
+      }
     } else {
-      addArticle({ name: trimmed, type });
+      if (editingId) {
+        updateArticle(editingId, { name: trimmed, type });
+      } else {
+        addArticle({ name: trimmed, type });
+      }
     }
     setDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Удалить статью?')) deleteArticle(id);
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Удалить статью?')) return;
+    if (useLedgerSource) {
+      try {
+        await financeApi.deleteArticle(Number(id));
+        const list = await financeApi.listArticles({ scope: 'personal' });
+        setRemoteArticles(
+          list
+            .filter((a) => a.is_active)
+            .map((a) => ({
+              id: a.id,
+              name: a.name,
+              direction: a.direction as 'income' | 'expense',
+            }))
+        );
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to delete article in finance journal', err);
+      }
+    } else {
+      deleteArticle(id);
+    }
   };
 
   const allIds = articles.map((a) => a.id);
@@ -80,12 +167,31 @@ export const FinanceArticlesTab: React.FC = () => {
     });
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (!someSelected) return;
-    if (window.confirm(`Удалить выбранные статьи (${selectedIds.size})?`)) {
-      deleteArticles(Array.from(selectedIds));
-      setSelectedIds(new Set());
+    if (!window.confirm(`Удалить выбранные статьи (${selectedIds.size})?`)) return;
+    const ids = Array.from(selectedIds);
+    if (useLedgerSource) {
+      try {
+        await Promise.all(ids.map((id) => financeApi.deleteArticle(Number(id))));
+        const list = await financeApi.listArticles({ scope: 'personal' });
+        setRemoteArticles(
+          list
+            .filter((a) => a.is_active)
+            .map((a) => ({
+              id: a.id,
+              name: a.name,
+              direction: a.direction as 'income' | 'expense',
+            }))
+        );
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to bulk delete articles in finance journal', err);
+      }
+    } else {
+      deleteArticles(ids);
     }
+    setSelectedIds(new Set());
   };
 
   const incomeArticles = articles.filter((a) => a.type === 'income');
@@ -94,7 +200,14 @@ export const FinanceArticlesTab: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-        <Typography variant="h6">Настройки статей</Typography>
+        <Typography variant="h6">
+          Настройки статей
+          {useLedgerSource && (
+            <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+              (единый справочник personal)
+            </Typography>
+          )}
+        </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
             variant="outlined"
@@ -110,6 +223,17 @@ export const FinanceArticlesTab: React.FC = () => {
           </Button>
         </Box>
       </Box>
+
+      {useLedgerSource && loadingRemote && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Загрузка статей из единого справочника…
+        </Typography>
+      )}
+      {useLedgerSource && remoteError && (
+        <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+          {remoteError}
+        </Typography>
+      )}
 
       <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
         <Table size="small">

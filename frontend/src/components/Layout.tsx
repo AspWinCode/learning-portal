@@ -229,7 +229,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     ];
 
     if (isAdminLike) items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
-    if (role === 'owner') items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
+    if (role === 'owner') {
+      items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
+      items.push({ text: 'Финансы (журнал)', icon: <AccountBalanceWallet />, path: '/finance/overview' });
+    }
     if (isAdminLike) {
       items.push({ text: 'Инструкции', icon: <Description />, path: '/sales/instructions' });
       items.push({ text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' });

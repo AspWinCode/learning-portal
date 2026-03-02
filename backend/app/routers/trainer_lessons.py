@@ -1045,6 +1045,12 @@ async def move_lesson(
     else:
         raise HTTPException(status_code=400, detail="Provide from_start_time and from_end_time")
 
+    # Если время на новую дату не задано — переносим в то же время.
+    if to_start is None:
+        to_start = from_start
+    if to_end is None:
+        to_end = from_end
+
     existing_cancel = db.query(LessonCancellation).filter(
         LessonCancellation.group_id == payload.group_id,
         LessonCancellation.lesson_date == payload.from_date,

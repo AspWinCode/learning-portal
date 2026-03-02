@@ -46,6 +46,7 @@ import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
 import PersonalFinancePage from './pages/PersonalFinancePage';
+import FinanceOverviewPage from './pages/FinanceOverviewPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
 
@@ -194,6 +195,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['sales']}>
                   <SalesReportsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/finance/overview"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <FinanceOverviewPage />
                 </PrivateRoute>
               }
             />

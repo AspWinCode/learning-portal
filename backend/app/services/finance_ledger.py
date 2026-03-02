@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from app.models import (
     BankTransaction,
     BankTransactionStatus,
     FinanceAccount,
+    FinanceRecognitionRule,
     FinanceTarget,
     FinanceTransaction,
     FinanceTransactionDirection,
@@ -29,6 +31,59 @@ def _get_target_id(db: Session, code: str) -> Optional[int]:
 def _make_dedup_hash(bank_source: str, payment_date: Optional[str], amount: float, payer_name: Optional[str], payer_phone: Optional[str]) -> str:
     seed = f"{bank_source}|{payment_date or ''}|{amount}|{(payer_name or '').strip()}|{(payer_phone or '').strip()}"
     return hashlib.sha1(seed.encode("utf-8")).hexdigest()
+
+
+def apply_recognition_rules(db: Session, tx: FinanceTransaction) -> None:
+    """
+    Применяет активные правила авто-классификации к транзакции журнала.
+    Не перетирает уже выставленные вручную target/article и не трогает не-new статусы.
+    """
+    if tx.status != FinanceTransactionStatus.NEW:
+        return
+
+    text = f"{(tx.counterparty_name or '').strip()} {(tx.description_raw or '').strip()}".strip()
+    if not text:
+        return
+
+    rules = (
+        db.query(FinanceRecognitionRule)
+        .filter(FinanceRecognitionRule.is_active.is_(True))
+        .order_by(FinanceRecognitionRule.priority.desc())
+        .all()
+    )
+
+    for rule in rules:
+        pattern = (rule.pattern or "").strip()
+        if not pattern:
+            continue
+
+        match_type = getattr(rule.match_type, "value", rule.match_type)
+        matched = False
+        if match_type == "contains":
+            matched = pattern.lower() in text.lower()
+        elif match_type == "equals":
+            matched = text.lower() == pattern.lower()
+        elif match_type == "regex":
+            try:
+                matched = bool(re.search(pattern, text))
+            except re.error:
+                matched = False
+
+        if not matched:
+            continue
+
+        # Применяем правило: заполняем только отсутствующие поля
+        if rule.target_id and not tx.target_id:
+            tx.target_id = rule.target_id
+        if rule.article_id and not tx.article_id:
+            tx.article_id = rule.article_id
+        if rule.direction_override:
+            tx.direction = rule.direction_override
+
+        if tx.status == FinanceTransactionStatus.NEW:
+            tx.status = FinanceTransactionStatus.CLASSIFIED
+        # Останавливаемся на первом сработавшем по убыванию priority
+        break
 
 
 def ensure_finance_transaction_for_bank_transaction(
@@ -86,6 +141,8 @@ def ensure_finance_transaction_for_bank_transaction(
         # Статус обновляем только из "new" → более конкретного; ручную классификацию не перезатираем.
         if existing.status == FinanceTransactionStatus.NEW and tx_status != FinanceTransactionStatus.NEW:
             existing.status = tx_status
+        # если транзакция всё ещё new и нет target/article — можно попробовать применить правила
+        apply_recognition_rules(db, existing)
         return existing
 
     account_id: Optional[int] = None
@@ -118,5 +175,7 @@ def ensure_finance_transaction_for_bank_transaction(
         status=tx_status,
     )
     db.add(tx)
+    # Авто-классификация по правилам для новых транзакций
+    apply_recognition_rules(db, tx)
     return tx
 

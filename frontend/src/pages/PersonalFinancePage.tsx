@@ -187,8 +187,16 @@ const PersonalFinancePageContent: React.FC = () => {
           ledgerExpenseArticles={ledgerExpenseArticles}
         />
       )}
-      {effectiveTab === TAB_OPERATIONS && <FinanceOperationsTab />}
-      {effectiveTab === TAB_ARTICLES && <FinanceArticlesTab />}
+      {effectiveTab === TAB_OPERATIONS && (
+        <FinanceOperationsTab
+          useLedgerSource={useLedgerSource}
+          ledgerLoading={ledgerLoading}
+          ledgerOperations={ledgerOperations}
+          ledgerIncomeArticles={ledgerIncomeArticles}
+          ledgerExpenseArticles={ledgerExpenseArticles}
+        />
+      )}
+      {effectiveTab === TAB_ARTICLES && <FinanceArticlesTab useLedgerSource={useLedgerSource} />}
       {effectiveTab === TAB_RECOGNITION && <FinanceRecognitionTab />}
     </Box>
   );

@@ -16,6 +16,9 @@ from app.models import (
     FinanceAccount,
     FinanceTarget,
     FinanceArticle,
+    FinanceArticleDirection,
+    FinanceArticleCostKind,
+    FinanceArticleScope,
     FinanceTransactionDirection,
     FinanceTransactionStatus,
     FinanceRecognitionRule,
@@ -23,13 +26,17 @@ from app.models import (
 from app.schemas import (
     FinanceLedgerBankRow,
     FinanceLedgerTransactionRow,
+    FinancePersonalOperationCreate,
     FinanceTransactionUpdate,
     FinanceAccountResponse,
     FinanceTargetResponse,
     FinanceArticleResponse,
+    FinanceArticleCreate,
+    FinanceArticleUpdate,
     FinanceAccountBalance,
     FinancePnlRow,
 )
+from app.services.finance_ledger import apply_recognition_rules
 
 
 router = APIRouter()
@@ -117,6 +124,125 @@ async def list_finance_articles(
         )
         for a in arts
     ]
+
+
+@router.post("/articles", response_model=FinanceArticleResponse)
+async def create_finance_article(
+    payload: FinanceArticleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceArticleResponse:
+    """Создание статьи дохода/расхода в едином справочнике."""
+    _require_finance_access(current_user)
+
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    direction_value = payload.direction
+    if direction_value not in {d.value for d in FinanceArticleDirection}:  # type: ignore[attr-defined]
+        raise HTTPException(status_code=400, detail="Некорректное значение direction")
+    direction = FinanceArticleDirection(direction_value)  # type: ignore[call-arg]
+
+    scope_value = payload.scope or "personal"
+    if scope_value not in {s.value for s in FinanceArticleScope}:  # type: ignore[attr-defined]
+        raise HTTPException(status_code=400, detail="Некорректное значение scope")
+    scope = FinanceArticleScope(scope_value)  # type: ignore[call-arg]
+
+    cost_kind_value = payload.cost_kind or "none"
+    if cost_kind_value not in {c.value for c in FinanceArticleCostKind}:  # type: ignore[attr-defined]
+        raise HTTPException(status_code=400, detail="Некорректное значение cost_kind")
+    cost_kind = FinanceArticleCostKind(cost_kind_value)  # type: ignore[call-arg]
+
+    art = FinanceArticle(
+        name=name,
+        direction=direction,
+        cost_kind=cost_kind,
+        scope=scope,
+        is_active=True,
+    )
+    db.add(art)
+    db.commit()
+    db.refresh(art)
+
+    return FinanceArticleResponse(
+        id=art.id,
+        name=art.name,
+        direction=str(getattr(art.direction, "value", art.direction)),
+        cost_kind=str(getattr(art.cost_kind, "value", art.cost_kind)),
+        scope=str(getattr(art.scope, "value", art.scope)),
+        is_active=bool(art.is_active),
+    )
+
+
+@router.patch("/articles/{article_id}", response_model=FinanceArticleResponse)
+async def update_finance_article(
+    article_id: int,
+    payload: FinanceArticleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceArticleResponse:
+    """Частичное обновление статьи (переименование, смена типа, деактивация)."""
+    _require_finance_access(current_user)
+
+    art = db.query(FinanceArticle).filter(FinanceArticle.id == article_id).first()
+    if not art:
+        raise HTTPException(status_code=404, detail="Статья не найдена")
+
+    if payload.name is not None:
+        art.name = payload.name.strip() or art.name
+
+    if payload.direction is not None:
+        if payload.direction not in {d.value for d in FinanceArticleDirection}:  # type: ignore[attr-defined]
+            raise HTTPException(status_code=400, detail="Некорректное значение direction")
+        art.direction = FinanceArticleDirection(payload.direction)  # type: ignore[call-arg]
+
+    if payload.scope is not None:
+        if payload.scope not in {s.value for s in FinanceArticleScope}:  # type: ignore[attr-defined]
+            raise HTTPException(status_code=400, detail="Некорректное значение scope")
+        art.scope = FinanceArticleScope(payload.scope)  # type: ignore[call-arg]
+
+    if payload.cost_kind is not None:
+        if payload.cost_kind not in {c.value for c in FinanceArticleCostKind}:  # type: ignore[attr-defined]
+            raise HTTPException(status_code=400, detail="Некорректное значение cost_kind")
+        art.cost_kind = FinanceArticleCostKind(payload.cost_kind)  # type: ignore[call-arg]
+
+    if payload.is_active is not None:
+        art.is_active = bool(payload.is_active)
+
+    db.commit()
+    db.refresh(art)
+
+    return FinanceArticleResponse(
+        id=art.id,
+        name=art.name,
+        direction=str(getattr(art.direction, "value", art.direction)),
+        cost_kind=str(getattr(art.cost_kind, "value", art.cost_kind)),
+        scope=str(getattr(art.scope, "value", art.scope)),
+        is_active=bool(art.is_active),
+    )
+
+
+@router.delete("/articles/{article_id}")
+async def delete_finance_article(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> Dict[str, bool]:
+    """
+    Удаление статьи.
+    По умолчанию делаем мягкое удаление (is_active = False),
+    чтобы не ломать ссылки из существующих транзакций.
+    """
+    _require_finance_access(current_user)
+
+    art = db.query(FinanceArticle).filter(FinanceArticle.id == article_id).first()
+    if not art:
+        raise HTTPException(status_code=404, detail="Статья не найдена")
+
+    art.is_active = False
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/ledger/transactions", response_model=List[FinanceLedgerTransactionRow])
@@ -415,6 +541,8 @@ async def import_finance_transactions(
             status=FinanceTransactionStatus.NEW,
         )
         db.add(tx)
+        # авто‑классификация по правилам для новых импортированных операций
+        apply_recognition_rules(db, tx)
         created += 1
 
     if filename.endswith(".csv"):
@@ -474,6 +602,91 @@ async def import_finance_transactions(
     db.commit()
     return {"imported": created, "skipped": skipped}
 
+
+@router.post("/personal-operation", response_model=FinanceLedgerTransactionRow)
+async def create_personal_operation(
+    payload: FinancePersonalOperationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceLedgerTransactionRow:
+    """
+    Создание ручной операции для личных финансов в едином журнале.
+
+    Используется страницей «Личные финансы» при добавлении операций вручную.
+    """
+    _require_finance_access(current_user)
+
+    date_str = payload.date.isoformat()
+    amount = float(payload.amount or 0.0)
+    if amount == 0:
+        raise HTTPException(status_code=400, detail="amount must be non-zero")
+
+    direction = "income" if amount > 0 else "expense"
+    description = (payload.description or "").strip()
+    bank_source = "manual_personal"
+
+    # Подбор target_id по коду
+    target = db.query(FinanceTarget).filter(FinanceTarget.code == payload.target_code).first()
+    target_id = target.id if target else None
+
+    dedup_seed = f"{bank_source}|{date_str}|{amount}|{description}"
+    dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
+
+    existing = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(
+            FinanceTransaction.bank_source == bank_source,
+            FinanceTransaction.dedup_hash == dedup_hash,
+        )
+        .first()
+    )
+    if existing:
+        tx = existing
+    else:
+        occurred_at = datetime.fromisoformat(date_str + "T12:00:00")
+        tx = FinanceTransaction(
+            occurred_at=occurred_at,
+            amount=amount,
+            direction=direction,
+            account_id=None,
+            to_account_id=None,
+            transfer_group_id=None,
+            counterparty_name=description or None,
+            counterparty_phone=None,
+            description_raw=None,
+            bank_source=bank_source,
+            bank_operation_id=None,
+            dedup_hash=dedup_hash,
+            target_id=target_id,
+            article_id=None,
+            student_id=None,
+            group_id=None,
+            teacher_id=None,
+            status=FinanceTransactionStatus.NEW,
+        )
+        db.add(tx)
+        apply_recognition_rules(db, tx)
+        db.commit()
+        db.refresh(tx)
+
+    target = getattr(tx, "target", None)
+    article = getattr(tx, "article", None)
+    return FinanceLedgerTransactionRow(
+        id=tx.id,
+        occurred_at=tx.occurred_at,
+        amount=float(tx.amount or 0.0),
+        direction=str(getattr(tx.direction, "value", tx.direction)),
+        target_code=getattr(target, "code", None),
+        target_name=getattr(target, "name", None),
+        article_id=tx.article_id,
+        article_name=getattr(article, "name", None) if article else None,
+        counterparty_name=tx.counterparty_name,
+        description_raw=tx.description_raw,
+    )
 
 @router.post("/migrate-personal-finance")
 async def migrate_personal_finance(
@@ -601,6 +814,9 @@ async def migrate_personal_finance(
             status=FinanceTransactionStatus.CLASSIFIED if article_id else FinanceTransactionStatus.NEW,
         )
         db.add(tx)
+        if tx.status == FinanceTransactionStatus.NEW:
+            # пытаемся дополнительно классифицировать по правилам
+            apply_recognition_rules(db, tx)
         created_ops += 1
 
     # --- Правила опознавания ---

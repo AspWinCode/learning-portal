@@ -28,21 +28,42 @@ import { UploadFile, Delete, AccountBalanceWallet, Add } from '@mui/icons-materi
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { usePersonalFinance } from '../../contexts/PersonalFinanceContext';
-import { FinanceOperation, OperationTarget, OPERATION_TARGET_LABELS } from '../../types/personalFinance';
+import { FinanceOperation, FinanceArticle, OperationTarget, OPERATION_TARGET_LABELS } from '../../types/personalFinance';
+import { financeApi } from '../../services/api';
 import { parseFinanceXlsx } from '../../utils/parseFinanceXlsx';
 
-export const FinanceOperationsTab: React.FC = () => {
+interface FinanceOperationsTabProps {
+  /** Режим чтения из единого журнала: операции и статьи приходят из finance_transactions/finance_articles */
+  useLedgerSource?: boolean;
+  ledgerLoading?: boolean;
+  ledgerOperations?: FinanceOperation[];
+  ledgerIncomeArticles?: FinanceArticle[];
+  ledgerExpenseArticles?: FinanceArticle[];
+}
+
+export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
+  useLedgerSource = false,
+  ledgerLoading = false,
+  ledgerOperations = [],
+  ledgerIncomeArticles = [],
+  ledgerExpenseArticles = [],
+}) => {
   const {
-    operations,
+    operations: ctxOperations,
     updateOperation,
     addOperation,
     addOperations,
     addArticle,
     deleteOperations,
-    incomeArticles,
-    expenseArticles,
+    incomeArticles: ctxIncomeArticles,
+    expenseArticles: ctxExpenseArticles,
     getDisplayDescription,
   } = usePersonalFinance();
+  const operations = useLedgerSource ? ledgerOperations : ctxOperations;
+  const incomeArticles = useLedgerSource && ledgerIncomeArticles.length > 0 ? ledgerIncomeArticles : ctxIncomeArticles;
+  const expenseArticles =
+    useLedgerSource && ledgerExpenseArticles.length > 0 ? ledgerExpenseArticles : ctxExpenseArticles;
+  const readOnly = useLedgerSource;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
@@ -116,7 +137,7 @@ export const FinanceOperationsTab: React.FC = () => {
     }
   };
 
-  const handleAddInitialBalance = () => {
+  const handleAddInitialBalance = async () => {
     const amount = Number(initialBalanceAmount.replace(/\s/g, '').replace(',', '.'));
     if (!initialBalanceDate || !Number.isFinite(amount) || amount <= 0) return;
     let articleId = incomeArticles.find((a) => a.name === 'Начальный остаток')?.id ?? null;
@@ -130,6 +151,17 @@ export const FinanceOperationsTab: React.FC = () => {
       target: 'personal',
       articleId,
     });
+    // Записываем в единый журнал как ручную личную операцию (без привязки к статье)
+    try {
+      await financeApi.createPersonalOperation({
+        date: initialBalanceDate,
+        amount: Math.abs(amount),
+        description: 'Начальный остаток',
+        target_code: 'personal',
+      });
+    } catch {
+      // В случае ошибки журнал не обновится, но локальные данные останутся
+    }
     setInitialBalanceOpen(false);
     setInitialBalanceAmount('');
   };
@@ -159,7 +191,7 @@ export const FinanceOperationsTab: React.FC = () => {
     setManualOpOpen(true);
   };
 
-  const handleAddManualOperation = () => {
+  const handleAddManualOperation = async () => {
     if (!manualOpDate || parsedManualAmount === 0) return;
     const amount = manualOpType === 'income' ? parsedManualAmount : -parsedManualAmount;
     addOperation({
@@ -169,6 +201,16 @@ export const FinanceOperationsTab: React.FC = () => {
       target: manualOpTarget,
       articleId: manualOpArticleId || null,
     });
+    try {
+      await financeApi.createPersonalOperation({
+        date: manualOpDate,
+        amount,
+        description: manualOpDescription.trim() || 'Вручную',
+        target_code: manualOpTarget,
+      });
+    } catch {
+      // Не блокируем локальное добавление при ошибке сохранения в журнал
+    }
     setManualOpOpen(false);
   };
 
@@ -182,21 +224,23 @@ export const FinanceOperationsTab: React.FC = () => {
             color="error"
             startIcon={<Delete />}
             onClick={handleDeleteSelected}
-            disabled={!someSelected}
+            disabled={!someSelected || readOnly}
           >
             Удалить выбранные {someSelected ? `(${selectedIds.size})` : ''}
           </Button>
           <Button
             variant="outlined"
             startIcon={<AccountBalanceWallet />}
-            onClick={openInitialBalanceDialog}
+            onClick={readOnly ? undefined : openInitialBalanceDialog}
+            disabled={readOnly}
           >
             Начальный остаток
           </Button>
           <Button
             variant="outlined"
             startIcon={<Add />}
-            onClick={openManualOpDialog}
+            onClick={readOnly ? undefined : openManualOpDialog}
+            disabled={readOnly}
           >
             Добавить операцию
           </Button>
@@ -210,7 +254,8 @@ export const FinanceOperationsTab: React.FC = () => {
           <Button
             variant="outlined"
             startIcon={<UploadFile />}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={readOnly ? undefined : () => fileInputRef.current?.click()}
+            disabled={readOnly}
           >
             Импорт из XLSX
           </Button>
@@ -232,6 +277,18 @@ export const FinanceOperationsTab: React.FC = () => {
         </Alert>
       )}
 
+      {readOnly && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Режим просмотра из единого финансового журнала. Операции здесь только для чтения, добавление и удаление недоступны.
+        </Alert>
+      )}
+
+      {useLedgerSource && ledgerLoading && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Загрузка операций из журнала…
+        </Typography>
+      )}
+
       <Paper variant="outlined" sx={{ overflow: 'auto' }}>
         <Table size="small" stickyHeader>
           <TableHead>
@@ -240,8 +297,8 @@ export const FinanceOperationsTab: React.FC = () => {
                 <Checkbox
                   indeterminate={someSelected && !allSelected}
                   checked={allSelected}
-                  onChange={handleSelectAll}
-                  disabled={sortedOps.length === 0}
+                  onChange={readOnly ? undefined : handleSelectAll}
+                  disabled={sortedOps.length === 0 || readOnly}
                   size="small"
                 />
               </TableCell>
@@ -257,7 +314,9 @@ export const FinanceOperationsTab: React.FC = () => {
             {sortedOps.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  Нет операций. Загрузите XLSX с колонками: дата, сумма, описание.
+                  {useLedgerSource
+                    ? 'Нет операций в едином финансовом журнале для выбранных целей.'
+                    : 'Нет операций. Загрузите XLSX с колонками: дата, сумма, описание.'}
                 </TableCell>
               </TableRow>
             )}
@@ -268,9 +327,10 @@ export const FinanceOperationsTab: React.FC = () => {
                 incomeArticles={incomeArticles}
                 expenseArticles={expenseArticles}
                 getDisplayDescription={getDisplayDescription}
-                selected={selectedIds.has(op.id)}
-                onToggleSelect={() => handleToggleOne(op.id)}
-                onUpdate={(patch) => updateOperation(op.id, patch)}
+                selected={selectedIds.has(op.id) && !readOnly}
+                onToggleSelect={readOnly ? undefined : () => handleToggleOne(op.id)}
+                onUpdate={readOnly ? undefined : (patch) => updateOperation(op.id, patch)}
+                readOnly={readOnly}
               />
             ))}
           </TableBody>
@@ -424,9 +484,11 @@ function OperationRow({
   expenseArticles: { id: string; name: string }[];
   getDisplayDescription: (description: string) => string;
   selected: boolean;
-  onToggleSelect: () => void;
-  onUpdate: (patch: Partial<FinanceOperation>) => void;
+  onToggleSelect?: () => void;
+  onUpdate?: (patch: Partial<FinanceOperation>) => void;
+  readOnly?: boolean;
 }) {
+  const readOnly = !onUpdate;
   const isIncome = operation.amount > 0;
   const articles = isIncome ? incomeArticles : expenseArticles;
   const displayDesc = getDisplayDescription(operation.description);
@@ -437,9 +499,10 @@ function OperationRow({
       <TableCell padding="checkbox">
         <Checkbox
           checked={selected}
-          onChange={onToggleSelect}
+          onChange={readOnly ? undefined : onToggleSelect}
           size="small"
           onClick={(e) => e.stopPropagation()}
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell>{format(new Date(operation.date + 'T12:00:00'), 'dd.MM.yyyy', { locale: ru })}</TableCell>
@@ -456,8 +519,9 @@ function OperationRow({
         <Select
           size="small"
           value={operation.target in OPERATION_TARGET_LABELS ? operation.target : 'personal'}
-          onChange={(e) => onUpdate({ target: e.target.value as OperationTarget })}
+          onChange={readOnly ? undefined : (e) => onUpdate?.({ target: e.target.value as OperationTarget })}
           sx={{ minWidth: 160 }}
+          disabled={readOnly}
         >
           {(Object.keys(OPERATION_TARGET_LABELS) as OperationTarget[]).map((t) => (
             <MenuItem key={t} value={t}>
@@ -471,12 +535,13 @@ function OperationRow({
           <Select
             value={operation.articleId ?? ''}
             displayEmpty
-            onChange={(e) => onUpdate({ articleId: e.target.value || null })}
+            onChange={readOnly ? undefined : (e) => onUpdate?.({ articleId: e.target.value || null })}
             renderValue={(v) => {
               if (!v) return <em>Не выбрано</em>;
               const name = articles.find((a) => a.id === v)?.name ?? v;
               return name;
             }}
+            disabled={readOnly}
           >
             <MenuItem value="">
               <em>Не выбрано</em>

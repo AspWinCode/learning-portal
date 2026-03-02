@@ -45,6 +45,8 @@ import {
   BankTransaction,
   FinanceLedgerBankRow,
   FinanceLedgerTransactionRow,
+  FinanceAccountBalance,
+  FinancePnlRow,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -306,6 +308,62 @@ export const financeApi = {
   > => {
     const response = await api.get('/api/finance/articles', {
       params: { only_active: true, scope: params?.scope, direction: params?.direction },
+    });
+    return response.data;
+  },
+  createArticle: async (payload: {
+    name: string;
+    direction: 'income' | 'expense';
+    scope?: string;
+    cost_kind?: string;
+  }): Promise<{ id: number; name: string; direction: string; cost_kind: string; scope: string; is_active: boolean }> => {
+    const response = await api.post('/api/finance/articles', payload);
+    return response.data;
+  },
+  updateArticle: async (
+    articleId: number,
+    payload: {
+      name?: string;
+      direction?: 'income' | 'expense';
+      scope?: string;
+      cost_kind?: string;
+      is_active?: boolean;
+    }
+  ): Promise<{ id: number; name: string; direction: string; cost_kind: string; scope: string; is_active: boolean }> => {
+    const response = await api.patch(`/api/finance/articles/${articleId}`, payload);
+    return response.data;
+  },
+  deleteArticle: async (articleId: number): Promise<void> => {
+    await api.delete(`/api/finance/articles/${articleId}`);
+  },
+  createPersonalOperation: async (payload: {
+    date: string;
+    amount: number;
+    description: string;
+    target_code: 'academy' | 'personal' | 'gogol_mogol' | 'leninets';
+  }): Promise<FinanceLedgerTransactionRow> => {
+    const response = await api.post('/api/finance/personal-operation', payload);
+    return response.data;
+  },
+  getBalances: async (params?: { as_of?: string }): Promise<FinanceAccountBalance[]> => {
+    const response = await api.get('/api/finance/balances', {
+      params: { as_of: params?.as_of },
+    });
+    return response.data;
+  },
+  getPnl: async (params?: {
+    target_code?: string;
+    date_from?: string;
+    date_to?: string;
+    group_by?: 'month' | 'date';
+  }): Promise<FinancePnlRow[]> => {
+    const response = await api.get('/api/finance/pnl', {
+      params: {
+        target_code: params?.target_code,
+        date_from: params?.date_from,
+        date_to: params?.date_to,
+        group_by: params?.group_by,
+      },
     });
     return response.data;
   },

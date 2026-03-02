@@ -56,6 +56,11 @@ const SalesDebtsPage: React.FC = () => {
   const [ledgerByOperationId, setLedgerByOperationId] = useState<Record<string, FinanceLedgerBankRow>>({});
   const [financeTargets, setFinanceTargets] = useState<Array<{ id: number; code: string; name: string }>>([]);
   const [financeArticles, setFinanceArticles] = useState<Array<{ id: number; name: string; direction: string }>>([]);
+  const [financeAccounts, setFinanceAccounts] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [filterUnclassifiedOnly, setFilterUnclassifiedOnly] = useState(false);
+  const [filterTransfersWithoutTo, setFilterTransfersWithoutTo] = useState(false);
+  const [filterNewOnly, setFilterNewOnly] = useState(false);
+  const [selectedBankOperationIds, setSelectedBankOperationIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
@@ -109,13 +114,15 @@ const SalesDebtsPage: React.FC = () => {
         map[key] = row;
       });
       setLedgerByOperationId(map);
-      // Справочники для выбора «Куда» и «Статья»
-      const [targets, articles] = await Promise.all([
+      // Справочники для выбора «Куда», «Статья» и счетов
+      const [targets, articles, accounts] = await Promise.all([
         financeApi.listTargets(),
         financeApi.listArticles({}), // все активные статьи
+        financeApi.listAccounts(),
       ]);
       setFinanceTargets(targets.map((t) => ({ id: t.id, code: t.code, name: t.name })));
       setFinanceArticles(articles.map((a) => ({ id: a.id, name: a.name, direction: a.direction })));
+      setFinanceAccounts(accounts.map((a) => ({ id: a.id, code: a.code, name: a.name })));
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить операции банка'));
       setBankItems([]);
@@ -278,12 +285,94 @@ const SalesDebtsPage: React.FC = () => {
                 )}
               </Box>
             )}
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={filterUnclassifiedOnly}
+                    onChange={(e) => setFilterUnclassifiedOnly(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label="Не разобрано (нет target или статьи)"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={filterTransfersWithoutTo}
+                    onChange={(e) => setFilterTransfersWithoutTo(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label="Только переводы без счёта назначения"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={filterNewOnly}
+                    onChange={(e) => setFilterNewOnly(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label="Только новые"
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={selectedBankOperationIds.size !== 2}
+                onClick={async () => {
+                  const selected = bankItems.filter((tx) => selectedBankOperationIds.has(tx.operation_id));
+                  if (selected.length !== 2) {
+                    window.alert('Нужно выбрать ровно две операции для связывания как перевод.');
+                    return;
+                  }
+                  const [tx1, tx2] = selected;
+                  const l1 = ledgerByOperationId[tx1.operation_id];
+                  const l2 = ledgerByOperationId[tx2.operation_id];
+                  if (!l1 || !l2) {
+                    window.alert('Для выбранных операций нет данных журнала.');
+                    return;
+                  }
+                  if (Math.abs(l1.amount) !== Math.abs(l2.amount)) {
+                    window.alert('Суммы выбранных операций должны совпадать по модулю.');
+                    return;
+                  }
+                  const isFirstExpense = l1.amount < 0;
+                  const from = isFirstExpense ? l1 : l2;
+                  const to = isFirstExpense ? l2 : l1;
+                  try {
+                    const updatedFrom = await financeApi.updateTransaction(from.id, {
+                      direction: 'transfer',
+                      to_account_id: to.account_id ?? null,
+                    });
+                    const updatedTo = await financeApi.updateTransaction(to.id, {
+                      direction: 'transfer',
+                      to_account_id: from.account_id ?? null,
+                    });
+                    setLedgerByOperationId((prev) => ({
+                      ...prev,
+                      [tx1.operation_id]: tx1.operation_id === updatedFrom.bank_operation_id ? updatedFrom : updatedTo,
+                      [tx2.operation_id]: tx2.operation_id === updatedFrom.bank_operation_id ? updatedFrom : updatedTo,
+                    }));
+                    setSelectedBankOperationIds(new Set());
+                  } catch (err: any) {
+                    setError(extractApiError(err, 'Не удалось связать операции как перевод'));
+                  }
+                }}
+              >
+                Связать как перевод
+              </Button>
+            </Box>
             <Table size="small">
               <TableHead>
                 <TableRow>
+                  <TableCell padding="checkbox">
+                    {/* выбор только по строкам с ledger */}
+                  </TableCell>
                   <TableCell>Дата</TableCell>
                   <TableCell>Счёт</TableCell>
                   <TableCell>Тип</TableCell>
+                  <TableCell>Куда перевод</TableCell>
                   <TableCell>Сумма</TableCell>
                   <TableCell>ФИО плательщика / Контрагент</TableCell>
                   <TableCell>Телефон</TableCell>
@@ -301,6 +390,21 @@ const SalesDebtsPage: React.FC = () => {
                   const direction = ledger?.direction || (tx.status === 'expense' || tx.amount < 0 ? 'expense' : 'income');
                   const isExpense = direction === 'expense';
                   const expenseCategorized = isExpense && !!(tx.expense_category ?? '').trim();
+                  // Фильтры по ТЗ
+                  if (filterUnclassifiedOnly) {
+                    const unclassified = !ledger || !ledger.target_id || !ledger.article_id;
+                    if (!unclassified) return null;
+                  }
+                  if (filterTransfersWithoutTo) {
+                    const isTransferWithoutTo =
+                      !!ledger && ledger.direction === 'transfer' && (!ledger.to_account_id || ledger.to_account_id === null);
+                    if (!isTransferWithoutTo) return null;
+                  }
+                  if (filterNewOnly) {
+                    const isNew = !ledger || ledger.status === 'new';
+                    if (!isNew) return null;
+                  }
+                  const isSelected = !!ledger && selectedBankOperationIds.has(tx.operation_id);
                   return (
                     <TableRow
                       key={tx.id}
@@ -312,13 +416,110 @@ const SalesDebtsPage: React.FC = () => {
                         }),
                       }}
                     >
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          size="small"
+                          disabled={!ledger}
+                          checked={isSelected}
+                          onChange={() => {
+                            if (!ledger) return;
+                            setSelectedBankOperationIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(tx.operation_id)) next.delete(tx.operation_id);
+                              else next.add(tx.operation_id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </TableCell>
                       <TableCell>{tx.payment_date || '—'}</TableCell>
                       <TableCell>
                         {ledger?.account_name
                           ? `${ledger.account_name}${ledger.account_code ? ` (${ledger.account_code})` : ''}`
                           : '—'}
                       </TableCell>
-                      <TableCell>{direction === 'transfer' ? 'Перевод' : isExpense ? 'Расход' : 'Приход'}</TableCell>
+                      <TableCell>
+                        {ledger ? (
+                          <Select
+                            size="small"
+                            value={ledger.direction}
+                            sx={{ minWidth: 120 }}
+                            onChange={async (e) => {
+                              if (!ledger) return;
+                              const nextDirection = e.target.value as 'income' | 'expense' | 'transfer';
+                              try {
+                                const updated = await financeApi.updateTransaction(ledger.id, {
+                                  direction: nextDirection,
+                                  // если перестали быть переводом — сбрасываем счёт назначения
+                                  to_account_id: nextDirection === 'transfer' ? ledger.to_account_id ?? null : null,
+                                });
+                                setLedgerByOperationId((prev) => ({
+                                  ...prev,
+                                  [tx.operation_id]: updated,
+                                }));
+                              } catch (err: any) {
+                                setError(extractApiError(err, 'Не удалось сохранить тип операции'));
+                              }
+                            }}
+                            renderValue={(v) => {
+                              if (v === 'transfer') return 'Перевод';
+                              if (v === 'expense') return 'Расход';
+                              return 'Приход';
+                            }}
+                          >
+                            <MenuItem value="income">Приход</MenuItem>
+                            <MenuItem value="expense">Расход</MenuItem>
+                            <MenuItem value="transfer">Перевод</MenuItem>
+                          </Select>
+                        ) : direction === 'transfer' ? (
+                          'Перевод'
+                        ) : isExpense ? (
+                          'Расход'
+                        ) : (
+                          'Приход'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {ledger && ledger.direction === 'transfer' ? (
+                          <Select
+                            size="small"
+                            value={ledger.to_account_id ?? ''}
+                            displayEmpty
+                            sx={{ minWidth: 150 }}
+                            onChange={async (e) => {
+                              if (!ledger) return;
+                              const value = e.target.value as number | '';
+                              const to_account_id = value === '' ? null : Number(value);
+                              try {
+                                const updated = await financeApi.updateTransaction(ledger.id, { to_account_id });
+                                setLedgerByOperationId((prev) => ({
+                                  ...prev,
+                                  [tx.operation_id]: updated,
+                                }));
+                              } catch (err: any) {
+                                setError(extractApiError(err, 'Не удалось сохранить счёт назначения'));
+                              }
+                            }}
+                            renderValue={(v) => {
+                              if (!v) return <em>Не выбрано</em>;
+                              const acc = financeAccounts.find((a) => a.id === v);
+                              return acc ? `${acc.name}${acc.code ? ` (${acc.code})` : ''}` : v;
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>Не выбрано</em>
+                            </MenuItem>
+                            {financeAccounts.map((a) => (
+                              <MenuItem key={a.id} value={a.id}>
+                                {a.name}
+                                {a.code ? ` (${a.code})` : ''}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
                       <TableCell sx={{ color: isExpense ? 'error.main' : undefined }}>
                         {isExpense ? '−' : '+'} {Math.abs(tx.amount).toFixed(2)} ₽
                       </TableCell>

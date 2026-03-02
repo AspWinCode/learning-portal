@@ -456,6 +456,21 @@ class FinanceArticleResponse(BaseModel):
   is_active: bool
 
 
+class FinanceArticleCreate(BaseModel):
+  name: str
+  direction: str  # income | expense
+  scope: Optional[str] = "personal"  # academy | personal | any
+  cost_kind: Optional[str] = "none"  # variable | fixed | none
+
+
+class FinanceArticleUpdate(BaseModel):
+  name: Optional[str] = None
+  direction: Optional[str] = None
+  scope: Optional[str] = None
+  cost_kind: Optional[str] = None
+  is_active: Optional[bool] = None
+
+
 class FinanceTransactionUpdate(BaseModel):
     """Частичное обновление транзакции журнала (классификация/перенос)."""
 
@@ -500,6 +515,15 @@ class FinanceLedgerTransactionRow(BaseModel):
     article_name: Optional[str] = None
     counterparty_name: Optional[str] = None
     description_raw: Optional[str] = None
+
+
+class FinancePersonalOperationCreate(BaseModel):
+    """Создание ручной операции для личных финансов (запись в единый журнал)."""
+
+    date: date
+    amount: float
+    description: str
+    target_code: str = "personal"  # academy | personal | leninets | gogol_mogol
 
 
 # Пропуски (воронка для sales)

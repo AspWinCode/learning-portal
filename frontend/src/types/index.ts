@@ -470,6 +470,22 @@ export interface FinanceLedgerTransactionRow {
   description_raw?: string | null;
 }
 
+export interface FinanceAccountBalance {
+  account_id: number;
+  account_code: string;
+  account_name: string;
+  income_total: number;
+  expense_total: number;
+  balance: number;
+}
+
+export interface FinancePnlRow {
+  period: string;
+  income: number;
+  expense: number;
+  profit: number;
+}
+
 export interface SalesInstruction {
   id: number;
   title: string;

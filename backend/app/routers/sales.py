@@ -4828,46 +4828,49 @@ _KND_OVERLAY_CHECKBOXES = [
     (0, 89.6, 95, 175.8, "taxpayer_same_as_student"),
 ]
 
-# Поля посимвольно (каждый символ в своей ячейке). Шрифт 10 pt — крупнее для читаемости.
+# Поля посимвольно (каждый символ в своей ячейке). Шрифт 12 pt.
 _KND_OVERLAY_BOXED = [
-    (0, 69.5, 5.1, "org_inn", 10, 5.02, 12),
-    (0, 69.5, 12.9, "org_kpp", 10, 5.04, 9),
-    (0, 29.4, 46.0, "cert_number", 10, 12.06, 5),
-    (0, 134.4, 45.9, "correction_number", 10, 5.17, 3),
-    (0, 184.5, 45.9, "report_year", 10, 5.08, 4),
-    (0, 24.9, 141.8, "taxpayer_inn", 10, 8.72, 12),
-    (0, 39.3, 158.0, "doc_type_code", 10, 5.3, 2),
-    (0, 104.7, 158.0, "doc_series_number", 10, 7.16, 14),
-    (0, 94.7, 186.0, "amount", 10, 6.25, 12),
-    (0, 44.6, 247.7, "pages_count", 10, 7.6, 2),
-    (1, 64.5, 5.2, "org_inn", 10, 5.02, 12),
-    (1, 64.5, 12.9, "org_kpp", 10, 5.04, 9),
-    (1, 129.7, 64.2, "student_inn", 10, 3.41, 12),
-    (1, 39.6, 81.3, "student_doc_type_code", 10, 5.05, 2),
-    (1, 104.5, 81.3, "student_doc_series_number", 10, 7.16, 14),
+    (0, 69.5, 5.1, "org_inn", 12, 5.02, 12),
+    (0, 69.5, 12.9, "org_kpp", 12, 5.04, 9),
+    (0, 29.4, 46.0, "cert_number", 12, 12.06, 5),
+    (0, 134.4, 45.9, "correction_number", 12, 5.17, 3),
+    (0, 184.5, 45.9, "report_year", 12, 5.08, 4),
+    (0, 24.9, 141.8, "taxpayer_inn", 12, 8.72, 12),
+    (0, 39.3, 158.0, "doc_type_code", 12, 5.3, 2),
+    (0, 104.7, 158.0, "doc_series_number", 12, 7.16, 14),
+    (0, 94.7, 186.0, "amount", 12, 6.25, 12),
+    (0, 44.6, 247.7, "pages_count", 12, 7.6, 2),
+    (1, 64.5, 5.2, "org_inn", 12, 5.02, 12),
+    (1, 64.5, 12.9, "org_kpp", 12, 5.04, 9),
+    (1, 129.7, 64.2, "student_inn", 12, 3.41, 12),
+    (1, 39.6, 81.3, "student_doc_type_code", 12, 5.05, 2),
+    (1, 104.5, 81.3, "student_doc_series_number", 12, 7.16, 14),
 ]
 
-# Текстовые поля тоже посимвольно (буквы и пробелы в своих ячейках). Формат: (стр, x_mm, y_mm, ключ, шрифт, ширина_ячейки_мм, макс_симв).
+# Текстовые поля посимвольно. Шрифт 12 pt.
 _KND_OVERLAY_TEXT_PER_CELL = [
-    (0, 4.8, 61.5, "org_name", 10, 3.5, 80),
-    (0, 24.9, 114.8, "taxpayer_lastname", 10, 4.0, 35),
-    (0, 24.9, 123.8, "taxpayer_firstname", 10, 4.0, 30),
-    (0, 24.9, 132.8, "taxpayer_patronymic", 10, 4.0, 40),
-    (0, 4.9, 207.1, "confirm_fio", 10, 3.5, 55),
-    (1, 24.9, 37.1, "student_lastname", 10, 4.0, 35),
-    (1, 24.9, 46.2, "student_firstname", 10, 4.0, 30),
-    (1, 24.9, 55.2, "student_patronymic", 10, 4.0, 40),
+    (0, 4.8, 61.5, "org_name", 12, 3.5, 80),
+    (0, 24.9, 114.8, "taxpayer_lastname", 12, 4.0, 35),
+    (0, 24.9, 123.8, "taxpayer_firstname", 12, 4.0, 30),
+    (0, 24.9, 132.8, "taxpayer_patronymic", 12, 4.0, 40),
+    (0, 4.9, 207.1, "confirm_fio", 12, 3.5, 55),
+    (1, 24.9, 37.1, "student_lastname", 12, 4.0, 35),
+    (1, 24.9, 46.2, "student_firstname", 12, 4.0, 30),
+    (1, 24.9, 55.2, "student_patronymic", 12, 4.0, 40),
 ]
 
-# Даты ДД.ММ.ГГГГ по ячейкам. Шрифт 10 pt.
+# Даты ДД.ММ.ГГГГ по ячейкам. Шрифт 12 pt.
 _KND_OVERLAY_DATES_PER_CELL = [
-    (0, 129.5, 141.8, 5.1, "taxpayer_dob", 10),
-    (0, 39.8, 166.7, 5.1, "doc_issue_date", 10),
-    (0, 56.6, 237.4, 5.1, "confirm_date", 10),
-    (1, 39.7, 90.3, 5.1, "student_dob", 10),
-    (1, 39.7, 90.3, 5.1, "student_doc_issue_date", 10),
-    (1, 119.6, 286.3, 5.1, "confirm_date", 10),
+    (0, 129.5, 141.8, 5.1, "taxpayer_dob", 12),
+    (0, 39.8, 166.7, 5.1, "doc_issue_date", 12),
+    (0, 56.6, 237.4, 5.1, "confirm_date", 12),
+    (1, 39.7, 90.3, 5.1, "student_dob", 12),
+    (1, 39.7, 90.3, 5.1, "student_doc_issue_date", 12),
+    (1, 119.6, 286.3, 5.1, "confirm_date", 12),
 ]
+
+# Смещение по вертикали (мм): опускаем символы в ячейках, чтобы не прилипали к верхней линии.
+_KND_Y_OFFSET_MM = 2.5
 
 # Шрифт с кириллицей (без него русский текст отображается чёрными квадратами)
 _PDF_FONT_NAME = "Helvetica"
@@ -4918,7 +4921,7 @@ def _draw_date_cells(c, x: float, y: float, d: str, cell_w: float = 7 * mm):
 
 
 def _draw_date_per_cell(c, x_pt: float, y_pt: float, date_str: str, cell_w_pt: float, font_name: str, font_size: int) -> None:
-    """Рисует дату ДД.ММ.ГГГГ по одному символу в ячейку (10 ячеек), как на бланке."""
+    """Рисует дату ДД.ММ.ГГГГ по одному символу в ячейку (10 ячеек), по центру ячейки."""
     parts = (date_str or "").replace("-", ".").split(".") if date_str else []
     day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
     month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
@@ -4926,17 +4929,25 @@ def _draw_date_per_cell(c, x_pt: float, y_pt: float, date_str: str, cell_w_pt: f
     s = f"{day}.{month}.{year}"
     c.setFont(font_name, font_size)
     for i, ch in enumerate(s[:10]):
-        c.drawString(x_pt + i * cell_w_pt, y_pt, ch)
+        try:
+            w = c.stringWidth(ch, font_name, font_size)
+            c.drawString(x_pt + i * cell_w_pt + (cell_w_pt - w) / 2.0, y_pt, ch)
+        except Exception:
+            c.drawString(x_pt + i * cell_w_pt, y_pt, ch)
 
 
 def _draw_string_per_cell(c, x_pt: float, y_pt: float, value: str, cell_w_pt: float, max_chars: int, font_name: str, font_size: int) -> None:
-    """Рисует строку посимвольно: каждый символ в своей ячейке (цифры/буквы по полям бланка). Пробел = пустая ячейка."""
+    """Рисует строку посимвольно: каждый символ в своей ячейке, по центру ячейки по горизонтали. Пробел = пустая ячейка."""
     s = (value or "").strip()[:max_chars]
     c.setFont(font_name, font_size)
     pos = 0.0
     for ch in s:
         if ch != " ":
-            c.drawString(x_pt + pos, y_pt, ch)
+            try:
+                w = c.stringWidth(ch, font_name, font_size)
+                c.drawString(x_pt + pos + (cell_w_pt - w) / 2.0, y_pt, ch)
+            except Exception:
+                c.drawString(x_pt + pos, y_pt, ch)
         pos += cell_w_pt
 
 
@@ -4962,7 +4973,9 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
         return x_mm * (page_w_pt / 210.0)
     def y_pt(y_mm_from_top: float) -> float:
         return page_h_pt - y_mm_from_top * (page_h_pt / 297.0)
-    cell_pt = (page_w_pt / 210.0) * 8
+    # Опускаем символы в ячейках (базовая линия ниже), чтобы не прилипали к верхней линии
+    def y_pt_adj(y_mm: float) -> float:
+        return y_pt(y_mm + _KND_Y_OFFSET_MM)
 
     pt_per_mm = page_w_pt / 210.0
     for i, page in enumerate(reader.pages):
@@ -4970,7 +4983,7 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
         h = float(page.mediabox.height)
         buf = BytesIO()
         c = canvas.Canvas(buf, pagesize=(w, h))
-        c.setFont(_PDF_FONT_NAME, 9)
+        c.setFont(_PDF_FONT_NAME, 12)
         # Цифровые/кодовые поля: по одному символу в ячейку
         for (p, x_mm, y_mm, key, size, cell_mm, max_ch) in _KND_OVERLAY_BOXED:
             if p != i:
@@ -4983,7 +4996,7 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
                     val = str(val)
             val = (val or "").replace(" ", "")[:max_ch] if key != "doc_series_number" and key != "student_doc_series_number" else (val or "")[:max_ch]
             cell_pt = cell_mm * pt_per_mm
-            _draw_string_per_cell(c, x_pt(x_mm), y_pt(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
+            _draw_string_per_cell(c, x_pt(x_mm), y_pt_adj(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
         # Текстовые поля: по одному символу (буква/пробел) в ячейку
         for (p, x_mm, y_mm, key, size, cell_mm, max_ch) in _KND_OVERLAY_TEXT_PER_CELL:
             if p != i:
@@ -4993,7 +5006,7 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
                 val = str(val)
             val = (val or "")[:max_ch]
             cell_pt = cell_mm * pt_per_mm
-            _draw_string_per_cell(c, x_pt(x_mm), y_pt(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
+            _draw_string_per_cell(c, x_pt(x_mm), y_pt_adj(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
         # Даты: ДД.ММ.ГГГГ по одному символу в ячейку
         for (p, x_mm, y_mm, cell_mm, key, size) in _KND_OVERLAY_DATES_PER_CELL:
             if p != i:
@@ -5002,16 +5015,16 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
             if not d:
                 d = date.today().isoformat()
             cell_pt = cell_mm * pt_per_mm
-            _draw_date_per_cell(c, x_pt(x_mm), y_pt(y_mm), d, cell_pt, _PDF_FONT_NAME, size)
+            _draw_date_per_cell(c, x_pt(x_mm), y_pt_adj(y_mm), d, cell_pt, _PDF_FONT_NAME, size)
         for (p, x_no, x_yes, y_mm, key) in _KND_OVERLAY_CHECKBOXES:
             if p != i:
                 continue
             v = data.get(key)
-            c.setFont(_PDF_FONT_NAME, 10)
+            c.setFont(_PDF_FONT_NAME, 12)
             if v is True or v == "1":
-                c.drawString(x_pt(x_yes), y_pt(y_mm), "X")
+                c.drawString(x_pt(x_yes), y_pt_adj(y_mm), "X")
             elif v is False or v == "0":
-                c.drawString(x_pt(x_no), y_pt(y_mm), "X")
+                c.drawString(x_pt(x_no), y_pt_adj(y_mm), "X")
         c.save()
         buf.seek(0)
         overlay = PdfReader(buf)

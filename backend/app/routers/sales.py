@@ -4821,55 +4821,52 @@ def _knd_template_path() -> str:
     _base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     return os.path.join(_base, "templates", "knd_1151158.pdf")
 
-# Координаты полей для наложения на шаблон: (страница 0/1, x_mm, y_mm от верха, ключ в data, размер шрифта).
-# y_mm = расстояние от ВЕРХА страницы. Подгоните под ваш бланк (шаг 1–2 мм).
-_KND_OVERLAY_FIELDS = [
-    # Страница 1 — шапка
-    (0, 142, 14, "org_inn", 8),
-    (0, 168, 14, "org_kpp", 8),
-    # Номер справки, корректировка, год — одна строка
-    (0, 48, 52, "cert_number", 9),
-    (0, 118, 52, "correction_number", 9),
-    (0, 168, 52, "report_year", 9),
-    # Организация
-    (0, 20, 68, "org_name", 9),
-    # Налогоплательщик: фамилия | имя
-    (0, 25, 98, "taxpayer_lastname", 9),
-    (0, 95, 98, "taxpayer_firstname", 9),
-    # отчество | ИНН
-    (0, 25, 104, "taxpayer_patronymic", 9),
-    (0, 95, 104, "taxpayer_inn", 9),
-    # Документ: код | серия и номер
-    (0, 42, 120, "doc_type_code", 9),
-    (0, 95, 120, "doc_series_number", 9),
-    # Сумма
-    (0, 92, 138, "amount", 9),
-    # Подтверждение
-    (0, 20, 192, "confirm_fio", 9),
-    (0, 52, 212, "pages_count", 8),
-    # Страница 2 — шапка и обучаемый
-    (1, 142, 14, "org_inn", 8),
-    (1, 168, 14, "org_kpp", 8),
-    (1, 25, 50, "student_lastname", 9),
-    (1, 95, 50, "student_firstname", 9),
-    (1, 25, 56, "student_patronymic", 9),
-    (1, 95, 56, "student_inn", 9),
-    (1, 42, 70, "student_doc_type_code", 9),
-    (1, 95, 70, "student_doc_series_number", 9),
-]
-# Даты: ДД ММ ГГГГ в три ячейки. (страница, x_дд_mm, y_mm, шаг_между_ячейками_mm, ключ, размер). Год выводим 2 цифры (ГГ), чтобы влезало в ячейку.
-_KND_OVERLAY_DATES = [
-    (0, 38, 110, 8, "taxpayer_dob", 8),
-    (0, 30, 126, 8, "doc_issue_date", 8),
-    (0, 14, 200, 8, "confirm_date", 8),
-    (1, 38, 62, 8, "student_dob", 8),
-    (1, 30, 76, 8, "student_doc_issue_date", 8),
-    (1, 92, 96, 8, "confirm_date", 8),
-]
 # Чекбоксы: (страница, x_мм для "0-нет", x_мм для "1-да", y_mm, ключ)
 _KND_OVERLAY_CHECKBOXES = [
     (0, 100, 112, 84, "fulltime_study"),
     (0, 100, 112, 132, "taxpayer_same_as_student"),
+]
+
+# Поля с посимвольным заполнением (каждый символ в своей ячейке): (страница, x_mm, y_mm, ключ, размер шрифта, ширина_ячейки_мм, макс_символов).
+# Для amount значение форматируется как XXXXX.XX.
+_KND_OVERLAY_BOXED = [
+    (0, 142, 14, "org_inn", 8, 3.2, 12),
+    (0, 168, 14, "org_kpp", 8, 3.2, 9),
+    (0, 48, 52, "cert_number", 9, 4.0, 5),
+    (0, 118, 52, "correction_number", 9, 4.0, 3),
+    (0, 168, 52, "report_year", 9, 4.0, 4),
+    (0, 95, 104, "taxpayer_inn", 9, 3.2, 12),
+    (0, 42, 120, "doc_type_code", 9, 4.0, 2),
+    (0, 95, 120, "doc_series_number", 9, 3.2, 14),
+    (0, 92, 138, "amount", 9, 3.5, 12),
+    (0, 52, 212, "pages_count", 8, 4.0, 2),
+    (1, 142, 14, "org_inn", 8, 3.2, 12),
+    (1, 168, 14, "org_kpp", 8, 3.2, 9),
+    (1, 95, 56, "student_inn", 9, 3.2, 12),
+    (1, 42, 70, "student_doc_type_code", 9, 4.0, 2),
+    (1, 95, 70, "student_doc_series_number", 9, 3.2, 14),
+]
+
+# Текстовые поля (одна строка, выравнивание по левому краю): (страница, x_mm, y_mm, ключ, размер шрифта).
+_KND_OVERLAY_TEXT = [
+    (0, 20, 68, "org_name", 9),
+    (0, 25, 98, "taxpayer_lastname", 9),
+    (0, 95, 98, "taxpayer_firstname", 9),
+    (0, 25, 104, "taxpayer_patronymic", 9),
+    (0, 20, 192, "confirm_fio", 9),
+    (1, 25, 50, "student_lastname", 9),
+    (1, 95, 50, "student_firstname", 9),
+    (1, 25, 56, "student_patronymic", 9),
+]
+
+# Даты посимвольно ДД.ММ.ГГГГ: (страница, x_mm, y_mm, шаг_ячейки_мм, ключ, размер).
+_KND_OVERLAY_DATES_PER_CELL = [
+    (0, 38, 110, 3.8, "taxpayer_dob", 8),
+    (0, 30, 126, 3.8, "doc_issue_date", 8),
+    (0, 14, 200, 3.8, "confirm_date", 8),
+    (1, 38, 62, 3.8, "student_dob", 8),
+    (1, 30, 76, 3.8, "student_doc_issue_date", 8),
+    (1, 92, 96, 3.8, "confirm_date", 8),
 ]
 
 # Шрифт с кириллицей (без него русский текст отображается чёрными квадратами)
@@ -4910,7 +4907,7 @@ def _register_cyrillic_font() -> None:
 
 
 def _draw_date_cells(c, x: float, y: float, d: str, cell_w: float = 7 * mm):
-    """Печатает дату в ячейках ДД.ММ.ГГГГ."""
+    """Печатает дату в ячейках ДД.ММ.ГГГГ (три группы: ДД, ММ, ГГГГ)."""
     parts = (d or "").replace("-", ".").split(".") if d else []
     day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
     month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
@@ -4918,6 +4915,40 @@ def _draw_date_cells(c, x: float, y: float, d: str, cell_w: float = 7 * mm):
     c.drawString(x, y, day)
     c.drawString(x + cell_w + 1, y, month)
     c.drawString(x + (cell_w + 1) * 2, y, year)
+
+
+def _draw_date_per_cell(c, x_pt: float, y_pt: float, date_str: str, cell_w_pt: float, font_name: str, font_size: int) -> None:
+    """Рисует дату ДД.ММ.ГГГГ по одному символу в ячейку (10 ячеек), как на бланке."""
+    parts = (date_str or "").replace("-", ".").split(".") if date_str else []
+    day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
+    month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
+    year = (parts[2] if len(parts) > 2 else "")[:4]
+    s = f"{day}.{month}.{year}"
+    c.setFont(font_name, font_size)
+    for i, ch in enumerate(s[:10]):
+        c.drawString(x_pt + i * cell_w_pt, y_pt, ch)
+
+
+def _draw_string_per_cell(c, x_pt: float, y_pt: float, value: str, cell_w_pt: float, max_chars: int, font_name: str, font_size: int) -> None:
+    """Рисует строку посимвольно: каждый символ в своей ячейке (цифры/буквы по полям бланка). Пробел = пустая ячейка."""
+    s = (value or "").strip()[:max_chars]
+    c.setFont(font_name, font_size)
+    pos = 0.0
+    for ch in s:
+        if ch != " ":
+            c.drawString(x_pt + pos, y_pt, ch)
+        pos += cell_w_pt
+
+
+def _format_amount_for_cells(amount_val) -> str:
+    """Форматирует сумму для посимвольного вывода: XXXXX.XX (рубли.копейки)."""
+    if amount_val is None or amount_val == "":
+        return "0.00"
+    try:
+        n = float(str(amount_val).replace(",", ".").replace(" ", ""))
+        return f"{n:.2f}"
+    except (ValueError, TypeError):
+        return "0.00"
 
 
 def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> bytes:
@@ -4933,38 +4964,45 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
         return page_h_pt - y_mm_from_top * (page_h_pt / 297.0)
     cell_pt = (page_w_pt / 210.0) * 8
 
+    pt_per_mm = page_w_pt / 210.0
     for i, page in enumerate(reader.pages):
         w = float(page.mediabox.width)
         h = float(page.mediabox.height)
         buf = BytesIO()
         c = canvas.Canvas(buf, pagesize=(w, h))
         c.setFont(_PDF_FONT_NAME, 9)
-        for (p, x_mm, y_mm, key, size) in _KND_OVERLAY_FIELDS:
+        # Цифровые/кодовые поля: по одному символу в ячейку
+        for (p, x_mm, y_mm, key, size, cell_mm, max_ch) in _KND_OVERLAY_BOXED:
+            if p != i:
+                continue
+            if key == "amount":
+                val = _format_amount_for_cells(data.get(key))
+            else:
+                val = (data.get(key) or "")
+                if isinstance(val, (bool, int)):
+                    val = str(val)
+            val = (val or "").replace(" ", "")[:max_ch] if key != "doc_series_number" and key != "student_doc_series_number" else (val or "")[:max_ch]
+            cell_pt = cell_mm * pt_per_mm
+            _draw_string_per_cell(c, x_pt(x_mm), y_pt(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
+        # Текстовые поля: одна строка, по левому краю
+        for (p, x_mm, y_mm, key, size) in _KND_OVERLAY_TEXT:
             if p != i:
                 continue
             val = (data.get(key) or "")
             if isinstance(val, (bool, int)):
                 val = str(val)
-            val = (val or "")[:50]
+            val = (val or "")[:80]
             c.setFont(_PDF_FONT_NAME, size)
             c.drawString(x_pt(x_mm), y_pt(y_mm), val)
-        for item in _KND_OVERLAY_DATES:
-            p, x_mm, y_mm, step_mm, key, size = item[0], item[1], item[2], item[3], item[4], item[5]
+        # Даты: ДД.ММ.ГГГГ по одному символу в ячейку
+        for (p, x_mm, y_mm, cell_mm, key, size) in _KND_OVERLAY_DATES_PER_CELL:
             if p != i:
                 continue
             d = data.get(key) or ""
             if not d:
                 d = date.today().isoformat()
-            parts = (d or "").replace("-", ".").split(".") if d else []
-            day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
-            month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
-            year_full = (parts[2] if len(parts) > 2 else "")[:4]
-            year_2 = year_full[-2:] if len(year_full) >= 2 else year_full  # ГГ для маленьких ячеек
-            step_pt = (page_w_pt / 210.0) * step_mm
-            c.setFont(_PDF_FONT_NAME, size)
-            c.drawString(x_pt(x_mm), y_pt(y_mm), day)
-            c.drawString(x_pt(x_mm) + step_pt, y_pt(y_mm), month)
-            c.drawString(x_pt(x_mm) + step_pt * 2, y_pt(y_mm), year_2)
+            cell_pt = cell_mm * pt_per_mm
+            _draw_date_per_cell(c, x_pt(x_mm), y_pt(y_mm), d, cell_pt, _PDF_FONT_NAME, size)
         for (p, x_no, x_yes, y_mm, key) in _KND_OVERLAY_CHECKBOXES:
             if p != i:
                 continue

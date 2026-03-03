@@ -120,6 +120,10 @@ const StudentsPage: React.FC = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [accountsError, setAccountsError] = useState('');
+  const [transactionsDialogAccount, setTransactionsDialogAccount] = useState<StudentAccount | null>(null);
+  const [transactions, setTransactions] = useState<StudentAccountTransaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionsError, setTransactionsError] = useState('');
   const [studentDetailId, setStudentDetailId] = useState<number | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -411,6 +415,46 @@ const StudentsPage: React.FC = () => {
       setAccountsError(err.response?.data?.detail || 'Не удалось удалить счёт');
     } finally {
       setAccountsLoading(false);
+    }
+  };
+
+  const openAccountTransactions = async (acc: StudentAccount) => {
+    setTransactionsDialogAccount(acc);
+    setTransactionsError('');
+    setTransactionsLoading(true);
+    try {
+      const list = await studentAccountsApi.getTransactions(acc.id);
+      setTransactions(list);
+    } catch (err: any) {
+      setTransactions([]);
+      setTransactionsError(err.response?.data?.detail || 'Не удалось загрузить операции по счету');
+    } finally {
+      setTransactionsLoading(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (tx: StudentAccountTransaction) => {
+    if (!transactionsDialogAccount) return;
+    if (
+      !window.confirm(
+        'Удалить операцию по счёту ученика? Баланс будет пересчитан, операция может повлиять на даты оплат.'
+      )
+    ) {
+      return;
+    }
+    setTransactionsLoading(true);
+    setTransactionsError('');
+    try {
+      const updated = await studentAccountsApi.deleteTransaction(transactionsDialogAccount.id, tx.id);
+      setTransactions(updated.transactions || []);
+      setAccounts((prev) =>
+        prev.map((a) => (a.id === updated.id ? { ...a, balance: updated.balance } : a))
+      );
+      setTransactionsDialogAccount(updated);
+    } catch (err: any) {
+      setTransactionsError(err.response?.data?.detail || 'Не удалось удалить операцию по счёту');
+    } finally {
+      setTransactionsLoading(false);
     }
   };
 
@@ -2225,11 +2269,47 @@ const StudentsPage: React.FC = () => {
                         <TableCell>{acc.name}</TableCell>
                         <TableCell align="right">{acc.balance.toFixed(2)}</TableCell>
                         <TableCell align="right">
-                          <Button size="small" onClick={() => { setPaymentDialog({ account: acc, type: 'payment' }); setPaymentAmount(''); setPaymentNote(''); }}>Пополнить</Button>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setPaymentDialog({ account: acc, type: 'payment' });
+                              setPaymentAmount('');
+                              setPaymentNote('');
+                            }}
+                          >
+                            Пополнить
+                          </Button>
                           {(isAdminLike || user?.role === 'sales') && (
                             <>
-                              <Button size="small" color="secondary" onClick={() => { setPaymentDialog({ account: acc, type: 'deduct' }); setPaymentAmount(''); setPaymentNote(''); }} disabled={acc.balance <= 0} sx={{ ml: 0.5 }}>Списать</Button>
-                              <Button size="small" color="error" onClick={() => handleDeleteAccount(acc)} disabled={accountsLoading} sx={{ ml: 0.5 }}>Удалить</Button>
+                              <Button
+                                size="small"
+                                color="secondary"
+                                onClick={() => {
+                                  setPaymentDialog({ account: acc, type: 'deduct' });
+                                  setPaymentAmount('');
+                                  setPaymentNote('');
+                                }}
+                                disabled={acc.balance <= 0}
+                                sx={{ ml: 0.5 }}
+                              >
+                                Списать
+                              </Button>
+                              <Button
+                                size="small"
+                                onClick={() => openAccountTransactions(acc)}
+                                sx={{ ml: 0.5 }}
+                              >
+                                Операции
+                              </Button>
+                              <Button
+                                size="small"
+                                color="error"
+                                onClick={() => handleDeleteAccount(acc)}
+                                disabled={accountsLoading}
+                                sx={{ ml: 0.5 }}
+                              >
+                                Удалить
+                              </Button>
                             </>
                           )}
                         </TableCell>
@@ -2243,6 +2323,88 @@ const StudentsPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAccountsDialogOpen(false)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={!!transactionsDialogAccount}
+        onClose={() => {
+          setTransactionsDialogAccount(null);
+          setTransactions([]);
+          setTransactionsError('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Операции по счёту: {transactionsDialogAccount?.name}
+        </DialogTitle>
+        <DialogContent>
+          {transactionsError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setTransactionsError('')}>
+              {transactionsError}
+            </Alert>
+          )}
+          {transactionsLoading && transactions.length === 0 ? (
+            <Typography color="textSecondary">Загрузка...</Typography>
+          ) : transactions.length === 0 ? (
+            <Typography color="textSecondary">По этому счёту ещё нет операций.</Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Дата</TableCell>
+                  <TableCell align="right">Сумма (₽)</TableCell>
+                  <TableCell>Тип</TableCell>
+                  <TableCell>Комментарий</TableCell>
+                  {(isAdminLike || user?.role === 'sales') && (
+                    <TableCell align="right">Действия</TableCell>
+                  )}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {transactions.map((tx) => (
+                  <TableRow key={tx.id}>
+                    <TableCell>{new Date(tx.created_at).toLocaleString('ru-RU')}</TableCell>
+                    <TableCell align="right">{tx.amount.toFixed(2)}</TableCell>
+                    <TableCell>
+                      {tx.kind === 'payment'
+                        ? 'Пополнение'
+                        : tx.kind === 'lesson_deduction'
+                        ? 'Списание за занятие'
+                        : 'Списание (доп. занятие)'}
+                    </TableCell>
+                    <TableCell>{tx.note || '—'}</TableCell>
+                    {(isAdminLike || user?.role === 'sales') && (
+                      <TableCell align="right">
+                        {tx.kind === 'payment' && (
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteTransaction(tx)}
+                            disabled={transactionsLoading}
+                          >
+                            Удалить
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setTransactionsDialogAccount(null);
+              setTransactions([]);
+              setTransactionsError('');
+            }}
+          >
+            Закрыть
+          </Button>
         </DialogActions>
       </Dialog>
 

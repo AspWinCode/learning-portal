@@ -249,6 +249,10 @@ export const studentAccountsApi = {
     const response = await api.get(`/api/student-accounts/${accountId}/transactions`);
     return response.data;
   },
+  deleteTransaction: async (accountId: number, transactionId: number): Promise<StudentAccount> => {
+    const response = await api.delete(`/api/student-accounts/${accountId}/transactions/${transactionId}`);
+    return response.data;
+  },
   remove: async (accountId: number): Promise<void> => {
     await api.delete(`/api/student-accounts/${accountId}`);
   },

@@ -158,6 +158,57 @@ async def list_account_transactions(
     return account.transactions
 
 
+@router.delete("/{account_id}/transactions/{transaction_id}", response_model=StudentAccountResponse)
+async def delete_account_transaction(
+    account_id: int,
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """
+    Удалить операцию по счёту ученика.
+
+    Доступно только для admin / owner / sales.
+    Баланс счёта пересчитывается путём вычитания суммы операции.
+    Для пополнений дополнительно пересчитываются даты оплат по карте ученика.
+    """
+    account = _get_account_and_check(db, account_id, current_user)
+    tx = (
+        db.query(StudentAccountTransaction)
+        .filter(
+            StudentAccountTransaction.id == transaction_id,
+            StudentAccountTransaction.account_id == account_id,
+        )
+        .first()
+    )
+    if not tx:
+        raise HTTPException(status_code=404, detail="Операция не найдена")
+
+    # Пересчитываем баланс: вычитаем сумму операции (для пополнения уменьшит баланс, для списания увеличит)
+    account.balance -= float(tx.amount or 0.0)
+
+    kind = tx.kind
+    db.delete(tx)
+
+    # Для пополнений пересчитываем даты оплаты по карте ученика
+    if kind == StudentAccountTransactionKind.PAYMENT:
+        from app.services.student_card_period import update_card_payment_dates
+
+        update_card_payment_dates(db, account.student_id, date.today())
+
+    db.commit()
+    db.refresh(account)
+    log_action(
+        db,
+        current_user.id,
+        "student_account_transaction_delete",
+        "student_account",
+        account_id,
+        {"transaction_id": transaction_id, "kind": kind.value},
+    )
+    return account
+
+
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_student_account(
     account_id: int,

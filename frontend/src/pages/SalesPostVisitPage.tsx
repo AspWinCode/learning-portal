@@ -12,7 +12,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { format } from 'date-fns';
+import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
@@ -193,6 +193,16 @@ const SalesPostVisitPage: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">
                     {leadPhone(lead)}
                   </Typography>
+                  {stage.id === 'project_agreed' && lead.post_visit_project_date && (
+                    <Typography variant="body2" color="text.secondary">
+                      {(() => {
+                        const d = parseISO(lead.post_visit_project_date as string);
+                        return isValid(d)
+                          ? `Дата проекта: ${format(d, 'dd.MM.yyyy HH:mm')}`
+                          : `Дата проекта: ${lead.post_visit_project_date}`;
+                      })()}
+                    </Typography>
+                  )}
                   <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
                     {stageOrder
                       .filter((s) => s.id !== stage.id)

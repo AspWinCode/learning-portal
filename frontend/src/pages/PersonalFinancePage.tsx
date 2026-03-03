@@ -94,6 +94,36 @@ const PersonalFinancePageContent: React.FC = () => {
     [ledgerArticles]
   );
 
+  const handleDeleteLedgerTransactions = async (transactionIds: number[]) => {
+    if (!transactionIds.length) return;
+    if (
+      !window.confirm(
+        `Удалить выбранные операции из единого финансового журнала (${transactionIds.length})? Это действие нельзя отменить.`
+      )
+    ) {
+      return;
+    }
+    setLedgerLoading(true);
+    setLedgerError(null);
+    try {
+      await Promise.all(transactionIds.map((id) => financeApi.deleteTransaction(id)));
+      const [txs, arts] = await Promise.all([
+        financeApi.listLedgerTransactions({ limit: 10000 }),
+        financeApi.listArticles({ scope: 'personal' }),
+      ]);
+      setLedgerTransactions(txs);
+      setLedgerArticles(arts);
+    } catch (err: any) {
+      setLedgerError(
+        err?.response?.data?.detail ||
+          err?.message ||
+          'Не удалось удалить операции из единого финансового журнала'
+      );
+    } finally {
+      setLedgerLoading(false);
+    }
+  };
+
   const handleTabChange = (_: React.SyntheticEvent, value: string) => {
     setSearchParams(value === TAB_DASHBOARD ? {} : { tab: value });
   };
@@ -194,6 +224,7 @@ const PersonalFinancePageContent: React.FC = () => {
           ledgerOperations={ledgerOperations}
           ledgerIncomeArticles={ledgerIncomeArticles}
           ledgerExpenseArticles={ledgerExpenseArticles}
+          onDeleteLedgerOperations={handleDeleteLedgerTransactions}
         />
       )}
       {effectiveTab === TAB_ARTICLES && <FinanceArticlesTab useLedgerSource={useLedgerSource} />}

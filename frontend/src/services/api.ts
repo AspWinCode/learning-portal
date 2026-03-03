@@ -1214,6 +1214,9 @@ export const salesApi = {
     );
     return response.data;
   },
+  deleteBankTransaction: async (transactionId: number): Promise<void> => {
+    await api.delete(`/api/sales/bank-transactions/${transactionId}`);
+  },
   getTochkaStatus: async (): Promise<{ configured: boolean; auto_import_configured?: boolean }> => {
     const response = await api.get('/api/sales/tochka/status');
     return response.data;

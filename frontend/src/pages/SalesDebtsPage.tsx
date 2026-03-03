@@ -667,20 +667,84 @@ const SalesDebtsPage: React.FC = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        {!isExpense && tx.status !== 'applied' && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => {
-                              setSelectedTx(tx);
-                              setSelectedStudent(null);
-                              setStudentQuery('');
-                              setApplyDialogOpen(true);
-                            }}
-                          >
-                            Зачислить
-                          </Button>
-                        )}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                          {ledger && (
+                            <Button
+                              size="small"
+                              color="error"
+                              variant="outlined"
+                              onClick={async () => {
+                                if (
+                                  !window.confirm(
+                                    'Удалить запись из единого финансового журнала для этой операции? Это действие нельзя отменить.'
+                                  )
+                                ) {
+                                  return;
+                                }
+                                try {
+                                  await financeApi.deleteTransaction(ledger.id);
+                                  setLedgerByOperationId((prev) => {
+                                    const next = { ...prev };
+                                    delete next[tx.operation_id];
+                                    return next;
+                                  });
+                                } catch (err: any) {
+                                  setError(extractApiError(err, 'Не удалось удалить запись журнала'));
+                                }
+                              }}
+                            >
+                              Удалить в журнале
+                            </Button>
+                          )}
+                          {!isExpense && tx.status !== 'applied' && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                setSelectedTx(tx);
+                                setSelectedStudent(null);
+                                setStudentQuery('');
+                                setApplyDialogOpen(true);
+                              }}
+                            >
+                              Зачислить
+                            </Button>
+                          )}
+                          {tx.status !== 'applied' && (
+                            <Button
+                              size="small"
+                              color="error"
+                              variant="outlined"
+                              onClick={async () => {
+                                if (
+                                  !window.confirm(
+                                    'Удалить банковскую операцию из очереди? Это действие нельзя отменить.'
+                                  )
+                                ) {
+                                  return;
+                                }
+                                try {
+                                  await salesApi.deleteBankTransaction(tx.id);
+                                  setBankItems((prev) => prev.filter((b) => b.id !== tx.id));
+                                  setLedgerByOperationId((prev) => {
+                                    const next = { ...prev };
+                                    delete next[tx.operation_id];
+                                    return next;
+                                  });
+                                  setSelectedBankOperationIds((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete(tx.operation_id);
+                                    return next;
+                                  });
+                                } catch (err: any) {
+                                  setError(extractApiError(err, 'Не удалось удалить банковскую операцию'));
+                                }
+                              }}
+                            >
+                              Удалить в банке
+                            </Button>
+                          )}
+                        </Box>
                       </TableCell>
                     </TableRow>
                   );

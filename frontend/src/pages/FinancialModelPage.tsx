@@ -781,6 +781,30 @@ const FinancialModelPage: React.FC = () => {
               >
                 Сбросить к шаблону
               </Button>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      'Очистить финансовую модель? Будут удалены все статьи, выручка, затраты, группы и ученики, сохранённые в этом браузере.'
+                    )
+                  ) {
+                    return;
+                  }
+                  setData({
+                    ...defaultData,
+                    categories: [],
+                    students: [],
+                    groups: [],
+                    teachers: [],
+                    revenue: [],
+                    costs: [],
+                  });
+                }}
+              >
+                Очистить модель
+              </Button>
             </Stack>
           </Stack>
         </Paper>

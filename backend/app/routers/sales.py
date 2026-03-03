@@ -1048,6 +1048,29 @@ async def update_bank_transaction_expense_category(
     return BankTransactionResponse.model_validate(bt)
 
 
+@router.delete("/bank-transactions/{transaction_id}")
+async def delete_bank_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> Dict[str, bool]:
+    """
+    Удалить операцию банка (BankTransaction).
+
+    Используется для ручной очистки очереди операций в интерфейсе «Долги и оплаты» → «Операции банка».
+    Зачисленные операции (status = applied) удалять нельзя, чтобы не потерять связь с зачисленными платежами.
+    """
+    _require_sales_admin_owner(current_user)
+    bt = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
+    if not bt:
+        raise HTTPException(status_code=404, detail="Операция не найдена")
+    if bt.status == BankTransactionStatus.APPLIED.value:
+        raise HTTPException(status_code=400, detail="Нельзя удалить уже зачисленную операцию")
+    db.delete(bt)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/student-cards", response_model=List[StudentCardResponse])
 async def list_student_cards(
     archived: Optional[bool] = Query(None, description="Фильтр по архиву: true/false или не передавать — все"),

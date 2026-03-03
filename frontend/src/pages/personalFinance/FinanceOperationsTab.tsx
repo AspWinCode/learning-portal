@@ -38,6 +38,8 @@ interface FinanceOperationsTabProps {
   ledgerOperations?: FinanceOperation[];
   ledgerIncomeArticles?: FinanceArticle[];
   ledgerExpenseArticles?: FinanceArticle[];
+  /** Колбэк для удаления операций из единого финансового журнала (по id транзакций). */
+  onDeleteLedgerOperations?: (transactionIds: number[]) => Promise<void> | void;
 }
 
 export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
@@ -46,6 +48,7 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
   ledgerOperations = [],
   ledgerIncomeArticles = [],
   ledgerExpenseArticles = [],
+  onDeleteLedgerOperations,
 }) => {
   const {
     operations: ctxOperations,
@@ -63,6 +66,7 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
   const expenseArticles =
     useLedgerSource && ledgerExpenseArticles.length > 0 ? ledgerExpenseArticles : ctxExpenseArticles;
   const readOnly = useLedgerSource;
+  const canSelect = !readOnly || !!onDeleteLedgerOperations;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
@@ -130,6 +134,22 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
 
   const handleDeleteSelected = () => {
     if (!someSelected) return;
+    if (readOnly && onDeleteLedgerOperations) {
+      const ledgerIds = Array.from(selectedIds)
+        .filter((id) => id.startsWith('ledger_'))
+        .map((id) => Number(id.replace('ledger_', '')))
+        .filter((n) => Number.isFinite(n));
+      if (ledgerIds.length === 0) return;
+      void (async () => {
+        try {
+          await onDeleteLedgerOperations(ledgerIds);
+          setSelectedIds(new Set());
+        } catch {
+          // Ошибки обрабатываются внутри onDeleteLedgerOperations (если нужно)
+        }
+      })();
+      return;
+    }
     if (window.confirm(`Удалить выбранные операции (${selectedIds.size})?`)) {
       deleteOperations(Array.from(selectedIds));
       setSelectedIds(new Set());
@@ -202,7 +222,7 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
             color="error"
             startIcon={<Delete />}
             onClick={handleDeleteSelected}
-            disabled={!someSelected || readOnly}
+            disabled={!someSelected || !canSelect}
           >
             Удалить выбранные {someSelected ? `(${selectedIds.size})` : ''}
           </Button>
@@ -255,9 +275,14 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
         </Alert>
       )}
 
-      {readOnly && (
+      {readOnly && !onDeleteLedgerOperations && (
         <Alert severity="info" sx={{ mb: 2 }}>
           Режим просмотра из единого финансового журнала. Операции здесь только для чтения, добавление и удаление недоступны.
+        </Alert>
+      )}
+      {readOnly && onDeleteLedgerOperations && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Режим просмотра из единого финансового журнала. Добавление и импорт недоступны, но вы можете удалять операции.
         </Alert>
       )}
 
@@ -275,8 +300,8 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
                 <Checkbox
                   indeterminate={someSelected && !allSelected}
                   checked={allSelected}
-                  onChange={readOnly ? undefined : handleSelectAll}
-                  disabled={sortedOps.length === 0 || readOnly}
+                  onChange={canSelect ? handleSelectAll : undefined}
+                  disabled={sortedOps.length === 0 || !canSelect}
                   size="small"
                 />
               </TableCell>
@@ -305,10 +330,9 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
                 incomeArticles={incomeArticles}
                 expenseArticles={expenseArticles}
                 getDisplayDescription={getDisplayDescription}
-                selected={selectedIds.has(op.id) && !readOnly}
-                onToggleSelect={readOnly ? undefined : () => handleToggleOne(op.id)}
+                selected={selectedIds.has(op.id) && canSelect}
+                onToggleSelect={!canSelect ? undefined : () => handleToggleOne(op.id)}
                 onUpdate={readOnly ? undefined : (patch) => updateOperation(op.id, patch)}
-                readOnly={readOnly}
               />
             ))}
           </TableBody>
@@ -464,7 +488,6 @@ function OperationRow({
   selected: boolean;
   onToggleSelect?: () => void;
   onUpdate?: (patch: Partial<FinanceOperation>) => void;
-  readOnly?: boolean;
 }) {
   const readOnly = !onUpdate;
   const isIncome = operation.amount > 0;
@@ -477,10 +500,10 @@ function OperationRow({
       <TableCell padding="checkbox">
         <Checkbox
           checked={selected}
-          onChange={readOnly ? undefined : onToggleSelect}
+          onChange={onToggleSelect ? onToggleSelect : undefined}
           size="small"
           onClick={(e) => e.stopPropagation()}
-          disabled={readOnly}
+          disabled={!onToggleSelect}
         />
       </TableCell>
       <TableCell>{format(new Date(operation.date + 'T12:00:00'), 'dd.MM.yyyy', { locale: ru })}</TableCell>

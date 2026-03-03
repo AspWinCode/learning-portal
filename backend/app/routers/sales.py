@@ -4822,38 +4822,38 @@ def _knd_template_path() -> str:
     return os.path.join(_base, "templates", "knd_1151158.pdf")
 
 # Разметка под файл backend/templates/knd_1151158.pdf (координаты сняты с полей формы PDF).
-# Чекбоксы: (страница, x_мм для "0-нет", x_мм для "1-да", y_mm, ключ).
+# Чекбоксы: (страница, x_мм ячейки "0-нет", x_мм ячейки "1-да", y_mm, ключ, ширина_ячейки_мм). Рисуем цифру 0 или 1 по центру ячейки.
 _KND_OVERLAY_CHECKBOXES = [
-    (0, 80, 85, 100.3, "fulltime_study"),
-    (0, 89.6, 95, 175.8, "taxpayer_same_as_student"),
+    (0, 80, 85, 100.3, "fulltime_study", 5.0),
+    (0, 89.6, 95, 175.8, "taxpayer_same_as_student", 5.4),
 ]
 
-# Поля посимвольно (каждый символ в своей ячейке). Шрифт 12 pt.
+# Поля посимвольно (каждый символ в своей ячейке). Шрифт 12 pt. Ширина ячейки — под бланк (не растягивать).
 _KND_OVERLAY_BOXED = [
     (0, 69.5, 5.1, "org_inn", 12, 5.02, 12),
     (0, 69.5, 12.9, "org_kpp", 12, 5.04, 9),
-    (0, 29.4, 46.0, "cert_number", 12, 12.06, 5),
+    (0, 29.4, 46.0, "cert_number", 12, 5.8, 5),   # сжато: было 12.06 — номер справки не вытянут
     (0, 134.4, 45.9, "correction_number", 12, 5.17, 3),
     (0, 184.5, 45.9, "report_year", 12, 5.08, 4),
-    (0, 24.9, 141.8, "taxpayer_inn", 12, 8.72, 12),
+    (0, 24.9, 141.8, "taxpayer_inn", 12, 6.0, 12),  # сжато: ИНН не растянут (было 8.72)
     (0, 39.3, 158.0, "doc_type_code", 12, 5.3, 2),
     (0, 104.7, 158.0, "doc_series_number", 12, 7.16, 14),
-    (0, 94.7, 186.0, "amount", 12, 6.25, 12),
+    (0, 94.7, 186.0, "amount", 12, 5.2, 12),       # сжато: сумма в полях (было 6.25)
     (0, 44.6, 247.7, "pages_count", 12, 7.6, 2),
     (1, 64.5, 5.2, "org_inn", 12, 5.02, 12),
     (1, 64.5, 12.9, "org_kpp", 12, 5.04, 9),
-    (1, 129.7, 64.2, "student_inn", 12, 3.41, 12),
+    (1, 129.7, 64.2, "student_inn", 12, 5.0, 12),   # сжато: ИНН ученика (было 3.41 — увеличено для читаемости, но не растянуто)
     (1, 39.6, 81.3, "student_doc_type_code", 12, 5.05, 2),
     (1, 104.5, 81.3, "student_doc_series_number", 12, 7.16, 14),
 ]
 
-# Текстовые поля посимвольно. Шрифт 12 pt.
+# Текстовые поля посимвольно. Шрифт 12 pt. Данные об организации и достоверность — чуть растянуты по горизонтали.
 _KND_OVERLAY_TEXT_PER_CELL = [
-    (0, 4.8, 61.5, "org_name", 12, 3.5, 80),
-    (0, 24.9, 114.8, "taxpayer_lastname", 12, 4.0, 35),
-    (0, 24.9, 123.8, "taxpayer_firstname", 12, 4.0, 30),
-    (0, 24.9, 132.8, "taxpayer_patronymic", 12, 4.0, 40),
-    (0, 4.9, 207.1, "confirm_fio", 12, 3.5, 55),
+    (0, 4.8, 61.5, "org_name", 12, 4.0, 80),       # данные об образовательной организации: буквы в полях (3.5→4.0)
+    (0, 24.9, 114.8, "taxpayer_lastname", 12, 4.0, 35),   # фамилия — своя строка
+    (0, 24.9, 123.8, "taxpayer_firstname", 12, 4.0, 30),  # имя — своя строка
+    (0, 24.9, 132.8, "taxpayer_patronymic", 12, 4.0, 40), # отчество — своя строка
+    (0, 4.9, 207.1, "confirm_fio", 12, 4.0, 55),    # достоверность на полноту: растянуто в поля (3.5→4.0)
     (1, 24.9, 37.1, "student_lastname", 12, 4.0, 35),
     (1, 24.9, 46.2, "student_firstname", 12, 4.0, 30),
     (1, 24.9, 55.2, "student_patronymic", 12, 4.0, 40),
@@ -5016,15 +5016,25 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
                 d = date.today().isoformat()
             cell_pt = cell_mm * pt_per_mm
             _draw_date_per_cell(c, x_pt(x_mm), y_pt_adj(y_mm), d, cell_pt, _PDF_FONT_NAME, size)
-        for (p, x_no, x_yes, y_mm, key) in _KND_OVERLAY_CHECKBOXES:
+        for cb in _KND_OVERLAY_CHECKBOXES:
+            if len(cb) == 6:
+                p, x_no, x_yes, y_mm, key, cell_w_mm = cb
+            else:
+                p, x_no, x_yes, y_mm, key = cb
+                cell_w_mm = 5.0
             if p != i:
                 continue
             v = data.get(key)
             c.setFont(_PDF_FONT_NAME, 12)
+            cell_w_pt = cell_w_mm * pt_per_mm
             if v is True or v == "1":
-                c.drawString(x_pt(x_yes), y_pt_adj(y_mm), "X")
+                ch = "1"
+                x_center = x_pt(x_yes) + (cell_w_pt - c.stringWidth(ch, _PDF_FONT_NAME, 12)) / 2.0
+                c.drawString(x_center, y_pt_adj(y_mm), ch)
             elif v is False or v == "0":
-                c.drawString(x_pt(x_no), y_pt_adj(y_mm), "X")
+                ch = "0"
+                x_center = x_pt(x_no) + (cell_w_pt - c.stringWidth(ch, _PDF_FONT_NAME, 12)) / 2.0
+                c.drawString(x_center, y_pt_adj(y_mm), ch)
         c.save()
         buf.seek(0)
         overlay = PdfReader(buf)

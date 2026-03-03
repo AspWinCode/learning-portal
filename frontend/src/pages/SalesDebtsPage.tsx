@@ -696,7 +696,7 @@ const SalesDebtsPage: React.FC = () => {
                               Удалить в журнале
                             </Button>
                           )}
-                          {!isExpense && tx.status !== 'applied' && (
+                          {!isExpense && (
                             <Button
                               size="small"
                               variant="outlined"
@@ -710,7 +710,7 @@ const SalesDebtsPage: React.FC = () => {
                               Зачислить
                             </Button>
                           )}
-                          {tx.status !== 'applied' && (
+                          {(
                             <Button
                               size="small"
                               color="error"

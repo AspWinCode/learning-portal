@@ -193,7 +193,7 @@ const SalesPostVisitPage: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">
                     {leadPhone(lead)}
                   </Typography>
-                  {stage.id === 'project_agreed' && lead.post_visit_project_date && (
+                  {lead.post_visit_project_date && (
                     <Typography variant="body2" color="text.secondary">
                       {(() => {
                         const d = parseISO(lead.post_visit_project_date as string);

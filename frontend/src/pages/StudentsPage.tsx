@@ -34,7 +34,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
-import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType, StudentAccountTransaction } from '../types';
+import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType } from '../types';
 import type { AnketaConvertConflict } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
@@ -121,7 +121,17 @@ const StudentsPage: React.FC = () => {
   const [paymentNote, setPaymentNote] = useState('');
   const [accountsError, setAccountsError] = useState('');
   const [transactionsDialogAccount, setTransactionsDialogAccount] = useState<StudentAccount | null>(null);
-  const [transactions, setTransactions] = useState<StudentAccountTransaction[]>([]);
+  const [transactions, setTransactions] = useState<
+    {
+      id: number;
+      account_id: number;
+      amount: number;
+      kind: 'payment' | 'lesson_deduction' | 'extra_lesson_deduction';
+      note?: string | null;
+      lesson_attendance_id?: number | null;
+      created_at: string;
+    }[]
+  >([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [transactionsError, setTransactionsError] = useState('');
   const [studentDetailId, setStudentDetailId] = useState<number | null>(null);
@@ -433,7 +443,7 @@ const StudentsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteTransaction = async (tx: StudentAccountTransaction) => {
+  const handleDeleteTransaction = async (tx: { id: number }) => {
     if (!transactionsDialogAccount) return;
     if (
       !window.confirm(

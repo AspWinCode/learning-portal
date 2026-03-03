@@ -4828,45 +4828,45 @@ _KND_OVERLAY_CHECKBOXES = [
     (0, 89.6, 95, 175.8, "taxpayer_same_as_student"),
 ]
 
-# Поля посимвольно (страница, x_mm, y_mm, ключ, размер шрифта, ширина_ячейки_мм, макс_символов).
+# Поля посимвольно (каждый символ в своей ячейке). Шрифт 10 pt — крупнее для читаемости.
 _KND_OVERLAY_BOXED = [
-    (0, 69.5, 5.1, "org_inn", 8, 5.02, 12),
-    (0, 69.5, 12.9, "org_kpp", 8, 5.04, 9),
-    (0, 29.4, 46.0, "cert_number", 8, 12.06, 5),
-    (0, 134.4, 45.9, "correction_number", 8, 5.17, 3),
-    (0, 184.5, 45.9, "report_year", 8, 5.08, 4),
-    (0, 24.9, 141.8, "taxpayer_inn", 8, 8.72, 12),
-    (0, 39.3, 158.0, "doc_type_code", 8, 5.3, 2),
-    (0, 104.7, 158.0, "doc_series_number", 8, 7.16, 14),
-    (0, 94.7, 186.0, "amount", 8, 6.25, 12),
-    (0, 44.6, 247.7, "pages_count", 8, 7.6, 2),
-    (1, 64.5, 5.2, "org_inn", 8, 5.02, 12),
-    (1, 64.5, 12.9, "org_kpp", 8, 5.04, 9),
-    (1, 129.7, 64.2, "student_inn", 8, 3.41, 12),
-    (1, 39.6, 81.3, "student_doc_type_code", 8, 5.05, 2),
-    (1, 104.5, 81.3, "student_doc_series_number", 8, 7.16, 14),
+    (0, 69.5, 5.1, "org_inn", 10, 5.02, 12),
+    (0, 69.5, 12.9, "org_kpp", 10, 5.04, 9),
+    (0, 29.4, 46.0, "cert_number", 10, 12.06, 5),
+    (0, 134.4, 45.9, "correction_number", 10, 5.17, 3),
+    (0, 184.5, 45.9, "report_year", 10, 5.08, 4),
+    (0, 24.9, 141.8, "taxpayer_inn", 10, 8.72, 12),
+    (0, 39.3, 158.0, "doc_type_code", 10, 5.3, 2),
+    (0, 104.7, 158.0, "doc_series_number", 10, 7.16, 14),
+    (0, 94.7, 186.0, "amount", 10, 6.25, 12),
+    (0, 44.6, 247.7, "pages_count", 10, 7.6, 2),
+    (1, 64.5, 5.2, "org_inn", 10, 5.02, 12),
+    (1, 64.5, 12.9, "org_kpp", 10, 5.04, 9),
+    (1, 129.7, 64.2, "student_inn", 10, 3.41, 12),
+    (1, 39.6, 81.3, "student_doc_type_code", 10, 5.05, 2),
+    (1, 104.5, 81.3, "student_doc_series_number", 10, 7.16, 14),
 ]
 
-# Текстовые поля (одна строка, левый край).
-_KND_OVERLAY_TEXT = [
-    (0, 4.8, 61.5, "org_name", 8),
-    (0, 24.9, 114.8, "taxpayer_lastname", 8),
-    (0, 24.9, 123.8, "taxpayer_firstname", 8),
-    (0, 24.9, 132.8, "taxpayer_patronymic", 8),
-    (0, 4.9, 207.1, "confirm_fio", 8),
-    (1, 24.9, 37.1, "student_lastname", 8),
-    (1, 24.9, 46.2, "student_firstname", 8),
-    (1, 24.9, 55.2, "student_patronymic", 8),
+# Текстовые поля тоже посимвольно (буквы и пробелы в своих ячейках). Формат: (стр, x_mm, y_mm, ключ, шрифт, ширина_ячейки_мм, макс_симв).
+_KND_OVERLAY_TEXT_PER_CELL = [
+    (0, 4.8, 61.5, "org_name", 10, 3.5, 80),
+    (0, 24.9, 114.8, "taxpayer_lastname", 10, 4.0, 35),
+    (0, 24.9, 123.8, "taxpayer_firstname", 10, 4.0, 30),
+    (0, 24.9, 132.8, "taxpayer_patronymic", 10, 4.0, 40),
+    (0, 4.9, 207.1, "confirm_fio", 10, 3.5, 55),
+    (1, 24.9, 37.1, "student_lastname", 10, 4.0, 35),
+    (1, 24.9, 46.2, "student_firstname", 10, 4.0, 30),
+    (1, 24.9, 55.2, "student_patronymic", 10, 4.0, 40),
 ]
 
-# Даты ДД.ММ.ГГГГ по ячейкам. Координаты из полей PDF (высота полей ~6.7 мм, шрифт 8 pt).
+# Даты ДД.ММ.ГГГГ по ячейкам. Шрифт 10 pt.
 _KND_OVERLAY_DATES_PER_CELL = [
-    (0, 129.5, 141.8, 5.1, "taxpayer_dob", 8),        # три ячейки справа (ДД ММ ГГГГ)
-    (0, 39.8, 166.7, 5.1, "doc_issue_date", 8),      # дата выдачи документа
-    (0, 56.6, 237.4, 5.1, "confirm_date", 8),
-    (1, 39.7, 90.3, 5.1, "student_dob", 8),          # дата рождения обучаемого
-    (1, 39.7, 90.3, 5.1, "student_doc_issue_date", 8),  # дата выдачи док. (та же строка; при двух датах в форме подставьте вторую y)
-    (1, 119.6, 286.3, 5.1, "confirm_date", 8),
+    (0, 129.5, 141.8, 5.1, "taxpayer_dob", 10),
+    (0, 39.8, 166.7, 5.1, "doc_issue_date", 10),
+    (0, 56.6, 237.4, 5.1, "confirm_date", 10),
+    (1, 39.7, 90.3, 5.1, "student_dob", 10),
+    (1, 39.7, 90.3, 5.1, "student_doc_issue_date", 10),
+    (1, 119.6, 286.3, 5.1, "confirm_date", 10),
 ]
 
 # Шрифт с кириллицей (без него русский текст отображается чёрными квадратами)
@@ -4984,16 +4984,16 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
             val = (val or "").replace(" ", "")[:max_ch] if key != "doc_series_number" and key != "student_doc_series_number" else (val or "")[:max_ch]
             cell_pt = cell_mm * pt_per_mm
             _draw_string_per_cell(c, x_pt(x_mm), y_pt(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
-        # Текстовые поля: одна строка, по левому краю
-        for (p, x_mm, y_mm, key, size) in _KND_OVERLAY_TEXT:
+        # Текстовые поля: по одному символу (буква/пробел) в ячейку
+        for (p, x_mm, y_mm, key, size, cell_mm, max_ch) in _KND_OVERLAY_TEXT_PER_CELL:
             if p != i:
                 continue
             val = (data.get(key) or "")
             if isinstance(val, (bool, int)):
                 val = str(val)
-            val = (val or "")[:80]
-            c.setFont(_PDF_FONT_NAME, size)
-            c.drawString(x_pt(x_mm), y_pt(y_mm), val)
+            val = (val or "")[:max_ch]
+            cell_pt = cell_mm * pt_per_mm
+            _draw_string_per_cell(c, x_pt(x_mm), y_pt(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
         # Даты: ДД.ММ.ГГГГ по одному символу в ячейку
         for (p, x_mm, y_mm, cell_mm, key, size) in _KND_OVERLAY_DATES_PER_CELL:
             if p != i:
@@ -5007,6 +5007,7 @@ def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> by
             if p != i:
                 continue
             v = data.get(key)
+            c.setFont(_PDF_FONT_NAME, 10)
             if v is True or v == "1":
                 c.drawString(x_pt(x_yes), y_pt(y_mm), "X")
             elif v is False or v == "0":

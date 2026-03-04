@@ -1429,6 +1429,7 @@ class B2BSchool(Base):
     manager_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     source = Column(String(256), nullable=True)
     priority = Column(String(64), nullable=True)
+    phone_school = Column(String(64), nullable=True)
     preference = Column(String(32), nullable=True)  # online, offline, any
     support_letter_status = Column(String(32), nullable=True)  # not_needed, requested, received, archive
     partnership = Column(JSON, nullable=True)  # checklist: {invited, agreement_sent, signed_school, signed_both, originals_received, icon_on_site, active_partner}

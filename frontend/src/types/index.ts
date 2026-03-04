@@ -741,6 +741,7 @@ export interface B2BSchool {
   next_step_date?: string | null;
   manager_id?: number | null;
   manager_full_name?: string | null;
+  phone_school?: string | null;
   source?: string | null;
   priority?: string | null;
   preference?: string | null;  // online, offline, any

@@ -56,13 +56,13 @@ const initialEditForm = {
   director: '',
   city: '',
   address: '',
+  phone_school: '',
   student_count: '' as number | '',
   friendship_degree: '',
   pipeline_stage: 'new' as B2BSchoolPipelineStage,
   next_step: '',
   next_step_date: '',
   manager_id: '' as number | '',
-  event_dates: '',
   meeting_scheduled_at: '',
   meeting_outcomes: '',
   walkthrough_scheduled_at: '',
@@ -74,13 +74,12 @@ export const B2BSchoolCreateContent: React.FC = () => {
     director: '',
     city: '',
     address: '',
+    phone_school: '',
     student_count: '' as number | '',
     friendship_degree: '',
     pipeline_stage: 'new' as B2BSchoolPipelineStage,
-    manager_id: '' as number | '',
     source: '',
     priority: '',
-    event_dates: '',
   });
   const [schools, setSchools] = useState<B2BSchool[]>([]);
   const [loading, setLoading] = useState(false);
@@ -100,7 +99,6 @@ export const B2BSchoolCreateContent: React.FC = () => {
   const [launchingId, setLaunchingId] = useState<number | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importCity, setImportCity] = useState('');
-  const [importManagerId, setImportManagerId] = useState<number | ''>('');
   const [importLaunch, setImportLaunch] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
@@ -146,13 +144,13 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: full.director ?? '',
         city: full.city ?? '',
         address: full.address ?? '',
+        phone_school: full.phone_school ?? '',
         student_count: full.student_count ?? '',
         friendship_degree: full.friendship_degree ?? '',
         pipeline_stage: (full.pipeline_stage as B2BSchoolPipelineStage) ?? 'new',
         next_step: full.next_step ?? '',
         next_step_date: nextDate,
         manager_id: full.manager_id ?? '',
-        event_dates: Array.isArray(full.event_dates) ? full.event_dates.join(', ') : '',
         meeting_scheduled_at: meetingAt,
         meeting_outcomes: full.meeting_outcomes ?? '',
         walkthrough_scheduled_at: walkAt,
@@ -236,9 +234,6 @@ export const B2BSchoolCreateContent: React.FC = () => {
     setError(null);
     setSavingEdit(true);
     try {
-      const eventDates = editForm.event_dates
-        ? editForm.event_dates.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
-        : undefined;
       const meetingAt =
         editForm.meeting_scheduled_at && editForm.pipeline_stage === 'meeting_scheduled'
           ? new Date(editForm.meeting_scheduled_at).toISOString()
@@ -252,13 +247,13 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: editForm.director.trim() || undefined,
         city: editForm.city.trim() || undefined,
         address: editForm.address.trim() || undefined,
+        phone_school: editForm.phone_school.trim() || null,
         student_count: editForm.student_count === '' ? undefined : Number(editForm.student_count),
         friendship_degree: editForm.friendship_degree || undefined,
         pipeline_stage: editForm.pipeline_stage,
         next_step: editForm.next_step.trim() || null,
         next_step_date: editForm.next_step_date.trim() ? editForm.next_step_date : null,
         manager_id: editForm.manager_id === '' ? null : Number(editForm.manager_id),
-        event_dates: eventDates,
         meeting_scheduled_at: meetingAt,
         meeting_outcomes: editForm.pipeline_stage === 'meeting_held' ? (editForm.meeting_outcomes.trim() || null) : undefined,
         walkthrough_scheduled_at: walkAt,
@@ -292,11 +287,15 @@ export const B2BSchoolCreateContent: React.FC = () => {
       setError('Укажите название школы');
       return;
     }
+    if (form.phone_school.trim()) {
+      const digits = form.phone_school.replace(/\D/g, '');
+      if (digits.length < 5) {
+        setError('Введите городской телефон школы (минимум 5 цифр)');
+        return;
+      }
+    }
     setSaving(true);
     try {
-      const eventDates = form.event_dates
-        ? form.event_dates.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
-        : undefined;
       await b2bApi.createSchool({
         name: form.name.trim(),
         director: form.director.trim() || undefined,
@@ -305,9 +304,9 @@ export const B2BSchoolCreateContent: React.FC = () => {
         student_count: form.student_count === '' ? undefined : Number(form.student_count),
         friendship_degree: form.friendship_degree || undefined,
         pipeline_stage: form.pipeline_stage,
+        phone_school: form.phone_school.trim() || undefined,
         source: form.source.trim() || undefined,
         priority: form.priority.trim() || undefined,
-        event_dates: eventDates,
       });
       setSuccess('Школа успешно создана');
       setForm({
@@ -315,13 +314,12 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: '',
         city: '',
         address: '',
+        phone_school: '',
         student_count: '',
         friendship_degree: '',
         pipeline_stage: 'new',
-        manager_id: '',
         source: '',
         priority: '',
-        event_dates: '',
       });
       await loadSchools();
     } catch (err: any) {
@@ -340,17 +338,9 @@ export const B2BSchoolCreateContent: React.FC = () => {
       setError('Укажите название школы');
       return;
     }
-    const managerId = form.manager_id === '' ? undefined : form.manager_id;
-    if (managerId == null) {
-      setError('Для запуска в работу укажите ответственного');
-      return;
-    }
     setSaving(true);
     try {
       const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
-      const eventDates = form.event_dates
-        ? form.event_dates.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
-        : undefined;
       await b2bApi.createSchool({
         name: form.name.trim(),
         director: form.director.trim() || undefined,
@@ -361,10 +351,9 @@ export const B2BSchoolCreateContent: React.FC = () => {
         pipeline_stage: 'find_contacts',
         next_step: NEXT_STEP_LAUNCH,
         next_step_date: tomorrow,
-        manager_id: managerId,
+        phone_school: form.phone_school.trim() || undefined,
         source: form.source.trim() || undefined,
         priority: form.priority.trim() || undefined,
-        event_dates: eventDates,
       });
       setSuccess('Школа создана и запущена в работу');
       setForm({
@@ -375,10 +364,8 @@ export const B2BSchoolCreateContent: React.FC = () => {
         student_count: '',
         friendship_degree: '',
         pipeline_stage: 'new',
-        manager_id: '',
         source: '',
         priority: '',
-        event_dates: '',
       });
       await loadSchools();
     } catch (err: any) {
@@ -442,7 +429,6 @@ export const B2BSchoolCreateContent: React.FC = () => {
       const res = await b2bApi.importSchools({
         file: importFile,
         city: importCity.trim() || undefined,
-        manager_id: importManagerId === '' ? undefined : importManagerId,
         launch_in_work: importLaunch,
       });
       setImportResult(res);
@@ -497,19 +483,28 @@ export const B2BSchoolCreateContent: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Источник"
-              value={form.source}
-              onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
+              label="Телефон школы (городской)"
+              value={form.phone_school}
+              onChange={(e) => setForm((f) => ({ ...f, phone_school: e.target.value }))}
               fullWidth
-              placeholder="Откуда узнали о школе"
+              placeholder="Например: (3952) 12-34-56"
             />
-            <TextField
-              label="Приоритет"
-              value={form.priority}
-              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
-              fullWidth
-              placeholder="Высокий / Средний / Низкий"
-            />
+            {/* Поле \"Источник\" скрыто по ТЗ, но значение можно заполнить позже из карточки школы */}
+            <FormControl fullWidth>
+              <InputLabel>Приоритет</InputLabel>
+              <Select
+                value={form.priority}
+                label="Приоритет"
+                onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+              >
+                <MenuItem value="">
+                  <em>Не задан</em>
+                </MenuItem>
+                <MenuItem value="high">Высокий</MenuItem>
+                <MenuItem value="medium">Средний</MenuItem>
+                <MenuItem value="low">Низкий</MenuItem>
+              </Select>
+            </FormControl>
             <TextField
               label="Адрес"
               value={form.address}
@@ -540,32 +535,6 @@ export const B2BSchoolCreateContent: React.FC = () => {
                 <MenuItem value="indirect">Знаем косвенно</MenuItem>
                 <MenuItem value="friends">Друзья</MenuItem>
                 <MenuItem value="enemies">Враги</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              label="Даты мероприятий (через запятую)"
-              value={form.event_dates}
-              onChange={(e) => setForm((f) => ({ ...f, event_dates: e.target.value }))}
-              fullWidth
-              placeholder="2025-03-01, 2025-03-15"
-            />
-            <FormControl fullWidth>
-              <InputLabel>Ответственный</InputLabel>
-              <Select
-                value={form.manager_id === '' ? '' : form.manager_id}
-                label="Ответственный"
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, manager_id: e.target.value === '' ? '' : (e.target.value as number) }))
-                }
-              >
-                <MenuItem value="">
-                  <em>Не выбрано</em>
-                </MenuItem>
-                {managers.map((m) => (
-                  <MenuItem key={m.id} value={m.id}>
-                    {m.full_name}
-                  </MenuItem>
-                ))}
               </Select>
             </FormControl>
             <FormControl fullWidth>
@@ -636,23 +605,6 @@ export const B2BSchoolCreateContent: React.FC = () => {
               sx={{ minWidth: 180 }}
               placeholder="для всех строк"
             />
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>Ответственный (по умолчанию)</InputLabel>
-              <Select
-                value={importManagerId === '' ? '' : importManagerId}
-                label="Ответственный (по умолчанию)"
-                onChange={(e) => setImportManagerId(e.target.value === '' ? '' : (e.target.value as number))}
-              >
-                <MenuItem value="">
-                  <em>Не выбрано</em>
-                </MenuItem>
-                {managers.map((m) => (
-                  <MenuItem key={m.id} value={m.id}>
-                    {m.full_name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
             <FormControlLabel
               control={
                 <Checkbox

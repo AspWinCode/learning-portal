@@ -1868,6 +1868,7 @@ class B2BSchoolCreate(BaseModel):
     next_step: Optional[str] = None
     next_step_date: Optional[date] = None
     manager_id: Optional[int] = None
+    phone_school: Optional[str] = None
     source: Optional[str] = None
     priority: Optional[str] = None
     preference: Optional[str] = None  # online, offline, any
@@ -1888,6 +1889,7 @@ class B2BSchoolUpdate(BaseModel):
     next_step: Optional[str] = None
     next_step_date: Optional[date] = None
     manager_id: Optional[int] = None
+    phone_school: Optional[str] = None
     source: Optional[str] = None
     priority: Optional[str] = None
     preference: Optional[str] = None
@@ -1912,6 +1914,7 @@ class B2BSchoolResponse(BaseModel):
     next_step_date: Optional[date] = None
     manager_id: Optional[int] = None
     manager_full_name: Optional[str] = None
+    phone_school: Optional[str] = None
     source: Optional[str] = None
     priority: Optional[str] = None
     preference: Optional[str] = None

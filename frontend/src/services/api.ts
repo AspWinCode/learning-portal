@@ -1608,6 +1608,7 @@ export const b2bApi = {
     next_step?: string | null;
     next_step_date?: string | null;
     manager_id?: number | null;
+    phone_school?: string | null;
     source?: string | null;
     priority?: string | null;
     preference?: string | null;
@@ -1632,6 +1633,7 @@ export const b2bApi = {
       next_step: string | null;
       next_step_date: string | null;
       manager_id: number | null;
+      phone_school: string | null;
       source: string | null;
       priority: string | null;
       preference: string | null;

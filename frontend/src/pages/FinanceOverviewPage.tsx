@@ -15,6 +15,11 @@ import {
   InputLabel,
   Tabs,
   Tab,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import Layout from '../components/Layout';
 import { financeApi, studentsApi } from '../services/api';

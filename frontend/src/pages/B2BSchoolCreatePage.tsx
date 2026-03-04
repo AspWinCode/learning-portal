@@ -56,6 +56,7 @@ const initialEditForm = {
   director: '',
   city: '',
   address: '',
+  district: '',
   phone_school: '',
   student_count: '' as number | '',
   friendship_degree: '',
@@ -74,6 +75,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
     director: '',
     city: '',
     address: '',
+    district: '',
     phone_school: '',
     student_count: '' as number | '',
     friendship_degree: '',
@@ -144,6 +146,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: full.director ?? '',
         city: full.city ?? '',
         address: full.address ?? '',
+        district: full.district ?? '',
         phone_school: full.phone_school ?? '',
         student_count: full.student_count ?? '',
         friendship_degree: full.friendship_degree ?? '',
@@ -247,6 +250,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: editForm.director.trim() || undefined,
         city: editForm.city.trim() || undefined,
         address: editForm.address.trim() || undefined,
+        district: editForm.district.trim() || undefined,
         phone_school: editForm.phone_school.trim() || null,
         student_count: editForm.student_count === '' ? undefined : Number(editForm.student_count),
         friendship_degree: editForm.friendship_degree || undefined,
@@ -301,6 +305,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: form.director.trim() || undefined,
         city: form.city.trim() || undefined,
         address: form.address.trim() || undefined,
+        district: form.district.trim() || undefined,
         student_count: form.student_count === '' ? undefined : Number(form.student_count),
         friendship_degree: form.friendship_degree || undefined,
         pipeline_stage: form.pipeline_stage,
@@ -314,6 +319,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: '',
         city: '',
         address: '',
+        district: '',
         phone_school: '',
         student_count: '',
         friendship_degree: '',
@@ -346,6 +352,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: form.director.trim() || undefined,
         city: form.city.trim() || undefined,
         address: form.address.trim() || undefined,
+        district: form.district.trim() || undefined,
         student_count: form.student_count === '' ? undefined : Number(form.student_count),
         friendship_degree: form.friendship_degree || undefined,
         pipeline_stage: 'find_contacts',
@@ -361,6 +368,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: '',
         city: '',
         address: '',
+        district: '',
         phone_school: '',
         student_count: '',
         friendship_degree: '',
@@ -481,6 +489,12 @@ export const B2BSchoolCreateContent: React.FC = () => {
               label="Город"
               value={form.city}
               onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Район"
+              value={form.district}
+              onChange={(e) => setForm((f) => ({ ...f, district: e.target.value }))}
               fullWidth
             />
             <TextField

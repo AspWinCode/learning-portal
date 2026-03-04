@@ -1862,6 +1862,7 @@ class B2BSchoolCreate(BaseModel):
     director: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
+    district: Optional[str] = None
     student_count: Optional[int] = None
     friendship_degree: Optional[B2BSchoolFriendshipDegree] = None
     pipeline_stage: B2BSchoolPipelineStage = B2BSchoolPipelineStage.NEW
@@ -1883,6 +1884,7 @@ class B2BSchoolUpdate(BaseModel):
     director: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
+    district: Optional[str] = None
     student_count: Optional[int] = None
     friendship_degree: Optional[B2BSchoolFriendshipDegree] = None
     pipeline_stage: Optional[B2BSchoolPipelineStage] = None
@@ -1907,6 +1909,7 @@ class B2BSchoolResponse(BaseModel):
     director: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
+    district: Optional[str] = None
     student_count: Optional[int] = None
     friendship_degree: Optional[str] = None
     pipeline_stage: str

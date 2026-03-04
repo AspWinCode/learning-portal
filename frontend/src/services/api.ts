@@ -1602,6 +1602,7 @@ export const b2bApi = {
     director?: string;
     city?: string;
     address?: string;
+    district?: string;
     student_count?: number;
     friendship_degree?: string;
     pipeline_stage?: B2BSchoolPipelineStage;
@@ -1627,6 +1628,7 @@ export const b2bApi = {
       director: string;
       city: string;
       address: string;
+      district: string;
       student_count: number;
       friendship_degree: string;
       pipeline_stage: B2BSchoolPipelineStage;

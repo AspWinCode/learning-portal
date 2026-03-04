@@ -1416,6 +1416,7 @@ class B2BSchool(Base):
     director = Column(String, nullable=True)
     address = Column(Text, nullable=True)
     city = Column(String, nullable=True, index=True)
+    district = Column(String(256), nullable=True)
     student_count = Column(Integer, nullable=True)
     friendship_degree = Column(String(32), nullable=True, index=True)  # B2BSchoolFriendshipDegree.value
     pipeline_stage = Column(

@@ -734,6 +734,7 @@ export interface B2BSchool {
   director?: string | null;
   city?: string | null;
   address?: string | null;
+  district?: string | null;
   student_count?: number | null;
   friendship_degree?: string | null;
   pipeline_stage: string;

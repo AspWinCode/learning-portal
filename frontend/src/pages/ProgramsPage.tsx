@@ -719,40 +719,41 @@ const ProgramsPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
-
-        <Dialog open={editNameOpen} onClose={() => setEditNameOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Изменить название программы</DialogTitle>
-          <DialogContent>
-            <TextField
-              fullWidth
-              label="Название программы"
-              value={editNameValue}
-              onChange={(e) => setEditNameValue(e.target.value)}
-              sx={{ mt: 1 }}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setEditNameOpen(false)}>Отмена</Button>
-            <Button
-              variant="contained"
-              onClick={async () => {
-                if (!editNameProgram || !editNameValue.trim()) return;
-                try {
-                  await programsApi.update(editNameProgram.id, { name: editNameValue.trim() });
-                  setEditNameOpen(false);
-                  setEditNameProgram(null);
-                  setInfo('Название программы обновлено');
-                  loadPrograms();
-                } catch (err: any) {
-                  setError(err.response?.data?.detail || 'Ошибка обновления названия');
-                }
-              }}
-            >
-              Сохранить
-            </Button>
-          </DialogActions>
-        </Dialog>
       )}
+
+      {/* Диалог редактирования названия программы (кнопка только у админа, диалог общий) */}
+      <Dialog open={editNameOpen} onClose={() => setEditNameOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Изменить название программы</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Название программы"
+            value={editNameValue}
+            onChange={(e) => setEditNameValue(e.target.value)}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditNameOpen(false)}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              if (!editNameProgram || !editNameValue.trim()) return;
+              try {
+                await programsApi.update(editNameProgram.id, { name: editNameValue.trim() });
+                setEditNameOpen(false);
+                setEditNameProgram(null);
+                setInfo('Название программы обновлено');
+                loadPrograms();
+              } catch (err: any) {
+                setError(err.response?.data?.detail || 'Ошибка обновления названия');
+              }
+            }}
+          >
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 };

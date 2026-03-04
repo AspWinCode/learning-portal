@@ -1425,6 +1425,19 @@ export const salesApi = {
   deleteProgramMakeupCompatibility: async (compatId: number): Promise<void> => {
     await api.delete(`/api/sales/program-makeup-compatibility/${compatId}`);
   },
+  submitSpecialistQuestionnaire: async (payload: {
+    parent_full_name: string;
+    parent_phone: string;
+    child_full_name: string;
+    city: string;
+    email?: string;
+    school_name?: string;
+    school_class?: string;
+    comment?: string;
+  }): Promise<{ lead_id: number }> => {
+    const response = await api.post('/api/sales/public/leads/specialist-questionnaire', payload);
+    return response.data;
+  },
   /** Справка по форме КНД 1151158 (2 страницы). Все поля передаются в body. */
   generateTaxDeductionCertificate: async (data: Record<string, unknown>): Promise<Blob> => {
     const response = await api.post('/api/sales/tax-deduction-certificate', data, {

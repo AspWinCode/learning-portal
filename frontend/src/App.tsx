@@ -40,6 +40,7 @@ import SalesDebtsPage from './pages/SalesDebtsPage';
 import SalesProgramMakeupPage from './pages/SalesProgramMakeupPage';
 import SalesTaxDeductionPage from './pages/SalesTaxDeductionPage';
 import ManualLessonsPage from './pages/ManualLessonsPage';
+import SpecialistQuestionnairePage from './pages/SpecialistQuestionnairePage';
 import StudentCardsPage from './pages/StudentCardsPage';
 import AnketyPage from './pages/AnketyPage';
 import TasksPage from './pages/TasksPage';
@@ -78,6 +79,7 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/set-password" element={<SetPasswordPage />} />
+            <Route path="/anketa/specialist" element={<SpecialistQuestionnairePage />} />
             <Route
               path="/dashboard"
               element={

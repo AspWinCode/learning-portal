@@ -149,6 +149,8 @@ from app.schemas import (
     CustomLessonCreate,
     CustomLessonUpdate,
     CustomLessonResponse,
+    SpecialistQuestionnaireRequest,
+    SpecialistQuestionnaireResponse,
 )
 from app.routers.action_log import log_action
 
@@ -3944,6 +3946,51 @@ async def download_leads_import_template(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers=headers,
     )
+
+
+@router.post(
+    "/public/leads/specialist-questionnaire",
+    response_model=SpecialistQuestionnaireResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_specialist_questionnaire(
+    payload: SpecialistQuestionnaireRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Публичная анкета для направления «Специалист».
+    Доступна без авторизации, создаёт лида с questionnaire_filled=True.
+    """
+    owner = (
+        db.query(User)
+        .filter(User.role.in_([UserRole.SALES, UserRole.OWNER, UserRole.ADMIN]))
+        .order_by(User.id)
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=500, detail="No sales/owner/admin user configured")
+
+    lead = Lead(
+        owner_id=owner.id,
+        contact_name=payload.parent_full_name,
+        phone=payload.parent_phone,
+        parent_full_name=payload.parent_full_name,
+        child_full_name=payload.child_full_name,
+        parent_phone=payload.parent_phone,
+        email=payload.email,
+        city=payload.city,
+        school_name=payload.school_name,
+        school_class=payload.school_class,
+        comment=payload.comment,
+        source="Анкета Специалист",
+        tags=["direction:specialist"],
+        status=LeadStatus.NEW,
+        questionnaire_filled=True,
+    )
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    return SpecialistQuestionnaireResponse(lead_id=lead.id)
 
 
 @router.get("/leads", response_model=List[LeadResponse])

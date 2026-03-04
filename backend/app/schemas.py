@@ -1166,6 +1166,23 @@ class LeadContactResultRequest(BaseModel):
     follow_up_at: Optional[datetime] = None
 
 
+class SpecialistQuestionnaireRequest(BaseModel):
+    """Публичная анкета лида для направления «Специалист» (заполняет родитель)."""
+
+    parent_full_name: str = Field(..., min_length=1)
+    parent_phone: str = Field(..., min_length=1)
+    child_full_name: str = Field(..., min_length=1)
+    city: str = Field(..., min_length=1)
+    email: Optional[EmailStr] = None
+    school_name: Optional[str] = None
+    school_class: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class SpecialistQuestionnaireResponse(BaseModel):
+    lead_id: int
+
+
 class LeadPostVisitOutcomeRequest(BaseModel):
     outcome: Literal["agreed", "thinking", "declined"]
     follow_up_at: Optional[datetime] = None

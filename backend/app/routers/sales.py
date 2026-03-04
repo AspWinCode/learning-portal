@@ -3970,6 +3970,56 @@ async def submit_specialist_questionnaire(
     if not owner:
         raise HTTPException(status_code=500, detail="No sales/owner/admin user configured")
 
+    # Создаём личную анкету ученика (StudentCard) со всеми полями
+    card = StudentCard(
+        student_full_name=payload.child_full_name,
+        birth_date=payload.birth_date,
+        student_phone=payload.child_phone,
+        telegram=payload.child_telegram,
+        gender=payload.gender,
+        on_grant=False,
+        format_type=None,
+        city=payload.city,
+        school=payload.school_name,
+        grade=payload.school_class,
+        parent_full_name=payload.parent_full_name,
+        parent_phone=payload.parent_phone,
+        parent_phone_2=payload.parent_phone_2,
+        parent_telegram=payload.parent_telegram,
+        parent_email=payload.parent_email,
+        student_email=payload.student_email,
+        preferred_messenger=payload.preferred_messenger,
+        comment=payload.comment,
+        source=payload.source or "Анкета Специалист",
+        discount_type=DiscountType.NONE,
+        discount_value=0.0,
+        anketa_status="filled",
+    )
+
+    extra_parts: List[str] = []
+    if payload.birth_date:
+        extra_parts.append(f"Дата рождения: {payload.birth_date.isoformat()}")
+    if payload.child_phone:
+        extra_parts.append(f"Телефон ученика: {payload.child_phone}")
+    if payload.child_telegram:
+        extra_parts.append(f"Телеграм ученика: {payload.child_telegram}")
+    if payload.gender:
+        extra_parts.append(f"Пол: {payload.gender}")
+    if payload.parent_phone_2:
+        extra_parts.append(f"Второй телефон родителя: {payload.parent_phone_2}")
+    if payload.parent_telegram:
+        extra_parts.append(f"Телеграм родителя: {payload.parent_telegram}")
+    if payload.student_email:
+        extra_parts.append(f"Email ученика: {payload.student_email}")
+    if payload.preferred_messenger:
+        extra_parts.append(f"Мессенджер: {payload.preferred_messenger}")
+
+    base_comment = payload.comment or ""
+    extras_str = "\n".join(extra_parts) if extra_parts else ""
+    full_comment = base_comment
+    if extras_str:
+        full_comment = (base_comment + "\n\n" if base_comment else "") + extras_str
+
     lead = Lead(
         owner_id=owner.id,
         contact_name=payload.parent_full_name,
@@ -3977,16 +4027,18 @@ async def submit_specialist_questionnaire(
         parent_full_name=payload.parent_full_name,
         child_full_name=payload.child_full_name,
         parent_phone=payload.parent_phone,
-        email=payload.email,
+        child_phone=payload.child_phone,
+        email=payload.parent_email or payload.student_email,
         city=payload.city,
         school_name=payload.school_name,
         school_class=payload.school_class,
-        comment=payload.comment,
-        source="Анкета Специалист",
+        comment=full_comment or None,
+        source=payload.source or "Анкета Специалист",
         tags=["direction:specialist"],
         status=LeadStatus.NEW,
         questionnaire_filled=True,
     )
+    db.add(card)
     db.add(lead)
     db.commit()
     db.refresh(lead)

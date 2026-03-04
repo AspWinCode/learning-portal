@@ -1430,10 +1430,19 @@ export const salesApi = {
     parent_phone: string;
     child_full_name: string;
     city: string;
-    email?: string;
+    birth_date?: string;
+    child_phone?: string;
+    child_telegram?: string;
+    gender?: string;
     school_name?: string;
     school_class?: string;
+    parent_phone_2?: string;
+    parent_telegram?: string;
+    parent_email?: string;
+    student_email?: string;
+    preferred_messenger?: string;
     comment?: string;
+    source?: string;
   }): Promise<{ lead_id: number }> => {
     const response = await api.post('/api/sales/public/leads/specialist-questionnaire', payload);
     return response.data;

@@ -1173,10 +1173,21 @@ class SpecialistQuestionnaireRequest(BaseModel):
     parent_phone: str = Field(..., min_length=1)
     child_full_name: str = Field(..., min_length=1)
     city: str = Field(..., min_length=1)
-    email: Optional[EmailStr] = None
+    # Обучающийся
+    birth_date: Optional[date] = None
+    child_phone: Optional[str] = None
+    child_telegram: Optional[str] = None
+    gender: Optional[str] = None
     school_name: Optional[str] = None
     school_class: Optional[str] = None
+    # Родитель и контакты
+    parent_phone_2: Optional[str] = None
+    parent_telegram: Optional[str] = None
+    parent_email: Optional[EmailStr] = None
+    student_email: Optional[EmailStr] = None
+    preferred_messenger: Optional[str] = None  # telegram | max
     comment: Optional[str] = None
+    source: Optional[str] = None  # откуда узнали
 
 
 class SpecialistQuestionnaireResponse(BaseModel):

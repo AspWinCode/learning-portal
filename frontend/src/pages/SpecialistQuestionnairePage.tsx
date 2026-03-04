@@ -1,26 +1,30 @@
 import React, { useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Container,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Container, Stack, TextField, Typography } from '@mui/material';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 
 const SpecialistQuestionnairePage: React.FC = () => {
   const [form, setForm] = useState({
+    // Родитель
     parent_full_name: '',
     parent_phone: '',
+    parent_phone_2: '',
+    parent_telegram: '',
+    parent_email: '',
+    // Обучающийся
     child_full_name: '',
+    birth_date: '',
+    child_phone: '',
+    child_telegram: '',
+    gender: '',
     city: '',
-    email: '',
     school_name: '',
     school_class: '',
+    // Контакты и прочее
+    student_email: '',
+    preferred_messenger: '',
     comment: '',
+    source: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,10 +57,19 @@ const SpecialistQuestionnairePage: React.FC = () => {
         parent_phone: parentPhone,
         child_full_name: childName,
         city,
-        email: form.email.trim() || undefined,
+        birth_date: form.birth_date || undefined,
+        child_phone: form.child_phone.trim() || undefined,
+        child_telegram: form.child_telegram.trim() || undefined,
+        gender: form.gender.trim() || undefined,
         school_name: form.school_name.trim() || undefined,
         school_class: form.school_class.trim() || undefined,
+        parent_phone_2: form.parent_phone_2.trim() || undefined,
+        parent_telegram: form.parent_telegram.trim() || undefined,
+        parent_email: form.parent_email.trim() || undefined,
+        student_email: form.student_email.trim() || undefined,
+        preferred_messenger: form.preferred_messenger.trim() || undefined,
         comment: form.comment.trim() || undefined,
+        source: form.source.trim() || undefined,
       });
       setSuccess(true);
     } catch (err: any) {
@@ -101,6 +114,70 @@ const SpecialistQuestionnairePage: React.FC = () => {
 
         <Box component="form" onSubmit={handleSubmit} noValidate>
           <Stack spacing={2}>
+            <Typography variant="h6">Обучающийся</Typography>
+            <TextField
+              label="ФИО ученика"
+              value={form.child_full_name}
+              onChange={handleChange('child_full_name')}
+              required
+              fullWidth
+            />
+            <TextField
+              label="Дата рождения"
+              type="date"
+              value={form.birth_date}
+              onChange={handleChange('birth_date')}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Телефон ученика"
+              value={form.child_phone}
+              onChange={handleChange('child_phone')}
+              fullWidth
+            />
+            <TextField
+              label="Телеграм ученика"
+              value={form.child_telegram}
+              onChange={handleChange('child_telegram')}
+              fullWidth
+            />
+            <TextField
+              label="Email ученика"
+              type="email"
+              value={form.student_email}
+              onChange={handleChange('student_email')}
+              fullWidth
+            />
+            <TextField
+              label="Пол"
+              value={form.gender}
+              onChange={handleChange('gender')}
+              fullWidth
+            />
+            <TextField
+              label="Город"
+              value={form.city}
+              onChange={handleChange('city')}
+              required
+              fullWidth
+            />
+            <TextField
+              label="Образовательное учреждение"
+              value={form.school_name}
+              onChange={handleChange('school_name')}
+              fullWidth
+            />
+            <TextField
+              label="Класс"
+              value={form.school_class}
+              onChange={handleChange('school_class')}
+              fullWidth
+            />
+
+            <Typography variant="h6" sx={{ mt: 2 }}>
+              Родитель
+            </Typography>
             <TextField
               label="ФИО родителя"
               value={form.parent_full_name}
@@ -116,36 +193,28 @@ const SpecialistQuestionnairePage: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="ФИО ученика"
-              value={form.child_full_name}
-              onChange={handleChange('child_full_name')}
-              required
+              label="Второй телефон"
+              value={form.parent_phone_2}
+              onChange={handleChange('parent_phone_2')}
               fullWidth
             />
             <TextField
-              label="Город"
-              value={form.city}
-              onChange={handleChange('city')}
-              required
+              label="Телеграм родителя"
+              value={form.parent_telegram}
+              onChange={handleChange('parent_telegram')}
               fullWidth
             />
             <TextField
-              label="Школа"
-              value={form.school_name}
-              onChange={handleChange('school_name')}
-              fullWidth
-            />
-            <TextField
-              label="Класс"
-              value={form.school_class}
-              onChange={handleChange('school_class')}
-              fullWidth
-            />
-            <TextField
-              label="Email (для отправки информации)"
+              label="Email родителя"
               type="email"
-              value={form.email}
-              onChange={handleChange('email')}
+              value={form.parent_email}
+              onChange={handleChange('parent_email')}
+              fullWidth
+            />
+            <TextField
+              label="Мессенджер (Telegram/MAX)"
+              value={form.preferred_messenger}
+              onChange={handleChange('preferred_messenger')}
               fullWidth
             />
             <TextField
@@ -155,6 +224,12 @@ const SpecialistQuestionnairePage: React.FC = () => {
               fullWidth
               multiline
               minRows={3}
+            />
+            <TextField
+              label="Откуда о нас узнали"
+              value={form.source}
+              onChange={handleChange('source')}
+              fullWidth
             />
           </Stack>
 

@@ -361,6 +361,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
         director: '',
         city: '',
         address: '',
+        phone_school: '',
         student_count: '',
         friendship_degree: '',
         pipeline_stage: 'new',

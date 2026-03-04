@@ -223,9 +223,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
     ];
 
-    if (isAdminLike) items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
+    if (isAdminLike && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') {
-      items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
+      // Для владельца отчёты и финансовая модель доступны с главной страницы как вкладки.
       items.push({ text: 'Финансы (журнал)', icon: <AccountBalanceWallet />, path: '/finance/overview' });
       items.push({ text: 'Проекты (финансы)', icon: <AccountBalanceWallet />, path: '/finance/projects' });
     }

@@ -1506,6 +1506,7 @@ class B2BProject(Base):
     cities = Column(JSON, nullable=True)  # ╤Б╨┐╨╕╤Б╨╛╨║╨│╨╛╤А╨╛╨┤╨╛╨▓╨║╨╛╤В╨╛╤А╤Л╨╡╨▓╤Е╨╛╨┤╤П╤В╨▓╨┐╤А╨╛╨╡╨║╤В
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    archived = Column(Boolean, nullable=False, default=False, server_default="false", index=True)
 
 
 # ╨Т╨╛╤А╨╛╨╜╨║╨╕╨┤╨╗╤П╤А╨╛╨╗╨╕╤В╨╕╨┐╤Л╨╕╤Н╤В╨░╨┐╤Л╨╖╨░╨┤╨░╨╜╤Л╨▓╨║╨╛╨┤╨╡

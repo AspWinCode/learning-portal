@@ -763,6 +763,7 @@ export interface B2BProject {
   location?: string | null;
   main_city?: string | null;
   cities?: string[] | null;
+  archived?: boolean;
   created_at: string;
   updated_at?: string | null;
 }

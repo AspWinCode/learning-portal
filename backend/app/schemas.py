@@ -2011,6 +2011,7 @@ class B2BProjectUpdate(BaseModel):
     location: Optional[str] = None
     main_city: Optional[str] = None
     cities: Optional[List[str]] = None
+    archived: Optional[bool] = None
 
 
 class B2BProjectResponse(BaseModel):
@@ -2019,6 +2020,7 @@ class B2BProjectResponse(BaseModel):
     location: Optional[str] = None
     main_city: Optional[str] = None
     cities: Optional[List[str]] = None
+    archived: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
 

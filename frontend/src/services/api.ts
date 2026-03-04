@@ -1687,8 +1687,8 @@ export const b2bApi = {
   deleteContact: async (schoolId: number, contactId: number): Promise<void> => {
     await api.delete(`/api/b2b-schools/${schoolId}/contacts/${contactId}`);
   },
-  listProjects: async (): Promise<B2BProject[]> => {
-    const response = await api.get('/api/b2b-projects');
+  listProjects: async (params?: { archived?: boolean }): Promise<B2BProject[]> => {
+    const response = await api.get('/api/b2b-projects', { params });
     return response.data;
   },
   createProject: async (payload: {
@@ -1698,6 +1698,13 @@ export const b2bApi = {
     cities?: string[];
   }): Promise<B2BProject> => {
     const response = await api.post('/api/b2b-projects', payload);
+    return response.data;
+  },
+  updateProject: async (
+    id: number,
+    payload: Partial<{ name: string; location: string; main_city: string; cities: string[]; archived: boolean }>
+  ): Promise<B2BProject> => {
+    const response = await api.put(`/api/b2b-projects/${id}`, payload);
     return response.data;
   },
 };

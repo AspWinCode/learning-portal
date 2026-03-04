@@ -1164,10 +1164,17 @@ async def delete_school_contact(
 
 @router.get("/b2b-projects", response_model=List[B2BProjectResponse])
 async def list_b2b_projects(
+    archived: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
-    projects = db.query(B2BProject).order_by(B2BProject.created_at.desc()).all()
+    q = db.query(B2BProject)
+    # По умолчанию показываем только неархивные проекты
+    if archived is None:
+        q = q.filter(B2BProject.archived.is_(False))
+    else:
+        q = q.filter(B2BProject.archived.is_(archived))
+    projects = q.order_by(B2BProject.created_at.desc()).all()
     return [
         B2BProjectResponse(
             id=p.id,
@@ -1175,6 +1182,7 @@ async def list_b2b_projects(
             location=p.location,
             main_city=p.main_city,
             cities=p.cities or [],
+            archived=getattr(p, "archived", False),
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -1223,6 +1231,7 @@ async def get_b2b_project(
         location=project.location,
         main_city=project.main_city,
         cities=project.cities or [],
+        archived=getattr(project, "archived", False),
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -1249,6 +1258,7 @@ async def update_b2b_project(
         location=project.location,
         main_city=project.main_city,
         cities=project.cities or [],
+        archived=getattr(project, "archived", False),
         created_at=project.created_at,
         updated_at=project.updated_at,
     )

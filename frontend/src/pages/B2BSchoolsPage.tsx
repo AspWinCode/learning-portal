@@ -166,7 +166,7 @@ export const B2BSchoolsContent: React.FC = () => {
     (async () => {
       try {
         const [pr, cityList, mgrList] = await Promise.all([
-          b2bApi.listProjects(),
+          b2bApi.listProjects({ archived: false }),
           b2bApi.listCities(),
           b2bApi.listManagers(),
         ]);
@@ -561,6 +561,23 @@ export const B2BSchoolsContent: React.FC = () => {
     }
   };
 
+  const handleArchiveCurrentProject = async () => {
+    if (!selectedProjectId) return;
+    const current = projects.find((p) => p.id === selectedProjectId);
+    if (!current) return;
+    if (!window.confirm(`Отправить проект «${current.name}» в архив?`)) return;
+    try {
+      await b2bApi.updateProject(current.id, { archived: true });
+      setSuccess('Проект отправлен в архив');
+      const pr = await b2bApi.listProjects({ archived: false });
+      setProjects(pr);
+      setSelectedProjectId(pr.length ? pr[0].id : null);
+      await handleChangeProject(pr.length ? pr[0].id : null);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось отправить проект в архив'));
+    }
+  };
+
   const handleSave = async () => {
     if (!form.name.trim()) {
       setError('Укажите название школы');
@@ -848,6 +865,16 @@ export const B2BSchoolsContent: React.FC = () => {
           <Button variant="outlined" size="small" startIcon={<Add />} onClick={openCreateProject}>
             Создать проект
           </Button>
+          {selectedProjectId && (
+            <Button
+              variant="outlined"
+              size="small"
+              color="warning"
+              onClick={() => void handleArchiveCurrentProject()}
+            >
+              В архив
+            </Button>
+          )}
           <Button variant="contained" startIcon={<Add />} onClick={openCreate}>
             Добавить школу
           </Button>

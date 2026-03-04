@@ -890,6 +890,14 @@ export const settingsApi = {
     const response = await api.post('/api/settings/logo', { data_url });
     return response.data;
   },
+  getB2BDistricts: async (): Promise<{ items: string[] }> => {
+    const response = await api.get('/api/settings/b2b-districts');
+    return response.data;
+  },
+  setB2BDistricts: async (items: string[]): Promise<{ items: string[] }> => {
+    const response = await api.post('/api/settings/b2b-districts', { items });
+    return response.data;
+  },
 };
 
 // Урок на сегодня для раздела «Позвать детей на занятие»

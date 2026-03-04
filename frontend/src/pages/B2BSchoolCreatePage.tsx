@@ -35,7 +35,7 @@ import PlayArrow from '@mui/icons-material/PlayArrow';
 import Person from '@mui/icons-material/Person';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import Layout from '../components/Layout';
-import { b2bApi } from '../services/api';
+import { b2bApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
 import { format, parseISO, addDays } from 'date-fns';
@@ -105,6 +105,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
   const navigate = useNavigate();
+  const [districtOptions, setDistrictOptions] = useState<string[]>([]);
 
   const loadSchools = useCallback(async () => {
     setLoading(true);
@@ -125,6 +126,13 @@ export const B2BSchoolCreateContent: React.FC = () => {
 
   useEffect(() => {
     b2bApi.listManagers().then(setManagers).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    settingsApi
+      .getB2BDistricts()
+      .then((res) => setDistrictOptions(res.items || []))
+      .catch(() => {});
   }, []);
 
   const openEdit = useCallback(async (school: B2BSchool) => {
@@ -491,12 +499,23 @@ export const B2BSchoolCreateContent: React.FC = () => {
               onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
               fullWidth
             />
-            <TextField
-              label="Район"
-              value={form.district}
-              onChange={(e) => setForm((f) => ({ ...f, district: e.target.value }))}
-              fullWidth
-            />
+            <FormControl fullWidth>
+              <InputLabel>Район</InputLabel>
+              <Select
+                value={form.district}
+                label="Район"
+                onChange={(e) => setForm((f) => ({ ...f, district: e.target.value }))}
+              >
+                <MenuItem value="">
+                  <em>Не указан</em>
+                </MenuItem>
+                {districtOptions.map((d) => (
+                  <MenuItem key={d} value={d}>
+                    {d}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <TextField
               label="Телефон школы (городской)"
               value={form.phone_school}

@@ -23,7 +23,7 @@ import { Add as AddIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { abonementsApi, salesApi } from '../services/api';
+import { abonementsApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
   Abonement,
@@ -95,6 +95,8 @@ const SalesSettingsPage: React.FC = () => {
     name: '',
     format: '',
   });
+  const [b2bDistricts, setB2bDistricts] = useState<string[]>([]);
+  const [newDistrict, setNewDistrict] = useState('');
 
   const loadData = async () => {
     const errors: string[] = [];
@@ -117,6 +119,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Школы', () => salesApi.listSalesSchools(false), setSchools),
       load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
+      load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
     ]);
     if (errors.length) {
       const hint = errors.some((e) => e.includes('Not Found') || e.includes('404'))
@@ -247,6 +250,72 @@ const SalesSettingsPage: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Районы (B2B)</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Список районов для выбора во вкладке «Новая B2B школа».
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              label="Новый район"
+              value={newDistrict}
+              onChange={(e) => setNewDistrict(e.target.value)}
+            />
+            <Button
+              variant="contained"
+              onClick={() =>
+                safeAction(async () => {
+                  const name = newDistrict.trim();
+                  if (!name) return;
+                  const items = Array.from(new Set([name, ...b2bDistricts]));
+                  const res = await settingsApi.setB2BDistricts(items);
+                  setB2bDistricts(res.items);
+                  setNewDistrict('');
+                })
+              }
+            >
+              Добавить
+            </Button>
+          </Box>
+          {b2bDistricts.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Пока нет ни одного района.
+            </Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Название района</TableCell>
+                  <TableCell width={120} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {b2bDistricts.map((d) => (
+                  <TableRow key={d}>
+                    <TableCell>{d}</TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() =>
+                          safeAction(async () => {
+                            const next = b2bDistricts.filter((x) => x !== d);
+                            const res = await settingsApi.setB2BDistricts(next);
+                            setB2bDistricts(res.items);
+                          })
+                        }
+                      >
+                        Удалить
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Paper>
 
         <Paper sx={{ p: 2 }}>

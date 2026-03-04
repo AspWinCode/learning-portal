@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+import json
 
 from app.database import get_db
 from app import auth
@@ -10,6 +12,15 @@ from app.schemas import LogoResponse, LogoUpdate
 router = APIRouter()
 
 LOGO_KEY = "site_logo_data_url"
+DISTRICTS_KEY = "b2b_districts"
+
+
+class B2BDistrictsResponse(BaseModel):
+    items: list[str]
+
+
+class B2BDistrictsUpdate(BaseModel):
+    items: list[str]
 
 
 @router.get("/logo", response_model=LogoResponse)
@@ -46,5 +57,44 @@ async def set_logo(
     db.commit()
     db.refresh(setting)
     return {"data_url": setting.value}
+
+
+@router.get("/b2b-districts", response_model=B2BDistrictsResponse)
+async def get_b2b_districts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    setting = db.query(AppSetting).filter(AppSetting.key == DISTRICTS_KEY).first()
+    if not setting or not (setting.value or "").strip():
+        return B2BDistrictsResponse(items=[])
+    try:
+        data = json.loads(setting.value)
+        if isinstance(data, list):
+            items = [str(x) for x in data]
+        else:
+            items = []
+    except Exception:
+        items = []
+    return B2BDistrictsResponse(items=items)
+
+
+@router.post("/b2b-districts", response_model=B2BDistrictsResponse)
+async def set_b2b_districts(
+    body: B2BDistrictsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    items = [s.strip() for s in body.items if s and s.strip()]
+    raw = json.dumps(items, ensure_ascii=False)
+    setting = db.query(AppSetting).filter(AppSetting.key == DISTRICTS_KEY).first()
+    if not setting:
+        setting = AppSetting(key=DISTRICTS_KEY, value=raw)
+        db.add(setting)
+    else:
+        setting.value = raw
+        db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return B2BDistrictsResponse(items=items)
 
 

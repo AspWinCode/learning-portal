@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -66,16 +66,15 @@ export const CampaignsTab: React.FC = () => {
   const [addSchoolCity, setAddSchoolCity] = useState('');
   const [selectedSchoolIds, setSelectedSchoolIds] = useState<number[]>([]);
   const [createContactTask, setCreateContactTask] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadCampaigns = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await campaignsApi.list();
-      // В списке кампаний показываем только «активные» проекты:
-      // черновики и кампании «в работе». Завершённые/отменённые считаются архивом.
-      const visible = data.filter((c) => c.status === 'draft' || c.status === 'active');
-      setCampaigns(visible);
+      // Храним все кампании, фильтруем по активным/архивным в UI
+      setCampaigns(data);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить кампании'));
     } finally {
@@ -184,6 +183,16 @@ export const CampaignsTab: React.FC = () => {
     }
   };
 
+  const activeCampaigns = useMemo(
+    () => campaigns.filter((c) => c.status === 'draft' || c.status === 'active'),
+    [campaigns]
+  );
+  const archivedCampaigns = useMemo(
+    () => campaigns.filter((c) => c.status === 'done' || c.status === 'canceled'),
+    [campaigns]
+  );
+  const visibleCampaigns = showArchived ? archivedCampaigns : activeCampaigns;
+
   return (
     <>
       {selectedCampaignId ? (
@@ -249,10 +258,24 @@ export const CampaignsTab: React.FC = () => {
       ) : (
         <>
           <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h5">Кампании</Typography>
-            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-              Создать кампанию
-            </Button>
+            <Typography variant="h5">
+              Кампании {showArchived ? '(архив)' : ''}
+            </Typography>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={showArchived}
+                    onChange={(e) => setShowArchived(e.target.checked)}
+                  />
+                }
+                label="Показывать архив"
+              />
+              <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+                Создать кампанию
+              </Button>
+            </Stack>
           </Stack>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -276,14 +299,14 @@ export const CampaignsTab: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {campaigns.length === 0 ? (
+                  {visibleCampaigns.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.secondary' }}>
-                        Нет кампаний. Создайте первую.
+                        {showArchived ? 'Нет кампаний в архиве.' : 'Нет кампаний. Создайте первую.'}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    campaigns.map((c) => (
+                    visibleCampaigns.map((c) => (
                       <TableRow key={c.id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelectedCampaignId(c.id)}>
                         <TableCell>{c.name}</TableCell>
                         <TableCell>{CAMPAIGN_TYPES.find((t) => t.value === c.type)?.label ?? c.type}</TableCell>

@@ -287,7 +287,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
   }, [schools]);
 
   const filteredSchools = useMemo(() => {
-    let list = schools.filter((s) => s.pipeline_stage === 'new');
+    let list = schools;
     if (filterCity) list = list.filter((s) => s.city === filterCity);
     return list;
   }, [schools, filterCity]);
@@ -718,9 +718,7 @@ export const B2BSchoolCreateContent: React.FC = () => {
                   {filteredSchools.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={10} align="center" sx={{ py: 3 }} color="text.secondary">
-                        {schools.filter((s) => s.pipeline_stage === 'new').length === 0
-                          ? 'Нет школ в стадии «Новая»'
-                          : 'Нет школ в выбранном городе'}
+                        {schools.length === 0 ? 'Нет ни одной школы.' : 'Нет школ в выбранном городе.'}
                       </TableCell>
                     </TableRow>
                   ) : (

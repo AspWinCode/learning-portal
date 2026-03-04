@@ -72,7 +72,10 @@ export const CampaignsTab: React.FC = () => {
     setError(null);
     try {
       const data = await campaignsApi.list();
-      setCampaigns(data);
+      // В списке кампаний показываем только «активные» проекты:
+      // черновики и кампании «в работе». Завершённые/отменённые считаются архивом.
+      const visible = data.filter((c) => c.status === 'draft' || c.status === 'active');
+      setCampaigns(visible);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить кампании'));
     } finally {
@@ -169,6 +172,17 @@ export const CampaignsTab: React.FC = () => {
 
   const stages = campaignDetail ? getStagesForCampaignType(campaignDetail.type) : [];
   const byStage = stages.map((s) => ({ ...s, items: schoolCampaigns.filter((sc) => sc.stage === s.value) }));
+
+  const handleArchiveCampaign = async (c: Campaign) => {
+    if (!window.confirm(`Отправить кампанию «${c.name}» в архив (статус «Отменена»)?`)) return;
+    setError(null);
+    try {
+      await campaignsApi.update(c.id, { status: 'canceled' });
+      await loadCampaigns();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось отправить кампанию в архив'));
+    }
+  };
 
   return (
     <>
@@ -278,9 +292,18 @@ export const CampaignsTab: React.FC = () => {
                         <TableCell>{c.responsible_full_name || '—'}</TableCell>
                         <TableCell>{CAMPAIGN_STATUSES.find((s) => s.value === c.status)?.label ?? c.status}</TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Button size="small" startIcon={<Edit />} onClick={() => setSelectedCampaignId(c.id)}>
-                            Открыть
-                          </Button>
+                          <Stack direction="row" spacing={1}>
+                            <Button size="small" startIcon={<Edit />} onClick={() => setSelectedCampaignId(c.id)}>
+                              Открыть
+                            </Button>
+                            <Button
+                              size="small"
+                              color="warning"
+                              onClick={() => void handleArchiveCampaign(c)}
+                            >
+                              В архив
+                            </Button>
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     ))

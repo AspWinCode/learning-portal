@@ -21,6 +21,7 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
+import { Delete as DeleteIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { financeApi, studentsApi } from '../services/api';
 import type { FinanceAccountBalance, FinancePnlRow, FinanceLedgerBankRow, Student } from '../types';
@@ -396,6 +397,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                 <TableCell>Контрагент</TableCell>
                 <TableCell>Описание / источник</TableCell>
                 <TableCell>Ученики</TableCell>
+                <TableCell align="right">Действия</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -562,6 +564,35 @@ const FinanceOverviewPageContent: React.FC = () => {
                         Зачислено (ученик #{row.student_id})
                       </Typography>
                     )}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Button
+                      variant="text"
+                      color="error"
+                      size="small"
+                      startIcon={<DeleteIcon fontSize="small" />}
+                      onClick={async () => {
+                        if (
+                          !window.confirm(
+                            'Удалить эту операцию из единого финансового журнала? Это действие нельзя отменить.'
+                          )
+                        ) {
+                          return;
+                        }
+                        try {
+                          await financeApi.deleteTransaction(row.id);
+                          setJournalRows((prev) => prev.filter((r) => r.id !== row.id));
+                        } catch (err: any) {
+                          setJournalError(
+                            err?.response?.data?.detail ||
+                              err?.message ||
+                              'Не удалось удалить операцию из журнала'
+                          );
+                        }
+                      }}
+                    >
+                      Удалить
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

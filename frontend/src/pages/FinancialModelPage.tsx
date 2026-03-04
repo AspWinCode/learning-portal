@@ -797,8 +797,8 @@ const FinancialModelPage: React.FC = () => {
       .finally(() => setFactLoading(false));
   }, [monthsList.join(',')]);
 
+export const FinancialModelContent: React.FC = () => {
   return (
-    <Layout>
       <Box sx={{ p: 3 }}>
         <Typography variant="h4" sx={{ mb: 2 }}>
           Финансовая модель
@@ -1887,9 +1887,14 @@ const FinancialModelPage: React.FC = () => {
           <AcademyOperationsTab />
         )}
       </Box>
-    </Layout>
   );
 };
+
+const FinancialModelPage: React.FC = () => (
+  <Layout>
+    <FinancialModelContent />
+  </Layout>
+);
 
 export default FinancialModelPage;
 

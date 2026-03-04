@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import Layout from '../components/Layout';
 import {
   Typography,
   Box,
@@ -26,7 +25,7 @@ import {
 import { reportsApi, studentsApi, usersApi } from '../services/api';
 import { Student, User } from '../types';
 
-const ReportsPage: React.FC = () => {
+export const ReportsPageContent: React.FC = () => {
   const [tab, setTab] = useState<'students' | 'trainers' | 'logs' | 'export' | 'characteristics'>('trainers');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -185,7 +184,7 @@ const ReportsPage: React.FC = () => {
   };
 
   return (
-    <Layout>
+    <Box>
       <Typography variant="h4" gutterBottom>
         Отчетность
       </Typography>
@@ -557,9 +556,17 @@ const ReportsPage: React.FC = () => {
           </Box>
         </Paper>
       )}
-    </Layout>
+    </Box>
   );
 };
+
+import Layout from '../components/Layout';
+
+const ReportsPage: React.FC = () => (
+  <Layout>
+    <ReportsPageContent />
+  </Layout>
+);
 
 export default ReportsPage;
 

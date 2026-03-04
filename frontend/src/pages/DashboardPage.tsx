@@ -2,8 +2,8 @@ import React from 'react';
 import Layout from '../components/Layout';
 import { Typography, Box, Grid, Paper, Tabs, Tab } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
-import ReportsPage from './ReportsPage';
-import FinancialModelPage from './FinancialModelPage';
+import { ReportsPageContent } from './ReportsPage';
+import { FinancialModelContent } from './FinancialModelPage';
 
 const DashboardOwnerTabs: React.FC = () => {
   const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'financialModel'>('overview');
@@ -32,15 +32,15 @@ const DashboardOwnerTabs: React.FC = () => {
       )}
 
       {tab === 'characteristics' && (
-        // Используем страницу отчётов, но основная вкладка в ней — "Характеристики"
+        // Используем контент отчётности без дополнительного Layout
         <Box sx={{ mt: 1 }}>
-          <ReportsPage />
+          <ReportsPageContent />
         </Box>
       )}
 
       {tab === 'financialModel' && (
         <Box sx={{ mt: 1 }}>
-          <FinancialModelPage />
+          <FinancialModelContent />
         </Box>
       )}
     </Box>

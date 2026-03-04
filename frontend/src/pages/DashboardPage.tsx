@@ -2,7 +2,7 @@ import React from 'react';
 import Layout from '../components/Layout';
 import { Typography, Box, Grid, Paper, Tabs, Tab } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
-import ReportsPage from './ReportsPage';
+import { ReportsPageContent } from './ReportsPage';
 import FinancialModelPage from './FinancialModelPage';
 
 const DashboardOwnerTabs: React.FC = () => {
@@ -33,7 +33,7 @@ const DashboardOwnerTabs: React.FC = () => {
 
       {tab === 'characteristics' && (
         <Box sx={{ mt: 1 }}>
-          <ReportsPage />
+          <ReportsPageContent />
         </Box>
       )}
 

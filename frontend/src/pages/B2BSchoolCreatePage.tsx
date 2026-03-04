@@ -817,13 +817,6 @@ export const B2BSchoolCreateContent: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
-                <TextField
-                  label="Даты мероприятий (через запятую)"
-                  value={editForm.event_dates}
-                  onChange={(e) => setEditForm((f) => ({ ...f, event_dates: e.target.value }))}
-                  fullWidth
-                  placeholder="2025-03-01, 2025-03-15"
-                />
                 <FormControl fullWidth>
                   <InputLabel>Стадия воронки</InputLabel>
                   <Select

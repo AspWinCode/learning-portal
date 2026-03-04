@@ -48,6 +48,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
 import PersonalFinancePage from './pages/PersonalFinancePage';
 import FinanceOverviewPage from './pages/FinanceOverviewPage';
+import FinanceProjectsPage from './pages/FinanceProjectsPage';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
 
@@ -55,7 +56,7 @@ const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
   if (user?.role === 'guest') return <Navigate to="/programs" replace />;
   if (user?.role === 'parent') return <Navigate to="/parent-dashboard" replace />;
-  if (user?.role === 'sales') return <Navigate to="/sales/leads" replace />;
+  if (user?.role === 'sales') return <Navigate to="/tasks" replace />;
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -203,6 +204,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <FinanceOverviewPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/finance/projects"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <FinanceProjectsPage />
                 </PrivateRoute>
               }
             />

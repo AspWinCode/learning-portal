@@ -227,6 +227,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'owner') {
       items.push({ text: 'Финансовая модель', icon: <AccountBalance />, path: '/financial-model' });
       items.push({ text: 'Финансы (журнал)', icon: <AccountBalanceWallet />, path: '/finance/overview' });
+      items.push({ text: 'Проекты (финансы)', icon: <AccountBalanceWallet />, path: '/finance/projects' });
     }
     if (isAdminLike) {
       items.push({ text: 'Инструкции', icon: <Description />, path: '/sales/instructions' });

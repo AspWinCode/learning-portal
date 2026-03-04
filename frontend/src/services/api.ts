@@ -382,6 +382,51 @@ export const financeApi = {
     });
     return response.data;
   },
+  listJournalTransactions: async (params?: {
+    account_ids?: number[];
+    target_ids?: number[];
+    article_ids?: number[];
+    direction?: string;
+    status?: string[];
+    unclassified_only?: boolean;
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+  }): Promise<FinanceLedgerBankRow[]> => {
+    const response = await api.get('/api/finance/transactions', {
+      params: {
+        account_ids: params?.account_ids,
+        target_ids: params?.target_ids,
+        article_ids: params?.article_ids,
+        direction: params?.direction,
+        status: params?.status,
+        unclassified_only: params?.unclassified_only,
+        date_from: params?.date_from,
+        date_to: params?.date_to,
+        limit: params?.limit,
+      },
+    });
+    return response.data;
+  },
+  importJournalFile: async (
+    account_code: string,
+    file: File
+  ): Promise<{ imported: number; skipped: number }> => {
+    const form = new FormData();
+    form.append('account_code', account_code);
+    form.append('file', file);
+    const response = await api.post('/api/finance/import', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+  applyTransactionToStudent: async (
+    transactionId: number,
+    payload: { student_id: number }
+  ): Promise<FinanceLedgerBankRow> => {
+    const response = await api.post(`/api/finance/transactions/${transactionId}/apply-student`, payload);
+    return response.data;
+  },
   migratePersonalFinance: async (payload: {
     articles: Array<{ id: string; name: string; type: 'income' | 'expense' }>;
     operations: Array<{

@@ -39,7 +39,7 @@ const LoginPage: React.FC = () => {
 
     try {
       await login(email, password);
-      navigate('/dashboard');
+      navigate('/');
     } catch (err: any) {
       const detail = err.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((x: any) => x?.msg || x).join(', ') : null;

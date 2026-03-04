@@ -23,8 +23,8 @@ import {
   Autocomplete,
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
-import { usersApi, groupsApi } from '../services/api';
-import { User, Group as ApiGroup, Student as ApiStudent } from '../types';
+import { usersApi, groupsApi, financeApi } from '../services/api';
+import { User, Group as ApiGroup, Student as ApiStudent, FinancePnlRow } from '../types';
 import { AcademyOperationsTab } from './AcademyOperationsTab';
 
 type Inputs = {
@@ -762,6 +762,41 @@ const FinancialModelPage: React.FC = () => {
     new Set([...data.revenue.map((r) => r.month), ...data.costs.map((c) => c.month)])
   ).filter(Boolean);
 
+  const [factPnlRows, setFactPnlRows] = useState<FinancePnlRow[]>([]);
+  const [factLoading, setFactLoading] = useState(false);
+  const [factError, setFactError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (monthsList.length === 0) {
+      setFactPnlRows([]);
+      return;
+    }
+    // Берём минимум и максимум по месяцам и грузим P&L академии за этот диапазон
+    const sortedMonths = [...monthsList].sort();
+    const first = sortedMonths[0]; // YYYY-MM
+    const last = sortedMonths[sortedMonths.length - 1]; // YYYY-MM
+    const date_from = `${first}-01`;
+    const [y, m] = last.split('-').map((v) => Number(v));
+    const lastDate = new Date(y || 1970, (m || 1), 0);
+    const date_to = lastDate.toISOString().slice(0, 10);
+
+    setFactLoading(true);
+    setFactError(null);
+    financeApi
+      .getPnl({
+        target_code: 'academy',
+        date_from,
+        date_to,
+        group_by: 'month',
+      })
+      .then((rows) => setFactPnlRows(rows))
+      .catch((err: any) => {
+        setFactError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить факт P&L из журнала');
+        setFactPnlRows([]);
+      })
+      .finally(() => setFactLoading(false));
+  }, [monthsList.join(',')]);
+
   return (
     <Layout>
       <Box sx={{ p: 3 }}>
@@ -878,6 +913,7 @@ const FinancialModelPage: React.FC = () => {
               'Выручка',
               'Затраты',
               'Прибыли и убытки',
+              'План / Факт (Академия)',
               'Дашборд',
               'Финансовая модель по тренерам',
               'Операции по расходам и доходам',
@@ -1475,6 +1511,67 @@ const FinancialModelPage: React.FC = () => {
                     <TableCell>{row.netProfit.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          </Paper>
+        )}
+
+        {sheetIndex === 6 && (
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              План / Факт по Академии (P&L по месяцам)
+            </Typography>
+            {factError && (
+              <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+                {factError}
+              </Typography>
+            )}
+            {factLoading && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Загрузка фактических данных из журнала…
+              </Typography>
+            )}
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Месяц</TableCell>
+                  <TableCell align="right">План: Выручка</TableCell>
+                  <TableCell align="right">План: COGS</TableCell>
+                  <TableCell align="right">План: Opex</TableCell>
+                  <TableCell align="right">План: Чистая прибыль</TableCell>
+                  <TableCell align="right">Факт: Выручка</TableCell>
+                  <TableCell align="right">Факт: Расходы</TableCell>
+                  <TableCell align="right">Факт: Прибыль</TableCell>
+                  <TableCell align="right">Δ Прибыль</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pnlRows.map((planRow) => {
+                  const factRow = factPnlRows.find((f) => f.period === planRow.month);
+                  const factRevenue = factRow?.income ?? 0;
+                  const factExpense = factRow?.expense ?? 0;
+                  const factProfit = (factRow?.profit ?? (factRevenue - factExpense)) || 0;
+                  const deltaProfit = factProfit - planRow.netProfit;
+                  return (
+                    <TableRow key={planRow.month}>
+                      <TableCell>{planRow.month}</TableCell>
+                      <TableCell align="right">{planRow.revenue.toFixed(2)}</TableCell>
+                      <TableCell align="right">{planRow.cogs.toFixed(2)}</TableCell>
+                      <TableCell align="right">{planRow.opex.toFixed(2)}</TableCell>
+                      <TableCell align="right">{planRow.netProfit.toFixed(2)}</TableCell>
+                      <TableCell align="right">{factRevenue.toFixed(2)}</TableCell>
+                      <TableCell align="right">{factExpense.toFixed(2)}</TableCell>
+                      <TableCell align="right">{factProfit.toFixed(2)}</TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{ color: deltaProfit >= 0 ? 'success.main' : 'error.main', fontWeight: 600 }}
+                      >
+                        {deltaProfit >= 0 ? '+' : ''}
+                        {deltaProfit.toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </Paper>

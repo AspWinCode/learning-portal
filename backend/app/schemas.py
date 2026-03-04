@@ -399,6 +399,11 @@ class BankTransactionApplyRequest(BaseModel):
     student_id: int
 
 
+class FinanceTransactionApplyStudentRequest(BaseModel):
+    """Зачислить операцию журнала на выбранного ученика."""
+    student_id: int
+
+
 class FinanceLedgerBankRow(BaseModel):
     """Строка единого журнала для вкладки «Операции банка»."""
 

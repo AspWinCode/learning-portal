@@ -64,14 +64,14 @@ const PersonalFinancePageContent: React.FC = () => {
   const [migrateError, setMigrateError] = useState<string | null>(null);
   const [migrateLoading, setMigrateLoading] = useState(false);
 
-  const [useLedgerSource, setUseLedgerSource] = useState(false);
+  // Личные финансы работают как витрина над единым журналом
+  const [useLedgerSource] = useState(true);
   const [ledgerTransactions, setLedgerTransactions] = useState<FinanceLedgerTransactionRow[]>([]);
   const [ledgerArticles, setLedgerArticles] = useState<Array<{ id: number; name: string; direction: string; scope: string }>>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!useLedgerSource) return;
     setLedgerLoading(true);
     setLedgerError(null);
     Promise.all([financeApi.listLedgerTransactions({ limit: 10000 }), financeApi.listArticles({ scope: 'personal' })])
@@ -185,19 +185,6 @@ const PersonalFinancePageContent: React.FC = () => {
           <Tab label="Опознавание" value={TAB_RECOGNITION} />
         </Tabs>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {effectiveTab === TAB_DASHBOARD && (
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={useLedgerSource}
-                  onChange={(e) => setUseLedgerSource(e.target.checked)}
-                  color="primary"
-                  size="small"
-                />
-              }
-              label="Показывать из единого журнала"
-            />
-          )}
           <Button
             variant="outlined"
             size="small"

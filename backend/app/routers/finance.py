@@ -22,6 +22,10 @@ from app.models import (
     FinanceTransactionDirection,
     FinanceTransactionStatus,
     FinanceRecognitionRule,
+    Student,
+    StudentAccount,
+    StudentAccountTransaction,
+    StudentAccountTransactionKind,
 )
 from app.schemas import (
     FinanceLedgerBankRow,
@@ -35,6 +39,7 @@ from app.schemas import (
     FinanceArticleUpdate,
     FinanceAccountBalance,
     FinancePnlRow,
+    FinanceTransactionApplyStudentRequest,
 )
 from app.services.finance_ledger import apply_recognition_rules
 
@@ -951,6 +956,126 @@ async def list_finance_ledger_bank(
     return rows
 
 
+@router.get("/transactions", response_model=List[FinanceLedgerBankRow])
+async def list_finance_transactions(
+    account_ids: Optional[List[int]] = Query(
+        None,
+        description="Фильтр по счетам (finance_accounts.id). Пусто = все активные счета.",
+    ),
+    target_ids: Optional[List[int]] = Query(
+        None,
+        description="Фильтр по проектам (finance_targets.id). Пусто = все.",
+    ),
+    article_ids: Optional[List[int]] = Query(
+        None,
+        description="Фильтр по статьям (finance_articles.id). Пусто = все.",
+    ),
+    direction: Optional[str] = Query(
+        None,
+        description="Фильтр по типу операции: income | expense | transfer",
+    ),
+    status: Optional[List[str]] = Query(
+        None,
+        description="Фильтр по статусу finance_transactions: new, classified, applied (если используется). Пусто = все.",
+    ),
+    unclassified_only: bool = Query(
+        False,
+        description="Только неразобранные операции (target_id IS NULL OR article_id IS NULL)",
+    ),
+    date_from: Optional[date] = Query(None, description="Начало периода (включительно)"),
+    date_to: Optional[date] = Query(None, description="Конец периода (включительно)"),
+    limit: int = Query(5000, ge=1, le=50000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[FinanceLedgerBankRow]:
+    """
+    Каноничный список операций единого финансового журнала.
+
+    Используется вкладкой «Все операции» в разделе Финансы → Журнал.
+    Возвращает те же поля, что и /finance/ledger/bank, но без фильтра по bank_source
+    (включает как банковские операции, так и ручные / импортированные записи).
+    """
+    _require_finance_access(current_user)
+
+    q = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.account),
+            joinedload(FinanceTransaction.to_account),
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .order_by(FinanceTransaction.occurred_at.desc(), FinanceTransaction.id.desc())
+    )
+
+    if account_ids:
+        q = q.filter(FinanceTransaction.account_id.in_(account_ids))
+    if target_ids:
+        q = q.filter(FinanceTransaction.target_id.in_(target_ids))
+    if article_ids:
+        q = q.filter(FinanceTransaction.article_id.in_(article_ids))
+    if direction:
+        if direction not in {d.value for d in FinanceTransactionDirection}:  # type: ignore[attr-defined]
+            raise HTTPException(status_code=400, detail="Некорректное значение direction")
+        q = q.filter(FinanceTransaction.direction == FinanceTransactionDirection(direction))  # type: ignore[call-arg]
+    if status:
+        allowed = {s.value for s in FinanceTransactionStatus}  # type: ignore[attr-defined]
+        invalid = [s for s in status if s not in allowed]
+        if invalid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Некорректный status: {', '.join(invalid)}",
+            )
+        q = q.filter(FinanceTransaction.status.in_(status))
+    if unclassified_only:
+        q = q.filter(
+            (FinanceTransaction.target_id.is_(None))
+            | (FinanceTransaction.article_id.is_(None))
+        )
+    if date_from is not None:
+        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time()))
+    if date_to is not None:
+        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time()))
+
+    items: List[FinanceTransaction] = q.limit(limit).all()
+
+    rows: List[FinanceLedgerBankRow] = []
+    for tx in items:
+        account: Optional[FinanceAccount] = getattr(tx, "account", None)
+        to_account: Optional[FinanceAccount] = getattr(tx, "to_account", None)
+        target: Optional[FinanceTarget] = getattr(tx, "target", None)
+        article: Optional[FinanceArticle] = getattr(tx, "article", None)
+
+        rows.append(
+            FinanceLedgerBankRow(
+                id=tx.id,
+                occurred_at=tx.occurred_at,
+                amount=float(tx.amount or 0.0),
+                direction=str(getattr(tx.direction, "value", tx.direction)),
+                status=str(getattr(tx.status, "value", tx.status)),
+                account_id=tx.account_id,
+                account_code=getattr(account, "code", None),
+                account_name=getattr(account, "name", None),
+                to_account_id=tx.to_account_id,
+                to_account_code=getattr(to_account, "code", None),
+                to_account_name=getattr(to_account, "name", None),
+                transfer_group_id=tx.transfer_group_id,
+                counterparty_name=tx.counterparty_name,
+                counterparty_phone=tx.counterparty_phone,
+                bank_source=tx.bank_source,
+                bank_operation_id=tx.bank_operation_id,
+                target_id=tx.target_id,
+                target_code=getattr(target, "code", None),
+                target_name=getattr(target, "name", None),
+                article_id=tx.article_id,
+                article_name=getattr(article, "name", None),
+                student_id=tx.student_id,
+            )
+        )
+
+    return rows
+
+
 @router.patch("/transactions/{transaction_id}", response_model=FinanceLedgerBankRow)
 async def update_finance_transaction(
     transaction_id: int,
@@ -1060,4 +1185,112 @@ async def delete_finance_transaction(
     db.delete(tx)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/transactions/{transaction_id}/apply-student", response_model=FinanceLedgerBankRow)
+async def apply_finance_transaction_to_student(
+    transaction_id: int,
+    payload: FinanceTransactionApplyStudentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceLedgerBankRow:
+    """
+    Зачислить операцию журнала на счёт ученика.
+
+    Используется журналом (Финансы → Журнал), чтобы не идти в таб «Операции банка».
+    Создаёт StudentAccountTransaction, обновляет баланс счёта и помечает транзакцию как applied.
+    """
+    _require_finance_access(current_user)
+
+    tx = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.account),
+            joinedload(FinanceTransaction.to_account),
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(FinanceTransaction.id == transaction_id)
+        .first()
+    )
+    if not tx:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+
+    if tx.direction != FinanceTransactionDirection.INCOME:
+        raise HTTPException(status_code=400, detail="Зачислить ученику можно только доходную операцию")
+
+    amount = float(tx.amount or 0.0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Сумма операции должна быть больше 0")
+
+    student = db.query(Student).filter(Student.id == payload.student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+
+    account = (
+        db.query(StudentAccount)
+        .filter(StudentAccount.student_id == payload.student_id)
+        .order_by(StudentAccount.id)
+        .first()
+    )
+    if not account:
+        account = StudentAccount(student_id=payload.student_id, name="Основной", balance=0.0)
+        db.add(account)
+        db.flush()
+
+    note = tx.counterparty_name or tx.description_raw or "Платёж из журнала"
+    db.add(
+        StudentAccountTransaction(
+            account_id=account.id,
+            amount=amount,
+            kind=StudentAccountTransactionKind.PAYMENT,
+            note=note[:512] if note else None,
+        )
+    )
+    account.balance += amount
+
+    try:
+        pay_date = tx.occurred_at.date() if tx.occurred_at else date.today()
+    except Exception:
+        pay_date = date.today()
+
+    from app.services.student_card_period import update_card_payment_dates
+
+    update_card_payment_dates(db, payload.student_id, pay_date)
+
+    tx.status = FinanceTransactionStatus.APPLIED
+    tx.student_id = payload.student_id
+
+    db.commit()
+    db.refresh(tx)
+
+    account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)
+    to_account_obj: Optional[FinanceAccount] = getattr(tx, "to_account", None)
+    target_obj: Optional[FinanceTarget] = getattr(tx, "target", None)
+    article_obj: Optional[FinanceArticle] = getattr(tx, "article", None)
+
+    return FinanceLedgerBankRow(
+        id=tx.id,
+        occurred_at=tx.occurred_at,
+        amount=float(tx.amount or 0.0),
+        direction=str(getattr(tx.direction, "value", tx.direction)),
+        status=str(getattr(tx.status, "value", tx.status)),
+        account_id=tx.account_id,
+        account_code=getattr(account_obj, "code", None),
+        account_name=getattr(account_obj, "name", None),
+        to_account_id=tx.to_account_id,
+        to_account_code=getattr(to_account_obj, "code", None),
+        to_account_name=getattr(to_account_obj, "name", None),
+        transfer_group_id=tx.transfer_group_id,
+        counterparty_name=tx.counterparty_name,
+        counterparty_phone=tx.counterparty_phone,
+        bank_source=tx.bank_source,
+        bank_operation_id=tx.bank_operation_id,
+        target_id=tx.target_id,
+        target_code=getattr(target_obj, "code", None),
+        target_name=getattr(target_obj, "name", None),
+        article_id=tx.article_id,
+        article_name=getattr(article_obj, "name", None),
+        student_id=tx.student_id,
+    )
 

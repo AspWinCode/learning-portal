@@ -206,6 +206,8 @@ const SalesDebtsPage: React.FC = () => {
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Ученики с датой следующей оплаты. Просрочено — дата оплаты прошла; Скоро — в ближайшие 3 дня.
+          Для импорта и разбора всех финансовых операций используйте раздел «Финансы (журнал)». Здесь — только
+          операционная работа с оплатами и очередью банковских операций.
         </Typography>
 
         {error && (
@@ -236,7 +238,9 @@ const SalesDebtsPage: React.FC = () => {
                 {importRunning ? 'Загрузка выписки…' : 'Загрузить выписку сейчас (14 дней)'}
               </Button>
               <Typography variant="body2" color="text.secondary">
-                То же делает авто-импорт каждые 10 мин. Если здесь пусто — нажмите кнопку или проверьте настройки Точка Банк на сервере.
+                То же делает авто-импорт каждые 10 мин. Если здесь пусто — нажмите кнопку или проверьте настройки
+                Точка Банк на сервере. Для импорта произвольных CSV/XLSX по другим счетам используйте раздел
+                «Финансы (журнал)» → вкладка «Все операции».
               </Typography>
             </Box>
             <Box sx={{ p: 2, pt: 1, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
@@ -245,7 +249,7 @@ const SalesDebtsPage: React.FC = () => {
                 component="label"
                 disabled={importFileRunning}
               >
-                {importFileRunning ? 'Импорт выписки из файла…' : 'Импортировать выписку из XLSX'}
+                {importFileRunning ? 'Импорт выписки из файла…' : 'Импортировать выписку из XLSX (Точка)'}
                 <input
                   type="file"
                   accept=".xlsx"

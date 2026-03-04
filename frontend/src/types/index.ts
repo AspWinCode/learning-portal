@@ -876,6 +876,9 @@ export interface TaskSubtaskResponse {
   completed: boolean;
   order: number;
 }
+/** Категория задачи: школы, родители, лиды */
+export type TaskCategory = 'schools' | 'parents' | 'leads';
+
 export interface TaskResponse {
   id: number;
   title: string;
@@ -883,6 +886,7 @@ export interface TaskResponse {
   template_id?: number | null;
   created_by_id: number;
   assigned_to_id?: number | null;
+  category?: TaskCategory | string;
   status: string;
   created_at?: string | null;
   updated_at?: string | null;

@@ -74,6 +74,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         # Без подзадач: считаем 0% для активных задач и 100% для архивных
         progress = 0.0 if getattr(task, "status", TaskStatus.ACTIVE.value) == TaskStatus.ACTIVE.value else 100.0
     student_ids = [ts.student_id for ts in task.students] if hasattr(task, "students") else []
+    category = getattr(task, "category", None) or "schools"
     return TaskResponse(
         id=task.id,
         title=task.title,
@@ -81,6 +82,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         template_id=task.template_id,
         created_by_id=task.created_by_id,
         assigned_to_id=task.assigned_to_id,
+        category=category if isinstance(category, str) else "schools",
         status=task.status if isinstance(task.status, str) else getattr(task.status, "value", str(task.status)),
         created_at=task.created_at,
         updated_at=task.updated_at,
@@ -253,6 +255,7 @@ async def delete_task_template(
 @router.get("/tasks", response_model=List[TaskResponse])
 async def list_tasks(
     status_filter: Optional[str] = None,
+    category: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
@@ -263,6 +266,8 @@ async def list_tasks(
     )
     if status_filter and status_filter in ("active", "archived"):
         q = q.filter(Task.status == status_filter)
+    if category and category in ("schools", "parents", "leads"):
+        q = q.filter(Task.category == category)
     tasks = q.all()
     return [_task_to_response(t) for t in tasks]
 
@@ -290,12 +295,14 @@ async def create_task(
     repeat_end_type = payload.repeat_end_type if payload.repeat_end_type is not None else (getattr(template, "repeat_end_type", None) if template else None)
     repeat_end_after_count = payload.repeat_end_after_count if payload.repeat_end_after_count is not None else (getattr(template, "repeat_end_after_count", None) if template else None)
     repeat_end_until = payload.repeat_end_until if payload.repeat_end_until is not None else (getattr(template, "repeat_end_until", None) if template else None)
+    task_category = getattr(payload, "category", None) or "schools"
     task = Task(
         title=title,
         description=(payload.description or "").strip() or None,
         template_id=payload.template_id,
         created_by_id=current_user.id,
         assigned_to_id=payload.assigned_to_id,
+        category=task_category,
         status=TaskStatus.ACTIVE.value,
         repeat_enabled=repeat_enabled,
         repeat_frequency=repeat_frequency,
@@ -383,6 +390,8 @@ async def update_task(
         task.status = getattr(payload.status, "value", payload.status) or "active"
     if payload.assigned_to_id is not None:
         task.assigned_to_id = payload.assigned_to_id
+    if payload.category is not None and payload.category in ("schools", "parents", "leads"):
+        task.category = payload.category
     if payload.repeat_enabled is not None:
         task.repeat_enabled = payload.repeat_enabled
     if payload.repeat_frequency is not None:

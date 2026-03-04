@@ -236,7 +236,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
     }
-    if (isAdminLike) items.push({ text: 'Настройки Sales', icon: <Settings />, path: '/sales/settings' });
+    if (isAdminLike) items.push({ text: 'Настройки', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {
       items.push({ text: 'План на сегодня', icon: <Assignment />, path: '/b2b-schools/plan' });
       items.push({ text: 'Работа со школами', icon: <School />, path: '/b2b-schools' });
@@ -245,10 +245,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
       items.push({ text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' });
     }
-    // Тренеры: owner уже выше; здесь только admin (sales получают пункт в своём return)
-    if (role === 'admin') {
-      items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
-    }
+    // У админа отдельная страница "Тренеры" убрана — доступ через объединённый раздел Ученики/группы при необходимости
     return items;
   })();
 

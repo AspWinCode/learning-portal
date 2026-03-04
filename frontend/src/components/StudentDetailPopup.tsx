@@ -252,6 +252,16 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 1.5 }}>
                   <Typography variant="body2"><strong>ФИО:</strong> {studentCard.student_full_name || '—'}</Typography>
                   <Typography variant="body2"><strong>Дата рождения:</strong> {studentCard.birth_date ? studentCard.birth_date.slice(0, 10) : '—'}</Typography>
+                  {studentCard.birth_date && (() => {
+                    const birth = parseISO(studentCard.birth_date.slice(0, 10));
+                    const today = new Date();
+                    let years = today.getFullYear() - birth.getFullYear();
+                    let months = today.getMonth() - birth.getMonth();
+                    if (months < 0) { years -= 1; months += 12; }
+                    return (
+                      <Typography variant="body2"><strong>Возраст:</strong> {years} {years === 1 ? 'год' : years < 5 ? 'года' : 'лет'} {months} {months === 1 ? 'месяц' : months < 5 ? 'месяца' : 'месяцев'}</Typography>
+                    );
+                  })()}
                   <Typography variant="body2"><strong>Родитель:</strong> {studentCard.parent_full_name || '—'}</Typography>
                   <Typography variant="body2"><strong>Телефон:</strong> {studentCard.parent_phone || studentCard.student_phone || '—'}</Typography>
                   <Typography variant="body2"><strong>Email:</strong> {studentCard.parent_email || '—'}</Typography>

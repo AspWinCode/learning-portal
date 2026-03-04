@@ -14,7 +14,7 @@ import io
 import csv
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 router = APIRouter()
 
@@ -52,18 +52,41 @@ async def characteristics_compliance_report(
         .all()
     ]
 
-    # Пары (trainer_id, student_id): тренер — ученик в его активной группе (активный ученик)
-    pairs: List[Tuple[int, int]] = [
-        (tid, sid) for (tid, sid) in db.query(Group.trainer_id, GroupStudent.student_id)
+    # Период характеристик = предыдущий месяц относительно окна сдачи (окно 1–5 числа month/year)
+    report_month = month - 1 if month > 1 else 12
+    report_year = year if month > 1 else year - 1
+    report_first = date(report_year, report_month, 1)
+
+    # Пары (trainer_id, student_id): тренер — ученик в его активной группе (активный ученик),
+    # только если ученик отучился полный месяц у этого тренера в отчётном месяце:
+    # - в группе с 1-го числа отчётного месяца (GroupStudent.created_at <= report_first);
+    # - обучение начато не позднее 1-го числа отчётного месяца (training_start_date <= report_first или не задано).
+    raw_pairs: List[Tuple[int, int, int, Any, Any]] = [
+        (tid, sid, gs_id, gs_created, st_training_start)
+        for (tid, sid, gs_id, gs_created, st_training_start) in db.query(
+            Group.trainer_id,
+            GroupStudent.student_id,
+            GroupStudent.id,
+            GroupStudent.created_at,
+            Student.training_start_date,
+        )
         .join(GroupStudent, GroupStudent.group_id == Group.id)
         .join(Student, Student.id == GroupStudent.student_id)
         .filter(
             Group.status == GroupStatus.ACTIVE,
             Student.status == StudentStatus.ACTIVE,
         )
-        .distinct()
         .all()
     ]
+    pairs: List[Tuple[int, int]] = []
+    for tid, sid, _gs_id, gs_created, st_training_start in raw_pairs:
+        gs_date = gs_created.date() if gs_created else report_first
+        if gs_date > report_first:
+            continue  # пришёл в группу после 1-го числа — не полный месяц
+        if st_training_start is not None and st_training_start > report_first:
+            continue  # начал обучение после 1-го числа отчётного месяца
+        pairs.append((tid, sid))
+    pairs = list({(t, s) for (t, s) in pairs})  # distinct
 
     trainer_ids = sorted(set(all_trainer_ids_with_active_group) | {t for (t, _) in pairs})
     student_ids = sorted({s for (_, s) in pairs})
@@ -80,10 +103,10 @@ async def characteristics_compliance_report(
     trainers = {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()}
     students = {s.id: s for s in db.query(Student).filter(Student.id.in_(student_ids)).all()}
 
-    # Характеристики за период по этим парам (берём все и выбираем "лучшую" по приоритету статуса)
+    # Характеристики за отчётный период (report_month/report_year), не за месяц окна
     chars = db.query(Characteristic).filter(
-        Characteristic.month == month,
-        Characteristic.year == year,
+        Characteristic.month == report_month,
+        Characteristic.year == report_year,
         Characteristic.trainer_id.in_(trainer_ids),
         Characteristic.student_id.in_(student_ids),
     ).all()
@@ -180,13 +203,17 @@ async def get_students_report(
 
 @router.get("/trainers")
 async def get_trainers_report(
+    include_archived: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin"]))
 ):
-    """Расширенная отчетность по тренерам"""
+    """Расширенная отчетность по тренерам. По умолчанию архивные (is_active=False) исключены."""
     from app.models import User as UserModel, UserRole, Group, Grade
     
-    trainers = db.query(UserModel).filter(UserModel.role == UserRole.TRAINER).all()
+    q = db.query(UserModel).filter(UserModel.role == UserRole.TRAINER)
+    if not include_archived:
+        q = q.filter(UserModel.is_active.is_(True))
+    trainers = q.all()
     
     result = []
     for trainer in trainers:

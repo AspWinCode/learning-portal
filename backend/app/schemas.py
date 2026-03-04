@@ -2184,6 +2184,7 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     template_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
+    category: Optional[Literal["schools", "parents", "leads"]] = None  # default: schools
     subtasks: Optional[List[dict]] = None
     student_ids: Optional[List[int]] = None
     repeat_enabled: Optional[bool] = False
@@ -2199,6 +2200,7 @@ class TaskUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
     assigned_to_id: Optional[int] = None
+    category: Optional[Literal["schools", "parents", "leads"]] = None
     student_ids: Optional[List[int]] = None
     repeat_enabled: Optional[bool] = None
     repeat_frequency: Optional[Literal["daily", "weekly", "monthly"]] = None
@@ -2215,6 +2217,7 @@ class TaskResponse(BaseModel):
     template_id: Optional[int] = None
     created_by_id: int
     assigned_to_id: Optional[int] = None
+    category: str = "schools"  # schools | parents | leads
     status: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

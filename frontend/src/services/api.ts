@@ -840,8 +840,8 @@ export const reportsApi = {
     const response = await api.get('/api/reports/students', { params });
     return response.data;
   },
-  getTrainers: async (): Promise<any> => {
-    const response = await api.get('/api/reports/trainers');
+  getTrainers: async (params?: { include_archived?: boolean }): Promise<any> => {
+    const response = await api.get('/api/reports/trainers', { params });
     return response.data;
   },
   getActionLogs: async (params?: { skip?: number; limit?: number }): Promise<any> => {
@@ -1913,8 +1913,11 @@ export const tasksApi = {
   deleteTemplate: async (id: number): Promise<void> => {
     await api.delete(`/api/task-templates/${id}`);
   },
-  listTasks: async (statusFilter?: string): Promise<import('../types').TaskResponse[]> => {
-    const response = await api.get('/api/tasks', { params: statusFilter != null ? { status_filter: statusFilter } : {} });
+  listTasks: async (statusFilter?: string, category?: 'schools' | 'parents' | 'leads'): Promise<import('../types').TaskResponse[]> => {
+    const params: Record<string, string> = {};
+    if (statusFilter != null) params.status_filter = statusFilter;
+    if (category != null) params.category = category;
+    const response = await api.get('/api/tasks', { params: Object.keys(params).length ? params : {} });
     return response.data;
   },
   createTask: async (payload: {
@@ -1922,6 +1925,7 @@ export const tasksApi = {
     description?: string;
     template_id?: number;
     assigned_to_id?: number;
+    category?: 'schools' | 'parents' | 'leads';
     subtasks?: { text: string; order?: number }[];
     student_ids?: number[];
     repeat_enabled?: boolean;
@@ -1939,6 +1943,7 @@ export const tasksApi = {
     description?: string;
     status?: string;
     assigned_to_id?: number | null;
+    category?: 'schools' | 'parents' | 'leads';
     student_ids?: number[];
     repeat_enabled?: boolean;
     repeat_frequency?: 'daily' | 'weekly' | 'monthly';

@@ -46,7 +46,7 @@ import { tasksApi, studentsApi, salesApi } from '../services/api';
 import type { LessonTaskItem, LessonTaskStudent } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { extractApiError } from '../utils/extractApiError';
-import type { TaskTemplateResponse, TaskResponse, TaskSubtaskResponse, RepeatFrequency, RepeatEndType } from '../types';
+import type { TaskTemplateResponse, TaskResponse, TaskSubtaskResponse, RepeatFrequency, RepeatEndType, TaskCategory } from '../types';
 import type { Student } from '../types';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import Refresh from '@mui/icons-material/Refresh';
@@ -78,6 +78,7 @@ const TasksPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState<TaskCategory>('schools');
   const [statusFilter, setStatusFilter] = useState<'active' | 'archived' | ''>('active');
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
@@ -129,12 +130,12 @@ const TasksPage: React.FC = () => {
 
   const loadTasks = useCallback(async () => {
     try {
-      const data = await tasksApi.listTasks(statusFilter || undefined);
+      const data = await tasksApi.listTasks(statusFilter || undefined, categoryFilter);
       setTasks(data);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось загрузить задачи'));
     }
-  }, [statusFilter]);
+  }, [statusFilter, categoryFilter]);
 
   const loadStudents = useCallback(async () => {
     if (!isAdminOrOwner) return;
@@ -315,6 +316,7 @@ const TasksPage: React.FC = () => {
           title: taskTitle.trim() || undefined,
           description: taskDescription.trim() || undefined,
           template_id: taskTemplateId || undefined,
+          category: categoryFilter,
           subtasks: taskTemplateId ? undefined : (subtasks.length ? subtasks.map((s, i) => ({ text: s.text.trim(), order: i })) : undefined),
           student_ids: studentIds,
           ...taskRepeatPayload,
@@ -575,6 +577,17 @@ const TasksPage: React.FC = () => {
 
             <Box>
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Все задачи</Typography>
+              <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
+                <Button size="small" variant={categoryFilter === 'schools' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('schools')}>
+                  Школы
+                </Button>
+                <Button size="small" variant={categoryFilter === 'parents' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('parents')}>
+                  Родители
+                </Button>
+                <Button size="small" variant={categoryFilter === 'leads' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('leads')}>
+                  Лиды
+                </Button>
+              </Stack>
               {isAdminOrOwner && (
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
                   <Button size="small" variant={statusFilter === 'active' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('active')}>

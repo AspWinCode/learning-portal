@@ -1273,6 +1273,7 @@ const StudentsPage: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell width={48}>№</TableCell>
               <TableCell>ФИО</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Статус</TableCell>
@@ -1281,10 +1282,11 @@ const StudentsPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredParents.map((parent) => {
+            {filteredParents.map((parent, idx) => {
               const studentsCount = students.filter(s => s.parent_id === parent.id).length;
               return (
                 <TableRow key={parent.id}>
+                  <TableCell>{idx + 1}</TableCell>
                   <TableCell>{parent.full_name}</TableCell>
                   <TableCell>{parent.email}</TableCell>
                   <TableCell>{parent.is_active ? 'Активен' : 'Неактивен'}</TableCell>

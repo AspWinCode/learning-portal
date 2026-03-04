@@ -18,7 +18,7 @@ import {
   Grid,
   Chip,
 } from '@mui/material';
-import { ExpandMore, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { ExpandMore, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material';
 import { programsApi } from '../services/api';
 import { Program } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -62,6 +62,9 @@ const ProgramsPage: React.FC = () => {
   ]);
   const [versionOpen, setVersionOpen] = useState(false);
   const [baseProgram, setBaseProgram] = useState<Program | null>(null);
+  const [editNameOpen, setEditNameOpen] = useState(false);
+  const [editNameProgram, setEditNameProgram] = useState<Program | null>(null);
+  const [editNameValue, setEditNameValue] = useState('');
   const [versionModules, setVersionModules] = useState<ModuleForm[]>([
     { name: 'Основной модуль', topics: [{ name: '', description: '', final_result: '' }] },
   ]);
@@ -353,9 +356,25 @@ const ProgramsPage: React.FC = () => {
           <Accordion key={family.rootId} sx={{ mb: 1 }}>
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 2 }}>
-                <Typography>
-                  {family.latest.name} (последняя v{family.latest.version})
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography>
+                    {family.latest.name} (последняя v{family.latest.version})
+                  </Typography>
+                  {isAdminLike && (
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditNameProgram(family.latest);
+                        setEditNameValue(family.latest.name);
+                        setEditNameOpen(true);
+                      }}
+                      title="Изменить название программы"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Box>
                 <Chip size="small" label={`Версий: ${family.versions.length}`} />
               </Box>
             </AccordionSummary>
@@ -697,6 +716,39 @@ const ProgramsPage: React.FC = () => {
             <Button onClick={() => setVersionOpen(false)}>Отмена</Button>
             <Button onClick={handleCreateNewVersion} variant="contained">
               Создать новую версию
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={editNameOpen} onClose={() => setEditNameOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Изменить название программы</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              label="Название программы"
+              value={editNameValue}
+              onChange={(e) => setEditNameValue(e.target.value)}
+              sx={{ mt: 1 }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditNameOpen(false)}>Отмена</Button>
+            <Button
+              variant="contained"
+              onClick={async () => {
+                if (!editNameProgram || !editNameValue.trim()) return;
+                try {
+                  await programsApi.update(editNameProgram.id, { name: editNameValue.trim() });
+                  setEditNameOpen(false);
+                  setEditNameProgram(null);
+                  setInfo('Название программы обновлено');
+                  loadPrograms();
+                } catch (err: any) {
+                  setError(err.response?.data?.detail || 'Ошибка обновления названия');
+                }
+              }}
+            >
+              Сохранить
             </Button>
           </DialogActions>
         </Dialog>

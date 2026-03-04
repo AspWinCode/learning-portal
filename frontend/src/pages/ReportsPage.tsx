@@ -14,12 +14,14 @@ import {
   TableRow,
   Button,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
   TextField,
   Alert,
   Chip,
+  Checkbox,
 } from '@mui/material';
 import { reportsApi, studentsApi, usersApi } from '../services/api';
 import { Student, User } from '../types';
@@ -33,6 +35,7 @@ const ReportsPage: React.FC = () => {
   const [studentsSkip, setStudentsSkip] = useState(0);
   const studentsLimit = 50;
   const [trainers, setTrainers] = useState<any[]>([]);
+  const [trainersIncludeArchived, setTrainersIncludeArchived] = useState(false);
   const [actionLogs, setActionLogs] = useState<{ total: number; logs: any[] } | null>(null);
   const [logsSkip, setLogsSkip] = useState(0);
   const logsLimit = 50;
@@ -89,7 +92,7 @@ const ReportsPage: React.FC = () => {
 
   const loadTrainersReport = async () => {
     try {
-      const data = await reportsApi.getTrainers();
+      const data = await reportsApi.getTrainers({ include_archived: trainersIncludeArchived });
       setTrainers(data);
     } catch (err) {
       console.error('Ошибка загрузки отчета', err);
@@ -240,7 +243,6 @@ const ReportsPage: React.FC = () => {
                 <TableRow>
                   <TableCell>ID</TableCell>
                   <TableCell>ФИО</TableCell>
-                  <TableCell>Родитель</TableCell>
                   <TableCell>Статус</TableCell>
                 </TableRow>
               </TableHead>
@@ -249,7 +251,6 @@ const ReportsPage: React.FC = () => {
                   <TableRow key={s.id}>
                     <TableCell>{s.id}</TableCell>
                     <TableCell>{s.full_name}</TableCell>
-                    <TableCell>{s.parent?.full_name || '—'}</TableCell>
                     <TableCell>{s.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>
                   </TableRow>
                 ))}
@@ -269,11 +270,31 @@ const ReportsPage: React.FC = () => {
 
       {tab === 'trainers' && (
         <Paper sx={{ p: 2, mt: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="h6">Отчет по тренерам</Typography>
-            <Button variant="outlined" onClick={loadTrainersReport}>
-              Обновить
-            </Button>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={trainersIncludeArchived}
+                    onChange={async (e) => {
+                      const checked = e.target.checked;
+                      setTrainersIncludeArchived(checked);
+                      try {
+                        const data = await reportsApi.getTrainers({ include_archived: checked });
+                        setTrainers(data);
+                      } catch (err) {
+                        setError('Ошибка загрузки отчета по тренерам');
+                      }
+                    }}
+                  />
+                }
+                label="Показывать архивных"
+              />
+              <Button variant="outlined" onClick={loadTrainersReport}>
+                Обновить
+              </Button>
+            </Box>
           </Box>
           <TableContainer>
             <Table>
@@ -335,9 +356,12 @@ const ReportsPage: React.FC = () => {
             </Box>
           </Box>
 
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="text.secondary" display="block">
             Окно сдачи: {ccData?.window_start ? new Date(ccData.window_start).toLocaleDateString('ru-RU') : '—'} —{' '}
             {ccData?.window_end ? new Date(ccData.window_end).toLocaleDateString('ru-RU') : '—'}
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 0.5 }}>
+            Период характеристик: {ccMonth === 1 ? 'Декабрь' : ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь'][ccMonth - 2]} {ccMonth === 1 ? ccYear - 1 : ccYear}
           </Typography>
 
           <TableContainer sx={{ mt: 1 }}>

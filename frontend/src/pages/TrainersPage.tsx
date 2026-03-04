@@ -546,6 +546,7 @@ const TrainersPage: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell width={48}>№</TableCell>
               <TableCell>ФИО</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Статус</TableCell>
@@ -561,13 +562,14 @@ const TrainersPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {trainers.map((trainer) => {
+            {trainers.map((trainer, idx) => {
               const groupsCount = groups.filter((g) => g.trainer_id === trainer.id).length;
               const rate = trainer.trainer_rate ?? 0;
               const lessons = trainer.trainer_lessons ?? 0;
               const monthPay = rate * lessons;
               return (
                 <TableRow key={trainer.id} hover onClick={() => openProfile(trainer)} sx={{ cursor: 'pointer' }}>
+                  <TableCell>{idx + 1}</TableCell>
                   <TableCell>{trainer.full_name}</TableCell>
                   <TableCell>{trainer.email}</TableCell>
                   <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>

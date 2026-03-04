@@ -29,6 +29,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
 import { studentsApi } from '../services/api';
 import { salesApi } from '../services/api';
 import { financeApi } from '../services/api';
@@ -53,6 +54,8 @@ const STATUS_LABELS: Record<string, { label: string; color: 'default' | 'warning
 
 const SalesDebtsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [items, setItems] = useState<PaymentStatusRow[]>([]);
   const [bankItems, setBankItems] = useState<BankTransaction[]>([]);
   const [ledgerByOperationId, setLedgerByOperationId] = useState<Record<string, FinanceLedgerBankRow>>({});
@@ -85,6 +88,11 @@ const SalesDebtsPage: React.FC = () => {
     skipped: number;
     errors?: string[];
   } | null>(null);
+
+  // Админ не видит вкладку "Операции банка" — при прямом доступе переключаем на первую
+  useEffect(() => {
+    if (isAdmin && tab === 3) setTab(0);
+  }, [isAdmin, tab]);
 
   const statusFilter = tab === 0 ? undefined : tab === 1 ? 'overdue' : tab === 2 ? 'due_soon' : undefined;
 
@@ -210,14 +218,14 @@ const SalesDebtsPage: React.FC = () => {
           <Tab label="Все" />
           <Tab label="Просрочено" />
           <Tab label="Скоро (3 дня)" />
-          <Tab label="Операции банка" />
+          {!isAdmin && <Tab label="Операции банка" />}
         </Tabs>
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress />
           </Box>
-        ) : tab === 3 ? (
+        ) : !isAdmin && tab === 3 ? (
           <Card variant="outlined" sx={{ overflow: 'visible' }}>
             <Box sx={{ p: 2, pb: 0, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
               <Button

@@ -14,7 +14,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm install --legacy-peer-deps --no-audit --no-fund
 COPY frontend/ ./
 # Ensure UTF-8: normalize line endings for TSX (CRLF can break encoding on some systems)
-RUN for f in src/pages/SalesReinviteEventPage.tsx; do [ -f "$f" ] && sed -i 's/\r$$//' "$f"; done
+RUN for f in src/pages/SalesReinviteEventPage.tsx src/pages/FinancialModelPage.tsx src/pages/ReportsPage.tsx; do [ -f "$f" ] && sed -i 's/\r$$//' "$f"; done
 RUN npm run build
 
 FROM caddy:2-alpine

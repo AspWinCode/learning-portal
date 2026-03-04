@@ -24,6 +24,7 @@ import {
 } from '@mui/material';
 import { reportsApi, studentsApi, usersApi } from '../services/api';
 import { Student, User } from '../types';
+import Layout from '../components/Layout';
 
 export const ReportsPageContent: React.FC = () => {
   const [tab, setTab] = useState<'students' | 'trainers' | 'logs' | 'export' | 'characteristics'>('trainers');
@@ -559,8 +560,6 @@ export const ReportsPageContent: React.FC = () => {
     </Box>
   );
 };
-
-import Layout from '../components/Layout';
 
 const ReportsPage: React.FC = () => (
   <Layout>

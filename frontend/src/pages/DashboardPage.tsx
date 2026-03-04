@@ -2,8 +2,8 @@ import React from 'react';
 import Layout from '../components/Layout';
 import { Typography, Box, Grid, Paper, Tabs, Tab } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
-import { ReportsPageContent } from './ReportsPage';
-import { FinancialModelContent } from './FinancialModelPage';
+import ReportsPage from './ReportsPage';
+import FinancialModelPage from './FinancialModelPage';
 
 const DashboardOwnerTabs: React.FC = () => {
   const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'financialModel'>('overview');
@@ -32,15 +32,14 @@ const DashboardOwnerTabs: React.FC = () => {
       )}
 
       {tab === 'characteristics' && (
-        // Используем контент отчётности без дополнительного Layout
         <Box sx={{ mt: 1 }}>
-          <ReportsPageContent />
+          <ReportsPage />
         </Box>
       )}
 
       {tab === 'financialModel' && (
         <Box sx={{ mt: 1 }}>
-          <FinancialModelContent />
+          <FinancialModelPage />
         </Box>
       )}
     </Box>

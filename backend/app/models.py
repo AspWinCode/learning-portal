@@ -1606,6 +1606,7 @@ class Task(Base):
     due_at = Column(DateTime(timezone=True), nullable=True, index=True)  # дедлайн (до 20:00 и т.д.)
     priority = Column(String(20), nullable=False, server_default="normal", index=True)  # low | normal | high
     pinned_today = Column(Boolean, nullable=False, server_default="false")  # вручную в плане на сегодня
+    tags = Column(JSON, nullable=True)  # произвольные теги: makeup, payment, renewal, event_leads и т.п.
     repeat_enabled = Column(Boolean, nullable=False, server_default="false")
     repeat_frequency = Column(String(20), nullable=True)
     repeat_days = Column(JSON, nullable=True)

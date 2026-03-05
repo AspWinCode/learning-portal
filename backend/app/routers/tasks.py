@@ -91,6 +91,7 @@ def _task_to_response(task: Task) -> TaskResponse:
     else:
         progress = 0.0 if getattr(task, "status", TaskStatus.ACTIVE.value) == TaskStatus.ACTIVE.value else 100.0
     student_ids = [ts.student_id for ts in task.students] if hasattr(task, "students") else []
+    tags = getattr(task, "tags", None) or None
     category = getattr(task, "category", None) or "schools"
     due_at = getattr(task, "due_at", None)
     return TaskResponse(
@@ -108,6 +109,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         due_at=due_at,
         priority=getattr(task, "priority", None) or "normal",
         pinned_today=getattr(task, "pinned_today", False),
+        tags=tags,
         subtasks=subtasks,
         student_ids=student_ids,
         progress=progress,
@@ -390,6 +392,23 @@ class TaskDayStatsResponse(BaseModel):
     completed_count: int
 
 
+class TaskDayDeskStats(BaseModel):
+    overdue: int
+    today: int
+    completed_today: int
+    overload: int
+
+
+class TaskDayDeskResponse(BaseModel):
+    stats: TaskDayDeskStats
+    urgent: List[TaskResponse]
+    parents: List[TaskResponse]
+    makeups: List[TaskResponse]
+    payments: List[TaskResponse]
+    operations: List[TaskResponse]
+    leads: List[TaskResponse]
+
+
 @router.get("/tasks/stats", response_model=TaskDayStatsResponse)
 async def get_tasks_day_stats(
     day: Optional[str] = Query(None, description="YYYY-MM-DD по МСК, по умолчанию сегодня"),
@@ -419,6 +438,186 @@ async def get_tasks_day_stats(
         q = q.filter(Task.assigned_to_id == current_user.id)
     completed_count = q.count()
     return TaskDayStatsResponse(date=day_date, completed_count=completed_count)
+
+
+@router.get("/tasks/day-desk", response_model=TaskDayDeskResponse)
+async def get_tasks_day_desk(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+):
+    """Day Desk: сгруппированные задачи для рабочего стола менеджера.
+
+    Группы:
+    - urgent: просроченные + дедлайны в ближайшие 2 часа + high priority на сегодня
+    - parents: category=parents, сегодня, pinned/важные
+    - makeups: tag=makeup
+    - payments: tags=payment/renewal
+    - operations: прочая операционка
+    - leads: category=leads (вечерний блок)
+    Общее ограничение: максимум ~25 уникальных задач (остальные считаются в overload).
+    """
+    today_msk, today_start_utc, today_end_utc = _today_msk()
+    now_utc = datetime.now(timezone.utc)
+    soon_utc = now_utc + timedelta(hours=2)
+
+    base_q = (
+        db.query(Task)
+        .options(joinedload(Task.subtasks), joinedload(Task.students))
+        .filter(Task.status == TaskStatus.ACTIVE.value)
+    )
+    # Ограничения по видимости
+    if current_user.role == "sales":
+        base_q = base_q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
+    elif current_user.role == "trainer":
+        base_q = base_q.filter(Task.assigned_to_id == current_user.id)
+
+    tasks = base_q.all()
+
+    # Подсчёт today/overdue для stats
+    def is_today(t: Task) -> bool:
+        if t.scheduled_for == today_msk:
+            return True
+        if t.due_at and today_start_utc <= t.due_at <= today_end_utc:
+            return True
+        if getattr(t, "pinned_today", False):
+            return True
+        if not t.scheduled_for and not t.due_at and today_start_utc <= (t.created_at or today_start_utc) <= today_end_utc:
+            return True
+        return False
+
+    def is_overdue(t: Task) -> bool:
+        if t.scheduled_for and t.scheduled_for < today_msk:
+            return True
+        if t.due_at and t.due_at < today_start_utc:
+            return True
+        return False
+
+    today_candidates = [t for t in tasks if is_today(t)]
+    overdue_candidates = [t for t in tasks if is_overdue(t)]
+
+    # completed_today используем из /tasks/stats, чтобы логика была единой
+    stats_today_date, stats_start, stats_end = _today_msk()
+    completed_q = (
+        db.query(Task)
+        .filter(Task.status == TaskStatus.ARCHIVED.value)
+        .filter(Task.updated_at >= stats_start, Task.updated_at <= stats_end)
+    )
+    if current_user.role == "sales":
+        completed_q = completed_q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
+    elif current_user.role == "trainer":
+        completed_q = completed_q.filter(Task.assigned_to_id == current_user.id)
+    completed_today = completed_q.count()
+
+    # Разбор по группам
+    def has_tag(t: Task, tag: str) -> bool:
+        tags = getattr(t, "tags", None) or []
+        return tag in tags
+
+    urgent_raw: list[Task] = []
+    parents_raw: list[Task] = []
+    makeups_raw: list[Task] = []
+    payments_raw: list[Task] = []
+    operations_raw: list[Task] = []
+    leads_raw: list[Task] = []
+
+    for t in tasks:
+        # Срочно: просроченные, скоро по времени, high priority сегодня
+        if is_overdue(t):
+            urgent_raw.append(t)
+            continue
+        if t.due_at and today_start_utc <= t.due_at <= today_end_utc and t.due_at <= soon_utc:
+            urgent_raw.append(t)
+            continue
+        if (t.priority or "normal") == "high" and t.scheduled_for == today_msk:
+            urgent_raw.append(t)
+            continue
+
+        # Категориальные блоки
+        if getattr(t, "category", None) == "parents" and is_today(t):
+            parents_raw.append(t)
+            continue
+        if has_tag(t, "makeup") and is_today(t):
+            makeups_raw.append(t)
+            continue
+        if (has_tag(t, "payment") or has_tag(t, "renewal")) and is_today(t):
+            payments_raw.append(t)
+            continue
+        if getattr(t, "category", None) == "leads" and is_today(t):
+            leads_raw.append(t)
+            continue
+
+        # Остальное — операционка (если сегодня)
+        if is_today(t):
+            operations_raw.append(t)
+
+    # Сортировки внутри групп (приблизительные, по приоритету и срокам)
+    def sort_key_deadline(t: Task):
+        prio = getattr(t, "priority", None) or "normal"
+        prio_ord = 0 if prio == "high" else (1 if prio == "normal" else 2)
+        due = getattr(t, "due_at", None) or datetime.max.replace(tzinfo=timezone.utc)
+        created = t.created_at or datetime.min.replace(tzinfo=timezone.utc)
+        return (prio_ord, due, created)
+
+    urgent_raw.sort(key=sort_key_deadline)
+    parents_raw.sort(key=sort_key_deadline)
+    makeups_raw.sort(key=sort_key_deadline)
+    payments_raw.sort(key=sort_key_deadline)
+    operations_raw.sort(key=sort_key_deadline)
+    leads_raw.sort(key=sort_key_deadline)
+
+    # Глобальный лимит 25 задач
+    LIMIT_TOTAL = 25
+    limits = {
+        "urgent": 7,
+        "parents": 7,
+        "makeups": 10,
+        "payments": 7,
+        "operations": 5,
+        "leads": 30,
+    }
+
+    used_ids: set[int] = set()
+    overload = 0
+
+    def take_from(raw: list[Task], key: str) -> list[Task]:
+        nonlocal overload
+        result: list[Task] = []
+        for t in raw:
+            if t.id in used_ids:
+                continue
+            if len(used_ids) >= LIMIT_TOTAL:
+                overload += 1
+                continue
+            if len(result) >= limits[key]:
+                overload += 1
+                continue
+            used_ids.add(t.id)
+            result.append(t)
+        return result
+
+    urgent = take_from(urgent_raw, "urgent")
+    parents = take_from(parents_raw, "parents")
+    makeups = take_from(makeups_raw, "makeups")
+    payments = take_from(payments_raw, "payments")
+    operations = take_from(operations_raw, "operations")
+    leads = take_from(leads_raw, "leads")
+
+    stats = TaskDayDeskStats(
+        overdue=len(overdue_candidates),
+        today=len(today_candidates),
+        completed_today=completed_today,
+        overload=overload,
+    )
+
+    return TaskDayDeskResponse(
+        stats=stats,
+        urgent=[_task_to_response(t) for t in urgent],
+        parents=[_task_to_response(t) for t in parents],
+        makeups=[_task_to_response(t) for t in makeups],
+        payments=[_task_to_response(t) for t in payments],
+        operations=[_task_to_response(t) for t in operations],
+        leads=[_task_to_response(t) for t in leads],
+    )
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -457,6 +656,7 @@ async def create_task(
         due_at=getattr(payload, "due_at", None),
         priority=(getattr(payload, "priority", None) or "normal"),
         pinned_today=getattr(payload, "pinned_today", False) or False,
+        tags=getattr(payload, "tags", None),
         repeat_enabled=repeat_enabled,
         repeat_frequency=repeat_frequency,
         repeat_days=repeat_days,
@@ -553,6 +753,8 @@ async def update_task(
         task.priority = payload.priority
     if getattr(payload, "pinned_today", None) is not None:
         task.pinned_today = payload.pinned_today
+    if getattr(payload, "tags", None) is not None:
+        task.tags = payload.tags
     if payload.repeat_enabled is not None:
         task.repeat_enabled = payload.repeat_enabled
     if payload.repeat_frequency is not None:

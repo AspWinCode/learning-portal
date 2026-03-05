@@ -900,6 +900,7 @@ export interface TaskResponse {
   due_at?: string | null;
   priority?: TaskPriority | string;
   pinned_today?: boolean;
+  tags?: string[] | null;
   subtasks: TaskSubtaskResponse[];
   student_ids: number[];
   progress: number;

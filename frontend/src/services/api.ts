@@ -2006,6 +2006,19 @@ export const tasksApi = {
     const response = await api.get('/api/tasks', { params: Object.keys(params).length ? params : {} });
     return response.data;
   },
+  /** Day Desk: сгруппированные задачи для рабочего стола менеджера. */
+  getDayDesk: async (): Promise<{
+    stats: { overdue: number; today: number; completed_today: number; overload: number };
+    urgent: import('../types').TaskResponse[];
+    parents: import('../types').TaskResponse[];
+    makeups: import('../types').TaskResponse[];
+    payments: import('../types').TaskResponse[];
+    operations: import('../types').TaskResponse[];
+    leads: import('../types').TaskResponse[];
+  }> => {
+    const response = await api.get('/api/tasks/day-desk');
+    return response.data;
+  },
   /** Статистика за день: количество завершённых задач (для счётчика «выполнено M»). */
   getDayStats: async (day?: string): Promise<{ date: string; completed_count: number }> => {
     const params = day != null ? { day } : {};

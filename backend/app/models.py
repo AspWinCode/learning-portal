@@ -228,7 +228,7 @@ class StudentAccountTransaction(Base):
     account_id = Column(Integer, ForeignKey("student_accounts.id"), nullable=False, index=True)
     amount = Column(Float, nullable=False)
     kind = Column(
-        SQLEnum(StudentAccountTransactionKind, name="studentaccounttransactionkind", values_callable=_enum_values),
+        SQLEnum(StudentAccountTransactionKind, values_callable=_enum_values, native_enum=False),
         nullable=False,
     )
     note = Column(String, nullable=True)

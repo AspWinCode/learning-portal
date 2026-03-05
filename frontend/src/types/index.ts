@@ -901,6 +901,10 @@ export interface TaskResponse {
   priority?: TaskPriority | string;
   pinned_today?: boolean;
   tags?: string[] | null;
+  counters?: {
+    parent_replies: number;
+    parent_escalations: number;
+  } | null;
   subtasks: TaskSubtaskResponse[];
   student_ids: number[];
   progress: number;

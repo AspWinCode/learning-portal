@@ -1616,6 +1616,7 @@ class Task(Base):
 
     subtasks = relationship("TaskSubtask", back_populates="task", cascade="all, delete-orphan")
     students = relationship("TaskStudent", back_populates="task", cascade="all, delete-orphan")
+    counters = relationship("TaskCounter", back_populates="task", cascade="all, delete-orphan")
 
 
 class TaskSubtask(Base):
@@ -1637,6 +1638,17 @@ class TaskStudent(Base):
     student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), primary_key=True)
 
     task = relationship("Task", back_populates="students")
+
+
+class TaskCounter(Base):
+    __tablename__ = "task_counters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    counter_key = Column(String(64), nullable=False)
+    value = Column(Integer, nullable=False, server_default="0")
+
+    task = relationship("Task", back_populates="counters")
 
 
 # Owner funnel constants (owner_funnels router)

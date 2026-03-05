@@ -2045,6 +2045,14 @@ export const tasksApi = {
     const response = await api.patch(`/api/tasks/${taskId}/pin-today`, undefined, { params: { pinned } });
     return response.data;
   },
+  incrementTaskCounter: async (
+    taskId: number,
+    key: 'parent_replies' | 'parent_escalations',
+    delta = 1,
+  ): Promise<import('../types').TaskResponse> => {
+    const response = await api.post(`/api/tasks/${taskId}/counters/increment`, { key, delta });
+    return response.data;
+  },
   createTask: async (payload: {
     title?: string;
     description?: string;

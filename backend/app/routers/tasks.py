@@ -17,6 +17,7 @@ from app.models import (
     TaskSubtask,
     TaskStudent,
     TaskStatus,
+    TaskCounter,
 )
 from app.schemas import (
     TaskTemplateCreate,
@@ -28,6 +29,7 @@ from app.schemas import (
     TaskResponse,
     TaskSubtaskResponse,
     TaskSubtaskUpdate,
+    TaskCountersResponse,
 )
 
 router = APIRouter()
@@ -92,6 +94,11 @@ def _task_to_response(task: Task) -> TaskResponse:
         progress = 0.0 if getattr(task, "status", TaskStatus.ACTIVE.value) == TaskStatus.ACTIVE.value else 100.0
     student_ids = [ts.student_id for ts in task.students] if hasattr(task, "students") else []
     tags = getattr(task, "tags", None) or None
+    counters_map = {c.counter_key: c.value for c in getattr(task, "counters", []) or []}
+    counters = TaskCountersResponse(
+        parent_replies=int(counters_map.get("parent_replies", 0) or 0),
+        parent_escalations=int(counters_map.get("parent_escalations", 0) or 0),
+    )
     category = getattr(task, "category", None) or "schools"
     due_at = getattr(task, "due_at", None)
     return TaskResponse(
@@ -110,6 +117,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         priority=getattr(task, "priority", None) or "normal",
         pinned_today=getattr(task, "pinned_today", False),
         tags=tags,
+        counters=counters,
         subtasks=subtasks,
         student_ids=student_ids,
         progress=progress,
@@ -407,6 +415,11 @@ class TaskDayDeskResponse(BaseModel):
     payments: List[TaskResponse]
     operations: List[TaskResponse]
     leads: List[TaskResponse]
+
+
+class TaskCounterIncrement(BaseModel):
+    key: str
+    delta: Optional[int] = 1
 
 
 @router.get("/tasks/stats", response_model=TaskDayStatsResponse)
@@ -988,6 +1001,45 @@ async def pin_task_today(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     task.pinned_today = pinned
+    db.commit()
+    db.refresh(task)
+    return _task_to_response(task)
+
+
+@router.post("/tasks/{task_id}/counters/increment", response_model=TaskResponse)
+async def increment_task_counter(
+    task_id: int,
+    payload: TaskCounterIncrement,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+) -> TaskResponse:
+    """Инкремент специальных счётчиков задачи (например, parent_replies / parent_escalations)."""
+    task = (
+        db.query(Task)
+        .options(joinedload(Task.subtasks), joinedload(Task.students), joinedload(Task.counters))
+        .filter(Task.id == task_id)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    # Проверка прав: sales/trainer могут трогать только свои задачи
+    if current_user.role in ("sales", "trainer"):
+        if task.assigned_to_id not in (None, current_user.id):
+            raise HTTPException(status_code=403, detail="Not allowed")
+    key = (payload.key or "").strip()
+    if key not in ("parent_replies", "parent_escalations"):
+        raise HTTPException(status_code=400, detail="Unsupported counter key")
+    delta = payload.delta if payload.delta is not None else 1
+    if delta == 0:
+        return _task_to_response(task)
+    # Найти или создать счётчик
+    counter = next((c for c in task.counters if c.counter_key == key), None)
+    if not counter:
+        counter = TaskCounter(task_id=task.id, counter_key=key, value=0)
+        db.add(counter)
+        db.flush()
+        task.counters.append(counter)
+    counter.value = (counter.value or 0) + delta
     db.commit()
     db.refresh(task)
     return _task_to_response(task)

@@ -2216,6 +2216,11 @@ class TaskSubtaskResponse(BaseModel):
         from_attributes = True
 
 
+class TaskCountersResponse(BaseModel):
+    parent_replies: int = 0
+    parent_escalations: int = 0
+
+
 class TaskSubtaskUpdate(BaseModel):
     completed: Optional[bool] = None
 
@@ -2277,6 +2282,7 @@ class TaskResponse(BaseModel):
     priority: str = "normal"
     pinned_today: bool = False
     tags: Optional[List[str]] = None
+    counters: Optional[TaskCountersResponse] = None
     subtasks: List[TaskSubtaskResponse]
     student_ids: List[int]
     progress: float

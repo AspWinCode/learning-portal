@@ -297,8 +297,15 @@ const TasksPage: React.FC = () => {
     try {
       await tasksApi.updateSubtask(task.id, subtask.id, { completed: !subtask.completed });
       await loadTasks();
+      const promises: Promise<unknown>[] = [];
       if (showTodayPlan || isSales) {
-        await Promise.all([loadTodayTasks(), loadDayStats(), loadOverdueCount()]);
+        promises.push(loadTodayTasks(), loadDayStats(), loadOverdueCount());
+      }
+      if (isSales) {
+        promises.push(loadDayDesk());
+      }
+      if (promises.length > 0) {
+        await Promise.all(promises);
       }
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось обновить подзадачу'));
@@ -818,6 +825,12 @@ const TasksPage: React.FC = () => {
                                 >
                                   <Box sx={{ flex: 1, minWidth: 0 }}>
                                     <Typography variant="subtitle2">{task.title}</Typography>
+                                    {task.tags?.includes('parent_responses') && (
+                                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                        Ответов сегодня: {task.counters?.parent_replies ?? 0}{' '}
+                                        · Передано тренеру: {task.counters?.parent_escalations ?? 0}
+                                      </Typography>
+                                    )}
                                     <Stack
                                       direction="row"
                                       alignItems="center"
@@ -885,6 +898,46 @@ const TasksPage: React.FC = () => {
                                     alignItems="center"
                                     onClick={(e) => e.stopPropagation()}
                                   >
+                                    {task.tags?.includes('parent_responses') && (
+                                      <>
+                                        <Button
+                                          size="small"
+                                          variant="contained"
+                                          onClick={() =>
+                                            tasksApi
+                                              .incrementTaskCounter(task.id, 'parent_replies', 1)
+                                              .then(() => {
+                                                loadTasks();
+                                                loadDayDesk();
+                                              })
+                                              .catch((e) =>
+                                                setError(extractApiError(e, 'Не удалось увеличить счётчик')),
+                                              )
+                                          }
+                                          sx={{ mr: 1 }}
+                                        >
+                                          + Ответил родителю
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          onClick={() =>
+                                            tasksApi
+                                              .incrementTaskCounter(task.id, 'parent_escalations', 1)
+                                              .then(() => {
+                                                loadTasks();
+                                                loadDayDesk();
+                                              })
+                                              .catch((e) =>
+                                                setError(extractApiError(e, 'Не удалось увеличить счётчик')),
+                                              )
+                                          }
+                                          sx={{ mr: 1 }}
+                                        >
+                                          + Передал вопрос тренеру
+                                        </Button>
+                                      </>
+                                    )}
                                     <Button
                                       size="small"
                                       variant="outlined"

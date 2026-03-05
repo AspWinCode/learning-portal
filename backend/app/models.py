@@ -1602,6 +1602,10 @@ class Task(Base):
     status = Column(String(20), nullable=False, server_default="active", index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    scheduled_for = Column(Date, nullable=True, index=True)  # дата показа в "Плане на сегодня"
+    due_at = Column(DateTime(timezone=True), nullable=True, index=True)  # дедлайн (до 20:00 и т.д.)
+    priority = Column(String(20), nullable=False, server_default="normal", index=True)  # low | normal | high
+    pinned_today = Column(Boolean, nullable=False, server_default="false")  # вручную в плане на сегодня
     repeat_enabled = Column(Boolean, nullable=False, server_default="false")
     repeat_frequency = Column(String(20), nullable=True)
     repeat_days = Column(JSON, nullable=True)

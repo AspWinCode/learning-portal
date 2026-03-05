@@ -30,6 +30,7 @@ import {
   FormControl,
   RadioGroup,
   Radio,
+  Switch,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -81,6 +82,11 @@ const TasksPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory>('schools');
   const [statusFilter, setStatusFilter] = useState<'active' | 'archived' | ''>('active');
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+
+  const [showTodayPlan, setShowTodayPlan] = useState(isSales);
+  const [todayPlanTab, setTodayPlanTab] = useState<'today' | 'overdue' | 'active'>('today');
+  const [todayTasks, setTodayTasks] = useState<TaskResponse[]>([]);
+  const [todayTasksLoading, setTodayTasksLoading] = useState(false);
 
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateEditId, setTemplateEditId] = useState<number | null>(null);
@@ -186,6 +192,18 @@ const TasksPage: React.FC = () => {
     }
   }, [canSeeLessonTasks]);
 
+  const loadTodayTasks = useCallback(async () => {
+    setTodayTasksLoading(true);
+    try {
+      const data = await tasksApi.listTodayTasks(todayPlanTab, categoryFilter);
+      setTodayTasks(Array.isArray(data) ? data : []);
+    } catch {
+      setTodayTasks([]);
+    } finally {
+      setTodayTasksLoading(false);
+    }
+  }, [todayPlanTab, categoryFilter]);
+
   useEffect(() => {
     const run = async () => {
       setLoading(true);
@@ -202,6 +220,12 @@ const TasksPage: React.FC = () => {
     };
     run();
   }, [loadTasks, loadTemplates, loadStudents, loadLessonTasks, loadLessonTasksTomorrow, loadLessonTasksWeek]);
+
+  useEffect(() => {
+    if (tab === 0 && (showTodayPlan || isSales)) {
+      loadTodayTasks();
+    }
+  }, [tab, showTodayPlan, isSales, loadTodayTasks]);
 
   const handleSubtaskToggle = async (task: TaskResponse, subtask: TaskSubtaskResponse) => {
     try {
@@ -411,12 +435,128 @@ const TasksPage: React.FC = () => {
           </Tabs>
         )}
 
+        {(isAdminOrOwner || user?.role === 'trainer') && (
+          <FormControlLabel
+            control={<Switch checked={showTodayPlan} onChange={(e) => setShowTodayPlan(e.target.checked)} color="primary" />}
+            label="План на сегодня"
+          />
+        )}
+
         {error && <Alert severity="error">{error}</Alert>}
 
         {loading ? (
           <Typography color="text.secondary">Загрузка...</Typography>
-        ) : tab === 0 && canSeeLessonTasks ? (
+        ) : tab === 0 ? (
           <Stack spacing={3}>
+            {(showTodayPlan || isSales) && (
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>План на сегодня</Typography>
+              <Tabs value={todayPlanTab} onChange={(_, v: 'today' | 'overdue' | 'active') => setTodayPlanTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
+                <Tab value="today" label="Сегодня" />
+                <Tab value="overdue" label="Просрочено" />
+                <Tab value="active" label="Все активные" />
+              </Tabs>
+
+              {todayPlanTab === 'today' && canSeeLessonTasks && (
+                <>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Уроки сегодня</Typography>
+                  {lessonTasksLoading ? (
+                    <Typography variant="body2" color="text.secondary">Загрузка уроков...</Typography>
+                  ) : lessonTasks.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">На сегодня уроков нет.</Typography>
+                  ) : (
+                    <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+                      {lessonTasks.map((item) => (
+                        <Card key={`plan-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 260, maxWidth: 340 }}>
+                          <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                            <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                            <Typography variant="body2" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
+                            <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+                              <Chip size="small" label={item.status === 'in_progress' ? 'Идёт урок' : item.status === 'call_round' ? 'Дозвон' : item.status === 'soon' ? 'Скоро' : 'Ожидает'} color={item.status === 'in_progress' ? 'primary' : 'default'} />
+                            </Stack>
+                            <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 1 }} onClick={() => setLessonTaskDetail(item)}>Открыть</Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Stack>
+                  )}
+                </>
+              )}
+
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                {todayPlanTab === 'today' && `Сегодня: ${todayTasks.length} задач, выполнено ${todayTasks.filter((t) => t.progress === 100).length}`}
+                {todayPlanTab === 'overdue' && `Просрочено: ${todayTasks.length}`}
+                {todayPlanTab === 'active' && `Активных: ${todayTasks.length}`}
+              </Typography>
+              {todayTasksLoading ? (
+                <Typography variant="body2" color="text.secondary">Загрузка...</Typography>
+              ) : todayTasks.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">Нет задач.</Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {todayTasks.map((task) => {
+                    const dueLabel = task.due_at ? (() => {
+                      try {
+                        const d = new Date(task.due_at);
+                        return `до ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+                      } catch {
+                        return null;
+                      }
+                    })() : (task.scheduled_for ? 'Срок: сегодня' : null);
+                    const categoryLabel = task.category === 'parents' ? 'Родители' : task.category === 'leads' ? 'Лиды' : 'Школы';
+                    const firstSubtasks = (task.subtasks || []).slice(0, 5);
+                    return (
+                      <Card key={task.id} variant="outlined" sx={{ py: 0 }}>
+                        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1} flexWrap="wrap">
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="subtitle2">{task.title}</Typography>
+                              <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
+                                <Chip size="small" label={categoryLabel} variant="outlined" sx={{ height: 20 }} />
+                                {dueLabel && <Chip size="small" label={dueLabel} color="warning" sx={{ height: 20 }} />}
+                                {task.priority === 'high' && <Chip size="small" label="Важная" color="error" sx={{ height: 20 }} />}
+                              </Stack>
+                              <LinearProgress variant="determinate" value={task.progress} sx={{ width: '100%', maxWidth: 200, height: 6, borderRadius: 1, mt: 0.5 }} />
+                              {firstSubtasks.length > 0 && (
+                                <Stack direction="row" flexWrap="wrap" alignItems="center" sx={{ mt: 0.5 }} gap={0.5}>
+                                  {firstSubtasks.map((st) => (
+                                    <FormControlLabel
+                                      key={st.id}
+                                      control={
+                                        <Checkbox
+                                          size="small"
+                                          checked={st.completed}
+                                          onChange={() => handleSubtaskToggle(task, st)}
+                                          disabled={!isAdminOrOwner && !isSales}
+                                        />
+                                      }
+                                      label={<Typography variant="caption" sx={{ textDecoration: st.completed ? 'line-through' : 'none' }}>{st.text.length > 30 ? st.text.slice(0, 30) + '…' : st.text}</Typography>}
+                                      sx={{ m: 0 }}
+                                    />
+                                  ))}
+                                </Stack>
+                              )}
+                            </Box>
+                            <Stack direction="row" spacing={0.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
+                              <Button size="small" variant="outlined" onClick={() => openTaskDialog(task)}>Открыть</Button>
+                              {task.status === 'active' && (
+                                <>
+                                  <Button size="small" variant="contained" onClick={() => tasksApi.completeTask(task.id).then(() => { loadTasks(); loadTodayTasks(); }).catch((e) => setError(extractApiError(e, 'Не удалось завершить')))}>Завершить</Button>
+                                  <Button size="small" variant="outlined" onClick={() => tasksApi.postponeTask(task.id).then(() => loadTodayTasks()).catch((e) => setError(extractApiError(e, 'Не удалось отложить')))}>Отложить</Button>
+                                </>
+                              )}
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </Stack>
+              )}
+            </Box>
+            )}
+
+            {canSeeLessonTasks && (
             <Box>
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Позвать детей на занятие</Typography>
               <Tabs value={lessonPeriodTab} onChange={(_, v) => setLessonPeriodTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
@@ -574,6 +714,7 @@ const TasksPage: React.FC = () => {
                 </>
               )}
             </Box>
+            )}
 
             <Box>
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Все задачи</Typography>
@@ -639,13 +780,22 @@ const TasksPage: React.FC = () => {
                                 </IconButton>
                               )}
                               {task.status === 'active' && (
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  onClick={() => tasksApi.completeTask(task.id).then(() => loadTasks()).catch((e) => setError(extractApiError(e, 'Не удалось завершить задачу')))}
-                                >
-                                  Завершить
-                                </Button>
+                                <>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() => tasksApi.completeTask(task.id).then(() => loadTasks()).catch((e) => setError(extractApiError(e, 'Не удалось завершить задачу')))}
+                                  >
+                                    Завершить
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant={task.pinned_today ? 'contained' : 'outlined'}
+                                    onClick={() => tasksApi.pinTaskToday(task.id, !task.pinned_today).then(() => { loadTasks(); if (showTodayPlan || isSales) loadTodayTasks(); }).catch((e) => setError(extractApiError(e, 'Не удалось добавить в план')))}
+                                  >
+                                    {task.pinned_today ? 'В плане' : 'В план на сегодня'}
+                                  </Button>
+                                </>
                               )}
                               {isAdminOrOwner && (
                                 <IconButton size="small" onClick={() => deleteTask(task.id)} color="error" title="Удалить">

@@ -1,7 +1,8 @@
 """Task manager: templates (admin/owner), tasks CRUD (admin/owner), sales: view tasks + complete subtasks."""
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app import auth
@@ -71,10 +72,10 @@ def _task_to_response(task: Task) -> TaskResponse:
     if total:
         progress = round(100.0 * completed / total, 1)
     else:
-        # Без подзадач: считаем 0% для активных задач и 100% для архивных
         progress = 0.0 if getattr(task, "status", TaskStatus.ACTIVE.value) == TaskStatus.ACTIVE.value else 100.0
     student_ids = [ts.student_id for ts in task.students] if hasattr(task, "students") else []
     category = getattr(task, "category", None) or "schools"
+    due_at = getattr(task, "due_at", None)
     return TaskResponse(
         id=task.id,
         title=task.title,
@@ -86,6 +87,10 @@ def _task_to_response(task: Task) -> TaskResponse:
         status=task.status if isinstance(task.status, str) else getattr(task.status, "value", str(task.status)),
         created_at=task.created_at,
         updated_at=task.updated_at,
+        scheduled_for=_norm_date(getattr(task, "scheduled_for", None)),
+        due_at=due_at,
+        priority=getattr(task, "priority", None) or "normal",
+        pinned_today=getattr(task, "pinned_today", False),
         subtasks=subtasks,
         student_ids=student_ids,
         progress=progress,
@@ -94,7 +99,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         repeat_days=getattr(task, "repeat_days", None),
         repeat_end_type=getattr(task, "repeat_end_type", None),
         repeat_end_after_count=getattr(task, "repeat_end_after_count", None),
-        repeat_end_until=getattr(task, "repeat_end_until", None),
+        repeat_end_until=_norm_date(getattr(task, "repeat_end_until", None)),
     )
 
 
@@ -272,6 +277,77 @@ async def list_tasks(
     return [_task_to_response(t) for t in tasks]
 
 
+@router.get("/tasks/today", response_model=List[TaskResponse])
+async def list_today_tasks(
+    mode: str = Query("today", regex="^(today|overdue|active)$"),
+    category: Optional[str] = Query(None),
+    assignee_id: Optional[int] = Query(None, description="По умолчанию для sales — текущий пользователь"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+):
+    """Задачи для «Плана на сегодня»: today — на сегодня (с сортировкой), overdue — просроченные, active — все активные."""
+    today = date.today()
+    q = (
+        db.query(Task)
+        .options(joinedload(Task.subtasks), joinedload(Task.students))
+        .filter(Task.status == TaskStatus.ACTIVE.value)
+    )
+    if assignee_id is not None:
+        q = q.filter(Task.assigned_to_id == assignee_id)
+    elif current_user.role in ("sales", "trainer"):
+        q = q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
+    if category and category in ("schools", "parents", "leads"):
+        q = q.filter(Task.category == category)
+
+    if mode == "today":
+        # Попадают: scheduled_for=today ИЛИ due_at сегодня ИЛИ pinned_today ИЛИ (без дат и создано сегодня)
+        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+        today_end = datetime.combine(today, datetime.max.time()).replace(tzinfo=timezone.utc)
+        q = q.filter(
+            or_(
+                Task.scheduled_for == today,
+                and_(Task.due_at.isnot(None), Task.due_at >= today_start, Task.due_at <= today_end),
+                Task.pinned_today.is_(True),
+                and_(
+                    Task.scheduled_for.is_(None),
+                    Task.due_at.is_(None),
+                    Task.pinned_today.is_(False),
+                    Task.created_at >= today_start,
+                    Task.created_at <= today_end,
+                ),
+            )
+        )
+        tasks = q.all()
+        # Сортировка: просроченные сверху, по due_at (раньше выше), high priority, категория, created_at
+        def _task_sort_key(t: Task):
+            due = getattr(t, "due_at", None)
+            sched = getattr(t, "scheduled_for", None)
+            prio = getattr(t, "priority", None) or "normal"
+            cat_order = {"parents": 0, "leads": 1, "schools": 2}.get(getattr(t, "category", "schools"), 2)
+            is_overdue = (sched and sched < today) or (due and (due.date() if hasattr(due, "date") else due) < today)
+            due_ord = due if due else datetime.max.replace(tzinfo=timezone.utc)
+            prio_ord = 0 if prio == "high" else (1 if prio == "normal" else 2)
+            created = t.created_at or datetime.min.replace(tzinfo=timezone.utc)
+            return (0 if is_overdue else 1, due_ord, prio_ord, cat_order, created)
+        tasks = sorted(tasks, key=_task_sort_key)
+        return [_task_to_response(t) for t in tasks]
+
+    if mode == "overdue":
+        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+        q = q.filter(
+            or_(
+                and_(Task.scheduled_for.isnot(None), Task.scheduled_for < today),
+                and_(Task.due_at.isnot(None), Task.due_at < today_start),
+            )
+        )
+        tasks = q.order_by(Task.due_at.asc().nullslast(), Task.scheduled_for.asc().nullslast()).all()
+        return [_task_to_response(t) for t in tasks]
+
+    # mode == "active"
+    tasks = q.order_by(Task.created_at.desc()).all()
+    return [_task_to_response(t) for t in tasks]
+
+
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     payload: TaskCreate,
@@ -304,6 +380,10 @@ async def create_task(
         assigned_to_id=payload.assigned_to_id,
         category=task_category,
         status=TaskStatus.ACTIVE.value,
+        scheduled_for=getattr(payload, "scheduled_for", None),
+        due_at=getattr(payload, "due_at", None),
+        priority=(getattr(payload, "priority", None) or "normal"),
+        pinned_today=getattr(payload, "pinned_today", False) or False,
         repeat_enabled=repeat_enabled,
         repeat_frequency=repeat_frequency,
         repeat_days=repeat_days,
@@ -392,6 +472,14 @@ async def update_task(
         task.assigned_to_id = payload.assigned_to_id
     if payload.category is not None and payload.category in ("schools", "parents", "leads"):
         task.category = payload.category
+    if getattr(payload, "scheduled_for", None) is not None:
+        task.scheduled_for = payload.scheduled_for
+    if getattr(payload, "due_at", None) is not None:
+        task.due_at = payload.due_at
+    if getattr(payload, "priority", None) is not None and payload.priority in ("low", "normal", "high"):
+        task.priority = payload.priority
+    if getattr(payload, "pinned_today", None) is not None:
+        task.pinned_today = payload.pinned_today
     if payload.repeat_enabled is not None:
         task.repeat_enabled = payload.repeat_enabled
     if payload.repeat_frequency is not None:
@@ -468,6 +556,10 @@ async def update_task_subtask(
                 created_by_id=task.created_by_id,
                 assigned_to_id=task.assigned_to_id,
                 status=TaskStatus.ACTIVE.value,
+                scheduled_for=getattr(task, "scheduled_for", None),
+                due_at=getattr(task, "due_at", None),
+                priority=getattr(task, "priority", "normal"),
+                pinned_today=False,
                 repeat_enabled=task.repeat_enabled,
                 repeat_frequency=task.repeat_frequency,
                 repeat_days=task.repeat_days,
@@ -533,6 +625,10 @@ async def complete_task(
                 created_by_id=task.created_by_id,
                 assigned_to_id=task.assigned_to_id,
                 status=TaskStatus.ACTIVE.value,
+                scheduled_for=getattr(task, "scheduled_for", None),
+                due_at=getattr(task, "due_at", None),
+                priority=getattr(task, "priority", "normal"),
+                pinned_today=False,
                 repeat_enabled=task.repeat_enabled,
                 repeat_frequency=task.repeat_frequency,
                 repeat_days=task.repeat_days,
@@ -557,4 +653,51 @@ async def complete_task(
         db.commit()
         db.refresh(task)
 
+    return _task_to_response(task)
+
+
+@router.patch("/tasks/{task_id}/postpone", response_model=TaskResponse)
+async def postpone_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+):
+    """Отложить задачу на завтра: scheduled_for = tomorrow."""
+    task = (
+        db.query(Task)
+        .options(joinedload(Task.subtasks), joinedload(Task.students))
+        .filter(Task.id == task_id)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status != TaskStatus.ACTIVE.value:
+        return _task_to_response(task)
+    tomorrow = date.today() + timedelta(days=1)
+    task.scheduled_for = tomorrow
+    task.pinned_today = False
+    db.commit()
+    db.refresh(task)
+    return _task_to_response(task)
+
+
+@router.patch("/tasks/{task_id}/pin-today", response_model=TaskResponse)
+async def pin_task_today(
+    task_id: int,
+    pinned: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+):
+    """Добавить задачу в план на сегодня (pinned_today=True) или убрать."""
+    task = (
+        db.query(Task)
+        .options(joinedload(Task.subtasks), joinedload(Task.students))
+        .filter(Task.id == task_id)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.pinned_today = pinned
+    db.commit()
+    db.refresh(task)
     return _task_to_response(task)

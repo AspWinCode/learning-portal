@@ -2228,6 +2228,10 @@ class TaskCreate(BaseModel):
     category: Optional[Literal["schools", "parents", "leads"]] = None  # default: schools
     subtasks: Optional[List[dict]] = None
     student_ids: Optional[List[int]] = None
+    scheduled_for: Optional[date] = None
+    due_at: Optional[datetime] = None
+    priority: Optional[Literal["low", "normal", "high"]] = None
+    pinned_today: Optional[bool] = None
     repeat_enabled: Optional[bool] = False
     repeat_frequency: Optional[Literal["daily", "weekly", "monthly"]] = None
     repeat_days: Optional[List[int]] = None
@@ -2243,6 +2247,10 @@ class TaskUpdate(BaseModel):
     assigned_to_id: Optional[int] = None
     category: Optional[Literal["schools", "parents", "leads"]] = None
     student_ids: Optional[List[int]] = None
+    scheduled_for: Optional[date] = None
+    due_at: Optional[datetime] = None
+    priority: Optional[Literal["low", "normal", "high"]] = None
+    pinned_today: Optional[bool] = None
     repeat_enabled: Optional[bool] = None
     repeat_frequency: Optional[Literal["daily", "weekly", "monthly"]] = None
     repeat_days: Optional[List[int]] = None
@@ -2262,6 +2270,10 @@ class TaskResponse(BaseModel):
     status: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    scheduled_for: Optional[date] = None
+    due_at: Optional[datetime] = None
+    priority: str = "normal"
+    pinned_today: bool = False
     subtasks: List[TaskSubtaskResponse]
     student_ids: List[int]
     progress: float

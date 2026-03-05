@@ -882,6 +882,9 @@ export interface TaskSubtaskResponse {
 /** Категория задачи: школы, родители, лиды */
 export type TaskCategory = 'schools' | 'parents' | 'leads';
 
+/** Приоритет задачи для «Плана на сегодня» */
+export type TaskPriority = 'low' | 'normal' | 'high';
+
 export interface TaskResponse {
   id: number;
   title: string;
@@ -893,6 +896,10 @@ export interface TaskResponse {
   status: string;
   created_at?: string | null;
   updated_at?: string | null;
+  scheduled_for?: string | null;
+  due_at?: string | null;
+  priority?: TaskPriority | string;
+  pinned_today?: boolean;
   subtasks: TaskSubtaskResponse[];
   student_ids: number[];
   progress: number;

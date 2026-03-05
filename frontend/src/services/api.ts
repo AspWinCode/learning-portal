@@ -2006,6 +2006,26 @@ export const tasksApi = {
     const response = await api.get('/api/tasks', { params: Object.keys(params).length ? params : {} });
     return response.data;
   },
+  /** Задачи для «Плана на сегодня»: mode = today | overdue | active */
+  listTodayTasks: async (
+    mode: 'today' | 'overdue' | 'active' = 'today',
+    category?: 'schools' | 'parents' | 'leads',
+    assigneeId?: number
+  ): Promise<import('../types').TaskResponse[]> => {
+    const params: Record<string, string | number> = { mode };
+    if (category != null) params.category = category;
+    if (assigneeId != null) params.assignee_id = assigneeId;
+    const response = await api.get('/api/tasks/today', { params });
+    return response.data;
+  },
+  postponeTask: async (taskId: number): Promise<import('../types').TaskResponse> => {
+    const response = await api.patch(`/api/tasks/${taskId}/postpone`);
+    return response.data;
+  },
+  pinTaskToday: async (taskId: number, pinned: boolean = true): Promise<import('../types').TaskResponse> => {
+    const response = await api.patch(`/api/tasks/${taskId}/pin-today`, undefined, { params: { pinned } });
+    return response.data;
+  },
   createTask: async (payload: {
     title?: string;
     description?: string;
@@ -2014,6 +2034,10 @@ export const tasksApi = {
     category?: 'schools' | 'parents' | 'leads';
     subtasks?: { text: string; order?: number }[];
     student_ids?: number[];
+    scheduled_for?: string;
+    due_at?: string;
+    priority?: 'low' | 'normal' | 'high';
+    pinned_today?: boolean;
     repeat_enabled?: boolean;
     repeat_frequency?: 'daily' | 'weekly' | 'monthly';
     repeat_days?: number[];
@@ -2031,6 +2055,10 @@ export const tasksApi = {
     assigned_to_id?: number | null;
     category?: 'schools' | 'parents' | 'leads';
     student_ids?: number[];
+    scheduled_for?: string | null;
+    due_at?: string | null;
+    priority?: 'low' | 'normal' | 'high';
+    pinned_today?: boolean;
     repeat_enabled?: boolean;
     repeat_frequency?: 'daily' | 'weekly' | 'monthly';
     repeat_days?: number[];

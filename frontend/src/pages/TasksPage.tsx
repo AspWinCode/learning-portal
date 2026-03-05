@@ -832,13 +832,7 @@ const TasksPage: React.FC = () => {
                           return (
                             <Card key={task.id} variant="outlined" sx={{ py: 0 }}>
                               <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                                <Stack
-                                  direction="row"
-                                  alignItems="flex-start"
-                                  justifyContent="space-between"
-                                  spacing={1}
-                                  flexWrap="wrap"
-                                >
+                                <Stack spacing={1}>
                                   <Box sx={{ flex: 1, minWidth: 0 }}>
                                     <Typography variant="subtitle2">{task.title}</Typography>
                                     {task.tags?.includes('parent_responses') && (

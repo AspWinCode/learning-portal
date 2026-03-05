@@ -1759,9 +1759,9 @@ const TasksPage: React.FC = () => {
           </Stack>
         )}
 
-        {!isSales && loading ? (
+        {loading ? (
           <Typography color="text.secondary">Загрузка...</Typography>
-        ) : !isSales && tab === 0 ? (
+        ) : tab === 0 ? (
           <Stack spacing={3}>
             {(showTodayPlan || isSales) && (
             <Box>

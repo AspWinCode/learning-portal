@@ -620,6 +620,15 @@ async def get_tasks_day_desk(
     )
 
 
+@router.get("/tasks/day-desk", response_model=TaskDayDeskResponse)
+async def get_tasks_day_desk_legacy(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+) -> TaskDayDeskResponse:
+    """Совместимость со старым frontend: алиас для /tasks/day-desk-summary."""
+    return await get_tasks_day_desk(db=db, current_user=current_user)
+
+
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     payload: TaskCreate,

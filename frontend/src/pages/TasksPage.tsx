@@ -145,6 +145,7 @@ const TasksPage: React.FC = () => {
   const [taskRepeatEndAfterCount, setTaskRepeatEndAfterCount] = useState<number>(1);
   const [taskRepeatEndUntil, setTaskRepeatEndUntil] = useState<string>('');
   const [taskSaving, setTaskSaving] = useState(false);
+  const [taskIsParentResponses, setTaskIsParentResponses] = useState(false);
 
   const loadTemplates = useCallback(async () => {
     if (!isAdminOrOwner) return;
@@ -387,6 +388,7 @@ const TasksPage: React.FC = () => {
     setTaskRepeatEndType((task?.repeat_end_type as RepeatEndType) ?? 'never');
     setTaskRepeatEndAfterCount(task?.repeat_end_after_count ?? 1);
     setTaskRepeatEndUntil(task?.repeat_end_until ? task.repeat_end_until.slice(0, 10) : '');
+    setTaskIsParentResponses(task?.tags?.includes('parent_responses') ?? false);
     setTaskDialogOpen(true);
   };
 
@@ -404,11 +406,13 @@ const TasksPage: React.FC = () => {
         repeat_end_until: taskRepeatEnabled && taskRepeatEndType === 'until_date' && taskRepeatEndUntil ? taskRepeatEndUntil : undefined,
       };
       const studentIds = taskSelectedStudents.map((s) => s.id);
+      const tags = taskIsParentResponses ? ['parent_responses'] : undefined;
       if (taskEditId) {
         await tasksApi.updateTask(taskEditId, {
           title: taskTitle.trim(),
           description: taskDescription.trim() || undefined,
           student_ids: studentIds,
+          tags,
           ...taskRepeatPayload,
         });
       } else {
@@ -416,9 +420,10 @@ const TasksPage: React.FC = () => {
           title: taskTitle.trim() || undefined,
           description: taskDescription.trim() || undefined,
           template_id: taskTemplateId || undefined,
-          category: categoryFilter,
+          category: taskIsParentResponses ? 'parents' : categoryFilter,
           subtasks: taskTemplateId ? undefined : (subtasks.length ? subtasks.map((s, i) => ({ text: s.text.trim(), order: i })) : undefined),
           student_ids: studentIds,
+          tags,
           ...taskRepeatPayload,
         });
       }
@@ -2886,6 +2891,18 @@ const TasksPage: React.FC = () => {
             label="Повторять"
             sx={{ mt: 2, display: 'block' }}
           />
+          {isAdminOrOwner && (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={taskIsParentResponses}
+                  onChange={(e) => setTaskIsParentResponses(e.target.checked)}
+                />
+              }
+              label="Ежедневный процесс: ответы на сообщения родителей"
+              sx={{ mt: 1, display: 'block' }}
+            />
+          )}
           {taskRepeatEnabled && (
             <Stack spacing={1.5} sx={{ mt: 1, pl: 2, borderLeft: '2px solid', borderColor: 'divider' }}>
               <FormControl size="small" fullWidth>

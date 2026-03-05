@@ -47,7 +47,15 @@ import { tasksApi, studentsApi, salesApi } from '../services/api';
 import type { LessonTaskItem, LessonTaskStudent } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { extractApiError } from '../utils/extractApiError';
-import type { TaskTemplateResponse, TaskResponse, TaskSubtaskResponse, RepeatFrequency, RepeatEndType, TaskCategory } from '../types';
+import type {
+  TaskTemplateResponse,
+  TaskResponse,
+  TaskSubtaskResponse,
+  RepeatFrequency,
+  RepeatEndType,
+  TaskCategory,
+  AbsenceFollowUp,
+} from '../types';
 import type { Student } from '../types';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import Refresh from '@mui/icons-material/Refresh';
@@ -57,6 +65,23 @@ import { Link } from 'react-router-dom';
 const WEEKDAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
 const SHOW_TODAY_PLAN_KEY = 'tasks_showTodayPlan';
+
+const ABSENCE_REASON_LABELS: Record<string, string> = {
+  was: 'Был',
+  not_was: 'Не был',
+  sick: 'Болел',
+  olympiad: 'Олимпиада',
+  event: 'Мероприятие',
+  other: 'Другое',
+};
+
+const formatShortDate = (d: string | null | undefined): string => {
+  if (!d) return '';
+  const parts = d.split('-');
+  if (parts.length !== 3) return d;
+  const [year, month, day] = parts;
+  return `${day.padStart(2, '0')}.${month.padStart(2, '0')}`;
+};
 
 const TasksPage: React.FC = () => {
   const { user } = useAuth();
@@ -109,6 +134,7 @@ const TasksPage: React.FC = () => {
   } | null>(null);
   const [hideCompletedInDesk, setHideCompletedInDesk] = useState(true);
   const urgentBlockRef = useRef<HTMLDivElement | null>(null);
+  const [absenceMakeupsTodo, setAbsenceMakeupsTodo] = useState<AbsenceFollowUp[]>([]);
 
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateEditId, setTemplateEditId] = useState<number | null>(null);
@@ -259,6 +285,17 @@ const TasksPage: React.FC = () => {
     }
   }, [isSales]);
 
+  const loadAbsenceMakeupsForDesk = useCallback(async () => {
+    if (!isSales) return;
+    try {
+      const items = await salesApi.getAbsences({ stage: 'missed' });
+      const sorted = [...items].sort((a, b) => (a.lesson_date || '').localeCompare(b.lesson_date || ''));
+      setAbsenceMakeupsTodo(sorted.slice(0, 10));
+    } catch {
+      setAbsenceMakeupsTodo([]);
+    }
+  }, [isSales]);
+
   useEffect(() => {
     const run = async () => {
       setLoading(true);
@@ -282,9 +319,11 @@ const TasksPage: React.FC = () => {
 
   useEffect(() => {
     if (isSales && tab === 0) {
-      void loadDayDesk();
+      void (async () => {
+        await Promise.all([loadDayDesk(), loadAbsenceMakeupsForDesk()]);
+      })();
     }
-  }, [isSales, tab, loadDayDesk]);
+  }, [isSales, tab, loadDayDesk, loadAbsenceMakeupsForDesk]);
 
   useEffect(() => {
     if (tab === 0 && (showTodayPlan || isSales)) {
@@ -1059,196 +1098,279 @@ const TasksPage: React.FC = () => {
                 )}
 
                 {/* Отработки */}
-                {dayDesk.makeups.length > 0 && (
+                {(absenceMakeupsTodo.length > 0 || dayDesk.makeups.length > 0) && (
                   <Box>
-                    <Typography variant="h6" gutterBottom>Отработки</Typography>
-                    <Stack spacing={1}>
-                      {dayDesk.makeups
-                        .filter((t) => !hideCompletedInDesk || t.progress < 100)
-                        .map((task) => {
-                          const dueLabel = task.due_at
-                            ? (() => {
-                                try {
-                                  const d = new Date(task.due_at);
-                                  return `до ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes()
-                                    .toString()
-                                    .padStart(2, '0')}`;
-                                } catch {
-                                  return null;
-                                }
-                              })()
-                            : task.scheduled_for
-                            ? 'Срок: сегодня'
-                            : null;
-                          const categoryLabel =
-                            task.category === 'parents' ? 'Родители' : task.category === 'leads' ? 'Лиды' : 'Школы';
-                          const firstSubtasks = (task.subtasks || []).slice(0, 5);
-                          return (
-                            <Card key={task.id} variant="outlined" sx={{ py: 0 }}>
-                              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                                <Stack
-                                  direction="row"
-                                  alignItems="flex-start"
-                                  justifyContent="space-between"
-                                  spacing={1}
-                                  flexWrap="wrap"
-                                >
-                                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <Typography variant="subtitle2">{task.title}</Typography>
-                                    <Stack
-                                      direction="row"
-                                      alignItems="center"
-                                      spacing={0.5}
-                                      sx={{ mt: 0.5 }}
-                                      flexWrap="wrap"
-                                    >
-                                      <Chip size="small" label={categoryLabel} variant="outlined" sx={{ height: 20 }} />
-                                      {dueLabel && (
-                                        <Chip size="small" label={dueLabel} color="warning" sx={{ height: 20 }} />
-                                      )}
-                                      {task.priority === 'high' && (
-                                        <Chip size="small" label="Важная" color="error" sx={{ height: 20 }} />
-                                      )}
-                                      {task.tags?.map((tag) => (
-                                        <Chip
-                                          key={tag}
-                                          size="small"
-                                          label={tag}
-                                          variant="outlined"
-                                          sx={{ height: 20 }}
-                                        />
-                                      ))}
-                                    </Stack>
-                                    <LinearProgress
-                                      variant="determinate"
-                                      value={task.progress}
-                                      sx={{ width: '100%', maxWidth: 200, height: 6, borderRadius: 1, mt: 0.5 }}
-                                    />
-                                    {firstSubtasks.length > 0 && (
+                    <Typography variant="h6" gutterBottom>
+                      Отработки
+                    </Typography>
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      spacing={2}
+                      alignItems="flex-start"
+                      sx={{ mt: 1 }}
+                    >
+                      {absenceMakeupsTodo.length > 0 && (
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                            Нужна отработка ({absenceMakeupsTodo.length > 10 ? '10+' : absenceMakeupsTodo.length})
+                          </Typography>
+                          <Stack spacing={1}>
+                            {absenceMakeupsTodo.map((a) => (
+                              <Card key={a.id} variant="outlined" sx={{ py: 0 }}>
+                                <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                  <Typography variant="subtitle2">
+                                    {a.student_name || `Ученик #${a.student_id}`}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {a.group_name || `Группа #${a.group_id}`} · {formatShortDate(a.lesson_date)}
+                                    {a.program_name && ` · ${a.program_name}`}
+                                  </Typography>
+                                  {a.absence_reason && (
+                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                      Причина:{' '}
+                                      {ABSENCE_REASON_LABELS[a.absence_reason] || a.absence_reason}
+                                      {a.absence_comment && ` — ${a.absence_comment}`}
+                                    </Typography>
+                                  )}
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ mt: 1 }}
+                                    component={Link}
+                                    to="/sales/absences"
+                                  >
+                                    Открыть список пропусков
+                                  </Button>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </Stack>
+                        </Box>
+                      )}
+                      {dayDesk.makeups.length > 0 && (
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                            Отработка назначена (задачи)
+                          </Typography>
+                          <Stack spacing={1}>
+                            {dayDesk.makeups
+                              .filter((t) => !hideCompletedInDesk || t.progress < 100)
+                              .map((task) => {
+                                const dueLabel = task.due_at
+                                  ? (() => {
+                                      try {
+                                        const d = new Date(task.due_at);
+                                        return `до ${d.getHours().toString().padStart(2, '0')}:${d
+                                          .getMinutes()
+                                          .toString()
+                                          .padStart(2, '0')}`;
+                                      } catch {
+                                        return null;
+                                      }
+                                    })()
+                                  : task.scheduled_for
+                                  ? 'Срок: сегодня'
+                                  : null;
+                                const categoryLabel =
+                                  task.category === 'parents'
+                                    ? 'Родители'
+                                    : task.category === 'leads'
+                                    ? 'Лиды'
+                                    : 'Школы';
+                                const firstSubtasks = (task.subtasks || []).slice(0, 5);
+                                return (
+                                  <Card key={task.id} variant="outlined" sx={{ py: 0 }}>
+                                    <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                                       <Stack
                                         direction="row"
+                                        alignItems="flex-start"
+                                        justifyContent="space-between"
+                                        spacing={1}
                                         flexWrap="wrap"
-                                        alignItems="center"
-                                        sx={{ mt: 0.5 }}
-                                        gap={0.5}
                                       >
-                                        {firstSubtasks.map((st) => (
-                                          <FormControlLabel
-                                            key={st.id}
-                                            control={
-                                              <Checkbox
+                                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                                          <Typography variant="subtitle2">{task.title}</Typography>
+                                          <Stack
+                                            direction="row"
+                                            alignItems="center"
+                                            spacing={0.5}
+                                            sx={{ mt: 0.5 }}
+                                            flexWrap="wrap"
+                                          >
+                                            <Chip
+                                              size="small"
+                                              label={categoryLabel}
+                                              variant="outlined"
+                                              sx={{ height: 20 }}
+                                            />
+                                            {dueLabel && (
+                                              <Chip
                                                 size="small"
-                                                checked={st.completed}
-                                                onChange={() => handleSubtaskToggle(task, st)}
+                                                label={dueLabel}
+                                                color="warning"
+                                                sx={{ height: 20 }}
                                               />
-                                            }
-                                            label={
-                                              <Typography
-                                                variant="caption"
-                                                sx={{ textDecoration: st.completed ? 'line-through' : 'none' }}
-                                              >
-                                                {st.text.length > 30 ? st.text.slice(0, 30) + '…' : st.text}
-                                              </Typography>
-                                            }
-                                            sx={{ m: 0 }}
+                                            )}
+                                            {task.priority === 'high' && (
+                                              <Chip
+                                                size="small"
+                                                label="Важная"
+                                                color="error"
+                                                sx={{ height: 20 }}
+                                              />
+                                            )}
+                                            {task.tags?.map((tag) => (
+                                              <Chip
+                                                key={tag}
+                                                size="small"
+                                                label={tag}
+                                                variant="outlined"
+                                                sx={{ height: 20 }}
+                                              />
+                                            ))}
+                                          </Stack>
+                                          <LinearProgress
+                                            variant="determinate"
+                                            value={task.progress}
+                                            sx={{ width: '100%', maxWidth: 200, height: 6, borderRadius: 1, mt: 0.5 }}
                                           />
-                                        ))}
-                                      </Stack>
-                                    )}
-                                  </Box>
-                                  <Stack
-                                    direction="row"
-                                    spacing={0.5}
-                                    alignItems="center"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      onClick={() => openTaskDialog(task)}
-                                    >
-                                      Открыть
-                                    </Button>
-                                    {task.status === 'active' && (
-                                      <>
-                                        <Button
-                                          size="small"
-                                          variant="contained"
-                                          onClick={() =>
-                                            tasksApi
-                                              .completeTask(task.id)
-                                              .then(() => {
-                                                loadTasks();
-                                                loadDayDesk();
-                                                if (showTodayPlan || isSales) {
-                                                  loadTodayTasks();
-                                                  loadDayStats();
-                                                  loadOverdueCount();
-                                                }
-                                              })
-                                              .catch((e) =>
-                                                setError(extractApiError(e, 'Не удалось завершить задачу')),
-                                              )
-                                          }
+                                          {firstSubtasks.length > 0 && (
+                                            <Stack
+                                              direction="row"
+                                              flexWrap="wrap"
+                                              alignItems="center"
+                                              sx={{ mt: 0.5 }}
+                                              gap={0.5}
+                                            >
+                                              {firstSubtasks.map((st) => (
+                                                <FormControlLabel
+                                                  key={st.id}
+                                                  control={
+                                                    <Checkbox
+                                                      size="small"
+                                                      checked={st.completed}
+                                                      onChange={() => handleSubtaskToggle(task, st)}
+                                                    />
+                                                  }
+                                                  label={
+                                                    <Typography
+                                                      variant="caption"
+                                                      sx={{
+                                                        textDecoration: st.completed ? 'line-through' : 'none',
+                                                      }}
+                                                    >
+                                                      {st.text.length > 30 ? st.text.slice(0, 30) + '…' : st.text}
+                                                    </Typography>
+                                                  }
+                                                  sx={{ m: 0 }}
+                                                />
+                                              ))}
+                                            </Stack>
+                                          )}
+                                        </Box>
+                                        <Stack
+                                          direction="row"
+                                          spacing={0.5}
+                                          alignItems="center"
+                                          onClick={(e) => e.stopPropagation()}
                                         >
-                                          Завершить
-                                        </Button>
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          onClick={() =>
-                                            tasksApi
-                                              .postponeTask(task.id)
-                                              .then(() => {
-                                                loadTasks();
-                                                loadDayDesk();
-                                                if (showTodayPlan || isSales) {
-                                                  loadTodayTasks();
-                                                  loadDayStats();
-                                                  loadOverdueCount();
-                                                }
-                                              })
-                                              .catch((e) =>
-                                                setError(extractApiError(e, 'Не удалось отложить задачу')),
-                                              )
-                                          }
-                                        >
-                                          Отложить
-                                        </Button>
-                                        {!isTrainer && (
                                           <Button
                                             size="small"
-                                            variant={task.pinned_today ? 'contained' : 'outlined'}
-                                            onClick={() =>
-                                              tasksApi
-                                                .pinTaskToday(task.id, !task.pinned_today)
-                                                .then(() => {
-                                                  loadTasks();
-                                                  loadDayDesk();
-                                                  if (showTodayPlan || isSales) {
-                                                    loadTodayTasks();
-                                                    loadDayStats();
-                                                    loadOverdueCount();
-                                                  }
-                                                })
-                                                .catch((e) =>
-                                                  setError(
-                                                    extractApiError(e, 'Не удалось изменить статус в плане'),
-                                                  ),
-                                                )
-                                            }
+                                            variant="outlined"
+                                            onClick={() => openTaskDialog(task)}
                                           >
-                                            {task.pinned_today ? 'В плане' : 'В план'}
+                                            Открыть
                                           </Button>
-                                        )}
-                                      </>
-                                    )}
-                                  </Stack>
-                                </Stack>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
+                                          {task.status === 'active' && (
+                                            <>
+                                              <Button
+                                                size="small"
+                                                variant="contained"
+                                                onClick={() =>
+                                                  tasksApi
+                                                    .completeTask(task.id)
+                                                    .then(() => {
+                                                      loadTasks();
+                                                      loadDayDesk();
+                                                      if (showTodayPlan || isSales) {
+                                                        loadTodayTasks();
+                                                        loadDayStats();
+                                                        loadOverdueCount();
+                                                      }
+                                                    })
+                                                    .catch((e) =>
+                                                      setError(
+                                                        extractApiError(e, 'Не удалось завершить задачу'),
+                                                      ),
+                                                    )
+                                                }
+                                              >
+                                                Завершить
+                                              </Button>
+                                              <Button
+                                                size="small"
+                                                variant="outlined"
+                                                onClick={() =>
+                                                  tasksApi
+                                                    .postponeTask(task.id)
+                                                    .then(() => {
+                                                      loadTasks();
+                                                      loadDayDesk();
+                                                      if (showTodayPlan || isSales) {
+                                                        loadTodayTasks();
+                                                        loadDayStats();
+                                                        loadOverdueCount();
+                                                      }
+                                                    })
+                                                    .catch((e) =>
+                                                      setError(
+                                                        extractApiError(e, 'Не удалось отложить задачу'),
+                                                      ),
+                                                    )
+                                                }
+                                              >
+                                                Отложить
+                                              </Button>
+                                              {!isTrainer && (
+                                                <Button
+                                                  size="small"
+                                                  variant={task.pinned_today ? 'contained' : 'outlined'}
+                                                  onClick={() =>
+                                                    tasksApi
+                                                      .pinTaskToday(task.id, !task.pinned_today)
+                                                      .then(() => {
+                                                        loadTasks();
+                                                        loadDayDesk();
+                                                        if (showTodayPlan || isSales) {
+                                                          loadTodayTasks();
+                                                          loadDayStats();
+                                                          loadOverdueCount();
+                                                        }
+                                                      })
+                                                      .catch((e) =>
+                                                        setError(
+                                                          extractApiError(
+                                                            e,
+                                                            'Не удалось изменить статус в плане',
+                                                          ),
+                                                        ),
+                                                      )
+                                                  }
+                                                >
+                                                  {task.pinned_today ? 'В плане' : 'В план'}
+                                                </Button>
+                                              )}
+                                            </>
+                                          )}
+                                        </Stack>
+                                      </Stack>
+                                    </CardContent>
+                                  </Card>
+                                );
+                              })}
+                          </Stack>
+                        </Box>
+                      )}
                     </Stack>
                   </Box>
                 )}

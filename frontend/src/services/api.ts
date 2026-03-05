@@ -2019,6 +2019,15 @@ export const tasksApi = {
     const response = await api.get('/api/tasks/day-desk-summary');
     return response.data;
   },
+  getParentResponsesStats: async (
+    fromDate: string,
+    toDate: string,
+  ): Promise<Array<{ date: string; user_id: number; user_name: string; replies: number; escalations: number }>> => {
+    const response = await api.get('/api/tasks/parent-responses/stats', {
+      params: { from_date: fromDate, to_date: toDate },
+    });
+    return response.data;
+  },
   /** Статистика за день: количество завершённых задач (для счётчика «выполнено M»). */
   getDayStats: async (day?: string): Promise<{ date: string; completed_count: number }> => {
     const params = day != null ? { day } : {};

@@ -35,8 +35,8 @@ from app.schemas import (
 router = APIRouter()
 
 
-# Часовой пояс проекта — МСК (UTC+3)
-MSK = timezone(timedelta(hours=3))
+# Часовой пояс проекта — Иркутск (UTC+8)
+MSK = timezone(timedelta(hours=8))
 
 
 def _today_msk() -> tuple[date, datetime, datetime]:
@@ -420,6 +420,14 @@ class TaskDayDeskResponse(BaseModel):
 class TaskCounterIncrement(BaseModel):
     key: str
     delta: Optional[int] = 1
+
+
+class ParentResponsesStat(BaseModel):
+    date: date
+    user_id: int
+    user_name: str
+    replies: int
+    escalations: int
 
 
 @router.get("/tasks/stats", response_model=TaskDayStatsResponse)
@@ -1043,3 +1051,55 @@ async def increment_task_counter(
     db.commit()
     db.refresh(task)
     return _task_to_response(task)
+
+
+@router.get("/tasks/parent-responses/stats", response_model=List[ParentResponsesStat])
+async def get_parent_responses_stats(
+    from_date: date,
+    to_date: date,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+) -> List[ParentResponsesStat]:
+    """Агрегация по ответам родителям (по дням и менеджерам) для операционных отчётов."""
+    rows = (
+        db.query(
+            Task.scheduled_for.label("d"),
+            Task.assigned_to_id.label("uid"),
+            User.full_name.label("name"),
+            TaskCounter.counter_key,
+            func.sum(TaskCounter.value).label("v"),
+        )
+        .join(Task, Task.id == TaskCounter.task_id)
+        .join(User, User.id == Task.assigned_to_id)
+        .filter(
+            Task.tags.contains(["parent_responses"]),
+            Task.scheduled_for >= from_date,
+            Task.scheduled_for <= to_date,
+            TaskCounter.counter_key.in_(["parent_replies", "parent_escalations"]),
+        )
+        .group_by(Task.scheduled_for, Task.assigned_to_id, User.full_name, TaskCounter.counter_key)
+        .all()
+    )
+
+    agg: dict[tuple[date, int], dict[str, object]] = {}
+    for d, uid, name, key, v in rows:
+        k = (d, uid)
+        if k not in agg:
+            agg[k] = {"date": d, "user_id": uid, "user_name": name, "replies": 0, "escalations": 0}
+        if key == "parent_replies":
+            agg[k]["replies"] = int(agg[k]["replies"]) + int(v or 0)
+        else:
+            agg[k]["escalations"] = int(agg[k]["escalations"]) + int(v or 0)
+
+    out: List[ParentResponsesStat] = []
+    for item in agg.values():
+        out.append(
+            ParentResponsesStat(
+                date=item["date"],
+                user_id=item["user_id"],
+                user_name=item["user_name"],
+                replies=item["replies"],
+                escalations=item["escalations"],
+            )
+        )
+    return out

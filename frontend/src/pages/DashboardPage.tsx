@@ -4,9 +4,10 @@ import { Typography, Box, Grid, Paper, Tabs, Tab } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { ReportsPageContent } from './ReportsPage';
 import { FinancialModelContent } from './FinancialModelPage';
+import OperationalReportsTab from './OperationalReportsTab';
 
 const DashboardOwnerTabs: React.FC = () => {
-  const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'financialModel'>('overview');
+  const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'financialModel' | 'operational'>('overview');
 
   return (
     <Box>
@@ -18,6 +19,7 @@ const DashboardOwnerTabs: React.FC = () => {
         <Tab value="overview" label="Главная" />
         <Tab value="characteristics" label="Отчётность по характеристикам" />
         <Tab value="financialModel" label="Финансовая модель" />
+        <Tab value="operational" label="Операционные отчёты" />
       </Tabs>
 
       {tab === 'overview' && (
@@ -40,6 +42,12 @@ const DashboardOwnerTabs: React.FC = () => {
       {tab === 'financialModel' && (
         <Box sx={{ mt: 1 }}>
           <FinancialModelContent />
+        </Box>
+      )}
+
+      {tab === 'operational' && (
+        <Box sx={{ mt: 1 }}>
+          <OperationalReportsTab />
         </Box>
       )}
     </Box>

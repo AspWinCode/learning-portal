@@ -35,6 +35,9 @@ const STAGES: { value: AbsenceFollowUpStage; label: string }[] = [
   { value: 'missed_makeup', label: 'Пропустил отработку — переназначить' },
 ];
 
+/** Окно подбора отработок: 3 недели вперёд */
+const SUGGEST_MAKEUPS_DAYS = 21;
+
 const REASON_LABELS: Record<string, string> = {
   was: 'Был',
   not_was: 'Не был',
@@ -88,7 +91,7 @@ const SalesAbsencesPage: React.FC = () => {
     setSuggestLoading(true);
     setSuggestions([]);
     try {
-      const list = await salesApi.suggestMakeups(a.id, 21);
+      const list = await salesApi.suggestMakeups(a.id, SUGGEST_MAKEUPS_DAYS);
       setSuggestions(list);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось подобрать отработки'));
@@ -267,8 +270,8 @@ const SalesAbsencesPage: React.FC = () => {
                 Ручной урок (без группы)
               </Button>
             </Stack>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-              Или выбрать занятие в группе:
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Или выбрать занятие в группе (на 3 недели вперёд):
             </Typography>
             {suggestLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
@@ -277,8 +280,8 @@ const SalesAbsencesPage: React.FC = () => {
             ) : suggestions.length === 0 ? (
               <Typography color="text.secondary">Нет подходящих занятий. Заполните матрицу совместимости программ.</Typography>
             ) : (
-              <List dense>
-                {suggestions.slice(0, 10).map((opt, idx) => (
+              <List dense sx={{ maxHeight: 360, overflow: 'auto' }}>
+                {suggestions.map((opt, idx) => (
                   <ListItem
                     key={`${opt.group_id}-${opt.lesson_date}-${idx}`}
                     secondaryAction={

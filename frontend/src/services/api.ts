@@ -2016,7 +2016,7 @@ export const tasksApi = {
     operations: import('../types').TaskResponse[];
     leads: import('../types').TaskResponse[];
   }> => {
-    const response = await api.get('/api/tasks/day-desk');
+    const response = await api.get('/api/tasks/day-desk-summary');
     return response.data;
   },
   /** Статистика за день: количество завершённых задач (для счётчика «выполнено M»). */

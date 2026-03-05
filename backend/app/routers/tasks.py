@@ -440,7 +440,7 @@ async def get_tasks_day_stats(
     return TaskDayStatsResponse(date=day_date, completed_count=completed_count)
 
 
-@router.get("/tasks/day-desk", response_model=TaskDayDeskResponse)
+@router.get("/tasks/day-desk-summary", response_model=TaskDayDeskResponse)
 async def get_tasks_day_desk(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),

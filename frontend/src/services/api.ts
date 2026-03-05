@@ -2074,6 +2074,7 @@ export const tasksApi = {
     due_at?: string;
     priority?: 'low' | 'normal' | 'high';
     pinned_today?: boolean;
+    tags?: string[];
     repeat_enabled?: boolean;
     repeat_frequency?: 'daily' | 'weekly' | 'monthly';
     repeat_days?: number[];
@@ -2095,6 +2096,7 @@ export const tasksApi = {
     due_at?: string | null;
     priority?: 'low' | 'normal' | 'high';
     pinned_today?: boolean;
+    tags?: string[];
     repeat_enabled?: boolean;
     repeat_frequency?: 'daily' | 'weekly' | 'monthly';
     repeat_days?: number[];

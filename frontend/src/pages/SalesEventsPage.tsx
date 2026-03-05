@@ -35,7 +35,7 @@ import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { EventItem, EventRegistration, Lead } from '../types';
 
-const SalesEventsPage: React.FC = () => {
+export const SalesEventsPageContent: React.FC = () => {
   const navigate = useNavigate();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -379,7 +379,7 @@ const SalesEventsPage: React.FC = () => {
   };
 
   return (
-    <Layout>
+    <>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h4">Мероприятия</Typography>
         <Stack direction="row" spacing={1}>
@@ -715,8 +715,14 @@ const SalesEventsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Layout>
+    </>
   );
 };
+
+const SalesEventsPage: React.FC = () => (
+  <Layout>
+    <SalesEventsPageContent />
+  </Layout>
+);
 
 export default SalesEventsPage;

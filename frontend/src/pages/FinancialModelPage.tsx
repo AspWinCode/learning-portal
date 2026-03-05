@@ -221,7 +221,7 @@ const parseMonthEnd = (month: string) => {
   return new Date(y, m, 0);
 };
 
-const FinancialModelPage: React.FC = () => {
+const FinancialModelContent: React.FC = () => {
   const [sheetIndex, setSheetIndex] = useState(0);
   const [data, setData] = useState<ModelData>(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -798,7 +798,6 @@ const FinancialModelPage: React.FC = () => {
   }, [monthsList.join(',')]);
 
   return (
-    <Layout>
       <Box sx={{ p: 3 }}>
         <Typography variant="h4" sx={{ mb: 2 }}>
           Финансовая модель
@@ -1887,8 +1886,14 @@ const FinancialModelPage: React.FC = () => {
           <AcademyOperationsTab />
         )}
       </Box>
-    </Layout>
   );
 };
 
+const FinancialModelPage: React.FC = () => (
+  <Layout>
+    <FinancialModelContent />
+  </Layout>
+);
+
 export default FinancialModelPage;
+export { FinancialModelContent };

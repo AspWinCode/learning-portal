@@ -18,7 +18,7 @@ import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { Lead } from '../types';
 
-const SalesPostVisitPage: React.FC = () => {
+export const SalesPostVisitPageContent: React.FC = () => {
   const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +135,7 @@ const SalesPostVisitPage: React.FC = () => {
   const leadPhone = (l: Lead) => l.parent_phone || l.phone || '—';
 
   return (
-    <Layout>
+    <>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h4">Дожать на обучение</Typography>
         <Button variant="outlined" onClick={() => loadLeads()}>
@@ -290,8 +290,14 @@ const SalesPostVisitPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Layout>
+    </>
   );
 };
+
+const SalesPostVisitPage: React.FC = () => (
+  <Layout>
+    <SalesPostVisitPageContent />
+  </Layout>
+);
 
 export default SalesPostVisitPage;

@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Tabs, Tab, Box } from '@mui/material';
 import Layout from '../components/Layout';
-import SalesEventsPage from './SalesEventsPage';
-import SalesPostVisitPage from './SalesPostVisitPage';
-import SalesReinviteEventPage from './SalesReinviteEventPage';
-import SalesAgreedPage from './SalesAgreedPage';
-import SalesInvoicesPage from './SalesInvoicesPage';
+import { SalesEventsPageContent } from './SalesEventsPage';
+import { SalesPostVisitPageContent } from './SalesPostVisitPage';
+import { SalesReinviteEventPageContent } from './SalesReinviteEventPage';
+import { SalesAgreedPageContent } from './SalesAgreedPage';
+import { SalesInvoicesPageContent } from './SalesInvoicesPage';
 
 const SalesEventsHubPage: React.FC = () => {
   const [tab, setTab] = useState<'events' | 'post_visit' | 'reinvite' | 'agreed' | 'invoices'>('events');
@@ -27,11 +27,11 @@ const SalesEventsHubPage: React.FC = () => {
         </Tabs>
       </Box>
 
-      {tab === 'events' && <SalesEventsPage />}
-      {tab === 'post_visit' && <SalesPostVisitPage />}
-      {tab === 'reinvite' && <SalesReinviteEventPage />}
-      {tab === 'agreed' && <SalesAgreedPage />}
-      {tab === 'invoices' && <SalesInvoicesPage />}
+      {tab === 'events' && <SalesEventsPageContent />}
+      {tab === 'post_visit' && <SalesPostVisitPageContent />}
+      {tab === 'reinvite' && <SalesReinviteEventPageContent />}
+      {tab === 'agreed' && <SalesAgreedPageContent />}
+      {tab === 'invoices' && <SalesInvoicesPageContent />}
     </Layout>
   );
 };

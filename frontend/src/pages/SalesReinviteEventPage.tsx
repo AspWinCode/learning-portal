@@ -33,7 +33,7 @@ interface NoShowRow {
 
 const TAG_REINVITE_NEXT_EVENT = 'reinvite_next_event';
 
-const SalesReinviteEventPage: React.FC = () => {
+export const SalesReinviteEventPageContent: React.FC = () => {
   const navigate = useNavigate();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -139,7 +139,7 @@ const SalesReinviteEventPage: React.FC = () => {
   }, [events, registrationsByEvent, leadMap]);
 
   return (
-    <Layout>
+    <>
       <Stack spacing={2}>
         <Typography variant="h4">{S.title}</Typography>
         <Typography variant="body2" color="text.secondary">
@@ -260,8 +260,14 @@ const SalesReinviteEventPage: React.FC = () => {
           </>
         )}
       </Stack>
-    </Layout>
+    </>
   );
 };
+
+const SalesReinviteEventPage: React.FC = () => (
+  <Layout>
+    <SalesReinviteEventPageContent />
+  </Layout>
+);
 
 export default SalesReinviteEventPage;

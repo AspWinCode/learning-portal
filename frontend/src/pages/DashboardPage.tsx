@@ -3,7 +3,7 @@ import Layout from '../components/Layout';
 import { Typography, Box, Grid, Paper, Tabs, Tab } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { ReportsPageContent } from './ReportsPage';
-import FinancialModelPage from './FinancialModelPage';
+import { FinancialModelContent } from './FinancialModelPage';
 
 const DashboardOwnerTabs: React.FC = () => {
   const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'financialModel'>('overview');
@@ -39,7 +39,7 @@ const DashboardOwnerTabs: React.FC = () => {
 
       {tab === 'financialModel' && (
         <Box sx={{ mt: 1 }}>
-          <FinancialModelPage />
+          <FinancialModelContent />
         </Box>
       )}
     </Box>

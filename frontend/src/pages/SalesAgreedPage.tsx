@@ -34,7 +34,7 @@ const defaultFollowUpAt = () => {
   return format(d, "yyyy-MM-dd'T'HH:mm");
 };
 
-const SalesAgreedPage: React.FC = () => {
+export const SalesAgreedPageContent: React.FC = () => {
   const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [templates, setTemplates] = useState<LeadInfoTemplate[]>([]);
@@ -156,7 +156,7 @@ const SalesAgreedPage: React.FC = () => {
   const leadPhone = (l: Lead) => l.parent_phone || l.phone || S.dash;
 
   return (
-    <Layout>
+    <>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h4">{S.title}</Typography>
         <Button variant="outlined" onClick={() => loadLeads()}>
@@ -322,8 +322,14 @@ const SalesAgreedPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Layout>
+    </>
   );
 };
+
+const SalesAgreedPage: React.FC = () => (
+  <Layout>
+    <SalesAgreedPageContent />
+  </Layout>
+);
 
 export default SalesAgreedPage;

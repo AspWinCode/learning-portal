@@ -49,7 +49,7 @@ const getInvoiceStatusChipColor = (
   }
 };
 
-const SalesInvoicesPage: React.FC = () => {
+export const SalesInvoicesPageContent: React.FC = () => {
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -102,7 +102,7 @@ const SalesInvoicesPage: React.FC = () => {
   }, [loadData]);
 
   return (
-    <Layout>
+    <>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h4">Инвойсы</Typography>
         <Button variant="outlined" onClick={loadData}>Обновить</Button>
@@ -277,8 +277,14 @@ const SalesInvoicesPage: React.FC = () => {
           )}
         </TableBody>
       </Table>
-    </Layout>
+    </>
   );
 };
+
+const SalesInvoicesPage: React.FC = () => (
+  <Layout>
+    <SalesInvoicesPageContent />
+  </Layout>
+);
 
 export default SalesInvoicesPage;

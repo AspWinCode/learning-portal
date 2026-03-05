@@ -831,22 +831,24 @@ const TasksPage: React.FC = () => {
                 )}
 
                 {/* Родители */}
-                {dayDesk.parents.length > 0 && (
-                  <Box>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                      <Typography variant="h6">Родители</Typography>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        onClick={() => {
-                          setCategoryFilter('parents');
-                          setTaskIsParentResponses(false);
-                          openTaskDialog(undefined);
-                        }}
-                      >
-                        Задача от родителя
-                      </Button>
-                    </Stack>
+                <Box>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                    <Typography variant="h6">Родители</Typography>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => {
+                        setCategoryFilter('parents');
+                        setTaskIsParentResponses(false);
+                        openTaskDialog(undefined);
+                      }}
+                    >
+                      Задача от родителя
+                    </Button>
+                  </Stack>
+                  {dayDesk.parents.length === 0 ? (
+                    <Typography color="text.secondary">Нет задач.</Typography>
+                  ) : (
                     <Stack spacing={1}>
                       {dayDesk.parents
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
@@ -1094,8 +1096,8 @@ const TasksPage: React.FC = () => {
                           );
                         })}
                     </Stack>
-                  </Box>
-                )}
+                  )}
+                </Box>
 
                 {/* Отработки */}
                 {(absenceMakeupsTodo.length > 0 || dayDesk.makeups.length > 0) && (
@@ -1571,9 +1573,11 @@ const TasksPage: React.FC = () => {
                 )}
 
                 {/* Операционка */}
-                {dayDesk.operations.length > 0 && (
-                  <Box>
-                    <Typography variant="h6" gutterBottom>Операционка</Typography>
+                <Box>
+                  <Typography variant="h6" gutterBottom>Операционка</Typography>
+                  {dayDesk.operations.length === 0 ? (
+                    <Typography color="text.secondary">Нет задач.</Typography>
+                  ) : (
                     <Stack spacing={1}>
                       {dayDesk.operations
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
@@ -1762,8 +1766,8 @@ const TasksPage: React.FC = () => {
                           );
                         })}
                     </Stack>
-                  </Box>
-                )}
+                  )}
+                </Box>
 
                 {/* Лиды (вечерний блок) */}
                 {dayDesk.leads.length > 0 && (

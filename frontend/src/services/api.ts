@@ -2056,7 +2056,7 @@ export const tasksApi = {
   },
   incrementTaskCounter: async (
     taskId: number,
-    key: 'parent_replies' | 'parent_escalations',
+    key: 'parent_replies' | 'parent_escalations' | 'parent_to_management',
     delta = 1,
   ): Promise<import('../types').TaskResponse> => {
     const response = await api.post(`/api/tasks/${taskId}/counters/increment`, { key, delta });

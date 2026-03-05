@@ -56,10 +56,13 @@ import { Link } from 'react-router-dom';
 
 const WEEKDAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
+const SHOW_TODAY_PLAN_KEY = 'tasks_showTodayPlan';
+
 const TasksPage: React.FC = () => {
   const { user } = useAuth();
   const isAdminOrOwner = user?.role === 'admin' || user?.role === 'owner';
   const isSales = user?.role === 'sales';
+  const isTrainer = user?.role === 'trainer';
   const canSeeLessonTasks = isAdminOrOwner || isSales;
 
   const [templates, setTemplates] = useState<TaskTemplateResponse[]>([]);
@@ -83,10 +86,16 @@ const TasksPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'active' | 'archived' | ''>('active');
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
-  const [showTodayPlan, setShowTodayPlan] = useState(isSales);
+  const [showTodayPlan, setShowTodayPlan] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(SHOW_TODAY_PLAN_KEY) === '1';
+  });
   const [todayPlanTab, setTodayPlanTab] = useState<'today' | 'overdue' | 'active'>('today');
   const [todayTasks, setTodayTasks] = useState<TaskResponse[]>([]);
   const [todayTasksLoading, setTodayTasksLoading] = useState(false);
+  const [dayStats, setDayStats] = useState<{ completed_count: number } | null>(null);
+  const [overdueCount, setOverdueCount] = useState<number | null>(null);
+  const lessonBlockRef = useRef<HTMLDivElement>(null);
 
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateEditId, setTemplateEditId] = useState<number | null>(null);
@@ -204,6 +213,24 @@ const TasksPage: React.FC = () => {
     }
   }, [todayPlanTab, categoryFilter]);
 
+  const loadDayStats = useCallback(async () => {
+    try {
+      const res = await tasksApi.getDayStats();
+      setDayStats({ completed_count: res.completed_count });
+    } catch {
+      setDayStats(null);
+    }
+  }, []);
+
+  const loadOverdueCount = useCallback(async () => {
+    try {
+      const data = await tasksApi.listTodayTasks('overdue', categoryFilter);
+      setOverdueCount(Array.isArray(data) ? data.length : 0);
+    } catch {
+      setOverdueCount(null);
+    }
+  }, [categoryFilter]);
+
   useEffect(() => {
     const run = async () => {
       setLoading(true);
@@ -222,10 +249,16 @@ const TasksPage: React.FC = () => {
   }, [loadTasks, loadTemplates, loadStudents, loadLessonTasks, loadLessonTasksTomorrow, loadLessonTasksWeek]);
 
   useEffect(() => {
+    if (isSales) setShowTodayPlan(true);
+  }, [isSales]);
+
+  useEffect(() => {
     if (tab === 0 && (showTodayPlan || isSales)) {
       loadTodayTasks();
+      loadDayStats();
+      loadOverdueCount();
     }
-  }, [tab, showTodayPlan, isSales, loadTodayTasks]);
+  }, [tab, showTodayPlan, isSales, loadTodayTasks, loadDayStats, loadOverdueCount]);
 
   const handleSubtaskToggle = async (task: TaskResponse, subtask: TaskSubtaskResponse) => {
     try {
@@ -437,7 +470,19 @@ const TasksPage: React.FC = () => {
 
         {(isAdminOrOwner || user?.role === 'trainer') && (
           <FormControlLabel
-            control={<Switch checked={showTodayPlan} onChange={(e) => setShowTodayPlan(e.target.checked)} color="primary" />}
+            control={
+              <Switch
+                checked={showTodayPlan}
+                onChange={(e) => {
+                  const v = e.target.checked;
+                  setShowTodayPlan(v);
+                  try {
+                    window.localStorage.setItem(SHOW_TODAY_PLAN_KEY, v ? '1' : '0');
+                  } catch {}
+                }}
+                color="primary"
+              />
+            }
             label="План на сегодня"
           />
         )}
@@ -453,7 +498,19 @@ const TasksPage: React.FC = () => {
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>План на сегодня</Typography>
               <Tabs value={todayPlanTab} onChange={(_, v: 'today' | 'overdue' | 'active') => setTodayPlanTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
                 <Tab value="today" label="Сегодня" />
-                <Tab value="overdue" label="Просрочено" />
+                <Tab
+                  value="overdue"
+                  label={
+                    overdueCount != null && overdueCount > 0 ? (
+                      <Stack direction="row" alignItems="center" spacing={0.5}>
+                        <span>Просрочено</span>
+                        <Chip label={overdueCount} size="small" color="error" sx={{ height: 20, '& .MuiChip-label': { px: 0.75 } }} />
+                      </Stack>
+                    ) : (
+                      'Просрочено'
+                    )
+                  }
+                />
                 <Tab value="active" label="Все активные" />
               </Tabs>
 
@@ -466,25 +523,42 @@ const TasksPage: React.FC = () => {
                     <Typography variant="body2" color="text.secondary">На сегодня уроков нет.</Typography>
                   ) : (
                     <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
-                      {lessonTasks.map((item) => (
+                      {[...lessonTasks]
+                        .sort((a, b) => {
+                          if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
+                          if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
+                          return (a.start_time || '').localeCompare(b.start_time || '');
+                        })
+                        .slice(0, 3)
+                        .map((item) => (
                         <Card key={`plan-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 260, maxWidth: 340 }}>
                           <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                             <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
                             <Typography variant="body2" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
                             <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
-                              <Chip size="small" label={item.status === 'in_progress' ? 'Идёт урок' : item.status === 'call_round' ? 'Дозвон' : item.status === 'soon' ? 'Скоро' : 'Ожидает'} color={item.status === 'in_progress' ? 'primary' : 'default'} />
+                              <Chip size="small" label={item.status === 'in_progress' ? 'Идёт урок' : item.status === 'call_round' ? 'Дозвон' : item.status === 'soon' ? 'Скоро' : 'Ожидает'} color={item.status === 'in_progress' ? 'primary' : item.status === 'soon' ? 'warning' : 'default'} />
                             </Stack>
                             <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 1 }} onClick={() => setLessonTaskDetail(item)}>Открыть</Button>
                           </CardContent>
                         </Card>
                       ))}
+                      {lessonTasks.length > 3 && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => lessonBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                          sx={{ alignSelf: 'flex-start', mt: 1 }}
+                        >
+                          Показать все ({lessonTasks.length})
+                        </Button>
+                      )}
                     </Stack>
                   )}
                 </>
               )}
 
               <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                {todayPlanTab === 'today' && `Сегодня: ${todayTasks.length} задач, выполнено ${todayTasks.filter((t) => t.progress === 100).length}`}
+                {todayPlanTab === 'today' && `Сегодня: ${todayTasks.length} задач, выполнено ${dayStats?.completed_count ?? 0}`}
                 {todayPlanTab === 'overdue' && `Просрочено: ${todayTasks.length}`}
                 {todayPlanTab === 'active' && `Активных: ${todayTasks.length}`}
               </Typography>
@@ -541,8 +615,8 @@ const TasksPage: React.FC = () => {
                               <Button size="small" variant="outlined" onClick={() => openTaskDialog(task)}>Открыть</Button>
                               {task.status === 'active' && (
                                 <>
-                                  <Button size="small" variant="contained" onClick={() => tasksApi.completeTask(task.id).then(() => { loadTasks(); loadTodayTasks(); }).catch((e) => setError(extractApiError(e, 'Не удалось завершить')))}>Завершить</Button>
-                                  <Button size="small" variant="outlined" onClick={() => tasksApi.postponeTask(task.id).then(() => loadTodayTasks()).catch((e) => setError(extractApiError(e, 'Не удалось отложить')))}>Отложить</Button>
+                                  <Button size="small" variant="contained" onClick={() => tasksApi.completeTask(task.id).then(() => { loadTasks(); loadTodayTasks(); loadDayStats(); loadOverdueCount(); }).catch((e) => setError(extractApiError(e, 'Не удалось завершить')))}>Завершить</Button>
+                                  <Button size="small" variant="outlined" onClick={() => tasksApi.postponeTask(task.id).then(() => { loadTodayTasks(); loadOverdueCount(); }).catch((e) => setError(extractApiError(e, 'Не удалось отложить')))}>Отложить</Button>
                                 </>
                               )}
                             </Stack>
@@ -557,7 +631,7 @@ const TasksPage: React.FC = () => {
             )}
 
             {canSeeLessonTasks && (
-            <Box>
+            <Box ref={lessonBlockRef}>
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Позвать детей на занятие</Typography>
               <Tabs value={lessonPeriodTab} onChange={(_, v) => setLessonPeriodTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
                 <Tab label="Сегодня" />
@@ -788,13 +862,15 @@ const TasksPage: React.FC = () => {
                                   >
                                     Завершить
                                   </Button>
-                                  <Button
-                                    size="small"
-                                    variant={task.pinned_today ? 'contained' : 'outlined'}
-                                    onClick={() => tasksApi.pinTaskToday(task.id, !task.pinned_today).then(() => { loadTasks(); if (showTodayPlan || isSales) loadTodayTasks(); }).catch((e) => setError(extractApiError(e, 'Не удалось добавить в план')))}
-                                  >
-                                    {task.pinned_today ? 'В плане' : 'В план на сегодня'}
-                                  </Button>
+                                  {!isTrainer && (
+                                    <Button
+                                      size="small"
+                                      variant={task.pinned_today ? 'contained' : 'outlined'}
+                                      onClick={() => tasksApi.pinTaskToday(task.id, !task.pinned_today).then(() => { loadTasks(); if (showTodayPlan || isSales) { loadTodayTasks(); loadDayStats(); loadOverdueCount(); } }).catch((e) => setError(extractApiError(e, 'Не удалось добавить в план')))}
+                                    >
+                                      {task.pinned_today ? 'В плане' : 'В план на сегодня'}
+                                    </Button>
+                                  )}
                                 </>
                               )}
                               {isAdminOrOwner && (

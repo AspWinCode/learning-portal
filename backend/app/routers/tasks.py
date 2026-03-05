@@ -1,7 +1,8 @@
 """Task manager: templates (admin/owner), tasks CRUD (admin/owner), sales: view tasks + complete subtasks."""
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, time, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
@@ -30,6 +31,22 @@ from app.schemas import (
 )
 
 router = APIRouter()
+
+
+# Часовой пояс проекта — МСК (UTC+3)
+MSK = timezone(timedelta(hours=3))
+
+
+def _today_msk() -> tuple[date, datetime, datetime]:
+    """Сегодня по Москве и границы суток в UTC для сравнения с due_at (в БД в UTC)."""
+    now_utc = datetime.now(timezone.utc)
+    now_msk = now_utc.astimezone(MSK)
+    today_msk = now_msk.date()
+    start_msk = datetime.combine(today_msk, time.min, tzinfo=MSK)
+    end_msk = datetime.combine(today_msk, time.max, tzinfo=MSK)
+    start_utc = start_msk.astimezone(timezone.utc)
+    end_utc = end_msk.astimezone(timezone.utc)
+    return today_msk, start_utc, end_utc
 
 
 def _norm_date(v):
@@ -262,13 +279,17 @@ async def list_tasks(
     status_filter: Optional[str] = None,
     category: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
 ):
     q = (
         db.query(Task)
         .options(joinedload(Task.subtasks), joinedload(Task.students))
         .order_by(Task.created_at.desc())
     )
+    if current_user.role == "sales":
+        q = q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
+    elif current_user.role == "trainer":
+        q = q.filter(Task.assigned_to_id == current_user.id)
     if status_filter and status_filter in ("active", "archived"):
         q = q.filter(Task.status == status_filter)
     if category and category in ("schools", "parents", "leads"):
@@ -285,8 +306,9 @@ async def list_today_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
 ):
-    """Задачи для «Плана на сегодня»: today — на сегодня (с сортировкой), overdue — просроченные, active — все активные."""
-    today = date.today()
+    """Задачи для «Плана на сегодня»: today — на сегодня (с сортировкой), overdue — просроченные, active — все активные.
+    Границы «сегодня» и «просрочено» — по МСК (UTC+3)."""
+    today_msk, today_start_utc, today_end_utc = _today_msk()
     q = (
         db.query(Task)
         .options(joinedload(Task.subtasks), joinedload(Task.students))
@@ -294,58 +316,109 @@ async def list_today_tasks(
     )
     if assignee_id is not None:
         q = q.filter(Task.assigned_to_id == assignee_id)
-    elif current_user.role in ("sales", "trainer"):
+    elif current_user.role == "sales":
         q = q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
+    elif current_user.role == "trainer":
+        q = q.filter(Task.assigned_to_id == current_user.id)
     if category and category in ("schools", "parents", "leads"):
         q = q.filter(Task.category == category)
 
     if mode == "today":
-        # Попадают: scheduled_for=today ИЛИ due_at сегодня ИЛИ pinned_today ИЛИ (без дат и создано сегодня)
-        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
-        today_end = datetime.combine(today, datetime.max.time()).replace(tzinfo=timezone.utc)
+        # 1.1 Сегодня: due_at в текущие сутки МСК ИЛИ scheduled_for=today ИЛИ pinned_today ИЛИ (создана сегодня, нет due/scheduled)
         q = q.filter(
             or_(
-                Task.scheduled_for == today,
-                and_(Task.due_at.isnot(None), Task.due_at >= today_start, Task.due_at <= today_end),
+                Task.scheduled_for == today_msk,
+                and_(Task.due_at.isnot(None), Task.due_at >= today_start_utc, Task.due_at <= today_end_utc),
                 Task.pinned_today.is_(True),
                 and_(
                     Task.scheduled_for.is_(None),
                     Task.due_at.is_(None),
                     Task.pinned_today.is_(False),
-                    Task.created_at >= today_start,
-                    Task.created_at <= today_end,
+                    Task.created_at >= today_start_utc,
+                    Task.created_at <= today_end_utc,
                 ),
             )
         )
         tasks = q.all()
-        # Сортировка: просроченные сверху, по due_at (раньше выше), high priority, категория, created_at
+        # 3.1 Сортировка: high priority → due_at по времени (раньше выше) → pinned выше → по прогрессу (ближе к 100% выше) → createdAt (старые выше)
+        def _progress(t: Task):
+            st = getattr(t, "subtasks", None) or []
+            total = len(st)
+            if total == 0:
+                return 0.0
+            return 100.0 * sum(1 for s in st if getattr(s, "completed", False)) / total
+
         def _task_sort_key(t: Task):
             due = getattr(t, "due_at", None)
-            sched = getattr(t, "scheduled_for", None)
             prio = getattr(t, "priority", None) or "normal"
-            cat_order = {"parents": 0, "leads": 1, "schools": 2}.get(getattr(t, "category", "schools"), 2)
-            is_overdue = (sched and sched < today) or (due and (due.date() if hasattr(due, "date") else due) < today)
+            pinned = getattr(t, "pinned_today", False)
+            created = t.created_at or datetime.min.replace(tzinfo=timezone.utc)
             due_ord = due if due else datetime.max.replace(tzinfo=timezone.utc)
             prio_ord = 0 if prio == "high" else (1 if prio == "normal" else 2)
-            created = t.created_at or datetime.min.replace(tzinfo=timezone.utc)
-            return (0 if is_overdue else 1, due_ord, prio_ord, cat_order, created)
+            return (prio_ord, due_ord, (0 if pinned else 1), -_progress(t), created)
         tasks = sorted(tasks, key=_task_sort_key)
         return [_task_to_response(t) for t in tasks]
 
     if mode == "overdue":
-        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+        # 1.2 Просрочено: due_at < today_start (МСК) или scheduled_for < today
         q = q.filter(
             or_(
-                and_(Task.scheduled_for.isnot(None), Task.scheduled_for < today),
-                and_(Task.due_at.isnot(None), Task.due_at < today_start),
+                and_(Task.scheduled_for.isnot(None), Task.scheduled_for < today_msk),
+                and_(Task.due_at.isnot(None), Task.due_at < today_start_utc),
             )
         )
-        tasks = q.order_by(Task.due_at.asc().nullslast(), Task.scheduled_for.asc().nullslast()).all()
+        tasks = q.all()
+        # 3.2 Сортировка: самые просроченные выше (срок по возрастанию), затем high priority
+        def _overdue_sort_key(t: Task):
+            due = getattr(t, "due_at", None)
+            sched = getattr(t, "scheduled_for", None)
+            prio = getattr(t, "priority", None) or "normal"
+            deadline = due if due else (datetime.combine(sched, time.min, tzinfo=MSK).astimezone(timezone.utc) if sched else datetime.max.replace(tzinfo=timezone.utc))
+            prio_ord = 0 if prio == "high" else 1
+            return (deadline, prio_ord)
+        tasks = sorted(tasks, key=_overdue_sort_key)
         return [_task_to_response(t) for t in tasks]
 
     # mode == "active"
     tasks = q.order_by(Task.created_at.desc()).all()
     return [_task_to_response(t) for t in tasks]
+
+
+class TaskDayStatsResponse(BaseModel):
+    """4.2 Счётчик «выполнено M» за день (по МСК)."""
+    date: date
+    completed_count: int
+
+
+@router.get("/tasks/stats", response_model=TaskDayStatsResponse)
+async def get_tasks_day_stats(
+    day: Optional[str] = Query(None, description="YYYY-MM-DD по МСК, по умолчанию сегодня"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+):
+    """Количество задач, завершённых (archived) в указанный день по МСК. Для счётчика «Сегодня: N задач, выполнено M»."""
+    if day:
+        try:
+            day_date = date.fromisoformat(day)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date, use YYYY-MM-DD")
+        start_msk = datetime.combine(day_date, time.min, tzinfo=MSK)
+        end_msk = datetime.combine(day_date, time.max, tzinfo=MSK)
+        day_start_utc = start_msk.astimezone(timezone.utc)
+        day_end_utc = end_msk.astimezone(timezone.utc)
+    else:
+        day_date, day_start_utc, day_end_utc = _today_msk()
+    q = (
+        db.query(Task)
+        .filter(Task.status == TaskStatus.ARCHIVED.value)
+        .filter(Task.updated_at >= day_start_utc, Task.updated_at <= day_end_utc)
+    )
+    if current_user.role == "sales":
+        q = q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
+    elif current_user.role == "trainer":
+        q = q.filter(Task.assigned_to_id == current_user.id)
+    completed_count = q.count()
+    return TaskDayStatsResponse(date=day_date, completed_count=completed_count)
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -662,7 +735,7 @@ async def postpone_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
 ):
-    """Отложить задачу на завтра: scheduled_for = tomorrow."""
+    """5) Отложить: если scheduled_for — +1 день; иначе если due_at — на завтра то же время; иначе scheduled_for = tomorrow. pin сбрасывается."""
     task = (
         db.query(Task)
         .options(joinedload(Task.subtasks), joinedload(Task.students))
@@ -673,8 +746,14 @@ async def postpone_task(
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status != TaskStatus.ACTIVE.value:
         return _task_to_response(task)
-    tomorrow = date.today() + timedelta(days=1)
-    task.scheduled_for = tomorrow
+    today_msk, _, _ = _today_msk()
+    tomorrow_msk = today_msk + timedelta(days=1)
+    if getattr(task, "scheduled_for", None) is not None:
+        task.scheduled_for = task.scheduled_for + timedelta(days=1)
+    elif getattr(task, "due_at", None) is not None:
+        task.due_at = task.due_at + timedelta(days=1)
+    else:
+        task.scheduled_for = tomorrow_msk
     task.pinned_today = False
     db.commit()
     db.refresh(task)

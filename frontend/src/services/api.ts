@@ -2006,6 +2006,12 @@ export const tasksApi = {
     const response = await api.get('/api/tasks', { params: Object.keys(params).length ? params : {} });
     return response.data;
   },
+  /** Статистика за день: количество завершённых задач (для счётчика «выполнено M»). */
+  getDayStats: async (day?: string): Promise<{ date: string; completed_count: number }> => {
+    const params = day != null ? { day } : {};
+    const response = await api.get('/api/tasks/stats', { params });
+    return response.data;
+  },
   /** Задачи для «Плана на сегодня»: mode = today | overdue | active */
   listTodayTasks: async (
     mode: 'today' | 'overdue' | 'active' = 'today',

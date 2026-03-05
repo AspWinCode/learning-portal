@@ -98,6 +98,7 @@ def _task_to_response(task: Task) -> TaskResponse:
     counters = TaskCountersResponse(
         parent_replies=int(counters_map.get("parent_replies", 0) or 0),
         parent_escalations=int(counters_map.get("parent_escalations", 0) or 0),
+        parent_to_management=int(counters_map.get("parent_to_management", 0) or 0),
     )
     category = getattr(task, "category", None) or "schools"
     due_at = getattr(task, "due_at", None)
@@ -1035,7 +1036,7 @@ async def increment_task_counter(
         if task.assigned_to_id not in (None, current_user.id):
             raise HTTPException(status_code=403, detail="Not allowed")
     key = (payload.key or "").strip()
-    if key not in ("parent_replies", "parent_escalations"):
+    if key not in ("parent_replies", "parent_escalations", "parent_to_management"):
         raise HTTPException(status_code=400, detail="Unsupported counter key")
     delta = payload.delta if payload.delta is not None else 1
     if delta == 0:

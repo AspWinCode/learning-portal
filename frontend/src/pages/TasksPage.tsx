@@ -796,7 +796,20 @@ const TasksPage: React.FC = () => {
                 {/* Родители */}
                 {dayDesk.parents.length > 0 && (
                   <Box>
-                    <Typography variant="h6" gutterBottom>Родители</Typography>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                      <Typography variant="h6">Родители</Typography>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => {
+                          setCategoryFilter('parents');
+                          setTaskIsParentResponses(false);
+                          openTaskDialog(undefined);
+                        }}
+                      >
+                        Задача от родителя
+                      </Button>
+                    </Stack>
                     <Stack spacing={1}>
                       {dayDesk.parents
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
@@ -833,7 +846,8 @@ const TasksPage: React.FC = () => {
                                     {task.tags?.includes('parent_responses') && (
                                       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                                         Ответов сегодня: {task.counters?.parent_replies ?? 0}{' '}
-                                        · Передано тренеру: {task.counters?.parent_escalations ?? 0}
+                                        · Передано тренеру: {task.counters?.parent_escalations ?? 0}{' '}
+                                        · Передано руководству: {task.counters?.parent_to_management ?? 0}
                                       </Typography>
                                     )}
                                     <Stack
@@ -940,6 +954,24 @@ const TasksPage: React.FC = () => {
                                           sx={{ mr: 1 }}
                                         >
                                           + Передал вопрос тренеру
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          onClick={() =>
+                                            tasksApi
+                                              .incrementTaskCounter(task.id, 'parent_to_management', 1)
+                                              .then(() => {
+                                                loadTasks();
+                                                loadDayDesk();
+                                              })
+                                              .catch((e) =>
+                                                setError(extractApiError(e, 'Не удалось увеличить счётчик')),
+                                              )
+                                          }
+                                          sx={{ mr: 1 }}
+                                        >
+                                          + Передал вопрос руководству
                                         </Button>
                                       </>
                                     )}

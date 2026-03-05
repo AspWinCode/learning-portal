@@ -2219,6 +2219,7 @@ class TaskSubtaskResponse(BaseModel):
 class TaskCountersResponse(BaseModel):
     parent_replies: int = 0
     parent_escalations: int = 0
+    parent_to_management: int = 0
 
 
 class TaskSubtaskUpdate(BaseModel):

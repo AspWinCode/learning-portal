@@ -904,6 +904,7 @@ export interface TaskResponse {
   counters?: {
     parent_replies: number;
     parent_escalations: number;
+    parent_to_management: number;
   } | null;
   subtasks: TaskSubtaskResponse[];
   student_ids: number[];

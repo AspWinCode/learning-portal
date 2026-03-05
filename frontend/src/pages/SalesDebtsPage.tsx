@@ -56,6 +56,8 @@ const SalesDebtsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isSales = user?.role === 'sales';
+  const showBankTab = !isAdmin && !isSales;
   const [items, setItems] = useState<PaymentStatusRow[]>([]);
   const [bankItems, setBankItems] = useState<BankTransaction[]>([]);
   const [ledgerByOperationId, setLedgerByOperationId] = useState<Record<string, FinanceLedgerBankRow>>({});
@@ -89,10 +91,10 @@ const SalesDebtsPage: React.FC = () => {
     errors?: string[];
   } | null>(null);
 
-  // Админ не видит вкладку "Операции банка" — при прямом доступе переключаем на первую
+  // Админ и sales не видят вкладку "Операции банка" — при прямом доступе переключаем на первую
   useEffect(() => {
-    if (isAdmin && tab === 3) setTab(0);
-  }, [isAdmin, tab]);
+    if (!showBankTab && tab === 3) setTab(0);
+  }, [showBankTab, tab]);
 
   const statusFilter = tab === 0 ? undefined : tab === 1 ? 'overdue' : tab === 2 ? 'due_soon' : undefined;
 
@@ -168,12 +170,12 @@ const SalesDebtsPage: React.FC = () => {
   }, [loadBankTransactions]);
 
   useEffect(() => {
-    if (tab === 3) {
+    if (showBankTab && tab === 3) {
       void loadBankTransactions();
     } else {
       void loadDebts();
     }
-  }, [tab, loadDebts, loadBankTransactions]);
+  }, [showBankTab, tab, loadDebts, loadBankTransactions]);
 
   useEffect(() => {
     if (!studentQuery.trim()) {
@@ -220,14 +222,14 @@ const SalesDebtsPage: React.FC = () => {
           <Tab label="Все" />
           <Tab label="Просрочено" />
           <Tab label="Скоро (3 дня)" />
-          {!isAdmin && <Tab label="Операции банка" />}
+          {showBankTab && <Tab label="Операции банка" />}
         </Tabs>
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress />
           </Box>
-        ) : !isAdmin && tab === 3 ? (
+        ) : showBankTab && tab === 3 ? (
           <Card variant="outlined" sx={{ overflow: 'visible' }}>
             <Box sx={{ p: 2, pb: 0, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
               <Button

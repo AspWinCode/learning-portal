@@ -88,7 +88,7 @@ const SalesAbsencesPage: React.FC = () => {
     setSuggestLoading(true);
     setSuggestions([]);
     try {
-      const list = await salesApi.suggestMakeups(a.id, 30);
+      const list = await salesApi.suggestMakeups(a.id, 21);
       setSuggestions(list);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось подобрать отработки'));

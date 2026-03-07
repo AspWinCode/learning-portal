@@ -137,6 +137,17 @@ const TasksPage: React.FC = () => {
   const [hideCompletedInDesk, setHideCompletedInDesk] = useState(true);
   const urgentBlockRef = useRef<HTMLDivElement | null>(null);
   const [absenceMakeupsTodo, setAbsenceMakeupsTodo] = useState<AbsenceFollowUp[]>([]);
+  // UX: таб «В работе сегодня», лимиты карточек, свёрнутость блоков (для sales)
+  const [workTodayTab, setWorkTodayTab] = useState<'parents' | 'makeups' | 'payments'>('parents');
+  const [urgentExpanded, setUrgentExpanded] = useState(false);
+  const [parentsInWorkExpanded, setParentsInWorkExpanded] = useState(false);
+  const [makeupsAssignedExpanded, setMakeupsAssignedExpanded] = useState(false);
+  const [paymentsInWorkExpanded, setPaymentsInWorkExpanded] = useState(false);
+  const [operationsExpanded, setOperationsExpanded] = useState(false);
+  const [leadsExpanded, setLeadsExpanded] = useState(false);
+  const [lessonsExpanded, setLessonsExpanded] = useState(false);
+  const [allTasksExpandedState, setAllTasksExpandedState] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateEditId, setTemplateEditId] = useState<number | null>(null);
@@ -316,7 +327,10 @@ const TasksPage: React.FC = () => {
   }, [loadTasks, loadTemplates, loadStudents, loadLessonTasks, loadLessonTasksTomorrow, loadLessonTasksWeek]);
 
   useEffect(() => {
-    if (isSales) setShowTodayPlan(true);
+    if (isSales) {
+      setShowTodayPlan(true);
+      setAllTasksExpandedState(false);
+    }
   }, [isSales]);
 
   useEffect(() => {
@@ -326,6 +340,22 @@ const TasksPage: React.FC = () => {
       })();
     }
   }, [isSales, tab, loadDayDesk, loadAbsenceMakeupsForDesk]);
+
+  const workTodayTabInitialized = useRef(false);
+  // По умолчанию открывать таб «В работе сегодня» с наибольшим числом задач (только при первой загрузке)
+  useEffect(() => {
+    if (!dayDesk || !isSales || workTodayTabInitialized.current) return;
+    workTodayTabInitialized.current = true;
+    const filter = (t: TaskResponse) => !hideCompletedInDesk || t.progress < 100;
+    const p = dayDesk.parents.filter(filter).length;
+    const m = dayDesk.makeups.filter(filter).length;
+    const pay = dayDesk.payments.filter(filter).length;
+    const max = Math.max(p, m, pay);
+    if (max === 0) return;
+    if (pay === max) setWorkTodayTab('payments');
+    else if (m === max) setWorkTodayTab('makeups');
+    else setWorkTodayTab('parents');
+  }, [dayDesk, hideCompletedInDesk, isSales]);
 
   useEffect(() => {
     if (tab === 0 && (showTodayPlan || isSales)) {
@@ -551,7 +581,14 @@ const TasksPage: React.FC = () => {
         {/* Компактный хедер */}
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
           <Typography variant="h4">Задачи</Typography>
-          <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1}>
+          <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1} sx={{ flex: 1, minWidth: 200, justifyContent: 'flex-end' }}>
+            <TextField
+              size="small"
+              placeholder="Поиск задач..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              sx={{ maxWidth: 260 }}
+            />
             {isAdminOrOwner && (
               <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
                 <Tab label="Задачи" />
@@ -652,7 +689,7 @@ const TasksPage: React.FC = () => {
 
             {dayDesk && (
               <Stack spacing={3}>
-                {/* Срочно — во всю ширину */}
+                {/* Срочно — во всю ширину, макс. 3 на первом экране */}
                 {dayDesk.urgent.length > 0 && (
                   <Box ref={urgentBlockRef}>
                     <Typography variant="h6" gutterBottom>🔥 Срочно</Typography>
@@ -660,6 +697,7 @@ const TasksPage: React.FC = () => {
                     <Stack spacing={1}>
                       {dayDesk.urgent
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
+                        .slice(0, urgentExpanded ? undefined : 3)
                         .map((task) => {
                           const dueLabel = task.due_at
                             ? (() => {
@@ -843,18 +881,30 @@ const TasksPage: React.FC = () => {
                                 </Stack>
                               </CardContent>
                             </Card>
-                          );
+                                        );
                         })}
                     </Stack>
+                    {dayDesk.urgent.filter((t) => !hideCompletedInDesk || t.progress < 100).length > 3 && !urgentExpanded && (
+                      <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setUrgentExpanded(true)}>
+                        Показать все срочные
+                      </Button>
+                    )}
                   </Box>
                 )}
 
-                {/* Быстрые потоки дня: Родители | Отработки | Оплаты — 3 колонки */}
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={4}>
+                {/* В работе сегодня — один блок с табами */}
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>В работе сегодня</Typography>
+                  <Tabs value={workTodayTab} onChange={(_, v: 'parents' | 'makeups' | 'payments') => setWorkTodayTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
+                    <Tab label="Родители" value="parents" />
+                    <Tab label="Отработки" value="makeups" />
+                    <Tab label="Оплаты" value="payments" />
+                  </Tabs>
+
+                  {workTodayTab === 'parents' && (
                     <Box>
                       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }} flexWrap="wrap">
-                        <Typography variant="h6">👨‍👩‍👧 Родители</Typography>
+                        <Typography variant="subtitle1">Родители</Typography>
                     <Button
                       size="small"
                       variant="contained"
@@ -871,9 +921,12 @@ const TasksPage: React.FC = () => {
                     <Typography color="text.secondary">Нет задач.</Typography>
                   ) : (
                     <Stack spacing={1}>
-                      {dayDesk.parents
-                        .filter((t) => !hideCompletedInDesk || t.progress < 100)
-                        .map((task) => {
+                      {(() => {
+                        const list = dayDesk.parents.filter((t) => !hideCompletedInDesk || t.progress < 100);
+                        const show = parentsInWorkExpanded ? list : list.slice(0, 5);
+                        return (
+                          <>
+                            {show.map((task) => {
                           const dueLabel = task.due_at
                             ? (() => {
                                 try {
@@ -1118,19 +1171,26 @@ const TasksPage: React.FC = () => {
                               </CardContent>
                             </Card>
                           );
-                        })}
+                            })}
+                            {list.length > 5 && !parentsInWorkExpanded && (
+                              <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setParentsInWorkExpanded(true)}>Показать все</Button>
+                            )}
+                          </>
+                        );
+                      })()}
                     </Stack>
                   )}
-                </Box>
-                  </Grid>
+                    </Box>
+                  )}
 
-                  {/* Отработки */}
-                  <Grid item xs={12} md={4}>
-                {(absenceMakeupsTodo.length > 0 || dayDesk.makeups.length > 0) && (
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      📚 Отработки
-                    </Typography>
+                  {workTodayTab === 'makeups' && (
+                <Box>
+                {(absenceMakeupsTodo.length > 0 || dayDesk.makeups.length > 0) ? (
+                  <>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" sx={{ mb: 1 }}>
+                      <Typography variant="subtitle1">Отработки</Typography>
+                      <Button size="small" variant="outlined" component={Link} to="/sales/absences">Открыть список пропусков</Button>
+                    </Stack>
                     <Stack
                       direction={{ xs: 'column', md: 'row' }}
                       spacing={2}
@@ -1181,9 +1241,12 @@ const TasksPage: React.FC = () => {
                             Отработка назначена
                           </Typography>
                           <Stack spacing={1}>
-                            {dayDesk.makeups
-                              .filter((t) => !hideCompletedInDesk || t.progress < 100)
-                              .map((task) => {
+                            {(() => {
+                              const list = dayDesk.makeups.filter((t) => !hideCompletedInDesk || t.progress < 100);
+                              const show = makeupsAssignedExpanded ? list : list.slice(0, 5);
+                              return (
+                                <>
+                                  {show.map((task) => {
                                 const dueLabel = task.due_at
                                   ? (() => {
                                       try {
@@ -1398,28 +1461,41 @@ const TasksPage: React.FC = () => {
                                     </CardContent>
                                   </Card>
                                 );
-                              })}
+                                  })}
+                                  {list.length > 5 && !makeupsAssignedExpanded && (
+                                    <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setMakeupsAssignedExpanded(true)}>Показать все</Button>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </Stack>
                         </Box>
                       )}
                     </Stack>
                   </Box>
+                </>
+                ) : (
+                  <Typography color="text.secondary">Нет отработок.</Typography>
                 )}
-                  </Grid>
+                </Box>
+                  )}
 
-                  {/* Оплаты и продления */}
-                  <Grid item xs={12} md={4}>
+                  {workTodayTab === 'payments' && (
                 <Box>
-                  <Typography variant="h6" gutterBottom>💰 Оплаты и продления</Typography>
+                  <Typography variant="subtitle1" gutterBottom>Оплаты и продления</Typography>
                   <Stack spacing={1}>
                     {dayDesk.payments.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">Нет задач.</Typography>
                     ) : (
                       <>
-                        {[...dayDesk.payments]
-                        .filter((t) => !hideCompletedInDesk || t.progress < 100)
-                        .sort((a, b) => (a.task_kind === 'payment_overdue' && b.task_kind !== 'payment_overdue' ? -1 : b.task_kind === 'payment_overdue' && a.task_kind !== 'payment_overdue' ? 1 : 0))
-                        .map((task) => {
+                        {(() => {
+                          const payList = [...dayDesk.payments]
+                            .filter((t) => !hideCompletedInDesk || t.progress < 100)
+                            .sort((a, b) => (a.task_kind === 'payment_overdue' && b.task_kind !== 'payment_overdue' ? -1 : b.task_kind === 'payment_overdue' && a.task_kind !== 'payment_overdue' ? 1 : 0));
+                          const showPay = paymentsInWorkExpanded ? payList : payList.slice(0, 5);
+                          return (
+                            <>
+                              {showPay.map((task) => {
                           const isPaymentOverdue = task.task_kind === 'payment_overdue';
                           const studentName = task.student_ids?.length
                             ? (students.find((s) => s.id === task.student_ids[0])?.full_name ?? `Ученик #${task.student_ids[0]}`)
@@ -1663,17 +1739,194 @@ const TasksPage: React.FC = () => {
                               </CardContent>
                             </Card>
                           );
-                        })}
+                          })}
+                              {payList.length > 5 && !paymentsInWorkExpanded && (
+                                <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setPaymentsInWorkExpanded(true)}>Показать все</Button>
+                              )}
+                            </>
+                          );
+                        })()}
                       </>
                     )}
                   </Stack>
                 </Box>
-                  </Grid>
-                </Grid>
+                  )}
 
-                {/* Операционка | Лиды — 2 колонки */}
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={6}>
+                </Paper>
+
+                {/* Уроки для sales — сразу после «В работе сегодня» */}
+                {isSales && canSeeLessonTasks && (
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                      <Typography variant="h6">📅 Уроки</Typography>
+                      {lessonsExpanded && (
+                        <Button size="small" variant="outlined" onClick={() => setLessonsExpanded(false)}>Свернуть</Button>
+                      )}
+                    </Stack>
+                    <Tabs value={lessonPeriodTab} onChange={(_, v) => setLessonPeriodTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
+                      <Tab label="Сегодня" />
+                      <Tab label="Завтра" />
+                      <Tab label="Неделя" />
+                    </Tabs>
+                    {!lessonsExpanded && (
+                      <>
+                        <Stack direction="row" flexWrap="wrap" gap={2} sx={{ mb: 1 }}>
+                          <Typography variant="body2" color="text.secondary">Уроков сегодня: {lessonTasks.length}</Typography>
+                          {lessonTasks.some((t) => t.status === 'call_round') && (
+                            <Typography variant="body2" color="error.main">Активный дозвон</Typography>
+                          )}
+                          {lessonTasks.some((t) => (t.unknown_count ?? 0) > 0) && (
+                            <Typography variant="body2" color="text.secondary">Не отмечено: {lessonTasks.reduce((s, t) => s + (t.unknown_count ?? 0), 0)}</Typography>
+                          )}
+                        </Stack>
+                        {lessonPeriodTab === 0 && !lessonTasksLoading && lessonTasks.length > 0 && (
+                          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                            {lessonTasks.slice(0, 3).map((item) => (
+                              <Card key={`s-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 220, maxWidth: 300 }}>
+                                <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                  <Typography variant="subtitle2">{item.group_name}</Typography>
+                                  <Typography variant="caption" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
+                                  <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 0.5 }} onClick={() => setLessonTaskDetail(item)}>Открыть</Button>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </Stack>
+                        )}
+                        {lessonPeriodTab === 1 && !lessonTasksTomorrowLoading && lessonTasksTomorrow.length > 0 && (
+                          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                            {lessonTasksTomorrow.slice(0, 3).map((item) => (
+                              <Card key={`stm-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 220, maxWidth: 300 }}>
+                                <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                  <Typography variant="subtitle2">{item.group_name}</Typography>
+                                  <Typography variant="caption" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
+                                  <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 0.5 }} onClick={() => setLessonTaskDetail(item)}>Открыть</Button>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </Stack>
+                        )}
+                        {lessonPeriodTab === 2 && lessonTasksWeek.length > 0 && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Уроков на неделю: {lessonTasksWeek.length}</Typography>
+                        )}
+                        <Button size="small" variant="outlined" onClick={() => setLessonsExpanded(true)}>Показать все уроки</Button>
+                      </>
+                    )}
+                    {lessonsExpanded && (
+                      <Box>
+                        {lessonPeriodTab === 0 && (
+                          <>
+                            {lessonTasksLoading ? (
+                              <Typography color="text.secondary">Загрузка уроков...</Typography>
+                            ) : lessonTasks.length === 0 ? (
+                              <Typography color="text.secondary">На сегодня уроков по расписанию нет.</Typography>
+                            ) : (
+                              <Stack direction="row" flexWrap="wrap" gap={1}>
+                                {lessonTasks.map((item) => {
+                                  const statusLabels: Record<string, string> = {
+                                    waiting: 'Ожидает урока',
+                                    soon: 'Скоро урок',
+                                    in_progress: 'Идёт урок',
+                                    call_round: 'Дозвон',
+                                    completed: 'Завершено',
+                                  };
+                                  const statusColor: Record<string, 'default' | 'primary' | 'warning' | 'success' | 'error'> = {
+                                    waiting: 'default',
+                                    soon: 'warning',
+                                    in_progress: 'primary',
+                                    call_round: 'error',
+                                    completed: 'success',
+                                  };
+                                  return (
+                                    <Card key={`s-full-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 280, maxWidth: 360 }}>
+                                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                        <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                                        <Typography variant="body2" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
+                                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+                                          <Chip size="small" label={statusLabels[item.status] || item.status} color={statusColor[item.status] || 'default'} />
+                                          <Typography variant="caption" color="text.secondary">
+                                            Всего: {item.total} / На месте: {item.present_count} / Нет: {item.absent_count}
+                                            {(item.call_contacted_count ?? 0) > 0 && ` / Дозвонено: ${item.call_contacted_count}`}
+                                          </Typography>
+                                        </Stack>
+                                        <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 1 }} onClick={() => setLessonTaskDetail(item)}>Открыть карточку</Button>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
+                              </Stack>
+                            )}
+                          </>
+                        )}
+                        {lessonPeriodTab === 1 && (
+                          <>
+                            {lessonTasksTomorrowLoading ? (
+                              <Typography color="text.secondary">Загрузка...</Typography>
+                            ) : lessonTasksTomorrow.length === 0 ? (
+                              <Typography color="text.secondary">На завтра уроков по расписанию нет.</Typography>
+                            ) : (
+                              <Stack direction="row" flexWrap="wrap" gap={1}>
+                                {lessonTasksTomorrow.map((item) => (
+                                  <Card key={`stm-full-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 280, maxWidth: 360 }}>
+                                    <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                      <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                                      <Typography variant="body2" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
+                                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>Всего: {item.total} учеников</Typography>
+                                      <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 1 }} onClick={() => setLessonTaskDetail(item)}>Открыть карточку</Button>
+                                    </CardContent>
+                                  </Card>
+                                ))}
+                              </Stack>
+                            )}
+                          </>
+                        )}
+                        {lessonPeriodTab === 2 && (
+                          <>
+                            {lessonTasksWeekLoading ? (
+                              <Typography color="text.secondary">Загрузка...</Typography>
+                            ) : lessonTasksWeek.length === 0 ? (
+                              <Typography color="text.secondary">На неделю уроков по расписанию нет.</Typography>
+                            ) : (
+                              <Stack spacing={2}>
+                                {Object.entries(
+                                  lessonTasksWeek.reduce<Record<string, LessonTaskItem[]>>((acc, item) => {
+                                    const d = item.lesson_date;
+                                    if (!acc[d]) acc[d] = [];
+                                    acc[d].push(item);
+                                    return acc;
+                                  }, {})
+                                )
+                                  .sort(([a], [b]) => a.localeCompare(b))
+                                  .map(([dayDate, items]) => {
+                                    const d = new Date(dayDate + 'T12:00:00');
+                                    const dayLabel = d.toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                                    return (
+                                      <Box key={dayDate}>
+                                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>{dayLabel}</Typography>
+                                        <Stack direction="row" flexWrap="wrap" gap={1}>
+                                          {items.map((item) => (
+                                            <Card key={`sw-${item.lesson_date}-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 260, maxWidth: 340 }}>
+                                              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                                <Typography variant="subtitle2">Группа: {item.group_name}</Typography>
+                                                <Typography variant="body2" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
+                                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Всего: {item.total} учеников</Typography>
+                                                <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 1 }} onClick={() => setLessonTaskDetail(item)}>Открыть карточку</Button>
+                                              </CardContent>
+                                            </Card>
+                                          ))}
+                                        </Stack>
+                                      </Box>
+                                    );
+                                  })}
+                              </Stack>
+                            )}
+                          </>
+                        )}
+                      </Box>
+                    )}
+                  </Paper>
+                )}
+
+                {/* Операционка — во всю ширину, макс. 3 карточек */}
                 <Box>
                   <Typography variant="h6" gutterBottom>⚙ Операционка</Typography>
                   {dayDesk.operations.length === 0 ? (
@@ -1682,6 +1935,7 @@ const TasksPage: React.FC = () => {
                     <Stack spacing={1}>
                       {dayDesk.operations
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
+                        .slice(0, operationsExpanded ? undefined : 3)
                         .map((task) => {
                           const dueLabel = task.due_at
                             ? (() => {
@@ -1871,17 +2125,19 @@ const TasksPage: React.FC = () => {
                         })}
                     </Stack>
                   )}
+                  {dayDesk.operations.filter((t) => !hideCompletedInDesk || t.progress < 100).length > 3 && !operationsExpanded && (
+                    <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setOperationsExpanded(true)}>Показать все</Button>
+                  )}
                 </Box>
-                  </Grid>
 
-                  {/* Лиды на мероприятия */}
-                  <Grid item xs={12} md={6}>
+                {/* Лиды на мероприятия — макс. 3 карточки */}
                 {dayDesk.leads.length > 0 && (
-                  <Box>
+                  <Box sx={{ mt: 2 }}>
                     <Typography variant="h6" gutterBottom>🎯 Лиды на мероприятия</Typography>
                     <Stack spacing={1}>
                       {dayDesk.leads
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
+                        .slice(0, leadsExpanded ? undefined : 3)
                         .map((task) => {
                           const dueLabel = task.due_at
                             ? (() => {
@@ -2069,10 +2325,11 @@ const TasksPage: React.FC = () => {
                           );
                         })}
                     </Stack>
+                    {dayDesk.leads.filter((t) => !hideCompletedInDesk || t.progress < 100).length > 3 && !leadsExpanded && (
+                      <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setLeadsExpanded(true)}>Показать все</Button>
+                    )}
                   </Box>
                 )}
-                  </Grid>
-                </Grid>
 
               </Stack>
             )}
@@ -2083,7 +2340,7 @@ const TasksPage: React.FC = () => {
           <Typography color="text.secondary">Загрузка...</Typography>
         ) : tab === 0 ? (
           <Stack spacing={3}>
-            {(showTodayPlan || isSales) && (
+            {(showTodayPlan && !isSales) && (
             <Box>
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>План на сегодня</Typography>
               <Tabs value={todayPlanTab} onChange={(_, v: 'today' | 'overdue' | 'active') => setTodayPlanTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
@@ -2277,16 +2534,65 @@ const TasksPage: React.FC = () => {
             </Box>
             )}
 
-            {canSeeLessonTasks && (
+            {canSeeLessonTasks && !isSales && (
             <Paper variant="outlined" sx={{ p: 2 }} ref={lessonBlockRef}>
-              <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>📅 Уроки</Typography>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                <Typography variant="h6">📅 Уроки</Typography>
+                {lessonsExpanded && (
+                  <Button size="small" variant="outlined" onClick={() => setLessonsExpanded(false)}>Свернуть</Button>
+                )}
+              </Stack>
               <Tabs value={lessonPeriodTab} onChange={(_, v) => setLessonPeriodTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
                 <Tab label="Сегодня" />
                 <Tab label="Завтра" />
                 <Tab label="Неделя" />
               </Tabs>
 
-              {lessonPeriodTab === 0 && (
+              {!lessonsExpanded && (
+                <>
+                  <Stack direction="row" flexWrap="wrap" gap={2} sx={{ mb: 1 }}>
+                    <Typography variant="body2" color="text.secondary">Уроков сегодня: {lessonTasks.length}</Typography>
+                    {lessonTasks.some((t) => t.status === 'call_round') && (
+                      <Typography variant="body2" color="error.main">Активный дозвон</Typography>
+                    )}
+                    {lessonTasks.some((t) => (t.unknown_count ?? 0) > 0) && (
+                      <Typography variant="body2" color="text.secondary">Не отмечено: {lessonTasks.reduce((s, t) => s + (t.unknown_count ?? 0), 0)}</Typography>
+                    )}
+                  </Stack>
+                  {lessonPeriodTab === 0 && !lessonTasksLoading && lessonTasks.length > 0 && (
+                    <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                      {lessonTasks.slice(0, 3).map((item) => (
+                        <Card key={`prev-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 220, maxWidth: 300 }}>
+                          <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                            <Typography variant="subtitle2">{item.group_name}</Typography>
+                            <Typography variant="caption" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
+                            <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 0.5 }} onClick={() => setLessonTaskDetail(item)}>Открыть</Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Stack>
+                  )}
+                  {lessonPeriodTab === 1 && !lessonTasksTomorrowLoading && lessonTasksTomorrow.length > 0 && (
+                    <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                      {lessonTasksTomorrow.slice(0, 3).map((item) => (
+                        <Card key={`tm-prev-${item.group_id}-${item.schedule_id}`} variant="outlined" sx={{ minWidth: 220, maxWidth: 300 }}>
+                          <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                            <Typography variant="subtitle2">{item.group_name}</Typography>
+                            <Typography variant="caption" color="text.secondary">{item.trainer_name} — {item.start_time}</Typography>
+                            <Button size="small" startIcon={<OpenInNew />} sx={{ mt: 0.5 }} onClick={() => setLessonTaskDetail(item)}>Открыть</Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Stack>
+                  )}
+                  {lessonPeriodTab === 2 && !lessonTasksWeekLoading && lessonTasksWeek.length > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Уроков на неделю: {lessonTasksWeek.length}</Typography>
+                  )}
+                  <Button size="small" variant="outlined" onClick={() => setLessonsExpanded(true)}>Показать все уроки</Button>
+                </>
+              )}
+
+              {lessonsExpanded && lessonPeriodTab === 0 && (
                 <>
                   {lessonTasks.some((t) => t.status === 'soon') && (
                     <Alert severity="info" sx={{ mb: 1 }}>
@@ -2345,7 +2651,7 @@ const TasksPage: React.FC = () => {
                 </>
               )}
 
-              {lessonPeriodTab === 1 && (
+              {lessonsExpanded && lessonPeriodTab === 1 && (
                 <>
                   {lessonTasksTomorrowLoading ? (
                     <Typography color="text.secondary">Загрузка...</Typography>
@@ -2379,7 +2685,7 @@ const TasksPage: React.FC = () => {
                 </>
               )}
 
-              {lessonPeriodTab === 2 && (
+              {lessonsExpanded && lessonPeriodTab === 2 && (
                 <>
                   {lessonTasksWeekLoading ? (
                     <Typography color="text.secondary">Загрузка...</Typography>
@@ -2438,7 +2744,16 @@ const TasksPage: React.FC = () => {
             )}
 
             <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Все задачи</Typography>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: allTasksExpandedState ? 1 : 0 }}>
+                <Typography variant="h6">Все задачи</Typography>
+                {isSales && (
+                  <Button size="small" variant="outlined" onClick={() => setAllTasksExpandedState(!allTasksExpandedState)}>
+                    {allTasksExpandedState ? 'Свернуть' : 'Развернуть'}
+                  </Button>
+                )}
+              </Stack>
+              {allTasksExpandedState && (
+              <>
               <Stack direction="row" flexWrap="wrap" alignItems="center" gap={2} sx={{ mb: 1 }}>
                 <Stack direction="row" alignItems="center" spacing={0.5}>
                   <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>Категория:</Typography>
@@ -2600,6 +2915,8 @@ const TasksPage: React.FC = () => {
                     </Card>
                   ))}
                 </Stack>
+              )}
+              </>
               )}
             </Paper>
           </Stack>

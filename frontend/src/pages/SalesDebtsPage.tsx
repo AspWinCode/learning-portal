@@ -223,24 +223,25 @@ const SalesDebtsPage: React.FC = () => {
           операционная работа с оплатами и очередью банковских операций.
         </Typography>
 
-        {!showBankTab || tab !== 3 ? (
-          paymentSummary != null && (
-            <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-              <Chip
-                label={`Долгов 3+ дней: ${paymentSummary.overdue_3_count}`}
-                color={paymentSummary.overdue_3_count > 0 ? 'warning' : 'default'}
-                variant="outlined"
-                sx={{ fontWeight: 500 }}
-              />
-              <Chip
-                label={`Долгов 10+ дней: ${paymentSummary.overdue_10_count}`}
-                color={paymentSummary.overdue_10_count > 0 ? 'error' : 'default'}
-                variant="outlined"
-                sx={{ fontWeight: 500 }}
-              />
-            </Box>
-          )
-        ) : null}
+        {(!showBankTab || tab !== 3) && (
+          <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>
+              KPI:
+            </Typography>
+            <Chip
+              label={`Долгов 3+ дней: ${paymentSummary?.overdue_3_count ?? '—'}`}
+              color={paymentSummary && paymentSummary.overdue_3_count > 0 ? 'warning' : 'default'}
+              variant="outlined"
+              sx={{ fontWeight: 500 }}
+            />
+            <Chip
+              label={`Долгов 10+ дней: ${paymentSummary?.overdue_10_count ?? '—'}`}
+              color={paymentSummary && paymentSummary.overdue_10_count > 0 ? 'error' : 'default'}
+              variant="outlined"
+              sx={{ fontWeight: 500 }}
+            />
+          </Box>
+        )}
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>

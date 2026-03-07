@@ -4228,6 +4228,48 @@ async def create_lead(
     return lead
 
 
+_SEND_INFO_TASK_MARKER = "отправить информацию"
+
+
+@router.get("/leads/send-info-status")
+async def get_leads_send_info_status(
+    lead_ids: str = Query(..., description="Comma-separated lead IDs"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+):
+    """Возвращает для каждого lead_id статус задачи «Отправить информацию»: open, done, none."""
+    if not lead_ids.strip():
+        return {}
+    ids = [int(x.strip()) for x in lead_ids.split(",") if x.strip()]
+    if not ids:
+        return {}
+    base = _filter_query_by_role(db.query(Lead), current_user)
+    allowed_ids = {l.id for l in base.filter(Lead.id.in_(ids)).all()}
+    tasks = (
+        db.query(LeadTask)
+        .options(joinedload(LeadTask.template))
+        .outerjoin(LeadTaskTemplate, LeadTask.template_id == LeadTaskTemplate.id)
+        .filter(
+            LeadTask.lead_id.in_(allowed_ids),
+            or_(
+                cast(LeadTask.note, Text).ilike(f"%{_SEND_INFO_TASK_MARKER}%"),
+                cast(LeadTaskTemplate.name, Text).ilike(f"%{_SEND_INFO_TASK_MARKER}%"),
+            ),
+        )
+        .all()
+    )
+    result: Dict[str, str] = {str(i): "none" for i in ids if i in allowed_ids}
+    for t in tasks:
+        if t.lead_id not in allowed_ids:
+            continue
+        key = str(t.lead_id)
+        if t.status == LeadTaskStatus.OPEN:
+            result[key] = "open"
+        elif result.get(key) != "open":
+            result[key] = "done"
+    return result
+
+
 @router.get("/leads/{lead_id}", response_model=LeadResponse)
 async def get_lead(
     lead_id: int,
@@ -4540,6 +4582,7 @@ async def close_lead_task(
 
     task = (
         db.query(LeadTask)
+        .options(joinedload(LeadTask.template))
         .filter(LeadTask.id == task_id, LeadTask.lead_id == lead_id)
         .first()
     )
@@ -4561,6 +4604,37 @@ async def close_lead_task(
     task.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(task)
+
+    # Если закрыли задачу «Отправить информацию» — переводим лида в «Подумают» и создаём задачу «Позвонить лиду и узнать решение» через 2 дня
+    _FOLLOW_UP_NOTE = "Позвонить лиду и узнать решение"
+    template_name = (task.template.name if task.template else "") or ""
+    note_lower = (task.note or "").lower()
+    is_send_info = _SEND_INFO_TASK_MARKER in template_name.lower() or _SEND_INFO_TASK_MARKER in note_lower
+    if is_send_info:
+        lead.status = LeadStatus.THINKING
+        default_open = (
+            db.query(LeadTaskStatusOptionModel)
+            .filter(
+                LeadTaskStatusOptionModel.is_active.is_(True),
+                LeadTaskStatusOptionModel.is_closed.is_(False),
+            )
+            .order_by(LeadTaskStatusOptionModel.id.asc())
+            .first()
+        )
+        follow_up_due = datetime.utcnow() + timedelta(days=2)
+        follow_up = LeadTask(
+            lead_id=lead_id,
+            owner_id=current_user.id,
+            template_id=None,
+            status_option_id=default_open.id if default_open else None,
+            note=_FOLLOW_UP_NOTE,
+            channel=task.channel,
+            due_at=follow_up_due,
+            status=LeadTaskStatus.OPEN,
+        )
+        db.add(follow_up)
+        db.commit()
+
     log_action(db, current_user.id, "close", "lead_task", task.id, {"lead_id": lead_id})
     return task
 

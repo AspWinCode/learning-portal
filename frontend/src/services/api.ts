@@ -1114,6 +1114,13 @@ export const salesApi = {
     const response = await api.get(`/api/sales/leads/${leadId}/tasks`);
     return response.data;
   },
+  getLeadsSendInfoStatus: async (leadIds: number[]): Promise<Record<string, 'open' | 'done' | 'none'>> => {
+    if (!leadIds.length) return {};
+    const response = await api.get('/api/sales/leads/send-info-status', {
+      params: { lead_ids: leadIds.join(',') },
+    });
+    return response.data ?? {};
+  },
   createTask: async (leadId: number, payload: {
     template_id?: number;
     status_option_id?: number;

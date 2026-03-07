@@ -169,6 +169,7 @@ const SalesLeadsPage: React.FC = () => {
   const [taskStatusOptions, setTaskStatusOptions] = useState<LeadTaskStatusOption[]>([]);
   const [leadStatusOptions, setLeadStatusOptions] = useState<LeadStatusOption[]>([]);
   const [infoTemplates, setInfoTemplates] = useState<LeadInfoTemplate[]>([]);
+  const [sendInfoStatus, setSendInfoStatus] = useState<Record<number, 'open' | 'done' | 'none'>>({});
   const [communications, setCommunications] = useState<LeadCommunication[]>([]);
   const [sendInfoOpen, setSendInfoOpen] = useState(false);
   const [sendInfoForm, setSendInfoForm] = useState({
@@ -1784,6 +1785,27 @@ const SalesLeadsPage: React.FC = () => {
     },
     [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds, reinviteLeadIds, pipelineSchoolFilter]
   );
+
+  useEffect(() => {
+    if (viewMode !== 'kanban') return;
+    const ids = [...new Set(kanbanColumns.flatMap((col) => col.leads.map((l) => l.id)))];
+    if (!ids.length) return;
+    salesApi.getLeadsSendInfoStatus(ids).then(setSendInfoStatus).catch(() => setSendInfoStatus({}));
+  }, [viewMode, kanbanColumns]);
+
+  const handleWidgetSendInfo = async (lead: Lead) => {
+    try {
+      setActionLoadingId(lead.id);
+      await salesApi.createTask(lead.id, { note: 'Отправить информацию' });
+      setSendInfoStatus((prev) => ({ ...prev, [lead.id]: 'open' }));
+      await loadLeads();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось создать задачу'));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const handleNoAnswerAttemptClick = async (attempt: 1 | 2 | 3) => {
     if (!selectedLead) return;
     if (attempt === 3) {
@@ -2289,9 +2311,18 @@ const SalesLeadsPage: React.FC = () => {
                               </Stack>
                             );
                           })()}
-                          <Stack direction="row" spacing={1} mt={1}>
+                          <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
                             <Button size="small" onClick={() => handleOpenDetails(lead)}>
                               Открыть
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color={sendInfoStatus[lead.id] === 'done' ? 'success' : sendInfoStatus[lead.id] === 'open' ? 'error' : undefined}
+                              disabled={actionLoadingId === lead.id || sendInfoStatus[lead.id] === 'open' || sendInfoStatus[lead.id] === 'done'}
+                              onClick={() => void handleWidgetSendInfo(lead)}
+                            >
+                              Отправить информацию
                             </Button>
                           </Stack>
                         </CardContent>

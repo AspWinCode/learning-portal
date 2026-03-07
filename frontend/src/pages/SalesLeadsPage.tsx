@@ -194,6 +194,7 @@ const SalesLeadsPage: React.FC = () => {
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
   const [tableCityFilter, setTableCityFilter] = useState('');
   const [tableSchoolFilter, setTableSchoolFilter] = useState('');
+  const [pipelineSchoolFilter, setPipelineSchoolFilter] = useState('');
   const [tableClassFilter, setTableClassFilter] = useState('');
   const [tableSortField, setTableSortField] = useState<LeadsTableSortField>('created_at');
   const [tableSortOrder, setTableSortOrder] = useState<LeadsTableSortOrder>('desc');
@@ -1746,7 +1747,11 @@ const SalesLeadsPage: React.FC = () => {
   );
   const kanbanColumns = useMemo(
     () => {
-      const source = isPipelineRoute ? pipelineLeads : leads;
+      let source = isPipelineRoute ? pipelineLeads : leads;
+      const schoolTrim = pipelineSchoolFilter.trim().toLowerCase();
+      if (schoolTrim) {
+        source = source.filter((l) => (l.school_name || '').toLowerCase().includes(schoolTrim));
+      }
       // h*h[hh$h� h�ddhUh� dhQddd B$ hWhUh$d dh[ ddh�dddh[h] ,;h'h�hQddd,W h\ha hh[hQh�hVdh�h�hah] h� h�h[dh[h\hQha h�h[h[h�dha
       const visibleSource = showArchiveColumn ? source : source.filter((l) => l.status !== 'lost');
       // h+hUh$d d h\hadh�hQh[hc hh[hQh�hVdh�h�hah] dh[hWdhQh[ h� hQh[hWh[h\hQha ,;h1hWhah$ h]hadh[hdhUddhUha,W, hUhV h[ddh�hWdh\dd hQh[hWh[h\h[hQ dh�hUdh�hah]
@@ -1773,7 +1778,7 @@ const SalesLeadsPage: React.FC = () => {
       }
       return base;
     },
-    [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds, reinviteLeadIds]
+    [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds, reinviteLeadIds, pipelineSchoolFilter]
   );
   const handleNoAnswerAttemptClick = async (attempt: 1 | 2 | 3) => {
     if (!selectedLead) return;
@@ -1901,7 +1906,21 @@ const SalesLeadsPage: React.FC = () => {
             Только просроченные
           </Button>
           {viewMode === 'kanban' && (
-            <Stack direction="row" alignItems="center">
+            <Stack direction="row" alignItems="center" flexWrap="wrap" useFlexGap sx={{ gap: 1 }}>
+              <Autocomplete
+                freeSolo
+                options={schoolOptions}
+                value={pipelineSchoolFilter}
+                onChange={(_, value) => setPipelineSchoolFilter(value || '')}
+                onInputChange={(_, value) => setPipelineSchoolFilter(value)}
+                sx={{ minWidth: 220 }}
+                renderInput={(params) => <TextField {...params} size="small" label="Школа (фильтр)" />}
+              />
+              {pipelineSchoolFilter && (
+                <Button size="small" variant="text" onClick={() => setPipelineSchoolFilter('')}>
+                  Сбросить школу
+                </Button>
+              )}
               <Checkbox
                 id="show-archive-column"
                 checked={showArchiveColumn}

@@ -151,6 +151,19 @@ export const SalesAgreedPageContent: React.FC = () => {
     }
   };
 
+  const handleChangedMind = async (lead: Lead) => {
+    setActionLoadingId(lead.id);
+    setError(null);
+    try {
+      await salesApi.updateLead(lead.id, { status: 'thinking', questionnaire_filled: false });
+      await loadLeads();
+    } catch (err: any) {
+      setError(extractApiError(err, S.changedMindError));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const leadDisplayName = (l: Lead) =>
     [l.parent_full_name || l.contact_name, l.child_full_name].filter(Boolean).join(' / ') || l.phone || `${S.leadId}${l.id}`;
   const leadPhone = (l: Lead) => l.parent_phone || l.phone || S.dash;
@@ -224,6 +237,14 @@ export const SalesAgreedPageContent: React.FC = () => {
                     onClick={() => handleMarkQuestionnaireFilled(lead)}
                   >
                     {S.btnFilled}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={actionLoadingId === lead.id}
+                    onClick={() => handleChangedMind(lead)}
+                  >
+                    {S.btnChangedMind}
                   </Button>
                 </Stack>
               </TableCell>

@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, time, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app import auth
@@ -86,12 +86,12 @@ def _template_to_response(t: TaskTemplate) -> TaskTemplateResponse:
 
 
 def _get_task_payment_state(db: Session, task: Task) -> dict:
-    """Для task_kind=payment_overdue: вычисляет payment_state, payment_days_overdue, payment_next_date."""
+    """Для task_kind=payment_overdue: вычисляет payment_state, payment_days_overdue, payment_next_date, parent, balance."""
     if getattr(task, "task_kind", None) != "payment_overdue":
         return {}
     student_ids = [ts.student_id for ts in (task.students or [])]
     if not student_ids:
-        return {"payment_state": "unknown", "payment_days_overdue": None, "payment_next_date": None}
+        return {"payment_state": "unknown", "payment_days_overdue": None, "payment_next_date": None, "payment_parent_name": None, "payment_balance": None}
     student_id = student_ids[0]
     today = date.today()
     card = db.query(StudentCard).filter(
@@ -125,10 +125,21 @@ def _get_task_payment_state(db: Session, task: Task) -> dict:
     if next_pay and next_pay < today:
         payment_days_overdue = (today - next_pay).days
 
+    student = db.query(Student).filter(Student.id == student_id).first()
+    payment_parent_name = None
+    if student and getattr(student, "parent_id", None):
+        parent = db.query(User).filter(User.id == student.parent_id).first()
+        payment_parent_name = getattr(parent, "full_name", None) if parent else None
+
+    balance_row = db.query(func.coalesce(func.sum(StudentAccount.balance), 0)).filter(StudentAccount.student_id == student_id).first()
+    payment_balance = float(balance_row[0]) if balance_row else None
+
     return {
         "payment_state": payment_state,
         "payment_days_overdue": payment_days_overdue,
         "payment_next_date": next_pay,
+        "payment_parent_name": payment_parent_name,
+        "payment_balance": payment_balance,
     }
 
 

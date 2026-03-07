@@ -141,6 +141,7 @@ from app.schemas import (
     ProgramMakeupCompatibilityResponse,
     ProgramMakeupCompatibilityCreate,
     PaymentStatusItem,
+    PaymentStatusSummary,
     StudentFreezeCreate,
     StudentFreezeResponse,
     CloseByFactPreview,
@@ -2224,6 +2225,55 @@ async def list_payment_status(
         ))
     result.sort(key=lambda x: (x.next_payment_date or date.max, x.student_name))
     return result
+
+
+@router.get("/payment-status-summary", response_model=PaymentStatusSummary)
+async def get_payment_status_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Сводка по просрочкам: число учеников с долгом 3+ и 10+ дней (для KPI на странице «Долги»)."""
+    _require_sales_admin_owner(current_user)
+    today = date.today()
+    day_3 = today - timedelta(days=3)
+    day_10 = today - timedelta(days=10)
+    cards = (
+        db.query(StudentCard)
+        .filter(
+            StudentCard.student_id.isnot(None),
+            StudentCard.archived.is_(False),
+            StudentCard.next_payment_date.isnot(None),
+            StudentCard.next_payment_date < today,
+        )
+        .all()
+    )
+    overdue_3_count = 0
+    overdue_10_count = 0
+    for card in cards:
+        student = db.query(Student).filter(Student.id == card.student_id).first()
+        if not student or student.status == StudentStatus.ARCHIVED:
+            continue
+        next_pay = getattr(card, "next_payment_date", None)
+        if not next_pay:
+            continue
+        if hasattr(next_pay, "date"):
+            next_pay = next_pay.date()
+        has_payments = (
+            db.query(StudentAccountTransaction.id)
+            .join(StudentAccount, StudentAccount.id == StudentAccountTransaction.account_id)
+            .filter(
+                StudentAccount.student_id == card.student_id,
+                StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
+            )
+            .first()
+        )
+        if not has_payments:
+            continue
+        if next_pay <= day_3:
+            overdue_3_count += 1
+        if next_pay <= day_10:
+            overdue_10_count += 1
+    return PaymentStatusSummary(overdue_3_count=overdue_3_count, overdue_10_count=overdue_10_count)
 
 
 # --- Custom (manual) lessons for sales/admin/owner ---

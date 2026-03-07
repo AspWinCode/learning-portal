@@ -1426,11 +1426,13 @@ const TasksPage: React.FC = () => {
                                 >
                                   <Box sx={{ flex: 1, minWidth: 0 }}>
                                     <Typography variant="subtitle2">{task.title}</Typography>
-                                    {isPaymentOverdue && studentName && (
+                                    {isPaymentOverdue && (
                                       <Typography variant="body2" color="text.secondary">
-                                        Ученик: {studentName}
+                                        {studentName && `Ученик: ${studentName}`}
+                                        {task.payment_parent_name && ` · Родитель: ${task.payment_parent_name}`}
                                         {task.payment_next_date != null && ` · Дата оплаты: ${task.payment_next_date}`}
                                         {task.payment_days_overdue != null && task.payment_days_overdue > 0 && ` · Просрочка: ${task.payment_days_overdue} дн.`}
+                                        {task.payment_balance != null && ` · Баланс: ${Number(task.payment_balance).toLocaleString('ru-RU')} ₽`}
                                         {task.reminder_stage != null && ` · ${task.reminder_stage === 1 ? '1-е напоминание' : 'Повтор'}`}
                                       </Typography>
                                     )}
@@ -1511,8 +1513,29 @@ const TasksPage: React.FC = () => {
                                     direction="row"
                                     spacing={0.5}
                                     alignItems="center"
+                                    flexWrap="wrap"
                                     onClick={(e) => e.stopPropagation()}
                                   >
+                                    {isPaymentOverdue && task.student_ids?.[0] != null && (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        component={Link}
+                                        to={`/students?studentId=${task.student_ids[0]}`}
+                                      >
+                                        Открыть ученика
+                                      </Button>
+                                    )}
+                                    {isPaymentOverdue && (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        component={Link}
+                                        to="/sales/debts"
+                                      >
+                                        Долги и оплаты
+                                      </Button>
+                                    )}
                                     <Button
                                       size="small"
                                       variant="outlined"

@@ -17,6 +17,15 @@ from app.models import (
 from app.student_display import get_student_display_name
 
 
+def _get_student_parent_name(db: Session, student_id: int) -> str | None:
+    """ФИО родителя ученика, если есть."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student or not getattr(student, "parent_id", None):
+        return None
+    parent = db.query(User).filter(User.id == student.parent_id).first()
+    return getattr(parent, "full_name", None) if parent else None
+
+
 TASK_KIND_PAYMENT_OVERDUE = "payment_overdue"
 FIRST_REMINDER_DAYS = 3
 SECOND_REMINDER_DAYS = 10
@@ -69,6 +78,7 @@ def _create_payment_overdue_task(
     today = date.today()
     overdue_days = (today - next_payment_date).days
     group_name = _get_student_group_name(db, student_id)
+    parent_name = _get_student_parent_name(db, student_id)
 
     if stage == 1:
         title = "Оплата просрочена"
@@ -81,6 +91,7 @@ def _create_payment_overdue_task(
 
     lines = [
         f"Ученик: {student_name}",
+        f"Родитель: {parent_name}" if parent_name else "Родитель: —",
         f"Группа: {group_name}" if group_name else "Группа: —",
         f"Дата следующей оплаты: {next_payment_date}",
         f"Просрочка: {overdue_days} дн.",

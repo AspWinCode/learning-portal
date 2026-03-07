@@ -921,5 +921,7 @@ export interface TaskResponse {
   payment_state?: 'unpaid' | 'paid' | 'unknown' | null;
   payment_days_overdue?: number | null;
   payment_next_date?: string | null;
+  payment_parent_name?: string | null;
+  payment_balance?: number | null;
 }
 

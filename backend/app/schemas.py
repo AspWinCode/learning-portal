@@ -674,6 +674,12 @@ class PaymentStatusItem(BaseModel):
     status: str  # ok | due_soon | overdue | unpaid
 
 
+class PaymentStatusSummary(BaseModel):
+    """Сводка по просрочкам: долгов 3+ и 10+ дней."""
+    overdue_3_count: int
+    overdue_10_count: int
+
+
 class StudentFreezeCreate(BaseModel):
     freeze_start: date
     freeze_end: date
@@ -2299,6 +2305,8 @@ class TaskResponse(BaseModel):
     payment_state: Optional[Literal["unpaid", "paid", "unknown"]] = None
     payment_days_overdue: Optional[int] = None
     payment_next_date: Optional[date] = None
+    payment_parent_name: Optional[str] = None
+    payment_balance: Optional[float] = None
 
     class Config:
         from_attributes = True

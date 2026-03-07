@@ -90,6 +90,7 @@ const SalesDebtsPage: React.FC = () => {
     skipped: number;
     errors?: string[];
   } | null>(null);
+  const [paymentSummary, setPaymentSummary] = useState<{ overdue_3_count: number; overdue_10_count: number } | null>(null);
 
   // Админ и sales не видят вкладку "Операции банка" — при прямом доступе переключаем на первую
   useEffect(() => {
@@ -169,13 +170,23 @@ const SalesDebtsPage: React.FC = () => {
     }
   }, [loadBankTransactions]);
 
+  const loadPaymentSummary = useCallback(async () => {
+    try {
+      const data = await salesApi.getPaymentStatusSummary();
+      setPaymentSummary(data);
+    } catch {
+      setPaymentSummary(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (showBankTab && tab === 3) {
       void loadBankTransactions();
     } else {
       void loadDebts();
+      void loadPaymentSummary();
     }
-  }, [showBankTab, tab, loadDebts, loadBankTransactions]);
+  }, [showBankTab, tab, loadDebts, loadBankTransactions, loadPaymentSummary]);
 
   useEffect(() => {
     if (!studentQuery.trim()) {
@@ -211,6 +222,25 @@ const SalesDebtsPage: React.FC = () => {
           Для импорта и разбора всех финансовых операций используйте раздел «Финансы (журнал)». Здесь — только
           операционная работа с оплатами и очередью банковских операций.
         </Typography>
+
+        {!showBankTab || tab !== 3 ? (
+          paymentSummary != null && (
+            <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+              <Chip
+                label={`Долгов 3+ дней: ${paymentSummary.overdue_3_count}`}
+                color={paymentSummary.overdue_3_count > 0 ? 'warning' : 'default'}
+                variant="outlined"
+                sx={{ fontWeight: 500 }}
+              />
+              <Chip
+                label={`Долгов 10+ дней: ${paymentSummary.overdue_10_count}`}
+                color={paymentSummary.overdue_10_count > 0 ? 'error' : 'default'}
+                variant="outlined"
+                sx={{ fontWeight: 500 }}
+              />
+            </Box>
+          )
+        ) : null}
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>

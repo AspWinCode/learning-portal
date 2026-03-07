@@ -4296,6 +4296,48 @@ async def update_lead(
     return lead
 
 
+def _find_or_create_student_card_for_lead(db: Session, lead: Lead, student: Student, student_full_name: str) -> None:
+    """
+    При конвертации лида в ученика: ищем анкету (StudentCard) из опроса по email и ФИО ребёнка
+    и привязываем к ученику; если не нашли — создаём карточку из данных лида.
+    Если у ученика уже есть карточка — ничего не делаем.
+    """
+    if db.query(StudentCard).filter(StudentCard.student_id == student.id).first():
+        return
+    parent_email = (getattr(lead, "email", None) or "").strip().lower()
+    card = (
+        db.query(StudentCard)
+        .filter(
+            StudentCard.student_id.is_(None),
+            StudentCard.anketa_status == "filled",
+            StudentCard.parent_email == parent_email,
+            StudentCard.student_full_name == student_full_name,
+        )
+        .first()
+    )
+    if card:
+        card.student_id = student.id
+        card.anketa_status = "converted"
+        return
+    card = StudentCard(
+        student_id=student.id,
+        student_full_name=student_full_name,
+        parent_full_name=(getattr(lead, "parent_full_name", None) or getattr(lead, "contact_name", None) or "").strip() or None,
+        parent_phone=(getattr(lead, "parent_phone", None) or getattr(lead, "phone", None) or "").strip() or None,
+        parent_email=(getattr(lead, "email", None) or "").strip() or None,
+        student_phone=(getattr(lead, "child_phone", None) or "").strip() or None,
+        city=(getattr(lead, "city", None) or "").strip() or None,
+        school=(getattr(lead, "school_name", None) or "").strip() or None,
+        grade=(getattr(lead, "school_class", None) or "").strip() or None,
+        comment=(getattr(lead, "comment", None) or "").strip() or None,
+        source=(getattr(lead, "source", None) or "").strip() or None,
+        anketa_status="converted",
+        discount_type=DiscountType.NONE,
+        discount_value=0.0,
+    )
+    db.add(card)
+
+
 @router.post("/leads/{lead_id}/convert-to-student", response_model=LeadConvertToStudentResponse)
 async def convert_lead_to_student(
     lead_id: int,
@@ -4304,7 +4346,8 @@ async def convert_lead_to_student(
 ):
     """
     Переводит лида в ученика: создаёт родителя (если нет по email) и ученика с from_lead_id,
-    обновляет лида (status=WON, converted_to_student_id). Лид помечается как успешно закрытый.
+    привязывает или создаёт анкету (StudentCard) из данных лида/опроса.
+    Обновляет лида (status=WON, converted_to_student_id).
     """
     _require_sales_admin_owner(current_user)
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
@@ -4342,6 +4385,7 @@ async def convert_lead_to_student(
             lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
             if not getattr(same_name, "from_lead_id", None):
                 same_name.from_lead_id = lead.id
+            _find_or_create_student_card_for_lead(db, lead, same_name, student_full_name)
             db.commit()
             db.refresh(lead)
             db.refresh(same_name)
@@ -4365,6 +4409,7 @@ async def convert_lead_to_student(
     lead.converted_to_student_id = student.id
     lead.status = LeadStatus.WON
     lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
+    _find_or_create_student_card_for_lead(db, lead, student, student_full_name)
     db.commit()
     db.refresh(lead)
     db.refresh(student)

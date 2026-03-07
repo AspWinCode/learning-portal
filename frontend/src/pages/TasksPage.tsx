@@ -925,7 +925,7 @@ const TasksPage: React.FC = () => {
                         const list = dayDesk.parents.filter((t) => !hideCompletedInDesk || t.progress < 100);
                         const show = parentsInWorkExpanded ? list : list.slice(0, 5);
                         return (
-                          <>
+                          <React.Fragment>
                             {show.map((task) => {
                           const dueLabel = task.due_at
                             ? (() => {
@@ -1175,7 +1175,7 @@ const TasksPage: React.FC = () => {
                             {list.length > 5 && !parentsInWorkExpanded && (
                               <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setParentsInWorkExpanded(true)}>Показать все</Button>
                             )}
-                          </>
+                          </React.Fragment>
                         );
                       })()}
                     </Stack>
@@ -1186,7 +1186,7 @@ const TasksPage: React.FC = () => {
                   {workTodayTab === 'makeups' && (
                 <Box>
                 {(absenceMakeupsTodo.length > 0 || dayDesk.makeups.length > 0) ? (
-                  <>
+                  <React.Fragment>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" sx={{ mb: 1 }}>
                       <Typography variant="subtitle1">Отработки</Typography>
                       <Button size="small" variant="outlined" component={Link} to="/sales/absences">Открыть список пропусков</Button>
@@ -1245,7 +1245,7 @@ const TasksPage: React.FC = () => {
                               const list = dayDesk.makeups.filter((t) => !hideCompletedInDesk || t.progress < 100);
                               const show = makeupsAssignedExpanded ? list : list.slice(0, 5);
                               return (
-                                <>
+                                <React.Fragment>
                                   {show.map((task) => {
                                 const dueLabel = task.due_at
                                   ? (() => {
@@ -1465,15 +1465,14 @@ const TasksPage: React.FC = () => {
                                   {list.length > 5 && !makeupsAssignedExpanded && (
                                     <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setMakeupsAssignedExpanded(true)}>Показать все</Button>
                                   )}
-                                </>
+                                </React.Fragment>
                               );
                             })()}
                           </Stack>
                         </Box>
                       )}
                     </Stack>
-                  </Box>
-                </>
+                  </React.Fragment>
                 ) : (
                   <Typography color="text.secondary">Нет отработок.</Typography>
                 )}
@@ -1487,15 +1486,14 @@ const TasksPage: React.FC = () => {
                     {dayDesk.payments.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">Нет задач.</Typography>
                     ) : (
-                      <>
-                        {(() => {
-                          const payList = [...dayDesk.payments]
-                            .filter((t) => !hideCompletedInDesk || t.progress < 100)
-                            .sort((a, b) => (a.task_kind === 'payment_overdue' && b.task_kind !== 'payment_overdue' ? -1 : b.task_kind === 'payment_overdue' && a.task_kind !== 'payment_overdue' ? 1 : 0));
-                          const showPay = paymentsInWorkExpanded ? payList : payList.slice(0, 5);
-                          return (
-                            <>
-                              {showPay.map((task) => {
+                      (() => {
+                        const payList = [...dayDesk.payments]
+                          .filter((t) => !hideCompletedInDesk || t.progress < 100)
+                          .sort((a, b) => (a.task_kind === 'payment_overdue' && b.task_kind !== 'payment_overdue' ? -1 : b.task_kind === 'payment_overdue' && a.task_kind !== 'payment_overdue' ? 1 : 0));
+                        const showPay = paymentsInWorkExpanded ? payList : payList.slice(0, 5);
+                        return (
+                          <React.Fragment>
+                            {showPay.map((task) => {
                           const isPaymentOverdue = task.task_kind === 'payment_overdue';
                           const studentName = task.student_ids?.length
                             ? (students.find((s) => s.id === task.student_ids[0])?.full_name ?? `Ученик #${task.student_ids[0]}`)
@@ -1743,11 +1741,9 @@ const TasksPage: React.FC = () => {
                               {payList.length > 5 && !paymentsInWorkExpanded && (
                                 <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setPaymentsInWorkExpanded(true)}>Показать все</Button>
                               )}
-                            </>
+                            </React.Fragment>
                           );
-                        })()}
-                      </>
-                    )}
+                        })() )}
                   </Stack>
                 </Box>
                   )}

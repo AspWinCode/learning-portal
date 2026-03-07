@@ -234,6 +234,8 @@ const SalesLeadsPage: React.FC = () => {
     child_phone: '',
     email: '',
     city: '',
+    school_name: '',
+    school_class: '',
     communication_channel: '' as '' | LeadCommunicationChannel,
     source: '',
     referral_name: '',
@@ -701,8 +703,8 @@ const SalesLeadsPage: React.FC = () => {
   };
 
   const handleOpenDetails = async (lead: Lead) => {
-    setSelectedLead(lead);
     setDetailsOpen(true);
+    setSelectedLead(lead);
     setContactOutcome('connected');
     setContactNote('');
     setContactFollowUpAt('');
@@ -710,16 +712,40 @@ const SalesLeadsPage: React.FC = () => {
     setLeadHeaderStatusDraft(getPipelineColumnForStatus(lead.status));
     setLeadHeaderNextStepDraft(lead.desired_slot || '');
     setLeadInfoDraft({
-      parent_full_name: lead.parent_full_name || '',
-      parent_phone: lead.parent_phone || '',
+      parent_full_name: lead.parent_full_name || lead.contact_name || '',
+      parent_phone: lead.parent_phone || lead.phone || '',
       child_full_name: lead.child_full_name || '',
       child_phone: lead.child_phone || '',
       email: lead.email || '',
       city: lead.city || '',
+      school_name: lead.school_name || '',
+      school_class: lead.school_class || '',
       communication_channel: (lead.communication_channel as LeadCommunicationChannel | null) || '',
       source: lead.source || '',
       referral_name: lead.referral_name || '',
     });
+    try {
+      const fullLead = await salesApi.getLead(lead.id);
+      setSelectedLead(fullLead);
+      setLeadCommentDraft(fullLead.comment || '');
+      setLeadHeaderStatusDraft(getPipelineColumnForStatus(fullLead.status));
+      setLeadHeaderNextStepDraft(fullLead.desired_slot || '');
+      setLeadInfoDraft({
+        parent_full_name: fullLead.parent_full_name || fullLead.contact_name || '',
+        parent_phone: fullLead.parent_phone || fullLead.phone || '',
+        child_full_name: fullLead.child_full_name || '',
+        child_phone: fullLead.child_phone || '',
+        email: fullLead.email || '',
+        city: fullLead.city || '',
+        school_name: fullLead.school_name || '',
+        school_class: fullLead.school_class || '',
+        communication_channel: (fullLead.communication_channel as LeadCommunicationChannel | null) || '',
+        source: fullLead.source || '',
+        referral_name: fullLead.referral_name || '',
+      });
+    } catch {
+      // оставляем данные из списка
+    }
     await loadLeadDetails(lead);
   };
 
@@ -1103,12 +1129,14 @@ const SalesLeadsPage: React.FC = () => {
   useEffect(() => {
     if (!selectedLead) return;
     setLeadInfoDraft({
-      parent_full_name: selectedLead.parent_full_name || '',
-      parent_phone: selectedLead.parent_phone || '',
+      parent_full_name: selectedLead.parent_full_name || selectedLead.contact_name || '',
+      parent_phone: selectedLead.parent_phone || selectedLead.phone || '',
       child_full_name: selectedLead.child_full_name || '',
       child_phone: selectedLead.child_phone || '',
       email: selectedLead.email || '',
       city: selectedLead.city || '',
+      school_name: selectedLead.school_name || '',
+      school_class: selectedLead.school_class || '',
       communication_channel: (selectedLead.communication_channel as LeadCommunicationChannel | null) || '',
       source: selectedLead.source || '',
       referral_name: selectedLead.referral_name || '',
@@ -1184,6 +1212,8 @@ const SalesLeadsPage: React.FC = () => {
         child_phone: normalizeRuPhone(leadInfoDraft.child_phone) || undefined,
         email: leadInfoDraft.email.trim() || undefined,
         city: leadInfoDraft.city.trim() || undefined,
+        school_name: leadInfoDraft.school_name.trim() || undefined,
+        school_class: leadInfoDraft.school_class.trim() || undefined,
         communication_channel: leadInfoDraft.communication_channel || undefined,
         source: leadInfoDraft.source.trim() || undefined,
         referral_name: leadInfoDraft.referral_name.trim() || undefined,
@@ -2277,6 +2307,19 @@ const SalesLeadsPage: React.FC = () => {
                       <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
                     )}
                   </Stack>
+                  <Typography variant="body2" color="text.secondary" sx={{ width: '100%', mt: 0.5 }}>
+                    Контакт: {selectedLead.contact_name || '—'} · {selectedLead.phone || '—'}
+                  </Typography>
+                  {(selectedLead.comment || leadCommentDraft) && (
+                    <Box sx={{ width: '100%', mt: 1, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                      <Typography variant="caption" color="text.secondary" component="span">
+                        Комментарий:{' '}
+                      </Typography>
+                      <Typography variant="body2" component="span" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {leadCommentDraft || selectedLead.comment || ''}
+                      </Typography>
+                    </Box>
+                  )}
                   <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                     {selectedLead && !selectedLead.converted_to_student_id && (
                       <Button
@@ -2376,6 +2419,24 @@ const SalesLeadsPage: React.FC = () => {
                             ))}
                           </Select>
                         </FormControl>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Школа"
+                          value={leadInfoDraft.school_name}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, school_name: e.target.value }))}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Класс"
+                          value={leadInfoDraft.school_class}
+                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, school_class: e.target.value }))}
+                        />
                       </Grid>
                       <Grid item xs={12}>
                         <FormControl size="small" fullWidth>

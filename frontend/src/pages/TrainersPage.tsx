@@ -35,12 +35,44 @@ import {
   type TrainerBankKey,
 } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
 
-const LESSON_FORMAT_OPTIONS: { value: TrainerLessonFormat; label: string }[] = [
-  { value: 'group', label: 'Групповой' },
-  { value: 'individual', label: 'Индивидуальный' },
-  { value: 'both', label: 'Групповой и индивидуальный' },
-];
+/** Дни недели для графика работы */
+const WORK_SCHEDULE_DAYS = [
+  { id: 'mon', label: 'Пн' },
+  { id: 'tue', label: 'Вт' },
+  { id: 'wed', label: 'Ср' },
+  { id: 'thu', label: 'Чт' },
+  { id: 'fri', label: 'Пт' },
+  { id: 'sat', label: 'Сб' },
+  { id: 'sun', label: 'Вс' },
+] as const;
+
+/** Часовые интервалы 06:00–23:00 */
+const WORK_SCHEDULE_SLOTS = (() => {
+  const slots: string[] = [];
+  for (let h = 6; h <= 22; h++) {
+    const start = `${String(h).padStart(2, '0')}:00`;
+    const end = `${String(h + 1).padStart(2, '0')}:00`;
+    slots.push(`${start}-${end}`);
+  }
+  return slots;
+})();
+
+function parseWorkSchedule(workSchedule: string): { days: string[]; slots: string[] } {
+  if (!workSchedule?.trim()) return { days: [], slots: [] };
+  try {
+    const parsed = JSON.parse(workSchedule) as { d?: string[]; s?: string[] };
+    if (parsed && typeof parsed === 'object') {
+      const days = Array.isArray(parsed.d) ? parsed.d : [];
+      const slots = Array.isArray(parsed.s) ? parsed.s : [];
+      return { days, slots };
+    }
+  } catch {
+    // legacy free text — return empty, UI will show checkboxes empty
+  }
+  return { days: [], slots: [] };
+}
 
 type TrainerProfileForm = {
   phone: string;
@@ -129,8 +161,8 @@ function profileFromUser(u: User): TrainerProfileForm {
   }
 
   return {
-    phone: u.phone ?? '',
-    phone_extra: u.phone_extra ?? '',
+    phone: phoneFromApi(u.phone ?? ''),
+    phone_extra: phoneFromApi(u.phone_extra ?? ''),
     trainer_lesson_formats: (u.trainer_lesson_formats as TrainerLessonFormat) ?? '',
     trainer_banks: u.trainer_banks ?? [],
     city: u.city ?? '',
@@ -205,14 +237,26 @@ const TrainersPage: React.FC = () => {
       setError('Пароль должен быть минимум 6 символов');
       return;
     }
+    if (!newTrainer.phone.trim()) {
+      setError('Укажите основной телефон');
+      return;
+    }
+    if (!isValidPhone(newTrainer.phone)) {
+      setError('Некорректный основной телефон. Введите 10 цифр номера.');
+      return;
+    }
+    if (newTrainer.phone_extra.trim() && !isValidPhone(newTrainer.phone_extra)) {
+      setError('Некорректный дополнительный телефон. Введите 10 цифр или оставьте пустым.');
+      return;
+    }
     try {
       await usersApi.create({
         full_name: newTrainer.full_name.trim(),
         email: newTrainer.email.trim(),
         password: newTrainer.password,
         role: 'trainer',
-        phone: newTrainer.phone || undefined,
-        phone_extra: newTrainer.phone_extra || undefined,
+        phone: phoneToApiValue(newTrainer.phone) || undefined,
+        phone_extra: newTrainer.phone_extra.trim() ? phoneToApiValue(newTrainer.phone_extra) : undefined,
         trainer_lesson_formats: newTrainer.trainer_lesson_formats || undefined,
         trainer_banks: newTrainer.trainer_banks.length ? newTrainer.trainer_banks : undefined,
         city: newTrainer.city || undefined,
@@ -241,6 +285,18 @@ const TrainersPage: React.FC = () => {
 
   const handleSaveProfile = async () => {
     if (!profileTrainer) return;
+    if (!profileForm.phone.trim()) {
+      setError('Укажите основной телефон');
+      return;
+    }
+    if (!isValidPhone(profileForm.phone)) {
+      setError('Некорректный основной телефон. Введите 10 цифр номера.');
+      return;
+    }
+    if (profileForm.phone_extra.trim() && !isValidPhone(profileForm.phone_extra)) {
+      setError('Некорректный дополнительный телефон. Введите 10 цифр или оставьте пустым.');
+      return;
+    }
     try {
       const qualificationPayload = {
         lesson_modes: {
@@ -279,8 +335,8 @@ const TrainersPage: React.FC = () => {
       };
 
       await usersApi.update(profileTrainer.id, {
-        phone: profileForm.phone || null,
-        phone_extra: profileForm.phone_extra || null,
+        phone: phoneToApiValue(profileForm.phone) || null,
+        phone_extra: profileForm.phone_extra.trim() ? phoneToApiValue(profileForm.phone_extra) : null,
         trainer_lesson_formats: profileForm.trainer_lesson_formats || null,
         trainer_banks: profileForm.trainer_banks.length ? profileForm.trainer_banks : null,
         city: profileForm.city || null,
@@ -310,35 +366,60 @@ const TrainersPage: React.FC = () => {
       </Typography>
       <TextField
         fullWidth
-        label="Телефон основной"
+        required
+        label="Телефон основной *"
         value={form.phone}
-        onChange={(e) => setForm((p: any) => ({ ...p, phone: e.target.value }))}
+        onChange={(e) => setForm((p: any) => ({ ...p, phone: applyPhoneMask(e.target.value) }))}
+        onBlur={(e) => setForm((p: any) => ({ ...p, phone: applyPhoneMask((p as any).phone || '') }))}
+        placeholder="+7(999) 123-45-67"
+        error={!!form.phone && !isValidPhone(form.phone)}
+        helperText={form.phone && !isValidPhone(form.phone) ? 'Введите 10 цифр номера' : ''}
         sx={{ mt: 1 }}
       />
       <TextField
         fullWidth
         label="Телефон дополнительный"
         value={form.phone_extra}
-        onChange={(e) => setForm((p: any) => ({ ...p, phone_extra: e.target.value }))}
+        onChange={(e) => setForm((p: any) => ({ ...p, phone_extra: applyPhoneMask(e.target.value) }))}
+        onBlur={(e) => setForm((p: any) => ({ ...p, phone_extra: applyPhoneMask((p as any).phone_extra || '') }))}
+        placeholder="+7(999) 123-45-67"
+        error={!!form.phone_extra && !isValidPhone(form.phone_extra)}
+        helperText={form.phone_extra && !isValidPhone(form.phone_extra) ? 'Введите 10 цифр или оставьте пустым' : ''}
         sx={{ mt: 1 }}
       />
-      <FormControl fullWidth sx={{ mt: 1 }}>
-        <InputLabel>Формат ведения занятий</InputLabel>
-        <Select
-          value={form.trainer_lesson_formats}
-          label="Формат ведения занятий"
-          onChange={(e) =>
-            setForm((p: any) => ({ ...p, trainer_lesson_formats: e.target.value as TrainerLessonFormat | '' }))
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, mb: 0.5 }}>
+        Формат ведения занятий
+      </Typography>
+      <FormGroup row sx={{ mt: 0.5 }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={form.trainer_lesson_formats === 'group' || form.trainer_lesson_formats === 'both'}
+              onChange={(e) => {
+                const group = e.target.checked;
+                const ind = form.trainer_lesson_formats === 'individual' || form.trainer_lesson_formats === 'both';
+                const next: TrainerLessonFormat | '' = group && ind ? 'both' : group ? 'group' : ind ? 'individual' : '';
+                setForm((p: any) => ({ ...p, trainer_lesson_formats: next }));
+              }}
+            />
           }
-        >
-          <MenuItem value="">Не указано</MenuItem>
-          {LESSON_FORMAT_OPTIONS.map((o) => (
-            <MenuItem key={o.value} value={o.value}>
-              {o.label}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+          label="Групповой"
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={form.trainer_lesson_formats === 'individual' || form.trainer_lesson_formats === 'both'}
+              onChange={(e) => {
+                const ind = e.target.checked;
+                const group = form.trainer_lesson_formats === 'group' || form.trainer_lesson_formats === 'both';
+                const next: TrainerLessonFormat | '' = group && ind ? 'both' : group ? 'group' : ind ? 'individual' : '';
+                setForm((p: any) => ({ ...p, trainer_lesson_formats: next }));
+              }}
+            />
+          }
+          label="Индивидуальный"
+        />
+      </FormGroup>
       <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, mb: 0.5 }}>
         Банк для перевода
       </Typography>
@@ -401,6 +482,8 @@ const TrainersPage: React.FC = () => {
         label="Телеграмм"
         value={form.trainer_telegram}
         onChange={(e) => setForm((p: any) => ({ ...p, trainer_telegram: e.target.value }))}
+        placeholder="@username"
+        helperText="@username"
         sx={{ mt: 1 }}
       />
       <FormGroup row sx={{ mt: 1 }}>
@@ -426,15 +509,70 @@ const TrainersPage: React.FC = () => {
       <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2 }}>
         График работы
       </Typography>
-      <TextField
-        fullWidth
-        placeholder="Например: Пн–Пт 08:00–12:00, 14:00–18:00"
-        value={form.work_schedule}
-        onChange={(e) => setForm((p: any) => ({ ...p, work_schedule: e.target.value }))}
-        multiline
-        minRows={2}
-        sx={{ mt: 0.5 }}
-      />
+      {form.work_schedule.trim() && !form.work_schedule.trim().startsWith('{"d"') && (() => {
+        const parsed = parseWorkSchedule(form.work_schedule);
+        const isLegacy = parsed.days.length === 0 && parsed.slots.length === 0;
+        if (isLegacy) {
+          return (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Ранее указано: {form.work_schedule}
+            </Typography>
+          );
+        }
+        return null;
+      })()}
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+        Дни
+      </Typography>
+      <FormGroup row sx={{ flexWrap: 'wrap', gap: 0 }}>
+        {WORK_SCHEDULE_DAYS.map(({ id, label }) => {
+          const parsed = parseWorkSchedule(form.work_schedule);
+          const checked = parsed.days.includes(id);
+          return (
+            <FormControlLabel
+              key={id}
+              control={
+                <Checkbox
+                  checked={checked}
+                  onChange={() => {
+                    const parsed = parseWorkSchedule(form.work_schedule);
+                    const days = checked ? parsed.days.filter((d) => d !== id) : [...parsed.days, id].sort();
+                    const next = JSON.stringify({ d: days, s: parsed.slots });
+                    setForm((p: any) => ({ ...p, work_schedule: next }));
+                  }}
+                />
+              }
+              label={label}
+            />
+          );
+        })}
+      </FormGroup>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 0.5 }}>
+        Время (интервал 1 час)
+      </Typography>
+      <FormGroup row sx={{ flexWrap: 'wrap', gap: 0 }}>
+        {WORK_SCHEDULE_SLOTS.map((slot) => {
+          const parsed = parseWorkSchedule(form.work_schedule);
+          const checked = parsed.slots.includes(slot);
+          return (
+            <FormControlLabel
+              key={slot}
+              control={
+                <Checkbox
+                  checked={checked}
+                  onChange={() => {
+                    const parsed = parseWorkSchedule(form.work_schedule);
+                    const slots = checked ? parsed.slots.filter((s) => s !== slot) : [...parsed.slots, slot].sort();
+                    const next = JSON.stringify({ d: parsed.days, s: slots });
+                    setForm((p: any) => ({ ...p, work_schedule: next }));
+                  }}
+                />
+              }
+              label={slot}
+            />
+          );
+        })}
+      </FormGroup>
 
       <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2 }}>
         Формат занятий
@@ -683,7 +821,15 @@ const TrainersPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Отмена</Button>
-          <Button onClick={handleCreate} variant="contained">
+          <Button
+            onClick={handleCreate}
+            variant="contained"
+            disabled={
+              !newTrainer.phone.trim() ||
+              !isValidPhone(newTrainer.phone) ||
+              (!!newTrainer.phone_extra.trim() && !isValidPhone(newTrainer.phone_extra))
+            }
+          >
             Создать
           </Button>
         </DialogActions>
@@ -696,7 +842,15 @@ const TrainersPage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setProfileOpen(false)}>Отмена</Button>
-          <Button onClick={handleSaveProfile} variant="contained">
+          <Button
+            onClick={handleSaveProfile}
+            variant="contained"
+            disabled={
+              !profileForm.phone.trim() ||
+              !isValidPhone(profileForm.phone) ||
+              (!!profileForm.phone_extra.trim() && !isValidPhone(profileForm.phone_extra))
+            }
+          >
             Сохранить
           </Button>
         </DialogActions>

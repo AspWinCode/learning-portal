@@ -1377,12 +1377,14 @@ const TasksPage: React.FC = () => {
                   </Box>
                 )}
 
-                {/* Оплаты / Продления */}
-                {dayDesk.payments.length > 0 && (
-                  <Box>
-                    <Typography variant="h6" gutterBottom>Оплаты и продления</Typography>
-                    <Stack spacing={1}>
-                      {dayDesk.payments
+                {/* Оплаты / Продления — блок всегда виден */}
+                <Box>
+                  <Typography variant="h6" gutterBottom>Оплаты и продления</Typography>
+                  <Stack spacing={1}>
+                    {dayDesk.payments.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary">Нет задач.</Typography>
+                    ) : (
+                      dayDesk.payments
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
                         .map((task) => {
                           const isPaymentOverdue = task.task_kind === 'payment_overdue';
@@ -1516,7 +1518,7 @@ const TasksPage: React.FC = () => {
                                     flexWrap="wrap"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    {isPaymentOverdue && task.student_ids?.[0] != null && (
+                                    {task.student_ids?.[0] != null && (
                                       <Button
                                         size="small"
                                         variant="outlined"
@@ -1526,16 +1528,14 @@ const TasksPage: React.FC = () => {
                                         Открыть ученика
                                       </Button>
                                     )}
-                                    {isPaymentOverdue && (
-                                      <Button
-                                        size="small"
-                                        variant="outlined"
-                                        component={Link}
-                                        to="/sales/debts"
-                                      >
-                                        Долги и оплаты
-                                      </Button>
-                                    )}
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      component={Link}
+                                      to="/sales/debts"
+                                    >
+                                      Долги и оплаты
+                                    </Button>
                                     <Button
                                       size="small"
                                       variant="outlined"
@@ -1625,9 +1625,9 @@ const TasksPage: React.FC = () => {
                             </Card>
                           );
                         })}
-                    </Stack>
-                  </Box>
-                )}
+                    )}
+                  </Stack>
+                </Box>
 
                 {/* Операционка */}
                 <Box>

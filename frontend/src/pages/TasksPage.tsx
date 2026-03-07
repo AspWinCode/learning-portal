@@ -13,12 +13,14 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  Grid,
   IconButton,
   LinearProgress,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
+  Paper,
   Stack,
   Tab,
   Tabs,
@@ -546,101 +548,115 @@ const TasksPage: React.FC = () => {
   return (
     <Layout>
       <Stack spacing={2}>
-        <Typography variant="h4">Задачи</Typography>
-
-        {isAdminOrOwner && (
-          <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-            <Tab label="Задачи" />
-            <Tab label="Шаблоны задач" />
-          </Tabs>
-        )}
-
-        {(isAdminOrOwner || user?.role === 'trainer') && (
-          <FormControlLabel
-            control={
-              <Switch
-                checked={showTodayPlan}
-                onChange={(e) => {
-                  const v = e.target.checked;
-                  setShowTodayPlan(v);
-                  try {
-                    window.localStorage.setItem(SHOW_TODAY_PLAN_KEY, v ? '1' : '0');
-                  } catch {}
-                }}
-                color="primary"
+        {/* Компактный хедер */}
+        <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+          <Typography variant="h4">Задачи</Typography>
+          <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1}>
+            {isAdminOrOwner && (
+              <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
+                <Tab label="Задачи" />
+                <Tab label="Шаблоны задач" />
+              </Tabs>
+            )}
+            {(isAdminOrOwner || user?.role === 'trainer') && (
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showTodayPlan}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setShowTodayPlan(v);
+                      try {
+                        window.localStorage.setItem(SHOW_TODAY_PLAN_KEY, v ? '1' : '0');
+                      } catch {}
+                    }}
+                    color="primary"
+                  />
+                }
+                label="План на сегодня"
               />
-            }
-            label="План на сегодня"
-          />
-        )}
+            )}
+          </Stack>
+        </Stack>
 
         {error && <Alert severity="error">{error}</Alert>}
 
         {isSales && tab === 0 && (
           <Stack spacing={2}>
-            <Card variant="outlined">
-              <CardContent sx={{ pb: 1.5 }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1}>
-                  <Box>
-                    <Typography variant="h6">План на сегодня</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {dayDesk
-                        ? `Просрочено: ${dayDesk.stats.overdue} · На сегодня: ${dayDesk.stats.today} · Выполнено сегодня: ${dayDesk.stats.completed_today}`
-                        : 'Загрузка сводки дня...'}
+            {/* План на сегодня — KPI-карточки */}
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>План на сегодня</Typography>
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                    <Typography variant="h4" color={dayDesk && dayDesk.stats.overdue > 0 ? 'error.main' : 'text.primary'}>
+                      {dayDesk ? dayDesk.stats.overdue : '—'}
                     </Typography>
-                    {dayDesk && dayDesk.stats.overload > 0 && (
-                      <Typography variant="body2" color="error">
-                        Перегруз: +{dayDesk.stats.overload} задач
-                      </Typography>
-                    )}
-                  </Box>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          size="small"
-                          checked={hideCompletedInDesk}
-                          onChange={(e) => setHideCompletedInDesk(e.target.checked)}
-                        />
-                      }
-                      label="Скрыть выполненные"
+                    <Typography variant="body2" color="text.secondary">Просрочено</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                    <Typography variant="h4">{dayDesk ? dayDesk.stats.today : '—'}</Typography>
+                    <Typography variant="body2" color="text.secondary">На сегодня</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                    <Typography variant="h4" color="success.main">{dayDesk ? dayDesk.stats.completed_today : '—'}</Typography>
+                    <Typography variant="body2" color="text.secondary">Выполнено сегодня</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: dayDesk && dayDesk.stats.overload > 0 ? 'error.light' : 'background.default' }}>
+                    <Typography variant="h4" color={dayDesk && dayDesk.stats.overload > 0 ? 'error.dark' : 'text.primary'}>
+                      {dayDesk && dayDesk.stats.overload > 0 ? `+${dayDesk.stats.overload}` : '0'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">Перегруз</Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+              <Stack direction="row" flexWrap="wrap" alignItems="center" gap={1}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={hideCompletedInDesk}
+                      onChange={(e) => setHideCompletedInDesk(e.target.checked)}
                     />
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        urgentBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }}
-                    >
-                      Начать работу
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        setTodayPlanTab('today');
-                        setShowTodayPlan(true);
-                        const root = document.getElementById('root');
-                        if (root) {
-                          root.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }
-                      }}
-                    >
-                      Показать всё на сегодня
-                    </Button>
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
+                  }
+                  label="Скрыть выполненные"
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => urgentBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                >
+                  Начать работу
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setTodayPlanTab('today');
+                    setShowTodayPlan(true);
+                    document.getElementById('root')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
+                  Показать всё на сегодня
+                </Button>
+              </Stack>
+            </Paper>
 
             {dayDeskLoading && <Typography color="text.secondary">Загрузка рабочего стола...</Typography>}
 
             {dayDesk && (
               <Stack spacing={3}>
-                {/* Срочно */}
+                {/* Срочно — во всю ширину */}
                 {dayDesk.urgent.length > 0 && (
                   <Box ref={urgentBlockRef}>
-                    <Typography variant="h6" gutterBottom>Срочно</Typography>
+                    <Typography variant="h6" gutterBottom>🔥 Срочно</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Жёсткий дедлайн сегодня</Typography>
                     <Stack spacing={1}>
                       {dayDesk.urgent
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
@@ -742,6 +758,7 @@ const TasksPage: React.FC = () => {
                                     <Button
                                       size="small"
                                       variant="outlined"
+                                      color="primary"
                                       onClick={() => openTaskDialog(task)}
                                     >
                                       Открыть
@@ -751,6 +768,7 @@ const TasksPage: React.FC = () => {
                                         <Button
                                           size="small"
                                           variant="contained"
+                                          color="success"
                                           onClick={() =>
                                             tasksApi
                                               .completeTask(task.id)
@@ -796,6 +814,7 @@ const TasksPage: React.FC = () => {
                                           <Button
                                             size="small"
                                             variant={task.pinned_today ? 'contained' : 'outlined'}
+                                            color="secondary"
                                             onClick={() =>
                                               tasksApi
                                                 .pinTaskToday(task.id, !task.pinned_today)
@@ -830,10 +849,12 @@ const TasksPage: React.FC = () => {
                   </Box>
                 )}
 
-                {/* Родители */}
-                <Box>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                    <Typography variant="h6">Родители</Typography>
+                {/* Быстрые потоки дня: Родители | Отработки | Оплаты — 3 колонки */}
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={4}>
+                    <Box>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }} flexWrap="wrap">
+                        <Typography variant="h6">👨‍👩‍👧 Родители</Typography>
                     <Button
                       size="small"
                       variant="contained"
@@ -1011,6 +1032,7 @@ const TasksPage: React.FC = () => {
                                     <Button
                                       size="small"
                                       variant="outlined"
+                                      color="primary"
                                       onClick={() => openTaskDialog(task)}
                                     >
                                       Открыть
@@ -1020,6 +1042,7 @@ const TasksPage: React.FC = () => {
                                         <Button
                                           size="small"
                                           variant="contained"
+                                          color="success"
                                           onClick={() =>
                                             tasksApi
                                               .completeTask(task.id)
@@ -1065,6 +1088,7 @@ const TasksPage: React.FC = () => {
                                           <Button
                                             size="small"
                                             variant={task.pinned_today ? 'contained' : 'outlined'}
+                                            color="secondary"
                                             onClick={() =>
                                               tasksApi
                                                 .pinTaskToday(task.id, !task.pinned_today)
@@ -1098,12 +1122,14 @@ const TasksPage: React.FC = () => {
                     </Stack>
                   )}
                 </Box>
+                  </Grid>
 
-                {/* Отработки */}
+                  {/* Отработки */}
+                  <Grid item xs={12} md={4}>
                 {(absenceMakeupsTodo.length > 0 || dayDesk.makeups.length > 0) && (
                   <Box>
                     <Typography variant="h6" gutterBottom>
-                      Отработки
+                      📚 Отработки
                     </Typography>
                     <Stack
                       direction={{ xs: 'column', md: 'row' }}
@@ -1113,7 +1139,7 @@ const TasksPage: React.FC = () => {
                     >
                       {absenceMakeupsTodo.length > 0 && (
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
                             Нужна отработка ({absenceMakeupsTodo.length > 10 ? '10+' : absenceMakeupsTodo.length})
                           </Typography>
                           <Stack spacing={1}>
@@ -1151,8 +1177,8 @@ const TasksPage: React.FC = () => {
                       )}
                       {dayDesk.makeups.length > 0 && (
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                            Отработка назначена (задачи)
+                          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                            Отработка назначена
                           </Typography>
                           <Stack spacing={1}>
                             {dayDesk.makeups
@@ -1279,6 +1305,7 @@ const TasksPage: React.FC = () => {
                                           <Button
                                             size="small"
                                             variant="outlined"
+                                            color="primary"
                                             onClick={() => openTaskDialog(task)}
                                           >
                                             Открыть
@@ -1288,6 +1315,7 @@ const TasksPage: React.FC = () => {
                                               <Button
                                                 size="small"
                                                 variant="contained"
+                                                color="success"
                                                 onClick={() =>
                                                   tasksApi
                                                     .completeTask(task.id)
@@ -1337,6 +1365,7 @@ const TasksPage: React.FC = () => {
                                                 <Button
                                                   size="small"
                                                   variant={task.pinned_today ? 'contained' : 'outlined'}
+                                                  color="secondary"
                                                   onClick={() =>
                                                     tasksApi
                                                       .pinTaskToday(task.id, !task.pinned_today)
@@ -1376,17 +1405,20 @@ const TasksPage: React.FC = () => {
                     </Stack>
                   </Box>
                 )}
+                  </Grid>
 
-                {/* Оплаты / Продления — блок всегда виден */}
+                  {/* Оплаты и продления */}
+                  <Grid item xs={12} md={4}>
                 <Box>
-                  <Typography variant="h6" gutterBottom>Оплаты и продления</Typography>
+                  <Typography variant="h6" gutterBottom>💰 Оплаты и продления</Typography>
                   <Stack spacing={1}>
                     {dayDesk.payments.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">Нет задач.</Typography>
                     ) : (
                       <>
-                        {dayDesk.payments
+                        {[...dayDesk.payments]
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
+                        .sort((a, b) => (a.task_kind === 'payment_overdue' && b.task_kind !== 'payment_overdue' ? -1 : b.task_kind === 'payment_overdue' && a.task_kind !== 'payment_overdue' ? 1 : 0))
                         .map((task) => {
                           const isPaymentOverdue = task.task_kind === 'payment_overdue';
                           const studentName = task.student_ids?.length
@@ -1417,9 +1449,13 @@ const TasksPage: React.FC = () => {
                               sx={{
                                 py: 0,
                                 ...(paymentPaid && { bgcolor: 'success.50', borderColor: 'success.light' }),
+                                ...(isPaymentOverdue && !paymentPaid && { borderColor: 'error.main', borderWidth: 2, bgcolor: 'error.light' }),
                               }}
                             >
                               <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                {isPaymentOverdue && !paymentPaid && (
+                                  <Chip size="small" label="Просрочено" color="error" sx={{ mb: 1 }} />
+                                )}
                                 <Stack
                                   direction="row"
                                   alignItems="flex-start"
@@ -1540,6 +1576,7 @@ const TasksPage: React.FC = () => {
                                     <Button
                                       size="small"
                                       variant="outlined"
+                                      color="primary"
                                       onClick={() => openTaskDialog(task)}
                                     >
                                       Открыть
@@ -1596,6 +1633,7 @@ const TasksPage: React.FC = () => {
                                           <Button
                                             size="small"
                                             variant={task.pinned_today ? 'contained' : 'outlined'}
+                                            color="secondary"
                                             onClick={() =>
                                               tasksApi
                                                 .pinTaskToday(task.id, !task.pinned_today)
@@ -1630,10 +1668,14 @@ const TasksPage: React.FC = () => {
                     )}
                   </Stack>
                 </Box>
+                  </Grid>
+                </Grid>
 
-                {/* Операционка */}
+                {/* Операционка | Лиды — 2 колонки */}
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
                 <Box>
-                  <Typography variant="h6" gutterBottom>Операционка</Typography>
+                  <Typography variant="h6" gutterBottom>⚙ Операционка</Typography>
                   {dayDesk.operations.length === 0 ? (
                     <Typography color="text.secondary">Нет задач.</Typography>
                   ) : (
@@ -1740,6 +1782,7 @@ const TasksPage: React.FC = () => {
                                     <Button
                                       size="small"
                                       variant="outlined"
+                                      color="primary"
                                       onClick={() => openTaskDialog(task)}
                                     >
                                       Открыть
@@ -1749,6 +1792,7 @@ const TasksPage: React.FC = () => {
                                         <Button
                                           size="small"
                                           variant="contained"
+                                          color="success"
                                           onClick={() =>
                                             tasksApi
                                               .completeTask(task.id)
@@ -1794,6 +1838,7 @@ const TasksPage: React.FC = () => {
                                           <Button
                                             size="small"
                                             variant={task.pinned_today ? 'contained' : 'outlined'}
+                                            color="secondary"
                                             onClick={() =>
                                               tasksApi
                                                 .pinTaskToday(task.id, !task.pinned_today)
@@ -1827,11 +1872,13 @@ const TasksPage: React.FC = () => {
                     </Stack>
                   )}
                 </Box>
+                  </Grid>
 
-                {/* Лиды (вечерний блок) */}
+                  {/* Лиды на мероприятия */}
+                  <Grid item xs={12} md={6}>
                 {dayDesk.leads.length > 0 && (
                   <Box>
-                    <Typography variant="h6" gutterBottom>Лиды на мероприятия</Typography>
+                    <Typography variant="h6" gutterBottom>🎯 Лиды на мероприятия</Typography>
                     <Stack spacing={1}>
                       {dayDesk.leads
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
@@ -1934,6 +1981,7 @@ const TasksPage: React.FC = () => {
                                     <Button
                                       size="small"
                                       variant="outlined"
+                                      color="primary"
                                       onClick={() => openTaskDialog(task)}
                                     >
                                       Открыть
@@ -1943,6 +1991,7 @@ const TasksPage: React.FC = () => {
                                         <Button
                                           size="small"
                                           variant="contained"
+                                          color="success"
                                           onClick={() =>
                                             tasksApi
                                               .completeTask(task.id)
@@ -1988,6 +2037,7 @@ const TasksPage: React.FC = () => {
                                           <Button
                                             size="small"
                                             variant={task.pinned_today ? 'contained' : 'outlined'}
+                                            color="secondary"
                                             onClick={() =>
                                               tasksApi
                                                 .pinTaskToday(task.id, !task.pinned_today)
@@ -2021,6 +2071,9 @@ const TasksPage: React.FC = () => {
                     </Stack>
                   </Box>
                 )}
+                  </Grid>
+                </Grid>
+
               </Stack>
             )}
           </Stack>
@@ -2225,8 +2278,8 @@ const TasksPage: React.FC = () => {
             )}
 
             {canSeeLessonTasks && (
-            <Box ref={lessonBlockRef}>
-              <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Позвать детей на занятие</Typography>
+            <Paper variant="outlined" sx={{ p: 2 }} ref={lessonBlockRef}>
+              <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>📅 Уроки</Typography>
               <Tabs value={lessonPeriodTab} onChange={(_, v) => setLessonPeriodTab(v)} sx={{ mb: 2, minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
                 <Tab label="Сегодня" />
                 <Tab label="Завтра" />
@@ -2381,38 +2434,46 @@ const TasksPage: React.FC = () => {
                   )}
                 </>
               )}
-            </Box>
+            </Paper>
             )}
 
-            <Box>
+            <Paper variant="outlined" sx={{ p: 2 }}>
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>Все задачи</Typography>
-              <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
-                <Button size="small" variant={categoryFilter === 'schools' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('schools')}>
-                  Школы
-                </Button>
-                <Button size="small" variant={categoryFilter === 'parents' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('parents')}>
-                  Родители
-                </Button>
-                <Button size="small" variant={categoryFilter === 'leads' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('leads')}>
-                  Лиды
-                </Button>
-              </Stack>
-              {isAdminOrOwner && (
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-                  <Button size="small" variant={statusFilter === 'active' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('active')}>
-                    Активные
+              <Stack direction="row" flexWrap="wrap" alignItems="center" gap={2} sx={{ mb: 1 }}>
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>Категория:</Typography>
+                  <Button size="small" variant={categoryFilter === 'schools' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('schools')}>
+                    Школы
                   </Button>
-                  <Button size="small" variant={statusFilter === 'archived' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('archived')}>
-                    Архив
+                  <Button size="small" variant={categoryFilter === 'parents' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('parents')}>
+                    Родители
                   </Button>
-                  <Button startIcon={<AddIcon />} variant="contained" onClick={() => openTaskDialog(undefined)} sx={{ ml: 2 }}>
-                    Создать задачу
-                  </Button>
-                  <Button size="small" variant="outlined" onClick={() => openTaskDialog(undefined, templates[0]?.id)}>
-                    Из шаблона
+                  <Button size="small" variant={categoryFilter === 'leads' ? 'contained' : 'outlined'} onClick={() => setCategoryFilter('leads')}>
+                    Лиды
                   </Button>
                 </Stack>
-              )}
+                {isAdminOrOwner && (
+                  <Stack direction="row" alignItems="center" spacing={0.5}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>Статус:</Typography>
+                    <Button size="small" variant={statusFilter === 'active' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('active')}>
+                      Активные
+                    </Button>
+                    <Button size="small" variant={statusFilter === 'archived' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('archived')}>
+                      Архив
+                    </Button>
+                  </Stack>
+                )}
+                {isAdminOrOwner && (
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Button startIcon={<AddIcon />} variant="contained" size="medium" onClick={() => openTaskDialog(undefined)}>
+                      Создать задачу
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => openTaskDialog(undefined, templates[0]?.id)}>
+                      Из шаблона
+                    </Button>
+                  </Stack>
+                )}
+              </Stack>
               {tasks.length === 0 ? (
                 <Typography color="text.secondary">Нет задач.</Typography>
               ) : (
@@ -2540,7 +2601,7 @@ const TasksPage: React.FC = () => {
                   ))}
                 </Stack>
               )}
-            </Box>
+            </Paper>
           </Stack>
         ) : tab === 1 && isAdminOrOwner ? (
           <Box>

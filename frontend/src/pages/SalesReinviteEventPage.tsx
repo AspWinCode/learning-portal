@@ -4,6 +4,8 @@ import {
   Alert,
   Button,
   CircularProgress,
+  Menu,
+  MenuItem,
   Stack,
   Table,
   TableBody,
@@ -41,6 +43,8 @@ export const SalesReinviteEventPageContent: React.FC = () => {
   const [registrationsByEvent, setRegistrationsByEvent] = useState<Map<number, EventRegistration[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [eventsMenuAnchor, setEventsMenuAnchor] = useState<{ el: HTMLElement; leadId: number; excludeEventId?: number } | null>(null);
+  const [moveLoadingLeadId, setMoveLoadingLeadId] = useState<number | null>(null);
 
   const loadEvents = useCallback(async () => {
     try {
@@ -138,6 +142,47 @@ export const SalesReinviteEventPageContent: React.FC = () => {
     });
   }, [events, registrationsByEvent, leadMap]);
 
+  const eventsToOffer = useMemo(() => {
+    if (!eventsMenuAnchor) return [];
+    const exclude = eventsMenuAnchor.excludeEventId;
+    return events
+      .filter((e) => e.status === 'active' && e.id !== exclude)
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  }, [events, eventsMenuAnchor]);
+
+  const handleOpenEventsMenu = (e: React.MouseEvent<HTMLElement>, leadId: number, excludeEventId?: number) => {
+    e.stopPropagation();
+    setEventsMenuAnchor({ el: e.currentTarget, leadId, excludeEventId });
+  };
+
+  const handleCloseEventsMenu = () => {
+    setEventsMenuAnchor(null);
+  };
+
+  const handleSelectEventToMove = async (eventId: number) => {
+    if (!eventsMenuAnchor) return;
+    const { leadId } = eventsMenuAnchor;
+    setMoveLoadingLeadId(leadId);
+    setError(null);
+    try {
+      await salesApi.registerLeadToEvent(eventId, { lead_id: leadId });
+      const lead = leadMap.get(leadId) ?? reinviteLeads.find((l) => l.id === leadId);
+      if (lead && (lead.tags || []).includes(TAG_REINVITE_NEXT_EVENT)) {
+        const nextTags = (lead.tags || []).filter((t) => t !== TAG_REINVITE_NEXT_EVENT);
+        await salesApi.updateLead(leadId, { tags: nextTags });
+      }
+      handleCloseEventsMenu();
+      await Promise.all([
+        loadReinviteLeads(),
+        loadAllRegistrations(events.map((ev) => ev.id)),
+      ]);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось записать на мероприятие'));
+    } finally {
+      setMoveLoadingLeadId(null);
+    }
+  };
+
   return (
     <>
       <Stack spacing={2}>
@@ -197,9 +242,10 @@ export const SalesReinviteEventPageContent: React.FC = () => {
                           <Button
                             size="small"
                             variant="contained"
-                            onClick={() => navigate('/sales/events')}
+                            disabled={moveLoadingLeadId === registration.lead_id}
+                            onClick={(e) => handleOpenEventsMenu(e, registration.lead_id, event.id)}
                           >
-                            {S.btnEvents}
+                            {moveLoadingLeadId === registration.lead_id ? '...' : S.btnEvents}
                           </Button>
                         </Stack>
                       </TableCell>
@@ -246,8 +292,13 @@ export const SalesReinviteEventPageContent: React.FC = () => {
                             >
                               {S.btnLeadCard}
                             </Button>
-                            <Button size="small" variant="contained" onClick={() => navigate('/sales/events')}>
-                              {S.btnEvents}
+                            <Button
+                              size="small"
+                              variant="contained"
+                              disabled={moveLoadingLeadId === lead.id}
+                              onClick={(e) => handleOpenEventsMenu(e, lead.id)}
+                            >
+                              {moveLoadingLeadId === lead.id ? '...' : S.btnEvents}
                             </Button>
                           </Stack>
                         </TableCell>
@@ -259,6 +310,32 @@ export const SalesReinviteEventPageContent: React.FC = () => {
             </TableContainer>
           </>
         )}
+
+        <Menu
+          anchorEl={eventsMenuAnchor?.el ?? null}
+          open={!!eventsMenuAnchor}
+          onClose={handleCloseEventsMenu}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          {eventsToOffer.length === 0 ? (
+            <MenuItem disabled>Нет доступных мероприятий</MenuItem>
+          ) : (
+            eventsToOffer.map((ev) => (
+              <MenuItem
+                key={ev.id}
+                onClick={() => void handleSelectEventToMove(ev.id)}
+              >
+                <Stack>
+                  <Typography variant="body2">{ev.title}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {isValid(parseISO(ev.starts_at)) ? format(parseISO(ev.starts_at), 'dd.MM.yyyy HH:mm') : ev.starts_at}
+                  </Typography>
+                </Stack>
+              </MenuItem>
+            ))
+          )}
+        </Menu>
       </Stack>
     </>
   );

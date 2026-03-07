@@ -40,6 +40,7 @@ from app.models import (
     AccountTemplate,
     SalesCity,
     SalesSchool,
+    SalesClass,
     SalesInstruction,
     SalesInstructionImage,
     StudentCard,
@@ -104,6 +105,9 @@ from app.schemas import (
     SalesSchoolCreate,
     SalesSchoolResponse,
     SalesSchoolUpdate,
+    SalesClassCreate,
+    SalesClassResponse,
+    SalesClassUpdate,
     AccountTemplateCreate,
     AccountTemplateResponse,
     LeadQuickCommunicationCreate,
@@ -3515,6 +3519,63 @@ async def update_sales_school(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "update", "sales_school", item.id, data)
+    return item
+
+
+# --- Sales classes (справочник классов для лидов) ---
+@router.get("/classes", response_model=List[SalesClassResponse])
+async def list_sales_classes(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    query = db.query(SalesClass).order_by(SalesClass.name.asc())
+    if active_only:
+        query = query.filter(SalesClass.is_active.is_(True))
+    return query.all()
+
+
+@router.post("/classes", response_model=SalesClassResponse, status_code=status.HTTP_201_CREATED)
+async def create_sales_class(
+    payload: SalesClassCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название класса обязательно")
+    exists = db.query(SalesClass).filter(cast(SalesClass.name, Text).ilike(name)).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Такой класс уже есть")
+    item = SalesClass(name=name, is_active=True)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "create", "sales_class", item.id, {"name": name})
+    return item
+
+
+@router.put("/classes/{class_id}", response_model=SalesClassResponse)
+async def update_sales_class(
+    class_id: int,
+    payload: SalesClassUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    item = db.query(SalesClass).filter(SalesClass.id == class_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Класс не найден")
+    data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Название класса обязательно")
+        item.name = name
+    if "is_active" in data:
+        item.is_active = data["is_active"]
+    db.commit()
+    db.refresh(item)
+    log_action(db, current_user.id, "update", "sales_class", item.id, data)
     return item
 
 

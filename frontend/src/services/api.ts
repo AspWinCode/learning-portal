@@ -23,6 +23,7 @@ import {
   LeadSource,
   SalesCity,
   SalesSchool,
+  SalesClass,
   AccountTemplate,
   LeadTaskTemplate,
   LeadStatusOption,
@@ -1251,6 +1252,18 @@ export const salesApi = {
   },
   updateSalesSchool: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesSchool> => {
     const response = await api.put(`/api/sales/schools/${id}`, payload);
+    return response.data;
+  },
+  listSalesClasses: async (active_only = true): Promise<SalesClass[]> => {
+    const response = await api.get('/api/sales/classes', { params: { active_only } });
+    return response.data;
+  },
+  createSalesClass: async (name: string): Promise<SalesClass> => {
+    const response = await api.post('/api/sales/classes', { name });
+    return response.data;
+  },
+  updateSalesClass: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesClass> => {
+    const response = await api.put(`/api/sales/classes/${id}`, payload);
     return response.data;
   },
   listAccountTemplates: async (): Promise<AccountTemplate[]> => {

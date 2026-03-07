@@ -38,6 +38,7 @@ import {
   LeadTaskTemplate,
   SalesCity,
   SalesSchool,
+  SalesClass,
 } from '../types';
 
 const leadStatusLabels: Record<LeadStatus, string> = {
@@ -76,6 +77,8 @@ const SalesSettingsPage: React.FC = () => {
   const [newCity, setNewCity] = useState('');
   const [schools, setSchools] = useState<SalesSchool[]>([]);
   const [newSchool, setNewSchool] = useState('');
+  const [classes, setClasses] = useState<SalesClass[]>([]);
+  const [newClass, setNewClass] = useState('');
   const [tochkaDateFrom, setTochkaDateFrom] = useState('');
   const [tochkaDateTo, setTochkaDateTo] = useState('');
   const [tochkaImportLoading, setTochkaImportLoading] = useState(false);
@@ -117,6 +120,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Статусы лида', () => salesApi.listLeadStatuses(false), setLeadStatuses),
       load('Города', () => salesApi.listSalesCities(false), setCities),
       load('Школы', () => salesApi.listSalesSchools(false), setSchools),
+      load('Классы', () => salesApi.listSalesClasses(false), setClasses),
       load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
@@ -244,6 +248,52 @@ const SalesSettingsPage: React.FC = () => {
                     <Switch
                       checked={s.is_active}
                       onChange={(e) => safeAction(() => salesApi.updateSalesSchool(s.id, { is_active: e.target.checked }))}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Классы</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Справочник классов для выбора при создании/редактировании лидов (например: 1, 2, 7А, 10Б).
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+            <TextField
+              size="small"
+              label="Новый класс"
+              value={newClass}
+              onChange={(e) => setNewClass(e.target.value)}
+            />
+            <Button
+              variant="contained"
+              onClick={() => safeAction(async () => {
+                if (!newClass.trim()) return;
+                await salesApi.createSalesClass(newClass.trim());
+                setNewClass('');
+              })}
+            >
+              Добавить
+            </Button>
+          </Box>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Активен</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {classes.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell>{c.name}</TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={c.is_active}
+                      onChange={(e) => safeAction(() => salesApi.updateSalesClass(c.id, { is_active: e.target.checked }))}
                     />
                   </TableCell>
                 </TableRow>

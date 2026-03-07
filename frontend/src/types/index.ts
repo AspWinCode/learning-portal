@@ -407,6 +407,13 @@ export interface SalesSchool {
   created_at: string;
 }
 
+export interface SalesClass {
+  id: number;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 /** Шаблон счёта (Настройки Sales): название + формат групповой/индивидуальный */
 export type AccountTemplateFormat = 'group' | 'individual';
 

@@ -406,6 +406,16 @@ class SalesSchool(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class SalesClass(Base):
+    """Справочник классов (для лидов: 1, 2, 3, … 7А, 10Б и т.д.)."""
+    __tablename__ = "sales_classes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class AccountTemplate(Base):
     """Шаблон счёта для настройки Sales: название + формат (групповой/индивидуальный)."""
     __tablename__ = "account_templates"

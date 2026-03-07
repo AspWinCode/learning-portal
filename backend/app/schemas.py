@@ -940,6 +940,28 @@ class SalesSchoolResponse(SalesSchoolBase):
         from_attributes = True
 
 
+class SalesClassBase(BaseModel):
+    name: str
+    is_active: bool = True
+
+
+class SalesClassCreate(BaseModel):
+    name: str
+
+
+class SalesClassUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SalesClassResponse(SalesClassBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class AccountTemplateCreate(BaseModel):
     name: str
     format: Literal["group", "individual"]

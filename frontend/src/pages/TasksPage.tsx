@@ -1384,7 +1384,8 @@ const TasksPage: React.FC = () => {
                     {dayDesk.payments.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">Нет задач.</Typography>
                     ) : (
-                      dayDesk.payments
+                      <>
+                        {dayDesk.payments
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
                         .map((task) => {
                           const isPaymentOverdue = task.task_kind === 'payment_overdue';
@@ -1625,6 +1626,7 @@ const TasksPage: React.FC = () => {
                             </Card>
                           );
                         })}
+                      </>
                     )}
                   </Stack>
                 </Box>

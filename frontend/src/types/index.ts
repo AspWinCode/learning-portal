@@ -901,6 +901,8 @@ export interface TaskResponse {
   priority?: TaskPriority | string;
   pinned_today?: boolean;
   tags?: string[] | null;
+  task_kind?: string | null;
+  reminder_stage?: number | null;
   counters?: {
     parent_replies: number;
     parent_escalations: number;
@@ -915,5 +917,9 @@ export interface TaskResponse {
   repeat_end_type?: RepeatEndType | null;
   repeat_end_after_count?: number | null;
   repeat_end_until?: string | null;
+  /** Для task_kind=payment_overdue */
+  payment_state?: 'unpaid' | 'paid' | 'unknown' | null;
+  payment_days_overdue?: number | null;
+  payment_next_date?: string | null;
 }
 

@@ -1385,6 +1385,10 @@ const TasksPage: React.FC = () => {
                       {dayDesk.payments
                         .filter((t) => !hideCompletedInDesk || t.progress < 100)
                         .map((task) => {
+                          const isPaymentOverdue = task.task_kind === 'payment_overdue';
+                          const studentName = task.student_ids?.length
+                            ? (students.find((s) => s.id === task.student_ids[0])?.full_name ?? `Ученик #${task.student_ids[0]}`)
+                            : null;
                           const dueLabel = task.due_at
                             ? (() => {
                                 try {
@@ -1402,8 +1406,16 @@ const TasksPage: React.FC = () => {
                           const categoryLabel =
                             task.category === 'parents' ? 'Родители' : task.category === 'leads' ? 'Лиды' : 'Школы';
                           const firstSubtasks = (task.subtasks || []).slice(0, 5);
+                          const paymentPaid = task.payment_state === 'paid';
                           return (
-                            <Card key={task.id} variant="outlined" sx={{ py: 0 }}>
+                            <Card
+                              key={task.id}
+                              variant="outlined"
+                              sx={{
+                                py: 0,
+                                ...(paymentPaid && { bgcolor: 'success.50', borderColor: 'success.light' }),
+                              }}
+                            >
                               <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                                 <Stack
                                   direction="row"
@@ -1414,6 +1426,14 @@ const TasksPage: React.FC = () => {
                                 >
                                   <Box sx={{ flex: 1, minWidth: 0 }}>
                                     <Typography variant="subtitle2">{task.title}</Typography>
+                                    {isPaymentOverdue && studentName && (
+                                      <Typography variant="body2" color="text.secondary">
+                                        Ученик: {studentName}
+                                        {task.payment_next_date != null && ` · Дата оплаты: ${task.payment_next_date}`}
+                                        {task.payment_days_overdue != null && task.payment_days_overdue > 0 && ` · Просрочка: ${task.payment_days_overdue} дн.`}
+                                        {task.reminder_stage != null && ` · ${task.reminder_stage === 1 ? '1-е напоминание' : 'Повтор'}`}
+                                      </Typography>
+                                    )}
                                     <Stack
                                       direction="row"
                                       alignItems="center"
@@ -1422,6 +1442,18 @@ const TasksPage: React.FC = () => {
                                       flexWrap="wrap"
                                     >
                                       <Chip size="small" label={categoryLabel} variant="outlined" sx={{ height: 20 }} />
+                                      {isPaymentOverdue && task.reminder_stage === 1 && (
+                                        <Chip size="small" label="Просрочка 3 дня" color="warning" sx={{ height: 20 }} />
+                                      )}
+                                      {isPaymentOverdue && task.reminder_stage === 2 && (
+                                        <Chip size="small" label="Просрочка 10 дней" color="error" sx={{ height: 20 }} />
+                                      )}
+                                      {isPaymentOverdue && paymentPaid && (
+                                        <Chip size="small" label="Оплачено" color="success" sx={{ height: 20 }} />
+                                      )}
+                                      {!isPaymentOverdue && task.payment_state === 'unpaid' && (
+                                        <Chip size="small" label="Не оплачено" color="warning" sx={{ height: 20 }} />
+                                      )}
                                       {dueLabel && (
                                         <Chip size="small" label={dueLabel} color="warning" sx={{ height: 20 }} />
                                       )}
@@ -1493,6 +1525,8 @@ const TasksPage: React.FC = () => {
                                         <Button
                                           size="small"
                                           variant="contained"
+                                          color={paymentPaid ? 'success' : 'primary'}
+                                          {...(paymentPaid && { sx: { fontWeight: 600 } })}
                                           onClick={() =>
                                             tasksApi
                                               .completeTask(task.id)

@@ -2283,6 +2283,8 @@ class TaskResponse(BaseModel):
     priority: str = "normal"
     pinned_today: bool = False
     tags: Optional[List[str]] = None
+    task_kind: Optional[str] = None
+    reminder_stage: Optional[int] = None
     counters: Optional[TaskCountersResponse] = None
     subtasks: List[TaskSubtaskResponse]
     student_ids: List[int]
@@ -2293,6 +2295,10 @@ class TaskResponse(BaseModel):
     repeat_end_type: Optional[str] = None
     repeat_end_after_count: Optional[int] = None
     repeat_end_until: Optional[date] = None
+    # Для task_kind=payment_overdue: вычисляемые поля
+    payment_state: Optional[Literal["unpaid", "paid", "unknown"]] = None
+    payment_days_overdue: Optional[int] = None
+    payment_next_date: Optional[date] = None
 
     class Config:
         from_attributes = True

@@ -10,6 +10,10 @@ from app import auth
 from app.models import (
     User,
     Student,
+    StudentCard,
+    StudentAccount,
+    StudentAccountTransaction,
+    StudentAccountTransactionKind,
     TaskTemplate,
     TaskTemplateSubtask,
     TaskTemplateStudent,
@@ -81,7 +85,54 @@ def _template_to_response(t: TaskTemplate) -> TaskTemplateResponse:
     )
 
 
-def _task_to_response(task: Task) -> TaskResponse:
+def _get_task_payment_state(db: Session, task: Task) -> dict:
+    """Для task_kind=payment_overdue: вычисляет payment_state, payment_days_overdue, payment_next_date."""
+    if getattr(task, "task_kind", None) != "payment_overdue":
+        return {}
+    student_ids = [ts.student_id for ts in (task.students or [])]
+    if not student_ids:
+        return {"payment_state": "unknown", "payment_days_overdue": None, "payment_next_date": None}
+    student_id = student_ids[0]
+    today = date.today()
+    card = db.query(StudentCard).filter(
+        StudentCard.student_id == student_id,
+        StudentCard.archived.is_(False),
+    ).first()
+    next_pay = _norm_date(getattr(card, "next_payment_date", None)) if card else None
+
+    payment_after_created = False
+    if task.created_at:
+        payment_after_created = (
+            db.query(StudentAccountTransaction.id)
+            .join(StudentAccount, StudentAccount.id == StudentAccountTransaction.account_id)
+            .filter(
+                StudentAccount.student_id == student_id,
+                StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT.value,
+                StudentAccountTransaction.created_at > task.created_at,
+            )
+            .first()
+            is not None
+        )
+
+    if next_pay and (next_pay > today or payment_after_created):
+        payment_state = "paid"
+    elif next_pay and next_pay < today:
+        payment_state = "unpaid"
+    else:
+        payment_state = "unknown"
+
+    payment_days_overdue = None
+    if next_pay and next_pay < today:
+        payment_days_overdue = (today - next_pay).days
+
+    return {
+        "payment_state": payment_state,
+        "payment_days_overdue": payment_days_overdue,
+        "payment_next_date": next_pay,
+    }
+
+
+def _task_to_response(task: Task, db: Optional[Session] = None) -> TaskResponse:
     subtasks = [
         TaskSubtaskResponse(id=s.id, task_id=s.task_id, text=s.text, completed=s.completed, order=s.order)
         for s in sorted(task.subtasks, key=lambda x: (x.order, x.id))
@@ -102,6 +153,11 @@ def _task_to_response(task: Task) -> TaskResponse:
     )
     category = getattr(task, "category", None) or "schools"
     due_at = getattr(task, "due_at", None)
+    task_kind = getattr(task, "task_kind", None)
+    reminder_stage = getattr(task, "reminder_stage", None)
+    extra = {}
+    if db and task_kind == "payment_overdue":
+        extra = _get_task_payment_state(db, task)
     return TaskResponse(
         id=task.id,
         title=task.title,
@@ -118,6 +174,8 @@ def _task_to_response(task: Task) -> TaskResponse:
         priority=getattr(task, "priority", None) or "normal",
         pinned_today=getattr(task, "pinned_today", False),
         tags=tags,
+        task_kind=task_kind,
+        reminder_stage=reminder_stage,
         counters=counters,
         subtasks=subtasks,
         student_ids=student_ids,
@@ -128,6 +186,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         repeat_end_type=getattr(task, "repeat_end_type", None),
         repeat_end_after_count=getattr(task, "repeat_end_after_count", None),
         repeat_end_until=_norm_date(getattr(task, "repeat_end_until", None)),
+        **extra,
     )
 
 
@@ -294,7 +353,7 @@ async def list_tasks(
 ):
     q = (
         db.query(Task)
-        .options(joinedload(Task.subtasks), joinedload(Task.students))
+        .options(joinedload(Task.subtasks), joinedload(Task.students), joinedload(Task.counters))
         .order_by(Task.created_at.desc())
     )
     if current_user.role == "sales":
@@ -306,7 +365,7 @@ async def list_tasks(
     if category and category in ("schools", "parents", "leads"):
         q = q.filter(Task.category == category)
     tasks = q.all()
-    return [_task_to_response(t) for t in tasks]
+    return [_task_to_response(t, db) for t in tasks]
 
 
 @router.get("/tasks/today", response_model=List[TaskResponse])
@@ -322,7 +381,7 @@ async def list_today_tasks(
     today_msk, today_start_utc, today_end_utc = _today_msk()
     q = (
         db.query(Task)
-        .options(joinedload(Task.subtasks), joinedload(Task.students))
+        .options(joinedload(Task.subtasks), joinedload(Task.students), joinedload(Task.counters))
         .filter(Task.status == TaskStatus.ACTIVE.value)
     )
     if assignee_id is not None:
@@ -368,7 +427,7 @@ async def list_today_tasks(
             prio_ord = 0 if prio == "high" else (1 if prio == "normal" else 2)
             return (prio_ord, due_ord, (0 if pinned else 1), -_progress(t), created)
         tasks = sorted(tasks, key=_task_sort_key)
-        return [_task_to_response(t) for t in tasks]
+        return [_task_to_response(t, db) for t in tasks]
 
     if mode == "overdue":
         # 1.2 Просрочено: due_at < today_start (МСК) или scheduled_for < today
@@ -388,11 +447,11 @@ async def list_today_tasks(
             prio_ord = 0 if prio == "high" else 1
             return (deadline, prio_ord)
         tasks = sorted(tasks, key=_overdue_sort_key)
-        return [_task_to_response(t) for t in tasks]
+        return [_task_to_response(t, db) for t in tasks]
 
     # mode == "active"
     tasks = q.order_by(Task.created_at.desc()).all()
-    return [_task_to_response(t) for t in tasks]
+    return [_task_to_response(t, db) for t in tasks]
 
 
 class TaskDayStatsResponse(BaseModel):
@@ -484,7 +543,7 @@ async def get_tasks_day_desk(
 
     base_q = (
         db.query(Task)
-        .options(joinedload(Task.subtasks), joinedload(Task.students))
+        .options(joinedload(Task.subtasks), joinedload(Task.students), joinedload(Task.counters))
         .filter(Task.status == TaskStatus.ACTIVE.value)
     )
     # Ограничения по видимости
@@ -633,12 +692,12 @@ async def get_tasks_day_desk(
 
     return TaskDayDeskResponse(
         stats=stats,
-        urgent=[_task_to_response(t) for t in urgent],
-        parents=[_task_to_response(t) for t in parents],
-        makeups=[_task_to_response(t) for t in makeups],
-        payments=[_task_to_response(t) for t in payments],
-        operations=[_task_to_response(t) for t in operations],
-        leads=[_task_to_response(t) for t in leads],
+        urgent=[_task_to_response(t, db) for t in urgent],
+        parents=[_task_to_response(t, db) for t in parents],
+        makeups=[_task_to_response(t, db) for t in makeups],
+        payments=[_task_to_response(t, db) for t in payments],
+        operations=[_task_to_response(t, db) for t in operations],
+        leads=[_task_to_response(t, db) for t in leads],
     )
 
 
@@ -731,7 +790,7 @@ async def create_task(
         .filter(Task.id == task.id)
         .first()
     )
-    return _task_to_response(task)
+    return _task_to_response(task, db)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
@@ -748,7 +807,7 @@ async def get_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return _task_to_response(task)
+    return _task_to_response(task, db)
 
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
@@ -811,7 +870,7 @@ async def update_task(
         .filter(Task.id == task_id)
         .first()
     )
-    return _task_to_response(task)
+    return _task_to_response(task, db)
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -915,7 +974,7 @@ async def complete_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     if task.status != TaskStatus.ACTIVE.value:
-        return _task_to_response(task)
+        return _task_to_response(task, db)
 
     total = len(task.subtasks)
     completed = sum(1 for s in task.subtasks if s.completed)
@@ -959,7 +1018,7 @@ async def complete_task(
         db.commit()
         db.refresh(task)
 
-    return _task_to_response(task)
+    return _task_to_response(task, db)
 
 
 @router.patch("/tasks/{task_id}/postpone", response_model=TaskResponse)
@@ -978,7 +1037,7 @@ async def postpone_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status != TaskStatus.ACTIVE.value:
-        return _task_to_response(task)
+        return _task_to_response(task, db)
     today_msk, _, _ = _today_msk()
     tomorrow_msk = today_msk + timedelta(days=1)
     if getattr(task, "scheduled_for", None) is not None:
@@ -990,7 +1049,7 @@ async def postpone_task(
     task.pinned_today = False
     db.commit()
     db.refresh(task)
-    return _task_to_response(task)
+    return _task_to_response(task, db)
 
 
 @router.patch("/tasks/{task_id}/pin-today", response_model=TaskResponse)
@@ -1012,7 +1071,7 @@ async def pin_task_today(
     task.pinned_today = pinned
     db.commit()
     db.refresh(task)
-    return _task_to_response(task)
+    return _task_to_response(task, db)
 
 
 @router.post("/tasks/{task_id}/counters/increment", response_model=TaskResponse)
@@ -1040,7 +1099,7 @@ async def increment_task_counter(
         raise HTTPException(status_code=400, detail="Unsupported counter key")
     delta = payload.delta if payload.delta is not None else 1
     if delta == 0:
-        return _task_to_response(task)
+        return _task_to_response(task, db)
     # Найти или создать счётчик
     counter = next((c for c in task.counters if c.counter_key == key), None)
     if not counter:
@@ -1051,7 +1110,7 @@ async def increment_task_counter(
     counter.value = (counter.value or 0) + delta
     db.commit()
     db.refresh(task)
-    return _task_to_response(task)
+    return _task_to_response(task, db)
 
 
 @router.get("/tasks/parent-responses/stats", response_model=List[ParentResponsesStat])

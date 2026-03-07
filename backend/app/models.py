@@ -1607,6 +1607,8 @@ class Task(Base):
     priority = Column(String(20), nullable=False, server_default="normal", index=True)  # low | normal | high
     pinned_today = Column(Boolean, nullable=False, server_default="false")  # вручную в плане на сегодня
     tags = Column(JSON, nullable=True)  # произвольные теги: makeup, payment, renewal, event_leads и т.п.
+    task_kind = Column(String(64), nullable=True, index=True)  # payment_overdue и т.п.
+    reminder_stage = Column(Integer, nullable=True)  # 1 | 2 для payment_overdue
     repeat_enabled = Column(Boolean, nullable=False, server_default="false")
     repeat_frequency = Column(String(20), nullable=True)
     repeat_days = Column(JSON, nullable=True)

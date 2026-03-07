@@ -129,6 +129,7 @@ from app.schemas import (
     AnketaConvertRequest,
     AnketaConvertResponse,
     AnketaConvertConflictResponse,
+    LeadConvertToStudentResponse,
     LessonCallResultUpdate,
     TochkaImportRequest,
     BankPaymentImportResponse,
@@ -4293,6 +4294,82 @@ async def update_lead(
     db.refresh(lead)
     log_action(db, current_user.id, "update", "lead", lead.id, update_data)
     return lead
+
+
+@router.post("/leads/{lead_id}/convert-to-student", response_model=LeadConvertToStudentResponse)
+async def convert_lead_to_student(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """
+    Переводит лида в ученика: создаёт родителя (если нет по email) и ученика с from_lead_id,
+    обновляет лида (status=WON, converted_to_student_id). Лид помечается как успешно закрытый.
+    """
+    _require_sales_admin_owner(current_user)
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Лид не найден")
+    if getattr(lead, "converted_to_student_id", None):
+        student = db.query(Student).filter(Student.id == lead.converted_to_student_id).first()
+        if student:
+            return LeadConvertToStudentResponse(
+                student_id=student.id,
+                lead=_fix_lead_strings(lead),
+            )
+    parent_email = (getattr(lead, "email", None) or "").strip().lower()
+    if not parent_email:
+        raise HTTPException(
+            status_code=400,
+            detail="У лида не указан email. Укажите email для конвертации в ученика.",
+        )
+    parent_full_name = (getattr(lead, "parent_full_name", None) or getattr(lead, "contact_name", None) or "").strip() or "Родитель"
+    student_full_name = (getattr(lead, "child_full_name", None) or getattr(lead, "contact_name", None) or "").strip() or "Ученик"
+    existing_parent = db.query(User).filter(User.email == parent_email, User.role == UserRole.PARENT).first()
+    if existing_parent:
+        same_name = (
+            db.query(Student)
+            .filter(
+                Student.parent_id == existing_parent.id,
+                Student.full_name == student_full_name,
+                Student.status == StudentStatus.ACTIVE,
+            )
+            .first()
+        )
+        if same_name:
+            lead.converted_to_student_id = same_name.id
+            lead.status = LeadStatus.WON
+            lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
+            if not getattr(same_name, "from_lead_id", None):
+                same_name.from_lead_id = lead.id
+            db.commit()
+            db.refresh(lead)
+            db.refresh(same_name)
+            log_action(db, current_user.id, "convert_lead_to_student", "lead", lead.id, {"student_id": same_name.id})
+            return LeadConvertToStudentResponse(student_id=same_name.id, lead=_fix_lead_strings(lead))
+        parent_user = existing_parent
+    else:
+        try:
+            parent_user = create_parent_user_no_invite(db, parent_email, parent_full_name)
+            db.flush()
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    student = Student(
+        full_name=student_full_name,
+        parent_id=parent_user.id,
+        status=StudentStatus.ACTIVE,
+        from_lead_id=lead.id,
+    )
+    db.add(student)
+    db.flush()
+    lead.converted_to_student_id = student.id
+    lead.status = LeadStatus.WON
+    lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
+    db.commit()
+    db.refresh(lead)
+    db.refresh(student)
+    log_action(db, current_user.id, "convert_lead_to_student", "lead", lead.id, {"student_id": student.id})
+    return LeadConvertToStudentResponse(student_id=student.id, lead=_fix_lead_strings(lead))
 
 
 @router.post("/leads/{lead_id}/tasks", response_model=LeadTaskResponse, status_code=status.HTTP_201_CREATED)

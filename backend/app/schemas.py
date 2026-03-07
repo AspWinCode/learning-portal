@@ -244,6 +244,7 @@ class StudentUpdate(BaseModel):
 class StudentResponse(StudentBase):
     id: int
     parent_id: Optional[int] = None
+    from_lead_id: Optional[int] = None
     abonement_id: Optional[int] = None
     status: StudentStatus
     training_start_date: Optional[date] = None
@@ -251,6 +252,7 @@ class StudentResponse(StudentBase):
     parent: Optional[UserResponse] = None
     abonement: Optional[AbonementResponse] = None
     programs: Optional[List["ProgramSummaryResponse"]] = []
+    in_group: bool = False  # True если ученик привязан хотя бы к одной группе
 
     class Config:
         from_attributes = True
@@ -834,6 +836,7 @@ class LeadResponse(BaseModel):
     post_visit_stage: Optional[str] = None
     post_visit_review: Optional[str] = None
     post_visit_project_date: Optional[datetime] = None
+    converted_to_student_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -1142,6 +1145,12 @@ class AnketaConvertConflictResponse(BaseModel):
     existing_parent_id: Optional[int] = None
     existing_students: Optional[List[Dict[str, Any]]] = None  # [{"id": int, "full_name": str}]
     existing_student_id: Optional[int] = None
+
+
+class LeadConvertToStudentResponse(BaseModel):
+    """Ответ конвертации лида в ученика."""
+    student_id: int
+    lead: LeadResponse
 
 
 class OpenParentCabinetResponse(BaseModel):

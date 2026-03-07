@@ -1,5 +1,24 @@
 # Команды: коммит, пуш, деплой
 
+## Быстрая шпаргалка (последнее обновление: лиды → ученики)
+
+**Локально (коммит + пуш):**
+```powershell
+cd c:\Users\direc\Downloads\learning-portal-main
+git add .
+git commit -m "Лиды: пометка из анкеты, перевод в ученики, подсветка на странице учеников"
+git push origin main
+```
+
+**Деплой на VPS (одной командой):**
+```powershell
+ssh root@80.87.201.25 "cd ~/learning-portal; git pull origin main; docker compose run --rm backend python -m alembic upgrade head; docker compose up -d --build; docker compose ps"
+```
+
+*(После пуша выполните деплой — миграция 0066 добавит поля для конвертации лида в ученика.)*
+
+---
+
 ## 1. Коммит и пуш (локально, Windows)
 
 Из корня проекта `learning-portal-main`:

@@ -222,7 +222,8 @@ async def read_students(
         query = query.offset(skip).limit(limit)
     
     query = query.options(
-        selectinload(Student.student_programs).joinedload(StudentProgram.program)
+        selectinload(Student.student_programs).joinedload(StudentProgram.program),
+        selectinload(Student.group_students),
     )
     rows = query.all()
     # Убираем дубликаты по id (могут появиться при join в других ветках)
@@ -237,7 +238,11 @@ async def read_students(
     display_names = get_students_display_names(db, [s.id for s in students])
     return [
         StudentResponse(
-            **{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)}
+            **{
+                **StudentResponse.model_validate(s).model_dump(),
+                "full_name": display_names.get(s.id, s.full_name),
+                "in_group": len(s.group_students) > 0,
+            }
         )
         for s in students
     ]
@@ -252,7 +257,10 @@ async def read_student(
     """Получение ученика по ID"""
     student = (
         db.query(Student)
-        .options(selectinload(Student.student_programs).joinedload(StudentProgram.program))
+        .options(
+            selectinload(Student.student_programs).joinedload(StudentProgram.program),
+            selectinload(Student.group_students),
+        )
         .filter(Student.id == student_id)
         .first()
     )
@@ -272,8 +280,9 @@ async def read_student(
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
     display_name = get_student_display_name(db, student)
+    in_group = len(student.group_students) > 0
     return StudentResponse(
-        **{**StudentResponse.model_validate(student).model_dump(), "full_name": display_name}
+        **{**StudentResponse.model_validate(student).model_dump(), "full_name": display_name, "in_group": in_group}
     )
 
 

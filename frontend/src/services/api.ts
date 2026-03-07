@@ -1106,6 +1106,10 @@ export const salesApi = {
     const response = await api.get(`/api/sales/leads/${leadId}`);
     return response.data;
   },
+  convertLeadToStudent: async (leadId: number): Promise<{ student_id: number; lead: Lead }> => {
+    const response = await api.post(`/api/sales/leads/${leadId}/convert-to-student`);
+    return response.data;
+  },
   listTasks: async (leadId: number): Promise<LeadTask[]> => {
     const response = await api.get(`/api/sales/leads/${leadId}/tasks`);
     return response.data;

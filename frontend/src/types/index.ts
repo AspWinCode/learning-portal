@@ -39,6 +39,7 @@ export interface Student {
   id: number;
   full_name: string;
   parent_id?: number | null;
+  from_lead_id?: number | null;
   abonement_id?: number | null;
   status: 'active' | 'archived';
   training_start_date?: string | null;
@@ -46,6 +47,8 @@ export interface Student {
   parent?: User;
   abonement?: Abonement;
   programs?: ProgramSummary[];
+  /** true если ученик привязан хотя бы к одной группе */
+  in_group?: boolean;
 }
 
 export interface StudentAccountTransaction {
@@ -362,6 +365,7 @@ export interface Lead {
   post_visit_stage?: string | null;
   post_visit_review?: string | null;
   post_visit_project_date?: string | null;
+  converted_to_student_id?: number | null;
 }
 
 export type LeadTaskStatus = 'open' | 'done';

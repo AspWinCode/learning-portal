@@ -1153,10 +1153,25 @@ const StudentsPage: React.FC = () => {
           <TableBody>
             {filteredStudents.map((student, index) => {
               const studentGroup = getStudentGroup(student);
+              const fromLeadNotInGroup = !!(student.from_lead_id && student.in_group === false);
               return (
-                <TableRow key={student.id}>
+                <TableRow
+                  key={student.id}
+                  sx={{
+                    ...(fromLeadNotInGroup
+                      ? { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.main' } }
+                      : {}),
+                  }}
+                >
                   <TableCell>{index + 1}</TableCell>
-                  <TableCell>{student.full_name}</TableCell>
+                  <TableCell>
+                    <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
+                      {student.full_name}
+                      {fromLeadNotInGroup && (
+                        <Chip size="small" label="Из лида · не в группе" color="warning" variant="outlined" />
+                      )}
+                    </Stack>
+                  </TableCell>
                   <TableCell>{student.parent?.full_name || '-'}</TableCell>
                   <TableCell>{studentGroup?.name || '-'}</TableCell>
                   <TableCell>

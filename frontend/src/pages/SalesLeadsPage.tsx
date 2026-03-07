@@ -2068,8 +2068,11 @@ const SalesLeadsPage: React.FC = () => {
                 />
               </TableCell>
               <TableCell>
-                <Stack spacing={0.5}>
+                <Stack spacing={0.5} direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
                   <Typography variant="subtitle2">{lead.contact_name}</Typography>
+                  {lead.questionnaire_filled && (
+                    <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
+                  )}
                 </Stack>
               </TableCell>
               <TableCell>{lead.phone || '—'}</TableCell>
@@ -2178,7 +2181,12 @@ const SalesLeadsPage: React.FC = () => {
                         }}
                       >
                         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                          <Typography variant="subtitle2">{lead.contact_name}</Typography>
+                          <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
+                            <Typography variant="subtitle2">{lead.contact_name}</Typography>
+                            {lead.questionnaire_filled && (
+                              <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
+                            )}
+                          </Stack>
                           <Typography variant="caption" color="text.secondary">{lead.phone}</Typography>
                           {lead.source && (
                             <Typography variant="caption" display="block" color="text.secondary">
@@ -2262,9 +2270,43 @@ const SalesLeadsPage: React.FC = () => {
         {detailsOpen && selectedLead && (
             <Card variant="outlined" sx={{ boxShadow: 'none' }}>
               <CardContent>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                  <Typography variant="h6">Карточка лида</Typography>
-                  <Button size="small" onClick={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}>Закрыть</Button>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1} flexWrap="wrap" sx={{ gap: 1 }}>
+                  <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 1 }}>
+                    <Typography variant="h6">Карточка лида</Typography>
+                    {selectedLead?.questionnaire_filled && (
+                      <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
+                    )}
+                  </Stack>
+                  <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+                    {selectedLead && !selectedLead.converted_to_student_id && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        disabled={actionLoadingId === selectedLead.id}
+                        onClick={async () => {
+                          if (!selectedLead) return;
+                          setActionLoadingId(selectedLead.id);
+                          try {
+                            const { student_id } = await salesApi.convertLeadToStudent(selectedLead.id);
+                            setToast({ open: true, message: 'Лид переведён в ученики', severity: 'success' });
+                            setDetailsOpen(false);
+                            setSelectedLead(null);
+                            await loadLeads();
+                            navigate(`/students?detail=${student_id}`);
+                          } catch (e) {
+                            const msg = extractApiError(e);
+                            setToast({ open: true, message: msg || 'Ошибка перевода в ученики', severity: 'error' });
+                          } finally {
+                            setActionLoadingId(null);
+                          }
+                        }}
+                      >
+                        Перевести в ученики
+                      </Button>
+                    )}
+                    <Button size="small" onClick={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}>Закрыть</Button>
+                  </Stack>
                 </Stack>
                 <Grid container spacing={2} sx={{ mt: 0.5 }}>
                   <Grid item xs={12} md={6}>

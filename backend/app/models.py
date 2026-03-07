@@ -167,6 +167,7 @@ class Student(Base):
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
     parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    from_lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
     abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True)
     status = Column(_StudentStatusType(), default=StudentStatus.ACTIVE)
     training_start_date = Column(Date, nullable=True)  # с этой даты ученик в уроках; от неё считаются оплата и напоминания
@@ -175,6 +176,7 @@ class Student(Base):
 
     # Relationships
     parent = relationship("User", back_populates="students", foreign_keys=[parent_id])
+    from_lead = relationship("Lead", foreign_keys=[from_lead_id])
     group_students = relationship("GroupStudent", back_populates="student")
     student_programs = relationship("StudentProgram", back_populates="student")
     lesson_attendances = relationship("LessonAttendance", back_populates="student", cascade="all, delete-orphan")
@@ -321,6 +323,7 @@ class Lead(Base):
     pause_reason = Column(String, nullable=True)
     lost_reason = Column(String, nullable=True)
     questionnaire_filled = Column(Boolean, default=False, nullable=False, index=True)
+    converted_to_student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
     b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=True, index=True)
     b2b_event_id = Column(Integer, ForeignKey("b2b_school_events.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -332,6 +335,7 @@ class Lead(Base):
 
     # Relationships
     owner = relationship("User")
+    converted_to_student = relationship("Student", foreign_keys=[converted_to_student_id])
     abonement = relationship("Abonement")
     source_ref = relationship("LeadSource")
     status_option = relationship("LeadStatusOption")

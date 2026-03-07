@@ -66,6 +66,7 @@ import {
   LeadTaskTemplate,
   LeadPushStats,
   SalesCity,
+  SalesSchool,
 } from '../types';
 
 const statusLabels: Record<LeadStatus, string> = {
@@ -163,6 +164,7 @@ const SalesLeadsPage: React.FC = () => {
   const [taskDueAt, setTaskDueAt] = useState('');
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [salesCities, setSalesCities] = useState<SalesCity[]>([]);
+  const [salesSchools, setSalesSchools] = useState<SalesSchool[]>([]);
   const [taskTemplates, setTaskTemplates] = useState<LeadTaskTemplate[]>([]);
   const [taskStatusOptions, setTaskStatusOptions] = useState<LeadTaskStatusOption[]>([]);
   const [leadStatusOptions, setLeadStatusOptions] = useState<LeadStatusOption[]>([]);
@@ -278,8 +280,9 @@ const SalesLeadsPage: React.FC = () => {
   }, [statusFilter, qFilter, sourceFilter, tagFilter, overdueOnly]);
 
   const loadSalesMeta = useCallback(async () => {
-    // Города подгружаем отдельно, чтобы при ошибке других запросов список городов всё равно обновился
+    // Города и школы подгружаем отдельно, чтобы при ошибке других запросов списки всё равно обновились
     salesApi.listSalesCities(true).then(setSalesCities).catch(() => setSalesCities([]));
+    salesApi.listSalesSchools(true).then(setSalesSchools).catch(() => setSalesSchools([]));
     try {
       const [sources, templates, statuses, leadStatuses] = await Promise.all([
         salesApi.listLeadSources(true),
@@ -1207,6 +1210,7 @@ const SalesLeadsPage: React.FC = () => {
     try {
       setLeadInfoSaving(true);
       const updated = await salesApi.updateLead(selectedLead.id, {
+        contact_name: leadInfoDraft.parent_full_name.trim() || undefined,
         parent_full_name: leadInfoDraft.parent_full_name.trim() || undefined,
         parent_phone: normalizeRuPhone(leadInfoDraft.parent_phone) || undefined,
         child_full_name: leadInfoDraft.child_full_name.trim() || undefined,
@@ -2490,12 +2494,17 @@ const SalesLeadsPage: React.FC = () => {
                         </FormControl>
                       </Grid>
                       <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Школа"
+                        <Autocomplete
+                          freeSolo
+                          options={salesSchools.map((s) => s.name)}
                           value={leadInfoDraft.school_name}
-                          onChange={(e) => setLeadInfoDraft((s) => ({ ...s, school_name: e.target.value }))}
+                          onInputChange={(_, value) => setLeadInfoDraft((s) => ({ ...s, school_name: value }))}
+                          onChange={(_, value) =>
+                            setLeadInfoDraft((s) => ({ ...s, school_name: (value as string) ?? '' }))
+                          }
+                          renderInput={(params) => (
+                            <TextField {...params} size="small" label="Школа" placeholder="Выберите или введите" />
+                          )}
                         />
                       </Grid>
                       <Grid item xs={12}>

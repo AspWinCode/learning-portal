@@ -2295,8 +2295,8 @@ const SalesLeadsPage: React.FC = () => {
                             await loadLeads();
                             navigate(`/students?detail=${student_id}`);
                           } catch (e) {
-                            const msg = extractApiError(e);
-                            setToast({ open: true, message: msg || 'Ошибка перевода в ученики', severity: 'error' });
+                            const msg = extractApiError(e, 'Ошибка перевода в ученики');
+                            setToast({ open: true, message: msg, severity: 'error' });
                           } finally {
                             setActionLoadingId(null);
                           }

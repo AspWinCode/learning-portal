@@ -323,6 +323,7 @@ class Lead(Base):
     pause_reason = Column(String, nullable=True)
     lost_reason = Column(String, nullable=True)
     questionnaire_filled = Column(Boolean, default=False, nullable=False, index=True)
+    questionnaire_data = Column(JSON, nullable=True)  # полные данные из формы анкеты (свои поля для лидов из формы)
     converted_to_student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
     b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=True, index=True)
     b2b_event_id = Column(Integer, ForeignKey("b2b_school_events.id"), nullable=True, index=True)

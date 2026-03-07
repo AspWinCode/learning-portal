@@ -727,24 +727,24 @@ const SalesLeadsPage: React.FC = () => {
     try {
       const fullLead = await salesApi.getLead(lead.id);
       setSelectedLead(fullLead);
-      setLeadCommentDraft(fullLead.comment || '');
+      setLeadCommentDraft(fullLead.comment ?? lead.comment ?? '');
       setLeadHeaderStatusDraft(getPipelineColumnForStatus(fullLead.status));
-      setLeadHeaderNextStepDraft(fullLead.desired_slot || '');
+      setLeadHeaderNextStepDraft(fullLead.desired_slot ?? lead.desired_slot ?? '');
       setLeadInfoDraft({
-        parent_full_name: fullLead.parent_full_name || fullLead.contact_name || '',
-        parent_phone: fullLead.parent_phone || fullLead.phone || '',
-        child_full_name: fullLead.child_full_name || '',
-        child_phone: fullLead.child_phone || '',
-        email: fullLead.email || '',
-        city: fullLead.city || '',
-        school_name: fullLead.school_name || '',
-        school_class: fullLead.school_class || '',
-        communication_channel: (fullLead.communication_channel as LeadCommunicationChannel | null) || '',
-        source: fullLead.source || '',
-        referral_name: fullLead.referral_name || '',
+        parent_full_name: fullLead.parent_full_name || fullLead.contact_name || lead.contact_name || '',
+        parent_phone: fullLead.parent_phone || fullLead.phone || lead.phone || '',
+        child_full_name: fullLead.child_full_name || lead.child_full_name || '',
+        child_phone: fullLead.child_phone || lead.child_phone || '',
+        email: fullLead.email || lead.email || '',
+        city: fullLead.city || lead.city || '',
+        school_name: fullLead.school_name || lead.school_name || '',
+        school_class: fullLead.school_class || lead.school_class || '',
+        communication_channel: (fullLead.communication_channel ?? lead.communication_channel as LeadCommunicationChannel | null) || '',
+        source: fullLead.source || lead.source || '',
+        referral_name: fullLead.referral_name || lead.referral_name || '',
       });
     } catch {
-      // оставляем данные из списка
+      // оставляем данные из списка (уже подставлены выше)
     }
     await loadLeadDetails(lead);
   };
@@ -2318,6 +2318,56 @@ const SalesLeadsPage: React.FC = () => {
                       <Typography variant="body2" component="span" sx={{ whiteSpace: 'pre-wrap' }}>
                         {leadCommentDraft || selectedLead.comment || ''}
                       </Typography>
+                    </Box>
+                  )}
+                  {selectedLead.questionnaire_filled && selectedLead.questionnaire_data && Object.keys(selectedLead.questionnaire_data).length > 0 && (
+                    <Box sx={{ width: '100%', mt: 1, p: 1.5, bgcolor: 'info.light', borderRadius: 1, border: '1px solid', borderColor: 'info.main' }}>
+                      <Typography variant="subtitle2" color="info.dark" sx={{ mb: 1 }}>
+                        Данные из анкеты
+                      </Typography>
+                      <Grid container spacing={1}>
+                        {[
+                          { key: 'child_full_name', label: 'ФИО ученика' },
+                          { key: 'birth_date', label: 'Дата рождения' },
+                          { key: 'child_phone', label: 'Телефон ученика' },
+                          { key: 'child_telegram', label: 'Телеграм ученика' },
+                          { key: 'student_email', label: 'Email ученика' },
+                          { key: 'gender', label: 'Пол' },
+                          { key: 'city', label: 'Город' },
+                          { key: 'school_name', label: 'Образовательное учреждение' },
+                          { key: 'school_class', label: 'Класс' },
+                          { key: 'parent_full_name', label: 'ФИО родителя' },
+                          { key: 'parent_phone', label: 'Телефон родителя' },
+                          { key: 'parent_phone_2', label: 'Второй телефон' },
+                          { key: 'parent_telegram', label: 'Телеграм родителя' },
+                          { key: 'parent_email', label: 'Email родителя' },
+                          { key: 'preferred_messenger', label: 'Мессенджер' },
+                          { key: 'comment', label: 'Комментарий (цели обучения, уровень, удобное время и т.п.)' },
+                          { key: 'source', label: 'Откуда о нас узнали' },
+                        ].map(({ key, label }) => {
+                          const value = (selectedLead.questionnaire_data as Record<string, unknown>)[key];
+                          if (value == null || value === '') return null;
+                          const display =
+                            key === 'birth_date' && typeof value === 'string'
+                              ? (() => {
+                                  const d = parseISO(value);
+                                  return isValid(d) ? format(d, 'dd.MM.yyyy') : value;
+                                })()
+                              : typeof value === 'string'
+                                ? value
+                                : String(value);
+                          return (
+                            <Grid item xs={12} sm={6} key={key}>
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {label}
+                              </Typography>
+                              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                                {display}
+                              </Typography>
+                            </Grid>
+                          );
+                        })}
+                      </Grid>
                     </Box>
                   )}
                   <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>

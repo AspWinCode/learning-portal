@@ -366,6 +366,8 @@ export interface Lead {
   post_visit_review?: string | null;
   post_visit_project_date?: string | null;
   converted_to_student_id?: number | null;
+  /** Полные данные из формы анкеты (для лидов из формы — свои поля) */
+  questionnaire_data?: Record<string, unknown> | null;
 }
 
 export type LeadTaskStatus = 'open' | 'done';

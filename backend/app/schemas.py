@@ -837,6 +837,7 @@ class LeadResponse(BaseModel):
     post_visit_review: Optional[str] = None
     post_visit_project_date: Optional[datetime] = None
     converted_to_student_id: Optional[int] = None
+    questionnaire_data: Optional[Dict[str, Any]] = None  # данные из формы анкеты (свои поля для лидов из формы)
 
     class Config:
         from_attributes = True

@@ -4071,6 +4071,7 @@ async def submit_specialist_questionnaire(
     if extras_str:
         full_comment = (base_comment + "\n\n" if base_comment else "") + extras_str
 
+    questionnaire_data = payload.model_dump(mode="json")  # все поля формы для отображения в карточке лида
     lead = Lead(
         owner_id=owner.id,
         contact_name=payload.parent_full_name,
@@ -4088,6 +4089,7 @@ async def submit_specialist_questionnaire(
         tags=["direction:specialist"],
         status=LeadStatus.NEW,
         questionnaire_filled=True,
+        questionnaire_data=questionnaire_data,
     )
     db.add(card)
     db.add(lead)
@@ -4299,7 +4301,7 @@ async def update_lead(
 def _find_or_create_student_card_for_lead(db: Session, lead: Lead, student: Student, student_full_name: str) -> None:
     """
     При конвертации лида в ученика: ищем анкету (StudentCard) из опроса по email и ФИО ребёнка
-    и привязываем к ученику; если не нашли — создаём карточку из данных лида.
+    и привязываем к ученику; если не нашли — создаём карточку из данных лида и questionnaire_data.
     Если у ученика уже есть карточка — ничего не делаем.
     """
     if db.query(StudentCard).filter(StudentCard.student_id == student.id).first():
@@ -4319,18 +4321,46 @@ def _find_or_create_student_card_for_lead(db: Session, lead: Lead, student: Stud
         card.student_id = student.id
         card.anketa_status = "converted"
         return
+    q = getattr(lead, "questionnaire_data", None) or {}
+    if not isinstance(q, dict):
+        q = {}
+    parent_full_name = (getattr(lead, "parent_full_name", None) or getattr(lead, "contact_name", None) or "").strip() or (q.get("parent_full_name") or "")
+    parent_phone = (getattr(lead, "parent_phone", None) or getattr(lead, "phone", None) or "").strip() or (q.get("parent_phone") or "")
+    parent_email_val = (getattr(lead, "email", None) or "").strip() or (q.get("parent_email") or "")
+    student_phone = (getattr(lead, "child_phone", None) or "").strip() or (q.get("child_phone") or "")
+    city = (getattr(lead, "city", None) or "").strip() or (q.get("city") or "")
+    school = (getattr(lead, "school_name", None) or "").strip() or (q.get("school_name") or "")
+    grade = (getattr(lead, "school_class", None) or "").strip() or (q.get("school_class") or "")
+    comment = (getattr(lead, "comment", None) or "").strip() or (q.get("comment") or "")
+    source = (getattr(lead, "source", None) or "").strip() or (q.get("source") or "")
+    birth_date_val = q.get("birth_date")
+    if isinstance(birth_date_val, str) and birth_date_val.strip():
+        try:
+            from datetime import datetime as dt
+            birth_date_val = dt.strptime(birth_date_val.strip()[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            birth_date_val = None
+    elif birth_date_val is None or not getattr(birth_date_val, "year", None):
+        birth_date_val = None
     card = StudentCard(
         student_id=student.id,
         student_full_name=student_full_name,
-        parent_full_name=(getattr(lead, "parent_full_name", None) or getattr(lead, "contact_name", None) or "").strip() or None,
-        parent_phone=(getattr(lead, "parent_phone", None) or getattr(lead, "phone", None) or "").strip() or None,
-        parent_email=(getattr(lead, "email", None) or "").strip() or None,
-        student_phone=(getattr(lead, "child_phone", None) or "").strip() or None,
-        city=(getattr(lead, "city", None) or "").strip() or None,
-        school=(getattr(lead, "school_name", None) or "").strip() or None,
-        grade=(getattr(lead, "school_class", None) or "").strip() or None,
-        comment=(getattr(lead, "comment", None) or "").strip() or None,
-        source=(getattr(lead, "source", None) or "").strip() or None,
+        parent_full_name=parent_full_name or None,
+        parent_phone=parent_phone or None,
+        parent_phone_2=(q.get("parent_phone_2") or "").strip() or None,
+        parent_telegram=(q.get("parent_telegram") or "").strip() or None,
+        parent_email=parent_email_val or None,
+        student_phone=student_phone or None,
+        telegram=(q.get("child_telegram") or "").strip() or None,
+        student_email=(q.get("student_email") or "").strip() or None,
+        birth_date=birth_date_val,
+        gender=(q.get("gender") or "").strip() or None,
+        city=city or None,
+        school=school or None,
+        grade=grade or None,
+        preferred_messenger=(q.get("preferred_messenger") or "").strip() or None,
+        comment=comment or None,
+        source=source or None,
         anketa_status="converted",
         discount_type=DiscountType.NONE,
         discount_value=0.0,

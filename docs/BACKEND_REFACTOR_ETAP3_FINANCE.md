@@ -28,7 +28,12 @@
 
 ---
 
-## 3. Дальнейшие шаги (по ТЗ)
+## 3. Канонический API Finance для банка и счетов
+
+- **POST /api/finance/bank-transactions/{transaction_id}/apply** — зачисление банковской операции (BankTransaction) на ученика. Дублирует логику POST /api/sales/bank-transactions/{id}/apply; sales остаётся compatibility layer.
+- **POST /api/finance/student-accounts** — создание счёта ученика (body: student_id, name). Канонический API Finance; Education (POST /api/students/{id}/accounts) вызывает сервис `student_account_finance.create_student_account`.
+
+## 4. Дальнейшие шаги (по ТЗ)
 
 - **Этап 4:** разделение sales.py на зоны CRM / Operations / Finance или сохранение единого префикса `/api/sales` с вызовом доменных сервисов.
-- **Этап 5:** единый подход к правам, логированию, тестам (в т.ч. unit-тесты на `student_account_payment`, `bank_operation`, finance apply-student).
+- **Этап 5:** единый подход к правам (частично: `app/dependencies.py` — `require_sales_admin_owner`, `require_finance_access`), логированию, тестам.

@@ -582,14 +582,17 @@ async def create_student_account(
             raise HTTPException(status_code=403, detail="Not enough permissions")
     elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         raise HTTPException(status_code=403, detail="Not enough permissions")
-    name = (payload.name or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Название счета обязательно")
-    account = StudentAccount(student_id=student_id, name=name, balance=0.0)
-    db.add(account)
+    from app.services.student_account_finance import create_student_account as finance_create_student_account
+    try:
+        account = finance_create_student_account(db, student_id, payload.name or "")
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     db.commit()
     db.refresh(account)
-    log_action(db, current_user.id, "create", "student_account", account.id, {"student_id": student_id, "name": name})
+    log_action(db, current_user.id, "create", "student_account", account.id, {"student_id": student_id, "name": account.name})
     return account
 
 

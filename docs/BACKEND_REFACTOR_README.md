@@ -23,4 +23,9 @@
 4. **Этап 4. CRM + Student flow** — нормализация lead/card/student flow, разделение CRM и Education.
 5. **Этап 5. Права и стандарты** — единый подход к проверке доступа, логирование, тестирование.
 
-Дальнейшие шаги: использовать карту доменов и каталог use cases при реализации Этапов 2–5 и при написании тестов.
+**Выполнено дополнительно:**
+- **Этап 3 (дозавершение):** POST /api/finance/bank-transactions/{id}/apply — канонический API разнесения банковской операции; POST /api/finance/student-accounts — создание счёта ученика.
+- **Этап 4:** создание StudentAccount через сервис `student_account_finance.create_student_account`; students router и Finance API вызывают его.
+- **Этап 5 (частично):** общие зависимости прав в `app/dependencies.py` (`require_sales_admin_owner`, `require_finance_access`); новый endpoint Finance использует `Depends(require_finance_access)`.
+
+Дальнейшие шаги: использовать карту доменов и каталог use cases при реализации оставшихся пунктов Этапов 4–5 и при написании тестов.

@@ -1,4 +1,6 @@
 from typing import Dict, List, Optional, Set, Tuple
+
+from pydantic import BaseModel
 import csv
 import hashlib
 from datetime import date, datetime
@@ -41,8 +43,14 @@ from app.schemas import (
     FinanceAccountBalance,
     FinancePnlRow,
     FinanceTransactionApplyStudentRequest,
+    BankTransactionResponse,
+    BankTransactionApplyRequest,
+    StudentAccountResponse,
 )
 from app.services.finance_ledger import apply_recognition_rules
+from app.services.student_account_finance import create_student_account as finance_create_student_account
+from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
+from app.dependencies import require_finance_access as dep_require_finance_access
 
 
 router = APIRouter()
@@ -1370,4 +1378,56 @@ async def apply_finance_transaction_to_student(
         article_name=getattr(article_obj, "name", None),
         student_id=tx.student_id,
     )
+
+
+# --- Счета учеников (StudentAccount): канонический API Finance по ТЗ ---
+
+
+class FinanceStudentAccountCreate(BaseModel):
+    """Создание счёта ученика через Finance API."""
+    student_id: int
+    name: str
+
+
+@router.post("/student-accounts", response_model=StudentAccountResponse, status_code=status.HTTP_201_CREATED)
+async def create_student_account_finance(
+    payload: FinanceStudentAccountCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(dep_require_finance_access),
+) -> StudentAccountResponse:
+    """Создать счёт ученику. Канонический API Finance (ТЗ этап 4)."""
+    try:
+        account = finance_create_student_account(db, payload.student_id, payload.name or "")
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    db.commit()
+    db.refresh(account)
+    return StudentAccountResponse.model_validate(account)
+
+
+# --- Банковские операции (BankTransaction): канонический API Finance по ТЗ ---
+
+
+@router.post("/bank-transactions/{transaction_id}/apply", response_model=BankTransactionResponse)
+async def apply_bank_transaction_to_student(
+    transaction_id: int,
+    payload: BankTransactionApplyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(dep_require_finance_access),
+) -> BankTransactionResponse:
+    """
+    Зачислить банковскую операцию (BankTransaction) на выбранного ученика.
+    Канонический API Finance; дублирует функциональность POST /api/sales/bank-transactions/{id}/apply (compatibility layer).
+    """
+    try:
+        result = bank_operation_apply(db, transaction_id, payload.student_id)
+    except ValueError as e:
+        msg = str(e)
+        if "не найден" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    return BankTransactionResponse.model_validate(result.transaction)
 

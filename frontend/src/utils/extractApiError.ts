@@ -1,7 +1,11 @@
 export const extractApiError = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
+  const rawError = err?.response?.data?.error;
 
   if (typeof detail === 'string' && detail.trim()) {
+    if (typeof rawError === 'string' && rawError.trim() && detail.includes('schema is outdated')) {
+      return `${detail} (${rawError})`;
+    }
     return detail;
   }
 

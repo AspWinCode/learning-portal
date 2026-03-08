@@ -1322,40 +1322,18 @@ async def apply_finance_transaction_to_student(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма операции должна быть больше 0")
 
-    student = db.query(Student).filter(Student.id == payload.student_id).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Ученик не найден")
-
-    account = (
-        db.query(StudentAccount)
-        .filter(StudentAccount.student_id == payload.student_id)
-        .order_by(StudentAccount.id)
-        .first()
-    )
-    if not account:
-        account = StudentAccount(student_id=payload.student_id, name="Основной", balance=0.0)
-        db.add(account)
-        db.flush()
-
-    note = tx.counterparty_name or tx.description_raw or "Платёж из журнала"
-    db.add(
-        StudentAccountTransaction(
-            account_id=account.id,
-            amount=amount,
-            kind=StudentAccountTransactionKind.PAYMENT,
-            note=note[:512] if note else None,
-        )
-    )
-    account.balance += amount
-
     try:
         pay_date = tx.occurred_at.date() if tx.occurred_at else date.today()
     except Exception:
         pay_date = date.today()
-
-    from app.services.student_card_period import update_card_payment_dates
-
-    update_card_payment_dates(db, payload.student_id, pay_date)
+    note = tx.counterparty_name or tx.description_raw or "Платёж из журнала"
+    try:
+        from app.services.student_account_payment import add_payment_to_student_account
+        add_payment_to_student_account(db, payload.student_id, amount, note, pay_date)
+    except ValueError as e:
+        if "не найден" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
     tx.status = FinanceTransactionStatus.APPLIED
     tx.student_id = payload.student_id

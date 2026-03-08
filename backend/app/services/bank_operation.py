@@ -16,13 +16,10 @@ from app.models import (
     BankTransactionStatus,
     PhonePaymentBinding,
     Student,
-    StudentAccount,
-    StudentAccountTransaction,
-    StudentAccountTransactionKind,
     TochkaAppliedPayment,
 )
 from app.utils.phone import normalize_phone
-from app.services.student_card_period import update_card_payment_dates
+from app.services.student_account_payment import add_payment_to_student_account
 
 
 @dataclass
@@ -65,27 +62,19 @@ def apply_bank_operation_to_student(
                     parent_id=student.parent_id,
                 ))
 
-    account = (
-        db.query(StudentAccount)
-        .filter(StudentAccount.student_id == student_id)
-        .order_by(StudentAccount.id)
-        .first()
-    )
-    if not account:
-        account = StudentAccount(student_id=student_id, name="Основной", balance=0.0)
-        db.add(account)
-        db.flush()
+    try:
+        pay_date = (
+            date.fromisoformat((bt.payment_date or "")[:10])
+            if bt.payment_date
+            else date.today()
+        )
+    except (ValueError, TypeError):
+        pay_date = date.today()
 
     note = f"Точка Банк, плательщик: {bt.payer_name or '—'}, дата: {bt.payment_date or '—'}"
-    db.add(
-        StudentAccountTransaction(
-            account_id=account.id,
-            amount=bt.amount,
-            kind=StudentAccountTransactionKind.PAYMENT,
-            note=note,
-        )
-    )
-    account.balance += bt.amount
+    result = add_payment_to_student_account(db, student_id, float(bt.amount), note, pay_date)
+    account = result.account
+
     db.add(
         TochkaAppliedPayment(
             tochka_account_id=bt.tochka_account_id or "",
@@ -96,17 +85,6 @@ def apply_bank_operation_to_student(
             student_account_id=account.id,
         )
     )
-
-    try:
-        pay_date = (
-            date.fromisoformat((bt.payment_date or "")[:10])
-            if bt.payment_date
-            else date.today()
-        )
-    except (ValueError, TypeError):
-        pay_date = date.today()
-
-    update_card_payment_dates(db, student_id, pay_date)
 
     bt.status = BankTransactionStatus.APPLIED.value
     bt.student_id = student_id

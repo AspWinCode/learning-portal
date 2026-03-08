@@ -10,7 +10,8 @@
 |----------|---------|------------|
 | **[BACKEND_REFACTOR_DOMAIN_MAP.md](BACKEND_REFACTOR_DOMAIN_MAP.md)** | Этап 1. Архитектурный аудит | Карта доменов и endpoint'ов: инвентаризация роутеров, разметка по доменам (Auth, Education, CRM, Operations, Finance, Management), смешение в `sales`, зависимости между доменами, рекомендации по разделению. |
 | **[BACKEND_REFACTOR_USE_CASES.md](BACKEND_REFACTOR_USE_CASES.md)** | Этап 2. Карта use case-сценариев | Каталог ключевых backend use cases: конвертация лида/анкеты в ученика, пропуск → отработка/ручной урок, банковская операция → ученик, пересчёт оплаты, характеристики (submit/approve/reject), просрочка оплаты → задачи менеджеру, поствизит по лиду; приоритеты для сервисов и тестов. |
-| **[BACKEND_REFACTOR_STAGE3_PLAN.md](BACKEND_REFACTOR_STAGE3_PLAN.md)** | Этап 3. Вынос логики | План и прогресс: сделан сервис `lead_conversion.convert_lead_to_student`, роутер приведён к тонкому вызову; список следующих use cases для выноса. |
+| **[BACKEND_REFACTOR_STAGE3_PLAN.md](BACKEND_REFACTOR_STAGE3_PLAN.md)** | Этап 3. Вынос логики | План и прогресс: сервисы по use cases (lead_conversion, student_card_conversion, absence_makeup, manual_lesson, bank_operation, payment_status, characteristic_review, lead_post_visit). |
+| **[BACKEND_REFACTOR_ETAP3_FINANCE.md](BACKEND_REFACTOR_ETAP3_FINANCE.md)** | Этап 3 ТЗ. Finance | Нормализация финансового контура: общий сервис `student_account_payment.add_payment_to_student_account`, использование в bank_operation и finance apply-student. |
 
 ---
 

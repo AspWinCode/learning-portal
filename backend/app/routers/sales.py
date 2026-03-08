@@ -3444,6 +3444,88 @@ async def update_lead_status(
     return item
 
 
+# --- List leads (must be before /leads/{lead_id} to avoid 404 "Not Found") ---
+@router.get("/leads", response_model=List[LeadResponse])
+async def list_leads(
+    status_filter: Optional[LeadStatus] = None,
+    questionnaire_filled: Optional[bool] = None,
+    q: Optional[str] = None,
+    source: Optional[str] = None,
+    tag: Optional[str] = None,
+    overdue_only: bool = False,
+    created_from: Optional[datetime] = Query(default=None),
+    created_to: Optional[datetime] = Query(default=None),
+    next_contact_from: Optional[datetime] = Query(default=None),
+    next_contact_to: Optional[datetime] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    query = _filter_query_by_role(db.query(Lead).order_by(Lead.created_at.desc()), current_user)
+    if status_filter:
+        query = query.filter(Lead.status == status_filter)
+    if questionnaire_filled is not None:
+        query = query.filter(Lead.questionnaire_filled == questionnaire_filled)
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            or_(
+                cast(Lead.contact_name, Text).ilike(search),
+                cast(Lead.phone, Text).ilike(search),
+                cast(Lead.parent_full_name, Text).ilike(search),
+                cast(Lead.child_full_name, Text).ilike(search),
+                cast(Lead.parent_phone, Text).ilike(search),
+                cast(Lead.child_phone, Text).ilike(search),
+                cast(Lead.school_name, Text).ilike(search),
+                cast(Lead.school_class, Text).ilike(search),
+            )
+        )
+    if source:
+        query = query.filter(Lead.source.ilike(f"%{source.strip()}%"))
+    if tag:
+        # tags are stored as JSON array; text-search keeps compatibility across DB backends.
+        query = query.filter(Lead.tags.isnot(None), cast(Lead.tags, Text).ilike(f"%{tag.strip()}%"))
+    if overdue_only:
+        now = datetime.utcnow()
+        query = query.filter(Lead.next_contact_at.isnot(None), Lead.next_contact_at < now)
+    if created_from:
+        query = query.filter(Lead.created_at >= created_from)
+    if created_to:
+        query = query.filter(Lead.created_at <= created_to)
+    if next_contact_from:
+        query = query.filter(Lead.next_contact_at >= next_contact_from)
+    if next_contact_to:
+        query = query.filter(Lead.next_contact_at <= next_contact_to)
+    leads = query.all()
+
+    # One-time/gradual бэкаповка старых лидов в воронку «Дожать на обучение»:
+    # если статус demo, по лиду уже есть [came] в регистрациях события, но post_visit_stage ещё не задана,
+    # проставляем stage='new', чтобы такие лиды появились на странице дожима.
+    if status_filter == LeadStatus.DEMO:
+        updated = False
+        for lead in leads:
+            if not getattr(lead, "post_visit_stage", None):
+                has_came = (
+                    db.query(EventRegistration)
+                    .filter(
+                        EventRegistration.lead_id == lead.id,
+                        cast(EventRegistration.note, Text).ilike("%[came]%"),
+                    )
+                    .first()
+                )
+                if has_came:
+                    lead.post_visit_stage = "new"
+                    updated = True
+        if updated:
+            db.commit()
+            for lead in leads:
+                db.refresh(lead)
+
+    return [_fix_lead_strings(l) for l in leads]
+
+
 @router.get("/leads/{lead_id}/communications", response_model=List[LeadCommunicationResponse])
 async def list_lead_communications(
     lead_id: int,
@@ -3918,87 +4000,6 @@ async def submit_specialist_questionnaire(
     db.commit()
     db.refresh(lead)
     return SpecialistQuestionnaireResponse(lead_id=lead.id)
-
-
-@router.get("/leads", response_model=List[LeadResponse])
-async def list_leads(
-    status_filter: Optional[LeadStatus] = None,
-    questionnaire_filled: Optional[bool] = None,
-    q: Optional[str] = None,
-    source: Optional[str] = None,
-    tag: Optional[str] = None,
-    overdue_only: bool = False,
-    created_from: Optional[datetime] = Query(default=None),
-    created_to: Optional[datetime] = Query(default=None),
-    next_contact_from: Optional[datetime] = Query(default=None),
-    next_contact_to: Optional[datetime] = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
-):
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-
-    query = _filter_query_by_role(db.query(Lead).order_by(Lead.created_at.desc()), current_user)
-    if status_filter:
-        query = query.filter(Lead.status == status_filter)
-    if questionnaire_filled is not None:
-        query = query.filter(Lead.questionnaire_filled == questionnaire_filled)
-    if q:
-        search = f"%{q.strip()}%"
-        query = query.filter(
-            or_(
-                cast(Lead.contact_name, Text).ilike(search),
-                cast(Lead.phone, Text).ilike(search),
-                cast(Lead.parent_full_name, Text).ilike(search),
-                cast(Lead.child_full_name, Text).ilike(search),
-                cast(Lead.parent_phone, Text).ilike(search),
-                cast(Lead.child_phone, Text).ilike(search),
-                cast(Lead.school_name, Text).ilike(search),
-                cast(Lead.school_class, Text).ilike(search),
-            )
-        )
-    if source:
-        query = query.filter(Lead.source.ilike(f"%{source.strip()}%"))
-    if tag:
-        # tags are stored as JSON array; text-search keeps compatibility across DB backends.
-        query = query.filter(Lead.tags.isnot(None), cast(Lead.tags, Text).ilike(f"%{tag.strip()}%"))
-    if overdue_only:
-        now = datetime.utcnow()
-        query = query.filter(Lead.next_contact_at.isnot(None), Lead.next_contact_at < now)
-    if created_from:
-        query = query.filter(Lead.created_at >= created_from)
-    if created_to:
-        query = query.filter(Lead.created_at <= created_to)
-    if next_contact_from:
-        query = query.filter(Lead.next_contact_at >= next_contact_from)
-    if next_contact_to:
-        query = query.filter(Lead.next_contact_at <= next_contact_to)
-    leads = query.all()
-
-    # One-time/gradual бэкаповка старых лидов в воронку «Дожать на обучение»:
-    # если статус demo, по лиду уже есть [came] в регистрациях события, но post_visit_stage ещё не задана,
-    # проставляем stage='new', чтобы такие лиды появились на странице дожима.
-    if status_filter == LeadStatus.DEMO:
-        updated = False
-        for lead in leads:
-            if not getattr(lead, "post_visit_stage", None):
-                has_came = (
-                    db.query(EventRegistration)
-                    .filter(
-                        EventRegistration.lead_id == lead.id,
-                        cast(EventRegistration.note, Text).ilike("%[came]%"),
-                    )
-                    .first()
-                )
-                if has_came:
-                    lead.post_visit_stage = "new"
-                    updated = True
-        if updated:
-            db.commit()
-            for lead in leads:
-                db.refresh(lead)
-
-    return [_fix_lead_strings(l) for l in leads]
 
 
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)

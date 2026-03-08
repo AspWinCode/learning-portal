@@ -274,7 +274,13 @@ const SalesLeadsPage: React.FC = () => {
       });
       setLeads(data);
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось загрузить лиды'));
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      if (status === 404 || (typeof detail === 'string' && (detail === 'Not Found' || detail.includes('404')))) {
+        setError('Не удалось загрузить список лидов (сервис недоступен или маршрут не найден). Проверьте, что бэкенд запущен и доступен по адресу API.');
+      } else {
+        setError(extractApiError(err, 'Не удалось загрузить лиды'));
+      }
     } finally {
       setLoading(false);
     }

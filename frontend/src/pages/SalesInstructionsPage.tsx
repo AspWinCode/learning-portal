@@ -183,7 +183,7 @@ const SalesInstructionsPage: React.FC = () => {
                     onChange={setDraftBody}
                     onPasteImage={handlePasteImage}
                     minHeight={280}
-                    placeholder="Введите текст инструкции. Можно вставлять картинки через Ctrl+V."
+                    placeholder="Введите текст. Форматирование (шрифт, размер, списки, таблицы, ссылки, картинки) сохраняется. Копирование — с форматированием. Картинки: кнопка выше или Ctrl+V."
                   />
                   <Stack direction="row" spacing={1}>
                     <Button

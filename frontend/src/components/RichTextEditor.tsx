@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box,
   ToggleButton,
@@ -8,12 +8,31 @@ import {
   FormControl,
   InputLabel,
   Stack,
+  IconButton,
+  Popover,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Button,
+  Tooltip,
 } from '@mui/material';
 import FormatBold from '@mui/icons-material/FormatBold';
 import FormatItalic from '@mui/icons-material/FormatItalic';
 import FormatUnderlined from '@mui/icons-material/FormatUnderlined';
-import FormatSize from '@mui/icons-material/FormatSize';
-import Title from '@mui/icons-material/Title';
+import FormatAlignLeft from '@mui/icons-material/FormatAlignLeft';
+import FormatAlignCenter from '@mui/icons-material/FormatAlignCenter';
+import FormatAlignRight from '@mui/icons-material/FormatAlignRight';
+import FormatAlignJustify from '@mui/icons-material/FormatAlignJustify';
+import FormatListBulleted from '@mui/icons-material/FormatListBulleted';
+import FormatListNumbered from '@mui/icons-material/FormatListNumbered';
+import FormatIndentIncrease from '@mui/icons-material/FormatIndentIncrease';
+import FormatIndentDecrease from '@mui/icons-material/FormatIndentDecrease';
+import Link from '@mui/icons-material/Link';
+import Image from '@mui/icons-material/Image';
+import TableChart from '@mui/icons-material/TableChart';
+import FormatColorText from '@mui/icons-material/FormatColorText';
 
 const BLOCK_OPTIONS: { value: string; label: string }[] = [
   { value: 'p', label: 'Абзац' },
@@ -34,6 +53,12 @@ const FONT_SIZE_OPTIONS: { value: string; label: string }[] = [
   { value: '5', label: 'Большой' },
 ];
 
+const TEXT_COLORS = [
+  '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#efefef', '#f3f3f3', '#ffffff',
+  '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff',
+  '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc',
+];
+
 export interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
@@ -50,7 +75,15 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = 'Введите текст…',
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
   const isInternalChange = useRef(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null);
+  const [tableOpen, setTableOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableCols, setTableCols] = useState(3);
 
   useEffect(() => {
     const el = editorRef.current;
@@ -79,9 +112,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent) => {
       const items = e.clipboardData?.items;
-      if (!items || !onPasteImage) {
-        return;
-      }
+      if (!items || !onPasteImage) return;
       const arr = Array.from(items);
       for (let i = 0; i < arr.length; i++) {
         const item = arr[i];
@@ -91,18 +122,24 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             e.preventDefault();
             try {
               const url = await onPasteImage(file);
-              const imgHtml = `<img src="${url}" alt="" style="max-width:100%;height:auto;" />`;
-              document.execCommand('insertHTML', false, imgHtml);
+              insertHtml(`<p><img src="${url}" alt="" style="max-width:100%;height:auto;" /></p>`);
               syncContent();
-            } catch (_) {
-              // allow default paste if upload fails
-            }
+            } catch (_) {}
             return;
           }
         }
       }
     },
     [onPasteImage, syncContent]
+  );
+
+  const insertHtml = useCallback(
+    (html: string) => {
+      document.execCommand('insertHTML', false, html);
+      editorRef.current?.focus();
+      syncContent();
+    },
+    [syncContent]
   );
 
   const exec = useCallback(
@@ -114,10 +151,72 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     [syncContent]
   );
 
+  const handleColorSelect = useCallback(
+    (color: string) => {
+      exec('foreColor', color);
+      setColorAnchor(null);
+    },
+    [exec]
+  );
+
+  const handleInsertLink = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+    else savedSelectionRef.current = null;
+    setLinkUrl('https://');
+    setLinkOpen(true);
+  }, []);
+
+  const handleLinkConfirm = useCallback(() => {
+    const url = linkUrl.trim();
+    if (url && url !== 'https://') {
+      const sel = window.getSelection();
+      if (sel && savedSelectionRef.current) {
+        sel.removeAllRanges();
+        sel.addRange(savedSelectionRef.current);
+      }
+      document.execCommand('createLink', false, url);
+      syncContent();
+    }
+    savedSelectionRef.current = null;
+    setLinkOpen(false);
+  }, [linkUrl, syncContent]);
+
+  const handleInsertTable = useCallback(() => {
+    const r = Math.max(1, Math.min(20, tableRows));
+    const c = Math.max(1, Math.min(10, tableCols));
+    let html = '<table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;"><tbody>';
+    for (let i = 0; i < r; i++) {
+      html += '<tr>';
+      for (let j = 0; j < c; j++) html += '<td></td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    insertHtml(html);
+    setTableOpen(false);
+  }, [tableRows, tableCols, insertHtml]);
+
+  const handleImageClick = useCallback(() => {
+    if (onPasteImage) imageInputRef.current?.click();
+  }, [onPasteImage]);
+
+  const handleImageFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file || !onPasteImage || !file.type.startsWith('image/')) return;
+      try {
+        const url = await onPasteImage(file);
+        insertHtml(`<p><img src="${url}" alt="" style="max-width:100%;height:auto;" /></p>`);
+      } catch (_) {}
+    },
+    [onPasteImage, insertHtml]
+  );
+
   return (
     <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
       <Stack direction="row" flexWrap="wrap" alignItems="center" sx={{ p: 0.5, bgcolor: 'grey.100', gap: 0.5 }}>
-        <ToggleButtonGroup size="small" sx={{ flexWrap: 'wrap' }}>
+        <ToggleButtonGroup size="small">
           <ToggleButton value="bold" onClick={() => exec('bold')} aria-label="Жирный">
             <FormatBold />
           </ToggleButton>
@@ -128,7 +227,100 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             <FormatUnderlined />
           </ToggleButton>
         </ToggleButtonGroup>
-        <FormControl size="small" sx={{ minWidth: 130 }}>
+
+        <Tooltip title="Цвет текста">
+          <IconButton size="small" onClick={(e) => setColorAnchor(e.currentTarget)} aria-label="Цвет текста">
+            <FormatColorText />
+          </IconButton>
+        </Tooltip>
+        <Popover
+          open={Boolean(colorAnchor)}
+          anchorEl={colorAnchor}
+          onClose={() => setColorAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        >
+          <Box sx={{ p: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: 200 }}>
+            {TEXT_COLORS.map((c) => (
+              <Box
+                key={c}
+                onClick={() => handleColorSelect(c)}
+                sx={{
+                  width: 20,
+                  height: 20,
+                  bgcolor: c,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 0.5,
+                  cursor: 'pointer',
+                  '&:hover': { opacity: 0.8 },
+                }}
+              />
+            ))}
+          </Box>
+        </Popover>
+
+        <Box sx={{ width: 8 }} />
+        <ToggleButtonGroup size="small">
+          <ToggleButton value="left" onClick={() => exec('justifyLeft')} aria-label="По левому краю">
+            <FormatAlignLeft />
+          </ToggleButton>
+          <ToggleButton value="center" onClick={() => exec('justifyCenter')} aria-label="По центру">
+            <FormatAlignCenter />
+          </ToggleButton>
+          <ToggleButton value="right" onClick={() => exec('justifyRight')} aria-label="По правому краю">
+            <FormatAlignRight />
+          </ToggleButton>
+          <ToggleButton value="justify" onClick={() => exec('justifyFull')} aria-label="По ширине">
+            <FormatAlignJustify />
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <ToggleButtonGroup size="small">
+          <ToggleButton value="ul" onClick={() => exec('insertUnorderedList')} aria-label="Маркированный список">
+            <FormatListBulleted />
+          </ToggleButton>
+          <ToggleButton value="ol" onClick={() => exec('insertOrderedList')} aria-label="Нумерованный список">
+            <FormatListNumbered />
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <ToggleButtonGroup size="small">
+          <ToggleButton value="outdent" onClick={() => exec('outdent')} aria-label="Уменьшить отступ">
+            <FormatIndentDecrease />
+          </ToggleButton>
+          <ToggleButton value="indent" onClick={() => exec('indent')} aria-label="Увеличить отступ">
+            <FormatIndentIncrease />
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <Tooltip title="Вставить ссылку">
+          <IconButton size="small" onClick={handleInsertLink} aria-label="Вставить ссылку">
+            <Link />
+          </IconButton>
+        </Tooltip>
+        {onPasteImage && (
+          <>
+            <Tooltip title="Вставить изображение">
+              <IconButton size="small" onClick={handleImageClick} aria-label="Вставить изображение">
+                <Image />
+              </IconButton>
+            </Tooltip>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleImageFile}
+            />
+          </>
+        )}
+        <Tooltip title="Вставить таблицу">
+          <IconButton size="small" onClick={() => setTableOpen(true)} aria-label="Вставить таблицу">
+            <TableChart />
+          </IconButton>
+        </Tooltip>
+
+        <FormControl size="small" sx={{ minWidth: 100, ml: 0.5 }}>
           <InputLabel>Стиль</InputLabel>
           <Select
             label="Стиль"
@@ -143,7 +335,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 120 }}>
+        <FormControl size="small" sx={{ minWidth: 100 }}>
           <InputLabel>Размер</InputLabel>
           <Select
             label="Размер"
@@ -158,7 +350,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 140 }}>
+        <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Шрифт</InputLabel>
           <Select
             label="Шрифт"
@@ -174,6 +366,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </Select>
         </FormControl>
       </Stack>
+
       <Box
         ref={editorRef}
         component="div"
@@ -187,8 +380,60 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           outline: 'none',
           '&:empty::before': { content: `"${placeholder}"`, color: 'text.disabled' },
           '& img': { maxWidth: '100%', height: 'auto' },
+          '& table': { borderCollapse: 'collapse', width: '100%' },
+          '& td, & th': { border: '1px solid', borderColor: 'divider', p: 1 },
         }}
       />
+
+      <Dialog open={linkOpen} onClose={() => setLinkOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Вставить ссылку</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="URL"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleLinkConfirm()}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLinkOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={handleLinkConfirm}>
+            Вставить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={tableOpen} onClose={() => setTableOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Вставить таблицу</DialogTitle>
+        <DialogContent>
+          <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              type="number"
+              label="Строк"
+              value={tableRows}
+              onChange={(e) => setTableRows(parseInt(e.target.value, 10) || 1)}
+              inputProps={{ min: 1, max: 20 }}
+              size="small"
+            />
+            <TextField
+              type="number"
+              label="Столбцов"
+              value={tableCols}
+              onChange={(e) => setTableCols(parseInt(e.target.value, 10) || 1)}
+              inputProps={{ min: 1, max: 10 }}
+              size="small"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTableOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={handleInsertTable}>
+            Вставить
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -229,6 +229,9 @@ export const CampaignsTab: React.FC = () => {
     <>
       {selectedCampaignId ? (
         <Box>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Новая версия: ниже три вкладки — «Общая работа», «Джемы», «Матрица школ». Переключайте для работы с джемами и матрицей.
+          </Alert>
           <Button startIcon={<ArrowBack />} onClick={() => setSelectedCampaignId(null)} sx={{ mb: 2 }}>
             К списку кампаний
           </Button>
@@ -322,19 +325,7 @@ export const CampaignsTab: React.FC = () => {
               )}
             </>
           ) : (
-            <>
-              <Typography variant="h5" gutterBottom sx={{ color: 'text.secondary' }}>
-                Загрузка кампании…
-              </Typography>
-              <Box sx={{ border: '2px solid', borderColor: 'primary.main', borderRadius: 1, p: 1, mb: 2, bgcolor: 'action.hover' }}>
-                <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} variant="fullWidth">
-                  <Tab label="Общая работа" value="work" />
-                  <Tab label="Джемы" value="events" />
-                  <Tab label="Матрица школ" value="matrix" />
-                </Tabs>
-              </Box>
-              <Typography color="text.secondary">Загрузка…</Typography>
-            </>
+            <Typography color="text.secondary">Загрузка данных кампании…</Typography>
           )}
         </Box>
       ) : (

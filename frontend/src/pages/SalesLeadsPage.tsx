@@ -276,8 +276,21 @@ const SalesLeadsPage: React.FC = () => {
     } catch (err: any) {
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
-      if (status === 404 || (typeof detail === 'string' && (detail === 'Not Found' || detail.includes('404')))) {
-        setError('Не удалось загрузить список лидов (сервис недоступен или маршрут не найден). Проверьте, что бэкенд запущен и доступен по адресу API.');
+      const noResponse = !err?.response; // сеть недоступна, бэкенд не запущен, CORS
+      const base = err?.config?.baseURL ?? '';
+      const path = err?.config?.url ?? '';
+      const requestUrl = base ? `${base.replace(/\/$/, '')}${path?.startsWith('/') ? path : '/' + path}` : (typeof window !== 'undefined' ? window.location.origin + path : path);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[SalesLeads] loadLeads error', { status, noResponse, requestUrl, message: err?.message }, err);
+      }
+      if (
+        noResponse ||
+        status === 404 ||
+        (typeof detail === 'string' && (detail === 'Not Found' || detail.includes('404')))
+      ) {
+        let msg = 'Не удалось загрузить список лидов (сервис недоступен или маршрут не найден). Проверьте, что бэкенд запущен и доступен по адресу API.';
+        if (requestUrl) msg += ` Запрос: ${requestUrl}${status ? `, ответ: ${status}` : ''}.`;
+        setError(msg);
       } else {
         setError(extractApiError(err, 'Не удалось загрузить лиды'));
       }

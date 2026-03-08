@@ -10,6 +10,7 @@
 |----------|---------|------------|
 | **[BACKEND_REFACTOR_DOMAIN_MAP.md](BACKEND_REFACTOR_DOMAIN_MAP.md)** | Этап 1. Архитектурный аудит | Карта доменов и endpoint'ов: инвентаризация роутеров, разметка по доменам (Auth, Education, CRM, Operations, Finance, Management), смешение в `sales`, зависимости между доменами, рекомендации по разделению. |
 | **[BACKEND_REFACTOR_USE_CASES.md](BACKEND_REFACTOR_USE_CASES.md)** | Этап 2. Карта use case-сценариев | Каталог ключевых backend use cases: конвертация лида/анкеты в ученика, пропуск → отработка/ручной урок, банковская операция → ученик, пересчёт оплаты, характеристики (submit/approve/reject), просрочка оплаты → задачи менеджеру, поствизит по лиду; приоритеты для сервисов и тестов. |
+| **[BACKEND_REFACTOR_STAGE3_PLAN.md](BACKEND_REFACTOR_STAGE3_PLAN.md)** | Этап 3. Вынос логики | План и прогресс: сделан сервис `lead_conversion.convert_lead_to_student`, роутер приведён к тонкому вызову; список следующих use cases для выноса. |
 
 ---
 

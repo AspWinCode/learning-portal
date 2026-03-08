@@ -16,6 +16,12 @@ from app.database import get_db
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_with_invite, create_parent_user_no_invite
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
+from app.services.student_card_conversion import (
+    convert_student_card_to_student as student_card_convert,
+    StudentCardConvertConflict,
+)
+from app.services.absence_makeup import assign_makeup_for_absence as absence_makeup_assign
+from app.services.manual_lesson import create_manual_lesson as manual_lesson_create
 from app.models import (
     Lead,
     LeadStatus,
@@ -159,6 +165,7 @@ from app.schemas import (
     SpecialistQuestionnaireResponse,
 )
 from app.routers.action_log import log_action
+from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
 
 router = APIRouter()
 
@@ -1739,115 +1746,28 @@ async def convert_anketa_to_student(
     """
     _require_sales_admin_owner(current_user)
     body = payload or AnketaConvertRequest()
-    card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
-    if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
-    if getattr(card, "student_id", None) and getattr(card, "anketa_status", None) == "converted":
-        return AnketaConvertResponse(
-            card=_student_card_response(card, current_user, db),
-            student_id=card.student_id,
+    try:
+        result = student_card_convert(
+            db,
+            card_id,
+            use_existing_parent_id=body.use_existing_parent_id,
+            use_existing_student_id=body.use_existing_student_id,
         )
-    student_full_name = (card.student_full_name or "").strip() or "Ученик"
-    parent_email = (getattr(card, "parent_email", None) or "").strip().lower()
-    parent_full_name = (getattr(card, "parent_full_name", None) or "").strip() or "Родитель"
-
-    # Явная привязка к существующему ученику
-    if body.use_existing_student_id:
-        student = db.query(Student).filter(Student.id == body.use_existing_student_id).first()
-        if not student:
-            raise HTTPException(status_code=404, detail="Ученик не найден")
-        card.student_id = student.id
-        card.anketa_status = "converted"
-        db.commit()
-        db.refresh(card)
-        return AnketaConvertResponse(
-            card=_student_card_response(card, current_user, db),
-            student_id=student.id,
-        )
-
-    parent_user = None
-    if body.use_existing_parent_id:
-        parent_user = db.query(User).filter(User.id == body.use_existing_parent_id, User.role == UserRole.PARENT).first()
-        if not parent_user:
-            raise HTTPException(status_code=404, detail="Родитель не найден")
-        # Проверка дубля ученика по ФИО у этого родителя
-        same_name = db.query(Student).filter(
-            Student.parent_id == parent_user.id,
-            Student.full_name == student_full_name,
-            Student.status == StudentStatus.ACTIVE,
-        ).first()
-        if same_name:
-            raise HTTPException(
-                status_code=409,
-                detail=AnketaConvertConflictResponse(
-                    code="existing_student",
-                    message="У этого родителя уже есть ученик с таким ФИО. Привяжите анкету к существующему ученику или создайте нового.",
-                    existing_student_id=same_name.id,
-                    existing_students=[{"id": same_name.id, "full_name": same_name.full_name}],
-                ).model_dump(),
-            )
-        # Создаём нового ученика у выбранного родителя
-        student = Student(full_name=student_full_name, parent_id=parent_user.id, status=StudentStatus.ACTIVE)
-        db.add(student)
-        db.flush()
-        card.student_id = student.id
-        card.anketa_status = "converted"
-        db.commit()
-        db.refresh(card)
-        return AnketaConvertResponse(
-            card=_student_card_response(card, current_user, db),
-            student_id=student.id,
-        )
-
-    # Без явного выбора: ищем/создаём родителя по email
-    if not parent_email:
-        raise HTTPException(status_code=400, detail="Укажите email родителя в анкете для конверсии")
-    existing_parent = db.query(User).filter(User.email == parent_email, User.role == UserRole.PARENT).first()
-    if existing_parent:
-        same_name = db.query(Student).filter(
-            Student.parent_id == existing_parent.id,
-            Student.full_name == student_full_name,
-            Student.status == StudentStatus.ACTIVE,
-        ).first()
-        if same_name:
-            raise HTTPException(
-                status_code=409,
-                detail=AnketaConvertConflictResponse(
-                    code="existing_student",
-                    message="У найденного родителя уже есть ученик с таким ФИО.",
-                    existing_parent_id=existing_parent.id,
-                    existing_student_id=same_name.id,
-                    existing_students=[{"id": same_name.id, "full_name": same_name.full_name}],
-                ).model_dump(),
-                headers={"X-Conflict-Code": "existing_student"},
-            )
+    except StudentCardConvertConflict as e:
+        code = e.detail.get("code", "existing_parent")
         raise HTTPException(
             status_code=409,
-            detail=AnketaConvertConflictResponse(
-                code="existing_parent",
-                message="Родитель с таким email уже есть. Привяжите анкету к нему или создайте нового ученика.",
-                existing_parent_id=existing_parent.id,
-                existing_students=[{"id": s.id, "full_name": s.full_name} for s in existing_parent.students or []],
-            ).model_dump(),
-            headers={"X-Conflict-Code": "existing_parent"},
+            detail=e.detail,
+            headers={"X-Conflict-Code": code},
         )
-
-    # Создаём нового родителя (без приглашения) и ученика
-    try:
-        parent_user = create_parent_user_no_invite(db, parent_email, parent_full_name)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    db.flush()
-    student = Student(full_name=student_full_name, parent_id=parent_user.id, status=StudentStatus.ACTIVE)
-    db.add(student)
-    db.flush()
-    card.student_id = student.id
-    card.anketa_status = "converted"
-    db.commit()
-    db.refresh(card)
+        msg = str(e)
+        if "не найден" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     return AnketaConvertResponse(
-        card=_student_card_response(card, current_user, db),
-        student_id=student.id,
+        card=_student_card_response(result.card, current_user, db),
+        student_id=result.student_id,
     )
 
 
@@ -2065,25 +1985,19 @@ async def assign_makeup(
 ):
     """Назначить отработку на группу и дату занятия (ТЗ п.5.5)."""
     _require_sales_admin_owner(current_user)
-    absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
-    if not absence:
-        raise HTTPException(status_code=404, detail="Пропуск не найден")
-    group = db.query(Group).filter(Group.id == payload.makeup_group_id).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Группа не найдена")
-    absence.makeup_group_id = payload.makeup_group_id
-    absence.makeup_lesson_date = payload.makeup_lesson_date
-    absence.stage = "assigned"
-    # Автоматически создаём задачу «Отправить ссылку» для sales
     try:
-        from app.services.absence_link_tasks import create_link_task_on_assign
-        create_link_task_on_assign(db, absence)
-    except Exception:
-        # Логируем, но не блокируем основной поток
-        traceback.print_exc()
-    db.commit()
-    db.refresh(absence)
-    return _absence_to_response(db, absence)
+        result = absence_makeup_assign(
+            db,
+            absence_id,
+            makeup_group_id=payload.makeup_group_id,
+            makeup_lesson_date=payload.makeup_lesson_date,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "не найден" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    return _absence_to_response(db, result.absence)
 
 
 @router.get("/absences/{absence_id}/suggest-makeups", response_model=List[MakeupSuggestionItem])
@@ -2328,10 +2242,6 @@ async def create_custom_lesson(
     """Создать ручной урок без группы (отработка / доп.урок / пробное). Только admin/owner/sales."""
     _require_sales_admin_owner(current_user)
 
-    trainer = db.query(User).filter(User.id == payload.trainer_id).first()
-    if not trainer:
-        raise HTTPException(status_code=404, detail="Тренер не найден")
-
     try:
         start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
         end_t = None
@@ -2344,48 +2254,29 @@ async def create_custom_lesson(
     if lesson_type_value not in {t.value for t in CustomLessonType}:
         raise HTTPException(status_code=400, detail=f"lesson_type должен быть одним из: {[t.value for t in CustomLessonType]}")
 
-    lesson = CustomLesson(
-        title=payload.title.strip(),
-        lesson_date=payload.lesson_date,
-        start_time=start_t,
-        end_time=end_t,
-        trainer_id=payload.trainer_id,
-        lesson_type=CustomLessonType(lesson_type_value),
-        comment=(payload.comment or "").strip() or None,
-        created_by_id=current_user.id,
-    )
-    db.add(lesson)
-    db.flush()
-
-    # Добавляем учеников
-    for item in payload.students or []:
-        student = db.query(Student).filter(Student.id == item.student_id).first()
-        if not student:
-            raise HTTPException(status_code=404, detail=f"Ученик {item.student_id} не найден")
-        planned_absence_id = item.planned_absence_id
-        if planned_absence_id is not None:
-            absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == planned_absence_id).first()
-            if not absence or absence.student_id != item.student_id:
-                raise HTTPException(status_code=400, detail=f"Пропуск {planned_absence_id} не найден для этого ученика")
-        cls = CustomLessonStudent(
-            lesson_id=lesson.id,
-            student_id=item.student_id,
-            planned_absence_id=planned_absence_id,
-            attended=False,
+    students_tuples = [
+        (item.student_id, item.planned_absence_id)
+        for item in (payload.students or [])
+    ]
+    try:
+        result = manual_lesson_create(
+            db,
+            title=payload.title,
+            lesson_date=payload.lesson_date,
+            start_time=start_t,
+            end_time=end_t,
+            trainer_id=payload.trainer_id,
+            lesson_type=lesson_type_value,
+            comment=payload.comment,
+            students=students_tuples,
+            created_by_id=current_user.id,
         )
-        db.add(cls)
-        # Для типа «Отработка» помечаем пропуск как «назначена отработка»
-        if lesson_type_value == "makeup" and planned_absence_id is not None:
-            absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == planned_absence_id).first()
-            if absence and absence.student_id == item.student_id:
-                absence.stage = "assigned"
-                absence.makeup_custom_lesson_id = lesson.id
-                absence.makeup_group_id = None
-                absence.makeup_lesson_date = None
-
-    db.commit()
-    db.refresh(lesson)
-    return _custom_lesson_to_response(db, lesson)
+    except ValueError as e:
+        msg = str(e)
+        if "не найден" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    return _custom_lesson_to_response(db, result.lesson)
 
 
 @router.get("/custom-lessons", response_model=List[CustomLessonResponse])
@@ -4401,74 +4292,10 @@ async def update_lead(
     return lead
 
 
-def _find_or_create_student_card_for_lead(db: Session, lead: Lead, student: Student, student_full_name: str) -> None:
-    """
-    При конвертации лида в ученика: ищем анкету (StudentCard) из опроса по email и ФИО ребёнка
-    и привязываем к ученику; если не нашли — создаём карточку из данных лида и questionnaire_data.
-    Если у ученика уже есть карточка — ничего не делаем.
-    """
-    if db.query(StudentCard).filter(StudentCard.student_id == student.id).first():
-        return
-    parent_email = (getattr(lead, "email", None) or "").strip().lower()
-    card = (
-        db.query(StudentCard)
-        .filter(
-            StudentCard.student_id.is_(None),
-            StudentCard.anketa_status == "filled",
-            StudentCard.parent_email == parent_email,
-            StudentCard.student_full_name == student_full_name,
-        )
-        .first()
-    )
-    if card:
-        card.student_id = student.id
-        card.anketa_status = "converted"
-        return
-    q = getattr(lead, "questionnaire_data", None) or {}
-    if not isinstance(q, dict):
-        q = {}
-    parent_full_name = (getattr(lead, "parent_full_name", None) or getattr(lead, "contact_name", None) or "").strip() or (q.get("parent_full_name") or "")
-    parent_phone = (getattr(lead, "parent_phone", None) or getattr(lead, "phone", None) or "").strip() or (q.get("parent_phone") or "")
-    parent_email_val = (getattr(lead, "email", None) or "").strip() or (q.get("parent_email") or "")
-    student_phone = (getattr(lead, "child_phone", None) or "").strip() or (q.get("child_phone") or "")
-    city = (getattr(lead, "city", None) or "").strip() or (q.get("city") or "")
-    school = (getattr(lead, "school_name", None) or "").strip() or (q.get("school_name") or "")
-    grade = (getattr(lead, "school_class", None) or "").strip() or (q.get("school_class") or "")
-    comment = (getattr(lead, "comment", None) or "").strip() or (q.get("comment") or "")
-    source = (getattr(lead, "source", None) or "").strip() or (q.get("source") or "")
-    birth_date_val = q.get("birth_date")
-    if isinstance(birth_date_val, str) and birth_date_val.strip():
-        try:
-            from datetime import datetime as dt
-            birth_date_val = dt.strptime(birth_date_val.strip()[:10], "%Y-%m-%d").date()
-        except (ValueError, TypeError):
-            birth_date_val = None
-    elif birth_date_val is None or not getattr(birth_date_val, "year", None):
-        birth_date_val = None
-    card = StudentCard(
-        student_id=student.id,
-        student_full_name=student_full_name,
-        parent_full_name=parent_full_name or None,
-        parent_phone=parent_phone or None,
-        parent_phone_2=(q.get("parent_phone_2") or "").strip() or None,
-        parent_telegram=(q.get("parent_telegram") or "").strip() or None,
-        parent_email=parent_email_val or None,
-        student_phone=student_phone or None,
-        telegram=(q.get("child_telegram") or "").strip() or None,
-        student_email=(q.get("student_email") or "").strip() or None,
-        birth_date=birth_date_val,
-        gender=(q.get("gender") or "").strip() or None,
-        city=city or None,
-        school=school or None,
-        grade=grade or None,
-        preferred_messenger=(q.get("preferred_messenger") or "").strip() or None,
-        comment=comment or None,
-        source=source or None,
-        anketa_status="converted",
-        discount_type=DiscountType.NONE,
-        discount_value=0.0,
-    )
-    db.add(card)
+from app.routers.action_log import log_action
+from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
+
+router = APIRouter()
 
 
 @router.post("/leads/{lead_id}/convert-to-student", response_model=LeadConvertToStudentResponse)
@@ -4481,73 +4308,20 @@ async def convert_lead_to_student(
     Переводит лида в ученика: создаёт родителя (если нет по email) и ученика с from_lead_id,
     привязывает или создаёт анкету (StudentCard) из данных лида/опроса.
     Обновляет лида (status=WON, converted_to_student_id).
+    Бизнес-логика вынесена в app.services.lead_conversion.
     """
     _require_sales_admin_owner(current_user)
-    lead = db.query(Lead).filter(Lead.id == lead_id).first()
-    if not lead:
-        raise HTTPException(status_code=404, detail="Лид не найден")
-    if getattr(lead, "converted_to_student_id", None):
-        student = db.query(Student).filter(Student.id == lead.converted_to_student_id).first()
-        if student:
-            return LeadConvertToStudentResponse(
-                student_id=student.id,
-                lead=_fix_lead_strings(lead),
-            )
-    parent_email = (getattr(lead, "email", None) or "").strip().lower()
-    if not parent_email:
-        raise HTTPException(
-            status_code=400,
-            detail="У лида не указан email. Укажите email для конвертации в ученика.",
-        )
-    parent_full_name = (getattr(lead, "parent_full_name", None) or getattr(lead, "contact_name", None) or "").strip() or "Родитель"
-    student_full_name = (getattr(lead, "child_full_name", None) or getattr(lead, "contact_name", None) or "").strip() or "Ученик"
-    existing_parent = db.query(User).filter(User.email == parent_email, User.role == UserRole.PARENT).first()
-    if existing_parent:
-        same_name = (
-            db.query(Student)
-            .filter(
-                Student.parent_id == existing_parent.id,
-                Student.full_name == student_full_name,
-                Student.status == StudentStatus.ACTIVE,
-            )
-            .first()
-        )
-        if same_name:
-            lead.converted_to_student_id = same_name.id
-            lead.status = LeadStatus.WON
-            lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
-            if not getattr(same_name, "from_lead_id", None):
-                same_name.from_lead_id = lead.id
-            _find_or_create_student_card_for_lead(db, lead, same_name, student_full_name)
-            db.commit()
-            db.refresh(lead)
-            db.refresh(same_name)
-            log_action(db, current_user.id, "convert_lead_to_student", "lead", lead.id, {"student_id": same_name.id})
-            return LeadConvertToStudentResponse(student_id=same_name.id, lead=_fix_lead_strings(lead))
-        parent_user = existing_parent
-    else:
-        try:
-            parent_user = create_parent_user_no_invite(db, parent_email, parent_full_name)
-            db.flush()
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-    student = Student(
-        full_name=student_full_name,
-        parent_id=parent_user.id,
-        status=StudentStatus.ACTIVE,
-        from_lead_id=lead.id,
+    try:
+        result = lead_conversion_convert(db, lead_id, actor_user_id=current_user.id)
+    except ValueError as e:
+        msg = str(e)
+        if "не найден" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    return LeadConvertToStudentResponse(
+        student_id=result.student_id,
+        lead=_fix_lead_strings(result.lead),
     )
-    db.add(student)
-    db.flush()
-    lead.converted_to_student_id = student.id
-    lead.status = LeadStatus.WON
-    lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
-    _find_or_create_student_card_for_lead(db, lead, student, student_full_name)
-    db.commit()
-    db.refresh(lead)
-    db.refresh(student)
-    log_action(db, current_user.id, "convert_lead_to_student", "lead", lead.id, {"student_id": student.id})
-    return LeadConvertToStudentResponse(student_id=student.id, lead=_fix_lead_strings(lead))
 
 
 @router.post("/leads/{lead_id}/tasks", response_model=LeadTaskResponse, status_code=status.HTTP_201_CREATED)

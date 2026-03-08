@@ -2273,6 +2273,9 @@ class SchoolCampaignEventBulkUpdate(BaseModel):
     invite_status: Optional[str] = None
     participation_status: Optional[str] = None
     host_status: Optional[str] = None
+    create_invite_tasks: bool = False
+    create_host_tasks: bool = False
+    create_participated_tasks: bool = False
 
 
 # --- Task manager (admin/owner/sales) ---

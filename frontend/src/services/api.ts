@@ -1982,18 +1982,28 @@ export const campaignsApi = {
       host_status?: string;
       participant_count?: number | null;
       notes?: string | null;
-    }
+    },
+    params?: { create_invite_task?: boolean; create_host_task?: boolean; create_participated_task?: boolean }
   ): Promise<import('../types').SchoolCampaignEvent> => {
     const response = await api.put(
       `/api/campaigns/${campaignId}/events/${eventId}/schools/${schoolCampaignId}`,
-      payload
+      payload,
+      { params }
     );
     return response.data;
   },
   bulkUpdateEventSchools: async (
     campaignId: number,
     eventId: number,
-    payload: { school_campaign_ids: number[]; invite_status?: string; participation_status?: string; host_status?: string }
+    payload: {
+      school_campaign_ids: number[];
+      invite_status?: string;
+      participation_status?: string;
+      host_status?: string;
+      create_invite_tasks?: boolean;
+      create_host_tasks?: boolean;
+      create_participated_tasks?: boolean;
+    }
   ): Promise<import('../types').SchoolCampaignEvent[]> => {
     const response = await api.post(
       `/api/campaigns/${campaignId}/events/${eventId}/schools/bulk-update`,

@@ -577,6 +577,9 @@ async def upsert_school_campaign_event(
     event_id: int,
     school_campaign_id: int,
     payload: SchoolCampaignEventUpdate,
+    create_invite_task: bool = Query(False, description="Создать задачу «Позвать школу на джем» при invite_status=invited"),
+    create_host_task: bool = Query(False, description="Создать задачу «Согласовать детали площадки» при host_status=host_confirmed"),
+    create_participated_task: bool = Query(False, description="Создать задачу «Собрать лиды/итоги» при participation_status=participated"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner"])),
 ):
@@ -588,9 +591,14 @@ async def upsert_school_campaign_event(
     ).first()
     if not event:
         raise HTTPException(status_code=404, detail="Campaign event not found")
-    sc = db.query(SchoolCampaign).filter(
-        SchoolCampaign.id == school_campaign_id, SchoolCampaign.campaign_id == campaign_id
-    ).first()
+    sc = (
+        db.query(SchoolCampaign)
+        .options(joinedload(SchoolCampaign.school))
+        .filter(
+            SchoolCampaign.id == school_campaign_id, SchoolCampaign.campaign_id == campaign_id
+        )
+        .first()
+    )
     if not sc:
         raise HTTPException(status_code=404, detail="SchoolCampaign not found")
     sce = (
@@ -605,21 +613,46 @@ async def upsert_school_campaign_event(
     if sce:
         for k, v in data.items():
             setattr(sce, k, v)
-        db.commit()
-        db.refresh(sce)
-        return _sce_to_response(sce)
-    defaults = {
-        "invite_status": "not_invited",
-        "participation_status": "not_planned",
-        "host_status": "not_host",
-    }
-    defaults.update(data)
-    sce = SchoolCampaignEvent(
-        campaign_event_id=event_id,
-        school_campaign_id=school_campaign_id,
-        **defaults,
-    )
-    db.add(sce)
+    else:
+        defaults = {
+            "invite_status": "not_invited",
+            "participation_status": "not_planned",
+            "host_status": "not_host",
+        }
+        defaults.update(data)
+        sce = SchoolCampaignEvent(
+            campaign_event_id=event_id,
+            school_campaign_id=school_campaign_id,
+            **defaults,
+        )
+        db.add(sce)
+        db.flush()
+    event_date_str = str(event.event_date) if event.event_date else event.title
+    school_name = sc.school.name if sc.school else "Школа"
+    if create_invite_task and data.get("invite_status") == "invited":
+        db.add(Task(
+            title=f"Позвать школу на джем {event_date_str}: {school_name}",
+            created_by_id=current_user.id,
+            assigned_to_id=campaign.responsible_id,
+            status=TaskStatus.ACTIVE.value,
+            category="schools",
+        ))
+    if create_host_task and data.get("host_status") == "host_confirmed":
+        db.add(Task(
+            title=f"Согласовать детали площадки: {school_name}",
+            created_by_id=current_user.id,
+            assigned_to_id=campaign.responsible_id,
+            status=TaskStatus.ACTIVE.value,
+            category="schools",
+        ))
+    if create_participated_task and data.get("participation_status") == "participated":
+        db.add(Task(
+            title=f"Собрать лиды/итоги по школе: {school_name}",
+            created_by_id=current_user.id,
+            assigned_to_id=campaign.responsible_id,
+            status=TaskStatus.ACTIVE.value,
+            category="schools",
+        ))
     db.commit()
     db.refresh(sce)
     return _sce_to_response(sce)
@@ -647,6 +680,7 @@ async def bulk_update_event_schools(
     school_campaign_ids = set(payload.school_campaign_ids)
     school_campaigns = (
         db.query(SchoolCampaign)
+        .options(joinedload(SchoolCampaign.school))
         .filter(
             SchoolCampaign.id.in_(school_campaign_ids),
             SchoolCampaign.campaign_id == campaign_id,
@@ -654,8 +688,12 @@ async def bulk_update_event_schools(
         .all()
     )
     valid_ids = {sc.id for sc in school_campaigns}
+    sc_by_id = {sc.id: sc for sc in school_campaigns}
     data = payload.model_dump(exclude_unset=True)
     data.pop("school_campaign_ids", None)
+    data.pop("create_invite_tasks", None)
+    data.pop("create_host_tasks", None)
+    data.pop("create_participated_tasks", None)
     if not data:
         return []
     existing = (
@@ -687,6 +725,43 @@ async def bulk_update_event_schools(
             db.add(sce)
             db.flush()
             result.append(sce)
+    # Опциональное создание задач (п. 15 ТЗ)
+    event_date_str = str(event.event_date) if event.event_date else event.title
+    for sc_id in valid_ids:
+        sc = sc_by_id.get(sc_id)
+        if not sc or not sc.school:
+            continue
+        school_name = sc.school.name or "Школа"
+        if getattr(payload, "create_invite_tasks", False) and data.get("invite_status") == "invited":
+            task = Task(
+                title=f"Позвать школу на джем {event_date_str}: {school_name}",
+                description=None,
+                created_by_id=current_user.id,
+                assigned_to_id=campaign.responsible_id,
+                status=TaskStatus.ACTIVE.value,
+                category="schools",
+            )
+            db.add(task)
+        if getattr(payload, "create_host_tasks", False) and data.get("host_status") == "host_confirmed":
+            task = Task(
+                title=f"Согласовать детали площадки: {school_name}",
+                description=None,
+                created_by_id=current_user.id,
+                assigned_to_id=campaign.responsible_id,
+                status=TaskStatus.ACTIVE.value,
+                category="schools",
+            )
+            db.add(task)
+        if getattr(payload, "create_participated_tasks", False) and data.get("participation_status") == "participated":
+            task = Task(
+                title=f"Собрать лиды/итоги по школе: {school_name}",
+                description=None,
+                created_by_id=current_user.id,
+                assigned_to_id=campaign.responsible_id,
+                status=TaskStatus.ACTIVE.value,
+                category="schools",
+            )
+            db.add(task)
     db.commit()
     for sce in result:
         db.refresh(sce)

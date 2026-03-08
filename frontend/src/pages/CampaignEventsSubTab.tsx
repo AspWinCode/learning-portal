@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Select,
@@ -23,7 +24,6 @@ import {
   Typography,
 } from '@mui/material';
 import Add from '@mui/icons-material/Add';
-import Edit from '@mui/icons-material/Edit';
 import { format, parseISO } from 'date-fns';
 import { campaignsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
@@ -48,6 +48,8 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
   const [events, setEvents] = useState<CampaignEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editEventOpen, setEditEventOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CampaignEvent | null>(null);
   const [eventForm, setEventForm] = useState({
     title: '',
     event_date: '',
@@ -83,6 +85,9 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
     notes: '',
   });
   const [cellEditSaving, setCellEditSaving] = useState(false);
+  const [selectedSchoolIds, setSelectedSchoolIds] = useState<number[]>([]);
+  const [bulkCreateTasks, setBulkCreateTasks] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -125,16 +130,95 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
     }
   };
 
+  const openEditEvent = (ev: CampaignEvent) => {
+    setEditingEvent(ev);
+    setEventForm({
+      title: ev.title,
+      event_date: ev.event_date ? ev.event_date.slice(0, 10) : '',
+      starts_at: ev.starts_at ? ev.starts_at.slice(0, 16) : '',
+      ends_at: ev.ends_at ? ev.ends_at.slice(0, 16) : '',
+      location: ev.location ?? '',
+      city: ev.city ?? '',
+      status: ev.status || 'planned',
+      notes: ev.notes ?? '',
+    });
+    setEditEventOpen(true);
+  };
+
+  const handleUpdateEvent = async () => {
+    if (!editingEvent || !eventForm.title.trim() || !eventForm.event_date) {
+      onError('Заполните название и дату');
+      return;
+    }
+    onError(null);
+    try {
+      const updated = await campaignsApi.updateCampaignEvent(campaignId, editingEvent.id, {
+        title: eventForm.title.trim(),
+        event_date: eventForm.event_date,
+        starts_at: eventForm.starts_at || undefined,
+        ends_at: eventForm.ends_at || undefined,
+        location: eventForm.location.trim() || undefined,
+        city: eventForm.city.trim() || undefined,
+        status: eventForm.status,
+        notes: eventForm.notes.trim() || undefined,
+      });
+      setEditEventOpen(false);
+      setEditingEvent(null);
+      await loadEvents();
+      if (selectedEvent?.id === editingEvent.id) {
+        setSelectedEvent(updated);
+      }
+    } catch (err: any) {
+      onError(extractApiError(err, 'Не удалось сохранить джем'));
+    }
+  };
+
   const openEventDetail = (event: CampaignEvent) => {
     setSelectedEvent(event);
     setEventDetailOpen(true);
     setEventSchoolsLoading(true);
     setEventSchools([]);
+    setSelectedSchoolIds([]);
     campaignsApi
       .listEventSchools(campaignId, event.id)
       .then(setEventSchools)
       .catch(() => setEventSchools([]))
       .finally(() => setEventSchoolsLoading(false));
+  };
+
+  const toggleSchoolSelection = (id: number) => {
+    setSelectedSchoolIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+  const toggleSelectAllSchools = () => {
+    if (selectedSchoolIds.length >= eventSchools.length) {
+      setSelectedSchoolIds([]);
+    } else {
+      setSelectedSchoolIds(eventSchools.map((r) => r.school_campaign_id));
+    }
+  };
+  const runBulkAction = async (
+    payload: { invite_status?: string; participation_status?: string; host_status?: string },
+    createTasks?: { invite?: boolean; host?: boolean; participated?: boolean }
+  ) => {
+    if (!selectedEvent || selectedSchoolIds.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    onError(null);
+    try {
+      await campaignsApi.bulkUpdateEventSchools(campaignId, selectedEvent.id, {
+        school_campaign_ids: selectedSchoolIds,
+        ...payload,
+        create_invite_tasks: createTasks?.invite ?? false,
+        create_host_tasks: createTasks?.host ?? false,
+        create_participated_tasks: createTasks?.participated ?? false,
+      });
+      setSelectedSchoolIds([]);
+      const updated = await campaignsApi.listEventSchools(campaignId, selectedEvent.id);
+      setEventSchools(updated);
+    } catch (err: any) {
+      onError(extractApiError(err, 'Не удалось выполнить массовое действие'));
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const openCellEdit = (row: typeof eventSchools[0]) => {
@@ -191,17 +275,17 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
                 <TableCell>Дата</TableCell>
                 <TableCell>Место</TableCell>
                 <TableCell>Статус</TableCell>
-                <TableCell>Действия</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {events.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 3, color: 'text.secondary' }}>
-                    Нет джемов. Создайте первый.
-                  </TableCell>
-                </TableRow>
-              ) : (
+                    <TableCell>Действия</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {events.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                        Нет джемов. Создайте первый.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
                 events.map((ev) => (
                   <TableRow key={ev.id} hover>
                     <TableCell>{ev.title}</TableCell>
@@ -209,7 +293,10 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
                     <TableCell>{ev.location || ev.city || '—'}</TableCell>
                     <TableCell>{getEventStatusLabel(ev.status)}</TableCell>
                     <TableCell>
-                      <Button size="small" onClick={() => openEventDetail(ev)}>Открыть</Button>
+                      <Stack direction="row" spacing={0.5}>
+                        <Button size="small" onClick={() => openEventDetail(ev)}>Открыть</Button>
+                        <Button size="small" variant="outlined" onClick={() => openEditEvent(ev)}>Редактировать</Button>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 ))
@@ -295,9 +382,41 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
         </DialogActions>
       </Dialog>
 
+      <Dialog open={editEventOpen} onClose={() => { setEditEventOpen(false); setEditingEvent(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Редактировать джем</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField label="Название" value={eventForm.title} onChange={(e) => setEventForm((f) => ({ ...f, title: e.target.value }))} fullWidth required />
+            <TextField label="Дата" type="date" value={eventForm.event_date} onChange={(e) => setEventForm((f) => ({ ...f, event_date: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} required />
+            <TextField label="Время начала" type="datetime-local" value={eventForm.starts_at} onChange={(e) => setEventForm((f) => ({ ...f, starts_at: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} />
+            <TextField label="Время окончания" type="datetime-local" value={eventForm.ends_at} onChange={(e) => setEventForm((f) => ({ ...f, ends_at: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} />
+            <TextField label="Локация" value={eventForm.location} onChange={(e) => setEventForm((f) => ({ ...f, location: e.target.value }))} fullWidth />
+            <TextField label="Город" value={eventForm.city} onChange={(e) => setEventForm((f) => ({ ...f, city: e.target.value }))} fullWidth />
+            <FormControl fullWidth>
+              <InputLabel>Статус</InputLabel>
+              <Select value={eventForm.status} label="Статус" onChange={(e) => setEventForm((f) => ({ ...f, status: e.target.value }))}>
+                {CAMPAIGN_EVENT_STATUSES.map((s) => (
+                  <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField label="Комментарий" value={eventForm.notes} onChange={(e) => setEventForm((f) => ({ ...f, notes: e.target.value }))} fullWidth multiline minRows={2} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setEditEventOpen(false); setEditingEvent(null); }}>Отмена</Button>
+          <Button variant="contained" onClick={handleUpdateEvent} disabled={!eventForm.title.trim() || !eventForm.event_date}>Сохранить</Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={eventDetailOpen} onClose={() => setEventDetailOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>
-          {selectedEvent?.title} {selectedEvent?.event_date ? `(${format(parseISO(selectedEvent.event_date), 'dd.MM.yyyy')})` : ''}
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>
+            {selectedEvent?.title} {selectedEvent?.event_date ? `(${format(parseISO(selectedEvent.event_date), 'dd.MM.yyyy')})` : ''}
+          </span>
+          {selectedEvent && (
+            <Button size="small" variant="outlined" onClick={() => openEditEvent(selectedEvent)}>Редактировать джем</Button>
+          )}
         </DialogTitle>
         <DialogContent>
           {selectedEvent && (
@@ -310,40 +429,85 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
           {eventSchoolsLoading ? (
             <Typography color="text.secondary">Загрузка школ…</Typography>
           ) : (
-            <TableContainer component={Paper} variant="outlined">
-              <Table size="small" sx={{ minWidth: 800 }}>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Школа</TableCell>
-                    <TableCell>Город</TableCell>
-                    <TableCell>Общая стадия</TableCell>
-                    <TableCell>Приглашение</TableCell>
-                    <TableCell>Участие</TableCell>
-                    <TableCell>Площадка</TableCell>
-                    <TableCell align="right">Дети</TableCell>
-                    <TableCell>Комментарий</TableCell>
-                    <TableCell>Действия</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {eventSchools.map((row) => (
-                    <TableRow key={row.school_campaign_id} hover>
-                      <TableCell>{row.school_name ?? '—'}</TableCell>
-                      <TableCell>{row.school_city ?? '—'}</TableCell>
-                      <TableCell>{row.stage}</TableCell>
-                      <TableCell>{getInviteLabel(row.invite_status)}</TableCell>
-                      <TableCell>{getParticipationLabel(row.participation_status)}</TableCell>
-                      <TableCell>{getHostLabel(row.host_status)}</TableCell>
-                      <TableCell align="right">{row.participant_count ?? '—'}</TableCell>
-                      <TableCell sx={{ maxWidth: 150 }}>{row.notes ?? '—'}</TableCell>
-                      <TableCell>
-                        <Button size="small" onClick={() => openCellEdit(row)}>Изменить</Button>
+            <>
+              <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1.5 }} flexWrap="wrap">
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={eventSchools.length > 0 && selectedSchoolIds.length >= eventSchools.length}
+                      indeterminate={selectedSchoolIds.length > 0 && selectedSchoolIds.length < eventSchools.length}
+                      onChange={toggleSelectAllSchools}
+                    />
+                  }
+                  label="Выбрать все"
+                />
+                <FormControlLabel
+                  control={<Checkbox size="small" checked={bulkCreateTasks} onChange={(e) => setBulkCreateTasks(e.target.checked)} />}
+                  label="Создать задачи для выбранных"
+                />
+                <Typography variant="body2" color="text.secondary">Выбрано: {selectedSchoolIds.length}</Typography>
+                <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                  <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ invite_status: 'invited' }, { invite: bulkCreateTasks })}>Приглашённые</Button>
+                  <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ invite_status: 'awaiting_reply' })}>Ждём ответ</Button>
+                  <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ participation_status: 'confirmed' })}>Подтвердили участие</Button>
+                  <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ participation_status: 'participated' }, { participated: bulkCreateTasks })}>Участвовали</Button>
+                  <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ host_status: 'host_confirmed' }, { host: bulkCreateTasks })}>Площадка подтверждена</Button>
+                  <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ host_status: 'hosted' })}>Площадка проведена</Button>
+                </Stack>
+              </Stack>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small" sx={{ minWidth: 800 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          size="small"
+                          checked={eventSchools.length > 0 && selectedSchoolIds.length >= eventSchools.length}
+                          indeterminate={selectedSchoolIds.length > 0 && selectedSchoolIds.length < eventSchools.length}
+                          onChange={toggleSelectAllSchools}
+                          inputProps={{ 'aria-label': 'Выбрать все школы' }}
+                        />
                       </TableCell>
+                      <TableCell>Школа</TableCell>
+                      <TableCell>Город</TableCell>
+                      <TableCell>Общая стадия</TableCell>
+                      <TableCell>Приглашение</TableCell>
+                      <TableCell>Участие</TableCell>
+                      <TableCell>Площадка</TableCell>
+                      <TableCell align="right">Дети</TableCell>
+                      <TableCell>Комментарий</TableCell>
+                      <TableCell>Действия</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {eventSchools.map((row) => (
+                      <TableRow key={row.school_campaign_id} hover>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            size="small"
+                            checked={selectedSchoolIds.includes(row.school_campaign_id)}
+                            onChange={() => toggleSchoolSelection(row.school_campaign_id)}
+                            inputProps={{ 'aria-label': `Выбрать ${row.school_name}` }}
+                          />
+                        </TableCell>
+                        <TableCell>{row.school_name ?? '—'}</TableCell>
+                        <TableCell>{row.school_city ?? '—'}</TableCell>
+                        <TableCell>{row.stage}</TableCell>
+                        <TableCell>{getInviteLabel(row.invite_status)}</TableCell>
+                        <TableCell>{getParticipationLabel(row.participation_status)}</TableCell>
+                        <TableCell>{getHostLabel(row.host_status)}</TableCell>
+                        <TableCell align="right">{row.participant_count ?? '—'}</TableCell>
+                        <TableCell sx={{ maxWidth: 150 }}>{row.notes ?? '—'}</TableCell>
+                        <TableCell>
+                          <Button size="small" onClick={() => openCellEdit(row)}>Изменить</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
           )}
         </DialogContent>
         <DialogActions>

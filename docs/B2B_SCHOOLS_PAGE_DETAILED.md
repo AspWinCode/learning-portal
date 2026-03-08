@@ -89,6 +89,32 @@
 
 В карточке школы выбор другой стадии в `Select` вызывает `campaignsApi.updateSchoolCampaign(campaignId, sc.id, { stage: newStage })` и обновляет список привязок.
 
+#### Подвкладки в деталях кампании
+
+После выбора кампании доступны **три подвкладки**:
+
+1. **«Общая работа»** — канбан по стадиям (как раньше) + сводка по джемам на карточке школы и кнопка «История».
+2. **«Джемы»** — список событий кампании (CampaignEvent): создание/редактирование джемов, открытие джема → таблица школ по джему с массовыми действиями и одиночным редактированием.
+3. **«Матрица школ»** — таблица «школы × джемы»: в ячейке — статусы приглашения/участия/площадки; клик по ячейке открывает редактирование записи SchoolCampaignEvent.
+
+**Сущности:** **CampaignEvent** (конкретный джем: название, дата, место, статус planned/done/canceled) и **SchoolCampaignEvent** (связь школы с джемом: invite_status, participation_status, host_status, participant_count, notes). Одна школа в одной кампании может иметь разные статусы по разным джемам.
+
+#### 2.4.1. Подвкладка «Общая работа»
+
+- Кнопка «Добавить школы» и канбан по стадиям (как в п. 2.4).
+- На каждой карточке школы отображается сводка: **приглаш.: X · участий: Y · площадок: Z** (по данным джемов кампании).
+- Кнопка **«История»** — открывает диалог с таблицей истории джемов этой школы по кампании (название джема, дата, приглашение, участие, площадка, дети, комментарий). Данные: `campaignsApi.getSchoolCampaignEventsHistory(campaignId, schoolCampaignId)`.
+
+#### 2.4.2. Подвкладка «Джемы» (CampaignEventsSubTab)
+
+- Кнопка **«Создать джем»** — диалог: название, дата, время начала/окончания, локация, город, статус (запланирован/проведён/отменён), комментарий. Создание: `campaignsApi.createCampaignEvent(campaignId, payload)`.
+- Таблица джемов: Название, Дата, Место, Статус, Действия (**Открыть**, **Редактировать**). Редактирование джема — диалог с теми же полями; вызов `campaignsApi.updateCampaignEvent(campaignId, eventId, payload)`.
+- По кнопке **«Открыть»** открывается диалог детали джема: заголовок с кнопкой «Редактировать джем», таблица школ в этом джеме (школа, город, стадия, приглашение, участие, площадка, дети, комментарий). Чекбоксы для выбора школ, опция «Создать задачи для выбранных», кнопки массовых действий (Приглашённые, Участвовали, Площадка и т.д.) — `campaignsApi.bulkUpdateEventSchools(campaignId, eventId, { school_campaign_ids, ...statuses, create_*_tasks })`. Для одной строки — кнопка «Изменить»: диалог редактирования одной записи SchoolCampaignEvent с опциональным созданием задач (приглашение/площадка/участие).
+
+#### 2.4.3. Подвкладка «Матрица школ» (CampaignMatrixSubTab)
+
+- Загрузка: `campaignsApi.getSchoolsEventsMatrix(campaignId)`. Таблица: строки — школы (название, город, общая стадия, столбцы «Участий» и «Площадок» — итоги по джемам), столбцы — джемы. В ячейке — чипы статусов приглашения/участия/площадки. Клик по ячейке — диалог редактирования SchoolCampaignEvent (те же поля + опция создания задач). Сохранение: `campaignsApi.upsertSchoolCampaignEvent(campaignId, eventId, schoolCampaignId, payload, params)`.
+
 ### 2.5. Диалог «Добавить школы в кампанию»
 
 - **Фильтр по городу** — текстовое поле; по потере фокуса или по кнопке «Показать школы» вызывается `campaignsApi.listSchoolsAvailable(campaignId, { city })`.
@@ -110,8 +136,17 @@
 | Доступные для добавления школы | `campaignsApi.listSchoolsAvailable(campaignId, { city })` | `GET /api/campaigns/{id}/schools-available?city=` |
 | Добавить школы | `campaignsApi.addSchools(campaignId, { school_ids, create_contact_task })` | `POST /api/campaigns/{id}/school-campaigns/add-schools` |
 | Сменить стадию школы в кампании | `campaignsApi.updateSchoolCampaign(campaignId, scId, { stage })` | `PATCH /api/campaigns/{id}/school-campaigns/{scId}` |
+| Список джемов кампании | `campaignsApi.listCampaignEvents(campaignId)` | `GET /api/campaigns/{id}/events` |
+| Создать джем | `campaignsApi.createCampaignEvent(campaignId, payload)` | `POST /api/campaigns/{id}/events` |
+| Редактировать джем | `campaignsApi.updateCampaignEvent(campaignId, eventId, payload)` | `PUT /api/campaigns/{id}/events/{eventId}` |
+| Матрица школ×джемы | `campaignsApi.getSchoolsEventsMatrix(campaignId)` | `GET /api/campaigns/{id}/schools-events-matrix` |
+| Сводка по джемам на карточках | `campaignsApi.getCampaignSchoolEventCounts(campaignId)` | `GET /api/campaigns/{id}/school-event-counts` |
+| Школы по джему | `campaignsApi.listEventSchools(campaignId, eventId)` | `GET /api/campaigns/{id}/events/{eventId}/schools` |
+| Установить/обновить запись школа–джем | `campaignsApi.upsertSchoolCampaignEvent(..., params)` | `PUT /api/campaigns/{id}/events/{eventId}/schools/{schoolCampaignId}` (query: create_invite_task, create_host_task, create_participated_task) |
+| Массовое обновление школ в джеме | `campaignsApi.bulkUpdateEventSchools(campaignId, eventId, payload)` | `POST /api/campaigns/{id}/events/{eventId}/schools/bulk-update` (в payload: create_invite_tasks, create_host_tasks, create_participated_tasks) |
+| История джемов школы | `campaignsApi.getSchoolCampaignEventsHistory(campaignId, schoolCampaignId)` | `GET /api/campaigns/{id}/school-campaigns/{scId}/events-history` |
 
-При добавлении школ бэкенд создаёт записи `SchoolCampaign` со стадией `not_contacted` и при необходимости задачи «Связаться со школой» (модель `Task`), назначенные ответственному по кампании.
+При добавлении школ бэкенд создаёт записи `SchoolCampaign` со стадией `not_contacted` и при необходимости задачи «Связаться со школой» (модель `Task`), назначенные ответственному по кампании. При смене статусов в джемах (приглашение, площадка, участие) по флагу могут создаваться соответствующие задачи (пригласить на джем, организовать площадку, зафиксировать участие).
 
 ---
 
@@ -242,7 +277,7 @@
 
 | Вкладка | Основные сущности | Назначение |
 |---------|-------------------|------------|
-| Работа со школами | Campaign, SchoolCampaign | Кампании (Game Jam, олимпиады и т.д.) и привязка к ним B2B-школ со стадиями участия; добавление школ в кампанию, смена стадии. |
+| Работа со школами | Campaign, SchoolCampaign, CampaignEvent, SchoolCampaignEvent | Кампании и привязка B2B-школ со стадиями; внутри кампании — джемы (события) и по каждому джему статусы приглашения/участия/площадки по школам; матрица школ×джемы, история, массовые действия и создание задач. |
 | Новая B2B школа | B2BSchool, B2BSchoolContact | Справочник B2B-школ: создание, редактирование, контакты, импорт из Excel/CSV, «запуск в работу», удаление. |
 
 Оба раздела используют общий справочник **B2BSchool**: школы, добавленные во вкладке «Новая B2B школа» (или через импорт), затем могут быть добавлены в кампании на вкладке «Работа со школами» через «Добавить школы».

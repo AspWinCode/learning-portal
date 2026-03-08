@@ -158,6 +158,8 @@ const StudentsPage: React.FC = () => {
   const canCreateCard = isAdminLike || user?.role === 'sales';
   const canSeeAnkety = isAdminLike || user?.role === 'sales';
   const [citiesList, setCitiesList] = useState<string[]>([]);
+  const [schoolsList, setSchoolsList] = useState<string[]>([]);
+  const [classesList, setClassesList] = useState<string[]>([]);
 
   type PageTab = 'students' | 'ankety' | 'parents' | 'trainers';
   const tabParam = searchParams.get('tab');
@@ -299,6 +301,8 @@ const StudentsPage: React.FC = () => {
     if (canCreateCard) {
       salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
     }
+    salesApi.listSalesSchools(true).then((list) => setSchoolsList(list.filter((s) => s.is_active).map((s) => s.name))).catch(() => setSchoolsList([]));
+    salesApi.listSalesClasses(true).then((list) => setClassesList(list.filter((c) => c.is_active).map((c) => c.name))).catch(() => setClassesList([]));
     if (!isOwner || user?.role === 'sales') {
       loadTrainers();
     }
@@ -1742,8 +1746,24 @@ const StudentsPage: React.FC = () => {
                     onChange={(_, v) => setCardFields((f) => ({ ...f, city: (typeof v === 'string' ? v : v ?? '').trim() }))}
                     renderInput={(params) => <TextField {...params} label="Город" placeholder="Выберите или введите город" />}
                   />
-                  <TextField size="small" fullWidth label="Образовательное учреждение" value={cardFields.school} onChange={(e) => setCardFields((f) => ({ ...f, school: e.target.value }))} />
-                  <TextField size="small" fullWidth label="Класс" value={cardFields.grade} onChange={(e) => setCardFields((f) => ({ ...f, grade: e.target.value }))} />
+                  <Autocomplete
+                    size="small"
+                    freeSolo
+                    options={schoolsList}
+                    value={cardFields.school}
+                    onInputChange={(_, v) => setCardFields((f) => ({ ...f, school: v ?? '' }))}
+                    onChange={(_, v) => setCardFields((f) => ({ ...f, school: (typeof v === 'string' ? v : v ?? '').trim() }))}
+                    renderInput={(params) => <TextField {...params} label="Образовательное учреждение" placeholder="Выберите школу из списка или введите свою" />}
+                  />
+                  <Autocomplete
+                    size="small"
+                    freeSolo
+                    options={classesList}
+                    value={cardFields.grade}
+                    onInputChange={(_, v) => setCardFields((f) => ({ ...f, grade: v ?? '' }))}
+                    onChange={(_, v) => setCardFields((f) => ({ ...f, grade: (typeof v === 'string' ? v : v ?? '').trim() }))}
+                    renderInput={(params) => <TextField {...params} label="Класс" placeholder="Выберите класс из списка или введите свой" />}
+                  />
                   <TextField size="small" fullWidth label="ФИО родителя" value={cardFields.parent_full_name || (parentCreateMode === 'new' ? newParent.full_name : selectedParentForCreate?.full_name || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_full_name: e.target.value }))} />
                   <TextField size="small" fullWidth label="Мобильный телефон родителя" value={cardFields.parent_phone} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone)} helperText={cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone) ? '10 цифр номера' : ''} />
                   <TextField size="small" fullWidth label="Второй мобильный телефон родителя" value={cardFields.parent_phone_2} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone_2: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2)} helperText={cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2) ? '10 цифр номера' : ''} />
@@ -1944,8 +1964,24 @@ const StudentsPage: React.FC = () => {
                 onChange={(_, v) => setCardFields((f) => ({ ...f, city: (typeof v === 'string' ? v : v ?? '').trim() }))}
                 renderInput={(params) => <TextField {...params} label="Город" placeholder="Выберите или введите город" />}
               />
-              <TextField size="small" fullWidth label="Образовательное учреждение" value={cardFields.school} onChange={(e) => setCardFields((f) => ({ ...f, school: e.target.value }))} />
-              <TextField size="small" fullWidth label="Класс" value={cardFields.grade} onChange={(e) => setCardFields((f) => ({ ...f, grade: e.target.value }))} />
+              <Autocomplete
+                size="small"
+                freeSolo
+                options={schoolsList}
+                value={cardFields.school}
+                onInputChange={(_, v) => setCardFields((f) => ({ ...f, school: v ?? '' }))}
+                onChange={(_, v) => setCardFields((f) => ({ ...f, school: (typeof v === 'string' ? v : v ?? '').trim() }))}
+                renderInput={(params) => <TextField {...params} label="Образовательное учреждение" placeholder="Выберите школу из списка или введите свою" />}
+              />
+              <Autocomplete
+                size="small"
+                freeSolo
+                options={classesList}
+                value={cardFields.grade}
+                onInputChange={(_, v) => setCardFields((f) => ({ ...f, grade: v ?? '' }))}
+                onChange={(_, v) => setCardFields((f) => ({ ...f, grade: (typeof v === 'string' ? v : v ?? '').trim() }))}
+                renderInput={(params) => <TextField {...params} label="Класс" placeholder="Выберите класс из списка или введите свой" />}
+              />
               <TextField size="small" fullWidth label="ФИО родителя" value={cardFields.parent_full_name || (selectedParentForCreate?.full_name || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_full_name: e.target.value }))} />
               <TextField size="small" fullWidth label="Мобильный телефон родителя" value={cardFields.parent_phone} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone)} helperText={cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone) ? '10 цифр номера' : ''} />
               <TextField size="small" fullWidth label="Второй мобильный телефон родителя" value={cardFields.parent_phone_2} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone_2: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2)} helperText={cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2) ? '10 цифр номера' : ''} />

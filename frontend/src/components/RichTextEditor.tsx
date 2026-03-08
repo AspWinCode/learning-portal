@@ -59,6 +59,11 @@ const TEXT_COLORS = [
   '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc',
 ];
 
+/** HTML для картинки в обёртке с возможностью потянуть за край и изменить размер */
+function resizableImageHtml(url: string): string {
+  return `<p><span contenteditable="false" data-resizable-img style="display:inline-block;resize:both;overflow:auto;min-width:80px;min-height:40px;max-width:100%;width:280px;vertical-align:middle;border:1px dashed #ccc;border-radius:4px;"><img src="${url}" alt="" style="display:block;max-width:100%;height:auto;vertical-align:middle;"></span></p>`;
+}
+
 export interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
@@ -123,7 +128,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             e.preventDefault();
             try {
               const url = await onPasteImage(file);
-              insertHtml(`<p><img src="${url}" alt="" style="max-width:100%;height:auto;" /></p>`);
+              insertHtml(resizableImageHtml(url));
               syncContent();
             } catch (_) {}
             return;
@@ -228,7 +233,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       if (!file || !onPasteImage || !file.type.startsWith('image/')) return;
       try {
         const url = await onPasteImage(file);
-        insertHtml(`<p><img src="${url}" alt="" style="max-width:100%;height:auto;" /></p>`);
+        insertHtml(resizableImageHtml(url));
       } catch (_) {}
     },
     [onPasteImage, insertHtml]
@@ -408,6 +413,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           outline: 'none',
           '&:empty::before': { content: `"${placeholder}"`, color: 'text.disabled' },
           '& img': { maxWidth: '100%', height: 'auto' },
+          '& [data-resizable-img]': { boxSizing: 'border-box' },
+          '& [data-resizable-img] img': { maxWidth: '100%', height: 'auto', display: 'block' },
           '& table': { borderCollapse: 'collapse', width: '100%' },
           '& td, & th': { border: '1px solid', borderColor: 'divider', p: 1 },
         }}

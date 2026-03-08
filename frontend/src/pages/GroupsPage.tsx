@@ -67,6 +67,7 @@ const GroupsPage: React.FC = () => {
   ];
   const DIRECTION_OPTIONS = [
     { value: '', label: 'Не выбрано' },
+    { value: 'individual', label: 'Индивидуальное' },
     { value: 'first_step', label: 'Первый Шаг' },
     { value: 'specialist', label: 'Специалист' },
     { value: 'expert', label: 'Эксперт' },

@@ -39,22 +39,45 @@
   - `create_manual_lesson(db, title, lesson_date, start_time, end_time, trainer_id, lesson_type, comment, students, created_by_id)` — создаёт CustomLesson и CustomLessonStudent; для типа makeup привязывает пропуски (AbsenceFollowUp).
 - **Роутер:** `POST /api/sales/custom-lessons` — парсинг времени, валидация lesson_type, вызов сервиса, формирование ответа.
 
+### 5. Зачисление банковской операции на ученика (`apply_bank_operation_to_student`)
+
+- **Сервис:** `app/services/bank_operation.py`
+  - `apply_bank_operation_to_student(db, transaction_id, student_id)` — проводка на счёт, привязка телефона при no_match, обновление дат на карточке (student_card_period).
+- **Роутер:** `POST /api/sales/bank-transactions/{id}/apply` — вызов сервиса, ValueError → 400/404.
+
+### 6. Список и сводка статусов оплаты (`payment-status`, `payment-status-summary`)
+
+- **Сервис:** `app/services/payment_status.py`
+  - `get_payment_status_list(db, status_filter, today)` — список учеников с датой следующей оплаты и статусом.
+  - `get_payment_status_summary(db, today)` — сводка просрочек (3+ и 10+ дней).
+- **Роутер:** GET /api/sales/payment-status, GET /api/sales/payment-status-summary — вызов сервиса, формирование ответа.
+
+### 7. Отправка/одобрение/отклонение характеристики (`characteristic_review`)
+
+- **Сервис:** `app/services/characteristic_review.py`
+  - `submit_characteristic_for_review(db, characteristic_id, trainer_id)`, `approve_characteristic(db, characteristic_id, comment)`, `reject_characteristic(db, characteristic_id, comment)`.
+- **Роутер:** POST /api/characteristics/{id}/submit, approve, reject — вызов сервиса; уведомления (Telegram) и log_action остаются в роутере.
+
+### 8. Поствизит: обновление стадии лида (`event_post_visit_lead_next_step`)
+
+- **Сервис:** `app/services/lead_post_visit.py`
+  - `update_lead_post_visit_stage(db, lead_id, stage, review, project_date, decline_reason, get_default_lead_status_option_id)` — обновление полей лида; возвращает need_auto_task для создания задачи в роутере.
+- **Роутер:** POST /api/sales/leads/{id}/post-visit-stage — вызов сервиса, при need_auto_task создание LeadTask, commit, log_action.
+
+### 9. Задачи по просрочке оплат (`create_manager_tasks_for_overdue_payments`)
+
+- **Проверено:** уже реализовано в `app/services/payment_overdue_tasks.py`, вызывается из main.py по расписанию. Роутера с этой логикой нет — без изменений.
+
 ---
 
 ## Дальнейшие кандидаты (по приоритету)
 
-Вынос в сервисы по каталогу use cases [BACKEND_REFACTOR_USE_CASES.md](BACKEND_REFACTOR_USE_CASES.md):
+Все запланированные use cases из каталога вынесены в сервисы. Оставшиеся улучшения (по ТЗ):
 
-| Use case | Целевой сервис / модуль | Роутер / endpoint | Приоритет |
-|----------|-------------------------|-------------------|-----------|
-| ~~convert_student_card_to_student~~ | ✅ `student_card_conversion.py` | POST /api/sales/student-cards/{id}/convert | Сделано |
-| ~~assign_makeup_for_absence~~ | ✅ `absence_makeup.py` | POST /api/sales/absences/{id}/assign-makeup | Сделано |
-| ~~create_manual_lesson_for_absence~~ | ✅ `manual_lesson.py` | POST /api/sales/custom-lessons | Сделано |
-| apply_bank_operation_to_student | `app/services/finance_ledger.py` или `bank_operation.py` | finance + sales bank-transactions/apply | Критично |
-| recalculate_student_payment_status | `app/services/payment_status.py` | Вызывать после payment/deduct/apply | Критично |
-| submit/approve/reject characteristic | `app/services/characteristic_review.py` | characteristics router | Высокий |
-| create_manager_tasks_for_overdue_payments | уже в `app/services/payment_overdue_tasks.py` | job в main.py | Проверить тонкость роутера |
-| event_post_visit_lead_next_step | `app/services/lead_post_visit.py` | post-visit-stage, post-visit/leads | Высокий |
+| Направление | Рекомендация |
+|-------------|--------------|
+| Unit/integration тесты | Добавить тесты на сервисы (lead_conversion, student_card_conversion, bank_operation и др.). |
+| Разделение доменов | Вынести роутеры CRM/Operations/Finance из sales.py в отдельные модули (этап 4–5 ТЗ). |
 
 ---
 

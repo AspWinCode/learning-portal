@@ -15,6 +15,11 @@ from app.models import (
 from app.routers.action_log import log_action
 from datetime import datetime
 from app.services.telegram import notify_admins, notify_user
+from app.services.characteristic_review import (
+    submit_characteristic_for_review,
+    approve_characteristic as approve_characteristic_svc,
+    reject_characteristic as reject_characteristic_svc,
+)
 
 router = APIRouter()
 
@@ -126,40 +131,14 @@ async def submit_characteristic(
     """Отправка характеристики на согласование"""
     if current_user.role != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can submit characteristics")
-    
-    db_characteristic = db.query(Characteristic).filter(
-        Characteristic.id == characteristic_id,
-        Characteristic.trainer_id == current_user.id
-    ).first()
-    
-    if not db_characteristic:
-        raise HTTPException(status_code=404, detail="Characteristic not found")
-    
-    if db_characteristic.status not in [CharacteristicStatus.DRAFT, CharacteristicStatus.REJECTED]:
-        raise HTTPException(status_code=400, detail="Characteristic cannot be submitted from this status")
-
-    # Минимальная валидация обязательных полей по активному шаблону (если есть)
-    active_template = db.query(CharacteristicTemplate).filter(
-        CharacteristicTemplate.is_active == True
-    ).first()
-    if active_template and isinstance(active_template.fields, list):
-        for f in active_template.fields:
-            if f.get("required"):
-                key = f.get("name")
-                if not key:
-                    continue
-                value = (db_characteristic.data or {}).get(key)
-                if value is None or (isinstance(value, str) and value.strip() == ""):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Required field '{key}' is missing"
-                    )
-    
-    db_characteristic.status = CharacteristicStatus.PENDING
-    db.commit()
-    
+    try:
+        db_characteristic = submit_characteristic_for_review(db, characteristic_id, current_user.id)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     log_action(db, current_user.id, "submit", "characteristic", characteristic_id)
-    # Telegram уведомление админам
     try:
         await notify_admins(
             db,
@@ -231,23 +210,14 @@ async def approve_characteristic(
     current_user: User = Depends(auth.require_role(["admin"]))
 ):
     """Опубликовать характеристику (администратор)"""
-    db_characteristic = db.query(Characteristic).filter(
-        Characteristic.id == characteristic_id
-    ).first()
-    
-    if not db_characteristic:
-        raise HTTPException(status_code=404, detail="Characteristic not found")
-    
-    if db_characteristic.status != CharacteristicStatus.PENDING:
-        raise HTTPException(status_code=400, detail="Characteristic is not pending")
-    
-    db_characteristic.status = CharacteristicStatus.APPROVED
-    db_characteristic.admin_comment = approval.comment
-    db_characteristic.published_at = datetime.utcnow()
-    db.commit()
-    
+    try:
+        db_characteristic = approve_characteristic_svc(db, characteristic_id, approval.comment)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     log_action(db, current_user.id, "approve", "characteristic", characteristic_id)
-    # Telegram уведомление тренеру и родителю
     try:
         if db_characteristic.trainer_id:
             await notify_user(
@@ -279,22 +249,14 @@ async def reject_characteristic(
     current_user: User = Depends(auth.require_role(["admin"]))
 ):
     """Вернуть характеристику на доработку (администратор)"""
-    db_characteristic = db.query(Characteristic).filter(
-        Characteristic.id == characteristic_id
-    ).first()
-    
-    if not db_characteristic:
-        raise HTTPException(status_code=404, detail="Characteristic not found")
-    
-    if db_characteristic.status != CharacteristicStatus.PENDING:
-        raise HTTPException(status_code=400, detail="Characteristic is not pending")
-    
-    db_characteristic.status = CharacteristicStatus.REJECTED
-    db_characteristic.admin_comment = rejection.comment
-    db.commit()
-    
+    try:
+        db_characteristic = reject_characteristic_svc(db, characteristic_id, rejection.comment)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     log_action(db, current_user.id, "reject", "characteristic", characteristic_id)
-    # Telegram уведомление тренеру
     try:
         if db_characteristic.trainer_id:
             await notify_user(

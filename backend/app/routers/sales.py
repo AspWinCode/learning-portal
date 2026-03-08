@@ -22,6 +22,9 @@ from app.services.student_card_conversion import (
 )
 from app.services.absence_makeup import assign_makeup_for_absence as absence_makeup_assign
 from app.services.manual_lesson import create_manual_lesson as manual_lesson_create
+from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
+from app.services.payment_status import get_payment_status_list as payment_status_list_svc, get_payment_status_summary as payment_status_summary_svc
+from app.services.lead_post_visit import update_lead_post_visit_stage as lead_post_visit_update_stage
 from app.models import (
     Lead,
     LeadStatus,
@@ -989,57 +992,14 @@ async def apply_bank_transaction(
 ):
     """Зачислить спорную операцию (no_match / ambiguous) на выбранного ученика. При no_match создаётся привязка телефона к родителю."""
     _require_sales_admin_owner(current_user)
-    bt = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
-    if not bt:
-        raise HTTPException(status_code=404, detail="Операция не найдена")
-    if bt.status == BankTransactionStatus.APPLIED.value:
-        raise HTTPException(status_code=400, detail="Операция уже зачислена")
-    student = db.query(Student).filter(Student.id == payload.student_id).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Ученик не найден")
-    if bt.payer_phone and student.parent_id:
-        normalized = normalize_phone(bt.payer_phone)
-        if normalized:
-            binding = db.query(PhonePaymentBinding).filter(PhonePaymentBinding.payer_phone_normalized == normalized).first()
-            if not binding:
-                db.add(PhonePaymentBinding(payer_phone_normalized=normalized, parent_id=student.parent_id))
-    account = db.query(StudentAccount).filter(StudentAccount.student_id == payload.student_id).order_by(StudentAccount.id).first()
-    if not account:
-        account = StudentAccount(student_id=payload.student_id, name="Основной", balance=0.0)
-        db.add(account)
-        db.flush()
-    note = f"Точка Банк, плательщик: {bt.payer_name or '—'}, дата: {bt.payment_date or '—'}"
-    db.add(
-        StudentAccountTransaction(
-            account_id=account.id,
-            amount=bt.amount,
-            kind=StudentAccountTransactionKind.PAYMENT,
-            note=note,
-        )
-    )
-    account.balance += bt.amount
-    db.add(
-        TochkaAppliedPayment(
-            tochka_account_id=bt.tochka_account_id or "",
-            payment_date=bt.payment_date or "",
-            amount=bt.amount,
-            payer_name=(bt.payer_name or "")[:512],
-            student_id=payload.student_id,
-            student_account_id=account.id,
-        )
-    )
     try:
-        pay_date = date.fromisoformat((bt.payment_date or "")[:10]) if bt.payment_date else date.today()
-    except (ValueError, TypeError):
-        pay_date = date.today()
-    from app.services.student_card_period import update_card_payment_dates
-    update_card_payment_dates(db, payload.student_id, pay_date)
-    bt.status = BankTransactionStatus.APPLIED.value
-    bt.student_id = payload.student_id
-    bt.student_account_id = account.id
-    db.commit()
-    db.refresh(bt)
-    return BankTransactionResponse.model_validate(bt)
+        result = bank_operation_apply(db, transaction_id, payload.student_id)
+    except ValueError as e:
+        msg = str(e)
+        if "не найден" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    return BankTransactionResponse.model_validate(result.transaction)
 
 
 @router.patch("/bank-transactions/{transaction_id}/expense-category", response_model=BankTransactionResponse)
@@ -2090,60 +2050,8 @@ async def list_payment_status(
 ):
     """Раздел «Долги» для менеджера (п.8.2, 12.2): ученики с датой следующей оплаты и статусом."""
     _require_sales_admin_owner(current_user)
-    today = date.today()
-    due_soon_end = today + timedelta(days=3)
-    cards = (
-        db.query(StudentCard)
-        .filter(
-            StudentCard.student_id.isnot(None),
-            StudentCard.archived.is_(False),
-            StudentCard.next_payment_date.isnot(None),
-        )
-        .all()
-    )
-    result = []
-    for card in cards:
-        student = db.query(Student).filter(Student.id == card.student_id).first()
-        if not student or student.status == StudentStatus.ARCHIVED:
-            continue
-        next_pay = getattr(card, "next_payment_date", None)
-        if not next_pay:
-            continue
-        if hasattr(next_pay, "date"):
-            next_pay = next_pay.date()
-
-        # Проверяем, были ли вообще оплаты по ученику
-        has_payments = (
-            db.query(StudentAccountTransaction.id)
-            .join(StudentAccount, StudentAccount.id == StudentAccountTransaction.account_id)
-            .filter(
-                StudentAccount.student_id == card.student_id,
-                StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
-            )
-            .first()
-        )
-
-        if not has_payments:
-            st = "unpaid"
-        elif next_pay < today:
-            st = "overdue"
-        elif next_pay <= due_soon_end:
-            st = "due_soon"
-        else:
-            st = "ok"
-
-        if status_filter and status_filter not in ("", "все", "all") and st != status_filter:
-            continue
-        result.append(PaymentStatusItem(
-            student_id=card.student_id,
-            student_name=get_student_display_name(db, student),
-            card_id=card.id,
-            next_payment_date=next_pay,
-            learning_period_start=getattr(card, "learning_period_start", None),
-            status=st,
-        ))
-    result.sort(key=lambda x: (x.next_payment_date or date.max, x.student_name))
-    return result
+    items = payment_status_list_svc(db, status_filter=status_filter)
+    return [PaymentStatusItem(**item) for item in items]
 
 
 @router.get("/payment-status-summary", response_model=PaymentStatusSummary)
@@ -2153,46 +2061,8 @@ async def get_payment_status_summary(
 ):
     """Сводка по просрочкам: число учеников с долгом 3+ и 10+ дней (для KPI на странице «Долги»)."""
     _require_sales_admin_owner(current_user)
-    today = date.today()
-    day_3 = today - timedelta(days=3)
-    day_10 = today - timedelta(days=10)
-    cards = (
-        db.query(StudentCard)
-        .filter(
-            StudentCard.student_id.isnot(None),
-            StudentCard.archived.is_(False),
-            StudentCard.next_payment_date.isnot(None),
-            StudentCard.next_payment_date < today,
-        )
-        .all()
-    )
-    overdue_3_count = 0
-    overdue_10_count = 0
-    for card in cards:
-        student = db.query(Student).filter(Student.id == card.student_id).first()
-        if not student or student.status == StudentStatus.ARCHIVED:
-            continue
-        next_pay = getattr(card, "next_payment_date", None)
-        if not next_pay:
-            continue
-        if hasattr(next_pay, "date"):
-            next_pay = next_pay.date()
-        has_payments = (
-            db.query(StudentAccountTransaction.id)
-            .join(StudentAccount, StudentAccount.id == StudentAccountTransaction.account_id)
-            .filter(
-                StudentAccount.student_id == card.student_id,
-                StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
-            )
-            .first()
-        )
-        if not has_payments:
-            continue
-        if next_pay <= day_3:
-            overdue_3_count += 1
-        if next_pay <= day_10:
-            overdue_10_count += 1
-    return PaymentStatusSummary(overdue_3_count=overdue_3_count, overdue_10_count=overdue_10_count)
+    data = payment_status_summary_svc(db)
+    return PaymentStatusSummary(**data)
 
 
 # --- Custom (manual) lessons for sales/admin/owner ---
@@ -4926,52 +4796,38 @@ async def update_lead_post_visit_stage(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
 
-    stage = payload.stage
-    lead.post_visit_stage = stage
+    try:
+        result = lead_post_visit_update_stage(
+            db,
+            lead_id,
+            stage=payload.stage,
+            review=payload.review,
+            project_date=payload.project_date,
+            decline_reason=payload.decline_reason,
+            get_default_lead_status_option_id=_get_default_lead_status_option_id,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
 
-    if stage == "project_offer" or stage == "course_offer":
-        # Промежуточные этапы — только меняем стадию
-        pass
-    elif stage == "project_agreed":
-        if not (payload.review or "").strip():
-            raise HTTPException(status_code=400, detail="Укажите отзыв по проекту")
-        if payload.project_date is None:
-            raise HTTPException(status_code=400, detail="Укажите дату проведения проекта")
-        lead.post_visit_review = payload.review.strip()
-        lead.post_visit_project_date = payload.project_date
-    elif stage == "course_agreed":
-        if not (payload.review or "").strip():
-            raise HTTPException(status_code=400, detail="Укажите отзыв перед записью на курс")
-        lead.post_visit_review = payload.review.strip()
-        # Переводим лида в этап «Согласился заниматься» — выставляем статус, как после успешного визита
-        lead.status = LeadStatus.INVOICE_SENT
-        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.INVOICE_SENT)
-        # Авто‑задача «контроль оплаты» (аналогично auto_post_visit_agreed)
-        if not _has_open_task_like(db, lead.id, "[auto_post_visit_agreed]"):
-            due_at = datetime.utcnow() + timedelta(hours=48)
-            auto_task = _create_auto_event_task(
-                db,
-                lead=lead,
-                owner_id=lead.owner_id,
-                note="[auto_post_visit_agreed] Контроль оплаты",
-                due_at=due_at,
-                preferred_template_keywords=["оплат", "контроль", "дожим"],
-            )
-            db.add(auto_task)
-            db.flush()
-            log_action(db, current_user.id, "create", "lead_task", auto_task.id, {"lead_id": lead.id, "type": "auto_post_visit_agreed"})
-            if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
-                lead.next_contact_at = auto_task.due_at
-    elif stage == "declined":
-        reason = (payload.decline_reason or "").strip()
-        if not reason:
-            raise HTTPException(status_code=400, detail="Укажите причину отказа")
-        lead.lost_reason = reason
-        lead.status = LeadStatus.LOST
-        lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.LOST)
-    else:
-        # new — просто стартовая стадия
-        pass
+    lead = result.lead
+    if result.need_auto_task and not _has_open_task_like(db, lead.id, "[auto_post_visit_agreed]"):
+        due_at = datetime.utcnow() + timedelta(hours=48)
+        auto_task = _create_auto_event_task(
+            db,
+            lead=lead,
+            owner_id=lead.owner_id,
+            note="[auto_post_visit_agreed] Контроль оплаты",
+            due_at=due_at,
+            preferred_template_keywords=["оплат", "контроль", "дожим"],
+        )
+        db.add(auto_task)
+        db.flush()
+        log_action(db, current_user.id, "create", "lead_task", auto_task.id, {"lead_id": lead.id, "type": "auto_post_visit_agreed"})
+        if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
+            lead.next_contact_at = auto_task.due_at
 
     db.commit()
     db.refresh(lead)
@@ -4982,7 +4838,7 @@ async def update_lead_post_visit_stage(
         "lead",
         lead.id,
         {
-            "stage": stage,
+            "stage": payload.stage,
             "review": payload.review,
             "project_date": payload.project_date.isoformat() if payload.project_date else None,
             "decline_reason": payload.decline_reason,

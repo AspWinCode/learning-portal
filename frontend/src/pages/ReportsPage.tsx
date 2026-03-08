@@ -363,6 +363,13 @@ export const ReportsPageContent: React.FC = () => {
           <Typography variant="body2" sx={{ mt: 0.5 }}>
             Период характеристик: {ccMonth === 1 ? 'Декабрь' : ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь'][ccMonth - 2]} {ccMonth === 1 ? ccYear - 1 : ccYear}
           </Typography>
+          {ccData?.rows?.length > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              Показано: {(ccData.rows as any[]).filter((r: any) => r.student?.id != null).length} учеников
+              {(ccData.rows as any[]).filter((r: any) => r.student?.id == null).length > 0 &&
+                `, ${(ccData.rows as any[]).filter((r: any) => r.student?.id == null).length} тренеров без учеников`}
+            </Typography>
+          )}
 
           <TableContainer sx={{ mt: 1 }}>
             <Table size="small">
@@ -379,12 +386,19 @@ export const ReportsPageContent: React.FC = () => {
                 {(ccData?.rows || []).map((r: any, idx: number) => {
                   const ok = !!r.ok;
                   const bg = ok ? 'rgba(46, 125, 50, 0.10)' : 'rgba(211, 47, 47, 0.10)';
+                  const statusLabel =
+                    r.characteristic?.status === 'not_in_group'
+                      ? 'Не в группе'
+                      : r.characteristic?.status || 'missing';
                   const status = r.characteristic?.status || 'missing';
-                  const publishedAt = r.characteristic?.published_at
-                    ? new Date(r.characteristic.published_at).toLocaleString('ru-RU')
-                    : '—';
+                  const publishedAt =
+                    r.published_at_aggregate != null && r.published_at_aggregate !== ''
+                      ? r.published_at_aggregate
+                      : r.characteristic?.published_at
+                        ? new Date(r.characteristic.published_at).toLocaleString('ru-RU')
+                        : '—';
                   return (
-                    <TableRow key={`${r.trainer?.id}-${r.student?.id}-${idx}`} sx={{ backgroundColor: bg }}>
+                    <TableRow key={`${r.student?.id ?? 't'}-${r.trainer?.id ?? ''}-${idx}`} sx={{ backgroundColor: bg }}>
                       <TableCell>{idx + 1}</TableCell>
                       <TableCell>{r.trainer?.full_name || '—'}</TableCell>
                       <TableCell>{r.student?.full_name || '—'}</TableCell>
@@ -396,7 +410,7 @@ export const ReportsPageContent: React.FC = () => {
                           sx={{ mr: 1 }}
                         />
                         <Typography component="span" variant="caption" color="text.secondary">
-                          ({status})
+                          ({statusLabel})
                         </Typography>
                       </TableCell>
                       <TableCell>{publishedAt}</TableCell>

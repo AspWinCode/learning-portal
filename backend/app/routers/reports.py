@@ -79,27 +79,24 @@ async def characteristics_compliance_report(
     pairs = list({(t, s) for (t, s) in pairs})  # distinct
 
     trainer_ids = sorted({t for (t, _) in pairs})
-    student_ids = sorted({s for (_, s) in pairs})
+    student_ids_from_pairs = {s for (_, s) in pairs}
 
-    if not trainer_ids:
-        return {
-            "month": month,
-            "year": year,
-            "window_start": window_start.isoformat(),
-            "window_end": window_end.isoformat(),
-            "rows": [],
-        }
+    # Загружаем всех учеников системы, чтобы в отчёте всегда было по одной строке на каждого (ожидаемо ~79)
+    all_students = {s.id: s for s in db.query(Student).all()}
+    # Тренеры только по парам (для строк «в группе» и «нет учеников в группах»)
+    trainers = {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()} if trainer_ids else {}
+    students = all_students
 
-    trainers = {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()}
-    students = {s.id: s for s in db.query(Student).filter(Student.id.in_(student_ids)).all()}
-
-    # Характеристики за отчётный период (report_month/report_year), не за месяц окна
-    chars = db.query(Characteristic).filter(
-        Characteristic.month == report_month,
-        Characteristic.year == report_year,
-        Characteristic.trainer_id.in_(trainer_ids),
-        Characteristic.student_id.in_(student_ids),
-    ).all()
+    # Характеристики за отчётный период (report_month/report_year)
+    if trainer_ids and student_ids_from_pairs:
+        chars = db.query(Characteristic).filter(
+            Characteristic.month == report_month,
+            Characteristic.year == report_year,
+            Characteristic.trainer_id.in_(trainer_ids),
+            Characteristic.student_id.in_(student_ids_from_pairs),
+        ).all()
+    else:
+        chars = []
 
     # status priority: approved > pending > draft > rejected (fallback)
     priority = {
@@ -125,47 +122,83 @@ async def characteristics_compliance_report(
             if cur_ts and prev_ts and cur_ts > prev_ts:
                 best[k] = c
 
+    # Группируем по student_id: одна строка на ученика (не дублируем при нескольких группах/тренерах)
+    student_pairs: Dict[int, List[Tuple[int, Any]]] = {}  # student_id -> [(trainer_id, characteristic_or_none), ...]
+    for trainer_id, student_id in pairs:
+        student_pairs.setdefault(student_id, []).append((trainer_id, best.get((trainer_id, student_id))))
+
     rows: List[Dict[str, Any]] = []
-    trainers_with_rows = set()
-
-    for trainer_id, student_id in sorted(pairs, key=lambda x: (x[0], x[1])):
-        trainers_with_rows.add(trainer_id)
-        trainer = trainers.get(trainer_id)
+    # Сначала строки по ученикам, которые были в группе в отчётном месяце
+    for student_id in sorted(student_pairs.keys()):
         student = students.get(student_id)
-        c = best.get((trainer_id, student_id))
+        pair_list = student_pairs[student_id]
+        trainer_names = []
+        all_ok = True
+        any_characteristic = False
+        published_parts = []
+        for trainer_id, c in pair_list:
+            trainer = trainers.get(trainer_id)
+            trainer_names.append(trainer.full_name if trainer else f"#{trainer_id}")
+            published_at = getattr(c, "published_at", None) if c else None
+            is_approved = bool(c and c.status == CharacteristicStatus.APPROVED)
+            is_on_time = bool(is_approved and published_at and window_start <= published_at <= window_end)
+            if c:
+                any_characteristic = True
+            if not is_on_time:
+                all_ok = False
+            if published_at:
+                published_parts.append(published_at.strftime("%d.%m.%Y %H:%M") if hasattr(published_at, "strftime") else str(published_at))
 
-        published_at = getattr(c, "published_at", None) if c else None
-        is_approved = bool(c and c.status == CharacteristicStatus.APPROVED)
-        is_on_time = bool(is_approved and published_at and window_start <= published_at <= window_end)
-
+        # Для фронта: один статус по ученику; даты через published_at_aggregate
+        first_c = next((c for _, c in pair_list if c is not None), None)
+        status_str = first_c.status.value if (first_c and hasattr(first_c.status, "value")) else ("approved" if all_ok and any_characteristic else "missing")
         rows.append({
-            "trainer": {"id": trainer_id, "full_name": trainer.full_name if trainer else f"#{trainer_id}"},
+            "trainer": {"id": None, "full_name": ", ".join(trainer_names)},
             "student": {"id": student_id, "full_name": student.full_name if student else f"#{student_id}"},
-            "characteristic": None if not c else {
-                "id": c.id,
-                "status": c.status.value if hasattr(c.status, "value") else str(c.status),
-                "published_at": published_at.isoformat() if published_at else None,
-            },
-            "ok": is_on_time,
+            "characteristic": {"status": status_str, "published_at": first_c.published_at.isoformat() if (first_c and getattr(first_c, "published_at", None)) else None},
+            "published_at_aggregate": "; ".join(published_parts) if published_parts else None,
+            "ok": all_ok and (len(pair_list) == 0 or any_characteristic),
             "window_start": window_start.isoformat(),
             "window_end": window_end.isoformat(),
         })
 
-    # Тренеры с активными группами, но без учеников в группах — одна строка «Нет учеников в группах»
+    # Тренеры без учеников в группах за период — одна строка на тренера
+    trainers_with_students = {tid for (tid, _) in pairs}
     for trainer_id in trainer_ids:
-        if trainer_id not in trainers_with_rows:
+        if trainer_id not in trainers_with_students:
             trainer = trainers.get(trainer_id)
             rows.append({
                 "trainer": {"id": trainer_id, "full_name": trainer.full_name if trainer else f"#{trainer_id}"},
                 "student": {"id": None, "full_name": "— Нет учеников в группах"},
-                "characteristic": None,
+                "characteristic": {"status": "missing", "published_at": None},
+                "published_at_aggregate": None,
                 "ok": False,
                 "window_start": window_start.isoformat(),
                 "window_end": window_end.isoformat(),
             })
 
-    # Сортируем по тренеру, затем по ученику (строки «нет учеников» в конце по тренеру)
-    rows.sort(key=lambda r: (r["trainer"].get("full_name") or "", (r["student"].get("full_name") or "").replace("—", "я")))
+    # Ученики, которые не были ни в одной группе в отчётном месяце — одна строка на ученика (чтобы в отчёте всегда все 79)
+    for student_id in sorted(all_students.keys()):
+        if student_id in student_pairs:
+            continue
+        student = all_students.get(student_id)
+        rows.append({
+            "trainer": {"id": None, "full_name": "— Не в группе в этом месяце"},
+            "student": {"id": student_id, "full_name": student.full_name if student else f"#{student_id}"},
+            "characteristic": {"status": "not_in_group", "published_at": None},
+            "published_at_aggregate": None,
+            "ok": False,
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+        })
+
+    # Сортируем: сначала ученики (по имени), потом строки «нет учеников» (по тренеру)
+    def row_sort_key(r: Dict[str, Any]) -> tuple:
+        student_name = (r["student"].get("full_name") or "").replace("—", "я")
+        if r["student"].get("id") is None:
+            return ("я", r["trainer"].get("full_name") or "")
+        return ("", student_name)
+    rows.sort(key=row_sort_key)
 
     return {
         "month": month,

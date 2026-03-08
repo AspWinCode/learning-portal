@@ -30,4 +30,6 @@
 - **Этап 5 (частично):** общие зависимости прав в `app/dependencies.py`; часть эндпоинтов sales (payment-status, bank-transactions/apply) и finance переведены на `Depends(require_*)`. Документ по action log: [BACKEND_REFACTOR_ACTION_LOG.md](BACKEND_REFACTOR_ACTION_LOG.md).
 - **Этап 4 (разметка):** роутер sales описан как compatibility layer (CRM + Operations + Finance), комментарий в коде.
 
-Дальнейшие шаги: использовать карту доменов и каталог use cases при реализации оставшихся пунктов Этапов 4–5 и при написании тестов.
+**Тестирование (ТЗ этап 5):** добавлены unit-тесты в `backend/tests/unit/services/` для сервисов: student_account_finance, characteristic_review, student_account_payment, lead_conversion, bank_operation, absence_makeup, manual_lesson, student_card_conversion, payment_overdue_tasks (37 unit-тестов). Интеграционные тесты в `backend/tests/integration/`: health, root, auth/login 401 (на Python 3.8 пропускаются — приложение использует аннотации 3.9+). Запуск: `cd backend && python -m pytest tests/ -v`. См. `backend/tests/README.md`. Совместимость с Python 3.8: исправлены типы в `app.utils.phone`, `app.services.payment_overdue_tasks`, `app.routers.settings`, `app.routers.tasks`, `app.routers.owner_calculations`; в `sales.py` добавлен fallback для `mm` при отсутствии reportlab.
+
+Дальнейшие шаги: по желанию — расширение интеграционных сценариев с тестовой БД.

@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -16,11 +18,11 @@ DISTRICTS_KEY = "b2b_districts"
 
 
 class B2BDistrictsResponse(BaseModel):
-    items: list[str]
+    items: List[str]
 
 
 class B2BDistrictsUpdate(BaseModel):
-    items: list[str]
+    items: List[str]
 
 
 @router.get("/logo", response_model=LogoResponse)

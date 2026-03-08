@@ -1,5 +1,7 @@
 """Автозадачи по контролю оплат (ТЗ): два этапа напоминаний — 3 и 10 дней после даты оплаты."""
 from datetime import date, datetime, timedelta
+from typing import Optional
+
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -17,7 +19,7 @@ from app.models import (
 from app.student_display import get_student_display_name
 
 
-def _get_student_parent_name(db: Session, student_id: int) -> str | None:
+def _get_student_parent_name(db: Session, student_id: int) -> Optional[str]:
     """ФИО родителя ученика, если есть."""
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student or not getattr(student, "parent_id", None):
@@ -37,7 +39,7 @@ SUBTASKS_TEXTS = [
 ]
 
 
-def _get_student_group_name(db: Session, student_id: int) -> str | None:
+def _get_student_group_name(db: Session, student_id: int) -> Optional[str]:
     """Группа ученика (одна из), если есть."""
     gs = (
         db.query(Group)
@@ -72,7 +74,7 @@ def _create_payment_overdue_task(
     next_payment_date: date,
     stage: int,
     created_by_id: int,
-    assigned_to_id: int | None,
+    assigned_to_id: Optional[int],
 ) -> Task:
     """Создать одну задачу напоминания об оплате (этап 1 или 2)."""
     today = date.today()

@@ -4,9 +4,10 @@
 """
 
 import re
+from typing import Optional
 
 
-def normalize_phone(raw: str | None) -> str:
+def normalize_phone(raw: Optional[str] = None) -> str:
     """
     Приводит телефон к виду +79025768265.
     - Убирает пробелы, тире, скобки.

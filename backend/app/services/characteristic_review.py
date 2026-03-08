@@ -6,6 +6,7 @@ Use case: отправка на согласование, одобрение и 
 """
 
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -57,7 +58,7 @@ def submit_characteristic_for_review(
 def approve_characteristic(
     db: Session,
     characteristic_id: int,
-    comment: str | None = None,
+    comment: Optional[str] = None,
 ) -> Characteristic:
     """
     Одобряет и публикует характеристику (pending -> approved).
@@ -82,7 +83,7 @@ def approve_characteristic(
 def reject_characteristic(
     db: Session,
     characteristic_id: int,
-    comment: str | None = None,
+    comment: Optional[str] = None,
 ) -> Characteristic:
     """
     Отклоняет характеристику (pending -> rejected).

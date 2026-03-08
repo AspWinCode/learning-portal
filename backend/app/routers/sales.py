@@ -4897,6 +4897,7 @@ try:
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
+    mm = 2.834645669  # pt per mm, for default arg when reportlab not installed
 
 try:
     from pypdf import PdfReader, PdfWriter

@@ -1,6 +1,6 @@
 """Страница «Расчёты» для owner: тренеры, ставки, уроки/часы, премии, выплаты."""
 from datetime import date, time, datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -203,10 +203,10 @@ async def add_trainer_bonus(
 
 def _compute_trainer_lessons_hours(
     db: Session,
-    trainer_ids: set[int],
+    trainer_ids: Set[int],
     period_start: date,
     period_end: date,
-) -> tuple[dict[int, int], dict[int, float]]:
+) -> Tuple[Dict[int, int], Dict[int, float]]:
     """По каждому trainer_id возвращает (lessons_count, hours_count) за период с учётом подмен."""
     attendances = (
         db.query(LessonAttendance)
@@ -229,7 +229,7 @@ def _compute_trainer_lessons_hours(
         (o.group_id, o.lesson_date, o.start_time, o.end_time): o.trainer_id
         for o in overrides
     }
-    slots_by_trainer: dict[int, list[tuple[bool, float]]] = {tid: [] for tid in trainer_ids}
+    slots_by_trainer: Dict[int, List[Tuple[bool, float]]] = {tid: [] for tid in trainer_ids}
     seen = set()
     for att in attendances:
         group = att.group

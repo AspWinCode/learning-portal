@@ -1,6 +1,6 @@
 """Task manager: templates (admin/owner), tasks CRUD (admin/owner), sales: view tasks + complete subtasks."""
 from datetime import date, datetime, timedelta, time, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import or_, and_, func
@@ -43,7 +43,7 @@ router = APIRouter()
 MSK = timezone(timedelta(hours=8))
 
 
-def _today_msk() -> tuple[date, datetime, datetime]:
+def _today_msk() -> Tuple[date, datetime, datetime]:
     """Сегодня по Москве и границы суток в UTC для сравнения с due_at (в БД в UTC)."""
     now_utc = datetime.now(timezone.utc)
     now_msk = now_utc.astimezone(MSK)
@@ -605,12 +605,12 @@ async def get_tasks_day_desk(
         tags = getattr(t, "tags", None) or []
         return tag in tags
 
-    urgent_raw: list[Task] = []
-    parents_raw: list[Task] = []
-    makeups_raw: list[Task] = []
-    payments_raw: list[Task] = []
-    operations_raw: list[Task] = []
-    leads_raw: list[Task] = []
+    urgent_raw: List[Task] = []
+    parents_raw: List[Task] = []
+    makeups_raw: List[Task] = []
+    payments_raw: List[Task] = []
+    operations_raw: List[Task] = []
+    leads_raw: List[Task] = []
 
     for t in tasks:
         # Срочно: просроченные, скоро по времени, high priority сегодня
@@ -671,9 +671,9 @@ async def get_tasks_day_desk(
     used_ids: set[int] = set()
     overload = 0
 
-    def take_from(raw: list[Task], key: str) -> list[Task]:
+    def take_from(raw: List[Task], key: str) -> List[Task]:
         nonlocal overload
-        result: list[Task] = []
+        result: List[Task] = []
         for t in raw:
             if t.id in used_ids:
                 continue
@@ -1152,7 +1152,7 @@ async def get_parent_responses_stats(
         .all()
     )
 
-    agg: dict[tuple[date, int], dict[str, object]] = {}
+    agg: Dict[Tuple[date, int], Dict[str, object]] = {}
     for d, uid, name, key, v in rows:
         k = (d, uid)
         if k not in agg:

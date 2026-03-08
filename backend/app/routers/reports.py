@@ -15,6 +15,7 @@ import csv
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 from datetime import datetime, timezone, date
+from calendar import monthrange
 
 router = APIRouter()
 
@@ -48,33 +49,32 @@ async def characteristics_compliance_report(
     report_month = month - 1 if month > 1 else 12
     report_year = year if month > 1 else year - 1
     report_first = date(report_year, report_month, 1)
+    # Последний день отчётного месяца — включаем всех, кто был в группе в этом месяце
+    if report_month == 12:
+        report_last = date(report_year, 12, 31)
+    else:
+        report_last = date(report_year, report_month, monthrange(report_year, report_month)[1])
 
-    # Пары (trainer_id, student_id): тренер — ученик в группе (включая архивные группы),
-    # только если ученик отучился полный месяц у этого тренера в отчётном месяце:
-    # - в группе с 1-го числа отчётного месяца (GroupStudent.created_at <= report_first);
-    # - обучение начато не позднее 1-го числа отчётного месяца (training_start_date <= report_first или не задано).
-    # Не фильтруем по Group.status, чтобы в отчёт попадали и пары из архивных/расформированных групп за прошлые месяцы.
-    raw_pairs: List[Tuple[int, int, int, Any, Any]] = [
-        (tid, sid, gs_id, gs_created, st_training_start)
-        for (tid, sid, gs_id, gs_created, st_training_start) in db.query(
+    # Пары (trainer_id, student_id): тренер — ученик в группе (все группы, все ученики).
+    # Включаем всех, кто был в группе в отчётном месяце: добавлен в группу не позднее последнего дня месяца.
+    # Не фильтруем по Group.status и Student.status, чтобы видеть полный список (в т.ч. архивные группы/ученики).
+    raw_pairs: List[Tuple[int, int, int, Any]] = [
+        (tid, sid, gs_id, gs_created)
+        for (tid, sid, gs_id, gs_created) in db.query(
             Group.trainer_id,
             GroupStudent.student_id,
             GroupStudent.id,
             GroupStudent.created_at,
-            Student.training_start_date,
         )
         .join(GroupStudent, GroupStudent.group_id == Group.id)
         .join(Student, Student.id == GroupStudent.student_id)
-        .filter(Student.status == StudentStatus.ACTIVE)
         .all()
     ]
     pairs: List[Tuple[int, int]] = []
-    for tid, sid, _gs_id, gs_created, st_training_start in raw_pairs:
+    for tid, sid, _gs_id, gs_created in raw_pairs:
         gs_date = gs_created.date() if gs_created else report_first
-        if gs_date > report_first:
-            continue  # пришёл в группу после 1-го числа — не полный месяц
-        if st_training_start is not None and st_training_start > report_first:
-            continue  # начал обучение после 1-го числа отчётного месяца
+        if gs_date > report_last:
+            continue  # пришёл в группу уже после отчётного месяца
         pairs.append((tid, sid))
     pairs = list({(t, s) for (t, s) in pairs})  # distinct
 

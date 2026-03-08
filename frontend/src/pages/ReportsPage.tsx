@@ -407,7 +407,7 @@ export const ReportsPageContent: React.FC = () => {
                   <TableRow>
                     <TableCell colSpan={5}>
                       <Typography variant="body2" color="text.secondary">
-                        Нет данных (нет активных групп/учеников).
+                        Нет данных (нет пар тренер–ученик за выбранный период).
                       </Typography>
                     </TableCell>
                   </TableRow>

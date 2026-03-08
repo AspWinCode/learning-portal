@@ -44,23 +44,16 @@ async def characteristics_compliance_report(
     window_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
     window_end = datetime(year, month, 5, 23, 59, 59, tzinfo=timezone.utc)
 
-    # Все тренеры, у которых есть хотя бы одна активная группа (чтобы в отчёте были все такие тренеры)
-    all_trainer_ids_with_active_group = [
-        row[0] for row in db.query(Group.trainer_id)
-        .filter(Group.status == GroupStatus.ACTIVE)
-        .distinct()
-        .all()
-    ]
-
     # Период характеристик = предыдущий месяц относительно окна сдачи (окно 1–5 числа month/year)
     report_month = month - 1 if month > 1 else 12
     report_year = year if month > 1 else year - 1
     report_first = date(report_year, report_month, 1)
 
-    # Пары (trainer_id, student_id): тренер — ученик в его активной группе (активный ученик),
+    # Пары (trainer_id, student_id): тренер — ученик в группе (включая архивные группы),
     # только если ученик отучился полный месяц у этого тренера в отчётном месяце:
     # - в группе с 1-го числа отчётного месяца (GroupStudent.created_at <= report_first);
     # - обучение начато не позднее 1-го числа отчётного месяца (training_start_date <= report_first или не задано).
+    # Не фильтруем по Group.status, чтобы в отчёт попадали и пары из архивных/расформированных групп за прошлые месяцы.
     raw_pairs: List[Tuple[int, int, int, Any, Any]] = [
         (tid, sid, gs_id, gs_created, st_training_start)
         for (tid, sid, gs_id, gs_created, st_training_start) in db.query(
@@ -72,10 +65,7 @@ async def characteristics_compliance_report(
         )
         .join(GroupStudent, GroupStudent.group_id == Group.id)
         .join(Student, Student.id == GroupStudent.student_id)
-        .filter(
-            Group.status == GroupStatus.ACTIVE,
-            Student.status == StudentStatus.ACTIVE,
-        )
+        .filter(Student.status == StudentStatus.ACTIVE)
         .all()
     ]
     pairs: List[Tuple[int, int]] = []
@@ -88,7 +78,7 @@ async def characteristics_compliance_report(
         pairs.append((tid, sid))
     pairs = list({(t, s) for (t, s) in pairs})  # distinct
 
-    trainer_ids = sorted(set(all_trainer_ids_with_active_group) | {t for (t, _) in pairs})
+    trainer_ids = sorted({t for (t, _) in pairs})
     student_ids = sorted({s for (_, s) in pairs})
 
     if not trainer_ids:

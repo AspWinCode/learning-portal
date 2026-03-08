@@ -160,6 +160,9 @@ const StudentsPage: React.FC = () => {
   const [citiesList, setCitiesList] = useState<string[]>([]);
   const [schoolsList, setSchoolsList] = useState<string[]>([]);
   const [classesList, setClassesList] = useState<string[]>([]);
+  const [parentsLoaded, setParentsLoaded] = useState(false);
+  const [trainersLoaded, setTrainersLoaded] = useState(false);
+  const [refDataLoaded, setRefDataLoaded] = useState(false);
 
   type PageTab = 'students' | 'ankety' | 'parents' | 'trainers';
   const tabParam = searchParams.get('tab');
@@ -292,27 +295,51 @@ const StudentsPage: React.FC = () => {
     return isValidPhone(v) || isValidGeorgianPhone(v);
   };
 
+  // Первая загрузка: только данные для вкладки «Ученики» (таблица + фильтры). Тренеры нужны для фильтра по тренеру.
   useEffect(() => {
     if (!hasFullStudentsView) {
       loadStudents();
       return;
     }
-    loadParents();
-    if (canCreateCard) {
-      salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
-    }
-    salesApi.listSalesSchools(true).then((list) => setSchoolsList(list.filter((s) => s.is_active).map((s) => s.name))).catch(() => setSchoolsList([]));
-    salesApi.listSalesClasses(true).then((list) => setClassesList(list.filter((c) => c.is_active).map((c) => c.name))).catch(() => setClassesList([]));
-    if (!isOwner || user?.role === 'sales') {
-      loadTrainers();
-    }
     loadGroups();
     loadPrograms();
-    if (canAssignAbonement) {
-      loadAbonements();
-    }
     studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
-  }, [user, canCreateCard, hasFullStudentsView, canAssignAbonement]);
+    if (!isOwner || user?.role === 'sales') {
+      loadTrainers().then(() => setTrainersLoaded(true));
+    }
+  }, [user, hasFullStudentsView, isOwner]);
+
+  // Родители: загружаем при открытии вкладки «Родители» или диалога редактирования
+  useEffect(() => {
+    if (!hasFullStudentsView || parentsLoaded) return;
+    const needParents = studentsTab === 'parents' || editOpen;
+    if (needParents) {
+      loadParents().then(() => setParentsLoaded(true));
+    }
+  }, [hasFullStudentsView, studentsTab, editOpen, parentsLoaded]);
+
+  // Тренеры загружаются в первом эффекте (нужны для фильтра на вкладке «Ученики»). Если вкладка «Тренеры» открыта до завершения загрузки — дозагружаем.
+  useEffect(() => {
+    if (!hasFullStudentsView || trainersLoaded || (isOwner && user?.role !== 'sales')) return;
+    if (studentsTab === 'trainers') {
+      loadTrainers().then(() => setTrainersLoaded(true));
+    }
+  }, [hasFullStudentsView, studentsTab, trainersLoaded, isOwner, user?.role]);
+
+  // Справочники для диалогов (города, школы, классы) и абонементы — по требованию при открытии добавления/редактирования
+  useEffect(() => {
+    if (!hasFullStudentsView || refDataLoaded) return;
+    if (!open && !editOpen) return;
+    setRefDataLoaded(true);
+    salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
+    salesApi.listSalesSchools(true).then((list) => setSchoolsList(list.filter((s) => s.is_active).map((s) => s.name))).catch(() => setSchoolsList([]));
+    salesApi.listSalesClasses(true).then((list) => setClassesList(list.filter((c) => c.is_active).map((c) => c.name))).catch(() => setClassesList([]));
+  }, [hasFullStudentsView, open, editOpen, refDataLoaded]);
+
+  useEffect(() => {
+    if (!hasFullStudentsView || !(open || editOpen) || !canAssignAbonement) return;
+    loadAbonements();
+  }, [hasFullStudentsView, open, editOpen, canAssignAbonement]);
 
   useEffect(() => {
     const t = setTimeout(() => {

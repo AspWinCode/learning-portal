@@ -232,11 +232,21 @@ export const CampaignsTab: React.FC = () => {
           <Button startIcon={<ArrowBack />} onClick={() => setSelectedCampaignId(null)} sx={{ mb: 2 }}>
             К списку кампаний
           </Button>
+          <Typography variant="overline" display="block" color="primary" sx={{ mb: 0.5 }}>
+            Версия: джемы и матрица школ
+          </Typography>
+          <Box sx={{ border: '2px solid', borderColor: 'primary.main', borderRadius: 1, p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
+            <Typography variant="subtitle2" color="primary" sx={{ mb: 0.5, fontWeight: 600 }}>
+              Общая работа · Джемы · Матрица школ
+            </Typography>
+            <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} variant="fullWidth">
+              <Tab label="Общая работа" value="work" />
+              <Tab label="Джемы" value="events" />
+              <Tab label="Матрица школ" value="matrix" />
+            </Tabs>
+          </Box>
           {campaignDetail ? (
             <>
-              <Typography variant="overline" display="block" color="primary" sx={{ mb: 0.5 }}>
-                Версия: джемы и матрица школ
-              </Typography>
               <Typography variant="h5" gutterBottom>
                 {campaignDetail.name}
               </Typography>
@@ -245,19 +255,6 @@ export const CampaignsTab: React.FC = () => {
                 {campaignDetail.city && ` · ${campaignDetail.city}`}
                 {campaignDetail.responsible_full_name && ` · Ответственный: ${campaignDetail.responsible_full_name}`}
               </Typography>
-              <Box sx={{ border: '2px solid', borderColor: 'primary.main', borderRadius: 1, p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
-                <Typography variant="subtitle2" color="primary" sx={{ mb: 0.5, fontWeight: 600 }}>
-                  Переключение: Общая работа · Джемы · Матрица школ
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                  Общая работа — канбан по стадиям и кнопка «Добавить школы». Джемы — отдельные события (даты), создание джемов и таблица школ по каждому. Матрица — таблица «школы × джемы», статусы в ячейках.
-                </Typography>
-                <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} variant="fullWidth">
-                  <Tab label="Общая работа" value="work" />
-                  <Tab label="Джемы" value="events" />
-                  <Tab label="Матрица школ" value="matrix" />
-                </Tabs>
-              </Box>
               {campaignDetailSubTab === 'work' && (
                 <>
                   <Button variant="contained" startIcon={<Add />} onClick={openAddSchools} sx={{ mb: 2 }}>

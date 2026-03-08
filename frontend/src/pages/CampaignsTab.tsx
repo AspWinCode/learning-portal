@@ -22,6 +22,8 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Tab,
+  Tabs,
   TextField,
   Typography,
   Checkbox,
@@ -29,6 +31,7 @@ import {
 import Add from '@mui/icons-material/Add';
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import Edit from '@mui/icons-material/Edit';
+import History from '@mui/icons-material/History';
 import { campaignsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { Campaign, SchoolCampaign } from '../types';
@@ -39,6 +42,9 @@ import {
   CAMPAIGN_MODES,
   CAMPAIGN_STATUSES,
 } from '../constants/campaignStages';
+import { getInviteLabel, getParticipationLabel, getHostLabel } from '../constants/campaignEventStages';
+import { CampaignEventsSubTab } from './CampaignEventsSubTab';
+import { CampaignMatrixSubTab } from './CampaignMatrixSubTab';
 
 export const CampaignsTab: React.FC = () => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -67,6 +73,12 @@ export const CampaignsTab: React.FC = () => {
   const [selectedSchoolIds, setSelectedSchoolIds] = useState<number[]>([]);
   const [createContactTask, setCreateContactTask] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
+  const [campaignDetailSubTab, setCampaignDetailSubTab] = useState<'work' | 'events' | 'matrix'>('work');
+  const [eventCounts, setEventCounts] = useState<Record<string, { events_invited_count: number; events_participated_count: number; events_hosted_count: number }>>({});
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historySchoolCampaignId, setHistorySchoolCampaignId] = useState<number | null>(null);
+  const [historyData, setHistoryData] = useState<Array<{ event_title: string | null; event_date: string | null; invite_status: string; participation_status: string; participant_count: number | null; host_status: string; notes: string | null }>>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const loadCampaigns = useCallback(async () => {
     setLoading(true);
@@ -96,6 +108,8 @@ export const CampaignsTab: React.FC = () => {
     if (!selectedCampaignId) {
       setCampaignDetail(null);
       setSchoolCampaigns([]);
+      setEventCounts({});
+      setCampaignDetailSubTab('work');
       return;
     }
     Promise.all([campaignsApi.get(selectedCampaignId), campaignsApi.listSchoolCampaigns(selectedCampaignId)])
@@ -105,6 +119,24 @@ export const CampaignsTab: React.FC = () => {
       })
       .catch((err: any) => setError(extractApiError(err, 'Не удалось загрузить кампанию')));
   }, [selectedCampaignId]);
+
+  useEffect(() => {
+    if (!selectedCampaignId || campaignDetailSubTab !== 'work') return;
+    campaignsApi.getCampaignSchoolEventCounts(selectedCampaignId).then(setEventCounts).catch(() => setEventCounts({}));
+  }, [selectedCampaignId, campaignDetailSubTab]);
+
+  const openHistoryDialog = (schoolCampaignId: number) => {
+    setHistorySchoolCampaignId(schoolCampaignId);
+    setHistoryDialogOpen(true);
+    setHistoryData([]);
+    setHistoryLoading(true);
+    if (!selectedCampaignId) return;
+    campaignsApi
+      .getSchoolCampaignEventsHistory(selectedCampaignId, schoolCampaignId)
+      .then((data) => setHistoryData(data))
+      .catch(() => setHistoryData([]))
+      .finally(() => setHistoryLoading(false));
+  };
 
   const handleCreate = async () => {
     if (!createForm.name.trim()) return;
@@ -205,53 +237,81 @@ export const CampaignsTab: React.FC = () => {
               <Typography variant="h5" gutterBottom>
                 {campaignDetail.name}
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 {CAMPAIGN_TYPES.find((t) => t.value === campaignDetail.type)?.label} · {campaignDetail.format === 'offline' ? 'Офлайн' : 'Онлайн'}
                 {campaignDetail.city && ` · ${campaignDetail.city}`}
                 {campaignDetail.responsible_full_name && ` · Ответственный: ${campaignDetail.responsible_full_name}`}
               </Typography>
-              <Button variant="contained" startIcon={<Add />} onClick={openAddSchools} sx={{ mb: 2 }}>
-                Добавить школы
-              </Button>
-              <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap' }}>
-                {byStage.map((col) => (
-                  <Card key={col.value} variant="outlined" sx={{ minWidth: 260, flex: '0 0 auto' }}>
-                    <CardContent>
-                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        {col.label}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                        {col.items.length} шт.
-                      </Typography>
-                      <Stack spacing={1}>
-                        {col.items.map((sc) => (
-                          <Card key={sc.id} variant="outlined" sx={{ bgcolor: 'background.paper' }}>
-                            <CardContent sx={{ py: 1, px: 1.5 }}>
-                              <Typography variant="body2">{sc.school_name || `Школа #${sc.b2b_school_id}`}</Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {sc.school_city || '—'}
-                              </Typography>
-                              <FormControl size="small" fullWidth sx={{ mt: 0.5 }}>
-                                <Select
-                                  value={sc.stage}
-                                  onChange={(e) => handleStageChange(sc.id, e.target.value)}
-                                  displayEmpty
-                                >
-                                  {stages.map((s) => (
-                                    <MenuItem key={s.value} value={s.value}>
-                                      {s.label}
-                                    </MenuItem>
-                                  ))}
-                                </Select>
-                              </FormControl>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                ))}
-              </Box>
+              <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} sx={{ mb: 2 }}>
+                <Tab label="Общая работа" value="work" />
+                <Tab label="Джемы" value="events" />
+                <Tab label="Матрица школ" value="matrix" />
+              </Tabs>
+              {campaignDetailSubTab === 'work' && (
+                <>
+                  <Button variant="contained" startIcon={<Add />} onClick={openAddSchools} sx={{ mb: 2 }}>
+                    Добавить школы
+                  </Button>
+                  <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap' }}>
+                    {byStage.map((col) => (
+                      <Card key={col.value} variant="outlined" sx={{ minWidth: 260, flex: '0 0 auto' }}>
+                        <CardContent>
+                          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                            {col.label}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                            {col.items.length} шт.
+                          </Typography>
+                          <Stack spacing={1}>
+                            {col.items.map((sc) => {
+                              const counts = eventCounts[String(sc.id)];
+                              return (
+                                <Card key={sc.id} variant="outlined" sx={{ bgcolor: 'background.paper' }}>
+                                  <CardContent sx={{ py: 1, px: 1.5 }}>
+                                    <Typography variant="body2">{sc.school_name || `Школа #${sc.b2b_school_id}`}</Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {sc.school_city || '—'}
+                                    </Typography>
+                                    {(counts?.events_invited_count !== undefined || counts?.events_participated_count !== undefined || counts?.events_hosted_count !== undefined) && (
+                                      <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.25 }}>
+                                        приглаш.: {counts?.events_invited_count ?? 0} · участий: {counts?.events_participated_count ?? 0} · площадок: {counts?.events_hosted_count ?? 0}
+                                      </Typography>
+                                    )}
+                                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                                      <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+                                        <Select
+                                          value={sc.stage}
+                                          onChange={(e) => handleStageChange(sc.id, e.target.value)}
+                                          displayEmpty
+                                        >
+                                          {stages.map((s) => (
+                                            <MenuItem key={s.value} value={s.value}>
+                                              {s.label}
+                                            </MenuItem>
+                                          ))}
+                                        </Select>
+                                      </FormControl>
+                                      <Button size="small" startIcon={<History />} onClick={() => openHistoryDialog(sc.id)} title="История джемов">
+                                        История
+                                      </Button>
+                                    </Stack>
+                                  </CardContent>
+                                </Card>
+                              );
+                            })}
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Box>
+                </>
+              )}
+              {campaignDetailSubTab === 'events' && selectedCampaignId && (
+                <CampaignEventsSubTab campaignId={selectedCampaignId} onError={setError} />
+              )}
+              {campaignDetailSubTab === 'matrix' && selectedCampaignId && (
+                <CampaignMatrixSubTab campaignId={selectedCampaignId} onError={setError} />
+              )}
             </>
           )}
         </Box>
@@ -481,6 +541,53 @@ export const CampaignsTab: React.FC = () => {
           <Button variant="contained" onClick={handleAddSchools} disabled={selectedSchoolIds.length === 0}>
             Добавить
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={historyDialogOpen} onClose={() => setHistoryDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>История джемов школы</DialogTitle>
+        <DialogContent>
+          {historyLoading ? (
+            <Typography color="text.secondary" sx={{ py: 2 }}>Загрузка…</Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Джем</TableCell>
+                    <TableCell>Дата</TableCell>
+                    <TableCell>Приглашение</TableCell>
+                    <TableCell>Участие</TableCell>
+                    <TableCell>Площадка</TableCell>
+                    <TableCell>Дети</TableCell>
+                    <TableCell>Комментарий</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {historyData.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center" sx={{ color: 'text.secondary' }}>Нет данных по джемам</TableCell>
+                    </TableRow>
+                  ) : (
+                    historyData.map((row, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>{row.event_title ?? '—'}</TableCell>
+                        <TableCell>{row.event_date ?? '—'}</TableCell>
+                        <TableCell>{getInviteLabel(row.invite_status)}</TableCell>
+                        <TableCell>{getParticipationLabel(row.participation_status)}</TableCell>
+                        <TableCell>{getHostLabel(row.host_status)}</TableCell>
+                        <TableCell>{row.participant_count ?? '—'}</TableCell>
+                        <TableCell sx={{ maxWidth: 200 }}>{row.notes ?? '—'}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHistoryDialogOpen(false)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
     </>

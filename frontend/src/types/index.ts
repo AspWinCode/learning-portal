@@ -815,6 +815,46 @@ export interface SchoolCampaign {
   school_city?: string | null;
 }
 
+export interface CampaignEvent {
+  id: number;
+  campaign_id: number;
+  title: string;
+  event_date: string;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  location?: string | null;
+  city?: string | null;
+  status: string;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface SchoolCampaignEvent {
+  id: number;
+  campaign_event_id: number;
+  school_campaign_id: number;
+  invite_status: string;
+  participation_status: string;
+  participant_count?: number | null;
+  host_status: string;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CampaignSchoolEventCounts {
+  events_invited_count: number;
+  events_participated_count: number;
+  events_hosted_count: number;
+}
+
+export interface SchoolsEventsMatrix {
+  schools: Array<{ id: number; b2b_school_id: number; school_name: string | null; school_city: string | null; stage: string }>;
+  events: CampaignEvent[];
+  school_campaign_events: SchoolCampaignEvent[];
+}
+
 // Owner funnels (support letters, thank you letters)
 export interface OwnerFunnelStageOption {
   value: string;

@@ -4164,12 +4164,6 @@ async def update_lead(
     return lead
 
 
-from app.routers.action_log import log_action
-from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
-
-router = APIRouter()
-
-
 @router.post("/leads/{lead_id}/convert-to-student", response_model=LeadConvertToStudentResponse)
 async def convert_lead_to_student(
     lead_id: int,

@@ -1,8 +1,9 @@
 https://{$DOMAIN} {
     encode gzip zstd
 
-    # Backend API
-    handle /api/* {
+    # Backend API: все /api/* на backend без обрезки пути (path сохраняется)
+    @api path /api/*
+    handle @api {
         reverse_proxy backend:8000
     }
 

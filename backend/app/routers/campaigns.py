@@ -1,6 +1,6 @@
 """Campaigns and SchoolCampaigns API. Owner only."""
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
@@ -8,11 +8,26 @@ from pydantic import BaseModel
 
 from app import auth
 from app.database import get_db
-from app.models import B2BSchool, Campaign, SchoolCampaign, Task, TaskStatus, User
+from app.models import (
+    B2BSchool,
+    Campaign,
+    CampaignEvent,
+    SchoolCampaign,
+    SchoolCampaignEvent,
+    Task,
+    TaskStatus,
+    User,
+)
 from app.schemas import (
     CampaignCreate,
+    CampaignEventCreate,
+    CampaignEventResponse,
+    CampaignEventUpdate,
     CampaignResponse,
     CampaignUpdate,
+    SchoolCampaignEventBulkUpdate,
+    SchoolCampaignEventResponse,
+    SchoolCampaignEventUpdate,
     SchoolCampaignResponse,
     SchoolCampaignUpdate,
 )
@@ -273,3 +288,458 @@ async def remove_school_from_campaign(
         raise HTTPException(status_code=404, detail="SchoolCampaign not found")
     db.delete(sc)
     db.commit()
+
+
+# --- CampaignEvent (джемы внутри кампании) ---
+def _campaign_event_to_response(e: CampaignEvent) -> CampaignEventResponse:
+    return CampaignEventResponse(
+        id=e.id,
+        campaign_id=e.campaign_id,
+        title=e.title,
+        event_date=e.event_date,
+        starts_at=e.starts_at,
+        ends_at=e.ends_at,
+        location=e.location,
+        city=e.city,
+        status=e.status,
+        notes=e.notes,
+        created_at=e.created_at,
+        updated_at=e.updated_at,
+    )
+
+
+@router.get("/campaigns/{campaign_id}/events", response_model=List[CampaignEventResponse])
+async def list_campaign_events(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    events = (
+        db.query(CampaignEvent)
+        .filter(CampaignEvent.campaign_id == campaign_id)
+        .order_by(CampaignEvent.event_date.asc(), CampaignEvent.starts_at.asc())
+        .all()
+    )
+    return [_campaign_event_to_response(e) for e in events]
+
+
+@router.post("/campaigns/{campaign_id}/events", response_model=CampaignEventResponse, status_code=201)
+async def create_campaign_event(
+    campaign_id: int,
+    payload: CampaignEventCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    event = CampaignEvent(
+        campaign_id=campaign_id,
+        title=payload.title,
+        event_date=payload.event_date,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        location=payload.location,
+        city=payload.city,
+        status=payload.status or "planned",
+        notes=payload.notes,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return _campaign_event_to_response(event)
+
+
+@router.put("/campaigns/{campaign_id}/events/{event_id}", response_model=CampaignEventResponse)
+async def update_campaign_event(
+    campaign_id: int,
+    event_id: int,
+    payload: CampaignEventUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    event = db.query(CampaignEvent).filter(
+        CampaignEvent.id == event_id, CampaignEvent.campaign_id == campaign_id
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Campaign event not found")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(event, k, v)
+    db.commit()
+    db.refresh(event)
+    return _campaign_event_to_response(event)
+
+
+@router.patch("/campaigns/{campaign_id}/events/{event_id}", response_model=CampaignEventResponse)
+async def patch_campaign_event(
+    campaign_id: int,
+    event_id: int,
+    payload: CampaignEventUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    return await update_campaign_event(campaign_id, event_id, payload, db, current_user)
+
+
+# --- SchoolCampaignEvent (матрица и детали по джему) ---
+def _sce_to_response(sce: SchoolCampaignEvent) -> SchoolCampaignEventResponse:
+    return SchoolCampaignEventResponse(
+        id=sce.id,
+        campaign_event_id=sce.campaign_event_id,
+        school_campaign_id=sce.school_campaign_id,
+        invite_status=sce.invite_status,
+        participation_status=sce.participation_status,
+        participant_count=sce.participant_count,
+        host_status=sce.host_status,
+        notes=sce.notes,
+        created_at=sce.created_at,
+        updated_at=sce.updated_at,
+    )
+
+
+class SchoolsEventsMatrixResponse(BaseModel):
+    schools: List[Dict[str, Any]]
+    events: List[CampaignEventResponse]
+    school_campaign_events: List[SchoolCampaignEventResponse]
+
+
+@router.get("/campaigns/{campaign_id}/schools-events-matrix", response_model=SchoolsEventsMatrixResponse)
+async def get_schools_events_matrix(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    school_campaigns = (
+        db.query(SchoolCampaign)
+        .options(joinedload(SchoolCampaign.school))
+        .filter(SchoolCampaign.campaign_id == campaign_id)
+        .order_by(SchoolCampaign.id)
+        .all()
+    )
+    events = (
+        db.query(CampaignEvent)
+        .filter(CampaignEvent.campaign_id == campaign_id)
+        .order_by(CampaignEvent.event_date.asc(), CampaignEvent.starts_at.asc())
+        .all()
+    )
+    sces = (
+        db.query(SchoolCampaignEvent)
+        .filter(
+            SchoolCampaignEvent.campaign_event_id.in_([e.id for e in events]),
+            SchoolCampaignEvent.school_campaign_id.in_([sc.id for sc in school_campaigns]),
+        )
+        .all()
+    )
+    schools_data = [
+        {
+            "id": sc.id,
+            "b2b_school_id": sc.b2b_school_id,
+            "school_name": sc.school.name if sc.school else None,
+            "school_city": sc.school.city if sc.school else None,
+            "stage": sc.stage,
+        }
+        for sc in school_campaigns
+    ]
+    return SchoolsEventsMatrixResponse(
+        schools=schools_data,
+        events=[_campaign_event_to_response(e) for e in events],
+        school_campaign_events=[_sce_to_response(sce) for sce in sces],
+    )
+
+
+@router.get("/campaigns/{campaign_id}/school-event-counts", response_model=Dict[str, Dict[str, int]])
+async def get_campaign_school_event_counts(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """Сводка по каждой школе: сколько раз приглашали, участвовали, были площадкой (для канбана)."""
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    sc_ids = [row[0] for row in db.query(SchoolCampaign.id).filter(SchoolCampaign.campaign_id == campaign_id).all()]
+    if not sc_ids:
+        return {}
+    event_ids = [row[0] for row in db.query(CampaignEvent.id).filter(CampaignEvent.campaign_id == campaign_id).all()]
+    if not event_ids:
+        return {str(sid): {"events_invited_count": 0, "events_participated_count": 0, "events_hosted_count": 0} for sid in sc_ids}
+    from sqlalchemy import func
+    invited = (
+        db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
+        .filter(
+            SchoolCampaignEvent.school_campaign_id.in_(sc_ids),
+            SchoolCampaignEvent.campaign_event_id.in_(event_ids),
+            SchoolCampaignEvent.invite_status.in_(["invited", "awaiting_reply", "accepted", "declined"]),
+        )
+        .group_by(SchoolCampaignEvent.school_campaign_id)
+        .all()
+    )
+    participated = (
+        db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
+        .filter(
+            SchoolCampaignEvent.school_campaign_id.in_(sc_ids),
+            SchoolCampaignEvent.campaign_event_id.in_(event_ids),
+            SchoolCampaignEvent.participation_status == "participated",
+        )
+        .group_by(SchoolCampaignEvent.school_campaign_id)
+        .all()
+    )
+    hosted = (
+        db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
+        .filter(
+            SchoolCampaignEvent.school_campaign_id.in_(sc_ids),
+            SchoolCampaignEvent.campaign_event_id.in_(event_ids),
+            SchoolCampaignEvent.host_status.in_(["host_proposed", "host_confirmed", "hosted"]),
+        )
+        .group_by(SchoolCampaignEvent.school_campaign_id)
+        .all()
+    )
+    by_sc = {sid: {"events_invited_count": 0, "events_participated_count": 0, "events_hosted_count": 0} for sid in sc_ids}
+    for sid, cnt in invited:
+        by_sc[sid]["events_invited_count"] = cnt
+    for sid, cnt in participated:
+        by_sc[sid]["events_participated_count"] = cnt
+    for sid, cnt in hosted:
+        by_sc[sid]["events_hosted_count"] = cnt
+    return {str(k): v for k, v in by_sc.items()}
+
+
+@router.get(
+    "/campaigns/{campaign_id}/events/{event_id}/schools",
+    response_model=List[Dict[str, Any]],
+)
+async def list_event_schools(
+    campaign_id: int,
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    event = db.query(CampaignEvent).filter(
+        CampaignEvent.id == event_id, CampaignEvent.campaign_id == campaign_id
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Campaign event not found")
+    school_campaigns = (
+        db.query(SchoolCampaign)
+        .options(joinedload(SchoolCampaign.school))
+        .filter(SchoolCampaign.campaign_id == campaign_id)
+        .order_by(SchoolCampaign.id)
+        .all()
+    )
+    sces = {
+        (sce.school_campaign_id, sce.campaign_event_id): sce
+        for sce in db.query(SchoolCampaignEvent)
+        .filter(
+            SchoolCampaignEvent.campaign_event_id == event_id,
+            SchoolCampaignEvent.school_campaign_id.in_([sc.id for sc in school_campaigns]),
+        )
+        .all()
+    }
+    result = []
+    for sc in school_campaigns:
+        sce = sces.get((sc.id, event_id))
+        result.append(
+            {
+                "school_campaign_id": sc.id,
+                "school_name": sc.school.name if sc.school else None,
+                "school_city": sc.school.city if sc.school else None,
+                "stage": sc.stage,
+                "invite_status": sce.invite_status if sce else "not_invited",
+                "participation_status": sce.participation_status if sce else "not_planned",
+                "participant_count": sce.participant_count if sce else None,
+                "host_status": sce.host_status if sce else "not_host",
+                "notes": sce.notes if sce else None,
+                "school_campaign_event_id": sce.id if sce else None,
+            }
+        )
+    return result
+
+
+@router.put(
+    "/campaigns/{campaign_id}/events/{event_id}/schools/{school_campaign_id}",
+    response_model=SchoolCampaignEventResponse,
+)
+async def upsert_school_campaign_event(
+    campaign_id: int,
+    event_id: int,
+    school_campaign_id: int,
+    payload: SchoolCampaignEventUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    event = db.query(CampaignEvent).filter(
+        CampaignEvent.id == event_id, CampaignEvent.campaign_id == campaign_id
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Campaign event not found")
+    sc = db.query(SchoolCampaign).filter(
+        SchoolCampaign.id == school_campaign_id, SchoolCampaign.campaign_id == campaign_id
+    ).first()
+    if not sc:
+        raise HTTPException(status_code=404, detail="SchoolCampaign not found")
+    sce = (
+        db.query(SchoolCampaignEvent)
+        .filter(
+            SchoolCampaignEvent.campaign_event_id == event_id,
+            SchoolCampaignEvent.school_campaign_id == school_campaign_id,
+        )
+        .first()
+    )
+    data = payload.model_dump(exclude_unset=True)
+    if sce:
+        for k, v in data.items():
+            setattr(sce, k, v)
+        db.commit()
+        db.refresh(sce)
+        return _sce_to_response(sce)
+    defaults = {
+        "invite_status": "not_invited",
+        "participation_status": "not_planned",
+        "host_status": "not_host",
+    }
+    defaults.update(data)
+    sce = SchoolCampaignEvent(
+        campaign_event_id=event_id,
+        school_campaign_id=school_campaign_id,
+        **defaults,
+    )
+    db.add(sce)
+    db.commit()
+    db.refresh(sce)
+    return _sce_to_response(sce)
+
+
+@router.post(
+    "/campaigns/{campaign_id}/events/{event_id}/schools/bulk-update",
+    response_model=List[SchoolCampaignEventResponse],
+)
+async def bulk_update_event_schools(
+    campaign_id: int,
+    event_id: int,
+    payload: SchoolCampaignEventBulkUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    event = db.query(CampaignEvent).filter(
+        CampaignEvent.id == event_id, CampaignEvent.campaign_id == campaign_id
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Campaign event not found")
+    school_campaign_ids = set(payload.school_campaign_ids)
+    school_campaigns = (
+        db.query(SchoolCampaign)
+        .filter(
+            SchoolCampaign.id.in_(school_campaign_ids),
+            SchoolCampaign.campaign_id == campaign_id,
+        )
+        .all()
+    )
+    valid_ids = {sc.id for sc in school_campaigns}
+    data = payload.model_dump(exclude_unset=True)
+    data.pop("school_campaign_ids", None)
+    if not data:
+        return []
+    existing = (
+        db.query(SchoolCampaignEvent)
+        .filter(
+            SchoolCampaignEvent.campaign_event_id == event_id,
+            SchoolCampaignEvent.school_campaign_id.in_(valid_ids),
+        )
+        .all()
+    )
+    by_sc = {sce.school_campaign_id: sce for sce in existing}
+    result = []
+    for sc_id in valid_ids:
+        sce = by_sc.get(sc_id)
+        if sce:
+            for k, v in data.items():
+                setattr(sce, k, v)
+            result.append(sce)
+        else:
+            sce = SchoolCampaignEvent(
+                campaign_event_id=event_id,
+                school_campaign_id=sc_id,
+                invite_status=data.get("invite_status", "not_invited"),
+                participation_status=data.get("participation_status", "not_planned"),
+                host_status=data.get("host_status", "not_host"),
+                participant_count=data.get("participant_count"),
+                notes=data.get("notes"),
+            )
+            db.add(sce)
+            db.flush()
+            result.append(sce)
+    db.commit()
+    for sce in result:
+        db.refresh(sce)
+    return [_sce_to_response(sce) for sce in result]
+
+
+@router.get(
+    "/campaigns/{campaign_id}/school-campaigns/{sc_id}/events-history",
+    response_model=List[Dict[str, Any]],
+)
+async def get_school_campaign_events_history(
+    campaign_id: int,
+    sc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    """История джемов по одной школе в кампании."""
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    sc = (
+        db.query(SchoolCampaign)
+        .options(joinedload(SchoolCampaign.school))
+        .filter(SchoolCampaign.id == sc_id, SchoolCampaign.campaign_id == campaign_id)
+        .first()
+    )
+    if not sc:
+        raise HTTPException(status_code=404, detail="SchoolCampaign not found")
+    sces = (
+        db.query(SchoolCampaignEvent)
+        .join(CampaignEvent, SchoolCampaignEvent.campaign_event_id == CampaignEvent.id)
+        .filter(SchoolCampaignEvent.school_campaign_id == sc_id)
+        .order_by(CampaignEvent.event_date.asc(), CampaignEvent.starts_at.asc())
+        .all()
+    )
+    event_ids = [sce.campaign_event_id for sce in sces]
+    events_map = {}
+    if event_ids:
+        for e in db.query(CampaignEvent).filter(CampaignEvent.id.in_(event_ids)).all():
+            events_map[e.id] = e
+    result = []
+    for sce in sces:
+        e = events_map.get(sce.campaign_event_id)
+        result.append(
+            {
+                "campaign_event_id": sce.campaign_event_id,
+                "event_title": e.title if e else None,
+                "event_date": e.event_date.isoformat() if e and e.event_date else None,
+                "invite_status": sce.invite_status,
+                "participation_status": sce.participation_status,
+                "participant_count": sce.participant_count,
+                "host_status": sce.host_status,
+                "notes": sce.notes,
+            }
+        )
+    return result

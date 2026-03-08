@@ -1545,6 +1545,7 @@ class Campaign(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     responsible = relationship("User", foreign_keys=[responsible_id])
     school_campaigns = relationship("SchoolCampaign", back_populates="campaign", cascade="all, delete-orphan")
+    campaign_events = relationship("CampaignEvent", back_populates="campaign", cascade="all, delete-orphan")
 
 
 class SchoolCampaign(Base):
@@ -1560,6 +1561,81 @@ class SchoolCampaign(Base):
     __table_args__ = (UniqueConstraint("b2b_school_id", "campaign_id", name="uq_school_campaigns_school_campaign"),)
     school = relationship("B2BSchool", back_populates="school_campaigns")
     campaign = relationship("Campaign", back_populates="school_campaigns")
+    school_campaign_events = relationship("SchoolCampaignEvent", back_populates="school_campaign", cascade="all, delete-orphan")
+
+
+class CampaignEventStatus(str, enum.Enum):
+    PLANNED = "planned"
+    DONE = "done"
+    CANCELED = "canceled"
+
+
+class CampaignEvent(Base):
+    __tablename__ = "campaign_events"
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(512), nullable=False)
+    event_date = Column(Date, nullable=False, index=True)
+    starts_at = Column(DateTime(timezone=True), nullable=True)
+    ends_at = Column(DateTime(timezone=True), nullable=True)
+    location = Column(String(512), nullable=True)
+    city = Column(String(256), nullable=True)
+    status = Column(String(32), nullable=False, server_default=CampaignEventStatus.PLANNED.value, index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    campaign = relationship("Campaign", back_populates="campaign_events")
+    school_campaign_events = relationship("SchoolCampaignEvent", back_populates="campaign_event", cascade="all, delete-orphan")
+
+
+class InviteStatus(str, enum.Enum):
+    NOT_INVITED = "not_invited"
+    INVITED = "invited"
+    AWAITING_REPLY = "awaiting_reply"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+
+class ParticipationStatus(str, enum.Enum):
+    NOT_PLANNED = "not_planned"
+    PLANNED = "planned"
+    CONFIRMED = "confirmed"
+    PARTICIPATED = "participated"
+    NO_SHOW = "no_show"
+    DECLINED = "declined"
+
+
+class HostStatus(str, enum.Enum):
+    NOT_HOST = "not_host"
+    HOST_PROPOSED = "host_proposed"
+    HOST_CONFIRMED = "host_confirmed"
+    HOSTED = "hosted"
+    HOST_DECLINED = "host_declined"
+
+
+class SchoolCampaignEvent(Base):
+    __tablename__ = "school_campaign_events"
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_event_id = Column(Integer, ForeignKey("campaign_events.id", ondelete="CASCADE"), nullable=False, index=True)
+    school_campaign_id = Column(Integer, ForeignKey("school_campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
+    invite_status = Column(
+        String(32), nullable=False, server_default=InviteStatus.NOT_INVITED.value, index=True
+    )
+    participation_status = Column(
+        String(32), nullable=False, server_default=ParticipationStatus.NOT_PLANNED.value, index=True
+    )
+    participant_count = Column(Integer, nullable=True)
+    host_status = Column(
+        String(32), nullable=False, server_default=HostStatus.NOT_HOST.value, index=True
+    )
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    __table_args__ = (
+        UniqueConstraint("campaign_event_id", "school_campaign_id", name="uq_school_campaign_event_event_school"),
+    )
+    campaign_event = relationship("CampaignEvent", back_populates="school_campaign_events")
+    school_campaign = relationship("SchoolCampaign", back_populates="school_campaign_events")
 
 
 class TaskStatus(str, enum.Enum):

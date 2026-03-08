@@ -1902,6 +1902,125 @@ export const campaignsApi = {
   removeSchoolFromCampaign: async (campaignId: number, scId: number): Promise<void> => {
     await api.delete(`/api/campaigns/${campaignId}/school-campaigns/${scId}`);
   },
+  // Campaign events (джемы внутри кампании)
+  listCampaignEvents: async (campaignId: number): Promise<import('../types').CampaignEvent[]> => {
+    const response = await api.get(`/api/campaigns/${campaignId}/events`);
+    return response.data;
+  },
+  createCampaignEvent: async (
+    campaignId: number,
+    payload: {
+      title: string;
+      event_date: string;
+      starts_at?: string | null;
+      ends_at?: string | null;
+      location?: string | null;
+      city?: string | null;
+      status?: string;
+      notes?: string | null;
+    }
+  ): Promise<import('../types').CampaignEvent> => {
+    const response = await api.post(`/api/campaigns/${campaignId}/events`, payload);
+    return response.data;
+  },
+  updateCampaignEvent: async (
+    campaignId: number,
+    eventId: number,
+    payload: Partial<{
+      title: string;
+      event_date: string;
+      starts_at: string | null;
+      ends_at: string | null;
+      location: string | null;
+      city: string | null;
+      status: string;
+      notes: string | null;
+    }>
+  ): Promise<import('../types').CampaignEvent> => {
+    const response = await api.put(`/api/campaigns/${campaignId}/events/${eventId}`, payload);
+    return response.data;
+  },
+  getSchoolsEventsMatrix: async (
+    campaignId: number
+  ): Promise<import('../types').SchoolsEventsMatrix> => {
+    const response = await api.get(`/api/campaigns/${campaignId}/schools-events-matrix`);
+    return response.data;
+  },
+  getCampaignSchoolEventCounts: async (
+    campaignId: number
+  ): Promise<Record<string, import('../types').CampaignSchoolEventCounts>> => {
+    const response = await api.get(`/api/campaigns/${campaignId}/school-event-counts`);
+    return response.data;
+  },
+  listEventSchools: async (
+    campaignId: number,
+    eventId: number
+  ): Promise<
+    Array<{
+      school_campaign_id: number;
+      school_name: string | null;
+      school_city: string | null;
+      stage: string;
+      invite_status: string;
+      participation_status: string;
+      participant_count: number | null;
+      host_status: string;
+      notes: string | null;
+      school_campaign_event_id: number | null;
+    }>
+  > => {
+    const response = await api.get(`/api/campaigns/${campaignId}/events/${eventId}/schools`);
+    return response.data;
+  },
+  upsertSchoolCampaignEvent: async (
+    campaignId: number,
+    eventId: number,
+    schoolCampaignId: number,
+    payload: {
+      invite_status?: string;
+      participation_status?: string;
+      host_status?: string;
+      participant_count?: number | null;
+      notes?: string | null;
+    }
+  ): Promise<import('../types').SchoolCampaignEvent> => {
+    const response = await api.put(
+      `/api/campaigns/${campaignId}/events/${eventId}/schools/${schoolCampaignId}`,
+      payload
+    );
+    return response.data;
+  },
+  bulkUpdateEventSchools: async (
+    campaignId: number,
+    eventId: number,
+    payload: { school_campaign_ids: number[]; invite_status?: string; participation_status?: string; host_status?: string }
+  ): Promise<import('../types').SchoolCampaignEvent[]> => {
+    const response = await api.post(
+      `/api/campaigns/${campaignId}/events/${eventId}/schools/bulk-update`,
+      payload
+    );
+    return response.data;
+  },
+  getSchoolCampaignEventsHistory: async (
+    campaignId: number,
+    schoolCampaignId: number
+  ): Promise<
+    Array<{
+      campaign_event_id: number;
+      event_title: string | null;
+      event_date: string | null;
+      invite_status: string;
+      participation_status: string;
+      participant_count: number | null;
+      host_status: string;
+      notes: string | null;
+    }>
+  > => {
+    const response = await api.get(
+      `/api/campaigns/${campaignId}/school-campaigns/${schoolCampaignId}/events-history`
+    );
+    return response.data;
+  },
 };
 
 export const ownerFunnelsApi = {

@@ -2202,6 +2202,79 @@ class SchoolCampaignResponse(BaseModel):
         from_attributes = True
 
 
+# --- CampaignEvent (джемы внутри кампании) ---
+class CampaignEventCreate(BaseModel):
+    title: str
+    event_date: date
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    location: Optional[str] = None
+    city: Optional[str] = None
+    status: Optional[str] = "planned"
+    notes: Optional[str] = None
+
+
+class CampaignEventUpdate(BaseModel):
+    title: Optional[str] = None
+    event_date: Optional[date] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    location: Optional[str] = None
+    city: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CampaignEventResponse(BaseModel):
+    id: int
+    campaign_id: int
+    title: str
+    event_date: date
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    location: Optional[str] = None
+    city: Optional[str] = None
+    status: str
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# --- SchoolCampaignEvent (участие школы в конкретном джеме) ---
+class SchoolCampaignEventUpdate(BaseModel):
+    invite_status: Optional[str] = None
+    participation_status: Optional[str] = None
+    host_status: Optional[str] = None
+    participant_count: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class SchoolCampaignEventResponse(BaseModel):
+    id: int
+    campaign_event_id: int
+    school_campaign_id: int
+    invite_status: str
+    participation_status: str
+    participant_count: Optional[int] = None
+    host_status: str
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SchoolCampaignEventBulkUpdate(BaseModel):
+    school_campaign_ids: List[int]
+    invite_status: Optional[str] = None
+    participation_status: Optional[str] = None
+    host_status: Optional[str] = None
+
+
 # --- Task manager (admin/owner/sales) ---
 class TaskTemplateSubtaskResponse(BaseModel):
     id: int

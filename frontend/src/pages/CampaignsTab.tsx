@@ -232,7 +232,7 @@ export const CampaignsTab: React.FC = () => {
           <Button startIcon={<ArrowBack />} onClick={() => setSelectedCampaignId(null)} sx={{ mb: 2 }}>
             К списку кампаний
           </Button>
-          {campaignDetail && (
+          {campaignDetail ? (
             <>
               <Typography variant="h5" gutterBottom>
                 {campaignDetail.name}
@@ -242,7 +242,7 @@ export const CampaignsTab: React.FC = () => {
                 {campaignDetail.city && ` · ${campaignDetail.city}`}
                 {campaignDetail.responsible_full_name && ` · Ответственный: ${campaignDetail.responsible_full_name}`}
               </Typography>
-              <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} sx={{ mb: 2 }}>
+              <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} sx={{ mb: 2 }} variant="fullWidth">
                 <Tab label="Общая работа" value="work" />
                 <Tab label="Джемы" value="events" />
                 <Tab label="Матрица школ" value="matrix" />
@@ -312,6 +312,18 @@ export const CampaignsTab: React.FC = () => {
               {campaignDetailSubTab === 'matrix' && selectedCampaignId && (
                 <CampaignMatrixSubTab campaignId={selectedCampaignId} onError={setError} />
               )}
+            </>
+          ) : (
+            <>
+              <Typography variant="h5" gutterBottom sx={{ color: 'text.secondary' }}>
+                Загрузка кампании…
+              </Typography>
+              <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} sx={{ mb: 2 }} variant="fullWidth">
+                <Tab label="Общая работа" value="work" />
+                <Tab label="Джемы" value="events" />
+                <Tab label="Матрица школ" value="matrix" />
+              </Tabs>
+              <Typography color="text.secondary">Загрузка…</Typography>
             </>
           )}
         </Box>

@@ -78,7 +78,8 @@ async def characteristics_compliance_report(
         responsible[sid] = best_tid
 
     trainer_ids = sorted(set(responsible.values()))
-    all_students = {s.id: s for s in db.query(Student).all()}
+    # В отчёте только активные ученики (архивные не показываем)
+    all_students = {s.id: s for s in db.query(Student).filter(Student.status == StudentStatus.ACTIVE).all()}
     trainers = {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()} if trainer_ids else {}
 
     # Характеристики за период по ответственным парам

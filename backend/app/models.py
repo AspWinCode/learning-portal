@@ -931,6 +931,7 @@ class GroupStudent(Base):
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    left_at = Column(DateTime(timezone=True), nullable=True)  # когда ученик вышел из группы; NULL = ещё в группе
 
     # Relationships
     group = relationship("Group", back_populates="group_students")

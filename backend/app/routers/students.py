@@ -241,7 +241,7 @@ async def read_students(
             **{
                 **StudentResponse.model_validate(s).model_dump(),
                 "full_name": display_names.get(s.id, s.full_name),
-                "in_group": len(s.group_students) > 0,
+                "in_group": any(getattr(gs, "left_at", None) is None for gs in (s.group_students or [])),
             }
         )
         for s in students
@@ -275,12 +275,13 @@ async def read_student(
         from app.models import GroupStudent, Group
         has_access = db.query(GroupStudent).join(Group).filter(
             GroupStudent.student_id == student_id,
-            Group.trainer_id == current_user.id
+            GroupStudent.left_at.is_(None),
+            Group.trainer_id == current_user.id,
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
     display_name = get_student_display_name(db, student)
-    in_group = len(student.group_students) > 0
+    in_group = any(getattr(gs, "left_at", None) is None for gs in (student.group_students or []))
     return StudentResponse(
         **{**StudentResponse.model_validate(student).model_dump(), "full_name": display_name, "in_group": in_group}
     )
@@ -325,7 +326,8 @@ async def get_student_attendances(
         from app.models import GroupStudent
         has_access = db.query(GroupStudent).join(Group, GroupStudent.group_id == Group.id).filter(
             GroupStudent.student_id == student_id,
-            Group.trainer_id == current_user.id
+            GroupStudent.left_at.is_(None),
+            Group.trainer_id == current_user.id,
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
@@ -366,7 +368,8 @@ async def get_student_program_options(
         from app.models import GroupStudent, Group
         has_access = db.query(GroupStudent).join(Group).filter(
             GroupStudent.student_id == student_id,
-            Group.trainer_id == current_user.id
+            GroupStudent.left_at.is_(None),
+            Group.trainer_id == current_user.id,
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
@@ -543,6 +546,7 @@ async def list_student_accounts(
         from app.models import GroupStudent, Group
         has_access = db.query(GroupStudent).join(Group).filter(
             GroupStudent.student_id == student_id,
+            GroupStudent.left_at.is_(None),
             Group.trainer_id == current_user.id,
         ).first()
         if not has_access:
@@ -571,6 +575,7 @@ async def create_student_account(
         from app.models import GroupStudent, Group
         has_access = db.query(GroupStudent).join(Group).filter(
             GroupStudent.student_id == student_id,
+            GroupStudent.left_at.is_(None),
             Group.trainer_id == current_user.id,
         ).first()
         if not has_access:

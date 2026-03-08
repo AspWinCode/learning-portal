@@ -39,6 +39,7 @@ def _can_access_student(db: Session, user: User, student_id: int) -> bool:
     if user.role == UserRole.TRAINER:
         return db.query(GroupStudent).join(Group).filter(
             GroupStudent.student_id == student_id,
+            GroupStudent.left_at.is_(None),
             Group.trainer_id == user.id,
         ).first() is not None
     return False

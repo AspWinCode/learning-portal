@@ -63,7 +63,8 @@ async def create_characteristic(
     # Проверка доступа к ученику
     has_access = db.query(GroupStudent).join(Group).filter(
         GroupStudent.student_id == characteristic.student_id,
-        Group.trainer_id == current_user.id
+        GroupStudent.left_at.is_(None),
+        Group.trainer_id == current_user.id,
     ).first()
     
     if not has_access:
@@ -389,7 +390,8 @@ async def get_characteristics_comparison(
             raise HTTPException(status_code=403, detail="Not enough permissions")
         has_access = db.query(GroupStudent).join(Group).filter(
             GroupStudent.student_id == student_id,
-            Group.trainer_id == current_user.id
+            GroupStudent.left_at.is_(None),
+            Group.trainer_id == current_user.id,
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
@@ -430,7 +432,8 @@ async def get_published_characteristics(
             raise HTTPException(status_code=403, detail="Not enough permissions")
         has_access = db.query(GroupStudent).join(Group).filter(
             GroupStudent.student_id == student_id,
-            Group.trainer_id == current_user.id
+            GroupStudent.left_at.is_(None),
+            Group.trainer_id == current_user.id,
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")

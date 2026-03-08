@@ -187,7 +187,10 @@ async def get_lessons_for_date(
             LessonAttendance.group_id == group.id,
             LessonAttendance.lesson_date == lesson_date,
         ).all()
-        students_in_group = db.query(GroupStudent).filter(GroupStudent.group_id == group.id).all()
+        students_in_group = db.query(GroupStudent).filter(
+            GroupStudent.group_id == group.id,
+            GroupStudent.left_at.is_(None),
+        ).all()
         group_student_ids = {gs.student_id for gs in students_in_group if gs.student_id}
         attendance_student_ids = {att.student_id for att in attendances}
         all_student_ids = list(group_student_ids | attendance_student_ids)
@@ -962,7 +965,10 @@ async def create_lesson_slot(
             detail="На эту дату у группы уже есть урок; второй слот в тот же день сейчас не поддерживается",
         )
 
-    first_student = db.query(GroupStudent).filter(GroupStudent.group_id == payload.group_id).first()
+    first_student = db.query(GroupStudent).filter(
+        GroupStudent.group_id == payload.group_id,
+        GroupStudent.left_at.is_(None),
+    ).first()
     if not first_student or not first_student.student_id:
         raise HTTPException(status_code=400, detail="Group has no students to attach lesson to")
 
@@ -1098,6 +1104,7 @@ async def move_lesson(
     else:
         students_in_group = db.query(GroupStudent).filter(
             GroupStudent.group_id == payload.group_id,
+            GroupStudent.left_at.is_(None),
         ).all()
         created = 0
         # Фактический тренер для нового слота (учитываем подмены на дату переноса, если они уже заданы).

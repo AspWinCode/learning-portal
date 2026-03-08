@@ -19,6 +19,8 @@ from calendar import monthrange
 
 router = APIRouter()
 
+# Окно сдачи: с 1 по 6 число в UTC (для таймзоны проекта можно заменить на Europe/Moscow и конвертировать)
+
 
 @router.get("/characteristics-compliance")
 async def characteristics_compliance_report(
@@ -30,175 +32,139 @@ async def characteristics_compliance_report(
     """
     Контроль сдачи характеристик по месяцам для админа.
 
-    Логика:
-    - "успешно" = характеристика имеет status=approved и published_at попадает в окно 1..5 числа выбранного месяца (включительно).
-    - иначе = красный (нет / поздно / не опубликовано).
-
-    Отчёт строится по связке "тренер группы -> ученик в группе" для активных групп/учеников.
+    - Окно сдачи: с 1 по 6 число выбранного месяца включительно (в таймзоне проекта).
+    - Период характеристик: предыдущий месяц.
+    - Ответственный тренер: тот, у кого ученик числится на конец отчётного месяца (по left_at).
+    - Одна строка = один ученик + один ответственный тренер.
     """
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="month must be 1..12")
     if year < 2000 or year > 2100:
         raise HTTPException(status_code=400, detail="year must be reasonable")
 
-    # Окно в UTC, чтобы сравнивать с published_at (timezone-aware из БД)
+    # Окно сдачи: с 1 по 6 число включительно (UTC; при необходимости заменить на таймзону проекта)
     window_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
-    window_end = datetime(year, month, 5, 23, 59, 59, tzinfo=timezone.utc)
+    window_end = datetime(year, month, 6, 23, 59, 59, tzinfo=timezone.utc)
 
-    # Период характеристик = предыдущий месяц относительно окна сдачи (окно 1–5 числа month/year)
+    # Период характеристик = предыдущий месяц
     report_month = month - 1 if month > 1 else 12
     report_year = year if month > 1 else year - 1
-    report_first = date(report_year, report_month, 1)
-    # Последний день отчётного месяца — включаем всех, кто был в группе в этом месяце
     if report_month == 12:
         report_last = date(report_year, 12, 31)
     else:
         report_last = date(report_year, report_month, monthrange(report_year, report_month)[1])
+    report_last_end = datetime(report_year, report_month, report_last.day, 23, 59, 59, tzinfo=timezone.utc)
 
-    # Пары (trainer_id, student_id): тренер — ученик в группе (все группы, все ученики).
-    # Включаем всех, кто был в группе в отчётном месяце: добавлен в группу не позднее последнего дня месяца.
-    # Не фильтруем по Group.status и Student.status, чтобы видеть полный список (в т.ч. архивные группы/ученики).
-    raw_pairs: List[Tuple[int, int, int, Any]] = [
-        (tid, sid, gs_id, gs_created)
-        for (tid, sid, gs_id, gs_created) in db.query(
-            Group.trainer_id,
-            GroupStudent.student_id,
-            GroupStudent.id,
-            GroupStudent.created_at,
-        )
+    # Ответственный тренер на конец отчётного месяца: ученик в группе на report_last
+    # (created_at <= report_last_end AND (left_at IS NULL OR left_at > report_last_end))
+    raw_links = (
+        db.query(Group.trainer_id, GroupStudent.student_id, GroupStudent.created_at)
         .join(GroupStudent, GroupStudent.group_id == Group.id)
         .join(Student, Student.id == GroupStudent.student_id)
+        .filter(GroupStudent.created_at <= report_last_end)
+        .filter(
+            (GroupStudent.left_at.is_(None)) | (GroupStudent.left_at > report_last_end)
+        )
         .all()
-    ]
-    pairs: List[Tuple[int, int]] = []
-    for tid, sid, _gs_id, gs_created in raw_pairs:
-        gs_date = gs_created.date() if gs_created else report_first
-        if gs_date > report_last:
-            continue  # пришёл в группу уже после отчётного месяца
-        pairs.append((tid, sid))
-    pairs = list({(t, s) for (t, s) in pairs})  # distinct
+    )
+    # Один ответственный тренер на ученика: при нескольких группах — с максимальным created_at
+    by_student: Dict[int, List[Tuple[int, Any]]] = {}
+    for tid, sid, gs_created in raw_links:
+        by_student.setdefault(sid, []).append((tid, gs_created))
+    responsible: Dict[int, int] = {}
+    _min_dt = datetime.min.replace(tzinfo=timezone.utc)
+    for sid, lst in by_student.items():
+        best_tid = max(lst, key=lambda x: x[1] if x[1] else _min_dt)[0]
+        responsible[sid] = best_tid
 
-    trainer_ids = sorted({t for (t, _) in pairs})
-    student_ids_from_pairs = {s for (_, s) in pairs}
-
-    # Загружаем всех учеников системы, чтобы в отчёте всегда было по одной строке на каждого (ожидаемо ~79)
+    trainer_ids = sorted(set(responsible.values()))
     all_students = {s.id: s for s in db.query(Student).all()}
-    # Тренеры только по парам (для строк «в группе» и «нет учеников в группах»)
     trainers = {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()} if trainer_ids else {}
-    students = all_students
 
-    # Характеристики за отчётный период (report_month/report_year)
-    if trainer_ids and student_ids_from_pairs:
+    # Характеристики за период по ответственным парам
+    chars = []
+    if trainer_ids and responsible:
         chars = db.query(Characteristic).filter(
             Characteristic.month == report_month,
             Characteristic.year == report_year,
             Characteristic.trainer_id.in_(trainer_ids),
-            Characteristic.student_id.in_(student_ids_from_pairs),
+            Characteristic.student_id.in_(responsible.keys()),
         ).all()
-    else:
-        chars = []
 
-    # status priority: approved > pending > draft > rejected (fallback)
     priority = {
         CharacteristicStatus.APPROVED: 4,
         CharacteristicStatus.PENDING: 3,
         CharacteristicStatus.DRAFT: 2,
         CharacteristicStatus.REJECTED: 1,
     }
-
     best: Dict[Tuple[int, int], Characteristic] = {}
     for c in chars:
         k = (c.trainer_id, c.student_id)
         prev = best.get(k)
-        if not prev:
-            best[k] = c
-            continue
-        if priority.get(c.status, 0) > priority.get(prev.status, 0):
+        if not prev or priority.get(c.status, 0) > priority.get(prev.status, 0):
             best[k] = c
         elif priority.get(c.status, 0) == priority.get(prev.status, 0):
-            # tie-breaker: later updated/created
             prev_ts = prev.updated_at or prev.created_at
             cur_ts = c.updated_at or c.created_at
             if cur_ts and prev_ts and cur_ts > prev_ts:
                 best[k] = c
 
-    # Группируем по student_id: одна строка на ученика (не дублируем при нескольких группах/тренерах)
-    student_pairs: Dict[int, List[Tuple[int, Any]]] = {}  # student_id -> [(trainer_id, characteristic_or_none), ...]
-    for trainer_id, student_id in pairs:
-        student_pairs.setdefault(student_id, []).append((trainer_id, best.get((trainer_id, student_id))))
-
     rows: List[Dict[str, Any]] = []
-    # Сначала строки по ученикам, которые были в группе в отчётном месяце
-    for student_id in sorted(student_pairs.keys()):
-        student = students.get(student_id)
-        pair_list = student_pairs[student_id]
-        trainer_names = []
-        all_ok = True
-        any_characteristic = False
-        published_parts = []
-        for trainer_id, c in pair_list:
-            trainer = trainers.get(trainer_id)
-            trainer_names.append(trainer.full_name if trainer else f"#{trainer_id}")
-            published_at = getattr(c, "published_at", None) if c else None
-            is_approved = bool(c and c.status == CharacteristicStatus.APPROVED)
-            is_on_time = bool(is_approved and published_at and window_start <= published_at <= window_end)
-            if c:
-                any_characteristic = True
-            if not is_on_time:
-                all_ok = False
-            if published_at:
-                published_parts.append(published_at.strftime("%d.%m.%Y %H:%M") if hasattr(published_at, "strftime") else str(published_at))
 
-        # Для фронта: один статус по ученику; даты через published_at_aggregate
-        first_c = next((c for _, c in pair_list if c is not None), None)
-        status_str = first_c.status.value if (first_c and hasattr(first_c.status, "value")) else ("approved" if all_ok and any_characteristic else "missing")
-        rows.append({
-            "trainer": {"id": None, "full_name": ", ".join(trainer_names)},
-            "student": {"id": student_id, "full_name": student.full_name if student else f"#{student_id}"},
-            "characteristic": {"status": status_str, "published_at": first_c.published_at.isoformat() if (first_c and getattr(first_c, "published_at", None)) else None},
-            "published_at_aggregate": "; ".join(published_parts) if published_parts else None,
-            "ok": all_ok and (len(pair_list) == 0 or any_characteristic),
-            "window_start": window_start.isoformat(),
-            "window_end": window_end.isoformat(),
-        })
-
-    # Тренеры без учеников в группах за период — одна строка на тренера
-    trainers_with_students = {tid for (tid, _) in pairs}
-    for trainer_id in trainer_ids:
-        if trainer_id not in trainers_with_students:
-            trainer = trainers.get(trainer_id)
+    # Строки: ученик + ответственный тренер (одна пара на ученика)
+    for student_id in sorted(all_students.keys()):
+        student = all_students.get(student_id)
+        trainer_id = responsible.get(student_id)
+        if trainer_id is None:
             rows.append({
-                "trainer": {"id": trainer_id, "full_name": trainer.full_name if trainer else f"#{trainer_id}"},
-                "student": {"id": None, "full_name": "— Нет учеников в группах"},
+                "trainer": {"id": None, "full_name": "— Не закреплён на конец месяца"},
+                "student": {"id": student_id, "full_name": student.full_name if student else f"#{student_id}"},
                 "characteristic": {"status": "missing", "published_at": None},
                 "published_at_aggregate": None,
                 "ok": False,
+                "reason": "student_not_assigned_on_report_last",
                 "window_start": window_start.isoformat(),
                 "window_end": window_end.isoformat(),
             })
-
-    # Ученики, которые не были ни в одной группе в отчётном месяце — одна строка на ученика (чтобы в отчёте всегда все 79)
-    for student_id in sorted(all_students.keys()):
-        if student_id in student_pairs:
             continue
-        student = all_students.get(student_id)
+
+        trainer = trainers.get(trainer_id)
+        c = best.get((trainer_id, student_id))
+        published_at = getattr(c, "published_at", None) if c else None
+        is_approved = bool(c and c.status == CharacteristicStatus.APPROVED)
+        in_window = bool(published_at and window_start <= published_at <= window_end)
+
+        if is_approved and in_window:
+            reason = "submitted_on_time"
+            ok = True
+        elif not c:
+            reason = "missing"
+            ok = False
+        elif c.status != CharacteristicStatus.APPROVED:
+            reason = "not_approved"
+            ok = False
+        elif not in_window and published_at:
+            reason = "published_late"
+            ok = False
+        else:
+            reason = "missing"
+            ok = False
+
+        status_str = c.status.value if (c and hasattr(c.status, "value")) else "missing"
+        published_agg = published_at.strftime("%d.%m.%Y %H:%M") if (published_at and hasattr(published_at, "strftime")) else None
+
         rows.append({
-            "trainer": {"id": None, "full_name": "— Не в группе в этом месяце"},
+            "trainer": {"id": trainer_id, "full_name": trainer.full_name if trainer else f"#{trainer_id}"},
             "student": {"id": student_id, "full_name": student.full_name if student else f"#{student_id}"},
-            "characteristic": {"status": "not_in_group", "published_at": None},
-            "published_at_aggregate": None,
-            "ok": False,
+            "characteristic": {"status": status_str, "published_at": published_at.isoformat() if published_at else None},
+            "published_at_aggregate": published_agg,
+            "ok": ok,
+            "reason": reason,
             "window_start": window_start.isoformat(),
             "window_end": window_end.isoformat(),
         })
 
-    # Сортируем: сначала ученики (по имени), потом строки «нет учеников» (по тренеру)
-    def row_sort_key(r: Dict[str, Any]) -> tuple:
-        student_name = (r["student"].get("full_name") or "").replace("—", "я")
-        if r["student"].get("id") is None:
-            return ("я", r["trainer"].get("full_name") or "")
-        return ("", student_name)
-    rows.sort(key=row_sort_key)
+    rows.sort(key=lambda r: ((r["student"].get("full_name") or "").replace("—", "я")))
 
     return {
         "month": month,

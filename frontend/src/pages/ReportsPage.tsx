@@ -327,7 +327,7 @@ export const ReportsPageContent: React.FC = () => {
             <Box>
               <Typography variant="h6">Контроль сдачи характеристик</Typography>
               <Typography variant="body2" color="text.secondary">
-                Зелёный: характеристика опубликована (approved) с 1 по 5 число выбранного месяца. Красный: нет или позже.
+                Зелёный: характеристика опубликована (approved) с 1 по 6 число выбранного месяца. Красный: нет или позже.
               </Typography>
             </Box>
 
@@ -365,9 +365,7 @@ export const ReportsPageContent: React.FC = () => {
           </Typography>
           {ccData?.rows?.length > 0 && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-              Показано: {(ccData.rows as any[]).filter((r: any) => r.student?.id != null).length} учеников
-              {(ccData.rows as any[]).filter((r: any) => r.student?.id == null).length > 0 &&
-                `, ${(ccData.rows as any[]).filter((r: any) => r.student?.id == null).length} тренеров без учеников`}
+              Показано: {(ccData.rows as any[]).length} строк (один ответственный тренер на ученика за месяц)
             </Typography>
           )}
 
@@ -386,11 +384,23 @@ export const ReportsPageContent: React.FC = () => {
                 {(ccData?.rows || []).map((r: any, idx: number) => {
                   const ok = !!r.ok;
                   const bg = ok ? 'rgba(46, 125, 50, 0.10)' : 'rgba(211, 47, 47, 0.10)';
+                  const reason = r.reason as string | undefined;
                   const statusLabel =
-                    r.characteristic?.status === 'not_in_group'
-                      ? 'Не в группе'
-                      : r.characteristic?.status || 'missing';
-                  const status = r.characteristic?.status || 'missing';
+                    reason === 'submitted_on_time'
+                      ? 'В срок'
+                      : reason === 'missing'
+                        ? 'Нет характеристики'
+                        : reason === 'not_approved'
+                          ? 'Не согласовано'
+                          : reason === 'published_late'
+                            ? 'Опубликована позже срока'
+                            : reason === 'student_not_assigned_on_report_last'
+                              ? 'Не закреплён на конец месяца'
+                              : reason === 'trainer_conflict_on_report_last'
+                                ? 'Конфликт по тренерам'
+                                : r.characteristic?.status === 'not_in_group' || reason
+                                  ? (reason || r.characteristic?.status || 'missing')
+                                  : r.characteristic?.status || 'missing';
                   const publishedAt =
                     r.published_at_aggregate != null && r.published_at_aggregate !== ''
                       ? r.published_at_aggregate

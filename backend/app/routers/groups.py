@@ -1,7 +1,7 @@
 from datetime import date, time as dt_time, datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app import auth
 from app.schemas import (
@@ -31,7 +31,11 @@ def _parse_time(v) -> dt_time:
 
 
 def _group_to_response(db: Session, g: Group) -> GroupResponse:
-    student_list = getattr(g, "students", None) or []
+    # Текущий состав: только связи без left_at (ученик ещё в группе)
+    if hasattr(g, "group_students") and g.group_students is not None:
+        student_list = [gs.student for gs in g.group_students if gs.student is not None and getattr(gs, "left_at", None) is None]
+    else:
+        student_list = getattr(g, "students", None) or []
     display_names = get_students_display_names(db, [s.id for s in student_list]) if student_list else {}
     students_out = [
         StudentResponse(**{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)})
@@ -107,20 +111,26 @@ async def read_groups(
     if current_user.role == UserRole.TRAINER:
         query = query.filter(Group.trainer_id == current_user.id)
 
-    # Родитель видит только группы, где есть его активные ученики
+    # Родитель видит только группы, где есть его активные ученики (текущий состав)
     elif current_user.role == UserRole.PARENT:
         query = (
             query.join(GroupStudent)
             .join(Student)
             .filter(
+                GroupStudent.left_at.is_(None),
                 Student.parent_id == current_user.id,
                 Student.status == StudentStatus.ACTIVE,
                 Group.status == GroupStatus.ACTIVE,
             )
             .distinct()
         )
-    
+
+    query = query.options(joinedload(Group.group_students).joinedload(GroupStudent.student))
     groups = query.offset(skip).limit(limit).all()
+
+    # Текущий состав: только ученики с left_at IS NULL
+    for g in groups:
+        g.students = [gs.student for gs in (getattr(g, "group_students", None) or []) if gs.student is not None and getattr(gs, "left_at", None) is None]
 
     # Не раскрываем состав группы родителю (только его ученики)
     if current_user.role == UserRole.PARENT:
@@ -154,7 +164,12 @@ async def read_group(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение группы по ID"""
-    group = db.query(Group).filter(Group.id == group_id).first()
+    group = (
+        db.query(Group)
+        .options(joinedload(Group.group_students).joinedload(GroupStudent.student))
+        .filter(Group.id == group_id)
+        .first()
+    )
     if group is None:
         raise HTTPException(status_code=404, detail="Group not found")
     
@@ -163,18 +178,20 @@ async def read_group(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     if current_user.role == UserRole.PARENT:
-        # Родитель может видеть только группу, где есть его активный ученик
+        # Родитель может видеть только группу, где есть его активный ученик (текущий состав)
         has_access = db.query(GroupStudent).join(Student).filter(
             GroupStudent.group_id == group_id,
+            GroupStudent.left_at.is_(None),
             Student.parent_id == current_user.id,
             Student.status == StudentStatus.ACTIVE,
         ).first()
         if not has_access:
             raise HTTPException(status_code=403, detail="Not enough permissions")
 
-        # и видит в составе группы только своих активных учеников
+        # и видит в составе группы только своих активных учеников (уже отфильтровано по текущему составу в _group_to_response)
         try:
-            group.students = [s for s in (group.students or []) if s.parent_id == current_user.id and s.status == StudentStatus.ACTIVE]
+            current_students = [gs.student for gs in (group.group_students or []) if gs.student and getattr(gs, "left_at", None) is None]
+            group.students = [s for s in current_students if s.parent_id == current_user.id and s.status == StudentStatus.ACTIVE]
         except Exception:
             group.students = []
 
@@ -357,12 +374,13 @@ async def add_student_to_group(
     if not group or not student:
         raise HTTPException(status_code=404, detail="Group or student not found")
     
-    # Проверка, не добавлен ли уже
+    # Проверка, не добавлен ли уже (учитываем только текущее нахождение в группе, left_at IS NULL)
     existing = db.query(GroupStudent).filter(
         GroupStudent.group_id == group_id,
-        GroupStudent.student_id == student_id
+        GroupStudent.student_id == student_id,
+        GroupStudent.left_at.is_(None),
     ).first()
-    
+
     if existing:
         raise HTTPException(status_code=400, detail="Student already in group")
     
@@ -381,16 +399,18 @@ async def remove_student_from_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin"]))
 ):
-    """Удаление ученика из группы"""
+    """Удаление ученика из группы (мягкое: проставляем left_at для истории и отчёта характеристик)."""
     group_student = db.query(GroupStudent).filter(
         GroupStudent.group_id == group_id,
-        GroupStudent.student_id == student_id
+        GroupStudent.student_id == student_id,
+        GroupStudent.left_at.is_(None),
     ).first()
-    
+
     if not group_student:
         raise HTTPException(status_code=404, detail="Student not in group")
-    
-    db.delete(group_student)
+
+    from datetime import datetime, timezone
+    group_student.left_at = datetime.now(timezone.utc)
     db.commit()
     
     log_action(db, current_user.id, "remove_student", "group", group_id, {"student_id": student_id})

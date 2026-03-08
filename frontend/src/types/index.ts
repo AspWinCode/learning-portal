@@ -109,6 +109,8 @@ export interface Group {
   start_date?: string | null;
   /** Формат: групповой (лимит 8 занятий, юниты) или индивидуальный. */
   lesson_format?: 'group' | 'individual';
+  /** Краткое расписание (например, "Вт, Чт · 20:00–21:00"). */
+  schedule_short?: string | null;
 }
 
 /** Политика доп. юнитов по слоту (дата + время). */

@@ -31,8 +31,11 @@ import {
   Tabs,
   Tab,
   CircularProgress,
+  Menu,
+  IconButton,
+  Grid,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon, MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
 import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType } from '../types';
 import type { AnketaConvertConflict } from '../types';
@@ -46,6 +49,9 @@ const StudentsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active');
   const [typeFilter, setTypeFilter] = useState<'' | 'grant' | 'individual' | 'paid'>('');
+  const [groupFilter, setGroupFilter] = useState<number | ''>('');
+  const [trainerFilter, setTrainerFilter] = useState<number | ''>('');
+  const [programFilter, setProgramFilter] = useState<number | ''>('');
   const [studentCards, setStudentCards] = useState<StudentCardType[]>([]);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -153,11 +159,14 @@ const StudentsPage: React.FC = () => {
   const canSeeAnkety = isAdminLike || user?.role === 'sales';
   const [citiesList, setCitiesList] = useState<string[]>([]);
 
-  const studentsTab = searchParams.get('tab') !== 'ankety' ? 'students' : 'ankety';
-  const setStudentsTab = (tab: 'students' | 'ankety') => {
+  type PageTab = 'students' | 'ankety' | 'parents' | 'trainers';
+  const tabParam = searchParams.get('tab');
+  const studentsTab: PageTab =
+    tabParam === 'ankety' || tabParam === 'parents' || tabParam === 'trainers' ? tabParam : 'students';
+  const setStudentsTab = (tab: PageTab) => {
     const next = new URLSearchParams(searchParams);
-    if (tab === 'ankety') next.set('tab', 'ankety');
-    else next.delete('tab');
+    if (tab === 'students') next.delete('tab');
+    else next.set('tab', tab);
     setSearchParams(next, { replace: true });
   };
 
@@ -173,6 +182,12 @@ const StudentsPage: React.FC = () => {
   const [convertConflict, setConvertConflict] = useState<AnketaConvertConflict | null>(null);
   const [conflictChoice, setConflictChoice] = useState<'existing_parent' | 'existing_student' | 'new_student' | null>(null);
   const [selectedExistingStudentId, setSelectedExistingStudentId] = useState<number | ''>('');
+  const [quickFilterNoGroup, setQuickFilterNoGroup] = useState(false);
+  const [quickFilterFromLead, setQuickFilterFromLead] = useState(false);
+  const [rowMenuAnchor, setRowMenuAnchor] = useState<{ el: HTMLElement; student: Student } | null>(null);
+  const [parentSearch, setParentSearch] = useState('');
+  const [trainerSearch, setTrainerSearch] = useState('');
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState<Student | null>(null);
 
   const ANKETA_STATUS_LABELS: Record<string, string> = {
     draft: 'Новая',
@@ -992,11 +1007,60 @@ const StudentsPage: React.FC = () => {
     if (typeFilter === 'grant') list = list.filter((s) => grantStudentIds.has(s.id));
     else if (typeFilter === 'individual') list = list.filter((s) => isIndividualStudent(s));
     else if (typeFilter === 'paid') list = list.filter((s) => !grantStudentIds.has(s.id) && !isIndividualStudent(s));
+    if (quickFilterNoGroup) list = list.filter((s) => s.in_group === false);
+    if (quickFilterFromLead) list = list.filter((s) => !!s.from_lead_id);
+    if (groupFilter !== '') {
+      list = list.filter((s) => getStudentGroup(s)?.id === groupFilter);
+    }
+    if (trainerFilter !== '') {
+      list = list.filter((s) => getStudentGroup(s)?.trainer_id === trainerFilter);
+    }
+    if (programFilter !== '') {
+      list = list.filter((s) => {
+        const g = getStudentGroup(s);
+        const hasInStudent = (s.programs || []).some((p) => p.id === programFilter);
+        const hasInGroup = (g?.programs || []).some((p: { id: number }) => p.id === programFilter);
+        return hasInStudent || hasInGroup;
+      });
+    }
     return list;
-  }, [students, typeFilter, grantStudentIds, individualFormatStudentIds, groups]);
+  }, [students, typeFilter, groupFilter, trainerFilter, programFilter, grantStudentIds, individualFormatStudentIds, groups, quickFilterNoGroup, quickFilterFromLead]);
 
-  const filteredParents = useMemo(() => parents.filter((p) => p.is_active !== false), [parents]);
-  const filteredTrainers = useMemo(() => trainers.filter((t) => t.is_active !== false), [trainers]);
+  const studentsMetrics = useMemo(() => {
+    const active = students.filter((s) => s.status === 'active').length;
+    const archived = students.filter((s) => s.status === 'archived').length;
+    const notInGroup = students.filter((s) => s.in_group === false).length;
+    const fromLeads = students.filter((s) => !!s.from_lead_id).length;
+    const individual = students.filter((s) => isIndividualStudent(s)).length;
+    const onGrant = students.filter((s) => grantStudentIds.has(s.id)).length;
+    return { active, archived, notInGroup, fromLeads, individual, onGrant };
+  }, [students, grantStudentIds, individualFormatStudentIds, groups]);
+
+  const filteredParents = useMemo(() => {
+    let list = parents.filter((p) => p.is_active !== false);
+    const q = (parentSearch || '').trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (p) =>
+          (p.full_name || '').toLowerCase().includes(q) ||
+          (p.email || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [parents, parentSearch]);
+
+  const filteredTrainers = useMemo(() => {
+    let list = trainers.filter((t) => t.is_active !== false);
+    const q = (trainerSearch || '').trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (t) =>
+          (t.full_name || '').toLowerCase().includes(q) ||
+          (t.email || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [trainers, trainerSearch]);
 
   const getDiscountLabel = (ab: Abonement): string => {
     if (ab.discount_type === 'none') return '—';
@@ -1054,354 +1118,288 @@ const StudentsPage: React.FC = () => {
   return (
     <Layout>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tabs value={studentsTab} onChange={(_, v) => setStudentsTab(v)}>
+        <Tabs value={studentsTab} onChange={(_, v) => setStudentsTab(v as PageTab)}>
           <Tab label="Ученики" value="students" />
           {canSeeAnkety && <Tab label="Анкеты" value="ankety" />}
+          {hasFullStudentsView && <Tab label="Родители" value="parents" />}
+          {hasFullStudentsView && (!isOwner || user?.role === 'sales') && <Tab label="Тренеры" value="trainers" />}
         </Tabs>
       </Box>
 
       {studentsTab === 'students' && (
         <>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
-        <Typography variant="h4">Ученики</Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel>Статус учеников</InputLabel>
-            <Select
-              value={statusFilter}
-              label="Статус учеников"
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-            >
-              <MenuItem value="all">Все</MenuItem>
-              <MenuItem value="active">Активные</MenuItem>
-              <MenuItem value="archived">Архивированные</MenuItem>
-            </Select>
-          </FormControl>
-          {hasFullStudentsView && (
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>По типу</InputLabel>
-              <Select
-                value={typeFilter}
-                label="По типу"
-                onChange={(e) => setTypeFilter(e.target.value as '' | 'grant' | 'individual' | 'paid')}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+            <Box>
+              <Typography variant="h4">Ученики</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Управление учениками, группами, программами и карточками.
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => {
+                  setAnketaFormMode('addStudent');
+                  setAnketaFormCardId(null);
+                  setAnketaFormOpen(true);
+                }}
               >
-                <MenuItem value="">Все</MenuItem>
-                <MenuItem value="grant">По гранту</MenuItem>
-                <MenuItem value="individual">Индивидуальные</MenuItem>
-                <MenuItem value="paid">По оплате</MenuItem>
+                Добавить ученика
+              </Button>
+            </Box>
+          </Box>
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+              {error}
+            </Alert>
+          )}
+
+          <Grid container spacing={1} sx={{ mb: 2 }}>
+            <Grid item><Paper variant="outlined" sx={{ px: 1.5, py: 1 }}><Typography variant="body2" color="text.secondary">Активные</Typography><Typography variant="h6">{studentsMetrics.active}</Typography></Paper></Grid>
+            <Grid item><Paper variant="outlined" sx={{ px: 1.5, py: 1, cursor: 'pointer' }}><Typography variant="body2" color="text.secondary">Архив</Typography><Typography variant="h6">{studentsMetrics.archived}</Typography></Paper></Grid>
+            <Grid item><Paper variant="outlined" sx={{ px: 1.5, py: 1, cursor: 'pointer', bgcolor: quickFilterNoGroup ? 'action.selected' : undefined }} onClick={() => setQuickFilterNoGroup((v) => !v)}><Typography variant="body2" color="text.secondary">Не в группе</Typography><Typography variant="h6">{studentsMetrics.notInGroup}</Typography></Paper></Grid>
+            <Grid item><Paper variant="outlined" sx={{ px: 1.5, py: 1, cursor: 'pointer', bgcolor: quickFilterFromLead ? 'action.selected' : undefined }} onClick={() => setQuickFilterFromLead((v) => !v)}><Typography variant="body2" color="text.secondary">Из лидов</Typography><Typography variant="h6">{studentsMetrics.fromLeads}</Typography></Paper></Grid>
+            <Grid item><Paper variant="outlined" sx={{ px: 1.5, py: 1 }}><Typography variant="body2" color="text.secondary">Индивидуальные</Typography><Typography variant="h6">{studentsMetrics.individual}</Typography></Paper></Grid>
+            <Grid item><Paper variant="outlined" sx={{ px: 1.5, py: 1 }}><Typography variant="body2" color="text.secondary">По гранту</Typography><Typography variant="h6">{studentsMetrics.onGrant}</Typography></Paper></Grid>
+          </Grid>
+
+          <Stack direction="row" flexWrap="wrap" alignItems="center" gap={1} sx={{ mb: 2 }}>
+            <TextField
+              size="small"
+              placeholder="Поиск по ФИО / email / телефону..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              sx={{ minWidth: 260 }}
+              inputProps={{ 'aria-label': 'Поиск ученика' }}
+            />
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Статус</InputLabel>
+              <Select value={statusFilter} label="Статус" onChange={(e) => setStatusFilter(e.target.value as any)}>
+                <MenuItem value="all">Все</MenuItem>
+                <MenuItem value="active">Активные</MenuItem>
+                <MenuItem value="archived">Архив</MenuItem>
               </Select>
             </FormControl>
-          )}
-          {(!isOwner || user?.role === 'sales') && (
-            <Button
-              variant="outlined"
-              startIcon={<AddIcon />}
-              onClick={() => {
-                setTrainerOpen(true);
-                setNewTrainer({ full_name: '', email: '', password: '' });
-              }}
-            >
-              Создать тренера
-            </Button>
-          )}
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setAnketaFormMode('addStudent');
-              setAnketaFormCardId(null);
-              setAnketaFormOpen(true);
-            }}
-          >
-            Добавить ученика
-          </Button>
-        </Box>
-      </Box>
+            {hasFullStudentsView && (
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel>Тип</InputLabel>
+                <Select value={typeFilter} label="Тип" onChange={(e) => setTypeFilter(e.target.value as '' | 'grant' | 'individual' | 'paid')}>
+                  <MenuItem value="">Все</MenuItem>
+                  <MenuItem value="grant">По гранту</MenuItem>
+                  <MenuItem value="individual">Индивидуальные</MenuItem>
+                  <MenuItem value="paid">По оплате</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Группа</InputLabel>
+              <Select value={groupFilter} label="Группа" onChange={(e) => setGroupFilter(e.target.value === '' ? '' : Number(e.target.value))}>
+                <MenuItem value="">Все</MenuItem>
+                {groups.map((g) => (
+                  <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Тренер</InputLabel>
+              <Select value={trainerFilter} label="Тренер" onChange={(e) => setTrainerFilter(e.target.value === '' ? '' : Number(e.target.value))}>
+                <MenuItem value="">Все</MenuItem>
+                {trainers.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>{t.full_name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Программа</InputLabel>
+              <Select value={programFilter} label="Программа" onChange={(e) => setProgramFilter(e.target.value === '' ? '' : Number(e.target.value))}>
+                <MenuItem value="">Все</MenuItem>
+                {programs.filter((p) => p.status === 'active').map((p) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name} (v{p.version})</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControlLabel control={<Checkbox checked={quickFilterNoGroup} onChange={(e) => setQuickFilterNoGroup(e.target.checked)} />} label="Только без группы" />
+            <FormControlLabel control={<Checkbox checked={quickFilterFromLead} onChange={(e) => setQuickFilterFromLead(e.target.checked)} />} label="Только из лидов" />
+            <Button size="small" onClick={() => { setQuickFilterNoGroup(false); setQuickFilterFromLead(false); setGroupFilter(''); setTrainerFilter(''); setProgramFilter(''); setStatusFilter('all'); setTypeFilter(''); setSearchQuery(''); }}>Сбросить фильтры</Button>
+          </Stack>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
-
-      <Typography variant="h5" sx={{ mt: 3, mb: 2 }}>
-        Ученики
-      </Typography>
-      <Box sx={{ mb: 2 }}>
-        <TextField
-          size="small"
-          placeholder="Поиск по ФИО или имени..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ minWidth: 280 }}
-          inputProps={{ 'aria-label': 'Поиск ученика по ФИО' }}
-        />
-      </Box>
-      <TableContainer component={Paper} sx={{ mb: 4 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>№</TableCell>
-              <TableCell>ФИО</TableCell>
-              <TableCell>Родитель</TableCell>
-              <TableCell>Группа</TableCell>
-              <TableCell>Программа</TableCell>
-              <TableCell>Статус</TableCell>
-              <TableCell>Действия</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredStudents.map((student, index) => {
-              const studentGroup = getStudentGroup(student);
-              const fromLeadNotInGroup = !!(student.from_lead_id && student.in_group === false);
-              return (
-                <TableRow
-                  key={student.id}
-                  sx={{
-                    ...(fromLeadNotInGroup
-                      ? { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.main' } }
-                      : {}),
-                  }}
-                >
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell>
-                    <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
-                      {student.full_name}
-                      {fromLeadNotInGroup && (
-                        <Chip size="small" label="Из лида · не в группе" color="warning" variant="outlined" />
-                      )}
-                    </Stack>
-                  </TableCell>
-                  <TableCell>{student.parent?.full_name || '-'}</TableCell>
-                  <TableCell>{studentGroup?.name || '-'}</TableCell>
-                  <TableCell>
-                    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
-                      {(student.programs || []).filter((p) => p.status === 'active').map((p) => (
-                        <Chip
-                          key={p.id}
-                          size="small"
-                          label={`${p.name} (v${p.version})`}
-                          onDelete={() => handleRemoveProgramFromStudent(student.id, p.id)}
-                        />
-                      ))}
-                      {(student.programs || []).filter((p) => p.status === 'active').length === 0 && (() => {
-                        const g = getStudentGroup(student);
-                        const gp = (g?.programs || []).filter((p) => p.status === 'active');
-                        if (gp.length) {
-                          return (
-                            <Typography variant="body2" color="text.secondary">
-                              {gp.map((p) => `${p.name} (v${p.version})`).join(', ')} (из группы)
-                            </Typography>
-                          );
-                        }
-                        return <Typography variant="body2" color="text.secondary">—</Typography>;
-                      })()}
-                      <FormControl size="small" sx={{ minWidth: 140 }}>
-                        <Select
-                          displayEmpty
-                          value=""
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v !== '') {
-                              handleAddProgramToStudent(student.id, parseInt(v as string));
-                            }
-                          }}
-                          renderValue={() => 'Добавить программу'}
-                        >
-                          <MenuItem value="">
-                            <em>Добавить программу</em>
-                          </MenuItem>
-                          {programs
-                            .filter((p) => p.status === 'active' && !(student.programs || []).some((sp) => sp.id === p.id))
-                            .map((p) => (
-                              <MenuItem key={p.id} value={p.id.toString()}>
-                                {p.name} (версия {p.version})
-                              </MenuItem>
-                            ))}
-                        </Select>
-                      </FormControl>
-                    </Stack>
-                  </TableCell>
-                  <TableCell>{student.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>
-                  <TableCell>
-                    {canManageAccounts && (
-                      <Button
-                        size="small"
-                        startIcon={<AccountBalanceIcon />}
-                        onClick={() => openAccountsDialog(student)}
-                        sx={{ mr: 1 }}
-                      >
-                        Счета
-                      </Button>
-                    )}
-                    <Button
-                      size="small"
-                      startIcon={<PersonIcon />}
-                      onClick={() => setStudentDetailId(student.id)}
-                      sx={{ mr: 1 }}
-                    >
-                      Карточка
-                    </Button>
-                    <Button
-                      size="small"
-                      startIcon={<EditIcon />}
-                      onClick={() => handleEdit(student)}
-                      sx={{ mr: 1 }}
-                    >
-                      Редактировать
-                    </Button>
-                    {student.status === 'active' ? (
-                      <Button
-                        size="small"
-                        color="warning"
-                        onClick={async () => {
-                          await studentsApi.archive(student.id);
-                          loadStudents();
-                        }}
-                      >
-                        Архивировать
-                      </Button>
-                    ) : (
-                      <Button
-                        size="small"
-                        color="success"
-                        onClick={async () => {
-                          await studentsApi.update(student.id, { status: 'active' });
-                          loadStudents();
-                        }}
-                      >
-                        Разархивировать
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      <Typography variant="h5" sx={{ mt: 3, mb: 2 }}>
-        Родители
-      </Typography>
-      <TableContainer component={Paper} sx={{ mb: 4 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell width={48}>№</TableCell>
-              <TableCell>ФИО</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Статус</TableCell>
-              <TableCell>Количество учеников</TableCell>
-              <TableCell>Действия</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredParents.map((parent, idx) => {
-              const studentsCount = students.filter(s => s.parent_id === parent.id).length;
-              return (
-                <TableRow key={parent.id}>
-                  <TableCell>{idx + 1}</TableCell>
-                  <TableCell>{parent.full_name}</TableCell>
-                  <TableCell>{parent.email}</TableCell>
-                  <TableCell>{parent.is_active ? 'Активен' : 'Неактивен'}</TableCell>
-                  <TableCell>{studentsCount}</TableCell>
-                  <TableCell>
-                    {parent.is_active ? (
-                      <Button
-                        size="small"
-                        color="warning"
-                        onClick={async () => {
-                          try {
-                            await usersApi.update(parent.id, { is_active: false });
-                            loadParents();
-                          } catch (err: any) {
-                            setError(err.response?.data?.detail || 'Ошибка изменения статуса родителя');
-                          }
-                        }}
-                      >
-                        Архивировать
-                      </Button>
-                    ) : (
-                      <Button
-                        size="small"
-                        color="success"
-                        onClick={async () => {
-                          try {
-                            await usersApi.update(parent.id, { is_active: true });
-                            loadParents();
-                          } catch (err: any) {
-                            setError(err.response?.data?.detail || 'Ошибка изменения статуса родителя');
-                          }
-                        }}
-                      >
-                        Разархивировать
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {(!isOwner || user?.role === 'sales') && (
-        <>
-          <Typography variant="h5" sx={{ mt: 3, mb: 2 }}>
-            Тренеры
-          </Typography>
-          <TableContainer component={Paper}>
-            <Table>
+          <TableContainer component={Paper} sx={{ mb: 2 }}>
+            <Table size="small">
               <TableHead>
                 <TableRow>
+                  <TableCell width={48}>№</TableCell>
+                  <TableCell>Ученик</TableCell>
+                  <TableCell>Родитель</TableCell>
+                  <TableCell>Группа / формат</TableCell>
+                  <TableCell>Программа</TableCell>
+                  <TableCell>Статус</TableCell>
+                  <TableCell align="right" width={140}>Действия</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredStudents.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary">Нет учеников по выбранным фильтрам</Typography>
+                      <Button size="small" sx={{ mt: 1 }} onClick={() => { setQuickFilterNoGroup(false); setQuickFilterFromLead(false); setGroupFilter(''); setTrainerFilter(''); setProgramFilter(''); setStatusFilter('all'); setTypeFilter(''); setSearchQuery(''); }}>Сбросить фильтры</Button>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {filteredStudents.map((student, index) => {
+                  const studentGroup = getStudentGroup(student);
+                  const fromLead = !!student.from_lead_id;
+                  const notInGroup = student.in_group === false;
+                  const isIndividual = isIndividualStudent(student);
+                  const onGrant = grantStudentIds.has(student.id);
+                  const activePrograms = (student.programs || []).filter((p) => p.status === 'active');
+                  const groupPrograms = studentGroup ? (studentGroup.programs || []).filter((p: { status: string }) => p.status === 'active') : [];
+                  const programLabel = activePrograms.length > 0
+                    ? `${activePrograms[0].name} (v${activePrograms[0].version})${activePrograms.length > 1 ? ` +${activePrograms.length - 1}` : ''}`
+                    : groupPrograms.length > 0
+                      ? `${groupPrograms[0].name} (из группы)${groupPrograms.length > 1 ? ` +${groupPrograms.length - 1}` : ''}`
+                      : '—';
+                  return (
+                    <TableRow
+                      key={student.id}
+                      hover
+                      sx={{ '&:hover': { bgcolor: 'action.hover' } }}
+                      onClick={(e) => { if (!(e.target as HTMLElement).closest('button, [role="button"], .MuiSelect-root')) setStudentDetailId(student.id); }}
+                    >
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>
+                        <Box>
+                          <Typography variant="body2" fontWeight={500}>{student.full_name}</Typography>
+                          <Stack direction="row" flexWrap="wrap" sx={{ gap: 0.5, mt: 0.25 }} onClick={(e) => e.stopPropagation()}>
+                            {fromLead && <Chip size="small" label="Из лида" sx={{ bgcolor: 'warning.light', color: 'warning.dark' }} />}
+                            {notInGroup && <Chip size="small" label="Не в группе" sx={{ bgcolor: 'info.light', color: 'info.dark' }} />}
+                            {isIndividual && <Chip size="small" label="Индивидуальный" sx={{ bgcolor: 'success.light', color: 'success.dark' }} />}
+                            {onGrant && <Chip size="small" label="По гранту" sx={{ bgcolor: 'secondary.light', color: 'secondary.dark' }} />}
+                          </Stack>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        {student.parent ? (
+                          <Box>
+                            <Typography variant="body2">{student.parent.full_name}</Typography>
+                            <Typography variant="caption" color="text.secondary">{[student.parent.email, student.parent.phone].filter(Boolean).join(' · ') || '—'}</Typography>
+                          </Box>
+                        ) : (
+                          <Chip size="small" label="Нет родителя" color="default" variant="outlined" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {studentGroup ? (
+                          <Box>
+                            <Typography variant="body2">{studentGroup.name}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {studentGroup.schedule_short || '—'} · {isInIndividualGroup(student) ? 'Индивидуальный' : 'Групповой'}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Box><Typography variant="body2" color="text.secondary">—</Typography><Typography variant="caption" display="block" color="text.secondary">Не в группе</Typography></Box>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{programLabel}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={student.status === 'active' ? 'Активен' : 'Архив'} color={student.status === 'active' ? 'success' : 'default'} variant="outlined" />
+                      </TableCell>
+                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                        <Button size="small" startIcon={<PersonIcon />} onClick={() => setStudentDetailId(student.id)}>Карточка</Button>
+                        <Button size="small" startIcon={<EditIcon />} onClick={() => handleEdit(student)}>Ред.</Button>
+                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); setRowMenuAnchor({ el: e.currentTarget, student }); }}><MoreVertIcon /></IconButton>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Menu
+            open={!!rowMenuAnchor}
+            anchorEl={rowMenuAnchor?.el}
+            onClose={() => setRowMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            {canManageAccounts && rowMenuAnchor && (
+              <MenuItem onClick={() => { openAccountsDialog(rowMenuAnchor.student); setRowMenuAnchor(null); }}>Счета</MenuItem>
+            )}
+            {rowMenuAnchor && (
+              <MenuItem onClick={() => { setStudentDetailId(rowMenuAnchor.student.id); setRowMenuAnchor(null); }}>Управлять программами (в карточке)</MenuItem>
+            )}
+            {rowMenuAnchor && (
+              <MenuItem onClick={() => { handleEdit(rowMenuAnchor.student); setRowMenuAnchor(null); }}>Редактировать</MenuItem>
+            )}
+            {rowMenuAnchor && rowMenuAnchor.student.status === 'active' && (
+              <MenuItem onClick={() => { setArchiveConfirmOpen(rowMenuAnchor.student); setRowMenuAnchor(null); }}>Архивировать</MenuItem>
+            )}
+            {rowMenuAnchor && rowMenuAnchor.student.status === 'archived' && (
+              <MenuItem onClick={async () => {
+                if (!rowMenuAnchor) return;
+                await studentsApi.update(rowMenuAnchor.student.id, { status: 'active' });
+                loadStudents();
+                setRowMenuAnchor(null);
+              }}>Разархивировать</MenuItem>
+            )}
+          </Menu>
+
+          <Dialog open={!!archiveConfirmOpen} onClose={() => setArchiveConfirmOpen(null)}>
+            <DialogTitle>Архивировать ученика?</DialogTitle>
+            <DialogContent>Он пропадёт из активного списка, но данные сохранятся.</DialogContent>
+            <DialogActions>
+              <Button onClick={() => setArchiveConfirmOpen(null)}>Отмена</Button>
+              <Button color="warning" variant="contained" onClick={async () => {
+                if (archiveConfirmOpen) {
+                  await studentsApi.archive(archiveConfirmOpen.id);
+                  loadStudents();
+                  setArchiveConfirmOpen(null);
+                }
+              }}>Архивировать</Button>
+            </DialogActions>
+          </Dialog>
+        </>
+      )}
+
+      {studentsTab === 'parents' && hasFullStudentsView && (
+        <>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h5">Родители</Typography>
+          </Box>
+          <Box sx={{ mb: 2 }}>
+            <TextField size="small" placeholder="Поиск по ФИО / email..." value={parentSearch} onChange={(e) => setParentSearch(e.target.value)} sx={{ minWidth: 280 }} />
+          </Box>
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell width={48}>№</TableCell>
                   <TableCell>ФИО</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Статус</TableCell>
-                  <TableCell>Количество групп</TableCell>
+                  <TableCell>Кол-во детей</TableCell>
                   <TableCell>Действия</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredTrainers.map((trainer) => {
-                  const groupsCount = groups.filter(g => g.trainer_id === trainer.id).length;
+                {filteredParents.map((parent, idx) => {
+                  const studentsCount = students.filter((s) => s.parent_id === parent.id).length;
                   return (
-                    <TableRow key={trainer.id}>
-                      <TableCell>{trainer.full_name}</TableCell>
-                      <TableCell>{trainer.email}</TableCell>
-                      <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
-                      <TableCell>{groupsCount}</TableCell>
+                    <TableRow key={parent.id}>
+                      <TableCell>{idx + 1}</TableCell>
+                      <TableCell>{parent.full_name}</TableCell>
+                      <TableCell>{parent.email}</TableCell>
+                      <TableCell>{parent.is_active ? 'Активен' : 'Неактивен'}</TableCell>
+                      <TableCell>{studentsCount}</TableCell>
                       <TableCell>
-                        {trainer.is_active ? (
-                          <Button
-                            size="small"
-                            color="warning"
-                            onClick={async () => {
-                              try {
-                                await usersApi.update(trainer.id, { is_active: false });
-                                loadTrainers();
-                              } catch (err: any) {
-                                setError(err.response?.data?.detail || 'Ошибка изменения статуса тренера');
-                              }
-                            }}
-                          >
-                            Архивировать
-                          </Button>
+                        {parent.is_active ? (
+                          <Button size="small" color="warning" onClick={async () => { try { await usersApi.update(parent.id, { is_active: false }); loadParents(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Архивировать</Button>
                         ) : (
-                          <Button
-                            size="small"
-                            color="success"
-                            onClick={async () => {
-                              try {
-                                await usersApi.update(trainer.id, { is_active: true });
-                                loadTrainers();
-                              } catch (err: any) {
-                                setError(err.response?.data?.detail || 'Ошибка изменения статуса тренера');
-                              }
-                            }}
-                          >
-                            Разархивировать
-                          </Button>
+                          <Button size="small" color="success" onClick={async () => { try { await usersApi.update(parent.id, { is_active: true }); loadParents(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Разархивировать</Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -1413,6 +1411,48 @@ const StudentsPage: React.FC = () => {
         </>
       )}
 
+      {studentsTab === 'trainers' && hasFullStudentsView && (!isOwner || user?.role === 'sales') && (
+        <>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h5">Тренеры</Typography>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setTrainerOpen(true); setNewTrainer({ full_name: '', email: '', password: '' }); }}>Создать тренера</Button>
+          </Box>
+          <Box sx={{ mb: 2 }}>
+            <TextField size="small" placeholder="Поиск по ФИО / email..." value={trainerSearch} onChange={(e) => setTrainerSearch(e.target.value)} sx={{ minWidth: 280 }} />
+          </Box>
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>ФИО</TableCell>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Статус</TableCell>
+                  <TableCell>Кол-во групп</TableCell>
+                  <TableCell>Действия</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredTrainers.map((trainer) => {
+                  const groupsCount = groups.filter((g) => g.trainer_id === trainer.id).length;
+                  return (
+                    <TableRow key={trainer.id}>
+                      <TableCell>{trainer.full_name}</TableCell>
+                      <TableCell>{trainer.email}</TableCell>
+                      <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
+                      <TableCell>{groupsCount}</TableCell>
+                      <TableCell>
+                        {trainer.is_active ? (
+                          <Button size="small" color="warning" onClick={async () => { try { await usersApi.update(trainer.id, { is_active: false }); loadTrainers(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Архивировать</Button>
+                        ) : (
+                          <Button size="small" color="success" onClick={async () => { try { await usersApi.update(trainer.id, { is_active: true }); loadTrainers(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Разархивировать</Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </>
       )}
 

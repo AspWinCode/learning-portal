@@ -242,6 +242,9 @@ export const CampaignsTab: React.FC = () => {
                 {campaignDetail.city && ` · ${campaignDetail.city}`}
                 {campaignDetail.responsible_full_name && ` · Ответственный: ${campaignDetail.responsible_full_name}`}
               </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                Ниже: Общая работа по школам · Джемы (события) · Матрица школ×джемы
+              </Typography>
               <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} sx={{ mb: 2 }} variant="fullWidth">
                 <Tab label="Общая работа" value="work" />
                 <Tab label="Джемы" value="events" />

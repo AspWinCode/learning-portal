@@ -77,6 +77,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const editorRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const savedSelectionRef = useRef<Range | null>(null);
+  const colorSelectionRef = useRef<Range | null>(null);
   const isInternalChange = useRef(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
@@ -151,12 +152,32 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     [syncContent]
   );
 
+  const openColorPopover = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      colorSelectionRef.current = sel.getRangeAt(0).cloneRange();
+    } else {
+      colorSelectionRef.current = null;
+    }
+  }, []);
+
   const handleColorSelect = useCallback(
     (color: string) => {
-      exec('foreColor', color);
+      editorRef.current?.focus();
+      const sel = window.getSelection();
+      if (sel && colorSelectionRef.current) {
+        sel.removeAllRanges();
+        sel.addRange(colorSelectionRef.current);
+      }
+      colorSelectionRef.current = null;
+      try {
+        document.execCommand('styleWithCSS', false, 'true');
+      } catch (_) {}
+      document.execCommand('foreColor', false, color);
+      syncContent();
       setColorAnchor(null);
     },
-    [exec]
+    [syncContent]
   );
 
   const handleInsertLink = useCallback(() => {
@@ -228,8 +249,15 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </ToggleButton>
         </ToggleButtonGroup>
 
-        <Tooltip title="Цвет текста">
-          <IconButton size="small" onClick={(e) => setColorAnchor(e.currentTarget)} aria-label="Цвет текста">
+        <Tooltip title="Цвет текста (сначала выделите текст)">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              openColorPopover();
+              setColorAnchor(e.currentTarget);
+            }}
+            aria-label="Цвет текста"
+          >
             <FormatColorText />
           </IconButton>
         </Tooltip>

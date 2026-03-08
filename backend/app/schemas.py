@@ -536,6 +536,18 @@ class FinancePersonalOperationCreate(BaseModel):
     target_code: str = "personal"  # academy | personal | leninets | gogol_mogol
 
 
+class FinanceManualTransactionCreate(BaseModel):
+    """Ручное добавление операции в единый журнал (например, наличные)."""
+
+    account_id: int
+    amount: float
+    direction: str  # income | expense
+    occurred_at: date
+    article_id: Optional[int] = None
+    target_id: Optional[int] = None
+    description: Optional[str] = None
+
+
 # Пропуски (воронка для sales)
 class AbsenceFollowUpResponse(BaseModel):
     id: int

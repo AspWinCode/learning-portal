@@ -66,6 +66,16 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [studentOptions, setStudentOptions] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [applyLoading, setApplyLoading] = useState(false);
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [manualAccountId, setManualAccountId] = useState<number | ''>('');
+  const [manualAmount, setManualAmount] = useState('');
+  const [manualDirection, setManualDirection] = useState<'income' | 'expense'>('income');
+  const [manualDate, setManualDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [manualArticleId, setManualArticleId] = useState<number | ''>('');
+  const [manualTargetId, setManualTargetId] = useState<number | ''>('');
+  const [manualDescription, setManualDescription] = useState('');
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   useEffect(() => {
     setBalancesLoading(true);
@@ -323,6 +333,23 @@ const FinanceOverviewPageContent: React.FC = () => {
               {importMessage}
             </Typography>
           )}
+          <Button
+            variant="contained"
+            onClick={() => {
+              const nalichka = accounts.find((a) => a.code === 'nalichka');
+              setManualAccountId(nalichka?.id ?? accounts[0]?.id ?? '');
+              setManualAmount('');
+              setManualDirection('income');
+              setManualDate(new Date().toISOString().slice(0, 10));
+              setManualArticleId('');
+              setManualTargetId('');
+              setManualDescription('');
+              setManualError(null);
+              setManualDialogOpen(true);
+            }}
+          >
+            Добавить операцию (наличные)
+          </Button>
         </Box>
 
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
@@ -718,6 +745,132 @@ const FinanceOverviewPageContent: React.FC = () => {
             }}
           >
             {applyLoading ? 'Сохранение...' : 'Зачислить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={manualDialogOpen} onClose={() => !manualSubmitting && setManualDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Добавить операцию (ручная запись)</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            {manualError && (
+              <Typography color="error" variant="body2">{manualError}</Typography>
+            )}
+            <FormControl size="small" fullWidth>
+              <InputLabel>Счёт</InputLabel>
+              <Select
+                label="Счёт"
+                value={manualAccountId === '' ? '' : String(manualAccountId)}
+                onChange={(e) => setManualAccountId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                {accounts.map((a) => (
+                  <MenuItem key={a.id} value={a.id}>{a.name}{a.code ? ` (${a.code})` : ''}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Дата"
+              type="date"
+              size="small"
+              fullWidth
+              value={manualDate}
+              onChange={(e) => setManualDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Направление</InputLabel>
+              <Select
+                label="Направление"
+                value={manualDirection}
+                onChange={(e) => setManualDirection(e.target.value as 'income' | 'expense')}
+              >
+                <MenuItem value="income">Приход</MenuItem>
+                <MenuItem value="expense">Расход</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Сумма"
+              type="number"
+              size="small"
+              fullWidth
+              value={manualAmount}
+              onChange={(e) => setManualAmount(e.target.value)}
+              inputProps={{ min: 0, step: 0.01 }}
+            />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Статья</InputLabel>
+              <Select
+                label="Статья"
+                value={manualArticleId === '' ? '' : String(manualArticleId)}
+                onChange={(e) => setManualArticleId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value="">— Не выбрана</MenuItem>
+                {articles.filter((a) => a.direction === manualDirection).map((a) => (
+                  <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Проект / цель</InputLabel>
+              <Select
+                label="Проект / цель"
+                value={manualTargetId === '' ? '' : String(manualTargetId)}
+                onChange={(e) => setManualTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value="">— Не выбран</MenuItem>
+                {targets.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Комментарий (необязательно)"
+              size="small"
+              fullWidth
+              multiline
+              minRows={2}
+              value={manualDescription}
+              onChange={(e) => setManualDescription(e.target.value)}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => !manualSubmitting && setManualDialogOpen(false)} disabled={manualSubmitting}>Отмена</Button>
+          <Button
+            variant="contained"
+            disabled={manualSubmitting || !manualAccountId || !manualAmount || Number(manualAmount) <= 0}
+            onClick={async () => {
+              if (!manualAccountId || !manualAmount || Number(manualAmount) <= 0) return;
+              setManualSubmitting(true);
+              setManualError(null);
+              try {
+                await financeApi.createManualTransaction({
+                  account_id: Number(manualAccountId),
+                  amount: Number(manualAmount),
+                  direction: manualDirection,
+                  occurred_at: manualDate,
+                  article_id: manualArticleId === '' ? null : manualArticleId,
+                  target_id: manualTargetId === '' ? null : manualTargetId,
+                  description: manualDescription.trim() || null,
+                });
+                setManualDialogOpen(false);
+                const refreshed = await financeApi.listJournalTransactions({
+                  unclassified_only: tab === 'unclassified',
+                  target_ids: journalTargetFilter === 'all' ? undefined : [journalTargetFilter],
+                  direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
+                  date_from: journalFrom || undefined,
+                  date_to: journalTo || undefined,
+                  limit: 5000,
+                });
+                setJournalRows(refreshed);
+              } catch (err: any) {
+                setManualError(err?.response?.data?.detail || err?.message || 'Не удалось добавить операцию');
+              } finally {
+                setManualSubmitting(false);
+              }
+            }}
+          >
+            {manualSubmitting ? 'Сохранение…' : 'Добавить'}
           </Button>
         </DialogActions>
       </Dialog>

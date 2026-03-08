@@ -31,6 +31,7 @@ from app.schemas import (
     FinanceLedgerBankRow,
     FinanceLedgerTransactionRow,
     FinancePersonalOperationCreate,
+    FinanceManualTransactionCreate,
     FinanceTransactionUpdate,
     FinanceAccountResponse,
     FinanceTargetResponse,
@@ -692,6 +693,104 @@ async def create_personal_operation(
         counterparty_name=tx.counterparty_name,
         description_raw=tx.description_raw,
     )
+
+
+@router.post("/manual-transaction", response_model=FinanceLedgerBankRow)
+async def create_manual_transaction(
+    payload: FinanceManualTransactionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceLedgerBankRow:
+    """
+    Ручное добавление операции в единый журнал (например, наличные — счёт «Наличка»).
+    Операция создаётся сразу с статусом classified.
+    """
+    _require_finance_access(current_user)
+
+    amount = float(payload.amount or 0.0)
+    if amount == 0:
+        raise HTTPException(status_code=400, detail="Сумма не может быть нулевой")
+
+    if payload.direction not in {d.value for d in FinanceTransactionDirection}:  # type: ignore[attr-defined]
+        raise HTTPException(status_code=400, detail="Некорректное направление: income или expense")
+
+    account = db.query(FinanceAccount).filter(FinanceAccount.id == payload.account_id, FinanceAccount.is_active.is_(True)).first()
+    if not account:
+        raise HTTPException(status_code=400, detail="Счёт не найден или неактивен")
+
+    if payload.article_id and not db.query(FinanceArticle.id).filter(FinanceArticle.id == payload.article_id).first():
+        raise HTTPException(status_code=400, detail="Статья не найдена")
+    if payload.target_id and not db.query(FinanceTarget.id).filter(FinanceTarget.id == payload.target_id).first():
+        raise HTTPException(status_code=400, detail="Цель/проект не найден")
+
+    occurred_at = datetime.combine(payload.occurred_at, datetime.min.time())
+    description = (payload.description or "").strip() or None
+
+    tx = FinanceTransaction(
+        occurred_at=occurred_at,
+        amount=abs(amount),
+        direction=FinanceTransactionDirection(payload.direction),  # type: ignore[call-arg]
+        account_id=payload.account_id,
+        to_account_id=None,
+        transfer_group_id=None,
+        counterparty_name=description,
+        counterparty_phone=None,
+        description_raw=description,
+        bank_source="manual",
+        bank_operation_id=None,
+        dedup_hash=None,
+        target_id=payload.target_id,
+        article_id=payload.article_id,
+        student_id=None,
+        group_id=None,
+        teacher_id=None,
+        status=FinanceTransactionStatus.CLASSIFIED,
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    tx = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.account),
+            joinedload(FinanceTransaction.to_account),
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(FinanceTransaction.id == tx.id)
+        .first()
+    )
+    account = getattr(tx, "account", None)
+    to_account = getattr(tx, "to_account", None)
+    target = getattr(tx, "target", None)
+    article = getattr(tx, "article", None)
+
+    return FinanceLedgerBankRow(
+        id=tx.id,
+        occurred_at=tx.occurred_at,
+        amount=float(tx.amount or 0.0),
+        direction=str(getattr(tx.direction, "value", tx.direction)),
+        status=str(getattr(tx.status, "value", tx.status)),
+        account_id=tx.account_id,
+        account_code=getattr(account, "code", None),
+        account_name=getattr(account, "name", None),
+        to_account_id=tx.to_account_id,
+        to_account_code=getattr(to_account, "code", None),
+        to_account_name=getattr(to_account, "name", None),
+        transfer_group_id=tx.transfer_group_id,
+        counterparty_name=tx.counterparty_name,
+        counterparty_phone=tx.counterparty_phone,
+        bank_source=tx.bank_source,
+        bank_operation_id=tx.bank_operation_id,
+        target_id=tx.target_id,
+        target_code=getattr(target, "code", None),
+        target_name=getattr(target, "name", None),
+        article_id=tx.article_id,
+        article_name=getattr(article, "name", None),
+        student_id=tx.student_id,
+    )
+
 
 @router.post("/migrate-personal-finance")
 async def migrate_personal_finance(

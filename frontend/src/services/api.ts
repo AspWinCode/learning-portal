@@ -361,6 +361,18 @@ export const financeApi = {
     const response = await api.post('/api/finance/personal-operation', payload);
     return response.data;
   },
+  createManualTransaction: async (payload: {
+    account_id: number;
+    amount: number;
+    direction: 'income' | 'expense';
+    occurred_at: string;
+    article_id?: number | null;
+    target_id?: number | null;
+    description?: string | null;
+  }): Promise<FinanceLedgerBankRow> => {
+    const response = await api.post('/api/finance/manual-transaction', payload);
+    return response.data;
+  },
   getBalances: async (params?: { as_of?: string }): Promise<FinanceAccountBalance[]> => {
     const response = await api.get('/api/finance/balances', {
       params: { as_of: params?.as_of },

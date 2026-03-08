@@ -12,6 +12,7 @@
 | **[BACKEND_REFACTOR_USE_CASES.md](BACKEND_REFACTOR_USE_CASES.md)** | Этап 2. Карта use case-сценариев | Каталог ключевых backend use cases: конвертация лида/анкеты в ученика, пропуск → отработка/ручной урок, банковская операция → ученик, пересчёт оплаты, характеристики (submit/approve/reject), просрочка оплаты → задачи менеджеру, поствизит по лиду; приоритеты для сервисов и тестов. |
 | **[BACKEND_REFACTOR_STAGE3_PLAN.md](BACKEND_REFACTOR_STAGE3_PLAN.md)** | Этап 3. Вынос логики | План и прогресс: сервисы по use cases (lead_conversion, student_card_conversion, absence_makeup, manual_lesson, bank_operation, payment_status, characteristic_review, lead_post_visit). |
 | **[BACKEND_REFACTOR_ETAP3_FINANCE.md](BACKEND_REFACTOR_ETAP3_FINANCE.md)** | Этап 3 ТЗ. Finance | Нормализация финансового контура: общий сервис `student_account_payment.add_payment_to_student_account`, использование в bank_operation и finance apply-student. |
+| **[BACKEND_REFACTOR_ACTION_LOG.md](BACKEND_REFACTOR_ACTION_LOG.md)** | Этап 5. Стандарты | Единый формат и использование action log (log_action). |
 
 ---
 
@@ -26,6 +27,7 @@
 **Выполнено дополнительно:**
 - **Этап 3 (дозавершение):** POST /api/finance/bank-transactions/{id}/apply — канонический API разнесения банковской операции; POST /api/finance/student-accounts — создание счёта ученика.
 - **Этап 4:** создание StudentAccount через сервис `student_account_finance.create_student_account`; students router и Finance API вызывают его.
-- **Этап 5 (частично):** общие зависимости прав в `app/dependencies.py` (`require_sales_admin_owner`, `require_finance_access`); новый endpoint Finance использует `Depends(require_finance_access)`.
+- **Этап 5 (частично):** общие зависимости прав в `app/dependencies.py`; часть эндпоинтов sales (payment-status, bank-transactions/apply) и finance переведены на `Depends(require_*)`. Документ по action log: [BACKEND_REFACTOR_ACTION_LOG.md](BACKEND_REFACTOR_ACTION_LOG.md).
+- **Этап 4 (разметка):** роутер sales описан как compatibility layer (CRM + Operations + Finance), комментарий в коде.
 
 Дальнейшие шаги: использовать карту доменов и каталог use cases при реализации оставшихся пунктов Этапов 4–5 и при написании тестов.

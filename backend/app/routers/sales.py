@@ -169,8 +169,12 @@ from app.schemas import (
 )
 from app.routers.action_log import log_action
 from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
+from app.dependencies import require_sales_admin_owner
 
 router = APIRouter()
+
+# Compatibility layer /api/sales (ТЗ этап 4): CRM + Operations + Finance.
+# Бизнес-логика в app.services.*; здесь — проверка прав, вызов сервисов, маппинг ответов.
 
 
 def _fix_mojibake(s: Optional[str]) -> Optional[str]:
@@ -988,10 +992,9 @@ async def apply_bank_transaction(
     transaction_id: int,
     payload: BankTransactionApplyRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Зачислить спорную операцию (no_match / ambiguous) на выбранного ученика. При no_match создаётся привязка телефона к родителю."""
-    _require_sales_admin_owner(current_user)
     try:
         result = bank_operation_apply(db, transaction_id, payload.student_id)
     except ValueError as e:
@@ -2046,10 +2049,9 @@ def _require_owner_or_admin_settings(user: User) -> None:
 async def list_payment_status(
     status_filter: Optional[str] = Query(None, description="overdue | due_soon | ok | все"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Раздел «Долги» для менеджера (п.8.2, 12.2): ученики с датой следующей оплаты и статусом."""
-    _require_sales_admin_owner(current_user)
     items = payment_status_list_svc(db, status_filter=status_filter)
     return [PaymentStatusItem(**item) for item in items]
 
@@ -2057,10 +2059,9 @@ async def list_payment_status(
 @router.get("/payment-status-summary", response_model=PaymentStatusSummary)
 async def get_payment_status_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Сводка по просрочкам: число учеников с долгом 3+ и 10+ дней (для KPI на странице «Долги»)."""
-    _require_sales_admin_owner(current_user)
     data = payment_status_summary_svc(db)
     return PaymentStatusSummary(**data)
 

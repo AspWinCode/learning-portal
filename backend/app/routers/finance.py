@@ -525,18 +525,27 @@ async def import_finance_transactions(
         dedup_seed = f"v2|{bank_source}|{date_str}|{amount_val}|{counterparty.strip()}|{description.strip()}"
         dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
 
-        # Проверка на дубликат по bank_source + (operation_id ИЛИ dedup_hash)
-        existing = (
-            db.query(FinanceTransaction.id)
-            .filter(
-                FinanceTransaction.bank_source == bank_source,
-                or_(
+        # Проверка на дубликат.
+        # Если есть bank_operation_id — считаем дубликатом по нему.
+        # Если operation_id отсутствует — используем dedup_hash.
+        if bank_operation_id:
+            existing = (
+                db.query(FinanceTransaction.id)
+                .filter(
+                    FinanceTransaction.bank_source == bank_source,
                     FinanceTransaction.bank_operation_id == bank_operation_id,
-                    FinanceTransaction.dedup_hash == dedup_hash,
-                ),
+                )
+                .first()
             )
-            .first()
-        )
+        else:
+            existing = (
+                db.query(FinanceTransaction.id)
+                .filter(
+                    FinanceTransaction.bank_source == bank_source,
+                    FinanceTransaction.dedup_hash == dedup_hash,
+                )
+                .first()
+            )
         if existing:
             skipped += 1
             return

@@ -509,8 +509,13 @@ async def import_finance_transactions(
         if not date_str or not amount_val:
             skipped += 1
             return
+        # Нормализуем строку даты: поддерживаем "YYYY-MM-DD", "YYYY-MM-DD HH:MM:SS" и т.п.
         try:
-            occurred_at = datetime.fromisoformat(date_str + "T12:00:00")
+            ds = date_str.strip()
+            # Если дата пришла как "2026-03-09 00:00:00" (из Excel), берём только часть до пробела
+            if " " in ds and "T" not in ds:
+                ds = ds.split(" ")[0]
+            occurred_at = datetime.fromisoformat(ds + "T12:00:00")
         except Exception:
             skipped += 1
             return

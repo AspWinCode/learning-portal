@@ -8,6 +8,7 @@ from io import StringIO, BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Form
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -558,7 +559,14 @@ async def import_finance_transactions(
         db.add(tx)
         # авто‑классификация по правилам для новых импортированных операций
         apply_recognition_rules(db, tx)
-        created += 1
+        try:
+            # Коммитим построчно, чтобы перехватить возможные уникальные конфликты
+            db.commit()
+            created += 1
+        except IntegrityError:
+            # Дубликат по уникальному индексу или другой конфликт — пропускаем строку
+            db.rollback()
+            skipped += 1
 
     if filename.endswith(".csv"):
         bank_source = "import_csv"
@@ -652,7 +660,7 @@ async def import_finance_transactions(
     else:
         raise HTTPException(status_code=400, detail="Поддерживаются только форматы .csv и .xlsx")
 
-    db.commit()
+    # Итоговые числа по импортированным и пропущенным строкам
     return {"imported": created, "skipped": skipped}
 
 

@@ -98,6 +98,7 @@ const StudentsPage: React.FC = () => {
     preferred_messenger: '' as '' | 'max' | 'telegram' | 'sms',
     source: '',
     comment: '',
+    payment_link: '',
   });
   const [editingCardId, setEditingCardId] = useState<number | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -775,6 +776,7 @@ const StudentsPage: React.FC = () => {
       preferred_messenger: cardFields.preferred_messenger || undefined,
       source: cardFields.source.trim() || undefined,
       comment: cardFields.comment.trim() || undefined,
+      payment_link: isAdminLike ? (cardFields.payment_link.trim() || undefined) : undefined,
       discount_type: 'none',
       discount_value: 0,
     });
@@ -800,6 +802,7 @@ const StudentsPage: React.FC = () => {
     preferred_messenger: '' as '' | 'max' | 'telegram' | 'sms',
     source: '',
     comment: '',
+    payment_link: '',
   });
 
   const resetCreateForm = () => {
@@ -852,6 +855,7 @@ const StudentsPage: React.FC = () => {
         preferred_messenger: (card.preferred_messenger === 'max' || card.preferred_messenger === 'telegram' || card.preferred_messenger === 'sms' ? card.preferred_messenger : '') as '' | 'max' | 'telegram' | 'sms',
         source: card.source || '',
         comment: card.comment || '',
+        payment_link: card.payment_link || '',
       });
     } else {
       setEditingCardId(null);
@@ -935,6 +939,7 @@ const StudentsPage: React.FC = () => {
           preferred_messenger: cardFields.preferred_messenger || undefined,
           source: cardFields.source.trim() || undefined,
           comment: cardFields.comment.trim() || undefined,
+        payment_link: isAdminLike ? (cardFields.payment_link.trim() || undefined) : undefined,
         };
         try {
           if (editingCardId) {
@@ -1807,6 +1812,16 @@ const StudentsPage: React.FC = () => {
                   </FormControl>
                   <TextField size="small" fullWidth label="Откуда пришел" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт, соцсети" />
                   <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={2} />
+                  {isAdminLike && (
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Ссылка для оплаты"
+                      value={cardFields.payment_link}
+                      onChange={(e) => setCardFields((f) => ({ ...f, payment_link: e.target.value }))}
+                      placeholder="https://..."
+                    />
+                  )}
                 </Stack>
               )}
             </>
@@ -2025,6 +2040,16 @@ const StudentsPage: React.FC = () => {
               </FormControl>
               <TextField size="small" fullWidth label="Откуда пришел" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт, соцсети" />
               <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={2} />
+              {isAdminLike && (
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Ссылка для оплаты"
+                  value={cardFields.payment_link}
+                  onChange={(e) => setCardFields((f) => ({ ...f, payment_link: e.target.value }))}
+                  placeholder="https://..."
+                />
+              )}
               <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>Кабинет родителя</Typography>
               {editingCardId && (cardFields.parent_email?.trim() || studentCards.find((c) => c.id === editingCardId)?.parent_email) ? (
                 <Stack spacing={1}>

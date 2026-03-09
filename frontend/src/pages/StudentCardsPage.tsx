@@ -46,6 +46,7 @@ const StudentCardsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isOwner = user?.role === 'owner';
+  const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
 
   const [items, setItems] = useState<StudentCardType[]>([]);
   const [abonements, setAbonements] = useState<Abonement[]>([]);
@@ -78,6 +79,7 @@ const StudentCardsPage: React.FC = () => {
   const [preferredMessenger, setPreferredMessenger] = useState('');
   const [comment, setComment] = useState('');
   const [source, setSource] = useState('');
+  const [paymentLink, setPaymentLink] = useState('');
   const [abonementId, setAbonementId] = useState<number | ''>('');
   const [discountType, setDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
   const [discountValue, setDiscountValue] = useState('');
@@ -111,6 +113,7 @@ const StudentCardsPage: React.FC = () => {
     setDiscountType('none');
     setDiscountValue('');
     setStudentId('');
+    setPaymentLink('');
   };
 
   const loadCards = async () => {
@@ -179,6 +182,7 @@ const StudentCardsPage: React.FC = () => {
     setAbonementId(card.abonement_id ?? '');
     setDiscountType(card.discount_type || 'none');
     setDiscountValue(String(card.discount_value ?? ''));
+    setPaymentLink(card.payment_link || '');
     setDialogOpen(true);
   };
 
@@ -212,6 +216,7 @@ const StudentCardsPage: React.FC = () => {
         preferred_messenger: preferredMessenger.trim() || null,
         comment: comment.trim() || null,
         source: source.trim() || null,
+        payment_link: isOwnerOrAdmin ? paymentLink.trim() || null : null,
         abonement_id: isOwner && abonementId ? Number(abonementId) : null,
         discount_type: isOwner ? discountType : 'none',
         discount_value: isOwner ? parseFloat(discountValue) || 0 : 0,
@@ -505,6 +510,18 @@ const StudentCardsPage: React.FC = () => {
                     </Select>
                   </FormControl>
                   <TextField label="Значение скидки" type="number" value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} fullWidth />
+                </>
+              )}
+              {isOwnerOrAdmin && (
+                <>
+                  <Typography variant="subtitle2" color="primary">Оплата</Typography>
+                  <TextField
+                    label="Ссылка для оплаты"
+                    value={paymentLink}
+                    onChange={(e) => setPaymentLink(e.target.value)}
+                    fullWidth
+                    placeholder="https://..."
+                  />
                 </>
               )}
             </Stack>

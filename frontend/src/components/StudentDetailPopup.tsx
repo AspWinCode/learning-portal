@@ -63,6 +63,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [error, setError] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
 
   const canSeeAbsences = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
   const canManageAccounts = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'parent' || user?.role === 'sales';
@@ -234,6 +235,36 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   </Box>
                 )}
                 <Typography variant="body2">Статус: {student.status === 'active' ? 'Активен' : 'В архиве'}</Typography>
+                {studentCard?.payment_link && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="body2" fontWeight={500} sx={{ mb: 0.5 }}>
+                      Ссылка для оплаты:
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={studentCard.payment_link}
+                        InputProps={{ readOnly: true }}
+                      />
+                      <Button
+                        size="small"
+                        onClick={async () => {
+                          if (!studentCard?.payment_link) return;
+                          try {
+                            await navigator.clipboard.writeText(studentCard.payment_link);
+                            setPaymentLinkCopied(true);
+                            setTimeout(() => setPaymentLinkCopied(false), 1500);
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                      >
+                        {paymentLinkCopied ? 'Скопировано' : 'Копировать'}
+                      </Button>
+                    </Stack>
+                  </Box>
+                )}
                 {(student.programs || []).filter((p) => p.status === 'active').length > 0 && (
                   <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                     {(student.programs || []).filter((p) => p.status === 'active').map((p) => (

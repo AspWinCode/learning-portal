@@ -475,6 +475,8 @@ class StudentCard(Base):
     preferred_messenger = Column(String, nullable=True)  # max / telegram / sms
     comment = Column(Text, nullable=True)
     source = Column(String, nullable=True)  # откуда пришел
+    # Ссылка на оплату, которую может задать owner/admin и использовать менеджер
+    payment_link = Column(String, nullable=True)
     # Только owner: абонемент и скидка
     abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True, index=True)
     discount_type = Column(

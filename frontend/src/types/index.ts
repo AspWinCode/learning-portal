@@ -535,6 +535,8 @@ export interface StudentCard {
   preferred_messenger?: string | null; // max | telegram | sms
   comment?: string | null;
   source?: string | null; // откуда пришел
+   /** Ссылка на оплату, которую могут задать owner/admin */
+  payment_link?: string | null;
   abonement_id?: number | null;
   discount_type: 'none' | 'amount' | 'percent';
   discount_value: number;

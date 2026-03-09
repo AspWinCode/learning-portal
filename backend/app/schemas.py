@@ -1110,6 +1110,7 @@ class StudentCardBase(BaseModel):
     preferred_messenger: Optional[str] = None  # max / telegram / sms
     comment: Optional[str] = None
     source: Optional[str] = None  # откуда пришел
+    payment_link: Optional[str] = None  # ссылка на оплату для родителя
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
@@ -1142,6 +1143,7 @@ class StudentCardUpdate(BaseModel):
     preferred_messenger: Optional[str] = None
     comment: Optional[str] = None
     source: Optional[str] = None
+    payment_link: Optional[str] = None
     abonement_id: Optional[int] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None

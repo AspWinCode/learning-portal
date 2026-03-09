@@ -566,6 +566,7 @@ def _student_card_response(card: StudentCard, user: User, db: Session) -> Studen
         "preferred_messenger": getattr(card, "preferred_messenger", None),
         "comment": getattr(card, "comment", None),
         "source": getattr(card, "source", None),
+        "payment_link": getattr(card, "payment_link", None),
         "archived": card.archived,
         "anketa_status": getattr(card, "anketa_status", "converted"),
         "primary_for_bank_payments": getattr(card, "primary_for_bank_payments", False),
@@ -1079,10 +1080,14 @@ async def create_student_card(
     data = payload.model_dump()
     if data.get("student_id") is None and not data.get("anketa_status"):
         data["anketa_status"] = "draft"
+    # Абонемент и скидка может менять только owner
     if current_user.role != UserRole.OWNER:
         data["abonement_id"] = None
         data["discount_type"] = DiscountType.NONE
         data["discount_value"] = 0.0
+    # Ссылку оплаты могут задавать owner и admin; для остальных (sales) очищаем
+    if current_user.role not in (UserRole.OWNER, UserRole.ADMIN):
+        data["payment_link"] = None
     if data.get("abonement_id"):
         ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
         if not ab:
@@ -1677,10 +1682,14 @@ async def update_student_card(
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
     data = payload.model_dump(exclude_unset=True)
+    # Абонемент и скидку может менять только owner
     if current_user.role != UserRole.OWNER:
         data.pop("abonement_id", None)
         data.pop("discount_type", None)
         data.pop("discount_value", None)
+    # payment_link может менять только owner и admin (sales не может)
+    if current_user.role not in (UserRole.OWNER, UserRole.ADMIN):
+        data.pop("payment_link", None)
     if data.get("abonement_id"):
         ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
         if not ab:

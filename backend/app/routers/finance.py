@@ -7,6 +7,7 @@ from datetime import date, datetime
 from io import StringIO, BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Form
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth

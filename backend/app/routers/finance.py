@@ -515,7 +515,8 @@ async def import_finance_transactions(
             return
 
         direction = "income" if amount_val > 0 else "expense"
-        dedup_seed = f"{bank_source}|{date_str}|{amount_val}|{counterparty.strip()}|{description.strip()}"
+        # v2: версионированный dedup_seed, чтобы избежать конфликтов со старыми импортами
+        dedup_seed = f"v2|{bank_source}|{date_str}|{amount_val}|{counterparty.strip()}|{description.strip()}"
         dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
 
         # Проверка на дубликат по bank_source + (operation_id ИЛИ dedup_hash)

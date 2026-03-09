@@ -582,7 +582,9 @@ async def import_finance_transactions(
         except ImportError:
             raise HTTPException(status_code=500, detail="openpyxl не установлен в окружении сервера")
 
-        bank_source = "import_xlsx"
+        # Для нового импорта Excel используем отдельный bank_source,
+        # чтобы не конфликтовать со старыми записями ("import_xlsx").
+        bank_source = "import_xlsx_v2"
         wb = load_workbook(filename=BytesIO(content), data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))

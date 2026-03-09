@@ -2443,7 +2443,7 @@ const SalesLeadsPage: React.FC = () => {
                       </Grid>
                     </Box>
                   )}
-                  <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+                  <Stack direction="row" alignItems="center" sx={{ gap: 1, flexWrap: 'wrap' }}>
                     {selectedLead && !selectedLead.converted_to_student_id && (
                       <Button
                         size="small"
@@ -2471,7 +2471,46 @@ const SalesLeadsPage: React.FC = () => {
                         Перевести в ученики
                       </Button>
                     )}
-                    <Button size="small" onClick={() => { setDetailsOpen(false); setSelectedLead(null); navigate(location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads', { replace: true }); }}>Закрыть</Button>
+                    {selectedLead && (
+                      <Button
+                        size="small"
+                        color="secondary"
+                        disabled={actionLoadingId === selectedLead.id}
+                        onClick={async () => {
+                          if (!selectedLead) return;
+                          const confirmed = window.confirm('Удалить этого лида без возможности восстановления?');
+                          if (!confirmed) return;
+                          setActionLoadingId(selectedLead.id);
+                          try {
+                            await salesApi.deleteLead(selectedLead.id);
+                            setToast({ open: true, message: 'Лид удалён', severity: 'success' });
+                            setDetailsOpen(false);
+                            setSelectedLead(null);
+                            await loadLeads();
+                          } catch (e) {
+                            const msg = extractApiError(e, 'Не удалось удалить лида');
+                            setToast({ open: true, message: msg, severity: 'error' });
+                          } finally {
+                            setActionLoadingId(null);
+                          }
+                        }}
+                      >
+                        Удалить лида
+                      </Button>
+                    )}
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setDetailsOpen(false);
+                        setSelectedLead(null);
+                        navigate(
+                          location.pathname === '/sales/pipeline' ? '/sales/pipeline' : '/sales/leads',
+                          { replace: true }
+                        );
+                      }}
+                    >
+                      Закрыть
+                    </Button>
                   </Stack>
                 </Stack>
                 <Grid container spacing={2} sx={{ mt: 0.5 }}>

@@ -1115,6 +1115,9 @@ export const salesApi = {
     const response = await api.put(`/api/sales/leads/${id}`, payload);
     return response.data;
   },
+  deleteLead: async (id: number): Promise<void> => {
+    await api.delete(`/api/sales/leads/${id}`);
+  },
   getLead: async (leadId: number): Promise<Lead> => {
     const response = await api.get(`/api/sales/leads/${leadId}`);
     return response.data;

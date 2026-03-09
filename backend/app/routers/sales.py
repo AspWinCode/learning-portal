@@ -4173,6 +4173,26 @@ async def update_lead(
     return lead
 
 
+@router.delete("/leads/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_lead(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+):
+    """
+    Полное удаление лида и связанных сущностей (задачи, коммуникации, счета и т.д.).
+    Используется, когда лид создан по ошибке или явно не нужен в системе.
+    """
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+    log_action(db, current_user.id, "delete", "lead", lead.id, None)
+    db.delete(lead)
+    db.commit()
+    return None
+
+
 @router.post("/leads/{lead_id}/convert-to-student", response_model=LeadConvertToStudentResponse)
 async def convert_lead_to_student(
     lead_id: int,

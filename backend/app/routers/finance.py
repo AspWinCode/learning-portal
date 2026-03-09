@@ -587,11 +587,27 @@ async def import_finance_transactions(
         rows = list(ws.iter_rows(values_only=True))
         if not rows:
             raise HTTPException(status_code=400, detail="Файл .xlsx без строк")
-        header = [str(v).strip().lower() if v is not None else "" for v in rows[0]]
+
+        # Нормализуем заголовки: поддерживаем как минимальный формат
+        # (date, amount, counterparty, description, bank_operation_id),
+        # так и русские выгрузки из банка (Дата, Сумма, Контрагент, Описание / источник, Тип).
+        raw_header = [str(v).strip().lower() if v is not None else "" for v in rows[0]]
+        rus_to_std = {
+            "дата": "date",
+            "сумма": "amount",
+            "контрагент": "counterparty",
+            "описание / источник": "description",
+            "описание/источник": "description",
+            "описание": "description",
+            "тип": "type",
+        }
+        header = [rus_to_std.get(name, name) for name in raw_header]
         col_index = {name: idx for idx, name in enumerate(header)}
+
         for r in rows[1:]:
             if not any(r):
                 continue
+
             def _get(col: str) -> str:
                 idx = col_index.get(col)
                 if idx is None or idx >= len(r):
@@ -600,12 +616,32 @@ async def import_finance_transactions(
                 return "" if val is None else str(val).strip()
 
             date_str = _get("date")
+            # Поддержка формата дат dd.mm.yyyy (банковская выгрузка) и ISO yyyy-mm-dd
+            if date_str and "." in date_str and "-" not in date_str:
+                from datetime import datetime as _dt
+
+                try:
+                    parsed = _dt.strptime(date_str, "%d.%m.%Y")
+                    date_str = parsed.date().isoformat()
+                except Exception:
+                    # Некорректные даты отфильтрует _upsert_row
+                    pass
+
             amount_raw = _get("amount").replace(" ", "").replace(",", ".")
             try:
                 amount_val = float(amount_raw)
             except ValueError:
                 skipped += 1
                 continue
+
+            # Для банковских выгрузок, где сумма всегда положительная,
+            # используем колонку "Тип" (Доход / Расход), если она есть.
+            tx_type = _get("type").lower()
+            if tx_type.startswith("расход"):
+                amount_val = -abs(amount_val)
+            elif tx_type.startswith("доход"):
+                amount_val = abs(amount_val)
+
             counterparty = _get("counterparty")
             description = _get("description")
             bank_operation_id = _get("bank_operation_id") or None

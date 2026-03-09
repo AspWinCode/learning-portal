@@ -517,15 +517,14 @@ async def import_finance_transactions(
         dedup_seed = f"{bank_source}|{date_str}|{amount_val}|{counterparty.strip()}|{description.strip()}"
         dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
 
-        # Проверка на дубликат по bank_source + (operation_id или dedup_hash)
+        # Проверка на дубликат по bank_source + (operation_id ИЛИ dedup_hash)
         existing = (
             db.query(FinanceTransaction.id)
             .filter(
                 FinanceTransaction.bank_source == bank_source,
-                (
-                    (FinanceTransaction.bank_operation_id == bank_operation_id)
-                    if bank_operation_id
-                    else FinanceTransaction.dedup_hash == dedup_hash
+                or_(
+                    FinanceTransaction.bank_operation_id == bank_operation_id,
+                    FinanceTransaction.dedup_hash == dedup_hash,
                 ),
             )
             .first()

@@ -636,12 +636,14 @@ const SalesLeadsPage: React.FC = () => {
       const optionId = Number(value.replace('option:', ''));
       const option = leadStatusOptions.find((s) => s.id === optionId);
       if (!option) return;
+      // Кастомный статус пока обновляем напрямую
       await handleStatusChange(lead, option.base_status, option.id);
       return;
     }
     if (value.startsWith('base:')) {
       const baseStatus = value.replace('base:', '') as LeadStatus;
-      await handleStatusChange(lead, baseStatus, undefined);
+      // Для базового статуса запускаем ту же автоматизацию, что и при переносе карточки в канбане
+      await startStatusAutomation(lead, baseStatus);
     }
   };
 
@@ -1520,6 +1522,52 @@ const SalesLeadsPage: React.FC = () => {
   const requiresFollowUpOnDrop = (status: LeadStatus) =>
     status === 'contacted' || status === 'no_answer' || status === 'demo' || status === 'invoice_sent';
 
+  const startStatusAutomation = async (lead: Lead, targetStatus: LeadStatus) => {
+    if (lead.status === targetStatus) return;
+
+    if (targetStatus === 'no_answer') {
+      try {
+        await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1 });
+        await loadLeads();
+        setToast({
+          open: true,
+          message: `Лид "${lead.contact_name}" перенесён в статус «Недозвон» (попытка 1)`,
+          severity: 'success',
+        });
+      } catch (err: any) {
+        setError(extractApiError(err, 'Ошибка операции'));
+      }
+      return;
+    }
+
+    if (targetStatus === 'decided_immediately') {
+      try {
+        await salesApi.updateLead(lead.id, { status: 'decided_immediately', questionnaire_filled: false });
+        await loadLeads();
+        setToast({
+          open: true,
+          message: `Лид "${lead.contact_name}" записан как «Решили сразу»`,
+          severity: 'success',
+        });
+        navigate('/sales/agreed');
+      } catch (err: any) {
+        setError(extractApiError(err, 'Ошибка операции'));
+      }
+      return;
+    }
+
+    // Для остальных статусов открываем такое же окно, как при dnd-переносе карточки
+    setDropLeadId(lead.id);
+    setDropTargetStatus(targetStatus);
+    setDropFollowUpAt('');
+    setDropCallbackAt('');
+    setDropRefusedReason('');
+    setDropTrialAt('');
+    setDropEventId('');
+    setDropEventNote('');
+    setDropConfirmOpen(true);
+  };
+
   const handleKanbanDragStart = (e: React.DragEvent, leadId: number) => {
     const target = e.target as HTMLElement;
     if (target.closest?.('button, a, [role="button"]')) {
@@ -1567,37 +1615,7 @@ const SalesLeadsPage: React.FC = () => {
 
     if (lead.status === targetStatus) return;
 
-    if (targetStatus === 'no_answer') {
-      try {
-        await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1 });
-        await loadLeads();
-        setToast({ open: true, message: `Лид "${lead.contact_name}" перенесён в статус «Недозвон» (попытка 1)`, severity: 'success' });
-      } catch (err: any) {
-        setError(extractApiError(err, 'Ошибка операции'));
-      }
-      return;
-    }
-    if (targetStatus === 'decided_immediately') {
-      try {
-        await salesApi.updateLead(lead.id, { status: 'decided_immediately', questionnaire_filled: false });
-        await loadLeads();
-        setToast({ open: true, message: `Лид "${lead.contact_name}" записан как «Решили сразу»`, severity: 'success' });
-        navigate('/sales/agreed');
-      } catch (err: any) {
-        setError(extractApiError(err, 'Ошибка операции'));
-      }
-      return;
-    }
-
-    setDropLeadId(lead.id);
-    setDropTargetStatus(targetStatus);
-    setDropFollowUpAt('');
-    setDropCallbackAt('');
-    setDropRefusedReason('');
-    setDropTrialAt('');
-    setDropEventId('');
-    setDropEventNote('');
-    setDropConfirmOpen(true);
+    await startStatusAutomation(lead, targetStatus);
   };
 
   const handleKanbanDragOver = (e: React.DragEvent, columnStatus: LeadStatus | 'next_event') => {

@@ -4068,7 +4068,7 @@ _SEND_INFO_TASK_MARKER = "отправить информацию"
 async def get_leads_send_info_status(
     lead_ids: str = Query(..., description="Comma-separated lead IDs"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     """Возвращает для каждого lead_id статус задачи «Отправить информацию»: open, done, none."""
     if not lead_ids.strip():
@@ -4224,7 +4224,7 @@ async def create_lead_task(
     lead_id: int,
     payload: LeadTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4283,7 +4283,7 @@ async def create_lead_task(
 async def list_lead_tasks(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4303,7 +4303,7 @@ async def close_lead_task(
     lead_id: int,
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4375,7 +4375,7 @@ async def update_lead_task(
     task_id: int,
     payload: LeadTaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:

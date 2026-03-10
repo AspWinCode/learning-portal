@@ -4273,6 +4273,29 @@ async def create_lead_task(
         status=LeadTaskStatus.OPEN,
     )
     db.add(task)
+
+    # Если это задача «Отправить информацию» — создаём также общую задачу в /tasks
+    # (категория leads), чтобы менеджер увидел её в «Плане на сегодня».
+    note_lower = (payload.note or "").strip().lower() if payload.note else ""
+    if _SEND_INFO_TASK_MARKER in note_lower:
+        from app.models import Task, TaskStatus  # локальный импорт, чтобы не плодить зависимости наверху
+
+        title = f"Отправить информацию: {lead.parent_full_name or lead.contact_name or lead.phone or f'Лид #{lead.id}'}"
+        description = f"Отправить информацию по лиду #{lead.id}"
+        assignee_id = lead.owner_id or current_user.id
+        common_task = Task(
+            title=title,
+            description=description,
+            created_by_id=current_user.id,
+            assigned_to_id=assignee_id,
+            category="leads",
+            status=TaskStatus.ACTIVE.value,
+            due_at=datetime.utcnow(),
+            priority="normal",
+            tags=["send_info", f"lead:{lead.id}"],
+        )
+        db.add(common_task)
+
     db.commit()
     db.refresh(task)
     log_action(db, current_user.id, "create", "lead_task", task.id, {"lead_id": lead_id})

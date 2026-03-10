@@ -1525,9 +1525,16 @@ const SalesLeadsPage: React.FC = () => {
   const startStatusAutomation = async (lead: Lead, targetStatus: LeadStatus) => {
     if (lead.status === targetStatus) return;
 
+    // Если лид находится в колонке «Следующее мероприятие» (тег reinvite_next_event),
+    // при переводе в другой этап убираем этот тег, чтобы карточка вышла из колонки.
+    const currentTags = lead.tags || [];
+    const hasReinviteTag = currentTags.includes(TAG_REINVITE_NEXT_EVENT);
+    const cleanedTags = hasReinviteTag ? currentTags.filter((t) => t !== TAG_REINVITE_NEXT_EVENT) : currentTags;
+    const tagsPayload = hasReinviteTag ? { tags: cleanedTags } as { tags: string[] } : {};
+
     if (targetStatus === 'no_answer') {
       try {
-        await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1 });
+        await salesApi.updateLead(lead.id, { status: 'no_answer', no_answer_attempt: 1, ...tagsPayload });
         await loadLeads();
         setToast({
           open: true,
@@ -1542,7 +1549,11 @@ const SalesLeadsPage: React.FC = () => {
 
     if (targetStatus === 'decided_immediately') {
       try {
-        await salesApi.updateLead(lead.id, { status: 'decided_immediately', questionnaire_filled: false });
+        await salesApi.updateLead(lead.id, {
+          status: 'decided_immediately',
+          questionnaire_filled: false,
+          ...tagsPayload,
+        });
         await loadLeads();
         setToast({
           open: true,
@@ -1641,6 +1652,12 @@ const SalesLeadsPage: React.FC = () => {
       return;
     }
     setError('');
+
+    // При выходе из «Следующее мероприятие» убираем служебный тег reinvite_next_event
+    const currentTags = lead.tags || [];
+    const hasReinviteTag = currentTags.includes(TAG_REINVITE_NEXT_EVENT);
+    const cleanedTags = hasReinviteTag ? currentTags.filter((t) => t !== TAG_REINVITE_NEXT_EVENT) : currentTags;
+    const tagsPayload = hasReinviteTag ? ({ tags: cleanedTags } as { tags: string[] }) : {};
     if (dropTargetStatus === 'thinking') {
       if (!dropCallbackAt) {
         setError('Ошибка операции');
@@ -1652,7 +1669,11 @@ const SalesLeadsPage: React.FC = () => {
         return;
       }
       try {
-        await salesApi.updateLead(lead.id, { status: 'thinking', next_contact_at: d.toISOString() });
+        await salesApi.updateLead(lead.id, {
+          status: 'thinking',
+          next_contact_at: d.toISOString(),
+          ...tagsPayload,
+        });
         await loadLeads();
         if (selectedLead?.id === lead.id) setSelectedLead((p) => (p ? { ...p, status: 'thinking', next_contact_at: d.toISOString() } : p));
         setDropConfirmOpen(false);
@@ -1671,7 +1692,11 @@ const SalesLeadsPage: React.FC = () => {
         return;
       }
       try {
-        await salesApi.updateLead(lead.id, { status: 'lost', lost_reason: dropRefusedReason.trim() });
+        await salesApi.updateLead(lead.id, {
+          status: 'lost',
+          lost_reason: dropRefusedReason.trim(),
+          ...tagsPayload,
+        });
         await loadLeads();
         setDropConfirmOpen(false);
         setDropLeadId(null);
@@ -1697,6 +1722,7 @@ const SalesLeadsPage: React.FC = () => {
         await salesApi.updateLead(lead.id, {
           status: 'trial_scheduled',
           desired_slot: format(d, 'dd.MM.yyyy HH:mm'),
+          ...tagsPayload,
         });
         await loadLeads();
         if (selectedLead?.id === lead.id) setSelectedLead((p) => (p ? { ...p, status: 'trial_scheduled', desired_slot: format(d, 'dd.MM.yyyy HH:mm') } : p));
@@ -1743,11 +1769,12 @@ const SalesLeadsPage: React.FC = () => {
       }
       nextContactAtIso = d.toISOString();
     }
-    try {
-      await salesApi.updateLead(lead.id, {
-        status: dropTargetStatus,
-        next_contact_at: nextContactAtIso,
-      });
+      try {
+        await salesApi.updateLead(lead.id, {
+          status: dropTargetStatus,
+          next_contact_at: nextContactAtIso,
+          ...tagsPayload,
+        });
       if (dropTargetStatus === 'demo' && dropEventId) {
         try {
           await salesApi.registerLeadToEvent(Number(dropEventId), { lead_id: lead.id, note: dropEventNote || undefined });

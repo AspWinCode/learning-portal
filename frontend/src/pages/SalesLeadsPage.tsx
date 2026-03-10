@@ -266,7 +266,6 @@ const SalesLeadsPage: React.FC = () => {
     setError(null);
     try {
       const data = await salesApi.listLeads({
-        status_filter: statusFilter || undefined,
         q: qFilter.trim() || undefined,
         source: sourceFilter.trim() || undefined,
         tag: tagFilter.trim() || undefined,
@@ -470,6 +469,8 @@ const SalesLeadsPage: React.FC = () => {
   const filteredSortedLeads = useMemo(() => {
     const normalizedSchoolFilter = tableSchoolFilter.trim().toLowerCase();
     const filtered = leads.filter((lead) => {
+      // Фильтр по этапу воронки (таблица использует те же этапы, что и Воронка)
+      if (statusFilter && getPipelineColumnForStatus(lead.status) !== statusFilter) return false;
       if (tableCityFilter && (lead.city || '') !== tableCityFilter) return false;
       if (tableClassFilter && (lead.school_class || '') !== tableClassFilter) return false;
       if (
@@ -493,7 +494,7 @@ const SalesLeadsPage: React.FC = () => {
     });
 
     return tableSortOrder === 'asc' ? sorted : sorted.reverse();
-  }, [leads, tableCityFilter, tableClassFilter, tableSchoolFilter, tableSortField, tableSortOrder]);
+  }, [leads, statusFilter, tableCityFilter, tableClassFilter, tableSchoolFilter, tableSortField, tableSortOrder]);
 
   const selectedVisibleCount = useMemo(() => {
     const visibleIds = new Set(filteredSortedLeads.map((lead) => lead.id));

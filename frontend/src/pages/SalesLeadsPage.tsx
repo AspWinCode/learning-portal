@@ -636,14 +636,12 @@ const SalesLeadsPage: React.FC = () => {
       const optionId = Number(value.replace('option:', ''));
       const option = leadStatusOptions.find((s) => s.id === optionId);
       if (!option) return;
-      // Кастомный статус пока обновляем напрямую
       await handleStatusChange(lead, option.base_status, option.id);
       return;
     }
     if (value.startsWith('base:')) {
       const baseStatus = value.replace('base:', '') as LeadStatus;
-      // Для базового статуса запускаем ту же автоматизацию, что и при переносе карточки в канбане
-      await startStatusAutomation(lead, baseStatus);
+      await handleStatusChange(lead, baseStatus, undefined);
     }
   };
 
@@ -2352,7 +2350,12 @@ const SalesLeadsPage: React.FC = () => {
                             <FormControl size="small" sx={{ minWidth: 160 }}>
                               <Select
                                 value={getLeadStatusMenuValue(lead)}
-                                onChange={(e) => void handleLeadStatusSelectChange(lead, e.target.value as string)}
+                                onChange={(e) => {
+                                  const v = e.target.value as string;
+                                  if (!v.startsWith('base:')) return;
+                                  const base = v.replace('base:', '') as LeadStatus;
+                                  void startStatusAutomation(lead, base);
+                                }}
                                 renderValue={() => getLeadStatusDisplay(lead)}
                                 disabled={actionLoadingId === lead.id}
                               >

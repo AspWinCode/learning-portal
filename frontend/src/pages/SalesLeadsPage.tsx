@@ -49,7 +49,7 @@ import {
 } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
-import { salesApi } from '../services/api';
+import { salesApi, tasksApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
   EventItem,
@@ -1862,6 +1862,18 @@ const SalesLeadsPage: React.FC = () => {
       setActionLoadingId(lead.id);
       await salesApi.createTask(lead.id, { note: 'Отправить информацию' });
       setSendInfoStatus((prev) => ({ ...prev, [lead.id]: 'open' }));
+      // Создаём общую задачу в /tasks (категория leads), чтобы менеджер увидел её в «Плане на сегодня»
+      try {
+        await tasksApi.createTask({
+          title: `Отправить информацию: ${lead.parent_full_name || lead.contact_name || lead.phone || `Лид #${lead.id}`}`,
+          description: `Отправить информацию по лиду #${lead.id}`,
+          category: 'leads',
+          due_at: new Date().toISOString(),
+          tags: ['send_info', `lead:${lead.id}`],
+        });
+      } catch {
+        // если общая задача не создалась — не блокируем основной сценарий
+      }
       await loadLeads();
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось создать задачу'));

@@ -75,6 +75,8 @@ from app.models import (
     CustomLesson,
     CustomLessonStudent,
     CustomLessonType,
+    Task,
+    TaskStatus,
 )
 from app.utils.phone import normalize_phone
 from app.schemas import (
@@ -4092,6 +4094,8 @@ async def get_leads_send_info_status(
         .all()
     )
     result: Dict[str, str] = {str(i): "none" for i in ids if i in allowed_ids}
+
+    # 1) Статусы по LeadTask (старый механизм)
     for t in tasks:
         if t.lead_id not in allowed_ids:
             continue
@@ -4100,6 +4104,32 @@ async def get_leads_send_info_status(
             result[key] = "open"
         elif result.get(key) != "open":
             result[key] = "done"
+
+    # 2) Дополнительно учитываем общие задачи Task с тегами ["send_info", f"lead:{id}"]
+    common_tasks = (
+        db.query(Task)
+        .filter(Task.category == "leads", Task.tags.isnot(None))
+        .all()
+    )
+    for ct in common_tasks:
+        tags = ct.tags or []
+        lead_tag = next((t for t in tags if isinstance(t, str) and t.startswith("lead:")), None)
+        if not lead_tag:
+            continue
+        try:
+            lead_id = int(lead_tag.split(":", 1)[1])
+        except (ValueError, IndexError):
+            continue
+        if lead_id not in allowed_ids:
+            continue
+        key = str(lead_id)
+        # если есть активная общая задача по этому лиду — считаем, что статус open
+        if ct.status == TaskStatus.ACTIVE.value:
+            result[key] = "open"
+        # если активной нет, но есть архивная, и ещё не open — считаем done
+        elif result.get(key) != "open":
+            result[key] = "done"
+
     return result
 
 

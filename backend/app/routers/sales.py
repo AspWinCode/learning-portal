@@ -4105,12 +4105,16 @@ async def get_leads_send_info_status(
         elif result.get(key) != "open":
             result[key] = "done"
 
-    # 2) Дополнительно учитываем общие задачи Task с тегами ["send_info", f"lead:{id}"]
+    # 2) Дополнительно учитываем общие задачи Task с тегами ["send_info", f"lead:{id}"].
+    #    Они ДОЛЖНЫ переопределять статус, даже если LeadTask ещё открыт:
+    #    - есть хотя бы одна активная Task → open
+    #    - активных нет, но есть архивные → done
     common_tasks = (
         db.query(Task)
         .filter(Task.category == "leads", Task.tags.isnot(None))
         .all()
     )
+    per_lead_flags: Dict[int, Dict[str, bool]] = {}
     for ct in common_tasks:
         tags = ct.tags or []
         lead_tag = next((t for t in tags if isinstance(t, str) and t.startswith("lead:")), None)
@@ -4122,12 +4126,16 @@ async def get_leads_send_info_status(
             continue
         if lead_id not in allowed_ids:
             continue
-        key = str(lead_id)
-        # если есть активная общая задача по этому лиду — считаем, что статус open
+        flags = per_lead_flags.setdefault(lead_id, {"has_active": False, "has_any": False})
+        flags["has_any"] = True
         if ct.status == TaskStatus.ACTIVE.value:
+            flags["has_active"] = True
+
+    for lead_id, flags in per_lead_flags.items():
+        key = str(lead_id)
+        if flags["has_active"]:
             result[key] = "open"
-        # если активной нет, но есть архивная, и ещё не open — считаем done
-        elif result.get(key) != "open":
+        else:
             result[key] = "done"
 
     return result

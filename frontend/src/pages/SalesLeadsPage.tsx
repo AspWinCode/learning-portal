@@ -642,7 +642,8 @@ const SalesLeadsPage: React.FC = () => {
     }
     if (value.startsWith('base:')) {
       const baseStatus = value.replace('base:', '') as LeadStatus;
-      await handleStatusChange(lead, baseStatus, undefined);
+      // В таблице «Лиды» запускать тот же сценарий перехода этапа, что и на «Воронке»
+      await startStatusAutomation(lead, baseStatus);
     }
   };
 
@@ -1931,10 +1932,10 @@ const SalesLeadsPage: React.FC = () => {
             </ToggleButtonGroup>
           )}
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel id="status-filter-label">Статус</InputLabel>
+            <InputLabel id="status-filter-label">Этап воронки</InputLabel>
             <Select
               labelId="status-filter-label"
-              label="Статус"
+              label="Этап воронки"
               value={statusFilter}
               onChange={(e) => setStatusFilter((e.target.value as LeadStatus) || '')}
             >
@@ -2120,7 +2121,7 @@ const SalesLeadsPage: React.FC = () => {
             </TableCell>
             <TableCell>ID</TableCell>
             <TableCell>Контакт</TableCell>
-            <TableCell>Статус</TableCell>
+            <TableCell>Этап воронки</TableCell>
             <TableCell>Источник</TableCell>
             <TableCell>Следующий шаг</TableCell>
             <TableCell sortDirection={tableSortField === 'school_class' ? tableSortOrder : false}>

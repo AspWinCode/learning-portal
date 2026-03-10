@@ -2404,7 +2404,7 @@ const SalesLeadsPage: React.FC = () => {
                               size="small"
                               variant="outlined"
                               color={sendInfoStatus[lead.id] === 'done' ? 'success' : sendInfoStatus[lead.id] === 'open' ? 'error' : undefined}
-                              disabled={actionLoadingId === lead.id || sendInfoStatus[lead.id] === 'open' || sendInfoStatus[lead.id] === 'done'}
+                              disabled={actionLoadingId === lead.id}
                               onClick={() => void handleWidgetSendInfo(lead)}
                             >
                               Отправить информацию

@@ -2330,6 +2330,22 @@ const SalesLeadsPage: React.FC = () => {
                               </Stack>
                             );
                           })()}
+                          <Box sx={{ mt: 1 }} onClick={(e) => e.stopPropagation()}>
+                            <FormControl size="small" sx={{ minWidth: 160 }}>
+                              <Select
+                                value={getLeadStatusMenuValue(lead)}
+                                onChange={(e) => void handleLeadStatusSelectChange(lead, e.target.value as string)}
+                                renderValue={() => getLeadStatusDisplay(lead)}
+                                disabled={actionLoadingId === lead.id}
+                              >
+                                {statusOptions.map((st) => (
+                                  <MenuItem key={st} value={`base:${st}`}>
+                                    <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Box>
                           <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
                             <Button size="small" onClick={() => handleOpenDetails(lead)}>
                               Открыть

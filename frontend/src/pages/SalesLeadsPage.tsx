@@ -147,7 +147,7 @@ const SalesLeadsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('');
+  const [statusFilter, setStatusFilter] = useState<LeadStatus | '' | 'next_event'>('');
   const [qFilter, setQFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
@@ -470,7 +470,13 @@ const SalesLeadsPage: React.FC = () => {
     const normalizedSchoolFilter = tableSchoolFilter.trim().toLowerCase();
     const filtered = leads.filter((lead) => {
       // Фильтр по этапу воронки (таблица использует те же этапы, что и Воронка)
-      if (statusFilter && getPipelineColumnForStatus(lead.status) !== statusFilter) return false;
+      if (statusFilter) {
+        if (statusFilter === 'next_event') {
+          if (!((lead.tags || []).includes(TAG_REINVITE_NEXT_EVENT))) return false;
+        } else if (getPipelineColumnForStatus(lead.status) !== statusFilter) {
+          return false;
+        }
+      }
       if (tableCityFilter && (lead.city || '') !== tableCityFilter) return false;
       if (tableClassFilter && (lead.school_class || '') !== tableClassFilter) return false;
       if (
@@ -1985,9 +1991,10 @@ const SalesLeadsPage: React.FC = () => {
               labelId="status-filter-label"
               label="Этап воронки"
               value={statusFilter}
-              onChange={(e) => setStatusFilter((e.target.value as LeadStatus) || '')}
+              onChange={(e) => setStatusFilter((e.target.value as LeadStatus | 'next_event') || '')}
             >
               <MenuItem value="">Любой</MenuItem>
+              <MenuItem value="next_event">Следующее мероприятие</MenuItem>
               {statusOptions.map((st) => (
                 <MenuItem key={st} value={st}>
                   {statusLabels[st]}
@@ -2403,15 +2410,13 @@ const SalesLeadsPage: React.FC = () => {
                             <FormControl size="small" sx={{ minWidth: 160 }}>
                               <Select
                                 value={getLeadStatusMenuValue(lead)}
-                                onChange={(e) => {
-                                  const v = e.target.value as string;
-                                  if (!v.startsWith('base:')) return;
-                                  const base = v.replace('base:', '') as LeadStatus;
-                                  void startStatusAutomation(lead, base);
-                                }}
+                                onChange={(e) => void handleLeadStatusSelectChange(lead, e.target.value as string)}
                                 renderValue={() => getLeadStatusDisplay(lead)}
                                 disabled={actionLoadingId === lead.id}
                               >
+                                <MenuItem value="next_event">
+                                  <Chip size="small" label="Следующее мероприятие" />
+                                </MenuItem>
                                 {statusOptions.map((st) => (
                                   <MenuItem key={st} value={`base:${st}`}>
                                     <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />

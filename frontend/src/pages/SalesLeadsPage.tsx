@@ -633,6 +633,27 @@ const SalesLeadsPage: React.FC = () => {
   };
 
   const handleLeadStatusSelectChange = async (lead: Lead, value: string) => {
+    if (value === 'next_event') {
+      try {
+        const currentTags = lead.tags || [];
+        if (currentTags.includes(TAG_REINVITE_NEXT_EVENT)) {
+          return;
+        }
+        setActionLoadingId(lead.id);
+        await salesApi.updateLead(lead.id, { tags: [...currentTags, TAG_REINVITE_NEXT_EVENT] });
+        await loadLeads();
+        setToast({
+          open: true,
+          message: `Лид «${lead.contact_name}» перенесён в «Следующее мероприятие». Он отображается во вкладке «Позвать снова на мероприятие».`,
+          severity: 'success',
+        });
+      } catch (err: any) {
+        setError(extractApiError(err, 'Не удалось перенести лид в «Следующее мероприятие»'));
+      } finally {
+        setActionLoadingId(null);
+      }
+      return;
+    }
     if (value.startsWith('option:')) {
       const optionId = Number(value.replace('option:', ''));
       const option = leadStatusOptions.find((s) => s.id === optionId);
@@ -2223,6 +2244,9 @@ const SalesLeadsPage: React.FC = () => {
                     renderValue={() => getLeadStatusDisplay(lead)}
                     disabled={actionLoadingId === lead.id}
                   >
+                    <MenuItem value="next_event">
+                      <Chip size="small" label="Следующее мероприятие" />
+                    </MenuItem>
                     {statusOptions.map((st) => (
                       <MenuItem key={st} value={`base:${st}`}>
                         <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />

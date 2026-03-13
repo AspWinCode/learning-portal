@@ -2569,6 +2569,15 @@ def _append_note_tag(note: Optional[str], tag: str) -> str:
     return f"{tag} {source}".strip()
 
 
+def _remove_note_tag(note: Optional[str], tag: str) -> str:
+    """Удалить тег из заметки (без учёта регистра), сохранив остальной текст."""
+    if not note:
+        return ""
+    lower_tag = tag.lower()
+    parts = [p for p in note.split() if p.lower() != lower_tag]
+    return " ".join(parts).strip()
+
+
 def _get_default_open_status_option_id(db: Session) -> Optional[int]:
     default_open = (
         db.query(LeadTaskStatusOptionModel)
@@ -4767,7 +4776,9 @@ async def mark_event_registration_came(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
-    reg.note = _append_note_tag(reg.note, "[came]")
+    # Если ранее пометили как no-show, убираем этот тег и ставим came
+    cleaned_note = _remove_note_tag(reg.note, "[no-show]")
+    reg.note = _append_note_tag(cleaned_note, "[came]")
     # Обновляем статус лида и стартовую стадию воронки «Дожать на обучение»
     lead.status = LeadStatus.DEMO
     lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.DEMO)
@@ -4823,7 +4834,9 @@ async def mark_event_registration_no_show(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
-    reg.note = _append_note_tag(reg.note, "[no-show]")
+    # Если ранее пометили как пришёл, убираем этот тег и ставим no-show
+    cleaned_note = _remove_note_tag(reg.note, "[came]")
+    reg.note = _append_note_tag(cleaned_note, "[no-show]")
     # UX automation: after no-show create reactivation follow-up.
     if not _has_open_task_like(db, lead.id, "[auto_no_show_reactivate]"):
         due_at = datetime.utcnow() + timedelta(hours=24)

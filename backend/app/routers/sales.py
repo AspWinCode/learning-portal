@@ -4201,6 +4201,7 @@ async def update_lead(
         "next_contact_at",
         "pause_reason",
         "questionnaire_filled",
+        "no_answer_attempt",
     ]:
         if field in update_data:
             setattr(lead, field, update_data[field])

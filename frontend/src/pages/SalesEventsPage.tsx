@@ -119,9 +119,15 @@ export const SalesEventsPageContent: React.FC = () => {
   const conversion = useMemo(() => {
     const registered = registrations.filter((r) => r.status === 'registered');
     const hasTag = (note: string | null | undefined, tag: string) => (note || '').toLowerCase().includes(tag);
-    const confirmed = registered.filter((r) => hasTag(r.note, '[confirmed]'));
+
+    // Приоритет как в getStatusLabel: сначала "пришёл", потом "не явился", потом "подтвердил".
     const came = registered.filter((r) => hasTag(r.note, '[came]'));
-    const noShow = registered.filter((r) => hasTag(r.note, '[no-show]'));
+    const noShow = registered.filter(
+      (r) => !hasTag(r.note, '[came]') && hasTag(r.note, '[no-show]')
+    );
+    const confirmed = registered.filter(
+      (r) => !hasTag(r.note, '[came]') && !hasTag(r.note, '[no-show]') && hasTag(r.note, '[confirmed]')
+    );
 
     const getLead = (reg: EventRegistration) => reg.lead || leadsMap.get(reg.lead_id);
     const offer = registered.filter((r) => {

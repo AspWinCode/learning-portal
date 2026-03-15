@@ -32,6 +32,13 @@ services:
       TOCHKA_CLIENT_ID: ${TOCHKA_CLIENT_ID:-}
       TOCHKA_CLIENT_SECRET: ${TOCHKA_CLIENT_SECRET:-}
       TOCHKA_ACCOUNT_ID: ${TOCHKA_ACCOUNT_ID:-}
+      # SMS Gateway: InfiniReach (SMS_GATEWAY_PROVIDER=infinireach) или другой (generic)
+      SMS_GATEWAY_BASE_URL: ${SMS_GATEWAY_BASE_URL:-}
+      SMS_GATEWAY_TOKEN: ${SMS_GATEWAY_TOKEN:-}
+      SMS_GATEWAY_PROVIDER: ${SMS_GATEWAY_PROVIDER:-}
+      SMS_GATEWAY_FROM: ${SMS_GATEWAY_FROM:-}
+      SMS_GATEWAY_DEVICE_ID: ${SMS_GATEWAY_DEVICE_ID:-}
+      SMS_GATEWAY_SEND_PATH: ${SMS_GATEWAY_SEND_PATH:-3rdparty/v1/messages}
     depends_on:
       db:
         condition: service_healthy

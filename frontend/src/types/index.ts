@@ -370,6 +370,8 @@ export interface Lead {
   converted_to_student_id?: number | null;
   /** Полные данные из формы анкеты (для лидов из формы — свои поля) */
   questionnaire_data?: Record<string, unknown> | null;
+  /** MAX мессенджер: user_id пользователя в платформе MAX */
+  max_user_id?: number | null;
 }
 
 export type LeadTaskStatus = 'open' | 'done';

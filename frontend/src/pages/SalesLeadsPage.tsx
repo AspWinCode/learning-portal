@@ -47,10 +47,12 @@ import {
   Visibility as VisibilityIcon,
   ReceiptLong as ReceiptLongIcon,
   Sms as SmsIcon,
+  Forum as MaxIcon,
 } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import { SendSMSModal } from '../components/SendSMSModal';
+import { SendMaxModal } from '../components/SendMaxModal';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
@@ -236,6 +238,9 @@ const SalesLeadsPage: React.FC = () => {
   const [smsModalOpen, setSmsModalOpen] = useState(false);
   const [smsModalPhone, setSmsModalPhone] = useState('');
   const [smsModalLeadId, setSmsModalLeadId] = useState<number | null>(null);
+  const [maxModalOpen, setMaxModalOpen] = useState(false);
+  const [maxModalLeadId, setMaxModalLeadId] = useState<number | null>(null);
+  const [maxModalMaxUserId, setMaxModalMaxUserId] = useState<number | null>(null);
   const [leadInfoDraft, setLeadInfoDraft] = useState({
     parent_full_name: '',
     parent_phone: '',
@@ -2307,6 +2312,18 @@ const SalesLeadsPage: React.FC = () => {
                       <SmsIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
+                  <Tooltip title="MAX">
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setMaxModalLeadId(lead.id);
+                        setMaxModalMaxUserId(lead.max_user_id ?? null);
+                        setMaxModalOpen(true);
+                      }}
+                    >
+                      <MaxIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 </Stack>
               </TableCell>
             </TableRow>
@@ -2480,6 +2497,18 @@ const SalesLeadsPage: React.FC = () => {
                                 <SmsIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
+                            <Tooltip title="MAX">
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  setMaxModalLeadId(lead.id);
+                                  setMaxModalMaxUserId(lead.max_user_id ?? null);
+                                  setMaxModalOpen(true);
+                                }}
+                              >
+                                <MaxIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
                           </Stack>
                           <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
                             <Button size="small" onClick={() => handleOpenDetails(lead)}>
@@ -2571,6 +2600,19 @@ const SalesLeadsPage: React.FC = () => {
                       }}
                     >
                       SMS
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<MaxIcon />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMaxModalLeadId(selectedLead.id);
+                        setMaxModalMaxUserId(selectedLead.max_user_id ?? null);
+                        setMaxModalOpen(true);
+                      }}
+                    >
+                      MAX
                     </Button>
                   </Stack>
                   {(selectedLead.comment || leadCommentDraft) && (
@@ -3419,6 +3461,13 @@ const SalesLeadsPage: React.FC = () => {
         entityType="lead"
         entityId={smsModalLeadId ?? undefined}
         onSent={() => { if (selectedLead && smsModalLeadId === selectedLead.id) void loadLeadDetails(selectedLead); }}
+      />
+      <SendMaxModal
+        open={maxModalOpen}
+        onClose={() => { setMaxModalOpen(false); setMaxModalLeadId(null); setMaxModalMaxUserId(null); }}
+        leadId={maxModalLeadId ?? undefined}
+        initialMaxUserId={maxModalMaxUserId ?? undefined}
+        onSent={() => { if (selectedLead && maxModalLeadId === selectedLead.id) void loadLeadDetails(selectedLead); }}
       />
     </Layout>
   );

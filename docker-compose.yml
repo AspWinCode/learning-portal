@@ -39,6 +39,11 @@ services:
       SMS_GATEWAY_FROM: ${SMS_GATEWAY_FROM:-}
       SMS_GATEWAY_DEVICE_ID: ${SMS_GATEWAY_DEVICE_ID:-}
       SMS_GATEWAY_SEND_PATH: ${SMS_GATEWAY_SEND_PATH:-3rdparty/v1/messages}
+      # MAX мессенджер: бот (официальный API) и/или личный аккаунт (api-messenger.com)
+      MAX_API_BASE_URL: ${MAX_API_BASE_URL:-https://platform-api.max.ru}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_PERSONAL_BASE_URL: ${MAX_PERSONAL_BASE_URL:-https://app.api-messenger.com/max-v1}
+      MAX_PERSONAL_TOKEN: ${MAX_PERSONAL_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy

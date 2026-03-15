@@ -31,10 +31,11 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Call as CallIcon, ChatBubbleOutline as ChatIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Call as CallIcon, ChatBubbleOutline as ChatIcon, Sms as SmsIcon, Forum as MaxIcon } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import { SendSMSModal } from '../components/SendSMSModal';
+import { SendMaxModal } from '../components/SendMaxModal';
 import { salesApi, smsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { EventItem, EventRegistration, Lead } from '../types';
@@ -57,6 +58,9 @@ export const SalesEventsPageContent: React.FC = () => {
   const [smsModalPhone, setSmsModalPhone] = useState('');
   const [smsModalEventId, setSmsModalEventId] = useState<number | ''>('');
   const [smsModalLeadId, setSmsModalLeadId] = useState<number | null>(null);
+  const [maxModalOpen, setMaxModalOpen] = useState(false);
+  const [maxModalLeadId, setMaxModalLeadId] = useState<number | null>(null);
+  const [maxModalMaxUserId, setMaxModalMaxUserId] = useState<number | null>(null);
   const [bulkSmsOpen, setBulkSmsOpen] = useState(false);
   const [bulkSmsMessage, setBulkSmsMessage] = useState('');
   const [bulkSmsSending, setBulkSmsSending] = useState(false);
@@ -636,6 +640,18 @@ export const SalesEventsPageContent: React.FC = () => {
                               <SmsIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
+                          <Tooltip title="MAX">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setMaxModalLeadId(reg.lead_id);
+                                setMaxModalMaxUserId(reg.lead?.max_user_id ?? null);
+                                setMaxModalOpen(true);
+                              }}
+                            >
+                              <MaxIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Button size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleConfirmRegistration(reg)} disabled={!!(reg.note || '').toLowerCase().includes('[confirmed]')}>
                             Подтвердить
                           </Button>
@@ -770,6 +786,13 @@ export const SalesEventsPageContent: React.FC = () => {
         phone={smsModalPhone}
         entityType="event"
         entityId={typeof smsModalEventId === 'number' ? smsModalEventId : undefined}
+      />
+
+      <SendMaxModal
+        open={maxModalOpen}
+        onClose={() => { setMaxModalOpen(false); setMaxModalLeadId(null); setMaxModalMaxUserId(null); }}
+        leadId={maxModalLeadId ?? undefined}
+        initialMaxUserId={maxModalMaxUserId ?? undefined}
       />
 
       <Dialog open={bulkSmsOpen} onClose={() => !bulkSmsSending && setBulkSmsOpen(false)} maxWidth="sm" fullWidth>

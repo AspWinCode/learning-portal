@@ -2346,5 +2346,30 @@ export const smsApi = {
   },
 };
 
+export interface MaxSendResponse {
+  success: boolean;
+  message_id?: string | null;
+  error?: string | null;
+}
+
+export const maxApi = {
+  isConfigured: async (): Promise<{ configured: boolean; personal?: boolean }> => {
+    const response = await api.get('/api/max/configured');
+    return response.data;
+  },
+  getPersonalQr: async (): Promise<{ img: string }> => {
+    const response = await api.get('/api/max/personal/qr');
+    return response.data;
+  },
+  send: async (payload: {
+    lead_id?: number;
+    max_user_id?: number;
+    message: string;
+  }): Promise<MaxSendResponse> => {
+    const response = await api.post('/api/max/send', payload);
+    return response.data;
+  },
+};
+
 export default api;
 

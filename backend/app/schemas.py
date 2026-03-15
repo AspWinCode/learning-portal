@@ -783,6 +783,7 @@ class LeadUpdate(BaseModel):
     status_option_id: Optional[int] = None
     lost_reason: Optional[str] = None
     questionnaire_filled: Optional[bool] = None
+    max_user_id: Optional[int] = None
 
 
 class LeadStatusOptionBase(BaseModel):
@@ -850,6 +851,7 @@ class LeadResponse(BaseModel):
     post_visit_project_date: Optional[datetime] = None
     converted_to_student_id: Optional[int] = None
     questionnaire_data: Optional[Dict[str, Any]] = None  # данные из формы анкеты (свои поля для лидов из формы)
+    max_user_id: Optional[int] = None  # MAX мессенджер: user_id в платформе MAX
 
     class Config:
         from_attributes = True
@@ -2536,4 +2538,17 @@ class SmsTemplateResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MaxSendRequest(BaseModel):
+    """Отправка сообщения в MAX: либо lead_id (берём max_user_id из лида), либо явно max_user_id."""
+    lead_id: Optional[int] = None
+    max_user_id: Optional[int] = None
+    message: str
+
+
+class MaxSendResponse(BaseModel):
+    success: bool
+    message_id: Optional[str] = None
+    error: Optional[str] = None
 

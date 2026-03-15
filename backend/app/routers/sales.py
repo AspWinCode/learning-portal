@@ -4211,6 +4211,7 @@ async def update_lead(
         "pause_reason",
         "questionnaire_filled",
         "no_answer_attempt",
+        "max_user_id",
     ]:
         if field in update_data:
             setattr(lead, field, update_data[field])

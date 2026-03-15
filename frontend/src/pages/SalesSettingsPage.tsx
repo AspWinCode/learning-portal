@@ -23,7 +23,7 @@ import { Add as AddIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { abonementsApi, salesApi, settingsApi } from '../services/api';
+import { abonementsApi, maxApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
   Abonement,
@@ -100,6 +100,9 @@ const SalesSettingsPage: React.FC = () => {
   });
   const [b2bDistricts, setB2bDistricts] = useState<string[]>([]);
   const [newDistrict, setNewDistrict] = useState('');
+  const [maxPersonalConfigured, setMaxPersonalConfigured] = useState(false);
+  const [maxQrImg, setMaxQrImg] = useState<string | null>(null);
+  const [maxQrLoading, setMaxQrLoading] = useState(false);
 
   const loadData = async () => {
     const errors: string[] = [];
@@ -125,6 +128,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
     ]);
+    maxApi.isConfigured().then((r) => setMaxPersonalConfigured(!!r.personal)).catch(() => setMaxPersonalConfigured(false));
     if (errors.length) {
       const hint = errors.some((e) => e.includes('Not Found') || e.includes('404'))
         ? ' Убедитесь, что на сервере выполнен deploy и миграции (alembic upgrade head).'
@@ -587,6 +591,51 @@ const SalesSettingsPage: React.FC = () => {
                 <Typography variant="body2" color="info.main" sx={{ mt: 0.5 }}>
                   Несколько учеников с одинаковым ФИО плательщика: {tochkaImportResult.ambiguous.map((a) => a.payer_name).join(', ')}. Зачислите вручную или уточните плательщика в выписке.
                 </Typography>
+              )}
+            </Box>
+          )}
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>MAX мессенджер — привязка личного аккаунта</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Если на сервере настроен личный аккаунт (MAX_PERSONAL_TOKEN, api-messenger.com), сообщения в MAX отправляются от вас, а не от бота. Чтобы привязать свой MAX, получите QR-код и отсканируйте его в личном кабинете api-messenger.com.
+          </Typography>
+          {!maxPersonalConfigured ? (
+            <Alert severity="info">Личный аккаунт MAX не настроен. Добавьте MAX_PERSONAL_TOKEN в .env на сервере.</Alert>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={maxQrLoading}
+                onClick={async () => {
+                  setMaxQrImg(null);
+                  setMaxQrLoading(true);
+                  try {
+                    const res = await maxApi.getPersonalQr();
+                    setMaxQrImg(res.img);
+                  } catch {
+                    setError('Не удалось получить QR. Проверьте MAX_PERSONAL_TOKEN на сервере.');
+                  } finally {
+                    setMaxQrLoading(false);
+                  }
+                }}
+              >
+                {maxQrLoading ? 'Загрузка…' : 'Показать QR для привязки'}
+              </Button>
+              {maxQrImg && (
+                <Box sx={{ textAlign: 'center', mt: 1 }}>
+                  <Box
+                    component="img"
+                    src={`data:image/png;base64,${maxQrImg}`}
+                    alt="QR для привязки MAX"
+                    sx={{ maxWidth: 220, border: 1, borderColor: 'divider', borderRadius: 1 }}
+                  />
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Отсканируйте в ЛК api-messenger.com
+                  </Typography>
+                </Box>
               )}
             </Box>
           )}

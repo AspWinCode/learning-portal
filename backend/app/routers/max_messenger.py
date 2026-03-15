@@ -16,6 +16,7 @@ from app.services.max_messenger import (
     send_message_personal,
     is_configured,
     is_personal_configured,
+    get_personal_provider,
     get_personal_qr,
     MAX_MESSAGE_TEXT_LIMIT,
 )
@@ -33,6 +34,7 @@ def api_max_configured(
     return {
         "configured": is_configured(),
         "personal": is_personal_configured(),
+        "personal_provider": get_personal_provider() or None,  # "greenapi" | "api_messenger" | null
     }
 
 

@@ -2353,7 +2353,7 @@ export interface MaxSendResponse {
 }
 
 export const maxApi = {
-  isConfigured: async (): Promise<{ configured: boolean; personal?: boolean }> => {
+  isConfigured: async (): Promise<{ configured: boolean; personal?: boolean; personal_provider?: 'greenapi' | 'api_messenger' | null }> => {
     const response = await api.get('/api/max/configured');
     return response.data;
   },

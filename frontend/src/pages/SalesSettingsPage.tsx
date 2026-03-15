@@ -101,6 +101,7 @@ const SalesSettingsPage: React.FC = () => {
   const [b2bDistricts, setB2bDistricts] = useState<string[]>([]);
   const [newDistrict, setNewDistrict] = useState('');
   const [maxPersonalConfigured, setMaxPersonalConfigured] = useState(false);
+  const [maxPersonalProvider, setMaxPersonalProvider] = useState<'greenapi' | 'api_messenger' | null>(null);
   const [maxQrImg, setMaxQrImg] = useState<string | null>(null);
   const [maxQrLoading, setMaxQrLoading] = useState(false);
 
@@ -128,7 +129,10 @@ const SalesSettingsPage: React.FC = () => {
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
     ]);
-    maxApi.isConfigured().then((r) => setMaxPersonalConfigured(!!r.personal)).catch(() => setMaxPersonalConfigured(false));
+    maxApi.isConfigured().then((r) => {
+      setMaxPersonalConfigured(!!r.personal);
+      setMaxPersonalProvider(r.personal_provider ?? null);
+    }).catch(() => setMaxPersonalConfigured(false));
     if (errors.length) {
       const hint = errors.some((e) => e.includes('Not Found') || e.includes('404'))
         ? ' Убедитесь, что на сервере выполнен deploy и миграции (alembic upgrade head).'
@@ -599,12 +603,21 @@ const SalesSettingsPage: React.FC = () => {
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" mb={1}>MAX мессенджер — привязка личного аккаунта</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Если на сервере настроен личный аккаунт (MAX_PERSONAL_TOKEN, api-messenger.com), сообщения в MAX отправляются от вас, а не от бота. Чтобы привязать свой MAX, получите QR-код и отсканируйте его в личном кабинете api-messenger.com.
+            Сообщения из CRM могут уходить в MAX от вашего личного аккаунта (как от человека). Есть два варианта: <strong>GREEN-API (бесплатно)</strong> — тариф MAX Developer, до 3 чатов; или api-messenger.com (платно). Привязка по QR или в ЛК сервиса.
           </Typography>
           {!maxPersonalConfigured ? (
-            <Alert severity="info">Личный аккаунт MAX не настроен. Добавьте MAX_PERSONAL_TOKEN в .env на сервере.</Alert>
+            <Alert severity="info">
+              Личный аккаунт не настроен. <strong>Бесплатно:</strong> зарегистрируйтесь на{' '}
+              <a href="https://console.green-api.com" target="_blank" rel="noopener noreferrer">console.green-api.com</a>, создайте инстанс MAX, отсканируйте QR в ЛК, затем в .env на сервере добавьте GREEN_API_BASE_URL, GREEN_API_ID_INSTANCE, GREEN_API_TOKEN (значения в ЛК). <strong>Платно:</strong> api-messenger.com — MAX_PERSONAL_TOKEN в .env, затем кнопка «Показать QR» ниже.
+            </Alert>
+          ) : maxPersonalProvider === 'greenapi' ? (
+            <Alert severity="success" sx={{ py: 0.5 }}>
+              Используется GREEN-API (бесплатный тариф). Привязка и QR — в{' '}
+              <a href="https://console.green-api.com" target="_blank" rel="noopener noreferrer">личном кабинете GREEN-API</a>. На бесплатном тарифе — до 3 чатов, отправка сообщений без лимита.
+            </Alert>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
+              <Typography variant="body2" color="text.secondary">api-messenger.com: получите QR ниже и отсканируйте в ЛК сервиса.</Typography>
               <Button
                 variant="outlined"
                 size="small"

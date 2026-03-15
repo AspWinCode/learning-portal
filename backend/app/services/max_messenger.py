@@ -1,7 +1,9 @@
 """
 Интеграция с мессенджером MAX.
 - Режим «бот»: официальный API (platform-api.max.ru), сообщения от бота.
-- Режим «личный аккаунт»: api-messenger.com — привязка по QR, сообщения из твоей сессии (как от человека).
+- Режим «личный аккаунт»:
+  - GREEN-API (бесплатный тариф MAX Developer) — привязка и QR в ЛК console.green-api.com.
+  - api-messenger.com (платный) — QR можно получить через наш API.
 """
 
 import logging
@@ -29,7 +31,23 @@ def _is_bot_configured() -> bool:
     return bool(_get_base_url() and _get_token())
 
 
-# --- Личный аккаунт (api-messenger.com: QR-привязка, отправка из твоей сессии) ---
+# --- Личный аккаунт: GREEN-API (бесплатно) или api-messenger.com (платно) ---
+
+def _get_greenapi_base_url() -> str:
+    return (os.getenv("GREEN_API_BASE_URL") or "").strip().rstrip("/")
+
+
+def _get_greenapi_id_instance() -> str:
+    return (os.getenv("GREEN_API_ID_INSTANCE") or "").strip()
+
+
+def _get_greenapi_token() -> str:
+    return (os.getenv("GREEN_API_TOKEN") or "").strip()
+
+
+def _is_greenapi_configured() -> bool:
+    return bool(_get_greenapi_base_url() and _get_greenapi_id_instance() and _get_greenapi_token())
+
 
 def _get_personal_base_url() -> str:
     return (os.getenv("MAX_PERSONAL_BASE_URL") or "https://app.api-messenger.com/max-v1").strip().rstrip("/")
@@ -39,15 +57,66 @@ def _get_personal_token() -> str:
     return (os.getenv("MAX_PERSONAL_TOKEN") or "").strip()
 
 
-def is_personal_configured() -> bool:
+def _is_api_messenger_configured() -> bool:
     return bool(_get_personal_base_url() and _get_personal_token())
+
+
+def is_personal_configured() -> bool:
+    return _is_greenapi_configured() or _is_api_messenger_configured()
+
+
+def get_personal_provider() -> str:
+    """Какой провайдер личного аккаунта используется: greenapi (бесплатно) или api_messenger."""
+    if _is_greenapi_configured():
+        return "greenapi"
+    if _is_api_messenger_configured():
+        return "api_messenger"
+    return ""
+
+
+def send_message_greenapi(chat_id: str, text: str) -> Tuple[bool, Optional[str], Optional[str]]:
+    """
+    Отправить сообщение через GREEN-API (бесплатный тариф MAX Developer).
+    chat_id — ID чата в MAX (user_id получателя как строка). Сообщение от личного аккаунта.
+    """
+    base_url = _get_greenapi_base_url()
+    id_instance = _get_greenapi_id_instance()
+    token = _get_greenapi_token()
+    if not base_url or not id_instance or not token:
+        return False, None, "GREEN-API не настроен"
+    if not text or not text.strip():
+        return False, None, "Текст сообщения пуст"
+    text = text.strip()
+    if len(text) > MAX_MESSAGE_TEXT_LIMIT:
+        return False, None, f"Текст не более {MAX_MESSAGE_TEXT_LIMIT} символов"
+    url = f"{base_url}/waInstance{id_instance}/sendMessage/{token}"
+    headers = {"Content-Type": "application/json"}
+    payload = {"chatId": chat_id, "message": text}
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=30)
+    except requests.RequestException as e:
+        logger.exception("max_greenapi: send failed chat_id=%s", chat_id)
+        return False, None, str(e)
+    if resp.status_code == 200:
+        try:
+            data = resp.json()
+            msg_id = data.get("idMessage") if isinstance(data, dict) else None
+            logger.info("max_greenapi_sent: chat_id=%s idMessage=%s", chat_id, msg_id)
+            return True, str(msg_id) if msg_id else None, None
+        except Exception:
+            return True, None, None
+    err_text = resp.text or resp.reason or str(resp.status_code)
+    logger.warning("max_greenapi_failed: chat_id=%s status=%s body=%s", chat_id, resp.status_code, err_text[:200])
+    return False, None, f"GREEN-API: {resp.status_code} — {err_text[:200]}"
 
 
 def get_personal_qr() -> Tuple[bool, Optional[str], Optional[str]]:
     """
-    Получить QR-код для привязки личного MAX в api-messenger.com.
-    Возвращает (success, base64_image, error_message).
+    Получить QR-код для привязки личного MAX. Только для api-messenger.com.
+    Для GREEN-API QR получают в ЛК console.green-api.com.
     """
+    if _is_greenapi_configured():
+        return False, None, "Для GREEN-API привязка и QR — в личном кабинете console.green-api.com"
     base_url = _get_personal_base_url()
     token = _get_personal_token()
     if not base_url or not token:
@@ -73,10 +142,10 @@ def get_personal_qr() -> Tuple[bool, Optional[str], Optional[str]]:
 
 def send_message_personal(chat_id: str, text: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """
-    Отправить сообщение из личного аккаунта (api-messenger.com).
-    chat_id — ID чата в MAX (обычно user_id получателя как строка).
-    Сообщение приходит получателю как от тебя (личный аккаунт), а не от бота.
+    Отправить сообщение из личного аккаунта. Используется GREEN-API (если настроен) или api-messenger.com.
     """
+    if _is_greenapi_configured():
+        return send_message_greenapi(chat_id, text)
     base_url = _get_personal_base_url()
     token = _get_personal_token()
     if not base_url or not token:

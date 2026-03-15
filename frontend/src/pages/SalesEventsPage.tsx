@@ -14,6 +14,7 @@ import {
   DialogTitle,
   FormControl,
   Grid,
+  IconButton,
   InputLabel,
   Link,
   MenuItem,
@@ -27,11 +28,14 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import { Call as CallIcon, ChatBubbleOutline as ChatIcon, Sms as SmsIcon } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
-import { salesApi } from '../services/api';
+import { SendSMSModal } from '../components/SendSMSModal';
+import { salesApi, smsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { EventItem, EventRegistration, Lead } from '../types';
 
@@ -49,6 +53,13 @@ export const SalesEventsPageContent: React.FC = () => {
   const [selectedRegistrationIds, setSelectedRegistrationIds] = useState<number[]>([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [smsModalOpen, setSmsModalOpen] = useState(false);
+  const [smsModalPhone, setSmsModalPhone] = useState('');
+  const [smsModalEventId, setSmsModalEventId] = useState<number | ''>('');
+  const [smsModalLeadId, setSmsModalLeadId] = useState<number | null>(null);
+  const [bulkSmsOpen, setBulkSmsOpen] = useState(false);
+  const [bulkSmsMessage, setBulkSmsMessage] = useState('');
+  const [bulkSmsSending, setBulkSmsSending] = useState(false);
   const [eventForm, setEventForm] = useState({
     title: '',
     description: '',
@@ -549,6 +560,14 @@ export const SalesEventsPageContent: React.FC = () => {
               >
                 Отменить ({selectedRegistrationIds.length})
               </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setBulkSmsOpen(true)}
+                disabled={selectedRegistrationIds.length === 0 || bulkBusy}
+              >
+                Отправить SMS ({selectedRegistrationIds.length})
+              </Button>
             </Stack>
             <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small" sx={{ minWidth: 860 }}>
@@ -593,7 +612,30 @@ export const SalesEventsPageContent: React.FC = () => {
                     <TableCell>{getStatusLabel(reg)}</TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       {reg.status === 'registered' && (
-                        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center" flexWrap="wrap">
+                          <Tooltip title="Позвонить">
+                            <IconButton size="small" component="a" href={`tel:${reg.lead?.parent_phone || reg.lead?.phone || ''}`}>
+                              <CallIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Telegram">
+                            <IconButton size="small" component="a" href={`https://t.me/${(reg.lead?.parent_phone || reg.lead?.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!reg.lead?.phone}>
+                              <ChatIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="SMS">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setSmsModalPhone(reg.lead?.parent_phone || reg.lead?.phone || '');
+                                setSmsModalEventId(selectedEventId as number);
+                                setSmsModalLeadId(reg.lead_id);
+                                setSmsModalOpen(true);
+                              }}
+                            >
+                              <SmsIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Button size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => handleConfirmRegistration(reg)} disabled={!!(reg.note || '').toLowerCase().includes('[confirmed]')}>
                             Подтвердить
                           </Button>
@@ -718,6 +760,65 @@ export const SalesEventsPageContent: React.FC = () => {
           <Button onClick={() => setRegisterOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={handleRegisterLead} disabled={isEventFull}>
             {isEventFull ? 'Слоты закончились' : 'Зарегистрировать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <SendSMSModal
+        open={smsModalOpen}
+        onClose={() => { setSmsModalOpen(false); setSmsModalLeadId(null); setSmsModalEventId(''); }}
+        phone={smsModalPhone}
+        entityType="event"
+        entityId={typeof smsModalEventId === 'number' ? smsModalEventId : undefined}
+      />
+
+      <Dialog open={bulkSmsOpen} onClose={() => !bulkSmsSending && setBulkSmsOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Массовая отправка SMS</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Выбрано регистраций: {selectedRegistrationIds.length}. Сообщение будет отправлено на телефоны лидов.
+          </Typography>
+          <TextField
+            label="Текст сообщения"
+            fullWidth
+            multiline
+            rows={4}
+            value={bulkSmsMessage}
+            onChange={(e) => setBulkSmsMessage(e.target.value.slice(0, 500))}
+            helperText={`${bulkSmsMessage.length} / 500`}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBulkSmsOpen(false)} disabled={bulkSmsSending}>Отмена</Button>
+          <Button
+            variant="contained"
+            disabled={!bulkSmsMessage.trim() || bulkSmsSending}
+            onClick={async () => {
+              const phones = registeredRows
+                .filter((r) => selectedRegistrationIds.includes(r.id))
+                .map((r) => r.lead?.parent_phone || r.lead?.phone)
+                .filter((p): p is string => !!p?.trim());
+              const unique = [...new Set(phones)];
+              if (unique.length === 0) {
+                setError('Нет телефонов у выбранных регистраций');
+                return;
+              }
+              setBulkSmsSending(true);
+              setError(null);
+              try {
+                await smsApi.sendBulk({ phones: unique, message: bulkSmsMessage.trim() });
+                setSuccessMessage(`SMS отправлено на ${unique.length} номер(ов)`);
+                setBulkSmsOpen(false);
+                setBulkSmsMessage('');
+                setSelectedRegistrationIds([]);
+              } catch (err: unknown) {
+                setError(extractApiError(err, 'Ошибка массовой отправки SMS'));
+              } finally {
+                setBulkSmsSending(false);
+              }
+            }}
+          >
+            {bulkSmsSending ? 'Отправка…' : 'Отправить'}
           </Button>
         </DialogActions>
       </Dialog>

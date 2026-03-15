@@ -5,6 +5,7 @@ from sqlalchemy.types import TypeDecorator
 from datetime import datetime
 import os
 import enum
+import uuid
 from app.database import Base
 
 # При записи в PostgreSQL всегда отправляем lowercase (value), т.к. миграции создают enum с 'active', 'archived'.
@@ -385,6 +386,36 @@ class LeadSource(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SmsMessage(Base):
+    """История отправленных SMS через SMS Gateway (телефон с приложением)."""
+    __tablename__ = "sms_messages"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    phone = Column(String(32), nullable=False, index=True)
+    message = Column(Text, nullable=False)
+    entity_type = Column(String(32), nullable=True, index=True)  # lead | event | task
+    entity_id = Column(Integer, nullable=True, index=True)
+    status = Column(String(16), nullable=False, default="pending", index=True)  # sent | failed
+    gateway_id = Column(String(128), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    creator = relationship("User")
+
+
+class SmsTemplate(Base):
+    """Шаблоны SMS для лидов, событий, задач (подстановки: {time}, {location}, {bot_link} и т.д.)."""
+    __tablename__ = "sms_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(256), nullable=False, index=True)
+    category = Column(String(64), nullable=True, index=True)
+    text = Column(Text, nullable=False)
+    active = Column(Boolean, default=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

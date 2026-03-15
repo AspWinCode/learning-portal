@@ -46,9 +46,11 @@ import {
   Close as CloseIcon,
   Visibility as VisibilityIcon,
   ReceiptLong as ReceiptLongIcon,
+  Sms as SmsIcon,
 } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
+import { SendSMSModal } from '../components/SendSMSModal';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
@@ -231,6 +233,9 @@ const SalesLeadsPage: React.FC = () => {
   const [leadCardTab, setLeadCardTab] = useState<'overview' | 'push'>('overview');
   const [leadPushStatsMap, setLeadPushStatsMap] = useState<Record<number, LeadPushStats>>({});
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
+  const [smsModalOpen, setSmsModalOpen] = useState(false);
+  const [smsModalPhone, setSmsModalPhone] = useState('');
+  const [smsModalLeadId, setSmsModalLeadId] = useState<number | null>(null);
   const [leadInfoDraft, setLeadInfoDraft] = useState({
     parent_full_name: '',
     parent_phone: '',
@@ -2215,6 +2220,7 @@ const SalesLeadsPage: React.FC = () => {
                 Создан
               </TableSortLabel>
             </TableCell>
+            <TableCell align="center">Действия</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -2277,11 +2283,37 @@ const SalesLeadsPage: React.FC = () => {
                   return isValid(d) ? format(d, 'dd.MM.yyyy') : lead.created_at;
                 })()}
               </TableCell>
+              <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                <Stack direction="row" spacing={0.5} justifyContent="center" alignItems="center">
+                  <Tooltip title="Позвонить">
+                    <IconButton size="small" component="a" href={`tel:${lead.parent_phone || lead.phone || ''}`}>
+                      <CallIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Telegram">
+                    <IconButton size="small" component="a" href={`https://t.me/${(lead.parent_phone || lead.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!lead.phone}>
+                      <ChatIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="SMS">
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setSmsModalPhone(lead.parent_phone || lead.phone || '');
+                        setSmsModalLeadId(lead.id);
+                        setSmsModalOpen(true);
+                      }}
+                    >
+                      <SmsIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              </TableCell>
             </TableRow>
           ))}
           {!loading && filteredSortedLeads.length === 0 && (
             <TableRow>
-              <TableCell colSpan={10}>
+              <TableCell colSpan={11}>
                 <Typography color="text.secondary">Лидов нет</Typography>
               </TableCell>
             </TableRow>
@@ -2425,7 +2457,31 @@ const SalesLeadsPage: React.FC = () => {
                               </Select>
                             </FormControl>
                           </Box>
-                          <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
+                          <Stack direction="row" spacing={0.5} mt={1} alignItems="center" flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
+                            <Tooltip title="Позвонить">
+                              <IconButton size="small" component="a" href={`tel:${lead.parent_phone || lead.phone || ''}`}>
+                                <CallIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Telegram">
+                              <IconButton size="small" component="a" href={`https://t.me/${(lead.parent_phone || lead.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!lead.phone}>
+                                <ChatIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="SMS">
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  setSmsModalPhone(lead.parent_phone || lead.phone || '');
+                                  setSmsModalLeadId(lead.id);
+                                  setSmsModalOpen(true);
+                                }}
+                              >
+                                <SmsIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                          <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
                             <Button size="small" onClick={() => handleOpenDetails(lead)}>
                               Открыть
                             </Button>
@@ -2478,6 +2534,45 @@ const SalesLeadsPage: React.FC = () => {
                   <Typography variant="body2" color="text.secondary" sx={{ width: '100%', mt: 0.5 }}>
                     Контакт: {selectedLead.contact_name || '—'} · {selectedLead.phone || '—'}
                   </Typography>
+                  <Stack direction="row" alignItems="center" sx={{ width: '100%', mt: 0.5, gap: 1 }} flexWrap="wrap">
+                    <Typography variant="caption" color="text.secondary">Телефон</Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<CallIcon />}
+                      href={`tel:${selectedLead.parent_phone || selectedLead.phone || ''}`}
+                      component="a"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Позвонить
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<ChatIcon />}
+                      href={selectedLead.phone ? `https://t.me/${selectedLead.phone.replace(/\D/g, '')}` : undefined}
+                      component="a"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      disabled={!selectedLead.phone}
+                    >
+                      Telegram
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<SmsIcon />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSmsModalPhone(selectedLead.parent_phone || selectedLead.phone || '');
+                        setSmsModalLeadId(selectedLead.id);
+                        setSmsModalOpen(true);
+                      }}
+                    >
+                      SMS
+                    </Button>
+                  </Stack>
                   {(selectedLead.comment || leadCommentDraft) && (
                     <Box sx={{ width: '100%', mt: 1, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
                       <Typography variant="caption" color="text.secondary" component="span">
@@ -3317,6 +3412,14 @@ const SalesLeadsPage: React.FC = () => {
           {toast.message}
         </Alert>
       </Snackbar>
+      <SendSMSModal
+        open={smsModalOpen}
+        onClose={() => { setSmsModalOpen(false); setSmsModalLeadId(null); }}
+        phone={smsModalPhone}
+        entityType="lead"
+        entityId={smsModalLeadId ?? undefined}
+        onSent={() => { if (selectedLead && smsModalLeadId === selectedLead.id) void loadLeadDetails(selectedLead); }}
+      />
     </Layout>
   );
 };

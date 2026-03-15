@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.database import SessionLocal
-from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, admin_tools
+from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, admin_tools, sms
 
 app = FastAPI(
     title="Learning Portal API",
@@ -206,6 +206,7 @@ app.include_router(student_accounts.router, prefix="/api/student-accounts", tags
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
 app.include_router(admin_tools.router, prefix="/api/admin-tools", tags=["admin_tools"])
+app.include_router(sms.router, prefix="/api", tags=["sms"])
 
 
 @app.exception_handler(Exception)

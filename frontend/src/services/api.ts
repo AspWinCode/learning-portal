@@ -2292,5 +2292,59 @@ export const tasksApi = {
   },
 };
 
+// SMS (Gateway) — отправка только через backend
+export interface SmsMessageResponse {
+  id: string;
+  phone: string;
+  message: string;
+  entity_type: string | null;
+  entity_id: number | null;
+  status: string;
+  gateway_id: string | null;
+  created_at: string;
+  sent_at: string | null;
+  created_by: number;
+}
+
+export interface SmsTemplateResponse {
+  id: number;
+  name: string;
+  category: string | null;
+  text: string;
+  active: boolean;
+  created_at: string;
+}
+
+export const smsApi = {
+  send: async (payload: {
+    phone: string;
+    message: string;
+    entity_type?: 'lead' | 'event' | 'task';
+    entity_id?: number;
+  }): Promise<SmsMessageResponse> => {
+    const response = await api.post('/api/sms/send', payload);
+    return response.data;
+  },
+  sendBulk: async (payload: { phones: string[]; message: string }): Promise<SmsMessageResponse[]> => {
+    const response = await api.post('/api/sms/send-bulk', payload);
+    return response.data;
+  },
+  getHistory: async (params?: {
+    entity_type?: string;
+    entity_id?: number;
+    phone?: string;
+  }): Promise<SmsMessageResponse[]> => {
+    const response = await api.get('/api/sms/history', { params: params || {} });
+    return response.data;
+  },
+  listTemplates: async (params?: {
+    category?: string;
+    active_only?: boolean;
+  }): Promise<SmsTemplateResponse[]> => {
+    const response = await api.get('/api/sms/templates', { params: params || {} });
+    return response.data;
+  },
+};
+
 export default api;
 

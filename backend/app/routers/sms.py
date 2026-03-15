@@ -142,7 +142,7 @@ def api_sms_send_bulk(
         raise HTTPException(status_code=400, detail="Нет корректных номеров")
 
     results = []
-    for phone in phones:
+    for i, phone in enumerate(phones):
         _check_rate_limit(db, phone)
         record = SmsMessage(
             phone=phone,
@@ -166,18 +166,6 @@ def api_sms_send_bulk(
         db.commit()
         db.refresh(record)
         results.append(_sms_message_to_response(record))
-
-    # Последовательная отправка с паузой (в send_bulk_sms уже есть delay, но мы создаём записи по одной и шлём по одной)
-    # Здесь мы отправили сразу все без паузы — для bulk лучше вызывать send_bulk_sms с одним циклом и создавать записи после каждой отправки. Переделаю: создаём запись, шлём, пауза, следующий.
-    # Уже сделал по одной — паузу между номерами нужно добавить. В ТЗ "1 SMS / 60 sec на номер" — значит между двумя отправками на разные номера тоже можно подождать, чтобы не превысить лимит на один номер при повторном вызове. Оставляю как есть: по одному вызову send_sms на каждый номер, записи созданы. Если нужна пауза между номерами в одном bulk — добавим time.sleep(61) между итерациями.
-    import time
-    for i, phone in enumerate(phones):
-        if i > 0:
+        if i < len(phones) - 1:
             time.sleep(61)
-        # Запись уже создана и отправлена выше — мы отправили все подряд. Нужно переделать: в цикле создаём запись, шлём, ждём 61 сек, след. номер.
-    # Исправляю логику bulk: создаём запись, отправляем, обновляем, пауза 61 сек, следующий.
     return results
-</think>
-Исправляю роутер: в bulk делаю паузу между отправками и создаю записи по одной.
-<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>
-StrReplace

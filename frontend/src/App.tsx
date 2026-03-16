@@ -42,6 +42,9 @@ import SalesTaxDeductionPage from './pages/SalesTaxDeductionPage';
 import ManualLessonsPage from './pages/ManualLessonsPage';
 import SpecialistQuestionnairePage from './pages/SpecialistQuestionnairePage';
 import TildaLeadPage from './pages/TildaLeadPage';
+import StartLeadPage from './pages/StartLeadPage';
+import BaseLeadPage from './pages/BaseLeadPage';
+import ProLeadPage from './pages/ProLeadPage';
 import StudentCardsPage from './pages/StudentCardsPage';
 import AnketyPage from './pages/AnketyPage';
 import TasksPage from './pages/TasksPage';
@@ -83,6 +86,9 @@ function App() {
             <Route path="/set-password" element={<SetPasswordPage />} />
             <Route path="/anketa/specialist" element={<SpecialistQuestionnairePage />} />
             <Route path="/anketa/tilda_lead" element={<TildaLeadPage />} />
+            <Route path="/anketa/start_lead" element={<StartLeadPage />} />
+            <Route path="/anketa/base_lead" element={<BaseLeadPage />} />
+            <Route path="/anketa/pro_lead" element={<ProLeadPage />} />
             <Route
               path="/dashboard"
               element={

@@ -1259,6 +1259,10 @@ class TildaLeadRequest(BaseModel):
     parent_full_name: str = Field(..., min_length=1, description="ФИО родителя")
     parent_phone: str = Field(..., min_length=1, description="Контактный телефон родителя")
     child_full_name: str = Field(..., min_length=1, description="ФИО ученика")
+    kind: Literal["start", "base", "pro"] = Field(
+        "start",
+        description="Тип направления: start — Первый шаг, base — Специалист, pro — Эксперт",
+    )
 
 
 class TildaLeadResponse(BaseModel):

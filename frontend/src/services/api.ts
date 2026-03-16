@@ -1539,6 +1539,7 @@ export const salesApi = {
     parent_full_name: string;
     parent_phone: string;
     child_full_name: string;
+    kind: 'start' | 'base' | 'pro';
   }): Promise<{ lead_id: number }> => {
     const response = await api.post('/api/sales/public/leads/tilda-lead', payload);
     return response.data;

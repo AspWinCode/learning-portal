@@ -3,7 +3,13 @@ import { Alert, Box, Button, FormHelperText, Stack, TextField, Typography } from
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 
-const TildaLeadPage: React.FC = () => {
+export type TildaLeadKind = 'start' | 'base' | 'pro';
+
+interface TildaLeadPageProps {
+  kind?: TildaLeadKind;
+}
+
+const TildaLeadPage: React.FC<TildaLeadPageProps> = ({ kind = 'start' }) => {
   const [parentFullName, setParentFullName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [childFullName, setChildFullName] = useState('');
@@ -42,6 +48,7 @@ const TildaLeadPage: React.FC = () => {
         parent_full_name: parentName,
         parent_phone: phone,
         child_full_name: childName,
+        kind,
       });
       setSuccess(true);
     } catch (err: unknown) {
@@ -103,6 +110,13 @@ const TildaLeadPage: React.FC = () => {
     );
   }
 
+  const title =
+    kind === 'base'
+      ? 'Просим заполнить информацию по направлению «Специалист»'
+      : kind === 'pro'
+        ? 'Просим заполнить информацию по направлению «Эксперт»'
+        : 'Просим заполнить информацию по направлению «Первый шаг»';
+
   return (
     <Box
       sx={{
@@ -139,9 +153,9 @@ const TildaLeadPage: React.FC = () => {
               letterSpacing: 0.8,
               mb: 3,
             }}
-          >
-              Просим заполнить информацию
-          </Typography>
+            >
+              {title}
+            </Typography>
           <Typography
             sx={{
               fontSize: { xs: 13, md: 15 },

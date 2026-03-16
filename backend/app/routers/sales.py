@@ -4025,7 +4025,9 @@ async def submit_specialist_questionnaire(
     return SpecialistQuestionnaireResponse(lead_id=lead.id)
 
 
-TILDA_SOURCE_NAME = "Сайт Tilda"
+TILDA_SOURCE_START = "Тильда_Первый Шаг"
+TILDA_SOURCE_BASE = "Тильда_Специалист"
+TILDA_SOURCE_PRO = "Тильда_Эксперт"
 
 
 @router.post(
@@ -4039,8 +4041,10 @@ async def submit_tilda_lead(
 ):
     """
     Публичная анкета лида с сайта Tilda.
-    Создаёт лида в статусе «новый» с пометкой источника «Сайт Tilda».
-    Валидация телефона по стране (РФ, РБ и др.).
+    Создаёт лида в статусе «новый» с пометкой источника в зависимости от направления:
+    - Тильда_Первый Шаг (kind=start)
+    - Тильда_Специалист (kind=base)
+    - Тильда_Эксперт (kind=pro)
     """
     parent_name = (payload.parent_full_name or "").strip()
     child_name = (payload.child_full_name or "").strip()
@@ -4062,7 +4066,18 @@ async def submit_tilda_lead(
     if not owner:
         raise HTTPException(status_code=500, detail="В системе не настроен пользователь для приёма заявок")
 
-    source_id, source_name = _resolve_source(db, None, TILDA_SOURCE_NAME)
+    kind = (payload.kind or "start").strip()
+    if kind == "base":
+        src_label = TILDA_SOURCE_BASE
+        tag = "tilda_base_lead"
+    elif kind == "pro":
+        src_label = TILDA_SOURCE_PRO
+        tag = "tilda_pro_lead"
+    else:
+        src_label = TILDA_SOURCE_START
+        tag = "tilda_start_lead"
+
+    source_id, source_name = _resolve_source(db, None, src_label)
     status_option_id = _get_default_lead_status_option_id(db, LeadStatus.NEW)
 
     lead = Lead(
@@ -4072,11 +4087,11 @@ async def submit_tilda_lead(
         parent_full_name=parent_name,
         parent_phone=normalized_phone,
         child_full_name=child_name,
-        source=source_name or TILDA_SOURCE_NAME,
+        source=source_name or src_label,
         source_id=source_id,
         status=LeadStatus.NEW,
         status_option_id=status_option_id,
-        tags=["tilda_lead"],
+        tags=[tag],
     )
     db.add(lead)
     db.commit()

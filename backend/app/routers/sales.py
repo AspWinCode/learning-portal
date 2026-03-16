@@ -78,7 +78,7 @@ from app.models import (
     Task,
     TaskStatus,
 )
-from app.utils.phone import normalize_phone
+from app.utils.phone import normalize_phone, validate_phone_for_lead
 from app.schemas import (
     LeadCreate,
     LeadUpdate,
@@ -168,6 +168,8 @@ from app.schemas import (
     CustomLessonResponse,
     SpecialistQuestionnaireRequest,
     SpecialistQuestionnaireResponse,
+    TildaLeadRequest,
+    TildaLeadResponse,
 )
 from app.routers.action_log import log_action
 from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
@@ -4021,6 +4023,65 @@ async def submit_specialist_questionnaire(
     db.commit()
     db.refresh(lead)
     return SpecialistQuestionnaireResponse(lead_id=lead.id)
+
+
+TILDA_SOURCE_NAME = "Сайт Tilda"
+
+
+@router.post(
+    "/public/leads/tilda-lead",
+    response_model=TildaLeadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_tilda_lead(
+    payload: TildaLeadRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Публичная анкета лида с сайта Tilda.
+    Создаёт лида в статусе «новый» с пометкой источника «Сайт Tilda».
+    Валидация телефона по стране (РФ, РБ и др.).
+    """
+    parent_name = (payload.parent_full_name or "").strip()
+    child_name = (payload.child_full_name or "").strip()
+    if not parent_name:
+        raise HTTPException(status_code=400, detail="Укажите ФИО родителя")
+    if not child_name:
+        raise HTTPException(status_code=400, detail="Укажите ФИО ученика")
+
+    normalized_phone, phone_error = validate_phone_for_lead(payload.parent_phone)
+    if phone_error:
+        raise HTTPException(status_code=400, detail=phone_error)
+
+    owner = (
+        db.query(User)
+        .filter(User.role.in_([UserRole.SALES, UserRole.OWNER, UserRole.ADMIN]))
+        .order_by(User.id)
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=500, detail="В системе не настроен пользователь для приёма заявок")
+
+    source_id, source_name = _resolve_source(db, None, TILDA_SOURCE_NAME)
+    status_option_id = _get_default_lead_status_option_id(db, LeadStatus.NEW)
+
+    lead = Lead(
+        owner_id=owner.id,
+        contact_name=parent_name,
+        phone=normalized_phone,
+        parent_full_name=parent_name,
+        parent_phone=normalized_phone,
+        child_full_name=child_name,
+        source=source_name or TILDA_SOURCE_NAME,
+        source_id=source_id,
+        status=LeadStatus.NEW,
+        status_option_id=status_option_id,
+        tags=["tilda_lead"],
+    )
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    return TildaLeadResponse(lead_id=lead.id)
 
 
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)

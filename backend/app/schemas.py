@@ -1253,6 +1253,18 @@ class SpecialistQuestionnaireResponse(BaseModel):
     lead_id: int
 
 
+class TildaLeadRequest(BaseModel):
+    """Публичная анкета лида с сайта Tilda: ФИО родителя, телефон, ФИО ученика."""
+
+    parent_full_name: str = Field(..., min_length=1, description="ФИО родителя")
+    parent_phone: str = Field(..., min_length=1, description="Контактный телефон родителя")
+    child_full_name: str = Field(..., min_length=1, description="ФИО ученика")
+
+
+class TildaLeadResponse(BaseModel):
+    lead_id: int
+
+
 class LeadPostVisitOutcomeRequest(BaseModel):
     outcome: Literal["agreed", "thinking", "declined"]
     follow_up_at: Optional[datetime] = None

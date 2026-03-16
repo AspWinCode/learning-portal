@@ -241,6 +241,7 @@ const SalesLeadsPage: React.FC = () => {
   const [maxModalOpen, setMaxModalOpen] = useState(false);
   const [maxModalLeadId, setMaxModalLeadId] = useState<number | null>(null);
   const [maxModalMaxUserId, setMaxModalMaxUserId] = useState<number | null>(null);
+  const [maxModalPhone, setMaxModalPhone] = useState<string>('');
   const [leadInfoDraft, setLeadInfoDraft] = useState({
     parent_full_name: '',
     parent_phone: '',
@@ -2318,6 +2319,7 @@ const SalesLeadsPage: React.FC = () => {
                       onClick={() => {
                         setMaxModalLeadId(lead.id);
                         setMaxModalMaxUserId(lead.max_user_id ?? null);
+                        setMaxModalPhone(lead.parent_phone || lead.phone || '');
                         setMaxModalOpen(true);
                       }}
                     >
@@ -2503,6 +2505,7 @@ const SalesLeadsPage: React.FC = () => {
                                 onClick={() => {
                                   setMaxModalLeadId(lead.id);
                                   setMaxModalMaxUserId(lead.max_user_id ?? null);
+                                  setMaxModalPhone(lead.parent_phone || lead.phone || '');
                                   setMaxModalOpen(true);
                                 }}
                               >
@@ -2609,6 +2612,7 @@ const SalesLeadsPage: React.FC = () => {
                         e.stopPropagation();
                         setMaxModalLeadId(selectedLead.id);
                         setMaxModalMaxUserId(selectedLead.max_user_id ?? null);
+                        setMaxModalPhone(selectedLead.parent_phone || selectedLead.phone || '');
                         setMaxModalOpen(true);
                       }}
                     >
@@ -3464,9 +3468,10 @@ const SalesLeadsPage: React.FC = () => {
       />
       <SendMaxModal
         open={maxModalOpen}
-        onClose={() => { setMaxModalOpen(false); setMaxModalLeadId(null); setMaxModalMaxUserId(null); }}
+        onClose={() => { setMaxModalOpen(false); setMaxModalLeadId(null); setMaxModalMaxUserId(null); setMaxModalPhone(''); }}
         leadId={maxModalLeadId ?? undefined}
         initialMaxUserId={maxModalMaxUserId ?? undefined}
+        initialPhone={maxModalPhone || undefined}
         onSent={() => { if (selectedLead && maxModalLeadId === selectedLead.id) void loadLeadDetails(selectedLead); }}
       />
     </Layout>

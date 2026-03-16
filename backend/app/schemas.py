@@ -2541,9 +2541,10 @@ class SmsTemplateResponse(BaseModel):
 
 
 class MaxSendRequest(BaseModel):
-    """Отправка сообщения в MAX: либо lead_id (берём max_user_id из лида), либо явно max_user_id."""
+    """Отправка в MAX: lead_id, max_user_id (число), или phone (для GREEN-API — по номеру телефона)."""
     lead_id: Optional[int] = None
     max_user_id: Optional[int] = None
+    phone: Optional[str] = None  # для GREEN-API: отправка по номеру (формат 79...@c.us)
     message: str
 
 

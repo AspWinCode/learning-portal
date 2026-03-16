@@ -2364,6 +2364,7 @@ export const maxApi = {
   send: async (payload: {
     lead_id?: number;
     max_user_id?: number;
+    phone?: string;
     message: string;
   }): Promise<MaxSendResponse> => {
     const response = await api.post('/api/max/send', payload);

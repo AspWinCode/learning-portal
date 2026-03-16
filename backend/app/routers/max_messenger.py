@@ -11,6 +11,7 @@ from app import auth
 from app.database import get_db
 from app.models import User, Lead
 from app.schemas import MaxSendRequest, MaxSendResponse
+from app.utils.phone import normalize_phone
 from app.services.max_messenger import (
     send_message,
     send_message_personal,
@@ -71,6 +72,7 @@ def api_max_send(
         )
 
     user_id: int | None = payload.max_user_id
+    phone: str | None = (payload.phone or "").strip() or None
     lead = None
     if payload.lead_id is not None:
         lead = db.query(Lead).filter(Lead.id == payload.lead_id).first()
@@ -78,15 +80,28 @@ def api_max_send(
             raise HTTPException(status_code=404, detail="Лид не найден")
         if user_id is None:
             user_id = lead.max_user_id
+        if not phone:
+            phone = (lead.parent_phone or lead.phone or "").strip() or None
 
-    if user_id is None:
+    # GREEN-API: можно отправить по номеру телефона (формат 79...@c.us для РФ)
+    use_phone = False
+    chat_id_for_personal: str | None = None
+    if is_personal_configured() and get_personal_provider() == "greenapi" and phone:
+        normalized = normalize_phone(phone)
+        if normalized and (normalized.startswith("+7") or normalized.startswith("+375")):
+            digits = normalized.lstrip("+")
+            chat_id_for_personal = f"{digits}@c.us"
+            use_phone = True
+
+    if not use_phone and user_id is None:
         raise HTTPException(
             status_code=400,
-            detail="Укажите MAX user_id получателя (или сохраните его в карточке лида).",
+            detail="Укажите номер телефона получателя (для GREEN-API) или MAX user_id (число из профиля в MAX).",
         )
 
-    # Личный аккаунт (api-messenger.com): сообщение от тебя. Иначе — от бота.
-    if is_personal_configured():
+    if is_personal_configured() and use_phone and chat_id_for_personal:
+        success, message_id, err = send_message_personal(chat_id_for_personal, message)
+    elif is_personal_configured():
         success, message_id, err = send_message_personal(str(user_id), message)
     else:
         success, message_id, err = send_message(user_id, message)

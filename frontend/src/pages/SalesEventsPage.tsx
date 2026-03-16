@@ -61,6 +61,7 @@ export const SalesEventsPageContent: React.FC = () => {
   const [maxModalOpen, setMaxModalOpen] = useState(false);
   const [maxModalLeadId, setMaxModalLeadId] = useState<number | null>(null);
   const [maxModalMaxUserId, setMaxModalMaxUserId] = useState<number | null>(null);
+  const [maxModalPhone, setMaxModalPhone] = useState<string>('');
   const [bulkSmsOpen, setBulkSmsOpen] = useState(false);
   const [bulkSmsMessage, setBulkSmsMessage] = useState('');
   const [bulkSmsSending, setBulkSmsSending] = useState(false);
@@ -646,6 +647,7 @@ export const SalesEventsPageContent: React.FC = () => {
                               onClick={() => {
                                 setMaxModalLeadId(reg.lead_id);
                                 setMaxModalMaxUserId(reg.lead?.max_user_id ?? null);
+                                setMaxModalPhone(reg.lead?.parent_phone || reg.lead?.phone || '');
                                 setMaxModalOpen(true);
                               }}
                             >
@@ -790,9 +792,10 @@ export const SalesEventsPageContent: React.FC = () => {
 
       <SendMaxModal
         open={maxModalOpen}
-        onClose={() => { setMaxModalOpen(false); setMaxModalLeadId(null); setMaxModalMaxUserId(null); }}
+        onClose={() => { setMaxModalOpen(false); setMaxModalLeadId(null); setMaxModalMaxUserId(null); setMaxModalPhone(''); }}
         leadId={maxModalLeadId ?? undefined}
         initialMaxUserId={maxModalMaxUserId ?? undefined}
+        initialPhone={maxModalPhone || undefined}
       />
 
       <Dialog open={bulkSmsOpen} onClose={() => !bulkSmsSending && setBulkSmsOpen(false)} maxWidth="sm" fullWidth>

@@ -22,6 +22,8 @@ export interface SendMaxModalProps {
   leadId?: number;
   /** MAX user_id получателя (из лида или ввод вручную) */
   initialMaxUserId?: number | null;
+  /** Телефон получателя (для отправки по номеру в GREEN-API) */
+  initialPhone?: string | null;
 }
 
 export const SendMaxModal: React.FC<SendMaxModalProps> = ({
@@ -30,7 +32,9 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
   onSent,
   leadId,
   initialMaxUserId,
+  initialPhone,
 }) => {
+  const [phone, setPhone] = useState(initialPhone ?? '');
   const [maxUserId, setMaxUserId] = useState(
     initialMaxUserId != null ? String(initialMaxUserId) : '',
   );
@@ -39,26 +43,28 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const [personalMode, setPersonalMode] = useState(false);
+  const [personalProvider, setPersonalProvider] = useState<'greenapi' | 'api_messenger' | null>(null);
 
   useEffect(() => {
     if (open) {
+      setPhone(initialPhone ?? '');
       setMaxUserId(initialMaxUserId != null ? String(initialMaxUserId) : '');
       setMessage('');
       setError(null);
       maxApi.isConfigured().then((r) => {
         setNotConfigured(!r.configured);
         setPersonalMode(!!r.personal);
+        setPersonalProvider(r.personal_provider ?? null);
       }).catch(() => setNotConfigured(true));
     }
-  }, [open, initialMaxUserId]);
+  }, [open, initialMaxUserId, initialPhone]);
 
   const handleSend = async () => {
+    const phoneTrim = phone.trim();
     const uid = maxUserId.trim();
     const num = uid ? parseInt(uid, 10) : undefined;
-    if (!num || Number.isNaN(num)) {
-      setError('Введите MAX user_id получателя (число из профиля в MAX)');
-      return;
-    }
+    const canSendByPhone = personalProvider === 'greenapi' && phoneTrim.length >= 10;
+
     if (!message.trim()) {
       setError('Введите текст сообщения');
       return;
@@ -67,12 +73,20 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
       setError(`Не более ${MAX_MESSAGE_LIMIT} символов`);
       return;
     }
+    if (!canSendByPhone && (!num || Number.isNaN(num))) {
+      setError(
+        personalProvider === 'greenapi'
+          ? 'Введите номер телефона получателя или MAX user_id'
+          : 'Введите MAX user_id получателя (число из профиля в MAX)',
+      );
+      return;
+    }
     setError(null);
     setSending(true);
     try {
       await maxApi.send({
         lead_id: leadId,
-        max_user_id: num,
+        ...(canSendByPhone ? { phone: phoneTrim } : { max_user_id: num }),
         message: message.trim(),
       });
       onSent?.();
@@ -98,8 +112,19 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
               Сообщения отправляются от вашего личного аккаунта (получатель видит вас, а не бота). QR для привязки — в Настройках.
             </Alert>
           )}
+          {personalProvider === 'greenapi' && (
+            <TextField
+              label="Телефон получателя"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+7 999 123-45-67"
+              fullWidth
+              size="small"
+              helperText="Для GREEN-API можно отправить по номеру (РФ/РБ)"
+            />
+          )}
           <TextField
-            label="MAX user_id получателя"
+            label={personalProvider === 'greenapi' ? 'MAX user_id (если известен)' : 'MAX user_id получателя'}
             value={maxUserId}
             onChange={(e) => setMaxUserId(e.target.value)}
             placeholder="Число из профиля пользователя в MAX"

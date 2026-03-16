@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import User, Lead
+from app.models import User, Lead, LeadCommunication
 from app.schemas import MaxSendRequest, MaxSendResponse
 from app.utils.phone import normalize_phone
 from app.services.max_messenger import (
@@ -108,9 +108,20 @@ def api_max_send(
     if not success:
         raise HTTPException(status_code=502, detail=err or "Ошибка отправки в MAX")
 
-    # Сохранить max_user_id в лиде, если передан явно и лид указан
-    if lead is not None and payload.max_user_id is not None:
-        lead.max_user_id = payload.max_user_id
+    # Сохранить max_user_id и залогировать коммуникацию, если есть лид
+    if lead is not None:
+        if payload.max_user_id is not None:
+            lead.max_user_id = payload.max_user_id
+        comm = LeadCommunication(
+            lead_id=lead.id,
+            sent_by=current_user.id,
+            template_id=None,
+            channel="max",
+            message=message,
+            pause_reason=None,
+            follow_up_at=datetime.utcnow(),
+        )
+        db.add(comm)
         db.commit()
 
     return MaxSendResponse(success=True, message_id=message_id, error=None)

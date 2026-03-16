@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import User, SmsMessage, SmsTemplate
+from app.models import User, SmsMessage, SmsTemplate, LeadCommunication
 from app.schemas import (
     SmsSendRequest,
     SmsSendBulkRequest,
@@ -106,6 +106,19 @@ def api_sms_send(
         record.gateway_id = gateway_id
         record.sent_at = datetime.utcnow()
         logger.info("sms_sent: id=%s phone=%s", record.id, phone)
+
+        # Логируем исходящее SMS в журнал коммуникаций лида
+        if payload.entity_type == "lead" and payload.entity_id is not None:
+            comm = LeadCommunication(
+                lead_id=payload.entity_id,
+                sent_by=current_user.id,
+                template_id=None,
+                channel="sms",
+                message=payload.message[:SMS_MAX_LENGTH],
+                pause_reason=None,
+                follow_up_at=datetime.utcnow(),
+            )
+            db.add(comm)
     else:
         record.status = "failed"
         logger.warning("sms_failed: id=%s phone=%s error=%s", record.id, phone, err)

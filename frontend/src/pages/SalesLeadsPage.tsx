@@ -2679,6 +2679,68 @@ const SalesLeadsPage: React.FC = () => {
                       </Grid>
                     </Box>
                   )}
+                  {/* Переписка SMS / MAX */}
+                  <Box sx={{ width: '100%', mt: 1.5 }}>
+                    <Typography variant="subtitle2">Переписка (SMS / MAX)</Typography>
+                    <Stack
+                      spacing={1}
+                      sx={{
+                        mt: 0.5,
+                        maxHeight: 260,
+                        overflowY: 'auto',
+                        pr: 1,
+                        borderRadius: 1,
+                        bgcolor: 'background.default',
+                      }}
+                    >
+                      {communications.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          Пока сообщений нет.
+                        </Typography>
+                      ) : (
+                        communications
+                          .slice()
+                          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                          .map((c) => {
+                            const isSms = c.channel === 'sms';
+                            const isMax = c.channel === 'max';
+                            const isManager = true; // пока все записи исходящие из CRM
+                            return (
+                              <Box
+                                key={c.id}
+                                sx={{
+                                  display: 'flex',
+                                  justifyContent: isManager ? 'flex-end' : 'flex-start',
+                                }}
+                              >
+                                <Box sx={{ maxWidth: '80%' }}>
+                                  <Box
+                                    sx={{
+                                      px: 1.5,
+                                      py: 1,
+                                      borderRadius: 2,
+                                      bgcolor: isSms ? 'primary.main' : isMax ? 'success.main' : 'grey.800',
+                                      color: 'common.white',
+                                      fontSize: 13,
+                                    }}
+                                  >
+                                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                                      {isSms ? 'SMS' : isMax ? 'MAX' : c.channel}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                                      {c.message}
+                                    </Typography>
+                                  </Box>
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.3 }}>
+                                    {new Date(c.created_at).toLocaleString()}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            );
+                          })
+                      )}
+                    </Stack>
+                  </Box>
                   <Stack direction="row" alignItems="center" sx={{ gap: 1, flexWrap: 'wrap' }}>
                     {selectedLead && !selectedLead.converted_to_student_id && (
                       <Button

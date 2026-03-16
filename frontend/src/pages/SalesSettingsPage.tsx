@@ -100,6 +100,8 @@ const SalesSettingsPage: React.FC = () => {
   });
   const [b2bDistricts, setB2bDistricts] = useState<string[]>([]);
   const [newDistrict, setNewDistrict] = useState('');
+  const [refusedReasons, setRefusedReasons] = useState<string[]>([]);
+  const [newRefusedReason, setNewRefusedReason] = useState('');
   const [maxPersonalConfigured, setMaxPersonalConfigured] = useState(false);
   const [maxPersonalProvider, setMaxPersonalProvider] = useState<'greenapi' | 'api_messenger' | null>(null);
   const [maxQrImg, setMaxQrImg] = useState<string | null>(null);
@@ -128,6 +130,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
+      load('Причины отказа', async () => (await settingsApi.getRefusedReasons()).items, setRefusedReasons),
     ]);
     maxApi.isConfigured().then((r) => {
       setMaxPersonalConfigured(!!r.personal);
@@ -219,6 +222,73 @@ const SalesSettingsPage: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" mb={1}>Причины отказа (этап «Отказали»)</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Справочник причин отказа, которые выбираются в попапе при переносе лида на этап «Отказали».
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              label="Новая причина отказа"
+              value={newRefusedReason}
+              onChange={(e) => setNewRefusedReason(e.target.value)}
+              sx={{ minWidth: 260 }}
+            />
+            <Button
+              variant="contained"
+              onClick={() =>
+                safeAction(async () => {
+                  const name = newRefusedReason.trim();
+                  if (!name) return;
+                  const items = Array.from(new Set([...refusedReasons, name]));
+                  const res = await settingsApi.setRefusedReasons(items);
+                  setRefusedReasons(res.items);
+                  setNewRefusedReason('');
+                })
+              }
+            >
+              Добавить
+            </Button>
+          </Box>
+          {refusedReasons.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Пока нет ни одной причины. В этом случае в попапе используется встроенный список по умолчанию.
+            </Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Причина</TableCell>
+                  <TableCell width={120} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {refusedReasons.map((reason) => (
+                  <TableRow key={reason}>
+                    <TableCell>{reason}</TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() =>
+                          safeAction(async () => {
+                            const next = refusedReasons.filter((x) => x !== reason);
+                            const res = await settingsApi.setRefusedReasons(next);
+                            setRefusedReasons(res.items);
+                          })
+                        }
+                      >
+                        Удалить
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Paper>
 
         <Paper sx={{ p: 2 }}>

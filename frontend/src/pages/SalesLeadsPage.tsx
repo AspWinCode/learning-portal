@@ -53,7 +53,7 @@ import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import { SendSMSModal } from '../components/SendSMSModal';
 import { SendMaxModal } from '../components/SendMaxModal';
-import { salesApi } from '../services/api';
+import { salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
   EventItem,
@@ -114,13 +114,13 @@ function getPipelineColumnForStatus(status: LeadStatus): LeadStatus {
   return map[status] ?? status;
 }
 
-const REFUSED_REASONS = [
-  '\u041d\u0435\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438',
-  '\u0414\u043e\u0440\u043e\u0433\u043e',
-  '\u041d\u0435 \u043f\u043e\u0434\u0445\u043e\u0434\u0438\u0442 \u0440\u0430\u0441\u043f\u0438\u0441\u0430\u043d\u0438\u044e',
-  '\u0423\u0436\u0435 \u0437\u0430\u043d\u0438\u043c\u0430\u0435\u0442\u0441\u044f elsewhere',
-  '\u041f\u0435\u0440\u0435\u0434\u0443\u043c\u0430\u043b',
-  '\u0414\u0440\u0443\u0433\u043e\u0435',
+const DEFAULT_REFUSED_REASONS = [
+  'Нет времени',
+  'Дорого',
+  'Не подходит расписанию',
+  'Уже занимается elsewhere',
+  'Передумал',
+  'Другое',
 ];
 
 const leadCommunicationChannelLabels: Record<LeadCommunicationChannel, string> = {
@@ -223,6 +223,7 @@ const SalesLeadsPage: React.FC = () => {
   const [dropCallbackAt, setDropCallbackAt] = useState('');
   const [dropRefusedReason, setDropRefusedReason] = useState('');
   const [dropTrialAt, setDropTrialAt] = useState('');
+  const [refusedReasons, setRefusedReasons] = useState<string[]>([]);
   const [dropEventId, setDropEventId] = useState<number | ''>('');
   const [dropEventNote, setDropEventNote] = useState('');
   const [noAnswerArchiveConfirmOpen, setNoAnswerArchiveConfirmOpen] = useState(false);
@@ -332,6 +333,12 @@ const SalesLeadsPage: React.FC = () => {
       setInfoTemplates(infoTpl);
       const eventsData = await salesApi.listEvents('active');
       setEvents(eventsData);
+      try {
+        const refused = await settingsApi.getRefusedReasons();
+        setRefusedReasons(refused.items && refused.items.length ? refused.items : DEFAULT_REFUSED_REASONS);
+      } catch {
+        setRefusedReasons(DEFAULT_REFUSED_REASONS);
+      }
     } catch {
       // ignore metadata fetch errors in UI
     }
@@ -3396,7 +3403,7 @@ const SalesLeadsPage: React.FC = () => {
               <InputLabel id="drop-refused-label">Причина отказа</InputLabel>
               <Select labelId="drop-refused-label" label="Причина отказа" value={dropRefusedReason} onChange={(e) => setDropRefusedReason(e.target.value)}>
                 <MenuItem value=""><em>Выберите</em></MenuItem>
-                {REFUSED_REASONS.map((r) => (
+                {(refusedReasons.length ? refusedReasons : DEFAULT_REFUSED_REASONS).map((r) => (
                   <MenuItem key={r} value={r}>{r}</MenuItem>
                 ))}
               </Select>

@@ -15,6 +15,7 @@ router = APIRouter()
 
 LOGO_KEY = "site_logo_data_url"
 DISTRICTS_KEY = "b2b_districts"
+REFUSED_REASONS_KEY = "sales_refused_reasons"
 
 
 class B2BDistrictsResponse(BaseModel):
@@ -22,6 +23,14 @@ class B2BDistrictsResponse(BaseModel):
 
 
 class B2BDistrictsUpdate(BaseModel):
+    items: List[str]
+
+
+class RefusedReasonsResponse(BaseModel):
+    items: List[str]
+
+
+class RefusedReasonsUpdate(BaseModel):
     items: List[str]
 
 
@@ -98,5 +107,44 @@ async def set_b2b_districts(
     db.commit()
     db.refresh(setting)
     return B2BDistrictsResponse(items=items)
+
+
+@router.get("/refused-reasons", response_model=RefusedReasonsResponse)
+async def get_refused_reasons(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    setting = db.query(AppSetting).filter(AppSetting.key == REFUSED_REASONS_KEY).first()
+    if not setting or not (setting.value or "").strip():
+        return RefusedReasonsResponse(items=[])
+    try:
+        data = json.loads(setting.value)
+        if isinstance(data, list):
+            items = [str(x) for x in data]
+        else:
+            items = []
+    except Exception:
+        items = []
+    return RefusedReasonsResponse(items=items)
+
+
+@router.post("/refused-reasons", response_model=RefusedReasonsResponse)
+async def set_refused_reasons(
+    body: RefusedReasonsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner"])),
+):
+    items = [s.strip() for s in body.items if s and s.strip()]
+    raw = json.dumps(items, ensure_ascii=False)
+    setting = db.query(AppSetting).filter(AppSetting.key == REFUSED_REASONS_KEY).first()
+    if not setting:
+        setting = AppSetting(key=REFUSED_REASONS_KEY, value=raw)
+        db.add(setting)
+    else:
+        setting.value = raw
+        db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return RefusedReasonsResponse(items=items)
 
 

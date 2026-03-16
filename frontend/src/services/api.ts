@@ -956,6 +956,14 @@ export const settingsApi = {
     const response = await api.post('/api/settings/b2b-districts', { items });
     return response.data;
   },
+  getRefusedReasons: async (): Promise<{ items: string[] }> => {
+    const response = await api.get('/api/settings/refused-reasons');
+    return response.data;
+  },
+  setRefusedReasons: async (items: string[]): Promise<{ items: string[] }> => {
+    const response = await api.post('/api/settings/refused-reasons', { items });
+    return response.data;
+  },
 };
 
 // Урок на сегодня для раздела «Позвать детей на занятие»

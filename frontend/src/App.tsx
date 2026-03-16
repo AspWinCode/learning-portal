@@ -85,7 +85,12 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/set-password" element={<SetPasswordPage />} />
             <Route path="/anketa/specialist" element={<SpecialistQuestionnairePage />} />
-            <Route path="/anketa/tilda_lead" element={<TildaLeadPage />} />
+            <Route
+              path="/anketa/tilda_lead"
+              element={
+                <TildaLeadPage titleOverride="Просим заполнить информацию на консультацию" />
+              }
+            />
             <Route path="/anketa/start_lead" element={<StartLeadPage />} />
             <Route path="/anketa/base_lead" element={<BaseLeadPage />} />
             <Route path="/anketa/pro_lead" element={<ProLeadPage />} />

@@ -7,9 +7,10 @@ export type TildaLeadKind = 'start' | 'base' | 'pro';
 
 interface TildaLeadPageProps {
   kind?: TildaLeadKind;
+  titleOverride?: string;
 }
 
-const TildaLeadPage: React.FC<TildaLeadPageProps> = ({ kind = 'start' }) => {
+const TildaLeadPage: React.FC<TildaLeadPageProps> = ({ kind = 'start', titleOverride }) => {
   const [parentFullName, setParentFullName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [childFullName, setChildFullName] = useState('');
@@ -110,12 +111,13 @@ const TildaLeadPage: React.FC<TildaLeadPageProps> = ({ kind = 'start' }) => {
     );
   }
 
-  const title =
+  const defaultTitle =
     kind === 'base'
       ? 'Просим заполнить информацию по направлению «Специалист»'
       : kind === 'pro'
         ? 'Просим заполнить информацию по направлению «Эксперт»'
         : 'Просим заполнить информацию по направлению «Первый шаг»';
+  const title = titleOverride || defaultTitle;
 
   return (
     <Box

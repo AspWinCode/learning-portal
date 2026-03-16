@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Box, Button, FormHelperText, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, FormHelperText, Stack, TextField, Typography } from '@mui/material';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 
@@ -258,45 +258,6 @@ const TildaLeadPage: React.FC = () => {
             }}
           />
 
-          <TextField
-            label="Класс"
-            variant="filled"
-            fullWidth
-            InputProps={{ disableUnderline: true }}
-            sx={{
-              '& .MuiFilledInput-root': {
-                borderRadius: 2,
-                backgroundColor: 'rgba(10, 5, 40, 0.9)',
-                color: '#fff',
-              },
-            }}
-          />
-
-          <Box>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-              Выбор слота
-            </Typography>
-            <TextField
-              select
-              variant="filled"
-              fullWidth
-              defaultValue="10:00"
-              InputProps={{ disableUnderline: true }}
-              sx={{
-                mt: 0.5,
-                '& .MuiFilledInput-root': {
-                  borderRadius: 2,
-                  backgroundColor: 'rgba(10, 5, 40, 0.9)',
-                  color: '#fff',
-                },
-              }}
-            >
-              <MenuItem value="10:00">10:00</MenuItem>
-              <MenuItem value="12:00">12:00</MenuItem>
-              <MenuItem value="14:00">14:00</MenuItem>
-            </TextField>
-          </Box>
-
           <Button
             type="submit"
             variant="contained"
@@ -314,7 +275,7 @@ const TildaLeadPage: React.FC = () => {
             }}
             fullWidth
           >
-            {submitting ? 'Отправка…' : 'Получить'}
+            {submitting ? 'Отправка…' : 'Отправить'}
           </Button>
 
           <Typography
@@ -325,7 +286,7 @@ const TildaLeadPage: React.FC = () => {
               lineHeight: 1.4,
             }}
           >
-            Нажимая на кнопку, я соглашаюсь на обработку персональных данных.
+            Нажимая на кнопку отправить, я соглашаюсь на обработку персональных данных.
           </Typography>
         </Box>
       </Box>

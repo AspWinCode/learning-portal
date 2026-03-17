@@ -3480,6 +3480,8 @@ async def list_leads(
     created_to: Optional[datetime] = Query(default=None),
     next_contact_from: Optional[datetime] = Query(default=None),
     next_contact_to: Optional[datetime] = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -3521,7 +3523,7 @@ async def list_leads(
         query = query.filter(Lead.next_contact_at >= next_contact_from)
     if next_contact_to:
         query = query.filter(Lead.next_contact_at <= next_contact_to)
-    leads = query.all()
+    leads = query.offset(offset).limit(limit).all()
 
     # One-time/gradual бэкаповка старых лидов в воронку «Дожать на обучение»:
     # если статус demo, по лиду уже есть [came] в регистрациях события, но post_visit_stage ещё не задана,

@@ -37,6 +37,7 @@ import {
   Tabs,
   Tab,
   LinearProgress,
+  TablePagination,
 } from '@mui/material';
 import {
   Call as CallIcon,
@@ -205,6 +206,8 @@ const SalesLeadsPage: React.FC = () => {
   const [tableClassFilter, setTableClassFilter] = useState('');
   const [tableSortField, setTableSortField] = useState<LeadsTableSortField>('created_at');
   const [tableSortOrder, setTableSortOrder] = useState<LeadsTableSortOrder>('desc');
+  const [tablePage, setTablePage] = useState(0);
+  const [tableRowsPerPage, setTableRowsPerPage] = useState(50);
   const [batchFollowUpOpen, setBatchFollowUpOpen] = useState(false);
   const [batchFollowUpAt, setBatchFollowUpAt] = useState('');
   const [batchSendOpen, setBatchSendOpen] = useState(false);
@@ -519,6 +522,16 @@ const SalesLeadsPage: React.FC = () => {
 
     return tableSortOrder === 'asc' ? sorted : sorted.reverse();
   }, [leads, statusFilter, tableCityFilter, tableClassFilter, tableSchoolFilter, tableSortField, tableSortOrder]);
+
+  const paginatedLeads = useMemo(
+    () => filteredSortedLeads.slice(tablePage * tableRowsPerPage, (tablePage + 1) * tableRowsPerPage),
+    [filteredSortedLeads, tablePage, tableRowsPerPage],
+  );
+
+  // Сброс страницы при смене фильтров
+  useEffect(() => {
+    setTablePage(0);
+  }, [statusFilter, qFilter, sourceFilter, tagFilter, overdueOnly, tableCityFilter, tableClassFilter, tableSchoolFilter]);
 
   const selectedVisibleCount = useMemo(() => {
     const visibleIds = new Set(filteredSortedLeads.map((lead) => lead.id));
@@ -2181,6 +2194,7 @@ const SalesLeadsPage: React.FC = () => {
       <Grid container spacing={2}>
         <Grid item xs={12}>
       {viewMode === 'table' ? (
+      <>
       <TableContainer sx={{ overflowX: 'auto' }}>
       <Table size="small" sx={{ minWidth: 1280 }}>
         <TableHead>
@@ -2237,7 +2251,7 @@ const SalesLeadsPage: React.FC = () => {
           </TableRow>
         </TableHead>
         <TableBody>
-          {filteredSortedLeads.map((lead) => (
+          {paginatedLeads.map((lead) => (
             <TableRow
               key={lead.id}
               hover
@@ -2347,6 +2361,18 @@ const SalesLeadsPage: React.FC = () => {
         </TableBody>
       </Table>
       </TableContainer>
+      <TablePagination
+        component="div"
+        count={filteredSortedLeads.length}
+        page={tablePage}
+        onPageChange={(_e, newPage) => setTablePage(newPage)}
+        rowsPerPage={tableRowsPerPage}
+        onRowsPerPageChange={(e) => { setTableRowsPerPage(parseInt(e.target.value, 10)); setTablePage(0); }}
+        rowsPerPageOptions={[25, 50, 100, 200]}
+        labelRowsPerPage="Строк на странице:"
+        labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count}`}
+      />
+      </>
       ) : (
         <Box
           sx={{

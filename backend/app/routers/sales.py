@@ -3529,24 +3529,27 @@ async def list_leads(
     # если статус demo, по лиду уже есть [came] в регистрациях события, но post_visit_stage ещё не задана,
     # проставляем stage='new', чтобы такие лиды появились на странице дожима.
     if status_filter == LeadStatus.DEMO:
-        updated = False
-        for lead in leads:
-            if not getattr(lead, "post_visit_stage", None):
-                has_came = (
-                    db.query(EventRegistration)
-                    .filter(
-                        EventRegistration.lead_id == lead.id,
-                        cast(EventRegistration.note, Text).ilike("%[came]%"),
-                    )
-                    .first()
+        candidate_ids = [lead.id for lead in leads if not getattr(lead, "post_visit_stage", None)]
+        if candidate_ids:
+            # Один запрос вместо N: ищем все lead_id с [came] среди кандидатов
+            came_lead_ids = {
+                row[0]
+                for row in db.query(EventRegistration.lead_id)
+                .filter(
+                    EventRegistration.lead_id.in_(candidate_ids),
+                    cast(EventRegistration.note, Text).ilike("%[came]%"),
                 )
-                if has_came:
-                    lead.post_visit_stage = "new"
-                    updated = True
-        if updated:
-            db.commit()
-            for lead in leads:
-                db.refresh(lead)
+                .distinct()
+                .all()
+            }
+            if came_lead_ids:
+                for lead in leads:
+                    if lead.id in came_lead_ids:
+                        lead.post_visit_stage = "new"
+                db.commit()
+                for lead in leads:
+                    if lead.id in came_lead_ids:
+                        db.refresh(lead)
 
     return [_fix_lead_strings(l) for l in leads]
 

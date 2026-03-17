@@ -146,6 +146,25 @@ def upgrade() -> None:
     op.create_index("ix_student_programs_program_id", "student_programs", ["program_id"])
 
     op.create_table(
+        "lesson_attendance",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("group_id", sa.Integer(), sa.ForeignKey("groups.id"), nullable=False),
+        sa.Column("lesson_date", sa.Date(), nullable=False),
+        sa.Column("student_id", sa.Integer(), sa.ForeignKey("students.id"), nullable=False),
+        sa.Column("attended", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("late", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("call_result", sa.String(32), nullable=True),
+        sa.Column("call_result_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("absence_reason", sa.String(64), nullable=True),
+        sa.Column("absence_comment", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
+        sa.UniqueConstraint("group_id", "lesson_date", "student_id", name="uq_lesson_attendance_group_date_student"),
+    )
+    op.create_index("ix_lesson_attendance_group_id", "lesson_attendance", ["group_id"])
+    op.create_index("ix_lesson_attendance_student_id", "lesson_attendance", ["student_id"])
+    op.create_index("ix_lesson_attendance_lesson_date", "lesson_attendance", ["lesson_date"])
+
+    op.create_table(
         "grades",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("student_id", sa.Integer(), sa.ForeignKey("students.id"), nullable=False),
@@ -214,6 +233,11 @@ def downgrade() -> None:
     op.drop_index("ix_grades_topic_id", table_name="grades")
     op.drop_index("ix_grades_student_id", table_name="grades")
     op.drop_table("grades")
+
+    op.drop_index("ix_lesson_attendance_lesson_date", table_name="lesson_attendance")
+    op.drop_index("ix_lesson_attendance_student_id", table_name="lesson_attendance")
+    op.drop_index("ix_lesson_attendance_group_id", table_name="lesson_attendance")
+    op.drop_table("lesson_attendance")
 
     op.drop_index("ix_student_programs_program_id", table_name="student_programs")
     op.drop_index("ix_student_programs_student_id", table_name="student_programs")

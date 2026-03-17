@@ -18,9 +18,9 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "sales_classes",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("name", sa.String(), nullable=False, index=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true"), index=True),
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("name", sa.String(), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
     )
     op.create_index("ix_sales_classes_name", "sales_classes", ["name"], unique=True)

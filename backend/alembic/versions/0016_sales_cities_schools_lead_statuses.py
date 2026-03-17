@@ -25,9 +25,9 @@ def upgrade() -> None:
     if not _table_exists(conn, "sales_cities"):
         op.create_table(
             "sales_cities",
-            sa.Column("id", sa.Integer(), primary_key=True, index=True),
-            sa.Column("name", sa.String(), nullable=False, index=True),
-            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true"), index=True),
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("name", sa.String(), nullable=False),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         )
         op.create_index("ix_sales_cities_name", "sales_cities", ["name"], unique=True)
@@ -36,9 +36,9 @@ def upgrade() -> None:
     if not _table_exists(conn, "sales_schools"):
         op.create_table(
             "sales_schools",
-            sa.Column("id", sa.Integer(), primary_key=True, index=True),
-            sa.Column("name", sa.String(), nullable=False, index=True),
-            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true"), index=True),
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("name", sa.String(), nullable=False),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         )
         op.create_index("ix_sales_schools_name", "sales_schools", ["name"], unique=True)
@@ -47,10 +47,10 @@ def upgrade() -> None:
     if not _table_exists(conn, "lead_statuses"):
         op.create_table(
             "lead_statuses",
-            sa.Column("id", sa.Integer(), primary_key=True, index=True),
-            sa.Column("name", sa.String(), nullable=False, index=True),
-            sa.Column("base_status", sa.String(), nullable=False, index=True),
-            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true"), index=True),
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("name", sa.String(), nullable=False),
+            sa.Column("base_status", sa.String(), nullable=False),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         )
         op.create_index("ix_lead_statuses_name", "lead_statuses", ["name"], unique=True)

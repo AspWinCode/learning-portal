@@ -3494,6 +3494,7 @@ async def list_leads(
     school_name: Optional[str] = None,
     school_class: Optional[str] = None,
     pipeline_column: Optional[str] = None,
+    exclude_lost: bool = False,
     # Сортировка
     sort_by: Optional[str] = Query(default=None),
     sort_order: str = Query(default="desc"),
@@ -3554,6 +3555,8 @@ async def list_leads(
         query = query.filter(cast(Lead.school_name, Text).ilike(f"%{school_name.strip()}%"))
     if school_class:
         query = query.filter(Lead.school_class == school_class)
+    if exclude_lost:
+        query = query.filter(Lead.status != LeadStatus.LOST)
 
     # Сортировка
     _sort_columns = {

@@ -144,6 +144,216 @@ const isValidRuPhone = (raw: string): boolean => /^\+7\d{10}$/.test(normalizeRuP
 type LeadsTableSortField = 'created_at' | 'school_class' | 'school_name' | 'city';
 type LeadsTableSortOrder = 'asc' | 'desc';
 
+// ─── Чистые функции, вынесенные на уровень модуля ────────────────────────────
+
+function badgeColor(status: LeadStatus): 'success' | 'default' | 'info' | 'warning' | 'primary' {
+  switch (status) {
+    case 'won': return 'success';
+    case 'lost': return 'default';
+    case 'invoice_sent': return 'info';
+    case 'no_answer':
+    case 'demo': return 'warning';
+    default: return 'primary';
+  }
+}
+
+function getKanbanBorderColor(nextContactAt?: string | null): string {
+  if (!nextContactAt) return '#9ca3af';
+  const d = parseISO(nextContactAt);
+  if (!isValid(d)) return '#9ca3af';
+  const now = new Date();
+  if (d.getTime() < now.getTime()) return '#ef4444';
+  if (d.toDateString() === now.toDateString()) return '#f59e0b';
+  return '#9ca3af';
+}
+
+function getLeadStatusMenuValue(lead: Lead): string {
+  return `base:${getPipelineColumnForStatus(lead.status)}`;
+}
+
+function getLeadStatusDisplay(lead: Lead): string {
+  return statusLabels[getPipelineColumnForStatus(lead.status)];
+}
+
+// ─── KanbanLeadCard — мемоизированная карточка лида ──────────────────────────
+
+interface KanbanLeadCardProps {
+  lead: Lead;
+  colStatus: LeadStatus | 'archive' | 'next_event';
+  isSelected: boolean;
+  isDragging: boolean;
+  isLoading: boolean;
+  sendInfoStatusValue: 'open' | 'done' | 'none' | undefined;
+  pushPercent: number;
+  pushLabel: string;
+  statusOptions: readonly LeadStatus[];
+  /** Стабильный диспетчер: никогда не меняет референс, безопасен для React.memo */
+  onAction: (leadId: number, type: string, payload?: unknown) => void;
+}
+
+const KanbanLeadCard = React.memo(({
+  lead, colStatus, isSelected, isDragging, isLoading,
+  sendInfoStatusValue, pushPercent, pushLabel, statusOptions, onAction,
+}: KanbanLeadCardProps) => {
+  const isDraggable = colStatus !== 'archive' && colStatus !== 'next_event';
+  const borderColor = isSelected ? 'primary.main' : getKanbanBorderColor(lead.next_contact_at);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest?.('button, a, [role="button"]')) { e.preventDefault(); return; }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(lead.id));
+    e.dataTransfer.setData('application/lead-id', String(lead.id));
+    onAction(lead.id, 'dragStarted');
+  };
+  const handleDragEnd = () => onAction(lead.id, 'dragEnd');
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    onAction(lead.id, 'dragOver', colStatus);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+      onAction(lead.id, 'dragLeave');
+    }
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    onAction(lead.id, 'drop', { event: e, colStatus });
+  };
+
+  return (
+    <Card
+      variant="outlined"
+      draggable={isDraggable}
+      onDragStart={isDraggable ? handleDragStart : undefined}
+      onDragEnd={isDraggable ? handleDragEnd : undefined}
+      onDragOver={isDraggable ? handleDragOver : undefined}
+      onDragLeave={isDraggable ? handleDragLeave : undefined}
+      onDrop={isDraggable ? handleDrop : undefined}
+      sx={{
+        borderRadius: 2,
+        borderColor,
+        borderWidth: 2,
+        opacity: isDragging ? 0.6 : 1,
+        cursor: isDragging ? 'grabbing' : 'grab',
+        userSelect: 'none',
+      }}
+    >
+      <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+        <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
+          <Typography variant="subtitle2">{lead.contact_name}</Typography>
+          {lead.questionnaire_filled && (
+            <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
+          )}
+        </Stack>
+        <Typography variant="caption" color="text.secondary">{lead.phone}</Typography>
+        {lead.source && (
+          <Typography variant="caption" display="block" color="text.secondary">
+            Источник: {lead.source}
+          </Typography>
+        )}
+        {lead.status === 'thinking' && lead.next_contact_at && (
+          <Typography variant="caption" display="block" color="primary">
+            Следующий контакт: {format(parseISO(lead.next_contact_at), 'dd.MM HH:mm')}
+          </Typography>
+        )}
+        {lead.status === 'no_answer' && (
+          <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} onClick={(e) => e.stopPropagation()}>
+            {([1, 2, 3] as const).map((n) => (
+              <Button
+                key={n}
+                size="small"
+                variant={(lead.no_answer_attempt ?? 1) >= n ? 'contained' : 'outlined'}
+                color={(lead.no_answer_attempt ?? 1) === n ? 'warning' : 'inherit'}
+                sx={{ minWidth: 0, px: 0.75, fontSize: '0.7rem' }}
+                disabled={isLoading}
+                onClick={() => onAction(lead.id, 'noAnswerAttempt', n)}
+              >
+                Попытка {n}
+              </Button>
+            ))}
+          </Stack>
+        )}
+        <Stack spacing={0.5} mt={1}>
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="caption" color="text.secondary">
+              Продвижение: {pushLabel}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {pushPercent}%
+            </Typography>
+          </Stack>
+          <LinearProgress
+            variant="determinate"
+            value={pushPercent}
+            color={pushPercent >= 80 ? 'success' : pushPercent >= 40 ? 'warning' : 'primary'}
+            sx={{ height: 6, borderRadius: 1 }}
+          />
+        </Stack>
+        <Box sx={{ mt: 1 }} onClick={(e) => e.stopPropagation()}>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <Select
+              value={getLeadStatusMenuValue(lead)}
+              onChange={(e) => onAction(lead.id, 'statusChange', e.target.value as string)}
+              renderValue={() => getLeadStatusDisplay(lead)}
+              disabled={isLoading}
+            >
+              <MenuItem value="next_event">
+                <Chip size="small" label="Следующее мероприятие" />
+              </MenuItem>
+              {statusOptions.map((st) => (
+                <MenuItem key={st} value={`base:${st}`}>
+                  <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+        <Stack direction="row" spacing={0.5} mt={1} alignItems="center" flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
+          <Tooltip title="Позвонить">
+            <IconButton size="small" component="a" href={`tel:${lead.parent_phone || lead.phone || ''}`}>
+              <CallIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Telegram">
+            <IconButton size="small" component="a" href={`https://t.me/${(lead.parent_phone || lead.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!lead.phone}>
+              <ChatIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="SMS">
+            <IconButton size="small" onClick={() => onAction(lead.id, 'smsClick')}>
+              <SmsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="MAX">
+            <IconButton size="small" onClick={() => onAction(lead.id, 'maxClick')}>
+              <MaxIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+        <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
+          <Button size="small" onClick={() => onAction(lead.id, 'openDetails')}>
+            Открыть
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color={sendInfoStatusValue === 'done' ? 'success' : sendInfoStatusValue === 'open' ? 'error' : undefined}
+            disabled={isLoading}
+            onClick={() => onAction(lead.id, 'sendInfo')}
+          >
+            Отправить информацию
+          </Button>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const SalesLeadsPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -285,6 +495,52 @@ const SalesLeadsPage: React.FC = () => {
     return () => { if (qDebounceRef.current) clearTimeout(qDebounceRef.current); };
   }, [qFilter]);
 
+  // ─── Стабильный диспетчер для KanbanLeadCard ─────────────────────────────
+  // Рефы для доступа к актуальным хендлерам без пересоздания useCallback
+  const leadsRef = useRef<Lead[]>([]);
+  leadsRef.current = leads;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const kanbanHandlersRef = useRef<Record<string, (...args: any[]) => unknown>>({});
+
+  /**
+   * stableKanbanAction никогда не меняет референс → React.memo на KanbanLeadCard
+   * видит стабильный prop и не перерисовывает карточку из-за пересоздания callback.
+   */
+  const stableKanbanAction = useCallback((leadId: number, type: string, payload?: unknown) => {
+    switch (type) {
+      case 'dragStarted': setDraggedLeadId(leadId); break;
+      case 'dragEnd': setDraggedLeadId(null); setDragOverColumn(null); break;
+      case 'dragOver': setDragOverColumn(payload as LeadStatus | 'next_event'); break;
+      case 'dragLeave': setDragOverColumn(null); break;
+      case 'drop': {
+        const { event, colStatus } = payload as { event: React.DragEvent; colStatus: LeadStatus | 'next_event' };
+        void (kanbanHandlersRef.current.handleKanbanDrop as (e: React.DragEvent, s: LeadStatus | 'next_event') => Promise<void>)(event, colStatus);
+        break;
+      }
+      case 'smsClick': {
+        const lead = leadsRef.current.find((l) => l.id === leadId);
+        if (lead) { setSmsModalPhone(lead.parent_phone || lead.phone || ''); setSmsModalLeadId(leadId); setSmsModalOpen(true); }
+        break;
+      }
+      case 'maxClick': {
+        const lead = leadsRef.current.find((l) => l.id === leadId);
+        if (lead) { setMaxModalPhone(lead.parent_phone || lead.phone || ''); setMaxModalLeadId(leadId); setMaxModalMaxUserId(lead.max_user_id ?? null); setMaxModalOpen(true); }
+        break;
+      }
+      default: {
+        const lead = leadsRef.current.find((l) => l.id === leadId);
+        if (!lead) break;
+        const handlers = kanbanHandlersRef.current;
+        if (type === 'noAnswerAttempt') void (handlers.handleWidgetNoAnswerAttempt as (l: Lead, a: 1|2|3) => Promise<void>)(lead, payload as 1|2|3);
+        else if (type === 'statusChange') void (handlers.handleLeadStatusSelectChange as (l: Lead, v: string) => Promise<void>)(lead, payload as string);
+        else if (type === 'sendInfo') void (handlers.handleWidgetSendInfo as (l: Lead) => Promise<void>)(lead);
+        else if (type === 'openDetails') void (handlers.handleOpenDetails as (l: Lead) => Promise<void>)(lead);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty deps — all mutable state accessed via refs or stable setters
+
   const loadLeads = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -299,6 +555,8 @@ const SalesLeadsPage: React.FC = () => {
         // Канбан: загружаем все лиды без серверной пагинации и без фильтров по колонке
         params.limit = 1000;
         if (tagFilter.trim()) params.tag = tagFilter.trim();
+        // Не грузим lost-лидов пока архивная колонка скрыта
+        if (!showArchiveColumn) params.exclude_lost = true;
       } else {
         // Таблица: серверная пагинация + все фильтры на сервере
         params.limit = tableRowsPerPage;
@@ -346,7 +604,7 @@ const SalesLeadsPage: React.FC = () => {
     }
   }, [viewMode, debouncedQFilter, sourceFilter, tagFilter, overdueOnly,
       tableRowsPerPage, tablePage, statusFilter, tableCityFilter, tableSchoolFilter,
-      tableClassFilter, tableSortField, tableSortOrder]);
+      tableClassFilter, tableSortField, tableSortOrder, showArchiveColumn]);
 
   const loadSalesMeta = useCallback(async () => {
     // Города и школы подгружаем отдельно, чтобы при ошибке других запросов списки всё равно обновились
@@ -671,14 +929,6 @@ const SalesLeadsPage: React.FC = () => {
     } finally {
       setActionLoadingId(null);
     }
-  };
-
-  const getLeadStatusMenuValue = (lead: Lead): string => {
-    return `base:${getPipelineColumnForStatus(lead.status)}`;
-  };
-
-  const getLeadStatusDisplay = (lead: Lead): string => {
-    return statusLabels[getPipelineColumnForStatus(lead.status)];
   };
 
   const handleLeadStatusSelectChange = async (lead: Lead, value: string) => {
@@ -1523,31 +1773,6 @@ const SalesLeadsPage: React.FC = () => {
     }
   };
 
-  const badgeColor = (status: LeadStatus) => {
-    switch (status) {
-      case 'won':
-        return 'success';
-      case 'lost':
-        return 'default';
-      case 'invoice_sent':
-        return 'info';
-      case 'no_answer':
-      case 'demo':
-        return 'warning';
-      default:
-        return 'primary';
-    }
-  };
-
-  const getKanbanBorderColor = (nextContactAt?: string | null) => {
-    if (!nextContactAt) return '#9ca3af';
-    const d = parseISO(nextContactAt);
-    if (!isValid(d)) return '#9ca3af';
-    const now = new Date();
-    if (d.getTime() < now.getTime()) return '#ef4444';
-    if (d.toDateString() === now.toDateString()) return '#f59e0b';
-    return '#9ca3af';
-  };
   const getKanbanPushProgressEstimate = (lead: Lead): { percent: number; label: string } => {
     const real = leadPushStatsMap[lead.id];
     if (real) {
@@ -1970,6 +2195,15 @@ const SalesLeadsPage: React.FC = () => {
     } finally {
       setActionLoadingId(null);
     }
+  };
+
+  // Обновляем рефы хендлеров на каждый рендер — stableKanbanAction читает их через ref
+  kanbanHandlersRef.current = {
+    handleKanbanDrop,
+    handleWidgetNoAnswerAttempt,
+    handleLeadStatusSelectChange,
+    handleWidgetSendInfo,
+    handleOpenDetails,
   };
 
   const handleNoAnswerArchiveConfirm = async () => {
@@ -2421,157 +2655,24 @@ const SalesLeadsPage: React.FC = () => {
                     <Chip size="small" label={col.leads.length} />
                   </Stack>
                   <Stack spacing={1.5}>
-                    {col.leads.map((lead) => (
-                      <Card
-                        key={lead.id}
-                        variant="outlined"
-                        draggable={col.status !== 'archive' && col.status !== 'next_event'}
-                        onDragStart={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragStart(e, lead.id)}
-                        onDragEnd={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragEnd}
-                        onDragOver={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus)}
-                        onDragLeave={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragLeave}
-                        onDrop={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus)}
-                        sx={{
-                          borderRadius: 2,
-                          borderColor:
-                            selectedLead?.id === lead.id
-                              ? 'primary.main'
-                              : getKanbanBorderColor(lead.next_contact_at),
-                          borderWidth: 2,
-                          opacity: draggedLeadId === lead.id ? 0.6 : 1,
-                          cursor: draggedLeadId === lead.id ? 'grabbing' : 'grab',
-                          userSelect: 'none',
-                        }}
-                      >
-                        <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                          <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
-                            <Typography variant="subtitle2">{lead.contact_name}</Typography>
-                            {lead.questionnaire_filled && (
-                              <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
-                            )}
-                          </Stack>
-                          <Typography variant="caption" color="text.secondary">{lead.phone}</Typography>
-                          {lead.source && (
-                            <Typography variant="caption" display="block" color="text.secondary">
-                              Источник: {lead.source}
-                            </Typography>
-                          )}
-                          {lead.status === 'thinking' && lead.next_contact_at && (
-                            <Typography variant="caption" display="block" color="primary">
-                              Следующий контакт: {format(parseISO(lead.next_contact_at), 'dd.MM HH:mm')}
-                            </Typography>
-                          )}
-                          {lead.status === 'no_answer' && (
-                            <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} onClick={(e) => e.stopPropagation()}>
-                              {([1, 2, 3] as const).map((n) => (
-                                <Button
-                                  key={n}
-                                  size="small"
-                                  variant={(lead.no_answer_attempt ?? 1) >= n ? 'contained' : 'outlined'}
-                                  color={(lead.no_answer_attempt ?? 1) === n ? 'warning' : 'inherit'}
-                                  sx={{ minWidth: 0, px: 0.75, fontSize: '0.7rem' }}
-                                  disabled={actionLoadingId === lead.id}
-                                  onClick={() => void handleWidgetNoAnswerAttempt(lead, n)}
-                                >
-                                  Попытка {n}
-                                </Button>
-                              ))}
-                            </Stack>
-                          )}
-                          {(() => {
-                            const p = getKanbanPushProgressEstimate(lead);
-                            return (
-                              <Stack spacing={0.5} mt={1}>
-                                <Stack direction="row" justifyContent="space-between">
-                                  <Typography variant="caption" color="text.secondary">
-                                    Продвижение: {p.label}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {p.percent}%
-                                  </Typography>
-                                </Stack>
-                                <LinearProgress
-                                  variant="determinate"
-                                  value={p.percent}
-                                  color={p.percent >= 80 ? 'success' : p.percent >= 40 ? 'warning' : 'primary'}
-                                  sx={{ height: 6, borderRadius: 1 }}
-                                />
-                              </Stack>
-                            );
-                          })()}
-                          <Box sx={{ mt: 1 }} onClick={(e) => e.stopPropagation()}>
-                            <FormControl size="small" sx={{ minWidth: 160 }}>
-                              <Select
-                                value={getLeadStatusMenuValue(lead)}
-                                onChange={(e) => void handleLeadStatusSelectChange(lead, e.target.value as string)}
-                                renderValue={() => getLeadStatusDisplay(lead)}
-                                disabled={actionLoadingId === lead.id}
-                              >
-                                <MenuItem value="next_event">
-                                  <Chip size="small" label="Следующее мероприятие" />
-                                </MenuItem>
-                                {statusOptions.map((st) => (
-                                  <MenuItem key={st} value={`base:${st}`}>
-                                    <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </Box>
-                          <Stack direction="row" spacing={0.5} mt={1} alignItems="center" flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
-                            <Tooltip title="Позвонить">
-                              <IconButton size="small" component="a" href={`tel:${lead.parent_phone || lead.phone || ''}`}>
-                                <CallIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Telegram">
-                              <IconButton size="small" component="a" href={`https://t.me/${(lead.parent_phone || lead.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!lead.phone}>
-                                <ChatIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="SMS">
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  setSmsModalPhone(lead.parent_phone || lead.phone || '');
-                                  setSmsModalLeadId(lead.id);
-                                  setSmsModalOpen(true);
-                                }}
-                              >
-                                <SmsIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="MAX">
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  setMaxModalLeadId(lead.id);
-                                  setMaxModalMaxUserId(lead.max_user_id ?? null);
-                                  setMaxModalPhone(lead.parent_phone || lead.phone || '');
-                                  setMaxModalOpen(true);
-                                }}
-                              >
-                                <MaxIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                          <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
-                            <Button size="small" onClick={() => handleOpenDetails(lead)}>
-                              Открыть
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color={sendInfoStatus[lead.id] === 'done' ? 'success' : sendInfoStatus[lead.id] === 'open' ? 'error' : undefined}
-                              disabled={actionLoadingId === lead.id}
-                              onClick={() => void handleWidgetSendInfo(lead)}
-                            >
-                              Отправить информацию
-                            </Button>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    ))}
+                    {col.leads.map((lead) => {
+                      const p = getKanbanPushProgressEstimate(lead);
+                      return (
+                        <KanbanLeadCard
+                          key={lead.id}
+                          lead={lead}
+                          colStatus={col.status}
+                          isSelected={selectedLead?.id === lead.id}
+                          isDragging={draggedLeadId === lead.id}
+                          isLoading={actionLoadingId === lead.id}
+                          sendInfoStatusValue={sendInfoStatus[lead.id]}
+                          pushPercent={p.percent}
+                          pushLabel={p.label}
+                          statusOptions={statusOptions}
+                          onAction={stableKanbanAction}
+                        />
+                      );
+                    })}
                     {col.leads.length === 0 && (
                       <Typography variant="caption" color="text.secondary">
                         Лидов нет

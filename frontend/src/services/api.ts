@@ -1035,6 +1035,7 @@ export const salesApi = {
     school_name?: string;
     school_class?: string;
     pipeline_column?: string;
+    exclude_lost?: boolean;
     // Сортировка
     sort_by?: 'created_at' | 'school_class' | 'school_name' | 'city';
     sort_order?: 'asc' | 'desc';

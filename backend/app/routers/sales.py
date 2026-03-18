@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import cast, Text, or_
+from sqlalchemy import cast, Text, or_, update as sa_update
 from openpyxl import Workbook, load_workbook
 
 from app import auth
@@ -3543,13 +3543,19 @@ async def list_leads(
                 .all()
             }
             if came_lead_ids:
-                for lead in leads:
-                    if lead.id in came_lead_ids:
-                        lead.post_visit_stage = "new"
+                db.execute(
+                    sa_update(Lead)
+                    .where(Lead.id.in_(came_lead_ids))
+                    .values(post_visit_stage="new")
+                    .execution_options(synchronize_session=False)
+                )
                 db.commit()
-                for lead in leads:
-                    if lead.id in came_lead_ids:
-                        db.refresh(lead)
+                # Одним запросом перезагружаем только изменённые лиды
+                refreshed = {
+                    r.id: r
+                    for r in db.query(Lead).filter(Lead.id.in_(came_lead_ids)).all()
+                }
+                leads = [refreshed.get(l.id, l) for l in leads]
 
     return [_fix_lead_strings(l) for l in leads]
 

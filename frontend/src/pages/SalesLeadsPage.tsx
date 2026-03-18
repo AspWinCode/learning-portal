@@ -421,6 +421,7 @@ const SalesLeadsPage: React.FC = () => {
   }, [leads]);
 
   useEffect(() => {
+    if (viewMode !== 'kanban') return;
     const loadPushStats = async () => {
       if (leads.length === 0) {
         setLeadPushStatsMap({});
@@ -438,7 +439,7 @@ const SalesLeadsPage: React.FC = () => {
       }
     };
     void loadPushStats();
-  }, [leads]);
+  }, [leads, viewMode]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);

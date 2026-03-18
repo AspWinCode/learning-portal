@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -47,6 +47,7 @@ const EVENTS_POPUP_STAGES: Record<string, 'contact' | 'reply' | 'meeting' | 'tri
 
 const OwnerFunnelsPage: React.FC = () => {
   const navigate = useNavigate();
+  const prefetchedItemsRef = useRef<{ funnelId: string; items: OwnerFunnelItem[] } | null>(null);
   const [funnelTypes, setFunnelTypes] = useState<OwnerFunnelTypeInfo[]>([]);
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>('');
   const [events, setEvents] = useState<OwnerFunnelEvent[]>([]);
@@ -109,7 +110,19 @@ const OwnerFunnelsPage: React.FC = () => {
     try {
       const data = await ownerFunnelsApi.listTypes();
       setFunnelTypes(data);
-      if (data.length && !selectedFunnelId) setSelectedFunnelId(data[0].id);
+      if (data.length && !selectedFunnelId) {
+        const firstId = data[0].id;
+        // Префетч карточек параллельно с установкой selectedFunnelId — eliminates waterfall
+        if (firstId !== FUNNEL_EVENTS) {
+          prefetchedItemsRef.current = null;
+          setLoading(true);
+          ownerFunnelsApi.listItems(firstId)
+            .then((fetched) => { prefetchedItemsRef.current = { funnelId: firstId, items: fetched }; })
+            .catch(() => {})
+            .finally(() => setLoading(false));
+        }
+        setSelectedFunnelId(firstId);
+      }
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить типы воронок'));
     }
@@ -128,6 +141,12 @@ const OwnerFunnelsPage: React.FC = () => {
     if (!selectedFunnelId) return;
     if (selectedFunnelId === FUNNEL_EVENTS && selectedEventId == null) {
       setItems([]);
+      return;
+    }
+    // Если данные уже пришли через префетч — используем их без повторного запроса
+    if (prefetchedItemsRef.current?.funnelId === selectedFunnelId) {
+      setItems(prefetchedItemsRef.current.items);
+      prefetchedItemsRef.current = null;
       return;
     }
     setLoading(true);

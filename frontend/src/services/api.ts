@@ -2338,6 +2338,7 @@ export const smsApi = {
     message: string;
     entity_type?: 'lead' | 'event' | 'task';
     entity_id?: number;
+    scheduled_at?: string | null;
   }): Promise<SmsMessageResponse> => {
     const response = await api.post('/api/sms/send', payload);
     return response.data;
@@ -2383,6 +2384,7 @@ export const maxApi = {
     max_user_id?: number;
     phone?: string;
     message: string;
+    scheduled_at?: string | null;
   }): Promise<MaxSendResponse> => {
     const response = await api.post('/api/max/send', payload);
     return response.data;

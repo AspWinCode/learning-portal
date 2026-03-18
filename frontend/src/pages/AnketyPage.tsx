@@ -581,7 +581,7 @@ const AnketyPage: React.FC = () => {
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => { setConvertConflict(null); setConvertCardId(null); setConflictChoice(null); }}>Отмена</Button>
+            <Button onClick={() => { setConvertConflict(null); setConvertCardId(null); setConflictChoice(null); setError(null); }}>Отмена</Button>
             <Button variant="contained" onClick={handleConflictResolve}>Применить</Button>
           </DialogActions>
         </Dialog>

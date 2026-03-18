@@ -4228,7 +4228,10 @@ async def get_leads_send_info_status(
     if not ids:
         return {}
     base = _filter_query_by_role(db.query(Lead), current_user)
-    allowed_ids = {l.id for l in base.filter(Lead.id.in_(ids)).all()}
+    allowed_ids = {
+        row[0]
+        for row in base.filter(Lead.id.in_(ids)).with_entities(Lead.id).all()
+    }
     tasks = (
         db.query(LeadTask)
         .options(joinedload(LeadTask.template))

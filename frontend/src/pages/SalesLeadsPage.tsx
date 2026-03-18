@@ -2163,10 +2163,17 @@ const SalesLeadsPage: React.FC = () => {
 
   useEffect(() => {
     if (viewMode !== 'kanban') return;
-    const ids = leads.map((l) => l.id);
-    if (!ids.length) return;
-    salesApi.getLeadsSendInfoStatus(ids).then(setSendInfoStatus).catch(() => setSendInfoStatus({}));
-  }, [viewMode, leads]);
+    // Запрашиваем статус только для видимых карточек (не для всех 1000 лидов).
+    // Когда пользователь разворачивает колонку, expandedKanbanColumns меняется
+    // и эффект перезапускается, подхватывая новые ID.
+    const visibleIds = kanbanColumns.flatMap((col) => {
+      const colKey = String(col.status);
+      const isExpanded = expandedKanbanColumns.has(colKey);
+      return (isExpanded ? col.leads : col.leads.slice(0, KANBAN_COLUMN_INITIAL_LIMIT)).map((l) => l.id);
+    });
+    if (!visibleIds.length) return;
+    salesApi.getLeadsSendInfoStatus(visibleIds).then(setSendInfoStatus).catch(() => setSendInfoStatus({}));
+  }, [viewMode, kanbanColumns, expandedKanbanColumns]);
 
   const handleWidgetSendInfo = async (lead: Lead) => {
     try {

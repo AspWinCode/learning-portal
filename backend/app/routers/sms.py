@@ -4,7 +4,8 @@ API gateway не доступен на frontend — только через back
 """
 
 import logging
-from datetime import datetime, timedelta
+import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -48,7 +49,11 @@ def _check_rate_limit(db: Session, phone: str) -> None:
     since = datetime.utcnow() - timedelta(seconds=SMS_RATE_LIMIT_SECONDS)
     recent = (
         db.query(SmsMessage)
-        .filter(SmsMessage.phone == phone, SmsMessage.created_at >= since)
+        .filter(
+            SmsMessage.phone == phone,
+            SmsMessage.status == "sent",
+            SmsMessage.sent_at >= since,
+        )
         .first()
     )
     if recent:
@@ -68,6 +73,7 @@ def _sms_message_to_response(m: SmsMessage) -> SmsMessageResponse:
         status=m.status,
         gateway_id=m.gateway_id,
         created_at=m.created_at,
+        scheduled_at=m.scheduled_at,
         sent_at=m.sent_at,
         created_by=m.created_by,
     )
@@ -79,27 +85,45 @@ def api_sms_send(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
-    """Отправить одно SMS. entity_type: lead | event | task, entity_id — id сущности."""
+    """Отправить SMS немедленно или отложить. Если указан scheduled_at — сохраняется как scheduled."""
     if not is_configured():
         raise HTTPException(status_code=503, detail="SMS Gateway не настроен")
     phone = _normalize_phone_e164(payload.phone)
     if not phone or not phone.startswith("+"):
         raise HTTPException(status_code=400, detail="Некорректный номер телефона (ожидается E.164)")
     _validate_message_length(payload.message)
-    _check_rate_limit(db, phone)
+
+    # Нормализуем scheduled_at к UTC без tzinfo для единообразного сравнения
+    scheduled_at = payload.scheduled_at
+    if scheduled_at is not None:
+        if scheduled_at.tzinfo is not None:
+            scheduled_at = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+        if scheduled_at <= datetime.utcnow():
+            raise HTTPException(status_code=400, detail="scheduled_at должен быть в будущем")
+
+    # Для немедленной отправки проверяем rate-limit
+    if scheduled_at is None:
+        _check_rate_limit(db, phone)
 
     record = SmsMessage(
         phone=phone,
         message=payload.message[:SMS_MAX_LENGTH],
         entity_type=payload.entity_type,
         entity_id=payload.entity_id,
-        status="pending",
+        status="scheduled" if scheduled_at else "pending",
+        scheduled_at=scheduled_at,
         created_by=current_user.id,
     )
     db.add(record)
     db.commit()
     db.refresh(record)
 
+    # Если отложено — возвращаем сразу
+    if scheduled_at is not None:
+        logger.info("sms_scheduled: id=%s phone=%s scheduled_at=%s", record.id, phone, scheduled_at)
+        return _sms_message_to_response(record)
+
+    # Немедленная отправка
     success, gateway_id, err = send_sms(phone, payload.message)
     if success:
         record.status = "sent"
@@ -107,7 +131,6 @@ def api_sms_send(
         record.sent_at = datetime.utcnow()
         logger.info("sms_sent: id=%s phone=%s", record.id, phone)
 
-        # Логируем исходящее SMS в журнал коммуникаций лида
         if payload.entity_type == "lead" and payload.entity_id is not None:
             comm = LeadCommunication(
                 lead_id=payload.entity_id,
@@ -136,10 +159,18 @@ def api_sms_send_bulk(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
-    """Массовая отправка SMS. Между отправками пауза 61 сек на номер (лимит gateway)."""
+    """Массовая отправка SMS. Если указан scheduled_at — все номера ставятся в очередь."""
     if not is_configured():
         raise HTTPException(status_code=503, detail="SMS Gateway не настроен")
     _validate_message_length(payload.message)
+
+    scheduled_at = payload.scheduled_at
+    if scheduled_at is not None:
+        if scheduled_at.tzinfo is not None:
+            scheduled_at = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+        if scheduled_at <= datetime.utcnow():
+            raise HTTPException(status_code=400, detail="scheduled_at должен быть в будущем")
+
     phones = []
     seen = set()
     for p in payload.phones:
@@ -155,6 +186,27 @@ def api_sms_send_bulk(
         raise HTTPException(status_code=400, detail="Нет корректных номеров")
 
     results = []
+
+    # Отложенная рассылка — только сохраняем записи
+    if scheduled_at is not None:
+        for phone in phones:
+            record = SmsMessage(
+                phone=phone,
+                message=payload.message[:SMS_MAX_LENGTH],
+                entity_type=None,
+                entity_id=None,
+                status="scheduled",
+                scheduled_at=scheduled_at,
+                created_by=current_user.id,
+            )
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+            results.append(_sms_message_to_response(record))
+        logger.info("sms_bulk_scheduled: count=%d scheduled_at=%s", len(results), scheduled_at)
+        return results
+
+    # Немедленная рассылка
     for i, phone in enumerate(phones):
         _check_rate_limit(db, phone)
         record = SmsMessage(
@@ -182,3 +234,37 @@ def api_sms_send_bulk(
         if i < len(phones) - 1:
             time.sleep(61)
     return results
+
+
+@router.get("/sms/scheduled", response_model=List[SmsMessageResponse])
+def api_sms_scheduled(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Список отложенных SMS (статус scheduled)."""
+    records = (
+        db.query(SmsMessage)
+        .filter(SmsMessage.status == "scheduled")
+        .order_by(SmsMessage.scheduled_at.asc())
+        .all()
+    )
+    return [_sms_message_to_response(r) for r in records]
+
+
+@router.delete("/sms/scheduled/{message_id}", response_model=SmsMessageResponse)
+def api_sms_cancel(
+    message_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Отменить отложенное SMS."""
+    record = db.query(SmsMessage).filter(SmsMessage.id == message_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+    if record.status != "scheduled":
+        raise HTTPException(status_code=400, detail=f"Нельзя отменить: статус '{record.status}'")
+    record.status = "cancelled"
+    db.commit()
+    db.refresh(record)
+    logger.info("sms_cancelled: id=%s", message_id)
+    return _sms_message_to_response(record)

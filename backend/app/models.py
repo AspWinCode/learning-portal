@@ -399,13 +399,35 @@ class SmsMessage(Base):
     message = Column(Text, nullable=False)
     entity_type = Column(String(32), nullable=True, index=True)  # lead | event | task
     entity_id = Column(Integer, nullable=True, index=True)
-    status = Column(String(16), nullable=False, default="pending", index=True)  # sent | failed
+    status = Column(String(16), nullable=False, default="pending", index=True)  # pending | scheduled | sent | failed | cancelled
     gateway_id = Column(String(128), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)  # отложенная отправка
     sent_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     creator = relationship("User")
+
+
+class MaxMessage(Base):
+    """История сообщений в мессенджер MAX (бот и личный аккаунт)."""
+    __tablename__ = "max_messages"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
+    max_user_id = Column(Integer, nullable=True, index=True)
+    phone = Column(String(32), nullable=True, index=True)
+    chat_id = Column(String(64), nullable=True)
+    message = Column(Text, nullable=False)
+    status = Column(String(16), nullable=False, default="pending", index=True)  # pending | scheduled | sent | failed | cancelled
+    provider = Column(String(32), nullable=True)         # bot | greenapi | api_messenger
+    gateway_message_id = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)  # отложенная отправка
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
 
 
 class SmsTemplate(Base):

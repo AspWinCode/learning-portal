@@ -22,6 +22,8 @@ import Add from '@mui/icons-material/Add';
 import Delete from '@mui/icons-material/Delete';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import Layout from '../components/Layout';
+import { SendSMSModal } from '../components/SendSMSModal';
+import { SendMaxModal } from '../components/SendMaxModal';
 import { b2bApi, ownerFunnelsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type {
@@ -69,6 +71,9 @@ const OwnerFunnelsPage: React.FC = () => {
   const [movingId, setMovingId] = useState<number | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<number | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [smsModalOpen, setSmsModalOpen] = useState(false);
+  const [maxModalOpen, setMaxModalOpen] = useState(false);
+  const [modalPhone, setModalPhone] = useState('');
   const [stagePopup, setStagePopup] = useState<{
     item: OwnerFunnelItem;
     newStage: string;
@@ -731,6 +736,32 @@ const OwnerFunnelsPage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
+          <Button
+            size="small"
+            onClick={() => {
+              const phone =
+                (cardDetailItem?.card_data as OwnerFunnelCardData | null)?.contact_phone ||
+                cardDetailSchool?.contacts?.[0]?.phone ||
+                '';
+              setModalPhone(phone);
+              setSmsModalOpen(true);
+            }}
+          >
+            SMS
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              const phone =
+                (cardDetailItem?.card_data as OwnerFunnelCardData | null)?.contact_phone ||
+                cardDetailSchool?.contacts?.[0]?.phone ||
+                '';
+              setModalPhone(phone);
+              setMaxModalOpen(true);
+            }}
+          >
+            MAX
+          </Button>
           <Button onClick={() => setCardDetailItem(null)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
@@ -935,6 +966,17 @@ const OwnerFunnelsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <SendSMSModal
+        open={smsModalOpen}
+        onClose={() => setSmsModalOpen(false)}
+        phone={modalPhone}
+      />
+      <SendMaxModal
+        open={maxModalOpen}
+        onClose={() => setMaxModalOpen(false)}
+        initialPhone={modalPhone}
+      />
     </Layout>
   );
 };

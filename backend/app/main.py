@@ -118,9 +118,23 @@ def _validate_production_env() -> None:
                 db.close()
         except Exception:
             traceback.print_exc()
+
+    def _run_scheduled_messages() -> None:
+        """Каждую минуту: отправить SMS и MAX-сообщения, у которых scheduled_at <= now."""
+        try:
+            from app.services.scheduled_messages import dispatch_scheduled_messages
+            db = SessionLocal()
+            try:
+                dispatch_scheduled_messages(db)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
     scheduler.add_job(_run_payment_overdue_tasks, "interval", days=1, id="payment_overdue_tasks")
+    scheduler.add_job(_run_scheduled_messages, "interval", minutes=1, id="scheduled_messages")
     # Автоповышение класса учеников 1 сентября (cron-задача раз в год).
     scheduler.add_job(
         _run_student_class_autopromo,

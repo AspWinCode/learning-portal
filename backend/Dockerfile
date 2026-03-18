@@ -17,6 +17,7 @@ COPY . /app
 
 # При сборке всегда подменять миграцию 0047 на идемпотентную (CREATE INDEX IF NOT EXISTS, _table_exists/_column_exists)
 COPY docker/0047_eight_lessons_units_extra.py /app/alembic/versions/0047_eight_lessons_units_extra.py
+COPY docker/0079_scheduled_messages.py /app/alembic/versions/0079_scheduled_messages.py
 
 # Migrations run inside the app on startup (main.py _run_migrations_on_startup). If they fail, app still starts and returns 503 so we avoid 502.
 # `--proxy-headers` is required behind reverse proxies (Caddy/Nginx) to respect X-Forwarded-Proto/For.

@@ -48,6 +48,7 @@ export const SendSMSModal: React.FC<SendSMSModalProps> = ({
   const [message, setMessage] = useState('');
   const [templates, setTemplates] = useState<SmsTemplateResponse[]>([]);
   const [history, setHistory] = useState<SmsMessageResponse[]>([]);
+  const [scheduledAt, setScheduledAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +84,7 @@ export const SendSMSModal: React.FC<SendSMSModalProps> = ({
       setPhone(initialPhone);
       setMessage('');
       setTemplateId('');
+      setScheduledAt('');
       setError(null);
       loadTemplates();
     }
@@ -113,6 +115,15 @@ export const SendSMSModal: React.FC<SendSMSModalProps> = ({
       setError(`Не более ${SMS_MAX_LENGTH} символов`);
       return;
     }
+    let scheduledAtIso: string | null = null;
+    if (scheduledAt) {
+      const dt = new Date(scheduledAt);
+      if (isNaN(dt.getTime()) || dt <= new Date()) {
+        setError('Время отложенной отправки должно быть в будущем');
+        return;
+      }
+      scheduledAtIso = dt.toISOString();
+    }
     setError(null);
     setSending(true);
     try {
@@ -121,6 +132,7 @@ export const SendSMSModal: React.FC<SendSMSModalProps> = ({
         message: message.trim(),
         entity_type: entityType,
         entity_id: entityId,
+        scheduled_at: scheduledAtIso,
       });
       onSent?.();
       setMessage('');
@@ -172,6 +184,17 @@ export const SendSMSModal: React.FC<SendSMSModalProps> = ({
             size="small"
             helperText={`${message.length} / ${SMS_MAX_LENGTH}`}
           />
+          <TextField
+            label="Отложенная отправка (необязательно)"
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            fullWidth
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: new Date(Date.now() + 60000).toISOString().slice(0, 16) }}
+            helperText={scheduledAt ? 'Сообщение будет отправлено в указанное время' : 'Оставьте пустым для немедленной отправки'}
+          />
           {error && <Alert severity="error">{error}</Alert>}
 
           <Typography variant="subtitle2" color="text.secondary">
@@ -209,7 +232,7 @@ export const SendSMSModal: React.FC<SendSMSModalProps> = ({
       <DialogActions>
         <Button onClick={onClose}>Отмена</Button>
         <Button variant="contained" onClick={handleSend} disabled={sending}>
-          {sending ? 'Отправка…' : 'Отправить'}
+          {sending ? 'Отправка…' : scheduledAt ? 'Запланировать' : 'Отправить'}
         </Button>
       </DialogActions>
     </Dialog>

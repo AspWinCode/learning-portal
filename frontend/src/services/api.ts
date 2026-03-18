@@ -2338,6 +2338,7 @@ export const smsApi = {
     message: string;
     entity_type?: 'lead' | 'event' | 'task';
     entity_id?: number;
+    scheduled_at?: string | null;
   }): Promise<SmsMessageResponse> => {
     const response = await api.post('/api/sms/send', payload);
     return response.data;
@@ -2378,11 +2379,16 @@ export const maxApi = {
     const response = await api.get('/api/max/personal/qr');
     return response.data;
   },
+  checkUser: async (params: { max_user_id?: number; phone?: string }): Promise<{ exists: boolean }> => {
+    const response = await api.get('/api/max/check-user', { params });
+    return response.data;
+  },
   send: async (payload: {
     lead_id?: number;
     max_user_id?: number;
     phone?: string;
     message: string;
+    scheduled_at?: string | null;
   }): Promise<MaxSendResponse> => {
     const response = await api.post('/api/max/send', payload);
     return response.data;

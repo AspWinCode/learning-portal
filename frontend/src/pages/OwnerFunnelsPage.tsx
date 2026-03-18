@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -22,6 +22,8 @@ import Add from '@mui/icons-material/Add';
 import Delete from '@mui/icons-material/Delete';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import Layout from '../components/Layout';
+import { SendSMSModal } from '../components/SendSMSModal';
+import { SendMaxModal } from '../components/SendMaxModal';
 import { b2bApi, ownerFunnelsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type {
@@ -45,6 +47,7 @@ const EVENTS_POPUP_STAGES: Record<string, 'contact' | 'reply' | 'meeting' | 'tri
 
 const OwnerFunnelsPage: React.FC = () => {
   const navigate = useNavigate();
+  const prefetchedItemsRef = useRef<{ funnelId: string; items: OwnerFunnelItem[] } | null>(null);
   const [funnelTypes, setFunnelTypes] = useState<OwnerFunnelTypeInfo[]>([]);
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>('');
   const [events, setEvents] = useState<OwnerFunnelEvent[]>([]);
@@ -69,6 +72,9 @@ const OwnerFunnelsPage: React.FC = () => {
   const [movingId, setMovingId] = useState<number | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<number | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [smsModalOpen, setSmsModalOpen] = useState(false);
+  const [maxModalOpen, setMaxModalOpen] = useState(false);
+  const [modalPhone, setModalPhone] = useState('');
   const [stagePopup, setStagePopup] = useState<{
     item: OwnerFunnelItem;
     newStage: string;
@@ -93,18 +99,34 @@ const OwnerFunnelsPage: React.FC = () => {
   });
 
   const selectedFunnel = funnelTypes.find((f) => f.id === selectedFunnelId);
-  const itemsByStage = selectedFunnel
-    ? selectedFunnel.stages.map((stage) => ({
-        ...stage,
-        items: items.filter((i) => i.stage === stage.value),
-      }))
-    : [];
+  const itemsByStage = useMemo(
+    () =>
+      selectedFunnel
+        ? selectedFunnel.stages.map((stage) => ({
+            ...stage,
+            items: items.filter((i) => i.stage === stage.value),
+          }))
+        : [],
+    [selectedFunnel, items],
+  );
 
   const loadTypes = useCallback(async () => {
     try {
       const data = await ownerFunnelsApi.listTypes();
       setFunnelTypes(data);
-      if (data.length && !selectedFunnelId) setSelectedFunnelId(data[0].id);
+      if (data.length && !selectedFunnelId) {
+        const firstId = data[0].id;
+        // Префетч карточек параллельно с установкой selectedFunnelId — eliminates waterfall
+        if (firstId !== FUNNEL_EVENTS) {
+          prefetchedItemsRef.current = null;
+          setLoading(true);
+          ownerFunnelsApi.listItems(firstId)
+            .then((fetched) => { prefetchedItemsRef.current = { funnelId: firstId, items: fetched }; })
+            .catch(() => {})
+            .finally(() => setLoading(false));
+        }
+        setSelectedFunnelId(firstId);
+      }
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить типы воронок'));
     }
@@ -123,6 +145,12 @@ const OwnerFunnelsPage: React.FC = () => {
     if (!selectedFunnelId) return;
     if (selectedFunnelId === FUNNEL_EVENTS && selectedEventId == null) {
       setItems([]);
+      return;
+    }
+    // Если данные уже пришли через префетч — используем их без повторного запроса
+    if (prefetchedItemsRef.current?.funnelId === selectedFunnelId) {
+      setItems(prefetchedItemsRef.current.items);
+      prefetchedItemsRef.current = null;
       return;
     }
     setLoading(true);
@@ -355,7 +383,7 @@ const OwnerFunnelsPage: React.FC = () => {
   const handleDragOver = (e: React.DragEvent, stageValue: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverStage(stageValue);
+    setDragOverStage((prev) => (prev === stageValue ? prev : stageValue));
   };
 
   const handleDragLeave = () => {
@@ -731,6 +759,32 @@ const OwnerFunnelsPage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
+          <Button
+            size="small"
+            onClick={() => {
+              const phone =
+                (cardDetailItem?.card_data as OwnerFunnelCardData | null)?.contact_phone ||
+                cardDetailSchool?.contacts?.[0]?.phone ||
+                '';
+              setModalPhone(phone);
+              setSmsModalOpen(true);
+            }}
+          >
+            SMS
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              const phone =
+                (cardDetailItem?.card_data as OwnerFunnelCardData | null)?.contact_phone ||
+                cardDetailSchool?.contacts?.[0]?.phone ||
+                '';
+              setModalPhone(phone);
+              setMaxModalOpen(true);
+            }}
+          >
+            MAX
+          </Button>
           <Button onClick={() => setCardDetailItem(null)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
@@ -935,6 +989,17 @@ const OwnerFunnelsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <SendSMSModal
+        open={smsModalOpen}
+        onClose={() => setSmsModalOpen(false)}
+        phone={modalPhone}
+      />
+      <SendMaxModal
+        open={maxModalOpen}
+        onClose={() => setMaxModalOpen(false)}
+        initialPhone={modalPhone}
+      />
     </Layout>
   );
 };

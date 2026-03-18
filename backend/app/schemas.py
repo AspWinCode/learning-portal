@@ -2521,11 +2521,13 @@ class SmsSendRequest(BaseModel):
     message: str
     entity_type: Optional[Literal["lead", "event", "task"]] = None
     entity_id: Optional[int] = None
+    scheduled_at: Optional[datetime] = None  # если задано — отложить отправку
 
 
 class SmsSendBulkRequest(BaseModel):
     phones: List[str]
     message: str
+    scheduled_at: Optional[datetime] = None  # если задано — отложить отправку
 
 
 class SmsMessageResponse(BaseModel):
@@ -2537,6 +2539,7 @@ class SmsMessageResponse(BaseModel):
     status: str
     gateway_id: Optional[str] = None
     created_at: datetime
+    scheduled_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
     created_by: int
 
@@ -2562,10 +2565,30 @@ class MaxSendRequest(BaseModel):
     max_user_id: Optional[int] = None
     phone: Optional[str] = None  # для GREEN-API: отправка по номеру (формат 79...@c.us)
     message: str
+    scheduled_at: Optional[datetime] = None  # если задано — отложить отправку
 
 
 class MaxSendResponse(BaseModel):
     success: bool
     message_id: Optional[str] = None
     error: Optional[str] = None
+    scheduled: bool = False  # True если сообщение поставлено в очередь
+
+
+class MaxMessageResponse(BaseModel):
+    id: str
+    lead_id: Optional[int] = None
+    max_user_id: Optional[int] = None
+    phone: Optional[str] = None
+    message: str
+    status: str
+    provider: Optional[str] = None
+    gateway_message_id: Optional[str] = None
+    created_at: datetime
+    scheduled_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    created_by: int
+
+    class Config:
+        from_attributes = True
 

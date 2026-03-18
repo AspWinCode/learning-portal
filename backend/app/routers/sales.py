@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import cast, Text, or_
+from sqlalchemy import cast, Text, or_, update as sa_update
 from openpyxl import Workbook, load_workbook
 
 from app import auth
@@ -3480,6 +3480,8 @@ async def list_leads(
     created_to: Optional[datetime] = Query(default=None),
     next_contact_from: Optional[datetime] = Query(default=None),
     next_contact_to: Optional[datetime] = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -3521,30 +3523,39 @@ async def list_leads(
         query = query.filter(Lead.next_contact_at >= next_contact_from)
     if next_contact_to:
         query = query.filter(Lead.next_contact_at <= next_contact_to)
-    leads = query.all()
+    leads = query.offset(offset).limit(limit).all()
 
     # One-time/gradual бэкаповка старых лидов в воронку «Дожать на обучение»:
     # если статус demo, по лиду уже есть [came] в регистрациях события, но post_visit_stage ещё не задана,
     # проставляем stage='new', чтобы такие лиды появились на странице дожима.
     if status_filter == LeadStatus.DEMO:
-        updated = False
-        for lead in leads:
-            if not getattr(lead, "post_visit_stage", None):
-                has_came = (
-                    db.query(EventRegistration)
-                    .filter(
-                        EventRegistration.lead_id == lead.id,
-                        cast(EventRegistration.note, Text).ilike("%[came]%"),
-                    )
-                    .first()
+        candidate_ids = [lead.id for lead in leads if not getattr(lead, "post_visit_stage", None)]
+        if candidate_ids:
+            # Один запрос вместо N: ищем все lead_id с [came] среди кандидатов
+            came_lead_ids = {
+                row[0]
+                for row in db.query(EventRegistration.lead_id)
+                .filter(
+                    EventRegistration.lead_id.in_(candidate_ids),
+                    cast(EventRegistration.note, Text).ilike("%[came]%"),
                 )
-                if has_came:
-                    lead.post_visit_stage = "new"
-                    updated = True
-        if updated:
-            db.commit()
-            for lead in leads:
-                db.refresh(lead)
+                .distinct()
+                .all()
+            }
+            if came_lead_ids:
+                db.execute(
+                    sa_update(Lead)
+                    .where(Lead.id.in_(came_lead_ids))
+                    .values(post_visit_stage="new")
+                    .execution_options(synchronize_session=False)
+                )
+                db.commit()
+                # Одним запросом перезагружаем только изменённые лиды
+                refreshed = {
+                    r.id: r
+                    for r in db.query(Lead).filter(Lead.id.in_(came_lead_ids)).all()
+                }
+                leads = [refreshed.get(l.id, l) for l in leads]
 
     return [_fix_lead_strings(l) for l in leads]
 

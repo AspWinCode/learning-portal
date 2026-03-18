@@ -39,6 +39,7 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
     initialMaxUserId != null ? String(initialMaxUserId) : '',
   );
   const [message, setMessage] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
@@ -50,6 +51,7 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
       setPhone(initialPhone ?? '');
       setMaxUserId(initialMaxUserId != null ? String(initialMaxUserId) : '');
       setMessage('');
+      setScheduledAt('');
       setError(null);
       maxApi.isConfigured().then((r) => {
         setNotConfigured(!r.configured);
@@ -81,13 +83,34 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
       );
       return;
     }
+    let scheduledAtIso: string | null = null;
+    if (scheduledAt) {
+      const dt = new Date(scheduledAt);
+      if (isNaN(dt.getTime()) || dt <= new Date()) {
+        setError('Время отложенной отправки должно быть в будущем');
+        return;
+      }
+      scheduledAtIso = dt.toISOString();
+    }
     setError(null);
     setSending(true);
     try {
+      const checkParams: { phone?: string; max_user_id?: number } = {};
+      if (canSendByPhone) checkParams.phone = phoneTrim;
+      else if (num) checkParams.max_user_id = num;
+      if (checkParams.phone || checkParams.max_user_id) {
+        const check = await maxApi.checkUser(checkParams);
+        if (!check.exists) {
+          setError('Пользователя нет в MAX');
+          setSending(false);
+          return;
+        }
+      }
       await maxApi.send({
         lead_id: leadId,
         ...(canSendByPhone ? { phone: phoneTrim } : { max_user_id: num }),
         message: message.trim(),
+        scheduled_at: scheduledAtIso,
       });
       onSent?.();
       setMessage('');
@@ -144,13 +167,24 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
             size="small"
             helperText={`${message.length} / ${MAX_MESSAGE_LIMIT}`}
           />
+          <TextField
+            label="Отложенная отправка (необязательно)"
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            fullWidth
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: new Date(Date.now() + 60000).toISOString().slice(0, 16) }}
+            helperText={scheduledAt ? 'Сообщение будет отправлено в указанное время' : 'Оставьте пустым для немедленной отправки'}
+          />
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Отмена</Button>
         <Button variant="contained" onClick={handleSend} disabled={sending || notConfigured}>
-          {sending ? 'Отправка…' : 'Отправить'}
+          {sending ? 'Отправка…' : scheduledAt ? 'Запланировать' : 'Отправить'}
         </Button>
       </DialogActions>
     </Dialog>

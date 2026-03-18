@@ -247,12 +247,12 @@ const StudentCardsPage: React.FC = () => {
     try {
       const res = await studentCardsApi.openParentCabinet(card.id);
       if (res.already_open) {
-        setError('');
+        setError(null);
         alert('Кабинет родителя уже открыт для этого ученика.');
       } else if (res.invite_link) {
         setCabinetInviteLink(res.invite_link);
       } else {
-        setError('');
+        setError(null);
         alert('Кабинет родителя открыт (родитель уже был в системе).');
       }
       await loadCards();

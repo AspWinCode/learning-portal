@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose up -d --build backend)",
+      "Bash(docker compose up -d --build web)",
+      "Bash(docker compose up -d --build)",
+      "Bash(docker compose restart backend)",
+      "Bash(docker compose restart web)",
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs*)",
+      "Bash(git push*)",
+      "Bash(ssh root@80.87.201.25*)",
+      "Bash(sshpass*)"
+    ]
+  }
+}

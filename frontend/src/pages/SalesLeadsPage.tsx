@@ -716,12 +716,17 @@ const SalesLeadsPage: React.FC = () => {
   useEffect(() => {
     if (viewMode !== 'kanban') return;
     const loadPushStats = async () => {
-      if (leads.length === 0) {
+      const visibleIds = kanbanColumns.flatMap((col) => {
+        const colKey = String(col.status);
+        const isExpanded = expandedKanbanColumns.has(colKey);
+        return (isExpanded ? col.leads : col.leads.slice(0, KANBAN_COLUMN_INITIAL_LIMIT)).map((l) => l.id);
+      });
+      if (visibleIds.length === 0) {
         setLeadPushStatsMap({});
         return;
       }
       try {
-        const stats = await salesApi.getLeadsPushStats(leads.map((l) => l.id));
+        const stats = await salesApi.getLeadsPushStats(visibleIds);
         const map: Record<number, LeadPushStats> = {};
         stats.forEach((s) => {
           map[s.lead_id] = s;
@@ -732,7 +737,7 @@ const SalesLeadsPage: React.FC = () => {
       }
     };
     void loadPushStats();
-  }, [leads, viewMode]);
+  }, [kanbanColumns, expandedKanbanColumns, viewMode]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);

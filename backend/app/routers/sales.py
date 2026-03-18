@@ -2921,11 +2921,11 @@ async def get_leads_push_stats(
     lead_query = _filter_query_by_role(db.query(Lead), current_user)
     if lead_ids:
         lead_query = lead_query.filter(Lead.id.in_(lead_ids))
-    leads = lead_query.all()
-    if not leads:
+    allowed_id_rows = lead_query.with_entities(Lead.id).all()
+    if not allowed_id_rows:
         return []
 
-    allowed_ids = [lead.id for lead in leads]
+    allowed_ids = [row[0] for row in allowed_id_rows]
     tasks = (
         db.query(LeadTask)
         .options(joinedload(LeadTask.template))

@@ -799,8 +799,12 @@ const SalesLeadsPage: React.FC = () => {
       source: lead.source || '',
       referral_name: lead.referral_name || '',
     });
-    try {
-      const fullLead = await salesApi.getLead(lead.id);
+    const [fullLeadResult, detailsResult] = await Promise.allSettled([
+      salesApi.getLead(lead.id),
+      loadLeadDetails(lead),
+    ]);
+    if (fullLeadResult.status === 'fulfilled') {
+      const fullLead = fullLeadResult.value;
       setSelectedLead(fullLead);
       setLeadCommentDraft(fullLead.comment ?? lead.comment ?? '');
       setLeadHeaderStatusDraft(getPipelineColumnForStatus(fullLead.status));
@@ -818,10 +822,7 @@ const SalesLeadsPage: React.FC = () => {
         source: fullLead.source || lead.source || '',
         referral_name: fullLead.referral_name || lead.referral_name || '',
       });
-    } catch {
-      // оставляем данные из списка (уже подставлены выше)
     }
-    await loadLeadDetails(lead);
   };
 
   const handleCreateTask = async () => {
@@ -1195,11 +1196,7 @@ const SalesLeadsPage: React.FC = () => {
     setLeadCommentDraft(selectedLead.comment || '');
   }, [selectedLead?.id]);
 
-  useEffect(() => {
-    if (detailsOpen && selectedLead) {
-      salesApi.listSalesCities(true).then(setSalesCities).catch(() => setSalesCities([]));
-    }
-  }, [detailsOpen, selectedLead?.id]);
+  // salesCities loaded once in loadSalesMeta on mount — no need to reload on every card open
 
   useEffect(() => {
     if (!selectedLead) return;

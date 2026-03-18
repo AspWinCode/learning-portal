@@ -149,6 +149,7 @@ const SalesLeadsPage: React.FC = () => {
   const navigate = useNavigate();
   const isPipelineRoute = location.pathname === '/sales/pipeline';
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [totalLeads, setTotalLeads] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -288,13 +289,37 @@ const SalesLeadsPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await salesApi.listLeads({
+      const isKanban = viewMode === 'kanban';
+      const params: Parameters<typeof salesApi.listLeads>[0] = {
         q: debouncedQFilter.trim() || undefined,
         source: sourceFilter.trim() || undefined,
-        tag: tagFilter.trim() || undefined,
         overdue_only: overdueOnly || undefined,
-      });
-      setLeads(data);
+      };
+      if (isKanban) {
+        // Канбан: загружаем все лиды без серверной пагинации и без фильтров по колонке
+        params.limit = 1000;
+        if (tagFilter.trim()) params.tag = tagFilter.trim();
+      } else {
+        // Таблица: серверная пагинация + все фильтры на сервере
+        params.limit = tableRowsPerPage;
+        params.offset = tablePage * tableRowsPerPage;
+        if (statusFilter === 'next_event') {
+          params.tag = TAG_REINVITE_NEXT_EVENT;
+        } else {
+          if (tagFilter.trim()) params.tag = tagFilter.trim();
+          if (statusFilter) params.pipeline_column = statusFilter;
+          if (tableCityFilter) params.city = tableCityFilter;
+          if (tableSchoolFilter) params.school_name = tableSchoolFilter;
+          if (tableClassFilter) params.school_class = tableClassFilter;
+          if (tableSortField) {
+            params.sort_by = tableSortField;
+            params.sort_order = tableSortOrder ?? 'desc';
+          }
+        }
+      }
+      const { items, total } = await salesApi.listLeads(params);
+      setLeads(items);
+      setTotalLeads(total);
     } catch (err: any) {
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
@@ -319,7 +344,9 @@ const SalesLeadsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQFilter, sourceFilter, tagFilter, overdueOnly]);
+  }, [viewMode, debouncedQFilter, sourceFilter, tagFilter, overdueOnly,
+      tableRowsPerPage, tablePage, statusFilter, tableCityFilter, tableSchoolFilter,
+      tableClassFilter, tableSortField, tableSortOrder]);
 
   const loadSalesMeta = useCallback(async () => {
     // Города и школы подгружаем отдельно, чтобы при ошибке других запросов списки всё равно обновились
@@ -478,10 +505,16 @@ const SalesLeadsPage: React.FC = () => {
     return Array.from(classSet).sort((a, b) => a.localeCompare(b, 'ru'));
   }, [leads]);
 
+  // В режиме таблицы сервер уже применил все фильтры, сортировку и пагинацию.
+  // В режиме канбана фильтрация клиентская (нет серверной пагинации).
   const filteredSortedLeads = useMemo(() => {
+    if (viewMode !== 'kanban') {
+      // Таблица: данные уже готовы с сервера
+      return leads;
+    }
+    // Канбан: клиентская фильтрация по статусу (если задан)
     const normalizedSchoolFilter = tableSchoolFilter.trim().toLowerCase();
     const filtered = leads.filter((lead) => {
-      // Фильтр по этапу воронки (таблица использует те же этапы, что и Воронка)
       if (statusFilter) {
         if (statusFilter === 'next_event') {
           if (!((lead.tags || []).includes(TAG_REINVITE_NEXT_EVENT))) return false;
@@ -491,32 +524,20 @@ const SalesLeadsPage: React.FC = () => {
       }
       if (tableCityFilter && (lead.city || '') !== tableCityFilter) return false;
       if (tableClassFilter && (lead.school_class || '') !== tableClassFilter) return false;
-      if (
-        normalizedSchoolFilter &&
-        !(lead.school_name || '').toLowerCase().includes(normalizedSchoolFilter)
-      ) {
+      if (normalizedSchoolFilter && !(lead.school_name || '').toLowerCase().includes(normalizedSchoolFilter)) {
         return false;
       }
       return true;
     });
+    return filtered;
+  }, [viewMode, leads, statusFilter, tableCityFilter, tableClassFilter, tableSchoolFilter]);
 
-    const sorted = [...filtered].sort((a, b) => {
-      if (tableSortField === 'created_at') {
-        const aTs = new Date(a.created_at).getTime();
-        const bTs = new Date(b.created_at).getTime();
-        return (Number.isNaN(aTs) ? 0 : aTs) - (Number.isNaN(bTs) ? 0 : bTs);
-      }
-      const av = (a[tableSortField] || '').toString();
-      const bv = (b[tableSortField] || '').toString();
-      return av.localeCompare(bv, 'ru', { sensitivity: 'base' });
-    });
-
-    return tableSortOrder === 'asc' ? sorted : sorted.reverse();
-  }, [leads, statusFilter, tableCityFilter, tableClassFilter, tableSchoolFilter, tableSortField, tableSortOrder]);
-
+  // Таблица: сервер уже вернул нужную страницу, клиентская нарезка не нужна
   const paginatedLeads = useMemo(
-    () => filteredSortedLeads.slice(tablePage * tableRowsPerPage, (tablePage + 1) * tableRowsPerPage),
-    [filteredSortedLeads, tablePage, tableRowsPerPage],
+    () => viewMode === 'kanban'
+      ? filteredSortedLeads.slice(tablePage * tableRowsPerPage, (tablePage + 1) * tableRowsPerPage)
+      : leads,
+    [viewMode, leads, filteredSortedLeads, tablePage, tableRowsPerPage],
   );
 
   // Сброс страницы при смене фильтров
@@ -2351,7 +2372,7 @@ const SalesLeadsPage: React.FC = () => {
       </TableContainer>
       <TablePagination
         component="div"
-        count={filteredSortedLeads.length}
+        count={totalLeads}
         page={tablePage}
         onPageChange={(_e, newPage) => setTablePage(newPage)}
         rowsPerPage={tableRowsPerPage}

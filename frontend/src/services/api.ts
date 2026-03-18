@@ -1030,7 +1030,18 @@ export const salesApi = {
     created_to?: string;
     next_contact_from?: string;
     next_contact_to?: string;
-  }): Promise<Lead[]> => {
+    // Серверные фильтры таблицы
+    city?: string;
+    school_name?: string;
+    school_class?: string;
+    pipeline_column?: string;
+    // Сортировка
+    sort_by?: 'created_at' | 'school_class' | 'school_name' | 'city';
+    sort_order?: 'asc' | 'desc';
+    // Пагинация
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: Lead[]; total: number }> => {
     const response = await api.get('/api/sales/leads', { params: params || {} });
     return response.data;
   },

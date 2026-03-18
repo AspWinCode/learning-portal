@@ -857,6 +857,11 @@ class LeadResponse(BaseModel):
         from_attributes = True
 
 
+class LeadsPaginatedResponse(BaseModel):
+    items: List[LeadResponse]
+    total: int
+
+
 class LeadTaskBase(BaseModel):
     template_id: Optional[int] = None
     status_option_id: Optional[int] = None

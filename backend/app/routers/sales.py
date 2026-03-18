@@ -83,6 +83,7 @@ from app.schemas import (
     LeadCreate,
     LeadUpdate,
     LeadResponse,
+    LeadsPaginatedResponse,
     LeadTaskCreate,
     LeadTaskResponse,
     LeadTaskUpdate,
@@ -3467,8 +3468,16 @@ async def update_lead_status(
     return item
 
 
+# Маппинг "колонка пайплайна" → DB-статусы (один пайплайн-столбец может включать несколько статусов)
+_PIPELINE_COLUMN_TO_STATUSES: Dict[str, List[LeadStatus]] = {
+    "thinking": [LeadStatus.THINKING, LeadStatus.CONTACTED],
+    "trial_scheduled": [LeadStatus.TRIAL_SCHEDULED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT],
+    "decided_immediately": [LeadStatus.DECIDED_IMMEDIATELY, LeadStatus.WON],
+    "refused": [LeadStatus.REFUSED, LeadStatus.LOST],
+}
+
 # --- List leads (must be before /leads/{lead_id} to avoid 404 "Not Found") ---
-@router.get("/leads", response_model=List[LeadResponse])
+@router.get("/leads", response_model=LeadsPaginatedResponse)
 async def list_leads(
     status_filter: Optional[LeadStatus] = None,
     questionnaire_filled: Optional[bool] = None,
@@ -3480,7 +3489,16 @@ async def list_leads(
     created_to: Optional[datetime] = Query(default=None),
     next_contact_from: Optional[datetime] = Query(default=None),
     next_contact_to: Optional[datetime] = Query(default=None),
-    limit: int = Query(default=500, ge=1, le=2000),
+    # Фильтры таблицы (перенесены на сервер)
+    city: Optional[str] = None,
+    school_name: Optional[str] = None,
+    school_class: Optional[str] = None,
+    pipeline_column: Optional[str] = None,
+    # Сортировка
+    sort_by: Optional[str] = Query(default=None),
+    sort_order: str = Query(default="desc"),
+    # Пагинация
+    limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
@@ -3488,9 +3506,16 @@ async def list_leads(
     if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    query = _filter_query_by_role(db.query(Lead).order_by(Lead.created_at.desc()), current_user)
+    query = _filter_query_by_role(db.query(Lead), current_user)
     if status_filter:
         query = query.filter(Lead.status == status_filter)
+    elif pipeline_column:
+        statuses = _PIPELINE_COLUMN_TO_STATUSES.get(pipeline_column)
+        if statuses:
+            query = query.filter(Lead.status.in_(statuses))
+        else:
+            # колонка 1:1 с DB-статусом (new, no_answer, event_registered и т.д.)
+            query = query.filter(cast(Lead.status, Text) == pipeline_column)
     if questionnaire_filled is not None:
         query = query.filter(Lead.questionnaire_filled == questionnaire_filled)
     if q:
@@ -3523,6 +3548,25 @@ async def list_leads(
         query = query.filter(Lead.next_contact_at >= next_contact_from)
     if next_contact_to:
         query = query.filter(Lead.next_contact_at <= next_contact_to)
+    if city:
+        query = query.filter(Lead.city == city)
+    if school_name:
+        query = query.filter(cast(Lead.school_name, Text).ilike(f"%{school_name.strip()}%"))
+    if school_class:
+        query = query.filter(Lead.school_class == school_class)
+
+    # Сортировка
+    _sort_columns = {
+        "created_at": Lead.created_at,
+        "school_class": Lead.school_class,
+        "school_name": Lead.school_name,
+        "city": Lead.city,
+    }
+    sort_col = _sort_columns.get(sort_by or "created_at", Lead.created_at)
+    query = query.order_by(sort_col.asc() if sort_order == "asc" else sort_col.desc())
+
+    # Считаем total ДО пагинации
+    total = query.count()
     leads = query.offset(offset).limit(limit).all()
 
     # One-time/gradual бэкаповка старых лидов в воронку «Дожать на обучение»:
@@ -3557,7 +3601,7 @@ async def list_leads(
                 }
                 leads = [refreshed.get(l.id, l) for l in leads]
 
-    return [_fix_lead_strings(l) for l in leads]
+    return LeadsPaginatedResponse(items=[_fix_lead_strings(l) for l in leads], total=total)
 
 
 @router.get("/leads/{lead_id}/communications", response_model=List[LeadCommunicationResponse])

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
@@ -154,6 +154,8 @@ const SalesLeadsPage: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<LeadStatus | '' | 'next_event'>('');
   const [qFilter, setQFilter] = useState('');
+  const [debouncedQFilter, setDebouncedQFilter] = useState('');
+  const qDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sourceFilter, setSourceFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
@@ -276,12 +278,18 @@ const SalesLeadsPage: React.FC = () => {
     comment: '',
   });
 
+  useEffect(() => {
+    if (qDebounceRef.current) clearTimeout(qDebounceRef.current);
+    qDebounceRef.current = setTimeout(() => setDebouncedQFilter(qFilter), 400);
+    return () => { if (qDebounceRef.current) clearTimeout(qDebounceRef.current); };
+  }, [qFilter]);
+
   const loadLeads = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await salesApi.listLeads({
-        q: qFilter.trim() || undefined,
+        q: debouncedQFilter.trim() || undefined,
         source: sourceFilter.trim() || undefined,
         tag: tagFilter.trim() || undefined,
         overdue_only: overdueOnly || undefined,
@@ -311,7 +319,7 @@ const SalesLeadsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, qFilter, sourceFilter, tagFilter, overdueOnly]);
+  }, [debouncedQFilter, sourceFilter, tagFilter, overdueOnly]);
 
   const loadSalesMeta = useCallback(async () => {
     // Города и школы подгружаем отдельно, чтобы при ошибке других запросов списки всё равно обновились
@@ -352,31 +360,13 @@ const SalesLeadsPage: React.FC = () => {
     loadSalesMeta();
   }, [loadLeads, loadSalesMeta]);
 
-  // h+hUh$d d h\hadh�hQh[hc h\h� h]hadh[hdhUddhUha B$ h$hWd hQh[hWh[h\hQhU ,;h1hWhah$ h]hadh[hdhUddhUha,W hU h�hQhWh�h$hQhU ,;h/h[hVh�h�dd hadha dh�hV,W
   useEffect(() => {
     if (viewMode !== 'kanban') return;
     let cancelled = false;
-    const hasNoShowTag = (note: string | null | undefined) => {
-      const lower = (note || '').toLowerCase();
-      return lower.includes('[no-show]') || lower.includes('no-show');
-    };
     salesApi
-      .listEvents()
-      .then((eventList) => {
-        if (cancelled || !eventList.length) return;
-        return Promise.allSettled(eventList.map((e) => salesApi.listEventRegistrations(e.id)));
-      })
-      .then((results) => {
-        if (cancelled || !results) return;
-        const ids = new Set<number>();
-        results.forEach((r) => {
-          if (r.status === 'fulfilled') {
-            r.value.forEach((reg) => {
-              if (reg.status === 'registered' && hasNoShowTag(reg.note)) ids.add(reg.lead_id);
-            });
-          }
-        });
-        if (!cancelled) setNoShowLeadIds(ids);
+      .listNoShowLeadIds()
+      .then((ids) => {
+        if (!cancelled) setNoShowLeadIds(new Set(ids));
       })
       .catch(() => {});
     return () => {

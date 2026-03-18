@@ -1207,6 +1207,10 @@ export const salesApi = {
     const response = await api.post(`/api/sales/events/${eventId}/registrations`, payload);
     return response.data;
   },
+  listNoShowLeadIds: async (): Promise<number[]> => {
+    const response = await api.get('/api/sales/leads/no-show-ids');
+    return response.data;
+  },
   listEventRegistrations: async (eventId: number): Promise<EventRegistration[]> => {
     const response = await api.get(`/api/sales/events/${eventId}/registrations`);
     return response.data;

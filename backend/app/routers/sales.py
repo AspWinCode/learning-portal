@@ -4237,6 +4237,27 @@ async def get_leads_send_info_status(
     return result
 
 
+@router.get("/leads/no-show-ids", response_model=List[int])
+async def list_no_show_lead_ids(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Return IDs of leads that have a no-show registration. Single query, replaces N+1 on frontend."""
+    rows = (
+        db.query(EventRegistration.lead_id)
+        .filter(
+            EventRegistration.status == EventRegistrationStatus.REGISTERED,
+            or_(
+                cast(EventRegistration.note, Text).ilike("%[no-show]%"),
+                cast(EventRegistration.note, Text).ilike("%no-show%"),
+            ),
+        )
+        .distinct()
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
 @router.get("/leads/{lead_id}", response_model=LeadResponse)
 async def get_lead(
     lead_id: int,

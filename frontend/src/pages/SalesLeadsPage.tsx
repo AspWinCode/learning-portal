@@ -159,7 +159,7 @@ const SalesLeadsPage: React.FC = () => {
   const [sourceFilter, setSourceFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>(isPipelineRoute ? 'kanban' : 'table');
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -1901,10 +1901,10 @@ const SalesLeadsPage: React.FC = () => {
 
   useEffect(() => {
     if (viewMode !== 'kanban') return;
-    const ids = [...new Set(kanbanColumns.flatMap((col) => col.leads.map((l) => l.id)))];
+    const ids = leads.map((l) => l.id);
     if (!ids.length) return;
     salesApi.getLeadsSendInfoStatus(ids).then(setSendInfoStatus).catch(() => setSendInfoStatus({}));
-  }, [viewMode, kanbanColumns]);
+  }, [viewMode, leads]);
 
   const handleWidgetSendInfo = async (lead: Lead) => {
     try {

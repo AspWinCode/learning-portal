@@ -2926,20 +2926,23 @@ async def get_leads_push_stats(
         return []
 
     allowed_ids = [row[0] for row in allowed_id_rows]
+    # Фильтруем «дожимные» задачи прямо в SQL — не тянем все задачи в Python
     tasks = (
         db.query(LeadTask)
-        .options(joinedload(LeadTask.template))
-        .filter(LeadTask.lead_id.in_(allowed_ids))
+        .outerjoin(LeadTaskTemplate, LeadTask.template_id == LeadTaskTemplate.id)
+        .filter(
+            LeadTask.lead_id.in_(allowed_ids),
+            or_(
+                cast(LeadTask.note, Text).ilike("%дожим%"),
+                cast(LeadTask.note, Text).ilike("%push%"),
+                cast(LeadTaskTemplate.name, Text).ilike("%дожим%"),
+            ),
+        )
         .all()
     )
 
     by_lead: Dict[int, Dict[str, int]] = {lead_id: {"total": 0, "done": 0} for lead_id in allowed_ids}
     for task in tasks:
-        template_name = (task.template.name if task.template else "").lower()
-        note = (task.note or "").lower()
-        is_push = "дожим" in template_name or "дожим" in note or "push" in note
-        if not is_push:
-            continue
         by_lead[task.lead_id]["total"] += 1
         if task.status == LeadTaskStatus.DONE:
             by_lead[task.lead_id]["done"] += 1

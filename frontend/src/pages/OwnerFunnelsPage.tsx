@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -99,12 +99,16 @@ const OwnerFunnelsPage: React.FC = () => {
   });
 
   const selectedFunnel = funnelTypes.find((f) => f.id === selectedFunnelId);
-  const itemsByStage = selectedFunnel
-    ? selectedFunnel.stages.map((stage) => ({
-        ...stage,
-        items: items.filter((i) => i.stage === stage.value),
-      }))
-    : [];
+  const itemsByStage = useMemo(
+    () =>
+      selectedFunnel
+        ? selectedFunnel.stages.map((stage) => ({
+            ...stage,
+            items: items.filter((i) => i.stage === stage.value),
+          }))
+        : [],
+    [selectedFunnel, items],
+  );
 
   const loadTypes = useCallback(async () => {
     try {
@@ -379,7 +383,7 @@ const OwnerFunnelsPage: React.FC = () => {
   const handleDragOver = (e: React.DragEvent, stageValue: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverStage(stageValue);
+    setDragOverStage((prev) => (prev === stageValue ? prev : stageValue));
   };
 
   const handleDragLeave = () => {

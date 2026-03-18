@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse, Response
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import cast, Text, or_, update as sa_update
 from openpyxl import Workbook, load_workbook
 
@@ -3570,7 +3570,13 @@ async def list_leads(
 
     # Считаем total ДО пагинации
     total = query.count()
-    leads = query.offset(offset).limit(limit).all()
+    leads = (
+        query
+        .options(selectinload(Lead.status_option), selectinload(Lead.abonement))
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     # One-time/gradual бэкаповка старых лидов в воронку «Дожать на обучение»:
     # если статус demo, по лиду уже есть [came] в регистрациях события, но post_visit_stage ещё не задана,

@@ -299,7 +299,7 @@ class Lead(Base):
     parent_phone = Column(String, nullable=True)
     child_phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
-    city = Column(String, nullable=True)
+    city = Column(String, nullable=True, index=True)
     school_name = Column(String, nullable=True, index=True)
     school_class = Column(String, nullable=True, index=True)
     outreach_at = Column(DateTime(timezone=True), nullable=True, index=True)

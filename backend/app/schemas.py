@@ -857,8 +857,51 @@ class LeadResponse(BaseModel):
         from_attributes = True
 
 
+class LeadListResponse(BaseModel):
+    """Slim-схема для списков/канбана — без тяжёлых вложенных объектов."""
+    id: int
+    owner_id: int
+    contact_name: str
+    phone: str
+    parent_full_name: Optional[str] = None
+    child_full_name: Optional[str] = None
+    parent_phone: Optional[str] = None
+    child_phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    city: Optional[str] = None
+    school_name: Optional[str] = None
+    school_class: Optional[str] = None
+    outreach_at: Optional[datetime] = None
+    outreach_minutes: Optional[int] = None
+    source: Optional[str] = None
+    communication_channel: Optional[str] = None
+    source_id: Optional[int] = None
+    referral_name: Optional[str] = None
+    tags: Optional[List[str]] = None
+    abonement_id: Optional[int] = None
+    desired_slot: Optional[str] = None
+    comment: Optional[str] = None
+    next_contact_at: Optional[datetime] = None
+    no_answer_attempt: Optional[int] = None
+    questionnaire_filled: bool = False
+    status: LeadStatus
+    status_option_id: Optional[int] = None
+    pause_reason: Optional[str] = None
+    lost_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    post_visit_stage: Optional[str] = None
+    post_visit_review: Optional[str] = None
+    post_visit_project_date: Optional[datetime] = None
+    converted_to_student_id: Optional[int] = None
+    max_user_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
 class LeadsPaginatedResponse(BaseModel):
-    items: List[LeadResponse]
+    items: List[LeadListResponse]
     total: int
 
 

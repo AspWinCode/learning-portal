@@ -1042,8 +1042,10 @@ export const salesApi = {
     // Пагинация
     limit?: number;
     offset?: number;
+    signal?: AbortSignal;
   }): Promise<{ items: Lead[]; total: number }> => {
-    const response = await api.get('/api/sales/leads', { params: params || {} });
+    const { signal, ...queryParams } = params || {};
+    const response = await api.get('/api/sales/leads', { params: queryParams, signal });
     return response.data;
   },
   createLead: async (payload: {

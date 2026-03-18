@@ -144,6 +144,9 @@ const isValidRuPhone = (raw: string): boolean => /^\+7\d{10}$/.test(normalizeRuP
 type LeadsTableSortField = 'created_at' | 'school_class' | 'school_name' | 'city';
 type LeadsTableSortOrder = 'asc' | 'desc';
 
+/** Количество карточек, отображаемых в колонке канбана по умолчанию */
+const KANBAN_COLUMN_INITIAL_LIMIT = 30;
+
 // ─── Чистые функции, вынесенные на уровень модуля ────────────────────────────
 
 function badgeColor(status: LeadStatus): 'success' | 'default' | 'info' | 'warning' | 'primary' {
@@ -431,6 +434,8 @@ const SalesLeadsPage: React.FC = () => {
   const [draggedLeadId, setDraggedLeadId] = useState<number | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | 'archive' | 'next_event' | null>(null);
   const [showArchiveColumn, setShowArchiveColumn] = useState(false);
+  /** Колонки канбана, в которых пользователь нажал «Показать ещё» */
+  const [expandedKanbanColumns, setExpandedKanbanColumns] = useState<Set<string>>(new Set());
   const [noShowLeadIds, setNoShowLeadIds] = useState<Set<number>>(new Set());
   const [dropConfirmOpen, setDropConfirmOpen] = useState(false);
   const [dropTargetStatus, setDropTargetStatus] = useState<LeadStatus | null>(null);
@@ -541,7 +546,14 @@ const SalesLeadsPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Intentionally empty deps — all mutable state accessed via refs or stable setters
 
+  const loadAbortRef = useRef<AbortController | null>(null);
+
   const loadLeads = useCallback(async () => {
+    // Отменяем предыдущий in-flight запрос (race condition при быстрой смене фильтров)
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+
     setLoading(true);
     setError(null);
     try {
@@ -550,6 +562,7 @@ const SalesLeadsPage: React.FC = () => {
         q: debouncedQFilter.trim() || undefined,
         source: sourceFilter.trim() || undefined,
         overdue_only: overdueOnly || undefined,
+        signal: controller.signal,
       };
       if (isKanban) {
         // Канбан: загружаем все лиды без серверной пагинации и без фильтров по колонке
@@ -576,9 +589,13 @@ const SalesLeadsPage: React.FC = () => {
         }
       }
       const { items, total } = await salesApi.listLeads(params);
+      // Игнорируем результат если запрос был отменён
+      if (controller.signal.aborted) return;
       setLeads(items);
       setTotalLeads(total);
     } catch (err: any) {
+      // Axios бросает CanceledError при abort — тихо игнорируем
+      if (err?.name === 'CanceledError' || err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') return;
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
       const noResponse = !err?.response; // сеть недоступна, бэкенд не запущен, CORS
@@ -600,7 +617,8 @@ const SalesLeadsPage: React.FC = () => {
         setError(extractApiError(err, 'Не удалось загрузить лиды'));
       }
     } finally {
-      setLoading(false);
+      // Не снимаем loading если этот запрос уже отменён (новый уже в пути)
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [viewMode, debouncedQFilter, sourceFilter, tagFilter, overdueOnly,
       tableRowsPerPage, tablePage, statusFilter, tableCityFilter, tableSchoolFilter,
@@ -798,9 +816,10 @@ const SalesLeadsPage: React.FC = () => {
     [viewMode, leads, filteredSortedLeads, tablePage, tableRowsPerPage],
   );
 
-  // Сброс страницы при смене фильтров
+  // Сброс страницы и раскрытых колонок при смене фильтров
   useEffect(() => {
     setTablePage(0);
+    setExpandedKanbanColumns(new Set());
   }, [statusFilter, qFilter, sourceFilter, tagFilter, overdueOnly, tableCityFilter, tableClassFilter, tableSchoolFilter]);
 
   const selectedVisibleCount = useMemo(() => {
@@ -2655,29 +2674,59 @@ const SalesLeadsPage: React.FC = () => {
                     <Chip size="small" label={col.leads.length} />
                   </Stack>
                   <Stack spacing={1.5}>
-                    {col.leads.map((lead) => {
-                      const p = getKanbanPushProgressEstimate(lead);
+                    {(() => {
+                      const colKey = String(col.status);
+                      const isExpanded = expandedKanbanColumns.has(colKey);
+                      const visibleLeads = isExpanded
+                        ? col.leads
+                        : col.leads.slice(0, KANBAN_COLUMN_INITIAL_LIMIT);
+                      const hiddenCount = col.leads.length - visibleLeads.length;
                       return (
-                        <KanbanLeadCard
-                          key={lead.id}
-                          lead={lead}
-                          colStatus={col.status}
-                          isSelected={selectedLead?.id === lead.id}
-                          isDragging={draggedLeadId === lead.id}
-                          isLoading={actionLoadingId === lead.id}
-                          sendInfoStatusValue={sendInfoStatus[lead.id]}
-                          pushPercent={p.percent}
-                          pushLabel={p.label}
-                          statusOptions={statusOptions}
-                          onAction={stableKanbanAction}
-                        />
+                        <>
+                          {visibleLeads.map((lead) => {
+                            const p = getKanbanPushProgressEstimate(lead);
+                            return (
+                              <KanbanLeadCard
+                                key={lead.id}
+                                lead={lead}
+                                colStatus={col.status}
+                                isSelected={selectedLead?.id === lead.id}
+                                isDragging={draggedLeadId === lead.id}
+                                isLoading={actionLoadingId === lead.id}
+                                sendInfoStatusValue={sendInfoStatus[lead.id]}
+                                pushPercent={p.percent}
+                                pushLabel={p.label}
+                                statusOptions={statusOptions}
+                                onAction={stableKanbanAction}
+                              />
+                            );
+                          })}
+                          {hiddenCount > 0 && (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => setExpandedKanbanColumns((prev) => new Set([...prev, colKey]))}
+                            >
+                              Показать ещё {hiddenCount}
+                            </Button>
+                          )}
+                          {isExpanded && col.leads.length > KANBAN_COLUMN_INITIAL_LIMIT && (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => setExpandedKanbanColumns((prev) => { const s = new Set(prev); s.delete(colKey); return s; })}
+                            >
+                              Свернуть
+                            </Button>
+                          )}
+                          {col.leads.length === 0 && (
+                            <Typography variant="caption" color="text.secondary">
+                              Лидов нет
+                            </Typography>
+                          )}
+                        </>
                       );
-                    })}
-                    {col.leads.length === 0 && (
-                      <Typography variant="caption" color="text.secondary">
-                        Лидов нет
-                      </Typography>
-                    )}
+                    })()}
                   </Stack>
                 </CardContent>
               </Card>

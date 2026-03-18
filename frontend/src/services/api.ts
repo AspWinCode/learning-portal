@@ -2379,6 +2379,10 @@ export const maxApi = {
     const response = await api.get('/api/max/personal/qr');
     return response.data;
   },
+  checkUser: async (params: { max_user_id?: number; phone?: string }): Promise<{ exists: boolean }> => {
+    const response = await api.get('/api/max/check-user', { params });
+    return response.data;
+  },
   send: async (payload: {
     lead_id?: number;
     max_user_id?: number;

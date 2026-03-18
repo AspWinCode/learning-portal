@@ -23,6 +23,8 @@ from app.services.max_messenger import (
     is_personal_configured,
     get_personal_provider,
     get_personal_qr,
+    check_user_exists_bot,
+    check_phone_greenapi,
     MAX_MESSAGE_TEXT_LIMIT,
 )
 
@@ -78,6 +80,33 @@ def api_max_personal_qr(
     if not ok:
         raise HTTPException(status_code=502, detail=err or "Не удалось получить QR")
     return {"img": img_b64}
+
+
+@router.get("/max/check-user")
+def api_max_check_user(
+    max_user_id: Optional[int] = None,
+    phone: Optional[str] = None,
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Проверить, существует ли пользователь в MAX (до отправки)."""
+    if not is_configured():
+        return {"exists": True}  # не настроен — не блокируем
+
+    provider = get_personal_provider() if is_personal_configured() else "bot"
+
+    if provider == "greenapi" and phone:
+        normalized = normalize_phone(phone)
+        if normalized:
+            digits = normalized.lstrip("+")
+            exists, _ = check_phone_greenapi(digits)
+            return {"exists": exists}
+        return {"exists": True}
+
+    if max_user_id is not None and provider == "bot":
+        exists, _ = check_user_exists_bot(max_user_id)
+        return {"exists": exists}
+
+    return {"exists": True}
 
 
 @router.post("/max/send", response_model=MaxSendResponse)

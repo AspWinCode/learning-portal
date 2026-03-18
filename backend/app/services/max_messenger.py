@@ -180,6 +180,57 @@ def send_message_personal(chat_id: str, text: str) -> Tuple[bool, Optional[str],
     return False, None, f"MAX: {resp.status_code} — {err_text[:200]}"
 
 
+def check_user_exists_bot(user_id: int) -> tuple:
+    """
+    Проверить, есть ли пользователь в MAX (режим бота).
+    Возвращает (exists: bool, error: str | None).
+    """
+    base_url = _get_base_url()
+    token = _get_token()
+    if not base_url or not token:
+        return True, None  # конфиг не задан — не блокируем
+    url = f"{base_url}/subscribers/{user_id}"
+    headers = {"Authorization": token}
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            return True, None
+        if resp.status_code == 404:
+            return False, "Пользователь не найден в MAX"
+        # другой код — не можем определить, пропускаем
+        return True, None
+    except requests.RequestException as e:
+        logger.warning("max_check_user: request failed user_id=%s: %s", user_id, e)
+        return True, None  # сетевая ошибка — не блокируем
+
+
+def check_phone_greenapi(phone_digits: str) -> tuple:
+    """
+    Проверить, зарегистрирован ли номер в MAX через GREEN-API.
+    phone_digits — цифры без '+' (например, 79991234567).
+    Возвращает (exists: bool, error: str | None).
+    """
+    base_url = _get_greenapi_base_url()
+    id_instance = _get_greenapi_id_instance()
+    token = _get_greenapi_token()
+    if not base_url or not id_instance or not token:
+        return True, None  # конфиг не задан — не блокируем
+    url = f"{base_url}/waInstance{id_instance}/checkWhatsapp/{token}"
+    try:
+        resp = requests.post(url, json={"phoneNumber": phone_digits}, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, dict):
+                exists = data.get("existsWhatsapp", True)
+                if not exists:
+                    return False, "Пользователь не найден в MAX"
+                return True, None
+        return True, None  # не можем определить — не блокируем
+    except Exception as e:
+        logger.warning("max_check_phone_greenapi: failed phone=%s: %s", phone_digits, e)
+        return True, None
+
+
 def is_configured() -> bool:
     """Настроен хотя бы один способ: бот или личный аккаунт."""
     return _is_bot_configured() or is_personal_configured()

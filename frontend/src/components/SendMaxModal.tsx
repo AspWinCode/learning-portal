@@ -95,6 +95,17 @@ export const SendMaxModal: React.FC<SendMaxModalProps> = ({
     setError(null);
     setSending(true);
     try {
+      const checkParams: { phone?: string; max_user_id?: number } = {};
+      if (canSendByPhone) checkParams.phone = phoneTrim;
+      else if (num) checkParams.max_user_id = num;
+      if (checkParams.phone || checkParams.max_user_id) {
+        const check = await maxApi.checkUser(checkParams);
+        if (!check.exists) {
+          setError('Пользователя нет в MAX');
+          setSending(false);
+          return;
+        }
+      }
       await maxApi.send({
         lead_id: leadId,
         ...(canSendByPhone ? { phone: phoneTrim } : { max_user_id: num }),

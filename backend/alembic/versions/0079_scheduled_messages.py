@@ -25,7 +25,7 @@ def upgrade() -> None:
     op.create_table(
         "max_messages",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("lead_id", sa.Integer, sa.ForeignKey("leads.id"), nullable=True, index=True),
+        sa.Column("lead_id", sa.Integer, sa.ForeignKey("leads.id"), nullable=True),
         sa.Column("max_user_id", sa.Integer, nullable=True),
         sa.Column("phone", sa.String(32), nullable=True),
         sa.Column("chat_id", sa.String(64), nullable=True),

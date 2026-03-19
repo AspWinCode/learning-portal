@@ -1927,7 +1927,69 @@ async def list_absences(
     if student_id is not None:
         query = query.filter(AbsenceFollowUp.student_id == student_id)
     items = query.all()
-    return [_absence_to_response(db, a) for a in items]
+    if not items:
+        return []
+
+    # Bulk-загрузка всех связанных сущностей вместо N+1 запросов в _absence_to_response
+    _student_ids = list({a.student_id for a in items if a.student_id})
+    _group_ids = list({g for a in items for g in (a.group_id, getattr(a, "makeup_group_id", None)) if g})
+    _lesson_ids = [a.makeup_custom_lesson_id for a in items if getattr(a, "makeup_custom_lesson_id", None)]
+
+    _students_map = {s.id: s for s in db.query(Student).filter(Student.id.in_(_student_ids)).all()} if _student_ids else {}
+    _display_names = get_students_display_names(db, _student_ids)
+    _groups_map = {g.id: g for g in db.query(Group).filter(Group.id.in_(_group_ids)).all()} if _group_ids else {}
+    _lessons_map = {l.id: l for l in db.query(CustomLesson).filter(CustomLesson.id.in_(_lesson_ids)).all()} if _lesson_ids else {}
+
+    # Программы: StudentProgram → fallback GroupProgram
+    _sp_rows = (
+        db.query(StudentProgram)
+        .options(joinedload(StudentProgram.program))
+        .filter(StudentProgram.student_id.in_(_student_ids), StudentProgram.status == "active")
+        .all()
+    ) if _student_ids else []
+    _sp_by_student = {sp.student_id: sp for sp in _sp_rows}
+    _no_prog_group_ids = list({a.group_id for a in items if a.group_id and a.student_id not in _sp_by_student})
+    _gp_rows = (
+        db.query(GroupProgram)
+        .options(joinedload(GroupProgram.program))
+        .filter(GroupProgram.group_id.in_(_no_prog_group_ids))
+        .all()
+    ) if _no_prog_group_ids else []
+    _gp_by_group = {gp.group_id: gp for gp in _gp_rows}
+
+    def _prog_name(sid: int, gid: Optional[int]) -> Optional[str]:
+        sp = _sp_by_student.get(sid)
+        if sp and sp.program:
+            return sp.program.name
+        if gid:
+            gp = _gp_by_group.get(gid)
+            if gp and gp.program:
+                return gp.program.name
+        return None
+
+    return [
+        AbsenceFollowUpResponse(
+            id=a.id,
+            lesson_attendance_id=a.lesson_attendance_id,
+            student_id=a.student_id,
+            group_id=a.group_id,
+            lesson_date=a.lesson_date,
+            stage=a.stage,
+            absence_reason=getattr(a, "absence_reason", None),
+            absence_comment=getattr(a, "absence_comment", None),
+            makeup_group_id=getattr(a, "makeup_group_id", None),
+            makeup_lesson_date=getattr(a, "makeup_lesson_date", None),
+            makeup_custom_lesson_id=getattr(a, "makeup_custom_lesson_id", None),
+            makeup_custom_lesson_title=_lessons_map[a.makeup_custom_lesson_id].title if getattr(a, "makeup_custom_lesson_id", None) and a.makeup_custom_lesson_id in _lessons_map else None,
+            created_at=a.created_at,
+            updated_at=a.updated_at,
+            student_name=_display_names.get(a.student_id) if a.student_id else None,
+            group_name=_groups_map[a.group_id].name if a.group_id and a.group_id in _groups_map else None,
+            program_name=_prog_name(a.student_id, a.group_id) if a.student_id else None,
+            makeup_group_name=_groups_map[a.makeup_group_id].name if getattr(a, "makeup_group_id", None) and a.makeup_group_id in _groups_map else None,
+        )
+        for a in items
+    ]
 
 
 @router.patch("/absences/{absence_id}", response_model=AbsenceFollowUpResponse)

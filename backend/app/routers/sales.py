@@ -2195,7 +2195,50 @@ async def list_custom_lessons(
         }
         lessons = [l for l in lessons if l.id in lesson_ids]
 
-    return [_custom_lesson_to_response(db, l) for l in lessons]
+    if not lessons:
+        return []
+
+    # Bulk-загрузка тренеров, учеников и имён — вместо N+1 на каждый урок
+    trainer_ids = {l.trainer_id for l in lessons if l.trainer_id}
+    trainer_map = (
+        {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()}
+        if trainer_ids else {}
+    )
+    all_lesson_ids = [l.id for l in lessons]
+    cls_rows = (
+        db.query(CustomLessonStudent, Student)
+        .join(Student, Student.id == CustomLessonStudent.student_id)
+        .filter(CustomLessonStudent.lesson_id.in_(all_lesson_ids))
+        .all()
+    )
+    all_student_ids = [s.id for _, s in cls_rows if s]
+    display_names = get_students_display_names(db, all_student_ids)
+    students_by_lesson: Dict[int, list] = {l.id: [] for l in lessons}
+    for cls, s in cls_rows:
+        students_by_lesson[cls.lesson_id].append({
+            "id": cls.id,
+            "student_id": cls.student_id,
+            "student_name": display_names.get(s.id) if s else None,
+            "planned_absence_id": cls.planned_absence_id,
+            "attended": bool(getattr(cls, "attended", False)),
+            "absence_reason": getattr(cls, "absence_reason", None),
+            "absence_comment": getattr(cls, "absence_comment", None),
+        })
+    return [
+        CustomLessonResponse(
+            id=l.id,
+            title=l.title,
+            lesson_date=l.lesson_date,
+            start_time=_serialize_time_for_api(l.start_time) or "",
+            end_time=_serialize_time_for_api(l.end_time),
+            trainer_id=l.trainer_id,
+            trainer_name=trainer_map[l.trainer_id].full_name if l.trainer_id and l.trainer_id in trainer_map else None,
+            lesson_type=l.lesson_type.value if isinstance(l.lesson_type, CustomLessonType) else str(l.lesson_type),
+            comment=l.comment,
+            students=students_by_lesson.get(l.id, []),
+        )
+        for l in lessons
+    ]
 
 
 @router.get("/custom-lessons/{lesson_id}", response_model=CustomLessonResponse)
@@ -2783,38 +2826,40 @@ async def get_sales_dashboard(
     _events_map = {e.id: e for e in db.query(Event).filter(Event.id.in_(_confirm_event_ids)).all()} if _confirm_event_ids else {}
     _leads_map = {l.id: l for l in db.query(Lead).filter(Lead.id.in_(_confirm_lead_ids)).all()} if _confirm_lead_ids else {}
 
-    month_outreach_leads = (
+    # Загружаем только 4 нужных колонки, без полного ORM-объекта
+    month_outreach_rows = (
         leads_q.filter(
             Lead.outreach_at.isnot(None),
             Lead.outreach_at >= start_month,
             Lead.outreach_at < end_month,
         )
+        .with_entities(Lead.school_name, Lead.school_class, Lead.outreach_minutes, Lead.status)
         .all()
     )
     schools_seen = set()
     classes_seen = set()
     outreach_minutes_month = 0
     school_stats: Dict[str, Dict[str, object]] = {}
-    for lead in month_outreach_leads:
-        school = (lead.school_name or "").strip()
-        class_name = (lead.school_class or "").strip()
+    for school_name, school_class, outreach_minutes, status in month_outreach_rows:
+        school = (school_name or "").strip()
+        class_name = (school_class or "").strip()
         if school:
             schools_seen.add(school)
         if school and class_name:
             classes_seen.add(f"{school}::{class_name}")
-        if lead.outreach_minutes and lead.outreach_minutes > 0:
-            outreach_minutes_month += lead.outreach_minutes
+        if outreach_minutes and outreach_minutes > 0:
+            outreach_minutes_month += outreach_minutes
         if not school:
             continue
         if school not in school_stats:
             school_stats[school] = {"leads": 0, "won": 0, "classes": set(), "minutes": 0}
         school_stats[school]["leads"] = int(school_stats[school]["leads"]) + 1
-        if lead.status == LeadStatus.WON:
+        if status == LeadStatus.WON:
             school_stats[school]["won"] = int(school_stats[school]["won"]) + 1
         if class_name:
             school_stats[school]["classes"].add(class_name)
-        if lead.outreach_minutes and lead.outreach_minutes > 0:
-            school_stats[school]["minutes"] = int(school_stats[school]["minutes"]) + lead.outreach_minutes
+        if outreach_minutes and outreach_minutes > 0:
+            school_stats[school]["minutes"] = int(school_stats[school]["minutes"]) + outreach_minutes
 
     top_schools_conversion_month = sorted(
         [

@@ -1,10 +1,10 @@
 """API для тренера: занятия по расписанию и посещаемость."""
 import calendar
 from datetime import date, time, datetime, timedelta
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.academic_month import get_academic_window
 from app.database import get_db
@@ -756,7 +756,52 @@ async def list_trainer_custom_lessons(
     if date_to:
         query = query.filter(CustomLesson.lesson_date <= date_to)
     lessons = query.order_by(CustomLesson.lesson_date.desc(), CustomLesson.start_time.asc()).all()
-    return [_custom_lesson_to_response(db, l) for l in lessons]
+    if not lessons:
+        return []
+
+    # Bulk-загрузка тренеров, учеников и имён — вместо N+1 на каждый урок
+    trainer_ids = {l.trainer_id for l in lessons if l.trainer_id}
+    trainer_map: Dict[int, User] = (
+        {u.id: u for u in db.query(User).filter(User.id.in_(trainer_ids)).all()}
+        if trainer_ids else {}
+    )
+    all_lesson_ids = [l.id for l in lessons]
+    cls_rows = (
+        db.query(CustomLessonStudent, Student)
+        .join(Student, Student.id == CustomLessonStudent.student_id)
+        .filter(CustomLessonStudent.lesson_id.in_(all_lesson_ids))
+        .all()
+    )
+    all_student_ids = [s.id for _, s in cls_rows if s]
+    display_names = get_students_display_names(db, all_student_ids)
+    students_by_lesson: Dict[int, list] = {l.id: [] for l in lessons}
+    for cls, s in cls_rows:
+        students_by_lesson[cls.lesson_id].append({
+            "id": cls.id,
+            "student_id": cls.student_id,
+            "student_name": display_names.get(s.id) if s else None,
+            "planned_absence_id": cls.planned_absence_id,
+            "attended": bool(getattr(cls, "attended", False)),
+            "absence_reason": getattr(cls, "absence_reason", None),
+            "absence_comment": getattr(cls, "absence_comment", None),
+        })
+    start_fmt = lambda t: t.strftime("%H:%M") if t else ""
+    end_fmt = lambda t: t.strftime("%H:%M") if t else None
+    return [
+        CustomLessonResponse(
+            id=l.id,
+            title=l.title,
+            lesson_date=l.lesson_date,
+            start_time=start_fmt(l.start_time),
+            end_time=end_fmt(l.end_time),
+            trainer_id=l.trainer_id,
+            trainer_name=trainer_map[l.trainer_id].full_name if l.trainer_id and l.trainer_id in trainer_map else None,
+            lesson_type=l.lesson_type.value if hasattr(l.lesson_type, "value") else str(l.lesson_type),
+            comment=l.comment,
+            students=students_by_lesson.get(l.id, []),
+        )
+        for l in lessons
+    ]
 
 
 @router.post("/custom-lessons/attendance")

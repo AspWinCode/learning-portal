@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from openpyxl import load_workbook
-from sqlalchemy import distinct, func as sa_func, nulls_last
+from sqlalchemy import case, distinct, func as sa_func, nulls_last
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -47,18 +47,39 @@ router = APIRouter()
 
 
 def _leads_count_and_conversion(db: Session, school_id: int) -> Tuple[int, float]:
-    total = db.query(Lead).filter(Lead.b2b_school_id == school_id).count()
+    row = db.query(
+        sa_func.count().label("total"),
+        sa_func.count(case((Lead.status == LeadStatus.WON, 1))).label("won"),
+    ).filter(Lead.b2b_school_id == school_id).one()
+    total = row.total or 0
     if total == 0:
         return 0, 0.0
-    won = db.query(Lead).filter(
-        Lead.b2b_school_id == school_id,
-        Lead.status == LeadStatus.WON,
-    ).count()
-    return total, round(100.0 * won / total, 1)
+    return total, round(100.0 * row.won / total, 1)
 
 
-def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
-    leads_count, conversion_percent = _leads_count_and_conversion(db, school.id)
+def _leads_stats_by_school(db: Session, school_ids: List[int]) -> Dict[int, Tuple[int, float]]:
+    """Bulk-версия _leads_count_and_conversion: один GROUP BY вместо 2N запросов."""
+    if not school_ids:
+        return {}
+    rows = db.query(
+        Lead.b2b_school_id,
+        sa_func.count().label("total"),
+        sa_func.count(case((Lead.status == LeadStatus.WON, 1))).label("won"),
+    ).filter(Lead.b2b_school_id.in_(school_ids)).group_by(Lead.b2b_school_id).all()
+    result: Dict[int, Tuple[int, float]] = {sid: (0, 0.0) for sid in school_ids}
+    for school_id, total, won in rows:
+        pct = round(100.0 * won / total, 1) if total else 0.0
+        result[school_id] = (int(total), pct)
+    return result
+
+
+def _school_to_response(
+    db: Session, school: B2BSchool, *, leads_stats: Optional[Dict[int, Tuple[int, float]]] = None
+) -> B2BSchoolResponse:
+    if leads_stats is not None:
+        leads_count, conversion_percent = leads_stats.get(school.id, (0, 0.0))
+    else:
+        leads_count, conversion_percent = _leads_count_and_conversion(db, school.id)
     contacts = [
         B2BSchoolContactResponse(
             id=c.id,
@@ -148,7 +169,9 @@ async def plan_for_today(
         base = base.filter(B2BSchool.city == city.strip())
 
     def run(q):
-        return [_school_to_response(db, s) for s in q.order_by(nulls_last(B2BSchool.next_step_date.asc()), B2BSchool.name).all()]
+        items = q.order_by(nulls_last(B2BSchool.next_step_date.asc()), B2BSchool.name).all()
+        stats = _leads_stats_by_school(db, [s.id for s in items])
+        return [_school_to_response(db, s, leads_stats=stats) for s in items]
 
     from sqlalchemy import or_, exists
 
@@ -220,12 +243,14 @@ async def plan_for_today(
         return None
 
     event_done_no_leads_schools = event_done_no_leads.order_by(nulls_last(B2BSchool.next_step_date.asc()), B2BSchool.name).all()
-    event_done_no_leads_list = [_school_to_response(db, s) for s in event_done_no_leads_schools]
+    # Эти школы без лидов по определению (фильтр ~exists), поэтому stats = (0, 0.0)
+    _no_leads_stats: Dict[int, Tuple[int, float]] = {s.id: (0, 0.0) for s in event_done_no_leads_schools}
+    event_done_no_leads_list = [_school_to_response(db, s, leads_stats=_no_leads_stats) for s in event_done_no_leads_schools]
     event_done_no_leads_24_48h = []
     for s in event_done_no_leads_schools:
         held = _event_held_date(s)
         if held and date_2d_ago <= held <= date_1d_ago:
-            event_done_no_leads_24_48h.append(_school_to_response(db, s))
+            event_done_no_leads_24_48h.append(_school_to_response(db, s, leads_stats=_no_leads_stats))
 
     return {
         "overdue": run(overdue),
@@ -380,7 +405,8 @@ async def list_b2b_schools(
             )
         )
     schools = query.all()
-    return [_school_to_response(db, s) for s in schools]
+    leads_stats = _leads_stats_by_school(db, [s.id for s in schools])
+    return [_school_to_response(db, s, leads_stats=leads_stats) for s in schools]
 
 
 def _parse_import_rows_from_xlsx(data: bytes) -> List[Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[int]]]:

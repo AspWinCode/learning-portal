@@ -59,8 +59,8 @@ export const SalesReinviteEventPageContent: React.FC = () => {
 
   const loadLeads = useCallback(async () => {
     try {
-      const data = await salesApi.listLeads();
-      setLeads(data);
+      const data = await salesApi.listLeads({ limit: 1000 });
+      setLeads(data.items);
     } catch {
       // ignore
     }
@@ -68,8 +68,8 @@ export const SalesReinviteEventPageContent: React.FC = () => {
 
   const loadReinviteLeads = useCallback(async () => {
     try {
-      const data = await salesApi.listLeads({ tag: TAG_REINVITE_NEXT_EVENT });
-      setReinviteLeads(data);
+      const data = await salesApi.listLeads({ tag: TAG_REINVITE_NEXT_EVENT, limit: 1000 });
+      setReinviteLeads(data.items);
     } catch {
       // ignore
     }

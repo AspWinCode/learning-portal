@@ -54,10 +54,10 @@ export const SalesAgreedPageContent: React.FC = () => {
   const loadLeads = useCallback(async () => {
     try {
       const [inv, decided] = await Promise.all([
-        salesApi.listLeads({ status_filter: 'invoice_sent', questionnaire_filled: false }),
-        salesApi.listLeads({ status_filter: 'decided_immediately', questionnaire_filled: false }),
+        salesApi.listLeads({ status_filter: 'invoice_sent', questionnaire_filled: false, limit: 1000 }),
+        salesApi.listLeads({ status_filter: 'decided_immediately', questionnaire_filled: false, limit: 1000 }),
       ]);
-      setLeads([...inv, ...decided]);
+      setLeads([...inv.items, ...decided.items]);
       setError(null);
     } catch (err: any) {
       setError(extractApiError(err, S.loadError));

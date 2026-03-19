@@ -85,8 +85,8 @@ export const SalesEventsPageContent: React.FC = () => {
 
   const loadLeads = useCallback(async () => {
     try {
-      const data = await salesApi.listLeads();
-      setLeads(data);
+      const data = await salesApi.listLeads({ limit: 1000 });
+      setLeads(data.items);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить лиды'));
     }

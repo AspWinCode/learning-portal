@@ -67,14 +67,14 @@ const SalesReportsPage: React.FC = () => {
       const fromIso = new Date(`${fromDate}T00:00:00`).toISOString();
       const toIso = new Date(`${toDate}T23:59:59`).toISOString();
       const [leadsData, eventsData, managersData, today, week, overdue] = await Promise.all([
-        salesApi.listLeads({ created_from: fromIso, created_to: toIso }),
+        salesApi.listLeads({ created_from: fromIso, created_to: toIso, limit: 1000 }),
         salesApi.listEvents('active'),
         usersApi.getAll('sales').catch(() => [] as User[]),
         salesApi.listFollowUps({ period: 'today' }),
         salesApi.listFollowUps({ period: 'week' }),
         salesApi.listFollowUps({ period: 'overdue' }),
       ]);
-      setLeads(leadsData);
+      setLeads(leadsData.items);
       setEvents(eventsData);
       setManagers(managersData);
       setFollowUpsToday(today);

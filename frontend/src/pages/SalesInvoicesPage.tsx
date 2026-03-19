@@ -88,10 +88,10 @@ export const SalesInvoicesPageContent: React.FC = () => {
           created_from: fromDate ? new Date(fromDate).toISOString() : undefined,
           created_to: toDate ? new Date(toDate).toISOString() : undefined,
         }),
-        salesApi.listLeads(),
+        salesApi.listLeads({ limit: 1000 }),
       ]);
       setInvoices(invoiceData);
-      setLeads(leadData);
+      setLeads(leadData.items);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить инвойсы'));
     }

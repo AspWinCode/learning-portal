@@ -901,7 +901,7 @@ class LeadListResponse(BaseModel):
 
 
 class LeadsPaginatedResponse(BaseModel):
-    items: List[LeadListResponse]
+    items: List[LeadResponse]
     total: int
 
 

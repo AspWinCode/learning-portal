@@ -2783,7 +2783,6 @@ async def get_sales_dashboard(
     leads_q = _filter_query_by_role(db.query(Lead), current_user)
     tasks_q = (
         db.query(LeadTask)
-        .join(Lead, Lead.id == LeadTask.lead_id)
         .options(joinedload(LeadTask.lead))
     )
     regs_q = db.query(EventRegistration).join(Lead, Lead.id == EventRegistration.lead_id)
@@ -2832,7 +2831,7 @@ async def get_sales_dashboard(
             cast(EventRegistration.note, Text).ilike("%[no-show]%"),
             cast(EventRegistration.note, Text).ilike("%no-show%"),
         ), 1))).label("no_show"),
-    ).join(Lead, Lead.id == EventRegistration.lead_id).one()
+    ).one()
     kpi_registered_event = regs_kpi.registered
     kpi_came_count = regs_kpi.came
     kpi_no_show_count = regs_kpi.no_show

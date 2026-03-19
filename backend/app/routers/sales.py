@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import cast, Text, or_, update as sa_update
+from sqlalchemy import and_, case, cast, func, Text, or_, update as sa_update
 from openpyxl import Workbook, load_workbook
 
 from app import auth
@@ -2676,46 +2676,61 @@ async def get_sales_dashboard(
     week_ago = now - timedelta(days=7)
 
     leads_q = _filter_query_by_role(db.query(Lead), current_user)
-    tasks_q = db.query(LeadTask).join(Lead, Lead.id == LeadTask.lead_id)
+    tasks_q = (
+        db.query(LeadTask)
+        .join(Lead, Lead.id == LeadTask.lead_id)
+        .options(joinedload(LeadTask.lead))
+    )
     regs_q = db.query(EventRegistration).join(Lead, Lead.id == EventRegistration.lead_id)
 
     active_lead_statuses = [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT]
     connected_statuses = [LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT, LeadStatus.WON]
 
-    kpi_new_leads = leads_q.filter(Lead.created_at >= start_today, Lead.created_at < end_today).count()
-    leads_week_q = leads_q.filter(Lead.created_at >= week_ago)
-    leads_week_total = leads_week_q.count()
-    leads_week_connected = leads_week_q.filter(Lead.status.in_(connected_statuses)).count()
+    # Все 7 KPI по лидам — одним запросом через условные агрегаты
+    leads_kpi = leads_q.with_entities(
+        func.count(case((and_(Lead.created_at >= start_today, Lead.created_at < end_today), 1))).label("new_leads"),
+        func.count(case((Lead.created_at >= week_ago, 1))).label("week_total"),
+        func.count(case((and_(Lead.created_at >= week_ago, Lead.status.in_(connected_statuses)), 1))).label("week_connected"),
+        func.count(case((Lead.status.in_([LeadStatus.INVOICE_SENT, LeadStatus.WON]), 1))).label("info_sent"),
+        func.count(case((and_(
+            Lead.status.in_(active_lead_statuses),
+            Lead.next_contact_at.isnot(None),
+            Lead.next_contact_at >= now,
+            Lead.next_contact_at < next_two_hours,
+        ), 1))).label("push_urgent"),
+        func.count(case((and_(
+            Lead.status.in_(active_lead_statuses),
+            Lead.next_contact_at.isnot(None),
+            Lead.next_contact_at >= start_today,
+            Lead.next_contact_at < end_today,
+        ), 1))).label("push_today"),
+        func.count(case((and_(
+            Lead.status.in_(active_lead_statuses),
+            Lead.next_contact_at.isnot(None),
+            Lead.next_contact_at < now,
+        ), 1))).label("push_overdue"),
+    ).one()
+    kpi_new_leads = leads_kpi.new_leads
+    leads_week_total = leads_kpi.week_total
+    leads_week_connected = leads_kpi.week_connected
     kpi_dozvon_percent = round((leads_week_connected / leads_week_total) * 100, 1) if leads_week_total else 0.0
-    kpi_info_sent = leads_q.filter(Lead.status.in_([LeadStatus.INVOICE_SENT, LeadStatus.WON])).count()
+    kpi_info_sent = leads_kpi.info_sent
+    kpi_need_push_urgent = leads_kpi.push_urgent
+    kpi_need_push_today = leads_kpi.push_today
+    kpi_need_push_overdue = leads_kpi.push_overdue
 
-    kpi_need_push_urgent = leads_q.filter(
-        Lead.status.in_(active_lead_statuses),
-        Lead.next_contact_at.isnot(None),
-        Lead.next_contact_at >= now,
-        Lead.next_contact_at < next_two_hours,
-    ).count()
-    kpi_need_push_today = leads_q.filter(
-        Lead.status.in_(active_lead_statuses),
-        Lead.next_contact_at.isnot(None),
-        Lead.next_contact_at >= start_today,
-        Lead.next_contact_at < end_today,
-    ).count()
-    kpi_need_push_overdue = leads_q.filter(
-        Lead.status.in_(active_lead_statuses),
-        Lead.next_contact_at.isnot(None),
-        Lead.next_contact_at < now,
-    ).count()
-
-    kpi_registered_event = regs_q.filter(EventRegistration.status == EventRegistrationStatus.REGISTERED).count()
-    # Until dedicated attendance statuses are introduced, derive rough metrics from note tags.
-    kpi_came_count = regs_q.filter(cast(EventRegistration.note, Text).ilike("%[came]%")).count()
-    kpi_no_show_count = regs_q.filter(
-        or_(
+    # Все 3 KPI по регистрациям — одним запросом
+    regs_kpi = db.query(
+        func.count(case((EventRegistration.status == EventRegistrationStatus.REGISTERED, 1))).label("registered"),
+        func.count(case((cast(EventRegistration.note, Text).ilike("%[came]%"), 1))).label("came"),
+        func.count(case((or_(
             cast(EventRegistration.note, Text).ilike("%[no-show]%"),
             cast(EventRegistration.note, Text).ilike("%no-show%"),
-        )
-    ).count()
+        ), 1))).label("no_show"),
+    ).join(Lead, Lead.id == EventRegistration.lead_id).one()
+    kpi_registered_event = regs_kpi.registered
+    kpi_came_count = regs_kpi.came
+    kpi_no_show_count = regs_kpi.no_show
 
     overdue_items = (
         tasks_q.filter(
@@ -2762,6 +2777,11 @@ async def get_sales_dashboard(
         .limit(30)
         .all()
     )
+    # Предзагружаем события и лидов для confirm_items одним запросом (избегаем N+1)
+    _confirm_event_ids = {item.event_id for item in confirm_items}
+    _confirm_lead_ids = {item.lead_id for item in confirm_items}
+    _events_map = {e.id: e for e in db.query(Event).filter(Event.id.in_(_confirm_event_ids)).all()} if _confirm_event_ids else {}
+    _leads_map = {l.id: l for l in db.query(Lead).filter(Lead.id.in_(_confirm_lead_ids)).all()} if _confirm_lead_ids else {}
 
     month_outreach_leads = (
         leads_q.filter(
@@ -2824,8 +2844,8 @@ async def get_sales_dashboard(
         )
 
     def map_reg(item: EventRegistration) -> SalesQueueRegistrationItem:
-        event = db.query(Event).filter(Event.id == item.event_id).first()
-        lead = db.query(Lead).filter(Lead.id == item.lead_id).first()
+        event = _events_map.get(item.event_id)
+        lead = _leads_map.get(item.lead_id)
         return SalesQueueRegistrationItem(
             registration_id=item.id,
             event_id=item.event_id,

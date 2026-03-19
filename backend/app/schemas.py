@@ -1509,6 +1509,7 @@ class QuickActionRequest(BaseModel):
     channel: Optional[str] = None  # sms | telegram | max | email | call
     next_contact_at: Optional[datetime] = None
     lost_reason: Optional[str] = None
+    template_id: Optional[int] = None  # для sent_info: шаблон информации
     # Для create_invoice
     abonement_id: Optional[int] = None
     invoice_email: Optional[EmailStr] = None

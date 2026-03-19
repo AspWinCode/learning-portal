@@ -749,6 +749,7 @@ export interface QuickActionRequest {
   channel?: string | null;
   next_contact_at?: string | null;
   lost_reason?: string | null;
+  template_id?: number | null;
   abonement_id?: number | null;
   invoice_email?: string | null;
 }

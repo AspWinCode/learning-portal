@@ -141,7 +141,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
   const handleOpenFull = () => {
     if (leadId) {
-      navigate(`/sales/leads?open=${leadId}`);
+      navigate(`/sales/leads/${leadId}`);
       onClose();
     }
   };

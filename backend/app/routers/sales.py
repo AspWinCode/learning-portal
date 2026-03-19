@@ -5995,13 +5995,29 @@ async def lead_quick_action(
             new_status = "no_answer"
         if payload.next_contact_at:
             lead.next_contact_at = payload.next_contact_at
+        else:
+            # Авто-follow-up: перезвонить через 4 часа если дата не задана
+            lead.next_contact_at = datetime.utcnow() + timedelta(hours=4)
 
     elif action == "sent_info":
         activity_title = "Отправлена информация"
+        # Подгружаем шаблон, если передан
+        if payload.template_id:
+            tpl = db.query(LeadInfoTemplate).filter(
+                LeadInfoTemplate.id == payload.template_id,
+                LeadInfoTemplate.is_active.is_(True),
+            ).first()
+            if tpl:
+                activity_title = f"Отправлена информация: {tpl.name}"
+                if not payload.comment:
+                    activity_description = tpl.body
         lead.status = LeadStatus.THINKING
         new_status = "thinking"
+        # Авто-follow-up: если дата не передана — ставим через 2 дня
         if payload.next_contact_at:
             lead.next_contact_at = payload.next_contact_at
+        else:
+            lead.next_contact_at = datetime.utcnow() + timedelta(days=2)
 
     elif action == "schedule_contact":
         activity_title = "Назначен повторный контакт"

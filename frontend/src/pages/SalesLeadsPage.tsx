@@ -294,7 +294,13 @@ const KanbanLeadCard = React.memo(({
           <Button
             size="small"
             disabled={isLoading}
-            onClick={() => onAction(lead.id, 'openDetails')}
+            component="a"
+            href={`/sales/leads/${lead.id}`}
+            onClick={(e: React.MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onAction(lead.id, 'navigateTo', `/sales/leads/${lead.id}`);
+            }}
           >
             Открыть
           </Button>
@@ -470,6 +476,10 @@ const SalesLeadsPage: React.FC = () => {
       case 'drop': {
         const { event, colStatus } = payload as { event: React.DragEvent; colStatus: LeadStatus | 'next_event' };
         void (kanbanHandlersRef.current.handleKanbanDrop as (e: React.DragEvent, s: LeadStatus | 'next_event') => Promise<void>)(event, colStatus);
+        break;
+      }
+      case 'navigateTo': {
+        navigate(payload as string);
         break;
       }
       case 'smsClick': {
@@ -2480,7 +2490,7 @@ const SalesLeadsPage: React.FC = () => {
               hover
               selected={selectedLead?.id === lead.id}
               onClick={() => {
-                void handleOpenDetails(lead);
+                navigate(`/sales/leads/${lead.id}`);
               }}
               sx={{ cursor: 'pointer' }}
             >

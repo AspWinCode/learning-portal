@@ -24,6 +24,7 @@ import B2BPlanForTodayPage from './pages/B2BPlanForTodayPage';
 import OwnerFunnelsPage from './pages/OwnerFunnelsPage';
 import ParentDashboardPage from './pages/ParentDashboardPage';
 import SalesLeadsPage from './pages/SalesLeadsPage';
+import LeadCardPage from './pages/LeadCardPage';
 import SalesManagersPage from './pages/SalesManagersPage';
 import SalesEventsHubPage from './pages/SalesEventsHubPage';
 import SalesInvoicesPage from './pages/SalesInvoicesPage';
@@ -144,6 +145,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <SalesLeadsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/leads/:id"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                  <LeadCardPage />
                 </PrivateRoute>
               }
             />

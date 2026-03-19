@@ -36,17 +36,12 @@ import {
   Checkbox,
   Tabs,
   Tab,
-  LinearProgress,
   TablePagination,
 } from '@mui/material';
 import {
   Call as CallIcon,
   ChatBubbleOutline as ChatIcon,
-  Send as SendIcon,
-  EventNote as FollowUpIcon,
   Close as CloseIcon,
-  Visibility as VisibilityIcon,
-  ReceiptLong as ReceiptLongIcon,
   Sms as SmsIcon,
   Forum as MaxIcon,
 } from '@mui/icons-material';
@@ -186,20 +181,22 @@ interface KanbanLeadCardProps {
   isSelected: boolean;
   isDragging: boolean;
   isLoading: boolean;
-  sendInfoStatusValue: 'open' | 'done' | 'none' | undefined;
-  pushPercent: number;
-  pushLabel: string;
-  statusOptions: readonly LeadStatus[];
   /** Стабильный диспетчер: никогда не меняет референс, безопасен для React.memo */
   onAction: (leadId: number, type: string, payload?: unknown) => void;
 }
 
 const KanbanLeadCard = React.memo(({
-  lead, colStatus, isSelected, isDragging, isLoading,
-  sendInfoStatusValue, pushPercent, pushLabel, statusOptions, onAction,
+  lead, colStatus, isSelected, isDragging, isLoading, onAction,
 }: KanbanLeadCardProps) => {
   const isDraggable = colStatus !== 'archive' && colStatus !== 'next_event';
   const borderColor = isSelected ? 'primary.main' : getKanbanBorderColor(lead.next_contact_at);
+
+  const nextContactDate = lead.next_contact_at && isValid(parseISO(lead.next_contact_at))
+    ? parseISO(lead.next_contact_at) : null;
+  const now = new Date();
+  const isOverdue = nextContactDate ? nextContactDate.getTime() < now.getTime() : false;
+  const isToday = nextContactDate ? nextContactDate.toDateString() === now.toDateString() : false;
+  const phone = lead.parent_phone || lead.phone || '';
 
   const handleDragStart = (e: React.DragEvent) => {
     const target = e.target as HTMLElement;
@@ -245,111 +242,63 @@ const KanbanLeadCard = React.memo(({
       }}
     >
       <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+        {/* Имя */}
         <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
-          <Typography variant="subtitle2">{lead.contact_name}</Typography>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{lead.contact_name}</Typography>
           {lead.questionnaire_filled && (
             <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
           )}
         </Stack>
-        <Typography variant="caption" color="text.secondary">{lead.phone}</Typography>
+
+        {/* Телефон (кликабельный) */}
+        {phone && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            component="a"
+            href={`tel:${phone}`}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            sx={{ textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+          >
+            {phone}
+          </Typography>
+        )}
+
+        {/* Источник */}
         {lead.source && (
           <Typography variant="caption" display="block" color="text.secondary">
-            Источник: {lead.source}
+            {lead.source}
           </Typography>
         )}
-        {lead.status === 'thinking' && lead.next_contact_at && (
-          <Typography variant="caption" display="block" color="primary">
-            Следующий контакт: {format(parseISO(lead.next_contact_at), 'dd.MM HH:mm')}
-          </Typography>
-        )}
-        {lead.status === 'no_answer' && (
-          <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} onClick={(e) => e.stopPropagation()}>
-            {([1, 2, 3] as const).map((n) => (
-              <Button
-                key={n}
-                size="small"
-                variant={(lead.no_answer_attempt ?? 1) >= n ? 'contained' : 'outlined'}
-                color={(lead.no_answer_attempt ?? 1) === n ? 'warning' : 'inherit'}
-                sx={{ minWidth: 0, px: 0.75, fontSize: '0.7rem' }}
-                disabled={isLoading}
-                onClick={() => onAction(lead.id, 'noAnswerAttempt', n)}
-              >
-                Попытка {n}
-              </Button>
-            ))}
-          </Stack>
-        )}
-        <Stack spacing={0.5} mt={1}>
-          <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" color="text.secondary">
-              Продвижение: {pushLabel}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {pushPercent}%
-            </Typography>
-          </Stack>
-          <LinearProgress
-            variant="determinate"
-            value={pushPercent}
-            color={pushPercent >= 80 ? 'success' : pushPercent >= 40 ? 'warning' : 'primary'}
-            sx={{ height: 6, borderRadius: 1 }}
-          />
+
+        {/* Статус + бейджи просроченности */}
+        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" sx={{ mt: 0.75 }}>
+          <Chip size="small" label={statusLabels[lead.status]} color={badgeColor(lead.status)} />
+          {isOverdue && <Chip size="small" label="Просрочено" color="error" variant="outlined" />}
+          {!isOverdue && isToday && <Chip size="small" label="Сегодня" color="warning" variant="outlined" />}
         </Stack>
+
+        {/* Следующий шаг */}
+        {nextContactDate && (
+          <Typography
+            variant="caption"
+            display="block"
+            sx={{ mt: 0.5, color: isOverdue ? 'error.main' : isToday ? 'warning.dark' : 'text.secondary' }}
+          >
+            Контакт: {format(nextContactDate, 'dd.MM HH:mm')}
+          </Typography>
+        )}
+
+        {/* Кнопка открыть */}
         <Box sx={{ mt: 1 }} onClick={(e) => e.stopPropagation()}>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <Select
-              value={getLeadStatusMenuValue(lead)}
-              onChange={(e) => onAction(lead.id, 'statusChange', e.target.value as string)}
-              renderValue={() => getLeadStatusDisplay(lead)}
-              disabled={isLoading}
-            >
-              <MenuItem value="next_event">
-                <Chip size="small" label="Следующее мероприятие" />
-              </MenuItem>
-              {statusOptions.map((st) => (
-                <MenuItem key={st} value={`base:${st}`}>
-                  <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
-        <Stack direction="row" spacing={0.5} mt={1} alignItems="center" flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
-          <Tooltip title="Позвонить">
-            <IconButton size="small" component="a" href={`tel:${lead.parent_phone || lead.phone || ''}`}>
-              <CallIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Telegram">
-            <IconButton size="small" component="a" href={`https://t.me/${(lead.parent_phone || lead.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!lead.phone}>
-              <ChatIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="SMS">
-            <IconButton size="small" onClick={() => onAction(lead.id, 'smsClick')}>
-              <SmsIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="MAX">
-            <IconButton size="small" onClick={() => onAction(lead.id, 'maxClick')}>
-              <MaxIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Stack>
-        <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
-          <Button size="small" onClick={() => onAction(lead.id, 'openDetails')}>
-            Открыть
-          </Button>
           <Button
             size="small"
-            variant="outlined"
-            color={sendInfoStatusValue === 'done' ? 'success' : sendInfoStatusValue === 'open' ? 'error' : undefined}
             disabled={isLoading}
-            onClick={() => onAction(lead.id, 'sendInfo')}
+            onClick={() => onAction(lead.id, 'openDetails')}
           >
-            Отправить информацию
+            Открыть
           </Button>
-        </Stack>
+        </Box>
       </CardContent>
     </Card>
   );
@@ -2695,24 +2644,17 @@ const SalesLeadsPage: React.FC = () => {
                       const hiddenCount = col.leads.length - visibleLeads.length;
                       return (
                         <>
-                          {visibleLeads.map((lead) => {
-                            const p = getKanbanPushProgressEstimate(lead);
-                            return (
-                              <KanbanLeadCard
-                                key={lead.id}
-                                lead={lead}
-                                colStatus={col.status}
-                                isSelected={selectedLead?.id === lead.id}
-                                isDragging={draggedLeadId === lead.id}
-                                isLoading={actionLoadingId === lead.id}
-                                sendInfoStatusValue={sendInfoStatus[lead.id]}
-                                pushPercent={p.percent}
-                                pushLabel={p.label}
-                                statusOptions={statusOptions}
-                                onAction={stableKanbanAction}
-                              />
-                            );
-                          })}
+                          {visibleLeads.map((lead) => (
+                            <KanbanLeadCard
+                              key={lead.id}
+                              lead={lead}
+                              colStatus={col.status}
+                              isSelected={selectedLead?.id === lead.id}
+                              isDragging={draggedLeadId === lead.id}
+                              isLoading={actionLoadingId === lead.id}
+                              onAction={stableKanbanAction}
+                            />
+                          ))}
                           {hiddenCount > 0 && (
                             <Button
                               size="small"

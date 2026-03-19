@@ -37,6 +37,7 @@ from app.models import (
     LeadInfoTemplate,
     LeadStatusOption,
     LeadCommunication,
+    LeadActivity,
     Invoice,
     InvoiceStatus,
     Event,
@@ -171,6 +172,13 @@ from app.schemas import (
     SpecialistQuestionnaireResponse,
     TildaLeadRequest,
     TildaLeadResponse,
+    LeadActivityResponse,
+    LeadTimelineResponse,
+    LeadCardResponse,
+    LeadNextAction,
+    LeadSidebarSummary,
+    QuickActionRequest,
+    QuickActionResponse,
 )
 from app.routers.action_log import log_action
 from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
@@ -5757,3 +5765,330 @@ async def generate_tax_deduction_certificate(
         "X-Spravka-Source": "template" if use_template else "generated",
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LeadActivity helpers + endpoints (Этап 2 ТЗ)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _create_lead_activity(
+    db: Session,
+    lead_id: int,
+    *,
+    type: str,
+    title: str,
+    description: str | None = None,
+    channel: str | None = None,
+    created_by: int | None = None,
+    payload_json: dict | None = None,
+    status_effect_from: str | None = None,
+    status_effect_to: str | None = None,
+    related_task_id: int | None = None,
+    related_invoice_id: int | None = None,
+) -> LeadActivity:
+    """Создаёт запись в таймлайне лида."""
+    activity = LeadActivity(
+        lead_id=lead_id,
+        type=type,
+        title=title,
+        description=description,
+        channel=channel,
+        created_by=created_by,
+        payload_json=payload_json,
+        status_effect_from=status_effect_from,
+        status_effect_to=status_effect_to,
+        related_task_id=related_task_id,
+        related_invoice_id=related_invoice_id,
+    )
+    db.add(activity)
+    return activity
+
+
+# ─── GET /leads/{lead_id}/timeline ──────────────────────────────────────────
+
+@router.get("/leads/{lead_id}/timeline", response_model=LeadTimelineResponse)
+async def get_lead_timeline(
+    lead_id: int,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Полный таймлайн по лиду с пагинацией."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+
+    total = db.query(func.count(LeadActivity.id)).filter(LeadActivity.lead_id == lead_id).scalar() or 0
+    items = (
+        db.query(LeadActivity)
+        .filter(LeadActivity.lead_id == lead_id)
+        .order_by(LeadActivity.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return LeadTimelineResponse(
+        items=items,
+        total=total,
+        has_more=(offset + limit) < total,
+    )
+
+
+# ─── GET /leads/{lead_id}/card ──────────────────────────────────────────────
+
+def _build_next_action(lead: Lead, db: Session) -> LeadNextAction | None:
+    """Вычисляет следующее действие по лиду."""
+    now = datetime.utcnow()
+
+    # Ближайшая открытая задача
+    next_task = (
+        db.query(LeadTask)
+        .filter(
+            LeadTask.lead_id == lead.id,
+            LeadTask.status == LeadTaskStatus.OPEN,
+            LeadTask.due_at.isnot(None),
+        )
+        .order_by(LeadTask.due_at.asc())
+        .first()
+    )
+
+    # next_contact_at на лиде
+    next_contact = lead.next_contact_at
+
+    # Выбираем ближайшее
+    candidates = []
+    if next_task and next_task.due_at:
+        due = next_task.due_at.replace(tzinfo=None) if next_task.due_at.tzinfo else next_task.due_at
+        candidates.append(("task", next_task.note or "Задача", due, next_task.id))
+    if next_contact:
+        nc = next_contact.replace(tzinfo=None) if next_contact.tzinfo else next_contact
+        candidates.append(("contact", "Перезвонить", nc, None))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda c: c[2])
+    c_type, c_title, c_due, c_task_id = candidates[0]
+
+    return LeadNextAction(
+        type=c_type,
+        title=c_title,
+        due_at=c_due,
+        task_id=c_task_id,
+        is_overdue=c_due < now,
+        is_today=c_due.date() == now.date(),
+    )
+
+
+def _build_sidebar(lead: Lead, db: Session) -> LeadSidebarSummary:
+    """Сводка для sidebar карточки лида."""
+    open_tasks = (
+        db.query(LeadTask)
+        .filter(LeadTask.lead_id == lead.id, LeadTask.status == LeadTaskStatus.OPEN)
+        .order_by(LeadTask.due_at.asc().nullslast())
+        .limit(3)
+        .all()
+    )
+    open_count = (
+        db.query(func.count(LeadTask.id))
+        .filter(LeadTask.lead_id == lead.id, LeadTask.status == LeadTaskStatus.OPEN)
+        .scalar()
+    ) or 0
+
+    last_invoice = (
+        db.query(Invoice)
+        .filter(Invoice.lead_id == lead.id)
+        .order_by(Invoice.created_at.desc())
+        .first()
+    )
+    unpaid_count = (
+        db.query(func.count(Invoice.id))
+        .filter(
+            Invoice.lead_id == lead.id,
+            Invoice.status.in_([InvoiceStatus.SENT, InvoiceStatus.OVERDUE]),
+        )
+        .scalar()
+    ) or 0
+
+    return LeadSidebarSummary(
+        open_tasks_count=open_count,
+        nearest_tasks=open_tasks,
+        last_invoice=last_invoice,
+        unpaid_invoices_count=unpaid_count,
+    )
+
+
+@router.get("/leads/{lead_id}/card", response_model=LeadCardResponse)
+async def get_lead_card(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Агрегированный ответ для карточки лида — один запрос для быстрой отрисовки."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+
+    lead = _fix_lead_strings(lead)
+    next_action = _build_next_action(lead, db)
+    sidebar = _build_sidebar(lead, db)
+
+    # Timeline preview: последние 10 записей
+    timeline_preview = (
+        db.query(LeadActivity)
+        .filter(LeadActivity.lead_id == lead_id)
+        .order_by(LeadActivity.created_at.desc())
+        .limit(10)
+        .all()
+    )
+
+    return LeadCardResponse(
+        lead=lead,
+        next_action=next_action,
+        pinned_comment=lead.comment if lead.comment else None,
+        sidebar=sidebar,
+        timeline_preview=timeline_preview,
+    )
+
+
+# ─── POST /leads/{lead_id}/quick-action ────────────────────────────────────
+
+@router.post("/leads/{lead_id}/quick-action", response_model=QuickActionResponse)
+async def lead_quick_action(
+    lead_id: int,
+    payload: QuickActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """
+    Единый endpoint для быстрых действий менеджера.
+    Создаёт activity, меняет статус при необходимости, возвращает результат.
+    """
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+
+    action = payload.action
+    old_status = lead.status.value if isinstance(lead.status, LeadStatus) else str(lead.status)
+    new_status = old_status
+    activity_type = action
+    activity_title = ""
+    activity_description = payload.comment
+
+    if action == "called":
+        activity_title = "Дозвонились"
+        if old_status == "new":
+            lead.status = LeadStatus.CONTACTED
+            new_status = "contacted"
+        if payload.next_contact_at:
+            lead.next_contact_at = payload.next_contact_at
+
+    elif action == "no_answer":
+        activity_title = "Не дозвонились"
+        lead.no_answer_attempt = (lead.no_answer_attempt or 0) + 1
+        if lead.no_answer_attempt <= 3:
+            lead.status = LeadStatus.NO_ANSWER
+            new_status = "no_answer"
+        if payload.next_contact_at:
+            lead.next_contact_at = payload.next_contact_at
+
+    elif action == "sent_info":
+        activity_title = "Отправлена информация"
+        lead.status = LeadStatus.THINKING
+        new_status = "thinking"
+        if payload.next_contact_at:
+            lead.next_contact_at = payload.next_contact_at
+
+    elif action == "schedule_contact":
+        activity_title = "Назначен повторный контакт"
+        if payload.next_contact_at:
+            lead.next_contact_at = payload.next_contact_at
+
+    elif action == "create_invoice":
+        activity_title = "Создан счёт"
+        if not payload.abonement_id:
+            raise HTTPException(status_code=400, detail="abonement_id обязателен для создания счёта")
+        abonement = db.query(Abonement).filter(Abonement.id == payload.abonement_id).first()
+        if not abonement:
+            raise HTTPException(status_code=404, detail="Абонемент не найден")
+        invoice = Invoice(
+            lead_id=lead_id,
+            abonement_id=payload.abonement_id,
+            amount=abonement.price,
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            email_to=payload.invoice_email or lead.email,
+        )
+        db.add(invoice)
+        db.flush()
+        lead.status = LeadStatus.INVOICE_SENT
+        new_status = "invoice_sent"
+        activity_type = "invoice_created"
+
+    elif action == "payment_received":
+        activity_title = "Оплата получена"
+        # Помечаем последний неоплаченный счёт как оплаченный
+        unpaid = (
+            db.query(Invoice)
+            .filter(
+                Invoice.lead_id == lead_id,
+                Invoice.status.in_([InvoiceStatus.SENT, InvoiceStatus.OVERDUE]),
+            )
+            .order_by(Invoice.created_at.desc())
+            .first()
+        )
+        if unpaid:
+            unpaid.status = InvoiceStatus.PAID
+            unpaid.paid_at = datetime.utcnow()
+        lead.status = LeadStatus.WON
+        new_status = "won"
+        activity_type = "invoice_paid"
+
+    elif action == "refused":
+        activity_title = "Отказ"
+        lead.status = LeadStatus.REFUSED
+        new_status = "refused"
+        lead.lost_reason = payload.lost_reason
+        activity_type = "status_changed"
+
+    elif action == "enrolled":
+        activity_title = "Успешно записан"
+        lead.status = LeadStatus.WON
+        new_status = "won"
+        activity_type = "status_changed"
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Неизвестное действие: {action}")
+
+    # Создаём activity
+    status_from = old_status if old_status != new_status else None
+    status_to = new_status if old_status != new_status else None
+    activity = _create_lead_activity(
+        db, lead_id,
+        type=activity_type,
+        title=activity_title,
+        description=activity_description,
+        channel=payload.channel,
+        created_by=current_user.id,
+        status_effect_from=status_from,
+        status_effect_to=status_to,
+    )
+
+    db.commit()
+    db.refresh(lead)
+    db.refresh(activity)
+    log_action(db, current_user.id, "quick_action", "lead", lead.id, {"action": action})
+
+    next_action = _build_next_action(lead, db)
+
+    return QuickActionResponse(
+        success=True,
+        message=activity_title,
+        activity=activity,
+        new_status=new_status if old_status != new_status else None,
+        next_action=next_action,
+    )

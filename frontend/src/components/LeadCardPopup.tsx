@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -9,20 +9,34 @@ import {
   Divider,
   IconButton,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import {
   AccessTime as AccessTimeIcon,
+  Call as CallIcon,
   Close as CloseIcon,
   OpenInNew as OpenInNewIcon,
+  PhoneDisabled as PhoneDisabledIcon,
   PushPin as PushPinIcon,
+  Receipt as ReceiptIcon,
+  Send as SendIcon,
+  Schedule as ScheduleIcon,
+  ThumbDown as ThumbDownIcon,
+  ThumbUp as ThumbUpIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { Invoice, Lead, LeadCommunication, LeadStatus, LeadTask } from '../types';
+import type {
+  LeadActivity,
+  LeadCardResponse,
+  LeadNextAction,
+  LeadStatus,
+  QuickActionType,
+} from '../types';
 
 const statusLabels: Record<LeadStatus, string> = {
   new: 'Новый',
@@ -39,7 +53,7 @@ const statusLabels: Record<LeadStatus, string> = {
   decided_immediately: 'Решил заниматься сразу',
 };
 
-function badgeColor(status: LeadStatus): 'success' | 'default' | 'info' | 'warning' | 'primary' | 'error' {
+function badgeColor(status: LeadStatus): 'success' | 'default' | 'info' | 'warning' | 'primary' {
   switch (status) {
     case 'won': return 'success';
     case 'lost':
@@ -51,20 +65,24 @@ function badgeColor(status: LeadStatus): 'success' | 'default' | 'info' | 'warni
   }
 }
 
-const channelLabels: Record<string, string> = {
-  sms: 'SMS',
-  telegram: 'Telegram',
-  max: 'MAX',
-  email: 'Email',
+const activityTypeLabels: Record<string, string> = {
+  lead_created: 'Лид создан',
+  call: 'Звонок',
+  called: 'Дозвонились',
+  no_answer: 'Не дозвонились',
+  message: 'Сообщение',
+  sent_info: 'Отправлена информация',
+  task_created: 'Задача создана',
+  task_done: 'Задача выполнена',
+  invoice_created: 'Создан счёт',
+  invoice_paid: 'Оплата получена',
+  status_changed: 'Статус изменён',
+  comment_added: 'Комментарий',
+  schedule_contact: 'Назначен контакт',
+  payment_received: 'Оплата получена',
+  refused: 'Отказ',
+  enrolled: 'Успешно записан',
 };
-
-interface TimelineItem {
-  id: string;
-  date: Date;
-  type: 'task' | 'communication' | 'lead_created';
-  title: string;
-  description?: string;
-}
 
 interface LeadCardPopupProps {
   leadId: number | null;
@@ -77,34 +95,31 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
   leadId,
   open,
   onClose,
-  onLeadUpdated: _onLeadUpdated,
+  onLeadUpdated,
 }) => {
   const navigate = useNavigate();
-  const [lead, setLead] = useState<Lead | null>(null);
-  const [tasks, setTasks] = useState<LeadTask[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [communications, setCommunications] = useState<LeadCommunication[]>([]);
+  const [card, setCard] = useState<LeadCardResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
-  const loadDetails = useCallback(async () => {
+  // Quick Action form state
+  const [qaComment, setQaComment] = useState('');
+  const [qaNextContact, setQaNextContact] = useState('');
+  const [qaLostReason, setQaLostReason] = useState('');
+  const [qaExpandedAction, setQaExpandedAction] = useState<QuickActionType | null>(null);
+
+  const loadCard = useCallback(async () => {
     if (!leadId) return;
     setLoading(true);
     setError(null);
     try {
-      const [leadData, tasksData, invoicesData, commData] = await Promise.all([
-        salesApi.getLead(leadId),
-        salesApi.listTasks(leadId),
-        salesApi.listInvoices(leadId),
-        salesApi.listLeadCommunications(leadId),
-      ]);
-      setLead(leadData);
-      setTasks(tasksData);
-      setInvoices(invoicesData);
-      setCommunications(commData);
+      const data = await salesApi.getLeadCard(leadId);
+      setCard(data);
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось загрузить карточку'));
-      setLead(null);
+      setCard(null);
     } finally {
       setLoading(false);
     }
@@ -112,15 +127,17 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
   useEffect(() => {
     if (open && leadId) {
-      loadDetails();
+      loadCard();
+      setActionFeedback(null);
+      setQaExpandedAction(null);
+      setQaComment('');
+      setQaNextContact('');
+      setQaLostReason('');
     } else {
-      setLead(null);
-      setTasks([]);
-      setInvoices([]);
-      setCommunications([]);
+      setCard(null);
       setError(null);
     }
-  }, [open, leadId, loadDetails]);
+  }, [open, leadId, loadCard]);
 
   const handleOpenFull = () => {
     if (leadId) {
@@ -129,6 +146,37 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
     }
   };
 
+  const executeQuickAction = async (action: QuickActionType, extra?: Record<string, unknown>) => {
+    if (!leadId) return;
+    setActionLoading(true);
+    setActionFeedback(null);
+    try {
+      const result = await salesApi.leadQuickAction(leadId, {
+        action,
+        comment: qaComment || undefined,
+        next_contact_at: qaNextContact || undefined,
+        lost_reason: action === 'refused' ? (qaLostReason || undefined) : undefined,
+        ...extra,
+      });
+      setActionFeedback(
+        result.new_status
+          ? `${result.message} → ${statusLabels[result.new_status as LeadStatus] ?? result.new_status}`
+          : result.message,
+      );
+      setQaExpandedAction(null);
+      setQaComment('');
+      setQaNextContact('');
+      setQaLostReason('');
+      await loadCard();
+      onLeadUpdated?.();
+    } catch (err: unknown) {
+      setActionFeedback(extractApiError(err, 'Ошибка'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const lead = card?.lead;
   const leadName = lead
     ? [lead.parent_full_name || lead.contact_name, lead.child_full_name]
         .filter(Boolean)
@@ -136,61 +184,8 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
       lead.phone ||
       `Лид #${lead.id}`
     : '';
-
   const phone = lead ? lead.parent_phone || lead.phone || '' : '';
-
-  // Следующий контакт
-  const nextContactDate = lead?.next_contact_at && isValid(parseISO(lead.next_contact_at))
-    ? parseISO(lead.next_contact_at) : null;
-  const now = new Date();
-  const isOverdue = nextContactDate ? nextContactDate.getTime() < now.getTime() : false;
-  const isToday = nextContactDate ? nextContactDate.toDateString() === now.toDateString() : false;
-
-  // Ближайшая открытая задача
-  const nextTask = useMemo(() => {
-    const open = tasks.filter((t) => t.status === 'open' && t.due_at);
-    open.sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime());
-    return open[0] || null;
-  }, [tasks]);
-
-  // Неоплаченные счета
-  const unpaidInvoices = useMemo(
-    () => invoices.filter((inv) => inv.status === 'sent' || inv.status === 'overdue'),
-    [invoices],
-  );
-
-  // Таймлайн: задачи + коммуникации, сортировка по дате убыванию
-  const timeline = useMemo<TimelineItem[]>(() => {
-    const items: TimelineItem[] = [];
-    if (lead) {
-      items.push({
-        id: `created-${lead.id}`,
-        date: parseISO(lead.created_at),
-        type: 'lead_created',
-        title: 'Лид создан',
-        description: lead.source ? `Источник: ${lead.source}` : undefined,
-      });
-    }
-    for (const t of tasks) {
-      items.push({
-        id: `task-${t.id}`,
-        date: parseISO(t.updated_at || t.created_at),
-        type: 'task',
-        title: t.status === 'done' ? 'Задача выполнена' : 'Задача создана',
-        description: t.note || undefined,
-      });
-    }
-    for (const c of communications) {
-      items.push({
-        id: `comm-${c.id}`,
-        date: parseISO(c.created_at),
-        type: 'communication',
-        title: channelLabels[c.channel] || c.channel,
-        description: c.message.length > 80 ? `${c.message.slice(0, 80)}…` : c.message,
-      });
-    }
-    return items.sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [lead, tasks, communications]);
+  const nextAction: LeadNextAction | null = card?.next_action ?? null;
 
   return (
     <Dialog
@@ -218,26 +213,19 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
         </Stack>
 
         {loading && (
-          <Typography color="text.secondary" sx={{ p: 2 }}>
-            Загрузка…
-          </Typography>
+          <Typography color="text.secondary" sx={{ p: 2 }}>Загрузка…</Typography>
         )}
-
         {error && (
-          <Typography color="error" sx={{ p: 2 }}>
-            {error}
-          </Typography>
+          <Typography color="error" sx={{ p: 2 }}>{error}</Typography>
         )}
 
-        {!loading && !error && lead && (
+        {!loading && !error && lead && card && (
           <>
             {/* ── Блок A: Header ── */}
             <Box sx={{ px: 2, pt: 2, pb: 1.5 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="h6" noWrap sx={{ fontWeight: 700 }}>
-                    {leadName}
-                  </Typography>
+                  <Typography variant="h6" noWrap sx={{ fontWeight: 700 }}>{leadName}</Typography>
                   {phone && (
                     <Typography
                       variant="body2"
@@ -269,24 +257,13 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                 )}
               </Stack>
               {/* Бейджи рисков */}
-              {(isOverdue || unpaidInvoices.length > 0) && (
+              {(nextAction?.is_overdue || (card.sidebar.unpaid_invoices_count > 0)) && (
                 <Stack direction="row" spacing={0.5} sx={{ mt: 0.75 }} flexWrap="wrap">
-                  {isOverdue && (
-                    <Chip
-                      size="small"
-                      icon={<WarningIcon />}
-                      label="Контакт просрочен"
-                      color="error"
-                      variant="outlined"
-                    />
+                  {nextAction?.is_overdue && (
+                    <Chip size="small" icon={<WarningIcon />} label="Контакт просрочен" color="error" variant="outlined" />
                   )}
-                  {unpaidInvoices.length > 0 && (
-                    <Chip
-                      size="small"
-                      label={`Счёт ожидает оплаты`}
-                      color="warning"
-                      variant="outlined"
-                    />
+                  {card.sidebar.unpaid_invoices_count > 0 && (
+                    <Chip size="small" label="Счёт ожидает оплаты" color="warning" variant="outlined" />
                   )}
                 </Stack>
               )}
@@ -295,28 +272,14 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
             <Divider />
 
             {/* ── Блок B: Pinned comment ── */}
-            {lead.comment && (
+            {card.pinned_comment && (
               <>
-                <Box
-                  sx={{
-                    mx: 2,
-                    my: 1.5,
-                    p: 1.25,
-                    bgcolor: 'warning.light',
-                    borderRadius: 1,
-                    borderLeft: '3px solid',
-                    borderColor: 'warning.main',
-                  }}
-                >
+                <Box sx={{ mx: 2, my: 1.5, p: 1.25, bgcolor: 'warning.light', borderRadius: 1, borderLeft: '3px solid', borderColor: 'warning.main' }}>
                   <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.5 }}>
                     <PushPinIcon sx={{ fontSize: 14, color: 'warning.dark' }} />
-                    <Typography variant="caption" color="warning.dark" sx={{ fontWeight: 600 }}>
-                      Заметка
-                    </Typography>
+                    <Typography variant="caption" color="warning.dark" sx={{ fontWeight: 600 }}>Заметка</Typography>
                   </Stack>
-                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                    {lead.comment}
-                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{card.pinned_comment}</Typography>
                 </Box>
                 <Divider />
               </>
@@ -324,129 +287,195 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
             {/* ── Блок C: Next Action ── */}
             <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Следующий шаг
-              </Typography>
-              {nextContactDate || nextTask ? (
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Следующий шаг</Typography>
+              {nextAction ? (
                 <Box
                   sx={{
-                    p: 1.5,
-                    borderRadius: 1,
-                    border: '1px solid',
-                    borderColor: isOverdue ? 'error.main' : isToday ? 'warning.main' : 'divider',
-                    bgcolor: isOverdue
-                      ? 'error.light'
-                      : isToday
-                      ? 'warning.light'
-                      : 'action.hover',
+                    p: 1.5, borderRadius: 1, border: '1px solid',
+                    borderColor: nextAction.is_overdue ? 'error.main' : nextAction.is_today ? 'warning.main' : 'divider',
+                    bgcolor: nextAction.is_overdue ? 'error.light' : nextAction.is_today ? 'warning.light' : 'action.hover',
                   }}
                 >
-                  {nextContactDate && (
-                    <Stack direction="row" spacing={0.5} alignItems="center">
-                      <AccessTimeIcon
-                        sx={{
-                          fontSize: 16,
-                          color: isOverdue ? 'error.main' : isToday ? 'warning.dark' : 'text.secondary',
-                        }}
-                      />
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: isOverdue ? 'error.main' : isToday ? 'warning.dark' : 'text.primary',
-                          fontWeight: isOverdue || isToday ? 600 : 400,
-                        }}
-                      >
-                        {isOverdue
-                          ? `Просрочено — ${format(nextContactDate, 'dd MMM, HH:mm', { locale: ru })}`
-                          : isToday
-                          ? `Сегодня в ${format(nextContactDate, 'HH:mm')}`
-                          : format(nextContactDate, 'dd MMM yyyy, HH:mm', { locale: ru })}
-                      </Typography>
-                    </Stack>
-                  )}
-                  {nextTask && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: nextContactDate ? 0.5 : 0 }}>
-                      Задача: {nextTask.note || '—'}
-                      {nextTask.due_at && ` · ${format(parseISO(nextTask.due_at), 'dd.MM HH:mm')}`}
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <AccessTimeIcon sx={{ fontSize: 16, color: nextAction.is_overdue ? 'error.main' : nextAction.is_today ? 'warning.dark' : 'text.secondary' }} />
+                    <Typography variant="body2" sx={{
+                      fontWeight: nextAction.is_overdue || nextAction.is_today ? 600 : 400,
+                      color: nextAction.is_overdue ? 'error.main' : nextAction.is_today ? 'warning.dark' : 'text.primary',
+                    }}>
+                      {nextAction.title}
+                      {nextAction.due_at && isValid(parseISO(nextAction.due_at)) && (
+                        <> · {nextAction.is_overdue
+                          ? `Просрочено — ${format(parseISO(nextAction.due_at), 'dd MMM, HH:mm', { locale: ru })}`
+                          : nextAction.is_today
+                          ? `Сегодня в ${format(parseISO(nextAction.due_at), 'HH:mm')}`
+                          : format(parseISO(nextAction.due_at), 'dd MMM yyyy, HH:mm', { locale: ru })}</>
+                      )}
                     </Typography>
-                  )}
+                  </Stack>
                 </Box>
               ) : (
-                <Box
-                  sx={{
-                    p: 1.5,
-                    borderRadius: 1,
-                    border: '1px dashed',
-                    borderColor: 'divider',
-                    bgcolor: 'action.hover',
-                  }}
-                >
-                  <Typography variant="body2" color="text.secondary">
-                    Следующий шаг не назначен
-                  </Typography>
+                <Box sx={{ p: 1.5, borderRadius: 1, border: '1px dashed', borderColor: 'divider', bgcolor: 'action.hover' }}>
+                  <Typography variant="body2" color="text.secondary">Следующий шаг не назначен</Typography>
                 </Box>
               )}
             </Box>
 
             <Divider />
 
-            {/* ── Блок D: Timeline preview ── */}
+            {/* ── Блок D: Quick Actions ── */}
             <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                История
-              </Typography>
-              {timeline.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Нет записей
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Быстрые действия</Typography>
+
+              {actionFeedback && (
+                <Typography variant="body2" sx={{ mb: 1, p: 1, borderRadius: 1, bgcolor: 'action.hover' }}>
+                  {actionFeedback}
                 </Typography>
+              )}
+
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
+                <Button size="small" variant="outlined" startIcon={<CallIcon />} disabled={actionLoading}
+                  onClick={() => qaExpandedAction === 'called' ? setQaExpandedAction(null) : setQaExpandedAction('called')}>
+                  Позвонил
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<PhoneDisabledIcon />} disabled={actionLoading}
+                  onClick={() => qaExpandedAction === 'no_answer' ? setQaExpandedAction(null) : setQaExpandedAction('no_answer')}>
+                  Не дозвонился
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<SendIcon />} disabled={actionLoading}
+                  onClick={() => qaExpandedAction === 'sent_info' ? setQaExpandedAction(null) : setQaExpandedAction('sent_info')}>
+                  Отправил инфо
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<ScheduleIcon />} disabled={actionLoading}
+                  onClick={() => qaExpandedAction === 'schedule_contact' ? setQaExpandedAction(null) : setQaExpandedAction('schedule_contact')}>
+                  Назначить контакт
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<ReceiptIcon />} disabled={actionLoading}
+                  onClick={() => handleOpenFull()}>
+                  Создать счёт
+                </Button>
+                <Button size="small" variant="outlined" startIcon={<ThumbUpIcon />} disabled={actionLoading}
+                  onClick={() => executeQuickAction('enrolled')}>
+                  Записан
+                </Button>
+                <Button size="small" variant="outlined" color="error" startIcon={<ThumbDownIcon />} disabled={actionLoading}
+                  onClick={() => qaExpandedAction === 'refused' ? setQaExpandedAction(null) : setQaExpandedAction('refused')}>
+                  Отказ
+                </Button>
+              </Stack>
+
+              {/* Раскрытая форма действия */}
+              {qaExpandedAction && (
+                <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 1, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+                  {(qaExpandedAction === 'called' || qaExpandedAction === 'no_answer' || qaExpandedAction === 'sent_info') && (
+                    <TextField
+                      fullWidth size="small" label="Комментарий" multiline rows={2}
+                      value={qaComment} onChange={(e) => setQaComment(e.target.value)}
+                      sx={{ mb: 1 }}
+                    />
+                  )}
+                  {(qaExpandedAction === 'called' || qaExpandedAction === 'no_answer' || qaExpandedAction === 'sent_info' || qaExpandedAction === 'schedule_contact') && (
+                    <TextField
+                      fullWidth size="small" label="Следующий контакт" type="datetime-local"
+                      value={qaNextContact} onChange={(e) => setQaNextContact(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      sx={{ mb: 1 }}
+                    />
+                  )}
+                  {qaExpandedAction === 'refused' && (
+                    <>
+                      <TextField
+                        fullWidth size="small" label="Причина отказа"
+                        value={qaLostReason} onChange={(e) => setQaLostReason(e.target.value)}
+                        sx={{ mb: 1 }}
+                      />
+                      <TextField
+                        fullWidth size="small" label="Комментарий" multiline rows={2}
+                        value={qaComment} onChange={(e) => setQaComment(e.target.value)}
+                        sx={{ mb: 1 }}
+                      />
+                    </>
+                  )}
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small" variant="contained" disabled={actionLoading}
+                      onClick={() => executeQuickAction(qaExpandedAction)}
+                    >
+                      Подтвердить
+                    </Button>
+                    <Button size="small" onClick={() => setQaExpandedAction(null)}>Отмена</Button>
+                  </Stack>
+                </Box>
+              )}
+            </Box>
+
+            <Divider />
+
+            {/* ── Блок E: Timeline preview ── */}
+            <Box sx={{ px: 2, py: 1.5 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>История</Typography>
+              {card.timeline_preview.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">Нет записей</Typography>
               ) : (
                 <Stack spacing={1}>
-                  {timeline.slice(0, 7).map((item) => (
+                  {card.timeline_preview.slice(0, 10).map((item: LeadActivity) => (
                     <Stack key={item.id} direction="row" spacing={1.5} alignItems="flex-start">
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ minWidth: 72, flexShrink: 0, pt: 0.15 }}
-                      >
-                        {isValid(item.date)
-                          ? format(item.date, 'dd.MM HH:mm')
-                          : '—'}
+                      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 72, flexShrink: 0, pt: 0.15 }}>
+                        {isValid(parseISO(item.created_at)) ? format(parseISO(item.created_at), 'dd.MM HH:mm') : '—'}
                       </Typography>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
-                          {item.title}
+                          {activityTypeLabels[item.type] ?? item.title}
                         </Typography>
                         {item.description && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ display: 'block', wordBreak: 'break-word' }}
-                          >
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', wordBreak: 'break-word' }}>
                             {item.description}
+                          </Typography>
+                        )}
+                        {item.status_effect_from && item.status_effect_to && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {statusLabels[item.status_effect_from as LeadStatus] ?? item.status_effect_from}
+                            {' → '}
+                            {statusLabels[item.status_effect_to as LeadStatus] ?? item.status_effect_to}
                           </Typography>
                         )}
                       </Box>
                     </Stack>
                   ))}
-                  {timeline.length > 7 && (
-                    <Typography variant="caption" color="text.secondary">
-                      и ещё {timeline.length - 7} событий…
-                    </Typography>
-                  )}
                 </Stack>
               )}
             </Box>
+
+            {/* ── Sidebar summary (встроено в нижнюю часть) ── */}
+            {(card.sidebar.open_tasks_count > 0 || card.sidebar.last_invoice) && (
+              <>
+                <Divider />
+                <Box sx={{ px: 2, py: 1.5 }}>
+                  {card.sidebar.open_tasks_count > 0 && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      Открытых задач: {card.sidebar.open_tasks_count}
+                      {card.sidebar.nearest_tasks.length > 0 && (
+                        <> · Ближайшая: {card.sidebar.nearest_tasks[0].note || '—'}
+                          {card.sidebar.nearest_tasks[0].due_at && (
+                            <> ({format(parseISO(card.sidebar.nearest_tasks[0].due_at), 'dd.MM HH:mm')})</>
+                          )}
+                        </>
+                      )}
+                    </Typography>
+                  )}
+                  {card.sidebar.last_invoice && (
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
+                      Последний счёт: {card.sidebar.last_invoice.amount} {card.sidebar.last_invoice.currency} — {card.sidebar.last_invoice.status}
+                    </Typography>
+                  )}
+                </Box>
+              </>
+            )}
 
             <Divider />
 
             {/* ── Кнопка открыть полную карточку ── */}
             <Box sx={{ px: 2, py: 1.5 }}>
-              <Button
-                fullWidth
-                variant="outlined"
-                startIcon={<OpenInNewIcon />}
-                onClick={handleOpenFull}
-              >
+              <Button fullWidth variant="outlined" startIcon={<OpenInNewIcon />} onClick={handleOpenFull}>
                 Открыть полную карточку для редактирования
               </Button>
             </Box>

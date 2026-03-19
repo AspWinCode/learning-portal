@@ -347,6 +347,7 @@ class Lead(Base):
     tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="lead", cascade="all, delete-orphan")
     communications = relationship("LeadCommunication", back_populates="lead", cascade="all, delete-orphan")
+    activities = relationship("LeadActivity", back_populates="lead", cascade="all, delete-orphan", order_by="LeadActivity.created_at.desc()")
 
 
 class LeadTaskStatus(str, enum.Enum):
@@ -852,6 +853,31 @@ class LeadCommunication(Base):
     lead = relationship("Lead", back_populates="communications")
     sender = relationship("User")
     template = relationship("LeadInfoTemplate")
+
+
+class LeadActivity(Base):
+    """Единая лента событий по лиду — для таймлайна и истории действий."""
+    __tablename__ = "lead_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
+    type = Column(String(64), nullable=False, index=True)  # lead_created | call | message | task_created | task_done | invoice_created | invoice_paid | status_changed | comment_added
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    channel = Column(String(64), nullable=True)  # sms | telegram | max | email | call
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    payload_json = Column(JSON, nullable=True)  # произвольные данные события
+    status_effect_from = Column(String(64), nullable=True)  # прежний статус (для status_changed)
+    status_effect_to = Column(String(64), nullable=True)  # новый статус (для status_changed)
+    related_task_id = Column(Integer, ForeignKey("lead_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    related_invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Relationships
+    lead = relationship("Lead", back_populates="activities")
+    author = relationship("User")
+    related_task = relationship("LeadTask")
+    related_invoice = relationship("Invoice")
 
 
 class InvoiceStatus(str, enum.Enum):

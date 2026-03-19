@@ -685,6 +685,82 @@ export interface Invoice {
   paid_at?: string | null;
 }
 
+// ─── LeadActivity (таймлайн) ────────────────────────────────────────────────
+
+export interface LeadActivity {
+  id: number;
+  lead_id: number;
+  type: string;
+  title: string;
+  description?: string | null;
+  channel?: string | null;
+  created_at: string;
+  created_by?: number | null;
+  payload_json?: Record<string, unknown> | null;
+  status_effect_from?: string | null;
+  status_effect_to?: string | null;
+  related_task_id?: number | null;
+  related_invoice_id?: number | null;
+}
+
+export interface LeadTimelineResponse {
+  items: LeadActivity[];
+  total: number;
+  has_more: boolean;
+}
+
+export interface LeadNextAction {
+  type?: string | null;
+  title?: string | null;
+  due_at?: string | null;
+  task_id?: number | null;
+  is_overdue: boolean;
+  is_today: boolean;
+}
+
+export interface LeadSidebarSummary {
+  open_tasks_count: number;
+  nearest_tasks: LeadTask[];
+  last_invoice?: Invoice | null;
+  unpaid_invoices_count: number;
+}
+
+export interface LeadCardResponse {
+  lead: Lead;
+  next_action?: LeadNextAction | null;
+  pinned_comment?: string | null;
+  sidebar: LeadSidebarSummary;
+  timeline_preview: LeadActivity[];
+}
+
+export type QuickActionType =
+  | 'called'
+  | 'no_answer'
+  | 'sent_info'
+  | 'schedule_contact'
+  | 'create_invoice'
+  | 'payment_received'
+  | 'refused'
+  | 'enrolled';
+
+export interface QuickActionRequest {
+  action: QuickActionType;
+  comment?: string | null;
+  channel?: string | null;
+  next_contact_at?: string | null;
+  lost_reason?: string | null;
+  abonement_id?: number | null;
+  invoice_email?: string | null;
+}
+
+export interface QuickActionResponse {
+  success: boolean;
+  message: string;
+  activity?: LeadActivity | null;
+  new_status?: string | null;
+  next_action?: LeadNextAction | null;
+}
+
 export type EventStatus = 'active' | 'archived';
 export interface EventItem {
   id: number;

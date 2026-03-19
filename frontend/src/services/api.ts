@@ -1640,6 +1640,27 @@ export const salesApi = {
   deleteCustomLesson: async (id: number): Promise<void> => {
     await api.delete(`/api/sales/custom-lessons/${id}`);
   },
+
+  // ─── Этап 2: Card, Timeline, Quick Actions ─────────────────────────
+
+  getLeadCard: async (leadId: number): Promise<import('../types').LeadCardResponse> => {
+    const response = await api.get(`/api/sales/leads/${leadId}/card`);
+    return response.data;
+  },
+  getLeadTimeline: async (
+    leadId: number,
+    params?: { offset?: number; limit?: number }
+  ): Promise<import('../types').LeadTimelineResponse> => {
+    const response = await api.get(`/api/sales/leads/${leadId}/timeline`, { params: params || {} });
+    return response.data;
+  },
+  leadQuickAction: async (
+    leadId: number,
+    payload: import('../types').QuickActionRequest
+  ): Promise<import('../types').QuickActionResponse> => {
+    const response = await api.post(`/api/sales/leads/${leadId}/quick-action`, payload);
+    return response.data;
+  },
 };
 
 export const abonementsApi = {

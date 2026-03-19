@@ -1443,6 +1443,86 @@ class InvoiceResponse(BaseModel):
         from_attributes = True
 
 
+# ─── LeadActivity (таймлайн) ────────────────────────────────────────────────
+
+class LeadActivityResponse(BaseModel):
+    id: int
+    lead_id: int
+    type: str
+    title: str
+    description: Optional[str] = None
+    channel: Optional[str] = None
+    created_at: datetime
+    created_by: Optional[int] = None
+    payload_json: Optional[dict] = None
+    status_effect_from: Optional[str] = None
+    status_effect_to: Optional[str] = None
+    related_task_id: Optional[int] = None
+    related_invoice_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LeadTimelineResponse(BaseModel):
+    """Пагинированный таймлайн для GET /leads/{id}/timeline."""
+    items: List[LeadActivityResponse]
+    total: int
+    has_more: bool
+
+
+# ─── LeadCard (агрегированный ответ) ────────────────────────────────────────
+
+class LeadNextAction(BaseModel):
+    """Следующее действие по лиду."""
+    type: Optional[str] = None  # task | contact
+    title: Optional[str] = None
+    due_at: Optional[datetime] = None
+    task_id: Optional[int] = None
+    is_overdue: bool = False
+    is_today: bool = False
+
+
+class LeadSidebarSummary(BaseModel):
+    """Краткая сводка для боковой панели карточки лида."""
+    open_tasks_count: int = 0
+    nearest_tasks: List[LeadTaskResponse] = []
+    last_invoice: Optional[InvoiceResponse] = None
+    unpaid_invoices_count: int = 0
+
+
+class LeadCardResponse(BaseModel):
+    """Агрегированный ответ для GET /leads/{id}/card — один запрос для быстрой отрисовки."""
+    lead: LeadResponse
+    next_action: Optional[LeadNextAction] = None
+    pinned_comment: Optional[str] = None
+    sidebar: LeadSidebarSummary
+    timeline_preview: List[LeadActivityResponse] = []
+
+
+# ─── Quick Actions ──────────────────────────────────────────────────────────
+
+class QuickActionRequest(BaseModel):
+    """Универсальная схема для быстрых действий по лиду."""
+    action: str  # called | no_answer | sent_info | schedule_contact | create_invoice | payment_received | refused | enrolled
+    comment: Optional[str] = None
+    channel: Optional[str] = None  # sms | telegram | max | email | call
+    next_contact_at: Optional[datetime] = None
+    lost_reason: Optional[str] = None
+    # Для create_invoice
+    abonement_id: Optional[int] = None
+    invoice_email: Optional[EmailStr] = None
+
+
+class QuickActionResponse(BaseModel):
+    """Ответ после выполнения быстрого действия."""
+    success: bool
+    message: str
+    activity: Optional[LeadActivityResponse] = None
+    new_status: Optional[str] = None
+    next_action: Optional[LeadNextAction] = None
+
+
 class EventBase(BaseModel):
     title: str
     description: Optional[str] = None

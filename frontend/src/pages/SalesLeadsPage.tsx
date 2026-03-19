@@ -714,32 +714,6 @@ const SalesLeadsPage: React.FC = () => {
   }, [leads]);
 
   useEffect(() => {
-    if (viewMode !== 'kanban') return;
-    const loadPushStats = async () => {
-      const visibleIds = kanbanColumns.flatMap((col) => {
-        const colKey = String(col.status);
-        const isExpanded = expandedKanbanColumns.has(colKey);
-        return (isExpanded ? col.leads : col.leads.slice(0, KANBAN_COLUMN_INITIAL_LIMIT)).map((l) => l.id);
-      });
-      if (visibleIds.length === 0) {
-        setLeadPushStatsMap({});
-        return;
-      }
-      try {
-        const stats = await salesApi.getLeadsPushStats(visibleIds);
-        const map: Record<number, LeadPushStats> = {};
-        stats.forEach((s) => {
-          map[s.lead_id] = s;
-        });
-        setLeadPushStatsMap(map);
-      } catch {
-        // ignore; fallback estimate will be used
-      }
-    };
-    void loadPushStats();
-  }, [kanbanColumns, expandedKanbanColumns, viewMode]);
-
-  useEffect(() => {
     const params = new URLSearchParams(location.search);
     const leadIdParam = params.get('open') || params.get('leadId') || params.get('detail');
     const leadId = leadIdParam ? Number(leadIdParam) : NaN;
@@ -2165,6 +2139,32 @@ const SalesLeadsPage: React.FC = () => {
     },
     [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds, reinviteLeadIds, pipelineSchoolFilter]
   );
+
+  useEffect(() => {
+    if (viewMode !== 'kanban') return;
+    const loadPushStats = async () => {
+      const visibleIds = kanbanColumns.flatMap((col) => {
+        const colKey = String(col.status);
+        const isExpanded = expandedKanbanColumns.has(colKey);
+        return (isExpanded ? col.leads : col.leads.slice(0, KANBAN_COLUMN_INITIAL_LIMIT)).map((l) => l.id);
+      });
+      if (visibleIds.length === 0) {
+        setLeadPushStatsMap({});
+        return;
+      }
+      try {
+        const stats = await salesApi.getLeadsPushStats(visibleIds);
+        const map: Record<number, LeadPushStats> = {};
+        stats.forEach((s) => {
+          map[s.lead_id] = s;
+        });
+        setLeadPushStatsMap(map);
+      } catch {
+        // ignore; fallback estimate will be used
+      }
+    };
+    void loadPushStats();
+  }, [kanbanColumns, expandedKanbanColumns, viewMode]);
 
   useEffect(() => {
     if (viewMode !== 'kanban') return;

@@ -52,6 +52,7 @@ import {
 } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
+import { LeadCardPopup } from '../components/LeadCardPopup';
 import { SendSMSModal } from '../components/SendSMSModal';
 import { SendMaxModal } from '../components/SendMaxModal';
 import { salesApi, settingsApi } from '../services/api';
@@ -163,6 +164,7 @@ const SalesLeadsPage: React.FC = () => {
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [cardPopupLeadId, setCardPopupLeadId] = useState<number | null>(null);
   const [tasks, setTasks] = useState<LeadTask[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [taskNote, setTaskNote] = useState('');
@@ -1896,12 +1898,43 @@ const SalesLeadsPage: React.FC = () => {
     [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds, reinviteLeadIds, pipelineSchoolFilter]
   );
 
+  const [kanbanBadges, setKanbanBadges] = useState<Record<number, { has_invoice: boolean; has_task_today: boolean; is_overdue: boolean }>>({});
+
   useEffect(() => {
     if (viewMode !== 'kanban') return;
     const ids = leads.map((l) => l.id);
     if (!ids.length) return;
     salesApi.getLeadsSendInfoStatus(ids).then(setSendInfoStatus).catch(() => setSendInfoStatus({}));
+    salesApi.getLeadsBadges(ids).then(setKanbanBadges).catch(() => setKanbanBadges({}));
   }, [viewMode, leads]);
+
+  const invoicesBadgeMap = useMemo(() => {
+    const map: Record<number, boolean> = {};
+    for (const [id, b] of Object.entries(kanbanBadges)) map[Number(id)] = b.has_invoice;
+    return map;
+  }, [kanbanBadges]);
+
+  const taskTodayBadgeMap = useMemo(() => {
+    const map: Record<number, boolean> = {};
+    for (const [id, b] of Object.entries(kanbanBadges)) map[Number(id)] = b.has_task_today;
+    return map;
+  }, [kanbanBadges]);
+
+  const overdueBadgeMap = useMemo(() => {
+    const map: Record<number, boolean> = {};
+    for (const [id, b] of Object.entries(kanbanBadges)) map[Number(id)] = b.is_overdue;
+    // Also mark leads with overdue next_contact_at
+    const now = new Date();
+    for (const lead of leads) {
+      if (lead.next_contact_at) {
+        const d = parseISO(lead.next_contact_at);
+        if (isValid(d) && d.getTime() < now.getTime()) {
+          map[lead.id] = true;
+        }
+      }
+    }
+    return map;
+  }, [kanbanBadges, leads]);
 
   const handleWidgetSendInfo = async (lead: Lead) => {
     try {
@@ -2423,131 +2456,52 @@ const SalesLeadsPage: React.FC = () => {
                         }}
                       >
                         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                          <Stack direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
-                            <Typography variant="subtitle2">{lead.contact_name}</Typography>
-                            {lead.questionnaire_filled && (
-                              <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
-                            )}
-                          </Stack>
-                          <Typography variant="caption" color="text.secondary">{lead.phone}</Typography>
+                          <Typography variant="subtitle2" noWrap>{lead.contact_name}</Typography>
+                          <Typography variant="caption" color="text.secondary" component="a" href={`tel:${lead.parent_phone || lead.phone || ''}`} sx={{ textDecoration: 'none', color: 'text.secondary', '&:hover': { color: 'primary.main' } }} onClick={(e) => e.stopPropagation()}>
+                            {lead.parent_phone || lead.phone || '—'}
+                          </Typography>
                           {lead.source && (
-                            <Typography variant="caption" display="block" color="text.secondary">
-                              Источник: {lead.source}
+                            <Typography variant="caption" display="block" color="text.secondary" noWrap>
+                              {lead.source}
                             </Typography>
                           )}
-                          {lead.status === 'thinking' && lead.next_contact_at && (
-                            <Typography variant="caption" display="block" color="primary">
-                              Следующий контакт: {format(parseISO(lead.next_contact_at), 'dd.MM HH:mm')}
-                            </Typography>
-                          )}
-                          {lead.status === 'no_answer' && (
-                            <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} onClick={(e) => e.stopPropagation()}>
-                              {([1, 2, 3] as const).map((n) => (
-                                <Button
-                                  key={n}
-                                  size="small"
-                                  variant={(lead.no_answer_attempt ?? 1) >= n ? 'contained' : 'outlined'}
-                                  color={(lead.no_answer_attempt ?? 1) === n ? 'warning' : 'inherit'}
-                                  sx={{ minWidth: 0, px: 0.75, fontSize: '0.7rem' }}
-                                  disabled={actionLoadingId === lead.id}
-                                  onClick={() => void handleWidgetNoAnswerAttempt(lead, n)}
-                                >
-                                  Попытка {n}
-                                </Button>
-                              ))}
-                            </Stack>
-                          )}
-                          {(() => {
-                            const p = getKanbanPushProgressEstimate(lead);
+                          <Chip size="small" label={statusLabels[lead.status] ?? lead.status} color={badgeColor(lead.status)} sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }} />
+                          {lead.next_contact_at && (() => {
+                            const d = parseISO(lead.next_contact_at);
+                            if (!isValid(d)) return null;
+                            const now = new Date();
+                            const isOverdue = d.getTime() < now.getTime();
+                            const isToday = d.toDateString() === now.toDateString();
                             return (
-                              <Stack spacing={0.5} mt={1}>
-                                <Stack direction="row" justifyContent="space-between">
-                                  <Typography variant="caption" color="text.secondary">
-                                    Продвижение: {p.label}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {p.percent}%
-                                  </Typography>
-                                </Stack>
-                                <LinearProgress
-                                  variant="determinate"
-                                  value={p.percent}
-                                  color={p.percent >= 80 ? 'success' : p.percent >= 40 ? 'warning' : 'primary'}
-                                  sx={{ height: 6, borderRadius: 1 }}
-                                />
-                              </Stack>
+                              <Typography
+                                variant="caption"
+                                display="block"
+                                sx={{ mt: 0.5, fontWeight: 600, color: isOverdue ? 'error.main' : isToday ? 'warning.main' : 'primary.main' }}
+                              >
+                                {isOverdue ? 'Просрочено: ' : isToday ? 'Сегодня: ' : 'Следующий шаг: '}
+                                {format(d, 'dd.MM HH:mm')}
+                              </Typography>
                             );
                           })()}
-                          <Box sx={{ mt: 1 }} onClick={(e) => e.stopPropagation()}>
-                            <FormControl size="small" sx={{ minWidth: 160 }}>
-                              <Select
-                                value={getLeadStatusMenuValue(lead)}
-                                onChange={(e) => void handleLeadStatusSelectChange(lead, e.target.value as string)}
-                                renderValue={() => getLeadStatusDisplay(lead)}
-                                disabled={actionLoadingId === lead.id}
-                              >
-                                <MenuItem value="next_event">
-                                  <Chip size="small" label="Следующее мероприятие" />
-                                </MenuItem>
-                                {statusOptions.map((st) => (
-                                  <MenuItem key={st} value={`base:${st}`}>
-                                    <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </Box>
-                          <Stack direction="row" spacing={0.5} mt={1} alignItems="center" flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
-                            <Tooltip title="Позвонить">
-                              <IconButton size="small" component="a" href={`tel:${lead.parent_phone || lead.phone || ''}`}>
-                                <CallIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Telegram">
-                              <IconButton size="small" component="a" href={`https://t.me/${(lead.parent_phone || lead.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!lead.phone}>
-                                <ChatIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="SMS">
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  setSmsModalPhone(lead.parent_phone || lead.phone || '');
-                                  setSmsModalLeadId(lead.id);
-                                  setSmsModalOpen(true);
-                                }}
-                              >
-                                <SmsIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="MAX">
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  setMaxModalLeadId(lead.id);
-                                  setMaxModalMaxUserId(lead.max_user_id ?? null);
-                                  setMaxModalPhone(lead.parent_phone || lead.phone || '');
-                                  setMaxModalOpen(true);
-                                }}
-                              >
-                                <MaxIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
+                          {!lead.next_contact_at && lead.status !== 'won' && lead.status !== 'lost' && lead.status !== 'refused' && (
+                            <Typography variant="caption" display="block" color="warning.main" sx={{ mt: 0.5, fontWeight: 600 }}>
+                              Нет следующего шага
+                            </Typography>
+                          )}
+                          <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
+                            {invoicesBadgeMap[lead.id] && (
+                              <Chip size="small" label="Счёт" color="info" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+                            )}
+                            {taskTodayBadgeMap[lead.id] && (
+                              <Chip size="small" label="Задача" color="warning" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+                            )}
+                            {overdueBadgeMap[lead.id] && (
+                              <Chip size="small" label="Просрочено" color="error" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+                            )}
                           </Stack>
-                          <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" onClick={(e) => e.stopPropagation()}>
-                            <Button size="small" onClick={() => handleOpenDetails(lead)}>
-                              Открыть
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color={sendInfoStatus[lead.id] === 'done' ? 'success' : sendInfoStatus[lead.id] === 'open' ? 'error' : undefined}
-                              disabled={actionLoadingId === lead.id}
-                              onClick={() => void handleWidgetSendInfo(lead)}
-                            >
-                              Отправить информацию
-                            </Button>
-                          </Stack>
+                          <Button size="small" fullWidth variant="outlined" sx={{ mt: 1, textTransform: 'none' }} onClick={(e) => { e.stopPropagation(); setCardPopupLeadId(lead.id); }}>
+                            Открыть
+                          </Button>
                         </CardContent>
                       </Card>
                     ))}
@@ -3556,6 +3510,12 @@ const SalesLeadsPage: React.FC = () => {
         initialMaxUserId={maxModalMaxUserId ?? undefined}
         initialPhone={maxModalPhone || undefined}
         onSent={() => { if (selectedLead && maxModalLeadId === selectedLead.id) void loadLeadDetails(selectedLead); }}
+      />
+      <LeadCardPopup
+        leadId={cardPopupLeadId}
+        open={cardPopupLeadId !== null}
+        onClose={() => setCardPopupLeadId(null)}
+        onLeadUpdated={() => { void loadLeads(); }}
       />
     </Layout>
   );

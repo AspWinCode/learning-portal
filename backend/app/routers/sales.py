@@ -77,6 +77,7 @@ from app.models import (
     CustomLessonType,
     Task,
     TaskStatus,
+    LeadActivity,
 )
 from app.utils.phone import normalize_phone, validate_phone_for_lead
 from app.schemas import (
@@ -170,6 +171,11 @@ from app.schemas import (
     SpecialistQuestionnaireResponse,
     TildaLeadRequest,
     TildaLeadResponse,
+    LeadActivityCreate,
+    LeadActivityResponse,
+    LeadNextAction,
+    LeadSidebarSummary,
+    LeadCardResponse,
 )
 from app.routers.action_log import log_action
 from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
@@ -4237,6 +4243,62 @@ async def get_leads_send_info_status(
     return result
 
 
+@router.get("/leads/badges")
+async def get_leads_badges(
+    lead_ids: str = Query(..., description="Comma-separated lead IDs"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Returns badge flags (has_invoice, has_task_today, is_overdue) for kanban cards."""
+    if not lead_ids.strip():
+        return {}
+    ids = [int(x.strip()) for x in lead_ids.split(",") if x.strip()]
+    if not ids:
+        return {}
+    base = _filter_query_by_role(db.query(Lead), current_user)
+    allowed_ids = {l.id for l in base.filter(Lead.id.in_(ids)).all()}
+
+    today_start = datetime.combine(date.today(), dt_time.min)
+    today_end = datetime.combine(date.today(), dt_time.max)
+
+    # Leads with open invoices
+    invoice_lead_ids = set(
+        r[0] for r in db.query(Invoice.lead_id).filter(
+            Invoice.lead_id.in_(allowed_ids),
+            Invoice.status != InvoiceStatus.PAID,
+        ).distinct().all()
+    )
+
+    # Leads with tasks due today
+    task_today_lead_ids = set(
+        r[0] for r in db.query(LeadTask.lead_id).filter(
+            LeadTask.lead_id.in_(allowed_ids),
+            LeadTask.status == LeadTaskStatus.OPEN,
+            LeadTask.due_at >= today_start,
+            LeadTask.due_at <= today_end,
+        ).distinct().all()
+    )
+
+    # Leads with overdue tasks
+    overdue_lead_ids = set(
+        r[0] for r in db.query(LeadTask.lead_id).filter(
+            LeadTask.lead_id.in_(allowed_ids),
+            LeadTask.status == LeadTaskStatus.OPEN,
+            LeadTask.due_at < today_start,
+            LeadTask.due_at.isnot(None),
+        ).distinct().all()
+    )
+
+    result = {}
+    for lid in allowed_ids:
+        result[str(lid)] = {
+            "has_invoice": lid in invoice_lead_ids,
+            "has_task_today": lid in task_today_lead_ids,
+            "is_overdue": lid in overdue_lead_ids,
+        }
+    return result
+
+
 @router.get("/leads/no-show-ids", response_model=List[int])
 async def list_no_show_lead_ids(
     db: Session = Depends(get_db),
@@ -4632,6 +4694,235 @@ async def list_invoices_for_lead(
         .filter(Invoice.lead_id == lead_id)
         .order_by(Invoice.created_at.desc())
         .all()
+    )
+
+
+@router.get("/leads/{lead_id}/card")
+async def get_lead_card(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Aggregated endpoint for lead card first render."""
+    lead = db.query(Lead).options(joinedload(Lead.owner)).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+
+    # Next action — closest open task
+    next_task = (
+        db.query(LeadTask)
+        .options(joinedload(LeadTask.owner))
+        .filter(LeadTask.lead_id == lead_id, LeadTask.status == LeadTaskStatus.OPEN)
+        .order_by(LeadTask.due_at.asc().nullslast())
+        .first()
+    )
+    now = datetime.utcnow()
+    today_start = datetime.combine(date.today(), dt_time.min)
+    today_end = datetime.combine(date.today(), dt_time.max)
+    if next_task:
+        if next_task.due_at:
+            if next_task.due_at < now:
+                state = "overdue"
+            elif today_start <= next_task.due_at <= today_end:
+                state = "today"
+            else:
+                state = "on_time"
+        else:
+            state = "on_time"
+        next_action = LeadNextAction(
+            type="task",
+            title=next_task.note or "Задача",
+            due_at=next_task.due_at,
+            owner_name=next_task.owner.full_name if next_task.owner else None,
+            task_id=next_task.id,
+            state=state,
+        )
+    elif lead.next_contact_at:
+        if lead.next_contact_at < now:
+            state = "overdue"
+        elif today_start <= lead.next_contact_at <= today_end:
+            state = "today"
+        else:
+            state = "on_time"
+        next_action = LeadNextAction(
+            type="contact",
+            title="Связаться",
+            due_at=lead.next_contact_at,
+            owner_name=lead.owner.full_name if lead.owner else None,
+            state=state,
+        )
+    else:
+        next_action = LeadNextAction(state="none")
+
+    # Pinned comment
+    pinned_comment = lead.comment if lead.comment else None
+
+    # Sidebar summary
+    upcoming_tasks = (
+        db.query(LeadTask)
+        .filter(LeadTask.lead_id == lead_id, LeadTask.status == LeadTaskStatus.OPEN)
+        .order_by(LeadTask.due_at.asc().nullslast())
+        .limit(3)
+        .all()
+    )
+    latest_invoice = (
+        db.query(Invoice)
+        .filter(Invoice.lead_id == lead_id)
+        .order_by(Invoice.created_at.desc())
+        .first()
+    )
+    sidebar = LeadSidebarSummary(
+        contacts={
+            "phone": lead.parent_phone or lead.phone,
+            "child_phone": lead.child_phone,
+            "email": lead.email,
+            "telegram": (lead.questionnaire_data or {}).get("parent_telegram") if lead.questionnaire_data else None,
+            "communication_channel": lead.communication_channel,
+        },
+        source=lead.source,
+        owner_name=lead.owner.full_name if lead.owner else None,
+        created_at=lead.created_at,
+        updated_at=lead.updated_at,
+        upcoming_tasks=[
+            {"id": t.id, "note": t.note, "due_at": t.due_at.isoformat() if t.due_at else None, "status": t.status.value}
+            for t in upcoming_tasks
+        ],
+        latest_invoice={
+            "id": latest_invoice.id,
+            "amount": latest_invoice.amount,
+            "currency": latest_invoice.currency,
+            "status": latest_invoice.status.value,
+        } if latest_invoice else None,
+    )
+
+    # Timeline preview (last 10 activities)
+    activities = (
+        db.query(LeadActivity)
+        .options(joinedload(LeadActivity.creator))
+        .filter(LeadActivity.lead_id == lead_id)
+        .order_by(LeadActivity.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    timeline_preview = [
+        {
+            "id": a.id,
+            "type": a.type,
+            "title": a.title,
+            "description": a.description,
+            "channel": a.channel,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "creator_name": a.creator.full_name if a.creator else None,
+            "status_effect_from": a.status_effect_from,
+            "status_effect_to": a.status_effect_to,
+        }
+        for a in activities
+    ]
+
+    return {
+        "lead": lead,
+        "next_action": next_action,
+        "pinned_comment": pinned_comment,
+        "sidebar": sidebar,
+        "timeline_preview": timeline_preview,
+    }
+
+
+@router.get("/leads/{lead_id}/timeline", response_model=List[LeadActivityResponse])
+async def get_lead_timeline(
+    lead_id: int,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Full timeline with pagination."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+
+    activities = (
+        db.query(LeadActivity)
+        .options(joinedload(LeadActivity.creator))
+        .filter(LeadActivity.lead_id == lead_id)
+        .order_by(LeadActivity.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [
+        LeadActivityResponse(
+            id=a.id,
+            lead_id=a.lead_id,
+            type=a.type,
+            title=a.title,
+            description=a.description,
+            channel=a.channel,
+            created_at=a.created_at,
+            created_by=a.created_by,
+            creator_name=a.creator.full_name if a.creator else None,
+            payload_json=a.payload_json,
+            status_effect_from=a.status_effect_from,
+            status_effect_to=a.status_effect_to,
+            related_task_id=a.related_task_id,
+            related_invoice_id=a.related_invoice_id,
+        )
+        for a in activities
+    ]
+
+
+@router.post("/leads/{lead_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
+async def create_lead_activity(
+    lead_id: int,
+    payload: LeadActivityCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+):
+    """Create a new activity entry for a lead."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+
+    activity = LeadActivity(
+        lead_id=lead_id,
+        type=payload.type,
+        title=payload.title,
+        description=payload.description,
+        channel=payload.channel,
+        created_by=current_user.id,
+        payload_json=payload.payload_json,
+        status_effect_from=payload.status_effect_from,
+        status_effect_to=payload.status_effect_to,
+        related_task_id=payload.related_task_id,
+        related_invoice_id=payload.related_invoice_id,
+    )
+    db.add(activity)
+
+    # Apply status effect if specified
+    if payload.status_effect_to and payload.status_effect_to != lead.status.value:
+        lead.status = LeadStatus(payload.status_effect_to)
+
+    db.commit()
+    db.refresh(activity)
+    creator = db.query(User).filter(User.id == activity.created_by).first()
+    return LeadActivityResponse(
+        id=activity.id,
+        lead_id=activity.lead_id,
+        type=activity.type,
+        title=activity.title,
+        description=activity.description,
+        channel=activity.channel,
+        created_at=activity.created_at,
+        created_by=activity.created_by,
+        creator_name=creator.full_name if creator else None,
+        payload_json=activity.payload_json,
+        status_effect_from=activity.status_effect_from,
+        status_effect_to=activity.status_effect_to,
+        related_task_id=activity.related_task_id,
+        related_invoice_id=activity.related_invoice_id,
     )
 
 

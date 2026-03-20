@@ -2592,3 +2592,66 @@ class MaxMessageResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+# ---------- Lead Activity (Timeline) ----------
+
+class LeadActivityCreate(BaseModel):
+    type: str
+    title: str
+    description: Optional[str] = None
+    channel: Optional[str] = None
+    payload_json: Optional[dict] = None
+    status_effect_from: Optional[str] = None
+    status_effect_to: Optional[str] = None
+    related_task_id: Optional[int] = None
+    related_invoice_id: Optional[int] = None
+
+
+class LeadActivityResponse(BaseModel):
+    id: int
+    lead_id: int
+    type: str
+    title: str
+    description: Optional[str] = None
+    channel: Optional[str] = None
+    created_at: datetime
+    created_by: Optional[int] = None
+    creator_name: Optional[str] = None
+    payload_json: Optional[dict] = None
+    status_effect_from: Optional[str] = None
+    status_effect_to: Optional[str] = None
+    related_task_id: Optional[int] = None
+    related_invoice_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Lead Card (aggregated) ----------
+
+class LeadNextAction(BaseModel):
+    type: Optional[str] = None
+    title: Optional[str] = None
+    due_at: Optional[datetime] = None
+    owner_name: Optional[str] = None
+    task_id: Optional[int] = None
+    state: str = "none"  # on_time, today, overdue, none
+
+
+class LeadSidebarSummary(BaseModel):
+    contacts: dict = {}
+    source: Optional[str] = None
+    owner_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    upcoming_tasks: list = []
+    latest_invoice: Optional[dict] = None
+
+
+class LeadCardResponse(BaseModel):
+    lead: LeadResponse
+    next_action: LeadNextAction
+    pinned_comment: Optional[str] = None
+    sidebar: LeadSidebarSummary
+    timeline_preview: list = []
+

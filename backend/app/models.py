@@ -854,6 +854,28 @@ class LeadCommunication(Base):
     template = relationship("LeadInfoTemplate")
 
 
+class LeadActivity(Base):
+    """Unified activity log for leads — powers the timeline."""
+    __tablename__ = "lead_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    type = Column(String(64), nullable=False, index=True)  # lead_created, call, message, task_created, task_done, invoice_created, invoice_paid, status_changed, comment_added
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    channel = Column(String(64), nullable=True)  # sms, telegram, max, email, phone
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    payload_json = Column(JSON, nullable=True)
+    status_effect_from = Column(String(64), nullable=True)
+    status_effect_to = Column(String(64), nullable=True)
+    related_task_id = Column(Integer, ForeignKey("lead_tasks.id"), nullable=True)
+    related_invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+
+    lead = relationship("Lead")
+    creator = relationship("User")
+
+
 class InvoiceStatus(str, enum.Enum):
     DRAFT = "draft"
     SENT = "sent"

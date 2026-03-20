@@ -1130,6 +1130,28 @@ export const salesApi = {
     const response = await api.get(`/api/sales/leads/${leadId}`);
     return response.data;
   },
+  getLeadCard: async (leadId: number): Promise<any> => {
+    const response = await api.get(`/api/sales/leads/${leadId}/card`);
+    return response.data;
+  },
+  getLeadTimeline: async (leadId: number, offset = 0, limit = 20): Promise<any[]> => {
+    const response = await api.get(`/api/sales/leads/${leadId}/timeline`, { params: { offset, limit } });
+    return response.data;
+  },
+  createLeadActivity: async (leadId: number, payload: {
+    type: string;
+    title: string;
+    description?: string;
+    channel?: string;
+    payload_json?: Record<string, unknown>;
+    status_effect_from?: string;
+    status_effect_to?: string;
+    related_task_id?: number;
+    related_invoice_id?: number;
+  }): Promise<any> => {
+    const response = await api.post(`/api/sales/leads/${leadId}/activities`, payload);
+    return response.data;
+  },
   convertLeadToStudent: async (leadId: number): Promise<{ student_id: number; lead: Lead }> => {
     const response = await api.post(`/api/sales/leads/${leadId}/convert-to-student`);
     return response.data;
@@ -1141,6 +1163,13 @@ export const salesApi = {
   getLeadsSendInfoStatus: async (leadIds: number[]): Promise<Record<string, 'open' | 'done' | 'none'>> => {
     if (!leadIds.length) return {};
     const response = await api.get('/api/sales/leads/send-info-status', {
+      params: { lead_ids: leadIds.join(',') },
+    });
+    return response.data ?? {};
+  },
+  getLeadsBadges: async (leadIds: number[]): Promise<Record<number, { has_invoice: boolean; has_task_today: boolean; is_overdue: boolean }>> => {
+    if (!leadIds.length) return {};
+    const response = await api.get('/api/sales/leads/badges', {
       params: { lead_ids: leadIds.join(',') },
     });
     return response.data ?? {};

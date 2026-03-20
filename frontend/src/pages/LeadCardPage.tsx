@@ -345,9 +345,10 @@ interface NextActionBlockProps {
   nextAction: LeadNextAction | null;
   leadId: number;
   onChanged: () => void;
+  onError: (msg: string) => void;
 }
 
-const NextActionBlock: React.FC<NextActionBlockProps> = ({ nextAction, leadId, onChanged }) => {
+const NextActionBlock: React.FC<NextActionBlockProps> = ({ nextAction, leadId, onChanged, onError }) => {
   const [editOpen, setEditOpen] = useState(false);
   const [dateVal, setDateVal] = useState('');
   const [saving, setSaving] = useState(false);
@@ -363,7 +364,9 @@ const NextActionBlock: React.FC<NextActionBlockProps> = ({ nextAction, leadId, o
       await salesApi.updateLead(leadId, { next_contact_at: dateVal || undefined });
       setEditOpen(false);
       onChanged();
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      onError(extractApiError(err, 'Не удалось сохранить дату'));
+    }
     setSaving(false);
   };
 
@@ -546,9 +549,10 @@ interface TasksTabProps {
   leadId: number;
   tasks: LeadTask[];
   onTaskChanged: () => void;
+  onError: (msg: string) => void;
 }
 
-const TasksTab: React.FC<TasksTabProps> = ({ leadId, tasks, onTaskChanged }) => {
+const TasksTab: React.FC<TasksTabProps> = ({ leadId, tasks, onTaskChanged, onError }) => {
   const [createOpen, setCreateOpen] = useState(false);
   const [note, setNote] = useState('');
   const [channel, setChannel] = useState('call');
@@ -568,7 +572,9 @@ const TasksTab: React.FC<TasksTabProps> = ({ leadId, tasks, onTaskChanged }) => 
       setNote('');
       setDueAt('');
       onTaskChanged();
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      onError(extractApiError(err, 'Не удалось создать задачу'));
+    }
     setSubmitting(false);
   };
 
@@ -577,7 +583,9 @@ const TasksTab: React.FC<TasksTabProps> = ({ leadId, tasks, onTaskChanged }) => 
     try {
       await salesApi.closeTask(leadId, taskId);
       onTaskChanged();
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      onError(extractApiError(err, 'Не удалось закрыть задачу'));
+    }
     setClosingId(null);
   };
 
@@ -681,9 +689,10 @@ interface DetailsTabProps {
   lead: Lead;
   leadId: number;
   onLeadChanged: () => void;
+  onError: (msg: string) => void;
 }
 
-const DetailsTab: React.FC<DetailsTabProps> = ({ lead, leadId, onLeadChanged }) => {
+const DetailsTab: React.FC<DetailsTabProps> = ({ lead, leadId, onLeadChanged, onError }) => {
   const [editing, setEditing] = useState(false);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [saving, setSaving] = useState(false);
@@ -749,7 +758,9 @@ const DetailsTab: React.FC<DetailsTabProps> = ({ lead, leadId, onLeadChanged }) 
       });
       setEditing(false);
       onLeadChanged();
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      onError(extractApiError(err, 'Не удалось сохранить'));
+    }
     setSaving(false);
   };
 
@@ -856,9 +867,10 @@ interface InvoicesTabProps {
   invoices: Invoice[];
   abonements: Abonement[];
   onInvoiceCreated: () => void;
+  onError: (msg: string) => void;
 }
 
-const InvoicesTab: React.FC<InvoicesTabProps> = ({ leadId, invoices, abonements, onInvoiceCreated }) => {
+const InvoicesTab: React.FC<InvoicesTabProps> = ({ leadId, invoices, abonements, onInvoiceCreated, onError }) => {
   const [createOpen, setCreateOpen] = useState(false);
   const [abonementId, setAbonementId] = useState<number | ''>('');
   const [emailTo, setEmailTo] = useState('');
@@ -876,7 +888,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ leadId, invoices, abonements,
       setAbonementId('');
       setEmailTo('');
       onInvoiceCreated();
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      onError(extractApiError(err, 'Не удалось создать счёт'));
+    }
     setSubmitting(false);
   };
 
@@ -1035,6 +1049,7 @@ const LeadCardPage: React.FC = () => {
     try {
       const data = await salesApi.listInvoices(leadId);
       setInvoices(data);
+      setTabsLoaded((prev) => ({ ...prev, invoices: true }));
     } catch { /* ignore */ }
   }, [leadId, loadCard]);
 
@@ -1196,7 +1211,7 @@ const LeadCardPage: React.FC = () => {
         <Card variant="outlined" sx={{ mb: 2 }}>
           <CardContent sx={{ pb: '16px !important' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>Следующий шаг</Typography>
-            <NextActionBlock nextAction={card.next_action ?? null} leadId={leadId} onChanged={loadCard} />
+            <NextActionBlock nextAction={card.next_action ?? null} leadId={leadId} onChanged={loadCard} onError={handleActionError} />
           </CardContent>
         </Card>
 
@@ -1238,9 +1253,9 @@ const LeadCardPage: React.FC = () => {
                   <Tab label="Детали" />
                 </Tabs>
 
-                {tabIndex === 0 && <TasksTab leadId={leadId} tasks={tasks} onTaskChanged={handleTaskChanged} />}
-                {tabIndex === 1 && <InvoicesTab leadId={leadId} invoices={invoices} abonements={abonements} onInvoiceCreated={handleInvoiceCreated} />}
-                {tabIndex === 2 && <DetailsTab lead={lead} leadId={leadId} onLeadChanged={loadCard} />}
+                {tabIndex === 0 && <TasksTab leadId={leadId} tasks={tasks} onTaskChanged={handleTaskChanged} onError={handleActionError} />}
+                {tabIndex === 1 && <InvoicesTab leadId={leadId} invoices={invoices} abonements={abonements} onInvoiceCreated={handleInvoiceCreated} onError={handleActionError} />}
+                {tabIndex === 2 && <DetailsTab lead={lead} leadId={leadId} onLeadChanged={loadCard} onError={handleActionError} />}
               </CardContent>
             </Card>
           </Grid>

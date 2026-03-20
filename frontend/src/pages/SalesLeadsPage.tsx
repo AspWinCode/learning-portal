@@ -1524,7 +1524,7 @@ const SalesLeadsPage: React.FC = () => {
       });
       setSelectedLead(updated);
       setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-      setToast({ open: true, message: 'Звонок зафиксирован', severity: 'success' });
+      setToast({ open: true, message: 'Контакты сохранены', severity: 'success' });
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка операции'));
     } finally {
@@ -1663,7 +1663,7 @@ const SalesLeadsPage: React.FC = () => {
         note: registerEventNote.trim() || undefined,
       });
       setRegisterEventOpen(false);
-      setToast({ open: true, message: 'Звонок зафиксирован', severity: 'success' });
+      setToast({ open: true, message: 'Записан на мероприятие', severity: 'success' });
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка операции'));
     }

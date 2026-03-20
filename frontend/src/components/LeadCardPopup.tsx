@@ -200,16 +200,16 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
     }
   }, [open, leadId, loadCard]);
 
-  // Lazy load tabs
+  // Lazy load tabs — tab 0 = Задачи, tab 1 = Счета, tab 2 = Детали
   useEffect(() => {
     if (!leadId || !open) return;
-    if (activeTab === 1 && !tabsLoaded[1]) {
+    if (activeTab === 0 && !tabsLoaded[0]) {
       salesApi.listTasks(leadId).then(setTasks).catch(() => {});
-      setTabsLoaded((prev) => ({ ...prev, 1: true }));
+      setTabsLoaded((prev) => ({ ...prev, 0: true }));
     }
-    if (activeTab === 2 && !tabsLoaded[2]) {
+    if (activeTab === 1 && !tabsLoaded[1]) {
       salesApi.listInvoices(leadId).then(setInvoices).catch(() => {});
-      setTabsLoaded((prev) => ({ ...prev, 2: true }));
+      setTabsLoaded((prev) => ({ ...prev, 1: true }));
     }
   }, [activeTab, leadId, open, tabsLoaded]);
 
@@ -395,7 +395,14 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                         }}>
                           Выполнить
                         </Button>
-                        <Button size="small" variant="outlined" startIcon={<RescheduleIcon />} onClick={() => setQuickActionDialog('follow_up')}>
+                        <Button size="small" variant="outlined" startIcon={<RescheduleIcon />} onClick={() => {
+                          if (nextAction.task_id) {
+                            setRescheduleTaskId(nextAction.task_id);
+                            setRescheduleDate(nextAction.due_at ? format(parseISO(nextAction.due_at), "yyyy-MM-dd'T'HH:mm") : '');
+                          } else {
+                            setQuickActionDialog('follow_up');
+                          }
+                        }}>
                           Перенести
                         </Button>
                       </Stack>
@@ -529,7 +536,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
               <Box sx={{ p: 2 }}>
                 {activeTab === 0 && (
                   <>
-                    {!tabsLoaded[1] ? (
+                    {!tabsLoaded[0] ? (
                       <Typography variant="body2" color="text.secondary">Нажмите для загрузки...</Typography>
                     ) : (
                       <Stack spacing={1}>
@@ -588,7 +595,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                 )}
                 {activeTab === 1 && (
                   <>
-                    {!tabsLoaded[2] ? (
+                    {!tabsLoaded[1] ? (
                       <Typography variant="body2" color="text.secondary">Нажмите для загрузки...</Typography>
                     ) : invoices.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">Нет счетов</Typography>

@@ -224,14 +224,20 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
         channel: quickActionChannel || undefined,
         ...extraPayload,
       };
-      await salesApi.createLeadActivity(leadId, payload);
+      const activity = await salesApi.createLeadActivity(leadId, payload);
 
       // Follow-up date
       if (quickActionFollowUp) {
         await salesApi.updateLead(leadId, { next_contact_at: new Date(quickActionFollowUp).toISOString() });
       }
 
-      setActionToast(`Действие "${timelineTypeLabels[type] || type}" выполнено`);
+      let toastMsg = `Действие "${timelineTypeLabels[type] || type}" выполнено`;
+      if (activity?.status_effect_from && activity?.status_effect_to) {
+        const fromLabel = statusLabels[activity.status_effect_from] ?? activity.status_effect_from;
+        const toLabel = statusLabels[activity.status_effect_to] ?? activity.status_effect_to;
+        toastMsg += ` · Статус: ${fromLabel} → ${toLabel}`;
+      }
+      setActionToast(toastMsg);
       setQuickActionDialog(null);
       setQuickActionComment('');
       setQuickActionFollowUp('');
@@ -298,7 +304,13 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
               <Stack direction="row" spacing={2} sx={{ mt: 0.5 }} flexWrap="wrap">
                 {lead.source && <Typography variant="caption" color="text.secondary">Источник: {lead.source}</Typography>}
                 {sidebar?.owner_name && <Typography variant="caption" color="text.secondary">Менеджер: {sidebar.owner_name}</Typography>}
-                {lead.created_at && <Typography variant="caption" color="text.secondary">Создан: {format(parseISO(lead.created_at), 'dd.MM.yyyy')}</Typography>}
+                {lead.last_contact_at && isValid(parseISO(lead.last_contact_at)) ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Последний контакт: {format(parseISO(lead.last_contact_at), 'dd.MM.yyyy HH:mm')}
+                  </Typography>
+                ) : (
+                  lead.created_at && <Typography variant="caption" color="text.secondary">Создан: {format(parseISO(lead.created_at), 'dd.MM.yyyy')}</Typography>
+                )}
               </Stack>
             </Box>
 

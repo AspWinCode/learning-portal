@@ -2522,6 +2522,38 @@ def _require_owner_or_admin(lead: Lead, user: User) -> None:
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
 
+def _add_activity(
+    db: Session,
+    lead_id: int,
+    actor_id: int,
+    type: str,
+    title: str,
+    description: str | None = None,
+    channel: str | None = None,
+    status_effect_from: str | None = None,
+    status_effect_to: str | None = None,
+    related_task_id: int | None = None,
+    related_invoice_id: int | None = None,
+    payload_json: dict | None = None,
+) -> LeadActivity:
+    """Create a LeadActivity record without committing."""
+    activity = LeadActivity(
+        lead_id=lead_id,
+        type=type,
+        title=title,
+        description=description,
+        channel=channel,
+        created_by=actor_id,
+        status_effect_from=status_effect_from,
+        status_effect_to=status_effect_to,
+        related_task_id=related_task_id,
+        related_invoice_id=related_invoice_id,
+        payload_json=payload_json,
+    )
+    db.add(activity)
+    return activity
+
+
 def _filter_query_by_role(query, user: User):
     if user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         return query
@@ -4346,6 +4378,7 @@ async def update_lead(
     _require_owner_or_admin(lead, current_user)
 
     update_data = payload.dict(exclude_unset=True)
+    old_status = lead.status.value
     # Prevent sales from changing owner/status to restricted values
     if "status" in update_data and update_data["status"] is not None:
         lead.status = update_data["status"]
@@ -4385,6 +4418,16 @@ async def update_lead(
     ]:
         if field in update_data:
             setattr(lead, field, update_data[field])
+
+    new_status = lead.status.value
+    if "status" in update_data and old_status != new_status:
+        _add_activity(
+            db, lead_id, current_user.id,
+            type="status_changed",
+            title=f"Статус изменён",
+            status_effect_from=old_status,
+            status_effect_to=new_status,
+        )
 
     db.commit()
     db.refresh(lead)
@@ -4515,6 +4558,13 @@ async def create_lead_task(
         )
         db.add(common_task)
 
+    _add_activity(
+        db, lead_id, current_user.id,
+        type="task_created",
+        title=f"Создана задача: {payload.note or 'без названия'}",
+        description=f"Срок: {payload.due_at.strftime('%d.%m.%Y %H:%M') if payload.due_at else 'не указан'}",
+        related_task_id=task.id,
+    )
     db.commit()
     db.refresh(task)
     log_action(db, current_user.id, "create", "lead_task", task.id, {"lead_id": lead_id})
@@ -4607,6 +4657,15 @@ async def close_lead_task(
         db.add(follow_up)
         db.commit()
 
+    _add_activity(
+        db, lead_id, current_user.id,
+        type="task_done",
+        title=f"Задача выполнена: {task.note or 'без названия'}",
+        related_task_id=task.id,
+    )
+    if not is_send_info:
+        db.commit()
+
     log_action(db, current_user.id, "close", "lead_task", task.id, {"lead_id": lead_id})
     return task
 
@@ -4671,8 +4730,18 @@ async def create_invoice_for_lead(
         link=None,
     )
     db.add(invoice)
+    old_status = lead.status.value
     if lead.status not in (LeadStatus.WON, LeadStatus.LOST):
         lead.status = LeadStatus.INVOICE_SENT
+    db.flush()  # get invoice.id before activity
+    _add_activity(
+        db, lead_id, current_user.id,
+        type="invoice_created",
+        title=f"Выставлен счёт на {amount} {payload.currency or 'RUB'}",
+        status_effect_from=old_status if old_status != lead.status.value else None,
+        status_effect_to=lead.status.value if old_status != lead.status.value else None,
+        related_invoice_id=invoice.id,
+    )
     db.commit()
     db.refresh(invoice)
     log_action(db, current_user.id, "create", "invoice", invoice.id, {"lead_id": lead_id, "amount": amount})
@@ -4904,6 +4973,10 @@ async def create_lead_activity(
     # Apply status effect if specified
     if payload.status_effect_to and payload.status_effect_to != lead.status.value:
         lead.status = LeadStatus(payload.status_effect_to)
+
+    # Update last_contact_at for contact-type activities
+    if payload.type in ("call", "no_answer", "info_sent"):
+        lead.last_contact_at = datetime.utcnow()
 
     db.commit()
     db.refresh(activity)

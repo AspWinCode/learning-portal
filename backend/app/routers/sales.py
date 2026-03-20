@@ -1,7 +1,7 @@
 import hashlib
 import os
 import re
-from datetime import date, datetime, timedelta, time as dt_time
+from datetime import date, datetime, timedelta, time as dt_time, timezone
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
@@ -430,7 +430,7 @@ async def set_lesson_call_result(
         db.commit()
         db.refresh(att)
     att.call_result = payload.call_result
-    att.call_result_at = datetime.utcnow()
+    att.call_result_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True}
 
@@ -2703,10 +2703,10 @@ async def get_sales_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
-    now = datetime.utcnow()
-    start_month = datetime(now.year, now.month, 1)
-    end_month = datetime(now.year + (1 if now.month == 12 else 0), 1 if now.month == 12 else now.month + 1, 1)
-    start_today = datetime(now.year, now.month, now.day)
+    now = datetime.now(timezone.utc)
+    start_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    end_month = datetime(now.year + (1 if now.month == 12 else 0), 1 if now.month == 12 else now.month + 1, 1, tzinfo=timezone.utc)
+    start_today = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     end_today = start_today + timedelta(days=1)
     next_two_hours = now + timedelta(hours=2)
     next_day = now + timedelta(hours=24)
@@ -2903,8 +2903,8 @@ async def list_follow_ups(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
 ):
-    now = datetime.utcnow()
-    start_today = datetime(now.year, now.month, now.day)
+    now = datetime.now(timezone.utc)
+    start_today = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     end_today = start_today + timedelta(days=1)
     start_tomorrow = end_today
     end_tomorrow = start_tomorrow + timedelta(days=1)
@@ -3551,7 +3551,7 @@ async def list_leads(
         # tags are stored as JSON array; text-search keeps compatibility across DB backends.
         query = query.filter(Lead.tags.isnot(None), cast(Lead.tags, Text).ilike(f"%{tag.strip()}%"))
     if overdue_only:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         query = query.filter(Lead.next_contact_at.isnot(None), Lead.next_contact_at < now)
     if created_from:
         query = query.filter(Lead.created_at >= created_from)
@@ -3632,7 +3632,7 @@ async def create_lead_communication(
     if channel not in {"messenger", "call", "email"}:
         raise HTTPException(status_code=400, detail="Unsupported channel")
     message = (payload.message or "").strip() or f"[quick-{channel}]"
-    follow_up_at = payload.follow_up_at or datetime.utcnow()
+    follow_up_at = payload.follow_up_at or datetime.now(timezone.utc)
 
     comm = LeadCommunication(
         lead_id=lead.id,
@@ -3676,7 +3676,7 @@ async def send_info_for_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
 
-    if payload.follow_up_at <= datetime.utcnow():
+    if payload.follow_up_at <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
     message = (payload.message or "").strip()
     if not message:
@@ -3750,7 +3750,7 @@ async def save_lead_contact_result(
 
     if outcome in {"no_answer", "callback"} and payload.follow_up_at is None:
         raise HTTPException(status_code=400, detail="follow_up_at is required for this outcome")
-    if payload.follow_up_at and payload.follow_up_at <= datetime.utcnow():
+    if payload.follow_up_at and payload.follow_up_at <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
 
     label_map = {
@@ -3769,7 +3769,7 @@ async def save_lead_contact_result(
         channel="call",
         message=message,
         pause_reason=None,
-        follow_up_at=payload.follow_up_at or datetime.utcnow(),
+        follow_up_at=payload.follow_up_at or datetime.now(timezone.utc),
     )
     db.add(comm)
 
@@ -4297,8 +4297,8 @@ async def get_leads_badges(
     base = _filter_query_by_role(db.query(Lead), current_user)
     allowed_ids = {l.id for l in base.filter(Lead.id.in_(ids)).all()}
 
-    today_start = datetime.combine(date.today(), dt_time.min)
-    today_end = datetime.combine(date.today(), dt_time.max)
+    today_start = datetime.combine(date.today(), dt_time.min, tzinfo=timezone.utc)
+    today_end = datetime.combine(date.today(), dt_time.max, tzinfo=timezone.utc)
 
     # Leads with open invoices
     invoice_lead_ids = set(
@@ -4559,7 +4559,7 @@ async def create_lead_task(
             assigned_to_id=assignee_id,
             category="leads",
             status=TaskStatus.ACTIVE.value,
-            due_at=datetime.utcnow(),
+            due_at=datetime.now(timezone.utc),
             priority="normal",
             tags=["send_info", f"lead:{lead.id}"],
         )
@@ -4630,7 +4630,7 @@ async def close_lead_task(
     )
     if closed_status:
         task.status_option_id = closed_status.id
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(task)
 
@@ -4650,7 +4650,7 @@ async def close_lead_task(
             .order_by(LeadTaskStatusOptionModel.id.asc())
             .first()
         )
-        follow_up_due = datetime.utcnow() + timedelta(days=2)
+        follow_up_due = datetime.now(timezone.utc) + timedelta(days=2)
         follow_up = LeadTask(
             lead_id=lead_id,
             owner_id=current_user.id,
@@ -4703,7 +4703,7 @@ async def update_lead_task(
         task.channel = update_data["channel"]
     if "due_at" in update_data:
         task.due_at = update_data["due_at"]
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(task)
     log_action(db, current_user.id, "update", "lead_task", task.id, update_data)
@@ -4793,9 +4793,9 @@ async def get_lead_card(
         .order_by(LeadTask.due_at.asc().nullslast())
         .first()
     )
-    now = datetime.utcnow()
-    today_start = datetime.combine(date.today(), dt_time.min)
-    today_end = datetime.combine(date.today(), dt_time.max)
+    now = datetime.now(timezone.utc)
+    today_start = datetime.combine(date.today(), dt_time.min, tzinfo=timezone.utc)
+    today_end = datetime.combine(date.today(), dt_time.max, tzinfo=timezone.utc)
     if next_task:
         if next_task.due_at:
             if next_task.due_at < now:
@@ -4983,7 +4983,7 @@ async def create_lead_activity(
 
     # Update last_contact_at for contact-type activities
     if payload.type in ("call", "no_answer", "info_sent"):
-        lead.last_contact_at = datetime.utcnow()
+        lead.last_contact_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(activity)
@@ -5058,7 +5058,7 @@ async def send_invoice_email(
 
     # Stub: actual email sending integration should be implemented separately.
     invoice.status = InvoiceStatus.SENT
-    invoice.sent_at = datetime.utcnow()
+    invoice.sent_at = datetime.now(timezone.utc)
     if lead.status not in (LeadStatus.WON, LeadStatus.LOST):
         lead.status = LeadStatus.INVOICE_SENT
     db.commit()
@@ -5302,7 +5302,7 @@ async def mark_event_registration_came(
     # UX automation: after attendance create follow-up "offer course" (do not fail the request if this fails)
     try:
         if not _has_open_task_like(db, lead.id, "[auto_attended_offer]"):
-            due_at = datetime.utcnow() + timedelta(hours=24)
+            due_at = datetime.now(timezone.utc) + timedelta(hours=24)
             auto_task = _create_auto_event_task(
                 db,
                 lead=lead,
@@ -5351,7 +5351,7 @@ async def mark_event_registration_no_show(
     reg.note = _append_note_tag(cleaned_note, "[no-show]")
     # UX automation: after no-show create reactivation follow-up.
     if not _has_open_task_like(db, lead.id, "[auto_no_show_reactivate]"):
-        due_at = datetime.utcnow() + timedelta(hours=24)
+        due_at = datetime.now(timezone.utc) + timedelta(hours=24)
         auto_task = _create_auto_event_task(
             db,
             lead=lead,
@@ -5426,7 +5426,7 @@ async def update_lead_post_visit_stage(
 
     lead = result.lead
     if result.need_auto_task and not _has_open_task_like(db, lead.id, "[auto_post_visit_agreed]"):
-        due_at = datetime.utcnow() + timedelta(hours=48)
+        due_at = datetime.now(timezone.utc) + timedelta(hours=48)
         auto_task = _create_auto_event_task(
             db,
             lead=lead,

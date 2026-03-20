@@ -258,7 +258,7 @@ def _lesson_tasks_for_date(
 ) -> List[dict]:
     """Список уроков на одну дату (для сегодня/завтра/недели)."""
     if now is None:
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
     weekday = target_date.weekday()
     schedules = (
         db.query(GroupSchedule)
@@ -282,8 +282,8 @@ def _lesson_tasks_for_date(
             continue
         seen_keys.add(key)
         trainer = group.trainer
-        lesson_start = datetime.combine(target_date, sched.start_time)
-        lesson_end = datetime.combine(target_date, sched.end_time)
+        lesson_start = datetime.combine(target_date, sched.start_time, tzinfo=timezone.utc)
+        lesson_end = datetime.combine(target_date, sched.end_time, tzinfo=timezone.utc)
         status = _lesson_task_status(lesson_start, lesson_end, now) if target_date == date.today() else "waiting"
 
         student_ids = [gs.student_id for gs in group.group_students]

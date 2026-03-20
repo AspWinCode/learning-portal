@@ -515,7 +515,7 @@ async def import_finance_transactions(
             # Если дата пришла как "2026-03-09 00:00:00" (из Excel), берём только часть до пробела
             if " " in ds and "T" not in ds:
                 ds = ds.split(" ")[0]
-            occurred_at = datetime.fromisoformat(ds + "T12:00:00")
+            occurred_at = datetime.fromisoformat(ds + "T12:00:00").replace(tzinfo=timezone.utc)
         except Exception:
             skipped += 1
             return
@@ -722,7 +722,7 @@ async def create_personal_operation(
     if existing:
         tx = existing
     else:
-        occurred_at = datetime.fromisoformat(date_str + "T12:00:00")
+        occurred_at = datetime.fromisoformat(date_str + "T12:00:00").replace(tzinfo=timezone.utc)
         tx = FinanceTransaction(
             occurred_at=occurred_at,
             amount=amount,
@@ -925,7 +925,7 @@ async def migrate_personal_finance(
     for op in ops_in:
         date_str = op.get("date")
         try:
-            occurred_at = datetime.fromisoformat(date_str + "T12:00:00") if date_str else None
+            occurred_at = datetime.fromisoformat(date_str + "T12:00:00").replace(tzinfo=timezone.utc) if date_str else None
         except Exception:
             occurred_at = None
         amount = float(op.get("amount") or 0.0)

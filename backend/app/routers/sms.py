@@ -46,7 +46,7 @@ def _validate_message_length(message: str) -> None:
 
 def _check_rate_limit(db: Session, phone: str) -> None:
     """Проверить, что на этот номер не отправляли SMS в последние SMS_RATE_LIMIT_SECONDS."""
-    since = datetime.utcnow() - timedelta(seconds=SMS_RATE_LIMIT_SECONDS)
+    since = datetime.now(timezone.utc) - timedelta(seconds=SMS_RATE_LIMIT_SECONDS)
     recent = (
         db.query(SmsMessage)
         .filter(SmsMessage.phone == phone, SmsMessage.created_at >= since)
@@ -110,7 +110,7 @@ def api_sms_send(
         if success:
             record.status = "sent"
             record.gateway_id = gateway_id
-            record.sent_at = datetime.utcnow()
+            record.sent_at = datetime.now(timezone.utc)
             logger.info("sms_sent: id=%s phone=%s", record.id, phone)
 
             # Логируем исходящее SMS в журнал коммуникаций лида
@@ -122,7 +122,7 @@ def api_sms_send(
                     channel="sms",
                     message=payload.message[:SMS_MAX_LENGTH],
                     pause_reason=None,
-                    follow_up_at=datetime.utcnow(),
+                    follow_up_at=datetime.now(timezone.utc),
                 )
                 db.add(comm)
         else:
@@ -194,7 +194,7 @@ def api_sms_send_bulk(
         if success:
             record.status = "sent"
             record.gateway_id = gateway_id
-            record.sent_at = datetime.utcnow()
+            record.sent_at = datetime.now(timezone.utc)
         else:
             record.status = "failed"
         db.commit()
@@ -242,7 +242,7 @@ def api_sms_process_scheduled(
         if success:
             m.status = "sent"
             m.gateway_id = gateway_id
-            m.sent_at = datetime.utcnow()
+            m.sent_at = datetime.now(timezone.utc)
             logger.info("sms_sent_scheduled: id=%s phone=%s", m.id, phone)
 
             if m.entity_type == "lead" and m.entity_id is not None:
@@ -253,7 +253,7 @@ def api_sms_process_scheduled(
                     channel="sms",
                     message=m.message,
                     pause_reason=None,
-                    follow_up_at=datetime.utcnow(),
+                    follow_up_at=datetime.now(timezone.utc),
                 )
                 db.add(comm)
         else:

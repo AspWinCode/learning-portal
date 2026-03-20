@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from pydantic import BaseModel
 import csv
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from io import StringIO, BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Form
@@ -310,9 +310,9 @@ async def list_finance_ledger_transactions(
             return []
 
     if date_from is not None:
-        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time()))
+        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc))
     if date_to is not None:
-        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time()))
+        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time(), tzinfo=timezone.utc))
 
     q = q.order_by(FinanceTransaction.occurred_at.desc())
     items: List[FinanceTransaction] = q.limit(limit).all()
@@ -792,7 +792,7 @@ async def create_manual_transaction(
     if payload.target_id and not db.query(FinanceTarget.id).filter(FinanceTarget.id == payload.target_id).first():
         raise HTTPException(status_code=400, detail="Цель/проект не найден")
 
-    occurred_at = datetime.combine(payload.occurred_at, datetime.min.time())
+    occurred_at = datetime.combine(payload.occurred_at, datetime.min.time(), tzinfo=timezone.utc)
     description = (payload.description or "").strip() or None
 
     tx = FinanceTransaction(
@@ -1201,9 +1201,9 @@ async def list_finance_transactions(
             | (FinanceTransaction.article_id.is_(None))
         )
     if date_from is not None:
-        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time()))
+        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc))
     if date_to is not None:
-        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time()))
+        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time(), tzinfo=timezone.utc))
 
     items: List[FinanceTransaction] = q.limit(limit).all()
 

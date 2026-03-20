@@ -1,7 +1,7 @@
 import hmac
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -71,7 +71,7 @@ def _now_for(expires_at: datetime) -> datetime:
     # Сравнение naive/aware безопасно
     if expires_at and getattr(expires_at, "tzinfo", None) is not None:
         return datetime.now(expires_at.tzinfo)
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 @router.post("/password-reset/request")
@@ -89,7 +89,7 @@ async def password_reset_request(
     if user:
         # 6-значный код, удобно вводить руками
         code = "".join(secrets.choice("0123456789") for _ in range(6))
-        expires_at = datetime.utcnow() + timedelta(minutes=15)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
 
         user.password_reset_code_hash = _hash_reset_code(code)
         user.password_reset_expires_at = expires_at

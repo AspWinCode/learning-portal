@@ -5,7 +5,7 @@ Use case: отправка на согласование, одобрение и 
 Источник: BACKEND_REFACTOR_USE_CASES.md.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -74,7 +74,7 @@ def approve_characteristic(
 
     characteristic.status = CharacteristicStatus.APPROVED
     characteristic.admin_comment = comment
-    characteristic.published_at = datetime.utcnow()
+    characteristic.published_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(characteristic)
     return characteristic

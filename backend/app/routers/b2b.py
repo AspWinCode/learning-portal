@@ -1,5 +1,5 @@
 import csv
-from datetime import date, datetime, timedelta, time as dt_time
+from datetime import date, datetime, timedelta, time as dt_time, timezone
 from io import BytesIO, StringIO
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -137,7 +137,7 @@ async def plan_for_today(
     cutoff = today - timedelta(days=3)
     cutoff_7 = today - timedelta(days=7)
     cutoff_14 = today - timedelta(days=14)
-    cutoff_48h = datetime.utcnow() - timedelta(hours=48)
+    cutoff_48h = datetime.now(timezone.utc) - timedelta(hours=48)
     date_1d_ago = today - timedelta(days=1)
     date_2d_ago = today - timedelta(days=2)
     base = db.query(B2BSchool).options(
@@ -154,9 +154,9 @@ async def plan_for_today(
 
     overdue = base.filter(B2BSchool.next_step_date.isnot(None), B2BSchool.next_step_date < today)
     no_next = base.filter((B2BSchool.next_step.is_(None)) | (B2BSchool.next_step_date.is_(None)))
-    cutoff_ts = datetime.combine(cutoff, dt_time.min)
-    cutoff_7_ts = datetime.combine(cutoff_7, dt_time.min)
-    cutoff_14_ts = datetime.combine(cutoff_14, dt_time.min)
+    cutoff_ts = datetime.combine(cutoff, dt_time.min, tzinfo=timezone.utc)
+    cutoff_7_ts = datetime.combine(cutoff_7, dt_time.min, tzinfo=timezone.utc)
+    cutoff_14_ts = datetime.combine(cutoff_14, dt_time.min, tzinfo=timezone.utc)
     find_stale = base.filter(
         B2BSchool.pipeline_stage == "find_contacts",
         or_(
@@ -265,7 +265,7 @@ async def plan_city_summary(
     today = date.today()
     week_end = today + timedelta(days=7)
     cutoff_7 = today - timedelta(days=7)
-    cutoff_7_ts = datetime.combine(cutoff_7, dt_time.min)
+    cutoff_7_ts = datetime.combine(cutoff_7, dt_time.min, tzinfo=timezone.utc)
 
     cities_rows = db.query(distinct(B2BSchool.city)).filter(
         B2BSchool.city.isnot(None),

@@ -372,6 +372,8 @@ export interface Lead {
   questionnaire_data?: Record<string, unknown> | null;
   /** MAX мессенджер: user_id пользователя в платформе MAX */
   max_user_id?: number | null;
+  /** Дата последнего контакта (звонок / недозвон / инфо) */
+  last_contact_at?: string | null;
 }
 
 export type LeadTaskStatus = 'open' | 'done';

@@ -852,6 +852,7 @@ class LeadResponse(BaseModel):
     converted_to_student_id: Optional[int] = None
     questionnaire_data: Optional[Dict[str, Any]] = None  # данные из формы анкеты (свои поля для лидов из формы)
     max_user_id: Optional[int] = None  # MAX мессенджер: user_id в платформе MAX
+    last_contact_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

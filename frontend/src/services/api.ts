@@ -1204,6 +1204,10 @@ export const salesApi = {
     const response = await api.get(`/api/sales/leads/${leadId}/invoices`);
     return response.data;
   },
+  markInvoicePaid: async (leadId: number, invoiceId: number): Promise<Invoice> => {
+    const response = await api.post(`/api/sales/leads/${leadId}/invoices/${invoiceId}/mark-paid`);
+    return response.data;
+  },
   listAllInvoices: async (params?: {
     status_filter?: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
     lead_id?: number;

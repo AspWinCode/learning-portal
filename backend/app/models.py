@@ -335,6 +335,7 @@ class Lead(Base):
     post_visit_review = Column(Text, nullable=True)
     post_visit_project_date = Column(DateTime(timezone=True), nullable=True)
     max_user_id = Column(Integer, nullable=True, index=True)  # MAX мессенджер: user_id в платформе MAX
+    last_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)  # дата последнего контакта (звонок/недозвон/инфо)
 
     # Relationships
     owner = relationship("User")

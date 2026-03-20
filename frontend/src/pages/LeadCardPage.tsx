@@ -25,6 +25,7 @@ import {
 } from '@mui/material';
 import {
   AccessTime as AccessTimeIcon,
+  Add as AddIcon,
   ArrowBack as ArrowBackIcon,
   Call as CallIcon,
   ChatBubbleOutline as ChatIcon,
@@ -483,27 +484,126 @@ const TimelineSection: React.FC<TimelineProps> = ({ leadId, preview }) => {
 
 // ─── Tab panels ──────────────────────────────────────────────────────────────
 
-const TasksTab: React.FC<{ tasks: LeadTask[] }> = ({ tasks }) => {
-  if (tasks.length === 0) {
-    return <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>Задач нет</Typography>;
-  }
+interface TasksTabProps {
+  leadId: number;
+  tasks: LeadTask[];
+  onTaskChanged: () => void;
+}
+
+const TasksTab: React.FC<TasksTabProps> = ({ leadId, tasks, onTaskChanged }) => {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const [channel, setChannel] = useState('call');
+  const [dueAt, setDueAt] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [closingId, setClosingId] = useState<number | null>(null);
+
+  const handleCreate = async () => {
+    setSubmitting(true);
+    try {
+      await salesApi.createTask(leadId, {
+        note: note.trim() || undefined,
+        channel: channel || undefined,
+        due_at: dueAt || undefined,
+      });
+      setCreateOpen(false);
+      setNote('');
+      setDueAt('');
+      onTaskChanged();
+    } catch { /* ignore */ }
+    setSubmitting(false);
+  };
+
+  const handleClose = async (taskId: number) => {
+    setClosingId(taskId);
+    try {
+      await salesApi.closeTask(leadId, taskId);
+      onTaskChanged();
+    } catch { /* ignore */ }
+    setClosingId(null);
+  };
+
   return (
     <Stack spacing={1} sx={{ py: 1 }}>
+      <Button
+        size="small"
+        variant={createOpen ? 'outlined' : 'contained'}
+        startIcon={<AddIcon />}
+        onClick={() => setCreateOpen((v) => !v)}
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        {createOpen ? 'Отмена' : 'Создать задачу'}
+      </Button>
+
+      {createOpen && (
+        <Stack spacing={1} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+          <TextField
+            size="small"
+            label="Заметка"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            multiline
+            rows={2}
+          />
+          <Stack direction="row" spacing={1}>
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Канал</InputLabel>
+              <Select value={channel} label="Канал" onChange={(e) => setChannel(e.target.value as string)}>
+                <MenuItem value="call">Звонок</MenuItem>
+                <MenuItem value="messenger">Мессенджер</MenuItem>
+                <MenuItem value="email">Email</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              size="small"
+              label="Срок"
+              type="datetime-local"
+              value={dueAt}
+              onChange={(e) => setDueAt(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ flex: 1 }}
+            />
+          </Stack>
+          <Button size="small" variant="contained" onClick={handleCreate} disabled={submitting}>
+            Создать
+          </Button>
+        </Stack>
+      )}
+
+      {tasks.length === 0 && !createOpen && (
+        <Typography variant="body2" color="text.secondary">Задач нет</Typography>
+      )}
+
       {tasks.map((task) => (
-        <Stack key={task.id} direction="row" spacing={1} alignItems="center">
+        <Stack key={task.id} direction="row" spacing={1} alignItems="flex-start">
           <Chip
             size="small"
-            label={task.status === 'done' ? 'Выполнена' : 'Открыта'}
+            label={task.status === 'done' ? 'Готово' : 'Открыта'}
             color={task.status === 'done' ? 'success' : 'default'}
+            sx={{ mt: 0.25 }}
           />
           <Box sx={{ flex: 1 }}>
             <Typography variant="body2">{task.note || '—'}</Typography>
             {task.due_at && (
               <Typography variant="caption" color="text.secondary">
-                {format(parseISO(task.due_at), 'dd.MM.yyyy HH:mm')}
+                {format(parseISO(task.due_at), 'dd.MM HH:mm')}
               </Typography>
             )}
           </Box>
+          {task.status !== 'done' && (
+            <Tooltip title="Выполнить">
+              <span>
+                <IconButton
+                  size="small"
+                  color="success"
+                  disabled={closingId === task.id}
+                  onClick={() => handleClose(task.id)}
+                >
+                  <CheckIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
         </Stack>
       ))}
     </Stack>
@@ -611,6 +711,14 @@ const LeadCardPage: React.FC = () => {
   const handleActionError = (msg: string) => {
     setToast({ open: true, message: msg, severity: 'error' });
   };
+
+  const handleTaskChanged = useCallback(async () => {
+    await loadCard();
+    try {
+      const data = await salesApi.listTasks(leadId);
+      setTasks(data);
+    } catch { /* ignore */ }
+  }, [leadId, loadCard]);
 
   const lead = card?.lead;
   const phone = lead ? lead.parent_phone || lead.phone || '' : '';
@@ -812,7 +920,7 @@ const LeadCardPage: React.FC = () => {
                   <Tab label="Детали" />
                 </Tabs>
 
-                {tabIndex === 0 && <TasksTab tasks={tasks} />}
+                {tabIndex === 0 && <TasksTab leadId={leadId} tasks={tasks} onTaskChanged={handleTaskChanged} />}
                 {tabIndex === 1 && <InvoicesTab invoices={invoices} />}
                 {tabIndex === 2 && (
                   <Stack spacing={0.75} sx={{ py: 1 }}>

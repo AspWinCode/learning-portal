@@ -145,6 +145,17 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
   const [activeTab, setActiveTab] = useState(0);
   const [tabsLoaded, setTabsLoaded] = useState<Record<number, boolean>>({});
 
+  // Pinned comment edit state
+  const [editingPinned, setEditingPinned] = useState(false);
+  const [pinnedDraft, setPinnedDraft] = useState('');
+
+  // Task management state
+  const [newTaskNote, setNewTaskNote] = useState('');
+  const [newTaskDueAt, setNewTaskDueAt] = useState('');
+  const [showNewTaskForm, setShowNewTaskForm] = useState(false);
+  const [rescheduleTaskId, setRescheduleTaskId] = useState<number | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+
   // Quick action state
   const [quickActionDialog, setQuickActionDialog] = useState<string | null>(null);
   const [quickActionComment, setQuickActionComment] = useState('');
@@ -315,13 +326,41 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
             </Box>
 
             {/* Pinned comment */}
-            {pinnedComment && (
-              <Box sx={{ px: 2, py: 1, bgcolor: 'warning.light', borderBottom: 1, borderColor: 'divider' }}>
-                <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'warning.dark' }}>
-                  {pinnedComment}
-                </Typography>
-              </Box>
-            )}
+            <Box sx={{ px: 2, py: 1, bgcolor: pinnedComment ? 'warning.light' : 'transparent', borderBottom: 1, borderColor: 'divider' }}>
+              {editingPinned ? (
+                <Stack spacing={1}>
+                  <TextField
+                    fullWidth size="small" multiline rows={2}
+                    label="Заметка менеджера"
+                    value={pinnedDraft}
+                    onChange={(e) => setPinnedDraft(e.target.value)}
+                    autoFocus
+                  />
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" variant="contained" onClick={async () => {
+                      if (!leadId) return;
+                      await salesApi.updateLead(leadId, { comment: pinnedDraft.trim() || undefined });
+                      setPinnedComment(pinnedDraft.trim() || null);
+                      setEditingPinned(false);
+                    }}>Сохранить</Button>
+                    <Button size="small" onClick={() => setEditingPinned(false)}>Отмена</Button>
+                  </Stack>
+                </Stack>
+              ) : (
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  {pinnedComment ? (
+                    <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'warning.dark', flex: 1 }}>
+                      {pinnedComment}
+                    </Typography>
+                  ) : (
+                    <Typography variant="caption" color="text.disabled">Заметка менеджера не добавлена</Typography>
+                  )}
+                  <Button size="small" sx={{ ml: 1, flexShrink: 0 }} onClick={() => { setPinnedDraft(pinnedComment || ''); setEditingPinned(true); }}>
+                    {pinnedComment ? 'Изменить' : 'Добавить заметку'}
+                  </Button>
+                </Stack>
+              )}
+            </Box>
 
             {/* BLOCK B: Next Action */}
             <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
@@ -492,28 +531,57 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                   <>
                     {!tabsLoaded[1] ? (
                       <Typography variant="body2" color="text.secondary">Нажмите для загрузки...</Typography>
-                    ) : tasks.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary">Нет задач</Typography>
                     ) : (
-                      <Stack spacing={0.5}>
+                      <Stack spacing={1}>
+                        {tasks.length === 0 && !showNewTaskForm && (
+                          <Typography variant="body2" color="text.secondary">Нет задач</Typography>
+                        )}
                         {tasks.map((t) => (
                           <Stack key={t.id} direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="body2">{t.note || '—'}</Typography>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <Chip size="small" label={t.status === 'open' ? 'Открыта' : 'Закрыта'} color={t.status === 'open' ? 'default' : 'success'} />
+                            <Box sx={{ flex: 1, minWidth: 0, mr: 1 }}>
+                              <Typography variant="body2" noWrap>{t.note || '—'}</Typography>
                               {t.due_at && (
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="caption" color={isValid(parseISO(t.due_at)) && parseISO(t.due_at) < new Date() && t.status === 'open' ? 'error.main' : 'text.secondary'}>
                                   {isValid(parseISO(t.due_at)) ? format(parseISO(t.due_at), 'dd.MM HH:mm') : t.due_at}
                                 </Typography>
                               )}
-                              {t.status === 'open' && leadId && (
+                            </Box>
+                            <Stack direction="row" spacing={0.5} alignItems="center" flexShrink={0}>
+                              <Chip size="small" label={t.status === 'open' ? 'Открыта' : 'Закрыта'} color={t.status === 'open' ? 'default' : 'success'} />
+                              {t.status === 'open' && leadId && (<>
+                                <Button size="small" onClick={() => { setRescheduleTaskId(t.id); setRescheduleDate(t.due_at ? format(parseISO(t.due_at), "yyyy-MM-dd'T'HH:mm") : ''); }}>
+                                  Перенести
+                                </Button>
                                 <Button size="small" onClick={() => { salesApi.closeTask(leadId, t.id).then(() => { salesApi.listTasks(leadId).then(setTasks); loadCard(); onLeadUpdated?.(); }); }}>
                                   Завершить
                                 </Button>
-                              )}
+                              </>)}
                             </Stack>
                           </Stack>
                         ))}
+                        {showNewTaskForm && leadId && (
+                          <Stack spacing={1} sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                            <TextField size="small" label="Название задачи" value={newTaskNote} onChange={(e) => setNewTaskNote(e.target.value)} fullWidth />
+                            <TextField size="small" label="Срок" type="datetime-local" InputLabelProps={{ shrink: true }} value={newTaskDueAt} onChange={(e) => setNewTaskDueAt(e.target.value)} fullWidth />
+                            <Stack direction="row" spacing={1}>
+                              <Button size="small" variant="contained" disabled={!newTaskNote.trim()} onClick={async () => {
+                                if (!leadId || !newTaskNote.trim()) return;
+                                await salesApi.createTask(leadId, { note: newTaskNote.trim(), due_at: newTaskDueAt ? new Date(newTaskDueAt).toISOString() : undefined });
+                                const updated = await salesApi.listTasks(leadId);
+                                setTasks(updated);
+                                setShowNewTaskForm(false);
+                                setNewTaskNote('');
+                                setNewTaskDueAt('');
+                                await loadCard();
+                                onLeadUpdated?.();
+                              }}>Создать</Button>
+                              <Button size="small" onClick={() => { setShowNewTaskForm(false); setNewTaskNote(''); setNewTaskDueAt(''); }}>Отмена</Button>
+                            </Stack>
+                          </Stack>
+                        )}
+                        {!showNewTaskForm && (
+                          <Button size="small" startIcon={<AddIcon />} onClick={() => setShowNewTaskForm(true)}>Создать задачу</Button>
+                        )}
                       </Stack>
                     )}
                   </>
@@ -530,11 +598,22 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                           <Stack key={inv.id} direction="row" justifyContent="space-between" alignItems="center">
                             <Typography variant="body2">{inv.amount} {inv.currency}</Typography>
                             <Stack direction="row" spacing={1} alignItems="center">
-                              <Chip size="small" label={invoiceStatusLabels[inv.status] ?? inv.status} />
+                              <Chip size="small" label={invoiceStatusLabels[inv.status] ?? inv.status} color={inv.status === 'paid' ? 'success' : 'default'} />
                               {inv.created_at && (
                                 <Typography variant="caption" color="text.secondary">
                                   {format(parseISO(inv.created_at), 'dd.MM.yyyy')}
                                 </Typography>
+                              )}
+                              {inv.status !== 'paid' && inv.status !== 'cancelled' && leadId && (
+                                <Button size="small" color="success" onClick={async () => {
+                                  await salesApi.markInvoicePaid(leadId, inv.id);
+                                  const updated = await salesApi.listInvoices(leadId);
+                                  setInvoices(updated);
+                                  await loadCard();
+                                  onLeadUpdated?.();
+                                }}>
+                                  Оплачен
+                                </Button>
                               )}
                             </Stack>
                           </Stack>
@@ -570,6 +649,26 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
           </Box>
         )}
 
+        {/* Reschedule Task Dialog */}
+        <Dialog open={rescheduleTaskId !== null} onClose={() => setRescheduleTaskId(null)} maxWidth="xs" fullWidth>
+          <DialogContent>
+            <Typography variant="h6" sx={{ mb: 2 }}>Перенести срок задачи</Typography>
+            <TextField fullWidth size="small" label="Новый срок" type="datetime-local" InputLabelProps={{ shrink: true }} value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
+            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              <Button variant="contained" disabled={!rescheduleDate} onClick={async () => {
+                if (!leadId || !rescheduleTaskId || !rescheduleDate) return;
+                await salesApi.updateTask(leadId, rescheduleTaskId, { due_at: new Date(rescheduleDate).toISOString() });
+                const updated = await salesApi.listTasks(leadId);
+                setTasks(updated);
+                setRescheduleTaskId(null);
+                setRescheduleDate('');
+                await loadCard();
+              }}>Сохранить</Button>
+              <Button onClick={() => { setRescheduleTaskId(null); setRescheduleDate(''); }}>Отмена</Button>
+            </Stack>
+          </DialogContent>
+        </Dialog>
+
         {/* Quick Action Dialogs */}
         <Dialog open={!!quickActionDialog} onClose={() => setQuickActionDialog(null)} maxWidth="xs" fullWidth>
           <DialogContent>
@@ -581,7 +680,14 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
               <Stack spacing={2}>
                 <TextField fullWidth size="small" label="Комментарий" multiline rows={2} value={quickActionComment} onChange={(e) => setQuickActionComment(e.target.value)} />
                 <TextField fullWidth size="small" label="Следующий контакт" type="datetime-local" InputLabelProps={{ shrink: true }} value={quickActionFollowUp} onChange={(e) => setQuickActionFollowUp(e.target.value)} />
-                <Button variant="contained" disabled={quickActionLoading} onClick={() => handleQuickAction('call', { status_effect_from: lead?.status, status_effect_to: 'contacted' })}>
+                <TextField fullWidth size="small" label="Новый статус" select SelectProps={{ native: true }} value={quickActionChannel || 'contacted'} onChange={(e) => setQuickActionChannel(e.target.value)}>
+                  <option value="contacted">Связались</option>
+                  <option value="thinking">Подумают</option>
+                  <option value="trial_scheduled">Записали на пробное</option>
+                  <option value="demo">Демо</option>
+                  <option value="invoice_sent">Инвойс отправлен</option>
+                </TextField>
+                <Button variant="contained" disabled={quickActionLoading} onClick={() => handleQuickAction('call', { status_effect_from: lead?.status, status_effect_to: quickActionChannel || 'contacted' })}>
                   Сохранить
                 </Button>
               </Stack>

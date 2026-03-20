@@ -4190,6 +4190,13 @@ async def create_lead(
         status=LeadStatus.NEW,
     )
     db.add(lead)
+    db.flush()
+    _add_activity(
+        db, lead.id, current_user.id,
+        type="lead_created",
+        title="Лид создан",
+        description=f"Источник: {source_name or '—'}",
+    )
     db.commit()
     db.refresh(lead)
 
@@ -4997,6 +5004,38 @@ async def create_lead_activity(
         related_task_id=activity.related_task_id,
         related_invoice_id=activity.related_invoice_id,
     )
+
+
+@router.post("/leads/{lead_id}/invoices/{invoice_id}/mark-paid", response_model=InvoiceResponse)
+async def mark_invoice_paid(
+    lead_id: int,
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+):
+    """Mark invoice as paid and create invoice_paid activity."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _require_owner_or_admin(lead, current_user)
+
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id, Invoice.lead_id == lead_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.status == InvoiceStatus.PAID:
+        return invoice
+
+    invoice.status = InvoiceStatus.PAID
+    _add_activity(
+        db, lead_id, current_user.id,
+        type="invoice_paid",
+        title=f"Счёт оплачен: {invoice.amount} {invoice.currency}",
+        related_invoice_id=invoice.id,
+    )
+    db.commit()
+    db.refresh(invoice)
+    log_action(db, current_user.id, "mark_paid", "invoice", invoice.id, {"lead_id": lead_id})
+    return invoice
 
 
 @router.post("/invoices/{invoice_id}/send-email", response_model=InvoiceResponse)

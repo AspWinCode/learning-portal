@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -32,7 +32,7 @@ import {
 import { format, isValid, parseISO } from 'date-fns';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { Lead, LeadTask, Invoice } from '../types';
+import type { Lead, LeadTask, Invoice, LeadInfoTemplate, EventItem } from '../types';
 
 const statusLabels: Record<string, string> = {
   new: 'Новый',
@@ -164,6 +164,21 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
   const [quickActionLoading, setQuickActionLoading] = useState(false);
   const [actionToast, setActionToast] = useState<string | null>(null);
 
+  // Communication templates
+  const [infoTemplates, setInfoTemplates] = useState<LeadInfoTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
+  // Event registration
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [eventNote, setEventNote] = useState('');
+  const [eventLoading, setEventLoading] = useState(false);
+
+  // Convert to student
+  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
+  const [convertLoading, setConvertLoading] = useState(false);
+
   const loadCard = useCallback(async () => {
     if (!leadId) return;
     setLoading(true);
@@ -184,6 +199,16 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
   }, [leadId]);
 
   useEffect(() => {
+    if (infoTemplates.length === 0) {
+      salesApi.listLeadInfoTemplates(true).then(setInfoTemplates).catch(() => {});
+    }
+    if (events.length === 0) {
+      salesApi.listEvents('active' as any).then(setEvents).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (open && leadId) {
       loadCard();
       setActiveTab(0);
@@ -200,22 +225,22 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
     }
   }, [open, leadId, loadCard]);
 
-  // Lazy load tabs
+  // Lazy load tabs — tab 0 = Задачи, tab 1 = Счета, tab 2 = Детали
   useEffect(() => {
     if (!leadId || !open) return;
-    if (activeTab === 1 && !tabsLoaded[1]) {
+    if (activeTab === 0 && !tabsLoaded[0]) {
       salesApi.listTasks(leadId).then(setTasks).catch(() => {});
-      setTabsLoaded((prev) => ({ ...prev, 1: true }));
+      setTabsLoaded((prev) => ({ ...prev, 0: true }));
     }
-    if (activeTab === 2 && !tabsLoaded[2]) {
+    if (activeTab === 1 && !tabsLoaded[1]) {
       salesApi.listInvoices(leadId).then(setInvoices).catch(() => {});
-      setTabsLoaded((prev) => ({ ...prev, 2: true }));
+      setTabsLoaded((prev) => ({ ...prev, 1: true }));
     }
   }, [activeTab, leadId, open, tabsLoaded]);
 
   const handleOpenFull = () => {
     if (leadId) {
-      navigate(`/sales/leads?open=${leadId}`);
+      navigate(`/sales/leads/${leadId}`);
       onClose();
     }
   };
@@ -395,7 +420,14 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                         }}>
                           Выполнить
                         </Button>
-                        <Button size="small" variant="outlined" startIcon={<RescheduleIcon />} onClick={() => setQuickActionDialog('follow_up')}>
+                        <Button size="small" variant="outlined" startIcon={<RescheduleIcon />} onClick={() => {
+                          if (nextAction.task_id) {
+                            setRescheduleTaskId(nextAction.task_id);
+                            setRescheduleDate(nextAction.due_at ? format(parseISO(nextAction.due_at), "yyyy-MM-dd'T'HH:mm") : '');
+                          } else {
+                            setQuickActionDialog('follow_up');
+                          }
+                        }}>
                           Перенести
                         </Button>
                       </Stack>
@@ -419,6 +451,8 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                 <Button size="small" variant="outlined" onClick={() => setQuickActionDialog('follow_up')}>Повторный контакт</Button>
                 <Button size="small" variant="outlined" onClick={() => setQuickActionDialog('invoice_created')}>Создать счёт</Button>
                 <Button size="small" variant="outlined" onClick={() => setQuickActionDialog('payment_received')}>Получил оплату</Button>
+                <Button size="small" variant="outlined" color="primary" onClick={() => setEventDialogOpen(true)}>На мероприятие</Button>
+                <Button size="small" variant="outlined" color="success" onClick={() => setConvertDialogOpen(true)}>Конвертировать</Button>
                 <Button size="small" variant="outlined" color="error" onClick={() => setQuickActionDialog('refused')}>Отказ</Button>
                 <Button size="small" variant="outlined" color="success" onClick={() => setQuickActionDialog('won')}>Записан</Button>
               </Stack>
@@ -529,7 +563,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
               <Box sx={{ p: 2 }}>
                 {activeTab === 0 && (
                   <>
-                    {!tabsLoaded[1] ? (
+                    {!tabsLoaded[0] ? (
                       <Typography variant="body2" color="text.secondary">Нажмите для загрузки...</Typography>
                     ) : (
                       <Stack spacing={1}>
@@ -588,7 +622,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                 )}
                 {activeTab === 1 && (
                   <>
-                    {!tabsLoaded[2] ? (
+                    {!tabsLoaded[1] ? (
                       <Typography variant="body2" color="text.secondary">Нажмите для загрузки...</Typography>
                     ) : invoices.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">Нет счетов</Typography>
@@ -705,6 +739,25 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
             {quickActionDialog === 'info_sent' && (
               <Stack spacing={2}>
+                {infoTemplates.length > 0 && (
+                  <TextField
+                    fullWidth size="small" label="Шаблон сообщения" select SelectProps={{ native: true }}
+                    value={selectedTemplateId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedTemplateId(id);
+                      if (id) {
+                        const tpl = infoTemplates.find((t) => String(t.id) === id);
+                        if (tpl) setQuickActionComment(tpl.body);
+                      }
+                    }}
+                  >
+                    <option value="">— выбрать шаблон —</option>
+                    {infoTemplates.map((tpl) => (
+                      <option key={tpl.id} value={String(tpl.id)}>{tpl.name}</option>
+                    ))}
+                  </TextField>
+                )}
                 <TextField fullWidth size="small" label="Канал" select SelectProps={{ native: true }} value={quickActionChannel} onChange={(e) => setQuickActionChannel(e.target.value)}>
                   <option value="">Выберите канал</option>
                   <option value="telegram">Telegram</option>
@@ -712,9 +765,9 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                   <option value="max">MAX</option>
                   <option value="email">Email</option>
                 </TextField>
-                <TextField fullWidth size="small" label="Комментарий" multiline rows={2} value={quickActionComment} onChange={(e) => setQuickActionComment(e.target.value)} />
+                <TextField fullWidth size="small" label="Текст сообщения" multiline rows={3} value={quickActionComment} onChange={(e) => { setQuickActionComment(e.target.value); setSelectedTemplateId(''); }} />
                 <TextField fullWidth size="small" label="Follow-up дата" type="datetime-local" InputLabelProps={{ shrink: true }} value={quickActionFollowUp} onChange={(e) => setQuickActionFollowUp(e.target.value)} />
-                <Button variant="contained" disabled={quickActionLoading} onClick={() => handleQuickAction('info_sent', { status_effect_from: lead?.status, status_effect_to: 'thinking', channel: quickActionChannel })}>
+                <Button variant="contained" disabled={quickActionLoading} onClick={() => { handleQuickAction('info_sent', { status_effect_from: lead?.status, status_effect_to: 'thinking', channel: quickActionChannel }); setSelectedTemplateId(''); }}>
                   Сохранить
                 </Button>
               </Stack>
@@ -765,6 +818,85 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                 </Button>
               </Stack>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Event registration dialog */}
+        <Dialog open={eventDialogOpen} onClose={() => setEventDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogContent>
+            <Typography variant="h6" gutterBottom>Записать на мероприятие</Typography>
+            <Stack spacing={2}>
+              <TextField
+                fullWidth size="small" label="Мероприятие" select SelectProps={{ native: true }}
+                value={selectedEventId}
+                onChange={(e) => setSelectedEventId(e.target.value)}
+              >
+                <option value="">— выбрать —</option>
+                {events.map((ev) => (
+                  <option key={ev.id} value={String(ev.id)}>
+                    {ev.title} ({ev.starts_at ? format(parseISO(ev.starts_at), 'dd.MM.yyyy HH:mm') : '—'})
+                  </option>
+                ))}
+              </TextField>
+              <TextField fullWidth size="small" label="Заметка" multiline rows={2} value={eventNote} onChange={(e) => setEventNote(e.target.value)} />
+              <Button
+                variant="contained"
+                disabled={eventLoading || !selectedEventId}
+                onClick={async () => {
+                  if (!leadId || !selectedEventId) return;
+                  setEventLoading(true);
+                  try {
+                    await salesApi.registerLeadToEvent(Number(selectedEventId), { lead_id: Number(leadId), note: eventNote || undefined });
+                    setActionToast('Лид записан на мероприятие');
+                    setEventDialogOpen(false);
+                    setSelectedEventId('');
+                    setEventNote('');
+                    loadCard();
+                  } catch (err) {
+                    setActionToast(extractApiError(err, 'Ошибка'));
+                  } finally {
+                    setEventLoading(false);
+                  }
+                }}
+              >
+                Записать
+              </Button>
+            </Stack>
+          </DialogContent>
+        </Dialog>
+
+        {/* Convert to student dialog */}
+        <Dialog open={convertDialogOpen} onClose={() => setConvertDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogContent>
+            <Typography variant="h6" gutterBottom>Конвертировать в ученика</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Лид будет переведён в ученика. Будет создан родитель (если нет) и ученик с данными из лида.
+              Статус лида изменится на «Успешно».
+            </Typography>
+            <Stack direction="row" spacing={2}>
+              <Button
+                variant="contained"
+                color="success"
+                disabled={convertLoading}
+                onClick={async () => {
+                  if (!leadId) return;
+                  setConvertLoading(true);
+                  try {
+                    const result = await salesApi.convertLeadToStudent(Number(leadId));
+                    setActionToast(`Ученик создан (ID: ${result.student_id})`);
+                    setConvertDialogOpen(false);
+                    loadCard();
+                  } catch (err) {
+                    setActionToast(extractApiError(err, 'Ошибка'));
+                  } finally {
+                    setConvertLoading(false);
+                  }
+                }}
+              >
+                Конвертировать
+              </Button>
+              <Button variant="outlined" onClick={() => setConvertDialogOpen(false)}>Отмена</Button>
+            </Stack>
           </DialogContent>
         </Dialog>
       </DialogContent>

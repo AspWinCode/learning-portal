@@ -3881,6 +3881,24 @@ async def send_info_for_lead(
             "pause_reason": payload.pause_reason,
         },
     )
+    _create_lead_activity(
+        db,
+        lead.id,
+        type="sent_info",
+        title="Отправлена информация",
+        description=message[:200] if message else None,
+        channel=(payload.channel or "messenger"),
+        created_by=current_user.id,
+        payload_json={
+            "template_id": template_id,
+            "follow_up_at": payload.follow_up_at.isoformat(),
+            "pause_reason": payload.pause_reason,
+        },
+        status_effect_from=None,
+        status_effect_to=None,
+        related_task_id=None,
+        related_invoice_id=None,
+    )
     return comm
 
 
@@ -3952,6 +3970,25 @@ async def save_lead_contact_result(
             "outcome": outcome,
             "follow_up_at": payload.follow_up_at.isoformat() if payload.follow_up_at else None,
         },
+    )
+    _activity_type = "call" if outcome == "connected" else "no_answer"
+    _activity_title = {"connected": "Дозвон", "no_answer": "Не дозвонились", "callback": "Перезвонить"}[outcome]
+    _create_lead_activity(
+        db,
+        lead.id,
+        type=_activity_type,
+        title=_activity_title,
+        description=(payload.note or "").strip() or None,
+        channel="call",
+        created_by=current_user.id,
+        payload_json={
+            "outcome": outcome,
+            "follow_up_at": payload.follow_up_at.isoformat() if payload.follow_up_at else None,
+        },
+        status_effect_from=None,
+        status_effect_to=None,
+        related_task_id=None,
+        related_invoice_id=None,
     )
     return comm
 
@@ -4346,6 +4383,20 @@ async def create_lead(
     db.refresh(lead)
 
     log_action(db, current_user.id, "create", "lead", lead.id, {"owner_id": owner_id})
+    _create_lead_activity(
+        db,
+        lead.id,
+        type="lead_created",
+        title="Лид создан",
+        description=f"Источник: {source_name or '—'}",
+        channel=None,
+        created_by=current_user.id,
+        payload_json={"source": source_name, "owner_id": owner_id},
+        status_effect_from=None,
+        status_effect_to="new",
+        related_task_id=None,
+        related_invoice_id=None,
+    )
     return lead
 
 
@@ -4477,6 +4528,7 @@ async def update_lead(
     _require_owner_or_admin(lead, current_user)
 
     update_data = payload.dict(exclude_unset=True)
+    old_status = lead.status
     # Prevent sales from changing owner/status to restricted values
     if "status" in update_data and update_data["status"] is not None:
         lead.status = update_data["status"]
@@ -4520,6 +4572,23 @@ async def update_lead(
     db.commit()
     db.refresh(lead)
     log_action(db, current_user.id, "update", "lead", lead.id, update_data)
+    if "status" in update_data and update_data["status"] is not None and lead.status != old_status:
+        _new_status_val = lead.status.value if hasattr(lead.status, "value") else str(lead.status)
+        _old_status_val = old_status.value if hasattr(old_status, "value") else str(old_status)
+        _create_lead_activity(
+            db,
+            lead.id,
+            type="status_changed",
+            title=f"Статус изменён: {_new_status_val}",
+            description=update_data.get("lost_reason"),
+            channel=None,
+            created_by=current_user.id,
+            payload_json={"from": _old_status_val, "to": _new_status_val, "lost_reason": update_data.get("lost_reason")},
+            status_effect_from=_old_status_val,
+            status_effect_to=_new_status_val,
+            related_task_id=None,
+            related_invoice_id=None,
+        )
     return lead
 
 
@@ -4649,6 +4718,24 @@ async def create_lead_task(
     db.commit()
     db.refresh(task)
     log_action(db, current_user.id, "create", "lead_task", task.id, {"lead_id": lead_id})
+    _task_title = (template.name if template else None) or payload.note or "Задача"
+    _create_lead_activity(
+        db,
+        lead_id,
+        type="task_created",
+        title=f"Создана задача: {_task_title[:100]}",
+        description=payload.note or None,
+        channel=payload.channel or None,
+        created_by=current_user.id,
+        payload_json={
+            "task_id": task.id,
+            "due_at": payload.due_at.isoformat() if payload.due_at else None,
+        },
+        status_effect_from=None,
+        status_effect_to=None,
+        related_task_id=task.id,
+        related_invoice_id=None,
+    )
     return task
 
 
@@ -4707,6 +4794,21 @@ async def close_lead_task(
     task.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(task)
+    _task_name = (task.template.name if task.template else None) or task.note or "Задача"
+    _create_lead_activity(
+        db,
+        lead_id,
+        type="task_done",
+        title=f"Задача выполнена: {_task_name[:100]}",
+        description=None,
+        channel=task.channel or None,
+        created_by=current_user.id,
+        payload_json={"task_id": task.id},
+        status_effect_from=None,
+        status_effect_to=None,
+        related_task_id=task.id,
+        related_invoice_id=None,
+    )
 
     # Если закрыли задачу «Отправить информацию» — переводим лида в «Подумают» и создаём задачу «Позвонить лиду и узнать решение» через 2 дня
     _FOLLOW_UP_NOTE = "Позвонить лиду и узнать решение"
@@ -4807,6 +4909,20 @@ async def create_invoice_for_lead(
     db.commit()
     db.refresh(invoice)
     log_action(db, current_user.id, "create", "invoice", invoice.id, {"lead_id": lead_id, "amount": amount})
+    _create_lead_activity(
+        db,
+        lead_id,
+        type="invoice_created",
+        title=f"Выставлен счёт: {abonement.name} — {amount} руб.",
+        description=None,
+        channel=None,
+        created_by=current_user.id,
+        payload_json={"invoice_id": invoice.id, "amount": amount, "abonement_id": abonement.id},
+        status_effect_from=None,
+        status_effect_to="invoice_sent",
+        related_task_id=None,
+        related_invoice_id=invoice.id,
+    )
     return invoice
 
 

@@ -30,6 +30,7 @@ import {
   Call as CallIcon,
   ChatBubbleOutline as ChatIcon,
   Check as CheckIcon,
+  Edit as EditIcon,
   Forum as MaxIcon,
   PhoneDisabled as PhoneDisabledIcon,
   PushPin as PushPinIcon,
@@ -49,10 +50,12 @@ import { extractApiError } from '../utils/extractApiError';
 import type {
   Abonement,
   Invoice,
+  Lead,
   LeadActivity,
   LeadCardResponse,
   LeadInfoTemplate,
   LeadNextAction,
+  LeadSource,
   LeadStatus,
   LeadTask,
   QuickActionType,
@@ -610,6 +613,189 @@ const TasksTab: React.FC<TasksTabProps> = ({ leadId, tasks, onTaskChanged }) => 
   );
 };
 
+// ─── Details Tab ─────────────────────────────────────────────────────────────
+
+const channelLabels: Record<string, string> = {
+  max: 'MAX мессенджер',
+  email: 'Email',
+  sms: 'SMS',
+  telegram: 'Telegram',
+};
+
+interface DetailsTabProps {
+  lead: Lead;
+  leadId: number;
+  onLeadChanged: () => void;
+}
+
+const DetailsTab: React.FC<DetailsTabProps> = ({ lead, leadId, onLeadChanged }) => {
+  const [editing, setEditing] = useState(false);
+  const [sources, setSources] = useState<LeadSource[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const [form, setForm] = useState({
+    contact_name: lead.contact_name ?? '',
+    phone: lead.phone ?? '',
+    parent_full_name: lead.parent_full_name ?? '',
+    parent_phone: lead.parent_phone ?? '',
+    child_full_name: lead.child_full_name ?? '',
+    email: lead.email ?? '',
+    city: lead.city ?? '',
+    school_name: lead.school_name ?? '',
+    school_class: lead.school_class ?? '',
+    desired_slot: lead.desired_slot ?? '',
+    comment: lead.comment ?? '',
+    source_id: lead.source_id ?? ('' as number | ''),
+    communication_channel: lead.communication_channel ?? '',
+  });
+
+  const openEdit = async () => {
+    setForm({
+      contact_name: lead.contact_name ?? '',
+      phone: lead.phone ?? '',
+      parent_full_name: lead.parent_full_name ?? '',
+      parent_phone: lead.parent_phone ?? '',
+      child_full_name: lead.child_full_name ?? '',
+      email: lead.email ?? '',
+      city: lead.city ?? '',
+      school_name: lead.school_name ?? '',
+      school_class: lead.school_class ?? '',
+      desired_slot: lead.desired_slot ?? '',
+      comment: lead.comment ?? '',
+      source_id: lead.source_id ?? '',
+      communication_channel: lead.communication_channel ?? '',
+    });
+    if (sources.length === 0) {
+      try {
+        const data = await salesApi.listLeadSources();
+        setSources(data);
+      } catch { /* ignore */ }
+    }
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await salesApi.updateLead(leadId, {
+        contact_name: form.contact_name || undefined,
+        phone: form.phone || undefined,
+        parent_full_name: form.parent_full_name || undefined,
+        parent_phone: form.parent_phone || undefined,
+        child_full_name: form.child_full_name || undefined,
+        email: form.email || undefined,
+        city: form.city || undefined,
+        school_name: form.school_name || undefined,
+        school_class: form.school_class || undefined,
+        desired_slot: form.desired_slot || undefined,
+        comment: form.comment || undefined,
+        source_id: form.source_id ? Number(form.source_id) : undefined,
+        communication_channel: (form.communication_channel as Lead['communication_channel']) || undefined,
+      });
+      setEditing(false);
+      onLeadChanged();
+    } catch { /* ignore */ }
+    setSaving(false);
+  };
+
+  const f = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  if (!editing) {
+    return (
+      <Stack spacing={0.75} sx={{ py: 1 }}>
+        <Button size="small" startIcon={<EditIcon />} onClick={openEdit} sx={{ alignSelf: 'flex-start' }}>
+          Редактировать
+        </Button>
+        {lead.contact_name && <Typography variant="body2">Контакт: {lead.contact_name}</Typography>}
+        {lead.phone && <Typography variant="body2">Телефон: {lead.phone}</Typography>}
+        {lead.parent_full_name && <Typography variant="body2">ФИО родителя: {lead.parent_full_name}</Typography>}
+        {lead.parent_phone && <Typography variant="body2">Тел. родителя: {lead.parent_phone}</Typography>}
+        {lead.child_full_name && <Typography variant="body2">ФИО ребёнка: {lead.child_full_name}</Typography>}
+        {lead.email && <Typography variant="body2">Email: {lead.email}</Typography>}
+        {lead.city && <Typography variant="body2">Город: {lead.city}</Typography>}
+        {lead.school_name && <Typography variant="body2">Школа: {lead.school_name}</Typography>}
+        {lead.school_class && <Typography variant="body2">Класс: {lead.school_class}</Typography>}
+        {lead.desired_slot && <Typography variant="body2">Желаемое время: {lead.desired_slot}</Typography>}
+        {lead.communication_channel && (
+          <Typography variant="body2">Канал: {channelLabels[lead.communication_channel] ?? lead.communication_channel}</Typography>
+        )}
+        {lead.comment && (
+          <Box>
+            <Typography variant="caption" color="text.secondary">Комментарий</Typography>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{lead.comment}</Typography>
+          </Box>
+        )}
+        {lead.no_answer_attempt != null && lead.no_answer_attempt > 0 && (
+          <Typography variant="body2" color="warning.dark">Попыток дозвона: {lead.no_answer_attempt}</Typography>
+        )}
+        {lead.lost_reason && (
+          <Typography variant="body2" color="error.main">Причина отказа: {lead.lost_reason}</Typography>
+        )}
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack spacing={1.5} sx={{ py: 1 }}>
+      <Stack direction="row" spacing={1}>
+        <Button size="small" variant="contained" onClick={handleSave} disabled={saving}>Сохранить</Button>
+        <Button size="small" onClick={() => setEditing(false)} disabled={saving}>Отмена</Button>
+      </Stack>
+
+      <TextField size="small" label="Контакт" value={form.contact_name} onChange={f('contact_name')} />
+      <TextField size="small" label="Телефон" value={form.phone} onChange={f('phone')} />
+      <TextField size="small" label="ФИО родителя" value={form.parent_full_name} onChange={f('parent_full_name')} />
+      <TextField size="small" label="Тел. родителя" value={form.parent_phone} onChange={f('parent_phone')} />
+      <TextField size="small" label="ФИО ребёнка" value={form.child_full_name} onChange={f('child_full_name')} />
+      <TextField size="small" label="Email" value={form.email} onChange={f('email')} />
+      <TextField size="small" label="Город" value={form.city} onChange={f('city')} />
+      <TextField size="small" label="Школа" value={form.school_name} onChange={f('school_name')} />
+      <TextField size="small" label="Класс" value={form.school_class} onChange={f('school_class')} />
+      <TextField size="small" label="Желаемое время" value={form.desired_slot} onChange={f('desired_slot')} />
+
+      {sources.length > 0 && (
+        <FormControl size="small">
+          <InputLabel>Источник</InputLabel>
+          <Select
+            value={form.source_id}
+            label="Источник"
+            onChange={(e) => setForm((prev) => ({ ...prev, source_id: e.target.value as number | '' }))}
+          >
+            <MenuItem value=""><em>—</em></MenuItem>
+            {sources.map((s) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+          </Select>
+        </FormControl>
+      )}
+
+      <FormControl size="small">
+        <InputLabel>Канал</InputLabel>
+        <Select
+          value={form.communication_channel}
+          label="Канал"
+          onChange={(e) => setForm((prev) => ({ ...prev, communication_channel: e.target.value as string }))}
+        >
+          <MenuItem value=""><em>—</em></MenuItem>
+          {Object.entries(channelLabels).map(([val, label]) => (
+            <MenuItem key={val} value={val}>{label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      <TextField
+        size="small"
+        label="Комментарий"
+        value={form.comment}
+        onChange={f('comment')}
+        multiline
+        rows={3}
+      />
+    </Stack>
+  );
+};
+
+// ─── Invoices Tab ────────────────────────────────────────────────────────────
+
 const InvoicesTab: React.FC<{ invoices: Invoice[] }> = ({ invoices }) => {
   if (invoices.length === 0) {
     return <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>Счетов нет</Typography>;
@@ -922,44 +1108,7 @@ const LeadCardPage: React.FC = () => {
 
                 {tabIndex === 0 && <TasksTab leadId={leadId} tasks={tasks} onTaskChanged={handleTaskChanged} />}
                 {tabIndex === 1 && <InvoicesTab invoices={invoices} />}
-                {tabIndex === 2 && (
-                  <Stack spacing={0.75} sx={{ py: 1 }}>
-                    {lead.parent_full_name && (
-                      <Typography variant="body2">ФИО родителя: {lead.parent_full_name}</Typography>
-                    )}
-                    {lead.child_full_name && (
-                      <Typography variant="body2">ФИО ребёнка: {lead.child_full_name}</Typography>
-                    )}
-                    {lead.city && (
-                      <Typography variant="body2">Город: {lead.city}</Typography>
-                    )}
-                    {lead.school_name && (
-                      <Typography variant="body2">Школа: {lead.school_name}</Typography>
-                    )}
-                    {lead.school_class && (
-                      <Typography variant="body2">Класс: {lead.school_class}</Typography>
-                    )}
-                    {lead.desired_slot && (
-                      <Typography variant="body2">Желаемое время: {lead.desired_slot}</Typography>
-                    )}
-                    {lead.comment && (
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Комментарий</Typography>
-                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{lead.comment}</Typography>
-                      </Box>
-                    )}
-                    {lead.no_answer_attempt != null && lead.no_answer_attempt > 0 && (
-                      <Typography variant="body2" color="warning.dark">
-                        Попыток дозвона: {lead.no_answer_attempt}
-                      </Typography>
-                    )}
-                    {lead.lost_reason && (
-                      <Typography variant="body2" color="error.main">
-                        Причина отказа: {lead.lost_reason}
-                      </Typography>
-                    )}
-                  </Stack>
-                )}
+                {tabIndex === 2 && <DetailsTab lead={lead} leadId={leadId} onLeadChanged={loadCard} />}
               </CardContent>
             </Card>
           </Grid>

@@ -4915,6 +4915,7 @@ async def create_invoice_for_lead(
         status=InvoiceStatus.DRAFT,
         email_to=payload.email_to or lead.email,
         link=None,
+        due_date=payload.due_date or (datetime.utcnow() + timedelta(days=7)),
     )
     db.add(invoice)
     if lead.status not in (LeadStatus.WON, LeadStatus.LOST):
@@ -5935,6 +5936,34 @@ def _create_lead_activity(
 
 # ─── GET /leads/{lead_id}/timeline ──────────────────────────────────────────
 
+def _serialize_activities(activities: list, db: Session) -> list:
+    """Сериализует список LeadActivity в LeadActivityResponse с именем автора."""
+    user_ids = {a.created_by for a in activities if a.created_by}
+    user_names: dict = {}
+    if user_ids:
+        rows = db.query(User.id, User.full_name).filter(User.id.in_(user_ids)).all()
+        user_names = {r.id: r.full_name for r in rows}
+    return [
+        LeadActivityResponse(
+            id=a.id,
+            lead_id=a.lead_id,
+            type=a.type,
+            title=a.title,
+            description=a.description,
+            channel=a.channel,
+            created_at=a.created_at,
+            created_by=a.created_by,
+            created_by_name=user_names.get(a.created_by) if a.created_by else None,
+            payload_json=a.payload_json,
+            status_effect_from=a.status_effect_from,
+            status_effect_to=a.status_effect_to,
+            related_task_id=a.related_task_id,
+            related_invoice_id=a.related_invoice_id,
+        )
+        for a in activities
+    ]
+
+
 @router.get("/leads/{lead_id}/timeline", response_model=LeadTimelineResponse)
 async def get_lead_timeline(
     lead_id: int,
@@ -5959,7 +5988,7 @@ async def get_lead_timeline(
         .all()
     )
     return LeadTimelineResponse(
-        items=items,
+        items=_serialize_activities(items, db),
         total=total,
         has_more=(offset + limit) < total,
     )
@@ -6066,13 +6095,30 @@ async def get_lead_card(
     sidebar = _build_sidebar(lead, db)
 
     # Timeline preview: последние 10 записей
-    timeline_preview = (
+    timeline_raw = (
         db.query(LeadActivity)
         .filter(LeadActivity.lead_id == lead_id)
         .order_by(LeadActivity.created_at.desc())
         .limit(10)
         .all()
     )
+    timeline_preview = _serialize_activities(timeline_raw, db)
+
+    # Ответственный
+    owner_name: Optional[str] = None
+    if lead.owner:
+        owner_name = lead.owner.full_name
+    elif lead.owner_id:
+        owner_row = db.query(User.full_name).filter(User.id == lead.owner_id).first()
+        if owner_row:
+            owner_name = owner_row.full_name
+
+    # Дата последнего контакта (последняя activity типа call/called/message/sent_info)
+    contact_types = ["called", "call", "message", "sent_info"]
+    last_contact_at = db.query(func.max(LeadActivity.created_at)).filter(
+        LeadActivity.lead_id == lead_id,
+        LeadActivity.type.in_(contact_types),
+    ).scalar()
 
     return LeadCardResponse(
         lead=lead,
@@ -6080,6 +6126,8 @@ async def get_lead_card(
         pinned_comment=lead.comment if lead.comment else None,
         sidebar=sidebar,
         timeline_preview=timeline_preview,
+        owner_name=owner_name,
+        last_contact_at=last_contact_at,
     )
 
 
@@ -6167,6 +6215,7 @@ async def lead_quick_action(
             currency="RUB",
             status=InvoiceStatus.SENT,
             email_to=payload.invoice_email or lead.email,
+            due_date=datetime.utcnow() + timedelta(days=7),
         )
         db.add(invoice)
         db.flush()

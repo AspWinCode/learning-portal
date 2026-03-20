@@ -1426,6 +1426,7 @@ class InvoiceCreate(BaseModel):
     abonement_id: int
     email_to: Optional[EmailStr] = None
     currency: Optional[str] = "RUB"
+    due_date: Optional[datetime] = None
 
 
 class InvoiceResponse(BaseModel):
@@ -1440,6 +1441,7 @@ class InvoiceResponse(BaseModel):
     created_at: datetime
     sent_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
+    due_date: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -1456,6 +1458,7 @@ class LeadActivityResponse(BaseModel):
     channel: Optional[str] = None
     created_at: datetime
     created_by: Optional[int] = None
+    created_by_name: Optional[str] = None
     payload_json: Optional[dict] = None
     status_effect_from: Optional[str] = None
     status_effect_to: Optional[str] = None
@@ -1500,6 +1503,8 @@ class LeadCardResponse(BaseModel):
     pinned_comment: Optional[str] = None
     sidebar: LeadSidebarSummary
     timeline_preview: List[LeadActivityResponse] = []
+    owner_name: Optional[str] = None
+    last_contact_at: Optional[datetime] = None
 
 
 # ─── Quick Actions ──────────────────────────────────────────────────────────

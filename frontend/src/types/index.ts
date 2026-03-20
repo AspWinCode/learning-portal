@@ -685,6 +685,7 @@ export interface Invoice {
   created_at: string;
   sent_at?: string | null;
   paid_at?: string | null;
+  due_date?: string | null;
 }
 
 // ─── LeadActivity (таймлайн) ────────────────────────────────────────────────
@@ -698,6 +699,7 @@ export interface LeadActivity {
   channel?: string | null;
   created_at: string;
   created_by?: number | null;
+  created_by_name?: string | null;
   payload_json?: Record<string, unknown> | null;
   status_effect_from?: string | null;
   status_effect_to?: string | null;
@@ -733,6 +735,8 @@ export interface LeadCardResponse {
   pinned_comment?: string | null;
   sidebar: LeadSidebarSummary;
   timeline_preview: LeadActivity[];
+  owner_name?: string | null;
+  last_contact_at?: string | null;
 }
 
 export type QuickActionType =

@@ -30,7 +30,7 @@ import {
 import { format, isValid, parseISO } from 'date-fns';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { Lead, LeadTask, Invoice, LeadInfoTemplate } from '../types';
+import type { Lead, LeadTask, Invoice, LeadInfoTemplate, EventItem } from '../types';
 
 const statusLabels: Record<string, string> = {
   new: 'Новый',
@@ -154,8 +154,20 @@ const LeadCardPage: React.FC = () => {
   const [infoTemplates, setInfoTemplates] = useState<LeadInfoTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
+  // Event registration
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [eventNote, setEventNote] = useState('');
+  const [eventLoading, setEventLoading] = useState(false);
+
+  // Convert to student
+  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
+  const [convertLoading, setConvertLoading] = useState(false);
+
   useEffect(() => {
     salesApi.listLeadInfoTemplates(true).then(setInfoTemplates).catch(() => {});
+    salesApi.listEvents('active' as any).then(setEvents).catch(() => {});
   }, []);
 
   const loadCard = useCallback(async () => {
@@ -415,6 +427,8 @@ const LeadCardPage: React.FC = () => {
                   <Button size="small" variant="outlined" onClick={() => setQuickActionDialog('info_sent')}>Отправил информацию</Button>
                   <Button size="small" variant="outlined" onClick={() => setQuickActionDialog('follow_up')}>Повторный контакт</Button>
                   <Button size="small" variant="outlined" onClick={() => setQuickActionDialog('payment_received')}>Получил оплату</Button>
+                  <Button size="small" variant="outlined" color="primary" onClick={() => setEventDialogOpen(true)}>На мероприятие</Button>
+                  <Button size="small" variant="outlined" color="success" onClick={() => setConvertDialogOpen(true)}>Конвертировать</Button>
                   <Button size="small" variant="outlined" color="error" onClick={() => setQuickActionDialog('refused')}>Отказ</Button>
                   <Button size="small" variant="outlined" color="success" onClick={() => setQuickActionDialog('won')}>Записан</Button>
                 </Stack>
@@ -768,6 +782,85 @@ const LeadCardPage: React.FC = () => {
               </Button>
             </Stack>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Event registration dialog */}
+      <Dialog open={eventDialogOpen} onClose={() => setEventDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogContent>
+          <Typography variant="h6" gutterBottom>Записать на мероприятие</Typography>
+          <Stack spacing={2}>
+            <TextField
+              fullWidth size="small" label="Мероприятие" select SelectProps={{ native: true }}
+              value={selectedEventId}
+              onChange={(e) => setSelectedEventId(e.target.value)}
+            >
+              <option value="">— выбрать —</option>
+              {events.map((ev) => (
+                <option key={ev.id} value={String(ev.id)}>
+                  {ev.title} ({ev.starts_at ? format(parseISO(ev.starts_at), 'dd.MM.yyyy HH:mm') : '—'})
+                </option>
+              ))}
+            </TextField>
+            <TextField fullWidth size="small" label="Заметка" multiline rows={2} value={eventNote} onChange={(e) => setEventNote(e.target.value)} />
+            <Button
+              variant="contained"
+              disabled={eventLoading || !selectedEventId}
+              onClick={async () => {
+                if (!leadId || !selectedEventId) return;
+                setEventLoading(true);
+                try {
+                  await salesApi.registerLeadToEvent(Number(selectedEventId), { lead_id: Number(leadId), note: eventNote || undefined });
+                  setActionToast('Лид записан на мероприятие');
+                  setEventDialogOpen(false);
+                  setSelectedEventId('');
+                  setEventNote('');
+                  loadCard();
+                } catch (err) {
+                  setActionToast(extractApiError(err, 'Ошибка'));
+                } finally {
+                  setEventLoading(false);
+                }
+              }}
+            >
+              Записать
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Convert to student dialog */}
+      <Dialog open={convertDialogOpen} onClose={() => setConvertDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogContent>
+          <Typography variant="h6" gutterBottom>Конвертировать в ученика</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Лид будет переведён в ученика. Будет создан родитель (если нет) и ученик с данными из лида.
+            Статус лида изменится на «Успешно».
+          </Typography>
+          <Stack direction="row" spacing={2}>
+            <Button
+              variant="contained"
+              color="success"
+              disabled={convertLoading}
+              onClick={async () => {
+                if (!leadId) return;
+                setConvertLoading(true);
+                try {
+                  const result = await salesApi.convertLeadToStudent(Number(leadId));
+                  setActionToast(`Ученик создан (ID: ${result.student_id})`);
+                  setConvertDialogOpen(false);
+                  loadCard();
+                } catch (err) {
+                  setActionToast(extractApiError(err, 'Ошибка'));
+                } finally {
+                  setConvertLoading(false);
+                }
+              }}
+            >
+              Конвертировать
+            </Button>
+            <Button variant="outlined" onClick={() => setConvertDialogOpen(false)}>Отмена</Button>
+          </Stack>
         </DialogContent>
       </Dialog>
     </Container>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -32,7 +32,7 @@ import {
 import { format, isValid, parseISO } from 'date-fns';
 import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { Lead, LeadTask, Invoice } from '../types';
+import type { Lead, LeadTask, Invoice, LeadInfoTemplate } from '../types';
 
 const statusLabels: Record<string, string> = {
   new: 'Новый',
@@ -164,6 +164,10 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
   const [quickActionLoading, setQuickActionLoading] = useState(false);
   const [actionToast, setActionToast] = useState<string | null>(null);
 
+  // Communication templates
+  const [infoTemplates, setInfoTemplates] = useState<LeadInfoTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
   const loadCard = useCallback(async () => {
     if (!leadId) return;
     setLoading(true);
@@ -182,6 +186,13 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
       setLoading(false);
     }
   }, [leadId]);
+
+  useEffect(() => {
+    if (infoTemplates.length === 0) {
+      salesApi.listLeadInfoTemplates(true).then(setInfoTemplates).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (open && leadId) {
@@ -712,6 +723,25 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
 
             {quickActionDialog === 'info_sent' && (
               <Stack spacing={2}>
+                {infoTemplates.length > 0 && (
+                  <TextField
+                    fullWidth size="small" label="Шаблон сообщения" select SelectProps={{ native: true }}
+                    value={selectedTemplateId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedTemplateId(id);
+                      if (id) {
+                        const tpl = infoTemplates.find((t) => String(t.id) === id);
+                        if (tpl) setQuickActionComment(tpl.body);
+                      }
+                    }}
+                  >
+                    <option value="">— выбрать шаблон —</option>
+                    {infoTemplates.map((tpl) => (
+                      <option key={tpl.id} value={String(tpl.id)}>{tpl.name}</option>
+                    ))}
+                  </TextField>
+                )}
                 <TextField fullWidth size="small" label="Канал" select SelectProps={{ native: true }} value={quickActionChannel} onChange={(e) => setQuickActionChannel(e.target.value)}>
                   <option value="">Выберите канал</option>
                   <option value="telegram">Telegram</option>
@@ -719,9 +749,9 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                   <option value="max">MAX</option>
                   <option value="email">Email</option>
                 </TextField>
-                <TextField fullWidth size="small" label="Комментарий" multiline rows={2} value={quickActionComment} onChange={(e) => setQuickActionComment(e.target.value)} />
+                <TextField fullWidth size="small" label="Текст сообщения" multiline rows={3} value={quickActionComment} onChange={(e) => { setQuickActionComment(e.target.value); setSelectedTemplateId(''); }} />
                 <TextField fullWidth size="small" label="Follow-up дата" type="datetime-local" InputLabelProps={{ shrink: true }} value={quickActionFollowUp} onChange={(e) => setQuickActionFollowUp(e.target.value)} />
-                <Button variant="contained" disabled={quickActionLoading} onClick={() => handleQuickAction('info_sent', { status_effect_from: lead?.status, status_effect_to: 'thinking', channel: quickActionChannel })}>
+                <Button variant="contained" disabled={quickActionLoading} onClick={() => { handleQuickAction('info_sent', { status_effect_from: lead?.status, status_effect_to: 'thinking', channel: quickActionChannel }); setSelectedTemplateId(''); }}>
                   Сохранить
                 </Button>
               </Stack>

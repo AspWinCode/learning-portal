@@ -1,14 +1,14 @@
 """0081: add last_contact_at to leads
 
 Revision ID: 0081_lead_last_contact_at
-Revises: 0080_lead_activities
+Revises: 0080
 Create Date: 2026-03-20
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "0081_lead_last_contact_at"
-down_revision = "0080_lead_activities"
+down_revision = "0080"
 branch_labels = None
 depends_on = None
 

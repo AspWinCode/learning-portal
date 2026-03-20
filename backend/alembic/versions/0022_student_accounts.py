@@ -41,7 +41,9 @@ def upgrade() -> None:
             sa.Column("amount", sa.Float(), nullable=False),
             sa.Column("kind", sa.String(), nullable=False, server_default="payment"),
             sa.Column("note", sa.String(), nullable=True),
-            sa.Column("lesson_attendance_id", sa.Integer(), sa.ForeignKey("lesson_attendance.id"), nullable=True),
+            # lesson_attendance появится в более поздней миграции (0025),
+            # поэтому здесь не вешаем внешний ключ, только целочисленный id.
+            sa.Column("lesson_attendance_id", sa.Integer(), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         )
         op.create_index("ix_student_account_transactions_account_id", "student_account_transactions", ["account_id"])

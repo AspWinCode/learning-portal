@@ -181,7 +181,9 @@ async def catch_all_exceptions_middleware(request: Request, call_next):
     except HTTPException:
         raise
     except Exception as exc:
+        # ВРЕМЕННО: всегда логируем полный traceback, чтобы увидеть причину 502/500
         tb = traceback.format_exc()
+        print(tb)
         detail = f"{type(exc).__name__}: {str(exc)}"
         err_str = str(exc).lower()
         if "does not exist" in err_str and ("column" in err_str or "relation" in err_str):
@@ -190,10 +192,11 @@ async def catch_all_exceptions_middleware(request: Request, call_next):
                 content={
                     "detail": "Database schema is outdated. Run: cd backend && alembic upgrade head",
                     "error": detail[:500],
+                    "trace": tb.replace("\n", " ")[:800],
                 },
             )
-        if os.getenv("APP_ENV", "").lower() != "production":
-            detail += " | " + tb.replace("\n", " ")[:500]
+        # ВРЕМЕННО: даже в production добавляем traceback в ответ, чтобы отладить 502
+        detail += " | " + tb.replace("\n", " ")[:800]
         return JSONResponse(status_code=500, content={"detail": detail})
 
 # Подключение роутеров
@@ -230,6 +233,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, HTTPException):
         raise exc
     tb = traceback.format_exc()
+    # ВРЕМЕННО: логируем traceback всегда
+    print(tb)
     detail = f"{type(exc).__name__}: {str(exc)}"
     err_str = str(exc).lower()
     if ("does not exist" in err_str and ("column" in err_str or "relation" in err_str)):
@@ -238,10 +243,11 @@ async def global_exception_handler(request: Request, exc: Exception):
             content={
                 "detail": "Database schema is outdated. Run migrations: cd backend && alembic upgrade head",
                 "error": detail[:500],
+                "trace": tb.replace("\n", " ")[:800],
             },
         )
-    if os.getenv("APP_ENV", "").lower() != "production":
-        detail += " | " + tb.replace("\n", " ")[:800]
+    # ВРЕМЕННО: добавляем traceback в detail даже в production
+    detail += " | " + tb.replace("\n", " ")[:800]
     return JSONResponse(status_code=500, content={"detail": detail})
 
 

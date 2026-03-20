@@ -112,7 +112,7 @@ async def set_b2b_districts(
 @router.get("/refused-reasons", response_model=RefusedReasonsResponse)
 async def get_refused_reasons(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.get_current_active_user),
 ):
     setting = db.query(AppSetting).filter(AppSetting.key == REFUSED_REASONS_KEY).first()
     if not setting or not (setting.value or "").strip():

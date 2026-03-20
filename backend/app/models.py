@@ -399,25 +399,17 @@ class SmsMessage(Base):
     message = Column(Text, nullable=False)
     entity_type = Column(String(32), nullable=True, index=True)  # lead | event | task
     entity_id = Column(Integer, nullable=True, index=True)
-<<<<<<< Updated upstream
     status = Column(String(16), nullable=False, default="pending", index=True)  # pending | scheduled | sent | failed | cancelled
-=======
-    # Статус отправки: pending (в очереди прямо сейчас), scheduled (отложено), sent, failed.
-    status = Column(String(16), nullable=False, default="pending", index=True)
->>>>>>> Stashed changes
     gateway_id = Column(String(128), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)  # отложенная отправка
     sent_at = Column(DateTime(timezone=True), nullable=True)
-    # Время запланированной отправки (UTC). Если NULL — отправляем сразу.
-    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     creator = relationship("User")
 
 
 class MaxMessage(Base):
-<<<<<<< Updated upstream
     """История сообщений в мессенджер MAX (бот и личный аккаунт)."""
     __tablename__ = "max_messages"
 
@@ -429,34 +421,13 @@ class MaxMessage(Base):
     message = Column(Text, nullable=False)
     status = Column(String(16), nullable=False, default="pending", index=True)  # pending | scheduled | sent | failed | cancelled
     provider = Column(String(32), nullable=True)         # bot | greenapi | api_messenger
-    gateway_message_id = Column(String(128), nullable=True)
+    gateway_message_id = Column(String(128), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)  # отложенная отправка
     sent_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
-=======
-    """История отправленных сообщений в MAX (бот или личный аккаунт)."""
-    __tablename__ = "max_messages"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    # Привязка к лиду (если есть): позволяет восстанавливать контекст и строить отчёты.
-    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
-    # Идентификатор пользователя в MAX (Bot API) — если используется бот.
-    max_user_id = Column(Integer, nullable=True, index=True)
-    # Номер телефона (для GREEN-API личного аккаунта).
-    phone = Column(String(32), nullable=True, index=True)
-    message = Column(Text, nullable=False)
-    # Статус отправки: pending | scheduled | sent | failed.
-    status = Column(String(16), nullable=False, default="pending", index=True)
-    gateway_message_id = Column(String(128), nullable=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    sent_at = Column(DateTime(timezone=True), nullable=True)
-    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-
     lead = relationship("Lead")
->>>>>>> Stashed changes
     creator = relationship("User", foreign_keys=[created_by])
 
 

@@ -372,6 +372,8 @@ export interface Lead {
   questionnaire_data?: Record<string, unknown> | null;
   /** MAX мессенджер: user_id пользователя в платформе MAX */
   max_user_id?: number | null;
+  /** Кол-во открытых задач (заполняется в list_leads) */
+  open_tasks_count?: number | null;
 }
 
 export type LeadTaskStatus = 'open' | 'done';

@@ -3747,6 +3747,19 @@ async def list_leads(
                 }
                 leads = [refreshed.get(l.id, l) for l in leads]
 
+    # Прикрепляем кол-во открытых задач (один запрос на весь список)
+    if leads:
+        lead_ids = [l.id for l in leads]
+        task_counts = {
+            row.lead_id: row.cnt
+            for row in db.query(LeadTask.lead_id, func.count(LeadTask.id).label("cnt"))
+            .filter(LeadTask.lead_id.in_(lead_ids), LeadTask.status == LeadTaskStatus.OPEN)
+            .group_by(LeadTask.lead_id)
+            .all()
+        }
+        for lead in leads:
+            lead.open_tasks_count = task_counts.get(lead.id, 0)
+
     return LeadsPaginatedResponse(items=[_fix_lead_strings(l) for l in leads], total=total)
 
 

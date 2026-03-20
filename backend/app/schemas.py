@@ -852,6 +852,7 @@ class LeadResponse(BaseModel):
     converted_to_student_id: Optional[int] = None
     questionnaire_data: Optional[Dict[str, Any]] = None  # данные из формы анкеты (свои поля для лидов из формы)
     max_user_id: Optional[int] = None  # MAX мессенджер: user_id в платформе MAX
+    open_tasks_count: Optional[int] = None  # кол-во открытых задач (вычисляется на уровне endpoint'а)
 
     class Config:
         from_attributes = True
@@ -895,6 +896,7 @@ class LeadListResponse(BaseModel):
     post_visit_project_date: Optional[datetime] = None
     converted_to_student_id: Optional[int] = None
     max_user_id: Optional[int] = None
+    open_tasks_count: Optional[int] = None
 
     class Config:
         from_attributes = True

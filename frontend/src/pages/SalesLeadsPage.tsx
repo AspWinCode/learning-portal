@@ -276,6 +276,9 @@ const KanbanLeadCard = React.memo(({
           <Chip size="small" label={statusLabels[lead.status]} color={badgeColor(lead.status)} />
           {isOverdue && <Chip size="small" label="Просрочено" color="error" variant="outlined" />}
           {!isOverdue && isToday && <Chip size="small" label="Сегодня" color="warning" variant="outlined" />}
+          {!!lead.open_tasks_count && lead.open_tasks_count > 0 && (
+            <Chip size="small" label={`${lead.open_tasks_count} зад.`} color="info" variant="outlined" />
+          )}
         </Stack>
 
         {/* Следующий шаг */}

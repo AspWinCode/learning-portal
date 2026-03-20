@@ -341,11 +341,61 @@ const QuickActions: React.FC<QuickActionsProps> = ({
 
 // ─── NextActionBlock ─────────────────────────────────────────────────────────
 
-const NextActionBlock: React.FC<{ nextAction: LeadNextAction | null }> = ({ nextAction }) => {
+interface NextActionBlockProps {
+  nextAction: LeadNextAction | null;
+  leadId: number;
+  onChanged: () => void;
+}
+
+const NextActionBlock: React.FC<NextActionBlockProps> = ({ nextAction, leadId, onChanged }) => {
+  const [editOpen, setEditOpen] = useState(false);
+  const [dateVal, setDateVal] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const openEdit = () => {
+    setDateVal(nextAction?.due_at ? nextAction.due_at.slice(0, 16) : '');
+    setEditOpen(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await salesApi.updateLead(leadId, { next_contact_at: dateVal || undefined });
+      setEditOpen(false);
+      onChanged();
+    } catch { /* ignore */ }
+    setSaving(false);
+  };
+
+  if (editOpen) {
+    return (
+      <Box sx={{ p: 1.5, borderRadius: 1, border: '1px dashed', borderColor: 'primary.main' }}>
+        <Stack spacing={1}>
+          <TextField
+            size="small"
+            label="Дата следующего контакта"
+            type="datetime-local"
+            value={dateVal}
+            onChange={(e) => setDateVal(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            fullWidth
+          />
+          <Stack direction="row" spacing={1}>
+            <Button size="small" variant="contained" onClick={handleSave} disabled={saving || !dateVal}>Сохранить</Button>
+            <Button size="small" onClick={() => setEditOpen(false)} disabled={saving}>Отмена</Button>
+          </Stack>
+        </Stack>
+      </Box>
+    );
+  }
+
   if (!nextAction) {
     return (
       <Box sx={{ p: 2, borderRadius: 1, border: '1px dashed', borderColor: 'divider', bgcolor: 'action.hover' }}>
-        <Typography variant="body2" color="text.secondary">Следующий шаг не назначен</Typography>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Typography variant="body2" color="text.secondary">Следующий шаг не назначен</Typography>
+          <Button size="small" startIcon={<ScheduleIcon />} onClick={openEdit}>Назначить</Button>
+        </Stack>
       </Box>
     );
   }
@@ -364,7 +414,7 @@ const NextActionBlock: React.FC<{ nextAction: LeadNextAction | null }> = ({ next
           fontSize: 20,
           color: nextAction.is_overdue ? 'error.main' : nextAction.is_today ? 'warning.dark' : 'text.secondary',
         }} />
-        <Box>
+        <Box sx={{ flex: 1 }}>
           <Typography variant="body1" sx={{ fontWeight: 600 }}>
             {nextAction.title}
           </Typography>
@@ -381,11 +431,16 @@ const NextActionBlock: React.FC<{ nextAction: LeadNextAction | null }> = ({ next
           )}
         </Box>
         {nextAction.is_overdue && (
-          <Chip size="small" icon={<WarningIcon />} label="Просрочено" color="error" sx={{ ml: 'auto' }} />
+          <Chip size="small" icon={<WarningIcon />} label="Просрочено" color="error" />
         )}
         {!nextAction.is_overdue && nextAction.is_today && (
-          <Chip size="small" label="Сегодня" color="warning" sx={{ ml: 'auto' }} />
+          <Chip size="small" label="Сегодня" color="warning" />
         )}
+        <Tooltip title="Изменить дату">
+          <IconButton size="small" onClick={openEdit}>
+            <EditIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Stack>
     </Box>
   );
@@ -796,12 +851,81 @@ const DetailsTab: React.FC<DetailsTabProps> = ({ lead, leadId, onLeadChanged }) 
 
 // ─── Invoices Tab ────────────────────────────────────────────────────────────
 
-const InvoicesTab: React.FC<{ invoices: Invoice[] }> = ({ invoices }) => {
-  if (invoices.length === 0) {
-    return <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>Счетов нет</Typography>;
-  }
+interface InvoicesTabProps {
+  leadId: number;
+  invoices: Invoice[];
+  abonements: Abonement[];
+  onInvoiceCreated: () => void;
+}
+
+const InvoicesTab: React.FC<InvoicesTabProps> = ({ leadId, invoices, abonements, onInvoiceCreated }) => {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [abonementId, setAbonementId] = useState<number | ''>('');
+  const [emailTo, setEmailTo] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleCreate = async () => {
+    if (!abonementId) return;
+    setSubmitting(true);
+    try {
+      await salesApi.createInvoice(leadId, {
+        abonement_id: Number(abonementId),
+        email_to: emailTo.trim() || undefined,
+      });
+      setCreateOpen(false);
+      setAbonementId('');
+      setEmailTo('');
+      onInvoiceCreated();
+    } catch { /* ignore */ }
+    setSubmitting(false);
+  };
+
   return (
     <Stack spacing={1} sx={{ py: 1 }}>
+      <Button
+        size="small"
+        variant={createOpen ? 'outlined' : 'contained'}
+        startIcon={<ReceiptIcon />}
+        onClick={() => setCreateOpen((v) => !v)}
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        {createOpen ? 'Отмена' : 'Создать счёт'}
+      </Button>
+
+      {createOpen && (
+        <Stack spacing={1} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+          <FormControl size="small" required>
+            <InputLabel>Абонемент</InputLabel>
+            <Select
+              value={abonementId}
+              label="Абонемент"
+              onChange={(e) => setAbonementId(e.target.value as number | '')}
+            >
+              <MenuItem value=""><em>—</em></MenuItem>
+              {abonements.map((a) => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            label="Email (опционально)"
+            value={emailTo}
+            onChange={(e) => setEmailTo(e.target.value)}
+          />
+          <Button
+            size="small"
+            variant="contained"
+            onClick={handleCreate}
+            disabled={submitting || !abonementId}
+          >
+            Выставить счёт
+          </Button>
+        </Stack>
+      )}
+
+      {invoices.length === 0 && !createOpen && (
+        <Typography variant="body2" color="text.secondary">Счетов нет</Typography>
+      )}
+
       {invoices.map((inv) => (
         <Stack key={inv.id} direction="row" spacing={1} alignItems="center">
           <Chip
@@ -903,6 +1027,14 @@ const LeadCardPage: React.FC = () => {
     try {
       const data = await salesApi.listTasks(leadId);
       setTasks(data);
+    } catch { /* ignore */ }
+  }, [leadId, loadCard]);
+
+  const handleInvoiceCreated = useCallback(async () => {
+    await loadCard();
+    try {
+      const data = await salesApi.listInvoices(leadId);
+      setInvoices(data);
     } catch { /* ignore */ }
   }, [leadId, loadCard]);
 
@@ -1064,7 +1196,7 @@ const LeadCardPage: React.FC = () => {
         <Card variant="outlined" sx={{ mb: 2 }}>
           <CardContent sx={{ pb: '16px !important' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>Следующий шаг</Typography>
-            <NextActionBlock nextAction={card.next_action ?? null} />
+            <NextActionBlock nextAction={card.next_action ?? null} leadId={leadId} onChanged={loadCard} />
           </CardContent>
         </Card>
 
@@ -1107,7 +1239,7 @@ const LeadCardPage: React.FC = () => {
                 </Tabs>
 
                 {tabIndex === 0 && <TasksTab leadId={leadId} tasks={tasks} onTaskChanged={handleTaskChanged} />}
-                {tabIndex === 1 && <InvoicesTab invoices={invoices} />}
+                {tabIndex === 1 && <InvoicesTab leadId={leadId} invoices={invoices} abonements={abonements} onInvoiceCreated={handleInvoiceCreated} />}
                 {tabIndex === 2 && <DetailsTab lead={lead} leadId={leadId} onLeadChanged={loadCard} />}
               </CardContent>
             </Card>

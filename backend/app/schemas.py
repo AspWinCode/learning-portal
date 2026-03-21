@@ -2491,6 +2491,9 @@ class OwnerWorkspaceProjectResponse(BaseModel):
     parent_project_id: Optional[int] = None
     participants: List[int] = []
     active_tasks_count: int = 0
+    total_tasks_count: int = 0
+    completed_tasks_count: int = 0
+    overdue_tasks_count: int = 0
     contacts_count: int = 0
     subprojects_count: int = 0
     created_at: Optional[datetime] = None
@@ -2589,6 +2592,15 @@ class OwnerWorkspaceTaskCompleteRequest(BaseModel):
     next_task: Optional[OwnerWorkspaceTaskCreate] = None
 
 
+class OwnerWorkspaceTaskBulkUpdate(BaseModel):
+    """Массовое обновление задач (owner workspace). Пустые поля не меняют значение."""
+
+    task_ids: List[int] = Field(..., min_length=1, max_length=500)
+    status: Optional[Literal["new", "in_progress", "waiting", "completed", "cancelled"]] = None
+    assignee_id: Optional[int] = None  # null в JSON — снять исполнителя
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = None
+
+
 class OwnerWorkspaceTaskCommentCreate(BaseModel):
     text: str
 
@@ -2631,6 +2643,13 @@ class OwnerWorkspaceTaskResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class OwnerWorkspaceTaskCompleteResponse(BaseModel):
+    """Ответ POST /tasks/{id}/complete: завершённая задача и опционально созданная следующая."""
+
+    completed_task: OwnerWorkspaceTaskResponse
+    next_task: Optional[OwnerWorkspaceTaskResponse] = None
 
 
 class OwnerWorkspaceMessageBase(BaseModel):
@@ -2698,6 +2717,70 @@ class OwnerWorkspaceAuditLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class OwnerWorkspaceSearchProjectHit(BaseModel):
+    id: int
+    name: str
+    status: str
+
+
+class OwnerWorkspaceSearchContactHit(BaseModel):
+    id: int
+    full_name: str
+    phone: str
+
+
+class OwnerWorkspaceSearchTaskHit(BaseModel):
+    id: int
+    title: str
+    status: str
+    deadline_at: Optional[datetime] = None
+    project_id: Optional[int] = None
+    contact_id: Optional[int] = None
+
+
+class OwnerWorkspaceSearchMessageHit(BaseModel):
+    id: int
+    contact_id: int
+    contact_name: Optional[str] = None
+    direction: str
+    text_preview: str
+    created_at: Optional[datetime] = None
+
+
+class OwnerWorkspaceSearchResponse(BaseModel):
+    projects: List[OwnerWorkspaceSearchProjectHit]
+    contacts: List[OwnerWorkspaceSearchContactHit]
+    tasks: List[OwnerWorkspaceSearchTaskHit]
+    messages: List[OwnerWorkspaceSearchMessageHit] = Field(default_factory=list)
+
+
+class OwnerWorkspaceDigestResponse(BaseModel):
+    overdue_count: int
+    overdue_tasks: List[OwnerWorkspaceTaskResponse]
+    due_soon_tasks: List[OwnerWorkspaceTaskResponse]
+
+
+class OwnerWorkspaceNotificationResponse(BaseModel):
+    id: int
+    user_id: int
+    kind: str
+    title: str
+    body: Optional[str] = None
+    task_id: Optional[int] = None
+    read_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceNotificationsEnvelope(BaseModel):
+    """Список уведомлений + счётчик непрочитанных (после синхронизации по дедлайнам)."""
+
+    items: List[OwnerWorkspaceNotificationResponse]
+    unread_count: int
 
 
 # Owner funnels (support letters, thank you letters, events)

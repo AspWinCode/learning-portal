@@ -1,16 +1,20 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_
+from sqlalchemy import String, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
+from app.services.owner_workspace_max_sync import sync_max_messages_into_owner_workspace as run_owner_workspace_max_sync
+from app.services.owner_workspace_notifications import refresh_deadline_notifications_for_user
+from app.services.owner_workspace_task_order import normalize_task_sort_params
 from app.models import (
     OwnerWorkspaceAuditLog,
     OwnerWorkspaceContact,
     OwnerWorkspaceMessage,
+    OwnerWorkspaceNotification,
     OwnerWorkspaceProject,
     OwnerWorkspaceProjectContact,
     OwnerWorkspaceProjectParticipant,
@@ -22,6 +26,7 @@ from app.models import (
 from app.schemas import (
     OwnerWorkspaceAuditLogResponse,
     OwnerWorkspaceContactCreate,
+    OwnerWorkspaceDigestResponse,
     OwnerWorkspaceContactResponse,
     OwnerWorkspaceContactUpdate,
     OwnerWorkspaceConversationItem,
@@ -29,14 +34,23 @@ from app.schemas import (
     OwnerWorkspaceMessageCreateTaskRequest,
     OwnerWorkspaceMessageLinkTaskRequest,
     OwnerWorkspaceMessageResponse,
+    OwnerWorkspaceNotificationsEnvelope,
+    OwnerWorkspaceNotificationResponse,
     OwnerWorkspaceProjectContactAdd,
     OwnerWorkspaceProjectCreate,
     OwnerWorkspaceProjectParticipantAdd,
     OwnerWorkspaceProjectResponse,
     OwnerWorkspaceProjectUpdate,
+    OwnerWorkspaceSearchContactHit,
+    OwnerWorkspaceSearchMessageHit,
+    OwnerWorkspaceSearchProjectHit,
+    OwnerWorkspaceSearchResponse,
+    OwnerWorkspaceSearchTaskHit,
     OwnerWorkspaceTaskCommentCreate,
     OwnerWorkspaceTaskCommentResponse,
+    OwnerWorkspaceTaskBulkUpdate,
     OwnerWorkspaceTaskCompleteRequest,
+    OwnerWorkspaceTaskCompleteResponse,
     OwnerWorkspaceTaskCreate,
     OwnerWorkspaceTaskMessageLink,
     OwnerWorkspaceTaskResponse,
@@ -44,6 +58,14 @@ from app.schemas import (
 )
 
 router = APIRouter()
+
+
+def _digest_filters(q, assignee_id: Optional[int], project_id: Optional[int]):
+    if assignee_id is not None:
+        q = q.filter(OwnerWorkspaceTask.assignee_id == assignee_id)
+    if project_id is not None:
+        q = q.filter(OwnerWorkspaceTask.project_id == project_id)
+    return q
 
 
 def _log_audit(
@@ -76,6 +98,18 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
         OwnerWorkspaceTask.project_id == project.id,
         OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
     ).count()
+    total_tasks_count = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.project_id == project.id).count()
+    completed_tasks_count = db.query(OwnerWorkspaceTask).filter(
+        OwnerWorkspaceTask.project_id == project.id,
+        OwnerWorkspaceTask.status == "completed",
+    ).count()
+    now = datetime.now(timezone.utc)
+    overdue_tasks_count = db.query(OwnerWorkspaceTask).filter(
+        OwnerWorkspaceTask.project_id == project.id,
+        OwnerWorkspaceTask.deadline_at.isnot(None),
+        OwnerWorkspaceTask.deadline_at < now,
+        OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
+    ).count()
     contacts_count = db.query(OwnerWorkspaceProjectContact).filter(
         OwnerWorkspaceProjectContact.project_id == project.id
     ).count()
@@ -91,6 +125,9 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
         parent_project_id=project.parent_project_id,
         participants=[p.user_id for p in participants],
         active_tasks_count=active_tasks_count,
+        total_tasks_count=total_tasks_count,
+        completed_tasks_count=completed_tasks_count,
+        overdue_tasks_count=overdue_tasks_count,
         contacts_count=contacts_count,
         subprojects_count=subprojects_count,
         created_at=project.created_at,
@@ -171,6 +208,8 @@ async def list_projects(
     status_filter: Optional[str] = Query(None),
     parent_project_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    owner_id: Optional[int] = Query(None),
+    has_overdue_tasks: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner"])),
 ):
@@ -179,6 +218,18 @@ async def list_projects(
         q = q.filter(OwnerWorkspaceProject.status == status_filter)
     if parent_project_id is not None:
         q = q.filter(OwnerWorkspaceProject.parent_project_id == parent_project_id)
+    if owner_id is not None:
+        q = q.filter(OwnerWorkspaceProject.owner_id == owner_id)
+    if has_overdue_tasks:
+        now = datetime.now(timezone.utc)
+        active_statuses = ("new", "in_progress", "waiting")
+        overdue_exists = exists().where(
+            OwnerWorkspaceTask.project_id == OwnerWorkspaceProject.id,
+            OwnerWorkspaceTask.deadline_at.isnot(None),
+            OwnerWorkspaceTask.deadline_at < now,
+            OwnerWorkspaceTask.status.in_(active_statuses),
+        )
+        q = q.filter(overdue_exists)
     if search:
         like = f"%{search.strip()}%"
         q = q.filter(or_(OwnerWorkspaceProject.name.ilike(like), OwnerWorkspaceProject.description.ilike(like)))
@@ -362,6 +413,7 @@ async def remove_contact_from_project(
 async def list_contacts(
     search: Optional[str] = Query(None),
     project_id: Optional[int] = Query(None),
+    active_tasks_only: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner"])),
 ):
@@ -375,6 +427,13 @@ async def list_contacts(
                 OwnerWorkspaceContact.company.ilike(like),
             )
         )
+    if active_tasks_only:
+        active_statuses = ("new", "in_progress", "waiting")
+        at_exists = exists().where(
+            OwnerWorkspaceTask.contact_id == OwnerWorkspaceContact.id,
+            OwnerWorkspaceTask.status.in_(active_statuses),
+        )
+        q = q.filter(at_exists)
     rows = q.order_by(OwnerWorkspaceContact.created_at.desc()).all()
     if project_id is not None:
         linked_ids = {
@@ -496,6 +555,8 @@ async def list_tasks(
     overdue_only: bool = Query(False),
     active_only: bool = Query(False),
     search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None, description="created_at|updated_at|deadline_at|title|priority"),
+    sort_dir: Optional[str] = Query(None, description="asc|desc"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["admin", "owner"])),
 ):
@@ -522,7 +583,31 @@ async def list_tasks(
     if search:
         like = f"%{search.strip()}%"
         q = q.filter(or_(OwnerWorkspaceTask.title.ilike(like), OwnerWorkspaceTask.description.ilike(like)))
-    rows = q.order_by(OwnerWorkspaceTask.created_at.desc()).all()
+
+    sb, descending = normalize_task_sort_params(sort_by, sort_dir)
+    prio_expr = case(
+        (OwnerWorkspaceTask.priority == "low", 1),
+        (OwnerWorkspaceTask.priority == "medium", 2),
+        (OwnerWorkspaceTask.priority == "high", 3),
+        (OwnerWorkspaceTask.priority == "critical", 4),
+        else_=99,
+    )
+    if sb == "created_at":
+        sort_col = OwnerWorkspaceTask.created_at
+    elif sb == "updated_at":
+        sort_col = OwnerWorkspaceTask.updated_at
+    elif sb == "deadline_at":
+        sort_col = OwnerWorkspaceTask.deadline_at
+    elif sb == "title":
+        sort_col = OwnerWorkspaceTask.title
+    else:
+        sort_col = prio_expr
+
+    if sb == "deadline_at":
+        order_expr = nullslast(desc(sort_col) if descending else asc(sort_col))
+    else:
+        order_expr = desc(sort_col) if descending else asc(sort_col)
+    rows = q.order_by(order_expr).all()
     return [_task_to_response(db, row) for row in rows]
 
 
@@ -628,7 +713,48 @@ async def update_task(
     return _task_to_response(db, row)
 
 
-@router.post("/tasks/{task_id}/complete", response_model=OwnerWorkspaceTaskResponse)
+@router.post("/tasks/bulk-update")
+async def bulk_update_tasks(
+    payload: OwnerWorkspaceTaskBulkUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    data = payload.model_dump(exclude_unset=True)
+    task_ids = data.pop("task_ids", [])
+    if not data:
+        raise HTTPException(status_code=400, detail="Укажите status, assignee_id и/или priority")
+    updated = 0
+    for tid in task_ids:
+        row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == tid).first()
+        if not row:
+            continue
+        if row.status in ("completed", "cancelled") and current_user.role.value not in ("admin", "owner"):
+            editable_fields = {"status"}
+            if any(k not in editable_fields for k in data.keys()):
+                continue
+        old = {"status": row.status, "assignee_id": row.assignee_id, "priority": row.priority}
+        for k, v in data.items():
+            setattr(row, k, v)
+        if "status" in data:
+            if row.status == "completed" and row.completed_at is None:
+                row.completed_at = datetime.now(timezone.utc)
+            elif row.status != "completed":
+                row.completed_at = None
+        _log_audit(
+            db,
+            entity_type="task",
+            entity_id=row.id,
+            action_type="bulk_update",
+            author_id=current_user.id,
+            old_value=old,
+            new_value=data,
+        )
+        updated += 1
+    db.commit()
+    return {"updated": updated}
+
+
+@router.post("/tasks/{task_id}/complete", response_model=OwnerWorkspaceTaskCompleteResponse)
 async def complete_task(
     task_id: int,
     payload: OwnerWorkspaceTaskCompleteRequest,
@@ -648,6 +774,7 @@ async def complete_task(
         author_id=current_user.id,
     )
 
+    new_task_row: Optional[OwnerWorkspaceTask] = None
     if payload.action == "close_and_create_next":
         next_data = payload.next_task
         if next_data is None:
@@ -667,7 +794,7 @@ async def complete_task(
                 linked_message_ids=[m.message_id for m in db.query(OwnerWorkspaceTaskMessage).filter(OwnerWorkspaceTaskMessage.task_id == row.id).all()],
                 previous_task_id=row.id,
             )
-        new_task = OwnerWorkspaceTask(
+        new_task_row = OwnerWorkspaceTask(
             title=next_data.title.strip(),
             description=(next_data.description or "").strip() or None,
             status=next_data.status or "new",
@@ -683,16 +810,16 @@ async def complete_task(
             attachments=next_data.attachments,
             previous_task_id=row.id,
         )
-        db.add(new_task)
+        db.add(new_task_row)
         db.flush()
         for message_id in next_data.linked_message_ids or []:
             exists = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
             if exists:
-                db.add(OwnerWorkspaceTaskMessage(task_id=new_task.id, message_id=message_id))
+                db.add(OwnerWorkspaceTaskMessage(task_id=new_task_row.id, message_id=message_id))
         _log_audit(
             db,
             entity_type="task",
-            entity_id=new_task.id,
+            entity_id=new_task_row.id,
             action_type="create_from_previous",
             author_id=current_user.id,
             new_value={"previous_task_id": row.id},
@@ -700,10 +827,17 @@ async def complete_task(
 
     db.commit()
     db.refresh(row)
-    return _task_to_response(db, row)
+    next_resp: Optional[OwnerWorkspaceTaskResponse] = None
+    if new_task_row is not None:
+        db.refresh(new_task_row)
+        next_resp = _task_to_response(db, new_task_row)
+    return OwnerWorkspaceTaskCompleteResponse(
+        completed_task=_task_to_response(db, row),
+        next_task=next_resp,
+    )
 
 
-@router.post("/tasks/{task_id}/complete-and-create-next", response_model=OwnerWorkspaceTaskResponse)
+@router.post("/tasks/{task_id}/complete-and-create-next", response_model=OwnerWorkspaceTaskCompleteResponse)
 async def complete_and_create_next(
     task_id: int,
     payload: OwnerWorkspaceTaskCreate,
@@ -847,6 +981,20 @@ async def contact_conversation(
     return await get_contact_messages(contact_id=contact_id, db=db, current_user=current_user)
 
 
+@router.post("/messages/sync-from-max")
+async def sync_max_messages_into_owner_workspace(
+    limit: int = Query(500, ge=1, le=5000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    """
+    Импорт исходящих сообщений MAX (таблица max_messages) в переписку owner workspace.
+    Сопоставление по нормализованному телефону контакта. Дубликаты пропускаются (external_message_id = max:<uuid>).
+    """
+    imported, skipped = run_owner_workspace_max_sync(db, limit=limit)
+    return {"imported": imported, "skipped": skipped}
+
+
 @router.post("/messages", response_model=OwnerWorkspaceMessageResponse, status_code=status.HTTP_201_CREATED)
 async def create_message(
     payload: OwnerWorkspaceMessageCreate,
@@ -930,6 +1078,211 @@ async def link_message_with_task(
         db.add(OwnerWorkspaceTaskMessage(task_id=payload.task_id, message_id=message_id))
         db.commit()
     return None
+
+
+@router.get("/notifications", response_model=OwnerWorkspaceNotificationsEnvelope)
+async def list_owner_workspace_notifications(
+    unread_only: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    due_soon_hours: int = Query(24, ge=1, le=336, description="Окно «скоро дедлайн» при синхронизации уведомлений"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    """
+    In-app уведомления по дедлайнам для текущего пользователя (как исполнителя).
+    Перед выдачей списка синхронизирует записи по просроченным и скорым задачам.
+    """
+    refresh_deadline_notifications_for_user(db, current_user.id, due_soon_hours=due_soon_hours)
+    q = db.query(OwnerWorkspaceNotification).filter(OwnerWorkspaceNotification.user_id == current_user.id)
+    if unread_only:
+        q = q.filter(OwnerWorkspaceNotification.read_at.is_(None))
+    rows = q.order_by(OwnerWorkspaceNotification.created_at.desc()).limit(limit).all()
+    unread = (
+        db.query(func.count(OwnerWorkspaceNotification.id))
+        .filter(
+            OwnerWorkspaceNotification.user_id == current_user.id,
+            OwnerWorkspaceNotification.read_at.is_(None),
+        )
+        .scalar()
+        or 0
+    )
+    return OwnerWorkspaceNotificationsEnvelope(
+        items=[OwnerWorkspaceNotificationResponse.model_validate(x) for x in rows],
+        unread_count=int(unread),
+    )
+
+
+@router.patch("/notifications/{notification_id}/read", response_model=OwnerWorkspaceNotificationResponse)
+async def mark_owner_workspace_notification_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    n = (
+        db.query(OwnerWorkspaceNotification)
+        .filter(
+            OwnerWorkspaceNotification.id == notification_id,
+            OwnerWorkspaceNotification.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not n:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    n.read_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(n)
+    return OwnerWorkspaceNotificationResponse.model_validate(n)
+
+
+@router.get("/digest", response_model=OwnerWorkspaceDigestResponse)
+async def owner_workspace_digest(
+    due_within_hours: int = Query(48, ge=1, le=336),
+    assignee_id: Optional[int] = Query(None, description="Только задачи этого исполнителя"),
+    project_id: Optional[int] = Query(None, description="Только задачи этого проекта"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    """Сводка для уведомлений: просроченные и задачи с дедлайном в ближайшие N часов."""
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(hours=due_within_hours)
+    active = ["new", "in_progress", "waiting"]
+    overdue_q = (
+        db.query(OwnerWorkspaceTask)
+        .filter(
+            OwnerWorkspaceTask.deadline_at.isnot(None),
+            OwnerWorkspaceTask.deadline_at < now,
+            OwnerWorkspaceTask.status.in_(active),
+        )
+    )
+    overdue_q = _digest_filters(overdue_q, assignee_id, project_id)
+    overdue_tasks = overdue_q.order_by(OwnerWorkspaceTask.deadline_at.asc()).limit(25).all()
+    overdue_count_q = (
+        db.query(func.count(OwnerWorkspaceTask.id))
+        .filter(
+            OwnerWorkspaceTask.deadline_at.isnot(None),
+            OwnerWorkspaceTask.deadline_at < now,
+            OwnerWorkspaceTask.status.in_(active),
+        )
+    )
+    overdue_count_q = _digest_filters(overdue_count_q, assignee_id, project_id)
+    overdue_count = overdue_count_q.scalar() or 0
+    due_soon_q = (
+        db.query(OwnerWorkspaceTask)
+        .filter(
+            OwnerWorkspaceTask.deadline_at.isnot(None),
+            OwnerWorkspaceTask.deadline_at >= now,
+            OwnerWorkspaceTask.deadline_at <= horizon,
+            OwnerWorkspaceTask.status.in_(active),
+        )
+    )
+    due_soon_q = _digest_filters(due_soon_q, assignee_id, project_id)
+    due_soon_tasks = due_soon_q.order_by(OwnerWorkspaceTask.deadline_at.asc()).limit(25).all()
+    return OwnerWorkspaceDigestResponse(
+        overdue_count=int(overdue_count),
+        overdue_tasks=[_task_to_response(db, t) for t in overdue_tasks],
+        due_soon_tasks=[_task_to_response(db, t) for t in due_soon_tasks],
+    )
+
+
+@router.get("/search", response_model=OwnerWorkspaceSearchResponse)
+async def owner_workspace_unified_search(
+    q: str = Query("", max_length=200),
+    limit: int = Query(15, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+):
+    """Единый поиск по проектам, контактам и задачам владельческого задачника."""
+    term = (q or "").strip()
+    if len(term) < 2:
+        return OwnerWorkspaceSearchResponse(projects=[], contacts=[], tasks=[], messages=[])
+    like = f"%{term}%"
+    prow = (
+        db.query(OwnerWorkspaceProject)
+        .filter(
+            or_(
+                OwnerWorkspaceProject.name.ilike(like),
+                OwnerWorkspaceProject.description.ilike(like),
+            )
+        )
+        .order_by(OwnerWorkspaceProject.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    projects = [OwnerWorkspaceSearchProjectHit(id=r.id, name=r.name, status=r.status) for r in prow]
+    crow = (
+        db.query(OwnerWorkspaceContact)
+        .filter(
+            or_(
+                OwnerWorkspaceContact.full_name.ilike(like),
+                OwnerWorkspaceContact.phone.ilike(like),
+                OwnerWorkspaceContact.company.ilike(like),
+                func.coalesce(OwnerWorkspaceContact.comment, "").ilike(like),
+            )
+        )
+        .order_by(OwnerWorkspaceContact.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    contacts = [
+        OwnerWorkspaceSearchContactHit(id=r.id, full_name=r.full_name, phone=r.phone or "") for r in crow
+    ]
+    trow = (
+        db.query(OwnerWorkspaceTask)
+        .filter(
+            or_(
+                OwnerWorkspaceTask.title.ilike(like),
+                OwnerWorkspaceTask.description.ilike(like),
+                cast(OwnerWorkspaceTask.tags, String).ilike(like),
+            )
+        )
+        .order_by(OwnerWorkspaceTask.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    tasks = [
+        OwnerWorkspaceSearchTaskHit(
+            id=r.id,
+            title=r.title,
+            status=r.status,
+            deadline_at=r.deadline_at,
+            project_id=r.project_id,
+            contact_id=r.contact_id,
+        )
+        for r in trow
+    ]
+    mrows = (
+        db.query(OwnerWorkspaceMessage)
+        .filter(OwnerWorkspaceMessage.text.ilike(like))
+        .order_by(OwnerWorkspaceMessage.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    messages: List[OwnerWorkspaceSearchMessageHit] = []
+    for m in mrows:
+        cname = None
+        if m.contact:
+            cname = m.contact.full_name
+        else:
+            cc = (
+                db.query(OwnerWorkspaceContact)
+                .filter(OwnerWorkspaceContact.id == m.contact_id)
+                .first()
+            )
+            if cc:
+                cname = cc.full_name
+        raw = m.text or ""
+        preview = raw if len(raw) <= 240 else raw[:237] + "..."
+        messages.append(
+            OwnerWorkspaceSearchMessageHit(
+                id=m.id,
+                contact_id=m.contact_id,
+                contact_name=cname,
+                direction=m.direction,
+                text_preview=preview,
+                created_at=m.created_at,
+            )
+        )
+    return OwnerWorkspaceSearchResponse(projects=projects, contacts=contacts, tasks=tasks, messages=messages)
 
 
 @router.get("/history", response_model=List[OwnerWorkspaceAuditLogResponse])

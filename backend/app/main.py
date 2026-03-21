@@ -131,10 +131,27 @@ def _validate_production_env() -> None:
         except Exception:
             traceback.print_exc()
 
+    def _run_owner_workspace_max_sync() -> None:
+        """Импорт max_messages → owner_workspace_messages по телефону. Включить: OWNER_WORKSPACE_AUTO_SYNC_MAX=1."""
+        try:
+            flag = (os.getenv("OWNER_WORKSPACE_AUTO_SYNC_MAX") or "0").strip().lower()
+            if flag not in ("1", "true", "yes"):
+                return
+            from app.services.owner_workspace_max_sync import sync_max_messages_into_owner_workspace
+
+            db = SessionLocal()
+            try:
+                sync_max_messages_into_owner_workspace(db, limit=400)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
     scheduler.add_job(_run_payment_overdue_tasks, "interval", days=1, id="payment_overdue_tasks")
     scheduler.add_job(_run_scheduled_messages, "interval", minutes=1, id="scheduled_messages")
+    scheduler.add_job(_run_owner_workspace_max_sync, "interval", minutes=30, id="owner_workspace_max_sync")
     # Автоповышение класса учеников 1 сентября (cron-задача раз в год).
     scheduler.add_job(
         _run_student_class_autopromo,

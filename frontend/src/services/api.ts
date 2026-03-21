@@ -54,6 +54,11 @@ import {
   OwnerWorkspaceMessage,
   OwnerWorkspaceConversation,
   OwnerWorkspaceTaskComment,
+  OwnerWorkspaceAuditLog,
+  OwnerWorkspaceDigest,
+  OwnerWorkspaceNotificationsEnvelope,
+  OwnerWorkspaceSearchResult,
+  OwnerWorkspaceTaskCompleteResult,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -2196,8 +2201,72 @@ export const ownerCalculationsApi = {
 };
 
 export const ownerWorkspaceApi = {
-  listProjects: async (params?: { status_filter?: string; parent_project_id?: number; search?: string }): Promise<OwnerWorkspaceProject[]> => {
+  listProjects: async (params?: {
+    status_filter?: string;
+    parent_project_id?: number;
+    search?: string;
+    owner_id?: number;
+    has_overdue_tasks?: boolean;
+  }): Promise<OwnerWorkspaceProject[]> => {
     const response = await api.get('/api/owner-workspace/projects', { params: params || {} });
+    return response.data;
+  },
+  getProject: async (projectId: number): Promise<OwnerWorkspaceProject> => {
+    const response = await api.get(`/api/owner-workspace/projects/${projectId}`);
+    return response.data;
+  },
+  updateProject: async (
+    projectId: number,
+    payload: {
+      name?: string;
+      description?: string | null;
+      status?: 'active' | 'completed' | 'archived';
+      owner_id?: number | null;
+      parent_project_id?: number | null;
+    }
+  ): Promise<OwnerWorkspaceProject> => {
+    const response = await api.patch(`/api/owner-workspace/projects/${projectId}`, payload);
+    return response.data;
+  },
+  archiveProject: async (projectId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/projects/${projectId}`);
+  },
+  getContact: async (contactId: number): Promise<OwnerWorkspaceContact> => {
+    const response = await api.get(`/api/owner-workspace/contacts/${contactId}`);
+    return response.data;
+  },
+  updateContact: async (
+    contactId: number,
+    payload: {
+      full_name?: string;
+      phone?: string;
+      email?: string | null;
+      company?: string | null;
+      position?: string | null;
+      tags?: string[];
+      comment?: string | null;
+      source?: string | null;
+    }
+  ): Promise<OwnerWorkspaceContact> => {
+    const response = await api.patch(`/api/owner-workspace/contacts/${contactId}`, payload);
+    return response.data;
+  },
+  getContactTasks: async (contactId: number): Promise<OwnerWorkspaceTask[]> => {
+    const response = await api.get(`/api/owner-workspace/contacts/${contactId}/tasks`);
+    return response.data;
+  },
+  getDigest: async (params?: {
+    due_within_hours?: number;
+    assignee_id?: number;
+    project_id?: number;
+  }): Promise<OwnerWorkspaceDigest> => {
+    const response = await api.get('/api/owner-workspace/digest', { params: params || {} });
+    return response.data;
+  },
+  unifiedSearch: async (q: string, limit?: number): Promise<OwnerWorkspaceSearchResult> => {
+    const response = await api.get('/api/owner-workspace/search', {
+      params: { q, ...(limit != null ? { limit } : {}) },
+    });
     return response.data;
   },
   createProject: async (payload: {
@@ -2210,7 +2279,11 @@ export const ownerWorkspaceApi = {
     const response = await api.post('/api/owner-workspace/projects', payload);
     return response.data;
   },
-  listContacts: async (params?: { search?: string; project_id?: number }): Promise<OwnerWorkspaceContact[]> => {
+  listContacts: async (params?: {
+    search?: string;
+    project_id?: number;
+    active_tasks_only?: boolean;
+  }): Promise<OwnerWorkspaceContact[]> => {
     const response = await api.get('/api/owner-workspace/contacts', { params: params || {} });
     return response.data;
   },
@@ -2237,6 +2310,8 @@ export const ownerWorkspaceApi = {
     overdue_only?: boolean;
     active_only?: boolean;
     search?: string;
+    sort_by?: 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority';
+    sort_dir?: 'asc' | 'desc';
   }): Promise<OwnerWorkspaceTask[]> => {
     const response = await api.get('/api/owner-workspace/tasks', { params: params || {} });
     return response.data;
@@ -2275,9 +2350,20 @@ export const ownerWorkspaceApi = {
         contact_id?: number | null;
       };
     }
-  ): Promise<OwnerWorkspaceTask> => {
+  ): Promise<OwnerWorkspaceTaskCompleteResult> => {
     const response = await api.post(`/api/owner-workspace/tasks/${taskId}/complete`, payload || { action: 'close' });
     return response.data;
+  },
+  listNotifications: async (params?: {
+    unread_only?: boolean;
+    limit?: number;
+    due_soon_hours?: number;
+  }): Promise<OwnerWorkspaceNotificationsEnvelope> => {
+    const response = await api.get('/api/owner-workspace/notifications', { params: params || {} });
+    return response.data;
+  },
+  markNotificationRead: async (notificationId: number): Promise<void> => {
+    await api.patch(`/api/owner-workspace/notifications/${notificationId}/read`);
   },
   listMessages: async (params?: { contact_id?: number }): Promise<OwnerWorkspaceMessage[]> => {
     const response = await api.get('/api/owner-workspace/messages', { params: params || {} });
@@ -2317,6 +2403,10 @@ export const ownerWorkspaceApi = {
       assignee_id?: number | null;
       project_id?: number | null;
       contact_id?: number | null;
+      tags?: string[];
+      checklist?: Array<Record<string, unknown>>;
+      attachments?: Array<Record<string, unknown>>;
+      linked_message_ids?: number[];
     }
   ): Promise<OwnerWorkspaceTask> => {
     const response = await api.patch(`/api/owner-workspace/tasks/${taskId}`, payload);
@@ -2333,6 +2423,9 @@ export const ownerWorkspaceApi = {
   addProjectContact: async (projectId: number, contactId: number): Promise<void> => {
     await api.post(`/api/owner-workspace/projects/${projectId}/contacts`, { contact_id: contactId });
   },
+  removeProjectContact: async (projectId: number, contactId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/projects/${projectId}/contacts/${contactId}`);
+  },
   getContactMessages: async (contactId: number): Promise<OwnerWorkspaceMessage[]> => {
     const response = await api.get(`/api/owner-workspace/contacts/${contactId}/messages`);
     return response.data;
@@ -2345,6 +2438,34 @@ export const ownerWorkspaceApi = {
     external_message_id?: string | null;
   }): Promise<OwnerWorkspaceMessage> => {
     const response = await api.post('/api/owner-workspace/messages', payload);
+    return response.data;
+  },
+  listHistory: async (params?: { entity_type?: string; entity_id?: number }): Promise<OwnerWorkspaceAuditLog[]> => {
+    const response = await api.get('/api/owner-workspace/history', { params: params || {} });
+    return response.data;
+  },
+  addProjectParticipant: async (projectId: number, userId: number): Promise<void> => {
+    await api.post(`/api/owner-workspace/projects/${projectId}/participants`, { user_id: userId });
+  },
+  removeProjectParticipant: async (projectId: number, userId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/projects/${projectId}/participants/${userId}`);
+  },
+  linkMessageToTask: async (messageId: number, taskId: number): Promise<void> => {
+    await api.post(`/api/owner-workspace/messages/${messageId}/link-task`, { task_id: taskId });
+  },
+  bulkUpdateTasks: async (payload: {
+    task_ids: number[];
+    status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+    assignee_id?: number | null;
+    priority?: 'low' | 'medium' | 'high' | 'critical';
+  }): Promise<{ updated: number }> => {
+    const response = await api.post('/api/owner-workspace/tasks/bulk-update', payload);
+    return response.data;
+  },
+  syncMessagesFromMax: async (limit?: number): Promise<{ imported: number; skipped: number }> => {
+    const response = await api.post('/api/owner-workspace/messages/sync-from-max', {}, {
+      params: limit != null ? { limit } : {},
+    });
     return response.data;
   },
 };

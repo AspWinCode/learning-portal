@@ -996,6 +996,10 @@ export interface OwnerWorkspaceProject {
   parent_project_id?: number | null;
   participants: number[];
   active_tasks_count: number;
+  /** всего задач с project_id = этот проект */
+  total_tasks_count?: number;
+  completed_tasks_count?: number;
+  overdue_tasks_count?: number;
   contacts_count: number;
   subprojects_count: number;
   created_at?: string | null;
@@ -1069,5 +1073,64 @@ export interface OwnerWorkspaceTaskComment {
   author_id?: number | null;
   text: string;
   created_at?: string | null;
+}
+
+export interface OwnerWorkspaceAuditLog {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  action_type: string;
+  old_value?: Record<string, unknown> | null;
+  new_value?: Record<string, unknown> | null;
+  author_id?: number | null;
+  created_at?: string | null;
+}
+
+export interface OwnerWorkspaceSearchResult {
+  projects: Array<{ id: number; name: string; status: string }>;
+  contacts: Array<{ id: number; full_name: string; phone: string }>;
+  tasks: Array<{
+    id: number;
+    title: string;
+    status: string;
+    deadline_at?: string | null;
+    project_id?: number | null;
+    contact_id?: number | null;
+  }>;
+  messages: Array<{
+    id: number;
+    contact_id: number;
+    contact_name?: string | null;
+    direction: string;
+    text_preview: string;
+    created_at?: string | null;
+  }>;
+}
+
+export interface OwnerWorkspaceDigest {
+  overdue_count: number;
+  overdue_tasks: OwnerWorkspaceTask[];
+  due_soon_tasks: OwnerWorkspaceTask[];
+}
+
+export interface OwnerWorkspaceNotification {
+  id: number;
+  user_id: number;
+  kind: string;
+  title: string;
+  body?: string | null;
+  task_id?: number | null;
+  read_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface OwnerWorkspaceNotificationsEnvelope {
+  items: OwnerWorkspaceNotification[];
+  unread_count: number;
+}
+
+export interface OwnerWorkspaceTaskCompleteResult {
+  completed_task: OwnerWorkspaceTask;
+  next_task: OwnerWorkspaceTask | null;
 }
 

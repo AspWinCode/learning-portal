@@ -1979,6 +1979,26 @@ class OwnerWorkspaceAuditLog(Base):
     author = relationship("User")
 
 
+class OwnerWorkspaceNotification(Base):
+    __tablename__ = "owner_workspace_notifications"
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedupe_key", name="uq_owner_workspace_notification_user_dedupe"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String(64), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    body = Column(Text, nullable=True)
+    task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="CASCADE"), nullable=True, index=True)
+    dedupe_key = Column(String(160), nullable=False)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    user = relationship("User")
+    task = relationship("OwnerWorkspaceTask")
+
+
 # Owner funnel constants (owner_funnels router)
 OWNER_FUNNEL_SUPPORT_LETTERS = "support_letters"   # ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╨┐╨╕╤Б╤М╨╝╨░╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╨┐╨╕╤Б╤М╨╝╨░╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕
 OWNER_FUNNEL_THANK_YOU_LETTERS = "thank_you_letters"  # ╨Я╨╕╤Б╤М╨╝╨░╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕

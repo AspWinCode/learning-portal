@@ -4,6 +4,9 @@
 Запуск: из корня backend выполнить
   python -m pytest tests/integration/ -v
 
+Unit-тесты owner workspace (сортировка, ключи уведомлений):
+  python -m pytest tests/unit/services/test_owner_workspace_task_order.py tests/unit/services/test_owner_workspace_notifications.py -v
+
 Тесты, помеченные @pytest.mark.requires_db, требуют доступную БД (DATABASE_URL).
 """
 import os

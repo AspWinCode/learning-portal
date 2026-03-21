@@ -22,6 +22,8 @@ services:
       - "127.0.0.1:8000:8000"  # для проверки с сервера: curl http://localhost:8000/api/auth/me
     environment:
       APP_ENV: production
+      # Импорт max_messages → owner workspace раз в 30 мин (телефон контакта). По умолчанию выкл.
+      # OWNER_WORKSPACE_AUTO_SYNC_MAX: "1"
       SECRET_KEY: ${SECRET_KEY:-change_me_min_32_chars_change_me_min_32_chars}
       DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
       CORS_ORIGINS: ${CORS_ORIGINS:-https://example.com}

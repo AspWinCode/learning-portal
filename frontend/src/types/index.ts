@@ -1045,6 +1045,14 @@ export interface OwnerWorkspaceTask {
   updated_at?: string | null;
 }
 
+/** Ответ GET /api/owner-workspace/tasks (пагинация). */
+export interface OwnerWorkspaceTaskListPage {
+  items: OwnerWorkspaceTask[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface OwnerWorkspaceMessage {
   id: number;
   contact_id: number;
@@ -1127,6 +1135,14 @@ export interface OwnerWorkspaceNotification {
 export interface OwnerWorkspaceNotificationsEnvelope {
   items: OwnerWorkspaceNotification[];
   unread_count: number;
+}
+
+/** Персональные настройки UI задачника (GET/PATCH /owner-workspace/me/preferences) */
+export interface OwnerWorkspaceUserPreferences {
+  default_task_view: 'list' | 'kanban' | 'calendar';
+  task_list_rows_per_page: number;
+  digest_due_within_hours: number;
+  digest_scope: 'all' | 'mine';
 }
 
 export interface OwnerWorkspaceTaskCompleteResult {

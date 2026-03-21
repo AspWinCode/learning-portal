@@ -2,7 +2,12 @@
 
 from datetime import datetime, timezone
 
-from app.services.owner_workspace_notifications import due_soon_dedupe_key, overdue_dedupe_key
+from app.services.owner_workspace_notifications import (
+    assign_dedupe_key,
+    comment_dedupe_key,
+    due_soon_dedupe_key,
+    overdue_dedupe_key,
+)
 
 
 class TestDedupeKeys:
@@ -16,3 +21,10 @@ class TestDedupeKeys:
     def test_due_soon_key_different_task_same_deadline(self):
         dt = datetime(2026, 1, 2, 0, 0, tzinfo=timezone.utc)
         assert due_soon_dedupe_key(1, dt) != due_soon_dedupe_key(2, dt)
+
+    def test_assign_key_includes_task_assignee_ts(self):
+        assert assign_dedupe_key(10, 5, 1_700_000_000_000) == "ow:assign:10:5:1700000000000"
+
+    def test_comment_key_per_recipient(self):
+        assert comment_dedupe_key(99, 3) == "ow:comment:99:u3"
+        assert comment_dedupe_key(99, 4) != comment_dedupe_key(99, 3)

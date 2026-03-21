@@ -388,7 +388,7 @@ function App() {
             <Route
               path="/tasks"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']}>
                   <TasksPage />
                 </PrivateRoute>
               }
@@ -396,7 +396,7 @@ function App() {
             <Route
               path="/projects"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']}>
                   <ProjectsPage />
                 </PrivateRoute>
               }
@@ -404,7 +404,7 @@ function App() {
             <Route
               path="/projects/:projectId"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']}>
                   <ProjectKanbanPage />
                 </PrivateRoute>
               }
@@ -412,7 +412,23 @@ function App() {
             <Route
               path="/owner-workspace"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin']}>
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/notifications"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/settings"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }

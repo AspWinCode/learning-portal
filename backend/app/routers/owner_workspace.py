@@ -7,8 +7,28 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
+from app.services.owner_workspace_access import (
+    OWNER_WORKSPACE_API_ROLES,
+    OwnerWorkspaceAccessContext,
+    audit_history_allowed,
+    assert_full_workspace,
+    build_owner_workspace_access_context,
+    can_archive_project,
+    can_manage_project_team,
+    contact_visible,
+    filter_tasks_query,
+    is_project_owner,
+    is_project_participant,
+    project_visible,
+    task_visible,
+)
 from app.services.owner_workspace_max_sync import sync_max_messages_into_owner_workspace as run_owner_workspace_max_sync
-from app.services.owner_workspace_notifications import refresh_deadline_notifications_for_user
+from app.services.owner_workspace_notifications import (
+    notify_task_assigned,
+    notify_task_comment_added,
+    refresh_deadline_notifications_for_user,
+)
+from app.services.owner_workspace_preferences import get_preferences_for_user, merge_preferences_for_user
 from app.services.owner_workspace_task_order import normalize_task_sort_params
 from app.models import (
     OwnerWorkspaceAuditLog,
@@ -36,6 +56,8 @@ from app.schemas import (
     OwnerWorkspaceMessageResponse,
     OwnerWorkspaceNotificationsEnvelope,
     OwnerWorkspaceNotificationResponse,
+    OwnerWorkspaceUserPreferencesPatch,
+    OwnerWorkspaceUserPreferencesResponse,
     OwnerWorkspaceProjectContactAdd,
     OwnerWorkspaceProjectCreate,
     OwnerWorkspaceProjectParticipantAdd,
@@ -52,12 +74,20 @@ from app.schemas import (
     OwnerWorkspaceTaskCompleteRequest,
     OwnerWorkspaceTaskCompleteResponse,
     OwnerWorkspaceTaskCreate,
+    OwnerWorkspaceTaskListResponse,
     OwnerWorkspaceTaskMessageLink,
     OwnerWorkspaceTaskResponse,
     OwnerWorkspaceTaskUpdate,
 )
 
 router = APIRouter()
+
+
+async def get_owner_workspace_access(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(OWNER_WORKSPACE_API_ROLES)),
+) -> OwnerWorkspaceAccessContext:
+    return build_owner_workspace_access_context(db, current_user)
 
 
 def _digest_filters(q, assignee_id: Optional[int], project_id: Optional[int]):
@@ -211,7 +241,7 @@ async def list_projects(
     owner_id: Optional[int] = Query(None),
     has_overdue_tasks: bool = Query(False),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     q = db.query(OwnerWorkspaceProject)
     if status_filter:
@@ -233,6 +263,10 @@ async def list_projects(
     if search:
         like = f"%{search.strip()}%"
         q = q.filter(or_(OwnerWorkspaceProject.name.ilike(like), OwnerWorkspaceProject.description.ilike(like)))
+    if not ctx.full:
+        if not ctx.project_ids:
+            return []
+        q = q.filter(OwnerWorkspaceProject.id.in_(list(ctx.project_ids)))
     rows = q.order_by(OwnerWorkspaceProject.created_at.desc()).all()
     return [_project_to_response(db, row) for row in rows]
 
@@ -241,13 +275,14 @@ async def list_projects(
 async def create_project(
     payload: OwnerWorkspaceProjectCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    assert_full_workspace(ctx)
     row = OwnerWorkspaceProject(
         name=payload.name.strip(),
         description=(payload.description or "").strip() or None,
         status=payload.status or "active",
-        owner_id=payload.owner_id or current_user.id,
+        owner_id=payload.owner_id or ctx.user.id,
         parent_project_id=payload.parent_project_id,
     )
     db.add(row)
@@ -257,7 +292,7 @@ async def create_project(
         entity_type="project",
         entity_id=row.id,
         action_type="create",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
         new_value={"name": row.name, "status": row.status},
     )
     db.commit()
@@ -269,10 +304,10 @@ async def create_project(
 async def get_project(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     row = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
-    if not row:
+    if not row or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     return _project_to_response(db, row)
 
@@ -282,13 +317,25 @@ async def update_project(
     project_id: int,
     payload: OwnerWorkspaceProjectUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     row = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
-    if not row:
+    if not row or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     old = {"name": row.name, "status": row.status, "owner_id": row.owner_id, "parent_project_id": row.parent_project_id}
     data = payload.model_dump(exclude_unset=True)
+    if not ctx.full:
+        uid = ctx.user.id
+        if row.owner_id != uid:
+            if not is_project_participant(db, uid, project_id):
+                raise HTTPException(status_code=404, detail="Project not found")
+            forbidden = {"owner_id", "parent_project_id", "status"}
+            for k in data:
+                if k in forbidden:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Участник может менять только название и описание проекта",
+                    )
     for k, v in data.items():
         setattr(row, k, v)
     if row.status == "archived" and row.archived_at is None:
@@ -298,7 +345,7 @@ async def update_project(
         entity_type="project",
         entity_id=row.id,
         action_type="update",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
         old_value=old,
         new_value=data,
     )
@@ -311,11 +358,13 @@ async def update_project(
 async def archive_project(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     row = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
-    if not row:
+    if not row or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+    if not can_archive_project(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Архивировать может только владелец проекта или администратор")
     row.status = "archived"
     row.archived_at = datetime.now(timezone.utc)
     _log_audit(
@@ -323,7 +372,7 @@ async def archive_project(
         entity_type="project",
         entity_id=row.id,
         action_type="archive",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
     )
     db.commit()
     return None
@@ -334,11 +383,13 @@ async def add_project_participant(
     project_id: int,
     payload: OwnerWorkspaceProjectParticipantAdd,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     project = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
-    if not project:
+    if not project or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+    if not can_manage_project_team(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для управления участниками")
     user = db.query(User).filter(User.id == payload.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -357,8 +408,12 @@ async def remove_project_participant(
     project_id: int,
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_manage_project_team(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для управления участниками")
     row = db.query(OwnerWorkspaceProjectParticipant).filter(
         OwnerWorkspaceProjectParticipant.project_id == project_id,
         OwnerWorkspaceProjectParticipant.user_id == user_id,
@@ -374,13 +429,20 @@ async def add_contact_to_project(
     project_id: int,
     payload: OwnerWorkspaceProjectContactAdd,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     project = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
-    if not project:
+    if not project or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+    uid = ctx.user.id
+    if not ctx.full and not (
+        is_project_owner(db, uid, project_id) or is_project_participant(db, uid, project_id)
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
     if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    if not ctx.full and not contact_visible(ctx, payload.contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
     exists = db.query(OwnerWorkspaceProjectContact).filter(
         OwnerWorkspaceProjectContact.project_id == project_id,
@@ -397,8 +459,17 @@ async def remove_contact_from_project(
     project_id: int,
     contact_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    uid = ctx.user.id
+    if not ctx.full and not (
+        is_project_owner(db, uid, project_id) or is_project_participant(db, uid, project_id)
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    if not ctx.full and not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Contact not found")
     row = db.query(OwnerWorkspaceProjectContact).filter(
         OwnerWorkspaceProjectContact.project_id == project_id,
         OwnerWorkspaceProjectContact.contact_id == contact_id,
@@ -415,9 +486,15 @@ async def list_contacts(
     project_id: Optional[int] = Query(None),
     active_tasks_only: bool = Query(False),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if project_id is not None and not ctx.full and not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
     q = db.query(OwnerWorkspaceContact)
+    if not ctx.full:
+        if not ctx.contact_ids:
+            return []
+        q = q.filter(OwnerWorkspaceContact.id.in_(list(ctx.contact_ids)))
     if search:
         like = f"%{search.strip()}%"
         q = q.filter(
@@ -450,8 +527,13 @@ async def list_contacts(
 async def create_contact(
     payload: OwnerWorkspaceContactCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if not ctx.full and not (payload.project_ids or []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Укажите проект для привязки контакта",
+        )
     row = OwnerWorkspaceContact(
         full_name=payload.full_name.strip(),
         phone=payload.phone.strip(),
@@ -466,14 +548,21 @@ async def create_contact(
     db.flush()
     for project_id in payload.project_ids or []:
         exists = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
-        if exists:
-            db.add(OwnerWorkspaceProjectContact(project_id=project_id, contact_id=row.id))
+        if not exists:
+            continue
+        if not ctx.full and not project_visible(ctx, project_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
+        if not ctx.full and not (
+            is_project_owner(db, ctx.user.id, project_id) or is_project_participant(db, ctx.user.id, project_id)
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для привязки к проекту")
+        db.add(OwnerWorkspaceProjectContact(project_id=project_id, contact_id=row.id))
     _log_audit(
         db,
         entity_type="contact",
         entity_id=row.id,
         action_type="create",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
         new_value={"full_name": row.full_name, "phone": row.phone},
     )
     db.commit()
@@ -485,10 +574,10 @@ async def create_contact(
 async def get_contact(
     contact_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row:
+    if not row or not contact_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
     return _contact_to_response(db, row)
 
@@ -498,10 +587,10 @@ async def update_contact(
     contact_id: int,
     payload: OwnerWorkspaceContactUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row:
+    if not row or not contact_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
     old = {"full_name": row.full_name, "phone": row.phone}
     data = payload.model_dump(exclude_unset=True)
@@ -512,7 +601,7 @@ async def update_contact(
         entity_type="contact",
         entity_id=row.id,
         action_type="update",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
         old_value=old,
         new_value=data,
     )
@@ -525,11 +614,14 @@ async def update_contact(
 async def get_contact_tasks(
     contact_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Contact not found")
     rows = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.contact_id == contact_id).order_by(
         OwnerWorkspaceTask.created_at.desc()
     ).all()
+    rows = [r for r in rows if task_visible(ctx, r)]
     return [_task_to_response(db, row) for row in rows]
 
 
@@ -537,15 +629,17 @@ async def get_contact_tasks(
 async def get_contact_messages(
     contact_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Contact not found")
     rows = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.contact_id == contact_id).order_by(
         OwnerWorkspaceMessage.created_at.desc()
     ).all()
     return [_message_to_response(db, row) for row in rows]
 
 
-@router.get("/tasks", response_model=List[OwnerWorkspaceTaskResponse])
+@router.get("/tasks", response_model=OwnerWorkspaceTaskListResponse)
 async def list_tasks(
     project_id: Optional[int] = Query(None),
     contact_id: Optional[int] = Query(None),
@@ -557,9 +651,18 @@ async def list_tasks(
     search: Optional[str] = Query(None),
     sort_by: Optional[str] = Query(None, description="created_at|updated_at|deadline_at|title|priority"),
     sort_dir: Optional[str] = Query(None, description="asc|desc"),
+    limit: int = Query(100, ge=1, le=500, description="Размер страницы"),
+    offset: int = Query(0, ge=0, description="Смещение"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if not ctx.full:
+        if assignee_id is not None and assignee_id != ctx.user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+        if project_id is not None and not project_visible(ctx, project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        if contact_id is not None and not contact_visible(ctx, contact_id):
+            raise HTTPException(status_code=404, detail="Contact not found")
     q = db.query(OwnerWorkspaceTask)
     if project_id is not None:
         q = q.filter(OwnerWorkspaceTask.project_id == project_id)
@@ -607,16 +710,37 @@ async def list_tasks(
         order_expr = nullslast(desc(sort_col) if descending else asc(sort_col))
     else:
         order_expr = desc(sort_col) if descending else asc(sort_col)
-    rows = q.order_by(order_expr).all()
-    return [_task_to_response(db, row) for row in rows]
+    q = filter_tasks_query(q, ctx)
+    total = q.count()
+    rows = q.order_by(order_expr).offset(offset).limit(limit).all()
+    return OwnerWorkspaceTaskListResponse(
+        items=[_task_to_response(db, row) for row in rows],
+        total=int(total),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/tasks", response_model=OwnerWorkspaceTaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     payload: OwnerWorkspaceTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if payload.project_id is not None and not project_visible(ctx, payload.project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
+    if payload.contact_id is not None and not contact_visible(ctx, payload.contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к контакту")
+    if payload.previous_task_id is not None:
+        prev = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == payload.previous_task_id).first()
+        if not prev or not task_visible(ctx, prev):
+            raise HTTPException(status_code=404, detail="Previous task not found")
+    for message_id in payload.linked_message_ids or []:
+        msg = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
+        if not msg:
+            continue
+        if not ctx.full and not contact_visible(ctx, msg.contact_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к сообщению")
     row = OwnerWorkspaceTask(
         title=payload.title.strip(),
         description=(payload.description or "").strip() or None,
@@ -625,7 +749,7 @@ async def create_task(
         deadline_at=payload.deadline_at,
         start_at=payload.start_at,
         assignee_id=payload.assignee_id,
-        creator_id=current_user.id,
+        creator_id=ctx.user.id,
         project_id=payload.project_id,
         contact_id=payload.contact_id,
         tags=payload.tags,
@@ -646,9 +770,10 @@ async def create_task(
         entity_type="task",
         entity_id=row.id,
         action_type="create",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
         new_value={"title": row.title, "status": row.status},
     )
+    notify_task_assigned(db, row, row.assignee_id, ctx.user.id)
     db.commit()
     db.refresh(row)
     return _task_to_response(db, row)
@@ -658,10 +783,10 @@ async def create_task(
 async def get_task(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
-    if not row:
+    if not row or not task_visible(ctx, row):
         raise HTTPException(status_code=404, detail="Task not found")
     return _task_to_response(db, row)
 
@@ -671,17 +796,23 @@ async def update_task(
     task_id: int,
     payload: OwnerWorkspaceTaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
-    if not row:
+    if not row or not task_visible(ctx, row):
         raise HTTPException(status_code=404, detail="Task not found")
 
     data = payload.model_dump(exclude_unset=True)
-    if row.status in ("completed", "cancelled") and current_user.role.value not in ("admin", "owner"):
-        editable_fields = {"status"}
-        if any(k not in editable_fields for k in data.keys()):
-            raise HTTPException(status_code=400, detail="Completed/cancelled task can be edited only after status change")
+    if row.status in ("completed", "cancelled"):
+        new_status = data.get("status", row.status)
+        extra = {k for k in data if k != "status"}
+        if new_status in ("completed", "cancelled"):
+            if extra:
+                raise HTTPException(
+                    status_code=400,
+                    detail="У завершённой или отменённой задачи можно изменить только статус (например, вернуть в работу)",
+                )
+        # reopening (new_status активный): разрешаем полное обновление за один запрос
 
     old = {"status": row.status, "assignee_id": row.assignee_id, "priority": row.priority}
     for k, v in data.items():
@@ -693,6 +824,10 @@ async def update_task(
             row.completed_at = None
 
     if "linked_message_ids" in data:
+        for message_id in data.get("linked_message_ids") or []:
+            msg = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
+            if msg and not ctx.full and not contact_visible(ctx, msg.contact_id):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к сообщению")
         db.query(OwnerWorkspaceTaskMessage).filter(OwnerWorkspaceTaskMessage.task_id == task_id).delete()
         for message_id in data.get("linked_message_ids") or []:
             exists = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
@@ -704,20 +839,47 @@ async def update_task(
         entity_type="task",
         entity_id=row.id,
         action_type="update",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
         old_value=old,
         new_value=data,
     )
+    if "assignee_id" in data and row.assignee_id != old.get("assignee_id"):
+        notify_task_assigned(db, row, row.assignee_id, ctx.user.id)
     db.commit()
     db.refresh(row)
     return _task_to_response(db, row)
+
+
+@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    """Удаление задачи из БД (только admin/owner). Связи и комментарии удаляются каскадом."""
+    assert_full_workspace(ctx)
+    row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
+    if not row or not task_visible(ctx, row):
+        raise HTTPException(status_code=404, detail="Task not found")
+    _log_audit(
+        db,
+        entity_type="task",
+        entity_id=row.id,
+        action_type="delete",
+        author_id=ctx.user.id,
+        old_value={"title": row.title, "status": row.status},
+        new_value=None,
+    )
+    db.delete(row)
+    db.commit()
+    return None
 
 
 @router.post("/tasks/bulk-update")
 async def bulk_update_tasks(
     payload: OwnerWorkspaceTaskBulkUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     data = payload.model_dump(exclude_unset=True)
     task_ids = data.pop("task_ids", [])
@@ -726,13 +888,17 @@ async def bulk_update_tasks(
     updated = 0
     for tid in task_ids:
         row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == tid).first()
-        if not row:
+        if not row or not task_visible(ctx, row):
             continue
-        if row.status in ("completed", "cancelled") and current_user.role.value not in ("admin", "owner"):
-            editable_fields = {"status"}
-            if any(k not in editable_fields for k in data.keys()):
-                continue
+        if row.status in ("completed", "cancelled"):
+            new_status = data.get("status", row.status)
+            extra = {k for k in data if k != "status"}
+            if new_status in ("completed", "cancelled"):
+                if extra:
+                    continue
+            # при смене на активный статус применяем все поля из data
         old = {"status": row.status, "assignee_id": row.assignee_id, "priority": row.priority}
+        prev_assignee = row.assignee_id
         for k, v in data.items():
             setattr(row, k, v)
         if "status" in data:
@@ -740,12 +906,14 @@ async def bulk_update_tasks(
                 row.completed_at = datetime.now(timezone.utc)
             elif row.status != "completed":
                 row.completed_at = None
+        if "assignee_id" in data and row.assignee_id != prev_assignee:
+            notify_task_assigned(db, row, row.assignee_id, ctx.user.id)
         _log_audit(
             db,
             entity_type="task",
             entity_id=row.id,
             action_type="bulk_update",
-            author_id=current_user.id,
+            author_id=ctx.user.id,
             old_value=old,
             new_value=data,
         )
@@ -759,10 +927,10 @@ async def complete_task(
     task_id: int,
     payload: OwnerWorkspaceTaskCompleteRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
-):
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+) -> OwnerWorkspaceTaskCompleteResponse:
     row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
-    if not row:
+    if not row or not task_visible(ctx, row):
         raise HTTPException(status_code=404, detail="Task not found")
     row.status = "completed"
     row.completed_at = datetime.now(timezone.utc)
@@ -771,7 +939,7 @@ async def complete_task(
         entity_type="task",
         entity_id=row.id,
         action_type="complete",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
     )
 
     new_task_row: Optional[OwnerWorkspaceTask] = None
@@ -802,7 +970,7 @@ async def complete_task(
             deadline_at=next_data.deadline_at,
             start_at=next_data.start_at,
             assignee_id=next_data.assignee_id if next_data.assignee_id is not None else row.assignee_id,
-            creator_id=current_user.id,
+            creator_id=ctx.user.id,
             project_id=next_data.project_id if next_data.project_id is not None else row.project_id,
             contact_id=next_data.contact_id if next_data.contact_id is not None else row.contact_id,
             tags=next_data.tags if next_data.tags is not None else row.tags,
@@ -821,9 +989,10 @@ async def complete_task(
             entity_type="task",
             entity_id=new_task_row.id,
             action_type="create_from_previous",
-            author_id=current_user.id,
+            author_id=ctx.user.id,
             new_value={"previous_task_id": row.id},
         )
+        notify_task_assigned(db, new_task_row, new_task_row.assignee_id, ctx.user.id)
 
     db.commit()
     db.refresh(row)
@@ -842,20 +1011,20 @@ async def complete_and_create_next(
     task_id: int,
     payload: OwnerWorkspaceTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     req = OwnerWorkspaceTaskCompleteRequest(action="close_and_create_next", next_task=payload)
-    return await complete_task(task_id=task_id, payload=req, db=db, current_user=current_user)
+    return await complete_task(task_id=task_id, payload=req, db=db, ctx=ctx)
 
 
 @router.get("/tasks/{task_id}/comments", response_model=List[OwnerWorkspaceTaskCommentResponse])
 async def list_task_comments(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     exists = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
-    if not exists:
+    if not exists or not task_visible(ctx, exists):
         raise HTTPException(status_code=404, detail="Task not found")
     rows = (
         db.query(OwnerWorkspaceTaskComment)
@@ -871,13 +1040,21 @@ async def create_task_comment(
     task_id: int,
     payload: OwnerWorkspaceTaskCommentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     exists = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
-    if not exists:
+    if not exists or not task_visible(ctx, exists):
         raise HTTPException(status_code=404, detail="Task not found")
-    row = OwnerWorkspaceTaskComment(task_id=task_id, author_id=current_user.id, text=payload.text.strip())
+    row = OwnerWorkspaceTaskComment(task_id=task_id, author_id=ctx.user.id, text=payload.text.strip())
     db.add(row)
+    db.flush()
+    notify_task_comment_added(
+        db,
+        exists,
+        comment_id=row.id,
+        author_id=ctx.user.id,
+        comment_text=row.text,
+    )
     db.commit()
     db.refresh(row)
     return OwnerWorkspaceTaskCommentResponse.model_validate(row)
@@ -888,13 +1065,15 @@ async def link_message_to_task(
     task_id: int,
     payload: OwnerWorkspaceTaskMessageLink,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
-    if not task:
+    if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == payload.message_id).first()
     if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if not ctx.full and not contact_visible(ctx, message.contact_id):
         raise HTTPException(status_code=404, detail="Message not found")
     exists = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == task_id,
@@ -911,8 +1090,11 @@ async def unlink_message_from_task(
     task_id: int,
     message_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
+    if not task or not task_visible(ctx, task):
+        raise HTTPException(status_code=404, detail="Task not found")
     link = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == task_id,
         OwnerWorkspaceTaskMessage.message_id == message_id,
@@ -927,11 +1109,17 @@ async def unlink_message_from_task(
 async def list_messages(
     contact_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     q = db.query(OwnerWorkspaceMessage)
     if contact_id is not None:
+        if not contact_visible(ctx, contact_id):
+            raise HTTPException(status_code=404, detail="Contact not found")
         q = q.filter(OwnerWorkspaceMessage.contact_id == contact_id)
+    elif not ctx.full:
+        if not ctx.contact_ids:
+            return []
+        q = q.filter(OwnerWorkspaceMessage.contact_id.in_(list(ctx.contact_ids)))
     rows = q.order_by(OwnerWorkspaceMessage.created_at.desc()).all()
     return [_message_to_response(db, row) for row in rows]
 
@@ -939,16 +1127,22 @@ async def list_messages(
 @router.get("/messages/conversations", response_model=List[OwnerWorkspaceConversationItem])
 async def list_conversations(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    rows = (
+    base = (
         db.query(
             OwnerWorkspaceContact.id.label("contact_id"),
             OwnerWorkspaceContact.full_name.label("contact_name"),
             func.max(OwnerWorkspaceMessage.created_at).label("last_message_at"),
         )
         .join(OwnerWorkspaceMessage, OwnerWorkspaceMessage.contact_id == OwnerWorkspaceContact.id)
-        .group_by(OwnerWorkspaceContact.id, OwnerWorkspaceContact.full_name)
+    )
+    if not ctx.full:
+        if not ctx.contact_ids:
+            return []
+        base = base.filter(OwnerWorkspaceContact.id.in_(list(ctx.contact_ids)))
+    rows = (
+        base.group_by(OwnerWorkspaceContact.id, OwnerWorkspaceContact.full_name)
         .order_by(func.max(OwnerWorkspaceMessage.created_at).desc())
         .all()
     )
@@ -976,21 +1170,22 @@ async def list_conversations(
 async def contact_conversation(
     contact_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    return await get_contact_messages(contact_id=contact_id, db=db, current_user=current_user)
+    return await get_contact_messages(contact_id=contact_id, db=db, ctx=ctx)
 
 
 @router.post("/messages/sync-from-max")
 async def sync_max_messages_into_owner_workspace(
     limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     """
     Импорт исходящих сообщений MAX (таблица max_messages) в переписку owner workspace.
     Сопоставление по нормализованному телефону контакта. Дубликаты пропускаются (external_message_id = max:<uuid>).
     """
+    assert_full_workspace(ctx)
     imported, skipped = run_owner_workspace_max_sync(db, limit=limit)
     return {"imported": imported, "skipped": skipped}
 
@@ -999,10 +1194,10 @@ async def sync_max_messages_into_owner_workspace(
 async def create_message(
     payload: OwnerWorkspaceMessageCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
-    if not contact:
+    if not contact or not contact_visible(ctx, payload.contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
     row = OwnerWorkspaceMessage(
         contact_id=payload.contact_id,
@@ -1025,11 +1220,15 @@ async def create_task_from_message(
     message_id: int,
     payload: OwnerWorkspaceMessageCreateTaskRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
+    if not ctx.full and not contact_visible(ctx, message.contact_id):
+        raise HTTPException(status_code=404, detail="Message not found")
+    if payload.project_id is not None and not project_visible(ctx, payload.project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
     row = OwnerWorkspaceTask(
         title=payload.title.strip(),
         description=(payload.description or message.text or "").strip() or None,
@@ -1037,7 +1236,7 @@ async def create_task_from_message(
         priority=payload.priority or "medium",
         deadline_at=payload.deadline_at,
         assignee_id=payload.assignee_id,
-        creator_id=current_user.id,
+        creator_id=ctx.user.id,
         project_id=payload.project_id,
         contact_id=message.contact_id,
     )
@@ -1049,9 +1248,10 @@ async def create_task_from_message(
         entity_type="task",
         entity_id=row.id,
         action_type="create_from_message",
-        author_id=current_user.id,
+        author_id=ctx.user.id,
         new_value={"message_id": message_id},
     )
+    notify_task_assigned(db, row, row.assignee_id, ctx.user.id)
     db.commit()
     db.refresh(row)
     return _task_to_response(db, row)
@@ -1062,13 +1262,15 @@ async def link_message_with_task(
     message_id: int,
     payload: OwnerWorkspaceMessageLinkTaskRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
+    if not ctx.full and not contact_visible(ctx, message.contact_id):
+        raise HTTPException(status_code=404, detail="Message not found")
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == payload.task_id).first()
-    if not task:
+    if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
     exists = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == payload.task_id,
@@ -1086,21 +1288,21 @@ async def list_owner_workspace_notifications(
     limit: int = Query(50, ge=1, le=200),
     due_soon_hours: int = Query(24, ge=1, le=336, description="Окно «скоро дедлайн» при синхронизации уведомлений"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     """
-    In-app уведомления по дедлайнам для текущего пользователя (как исполнителя).
-    Перед выдачей списка синхронизирует записи по просроченным и скорым задачам.
+    In-app уведомления для текущего пользователя: дедлайны (просрочка / скоро), назначение, комментарии.
+    Перед выдачей списка синхронизирует записи по просроченным и скорым задачам (исполнитель).
     """
-    refresh_deadline_notifications_for_user(db, current_user.id, due_soon_hours=due_soon_hours)
-    q = db.query(OwnerWorkspaceNotification).filter(OwnerWorkspaceNotification.user_id == current_user.id)
+    refresh_deadline_notifications_for_user(db, ctx.user.id, due_soon_hours=due_soon_hours)
+    q = db.query(OwnerWorkspaceNotification).filter(OwnerWorkspaceNotification.user_id == ctx.user.id)
     if unread_only:
         q = q.filter(OwnerWorkspaceNotification.read_at.is_(None))
     rows = q.order_by(OwnerWorkspaceNotification.created_at.desc()).limit(limit).all()
     unread = (
         db.query(func.count(OwnerWorkspaceNotification.id))
         .filter(
-            OwnerWorkspaceNotification.user_id == current_user.id,
+            OwnerWorkspaceNotification.user_id == ctx.user.id,
             OwnerWorkspaceNotification.read_at.is_(None),
         )
         .scalar()
@@ -1116,13 +1318,13 @@ async def list_owner_workspace_notifications(
 async def mark_owner_workspace_notification_read(
     notification_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     n = (
         db.query(OwnerWorkspaceNotification)
         .filter(
             OwnerWorkspaceNotification.id == notification_id,
-            OwnerWorkspaceNotification.user_id == current_user.id,
+            OwnerWorkspaceNotification.user_id == ctx.user.id,
         )
         .first()
     )
@@ -1134,15 +1336,41 @@ async def mark_owner_workspace_notification_read(
     return OwnerWorkspaceNotificationResponse.model_validate(n)
 
 
+@router.get("/me/preferences", response_model=OwnerWorkspaceUserPreferencesResponse)
+async def get_owner_workspace_my_preferences(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    """Персональные настройки интерфейса задачника (вкладка «Настройки»)."""
+    data = get_preferences_for_user(db, ctx.user.id)
+    return OwnerWorkspaceUserPreferencesResponse.model_validate(data)
+
+
+@router.patch("/me/preferences", response_model=OwnerWorkspaceUserPreferencesResponse)
+async def patch_owner_workspace_my_preferences(
+    payload: OwnerWorkspaceUserPreferencesPatch,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    patch = payload.model_dump(exclude_unset=True)
+    data = merge_preferences_for_user(db, ctx.user.id, patch)
+    return OwnerWorkspaceUserPreferencesResponse.model_validate(data)
+
+
 @router.get("/digest", response_model=OwnerWorkspaceDigestResponse)
 async def owner_workspace_digest(
     due_within_hours: int = Query(48, ge=1, le=336),
     assignee_id: Optional[int] = Query(None, description="Только задачи этого исполнителя"),
     project_id: Optional[int] = Query(None, description="Только задачи этого проекта"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     """Сводка для уведомлений: просроченные и задачи с дедлайном в ближайшие N часов."""
+    if not ctx.full:
+        if assignee_id is not None and assignee_id != ctx.user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+        if project_id is not None and not project_visible(ctx, project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
     now = datetime.now(timezone.utc)
     horizon = now + timedelta(hours=due_within_hours)
     active = ["new", "in_progress", "waiting"]
@@ -1155,6 +1383,7 @@ async def owner_workspace_digest(
         )
     )
     overdue_q = _digest_filters(overdue_q, assignee_id, project_id)
+    overdue_q = filter_tasks_query(overdue_q, ctx)
     overdue_tasks = overdue_q.order_by(OwnerWorkspaceTask.deadline_at.asc()).limit(25).all()
     overdue_count_q = (
         db.query(func.count(OwnerWorkspaceTask.id))
@@ -1165,6 +1394,7 @@ async def owner_workspace_digest(
         )
     )
     overdue_count_q = _digest_filters(overdue_count_q, assignee_id, project_id)
+    overdue_count_q = filter_tasks_query(overdue_count_q, ctx)
     overdue_count = overdue_count_q.scalar() or 0
     due_soon_q = (
         db.query(OwnerWorkspaceTask)
@@ -1176,6 +1406,7 @@ async def owner_workspace_digest(
         )
     )
     due_soon_q = _digest_filters(due_soon_q, assignee_id, project_id)
+    due_soon_q = filter_tasks_query(due_soon_q, ctx)
     due_soon_tasks = due_soon_q.order_by(OwnerWorkspaceTask.deadline_at.asc()).limit(25).all()
     return OwnerWorkspaceDigestResponse(
         overdue_count=int(overdue_count),
@@ -1189,56 +1420,62 @@ async def owner_workspace_unified_search(
     q: str = Query("", max_length=200),
     limit: int = Query(15, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     """Единый поиск по проектам, контактам и задачам владельческого задачника."""
     term = (q or "").strip()
     if len(term) < 2:
         return OwnerWorkspaceSearchResponse(projects=[], contacts=[], tasks=[], messages=[])
     like = f"%{term}%"
-    prow = (
-        db.query(OwnerWorkspaceProject)
-        .filter(
-            or_(
-                OwnerWorkspaceProject.name.ilike(like),
-                OwnerWorkspaceProject.description.ilike(like),
-            )
+    prow_q = db.query(OwnerWorkspaceProject).filter(
+        or_(
+            OwnerWorkspaceProject.name.ilike(like),
+            OwnerWorkspaceProject.description.ilike(like),
         )
-        .order_by(OwnerWorkspaceProject.created_at.desc())
-        .limit(limit)
-        .all()
     )
-    projects = [OwnerWorkspaceSearchProjectHit(id=r.id, name=r.name, status=r.status) for r in prow]
-    crow = (
-        db.query(OwnerWorkspaceContact)
-        .filter(
-            or_(
-                OwnerWorkspaceContact.full_name.ilike(like),
-                OwnerWorkspaceContact.phone.ilike(like),
-                OwnerWorkspaceContact.company.ilike(like),
-                func.coalesce(OwnerWorkspaceContact.comment, "").ilike(like),
-            )
+    if not ctx.full:
+        if not ctx.project_ids:
+            projects = []
+            prow = []
+        else:
+            prow_q = prow_q.filter(OwnerWorkspaceProject.id.in_(list(ctx.project_ids)))
+            prow = prow_q.order_by(OwnerWorkspaceProject.created_at.desc()).limit(limit).all()
+            projects = [OwnerWorkspaceSearchProjectHit(id=r.id, name=r.name, status=r.status) for r in prow]
+    else:
+        prow = prow_q.order_by(OwnerWorkspaceProject.created_at.desc()).limit(limit).all()
+        projects = [OwnerWorkspaceSearchProjectHit(id=r.id, name=r.name, status=r.status) for r in prow]
+    crow_q = db.query(OwnerWorkspaceContact).filter(
+        or_(
+            OwnerWorkspaceContact.full_name.ilike(like),
+            OwnerWorkspaceContact.phone.ilike(like),
+            OwnerWorkspaceContact.company.ilike(like),
+            func.coalesce(OwnerWorkspaceContact.comment, "").ilike(like),
         )
-        .order_by(OwnerWorkspaceContact.created_at.desc())
-        .limit(limit)
-        .all()
     )
-    contacts = [
-        OwnerWorkspaceSearchContactHit(id=r.id, full_name=r.full_name, phone=r.phone or "") for r in crow
-    ]
-    trow = (
-        db.query(OwnerWorkspaceTask)
-        .filter(
-            or_(
-                OwnerWorkspaceTask.title.ilike(like),
-                OwnerWorkspaceTask.description.ilike(like),
-                cast(OwnerWorkspaceTask.tags, String).ilike(like),
-            )
+    if not ctx.full:
+        if not ctx.contact_ids:
+            contacts = []
+            crow = []
+        else:
+            crow_q = crow_q.filter(OwnerWorkspaceContact.id.in_(list(ctx.contact_ids)))
+            crow = crow_q.order_by(OwnerWorkspaceContact.created_at.desc()).limit(limit).all()
+            contacts = [
+                OwnerWorkspaceSearchContactHit(id=r.id, full_name=r.full_name, phone=r.phone or "") for r in crow
+            ]
+    else:
+        crow = crow_q.order_by(OwnerWorkspaceContact.created_at.desc()).limit(limit).all()
+        contacts = [
+            OwnerWorkspaceSearchContactHit(id=r.id, full_name=r.full_name, phone=r.phone or "") for r in crow
+        ]
+    trow_q = db.query(OwnerWorkspaceTask).filter(
+        or_(
+            OwnerWorkspaceTask.title.ilike(like),
+            OwnerWorkspaceTask.description.ilike(like),
+            cast(OwnerWorkspaceTask.tags, String).ilike(like),
         )
-        .order_by(OwnerWorkspaceTask.created_at.desc())
-        .limit(limit)
-        .all()
     )
+    trow_q = filter_tasks_query(trow_q, ctx)
+    trow = trow_q.order_by(OwnerWorkspaceTask.created_at.desc()).limit(limit).all()
     tasks = [
         OwnerWorkspaceSearchTaskHit(
             id=r.id,
@@ -1250,13 +1487,15 @@ async def owner_workspace_unified_search(
         )
         for r in trow
     ]
-    mrows = (
-        db.query(OwnerWorkspaceMessage)
-        .filter(OwnerWorkspaceMessage.text.ilike(like))
-        .order_by(OwnerWorkspaceMessage.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+    m_q = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.text.ilike(like))
+    if not ctx.full:
+        if not ctx.contact_ids:
+            mrows = []
+        else:
+            m_q = m_q.filter(OwnerWorkspaceMessage.contact_id.in_(list(ctx.contact_ids)))
+            mrows = m_q.order_by(OwnerWorkspaceMessage.created_at.desc()).limit(limit).all()
+    else:
+        mrows = m_q.order_by(OwnerWorkspaceMessage.created_at.desc()).limit(limit).all()
     messages: List[OwnerWorkspaceSearchMessageHit] = []
     for m in mrows:
         cname = None
@@ -1290,8 +1529,10 @@ async def list_history(
     entity_type: Optional[str] = Query(None),
     entity_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if not audit_history_allowed(db, ctx, entity_type, entity_id):
+        return []
     q = db.query(OwnerWorkspaceAuditLog)
     if entity_type:
         q = q.filter(OwnerWorkspaceAuditLog.entity_type == entity_type)

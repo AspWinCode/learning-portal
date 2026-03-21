@@ -48,6 +48,7 @@ import {
   Assignment,
   Add,
   NotificationsNone,
+  Notifications,
   Search,
   FilterList,
   School,
@@ -207,6 +208,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' },
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
+        { text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace' },
+        { text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' },
+        { text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' },
       ];
 
     const items = [
@@ -218,6 +222,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       { text: 'Оценки', icon: <Grade />, path: '/grades' },
       { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
     ];
+
+    if (role === 'trainer') {
+      items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
+      items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
+      items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace' });
+      items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
+      items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
+    }
 
     if (isAdminLike && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') {
@@ -233,6 +245,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace' });
+      items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
+      items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
     if (isAdminLike) items.push({ text: 'Настройки', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {

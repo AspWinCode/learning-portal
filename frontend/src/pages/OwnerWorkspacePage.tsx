@@ -15,6 +15,7 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
+  InputAdornment,
   Badge,
   ListItemText,
   Menu,
@@ -30,6 +31,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   CircularProgress,
+  TablePagination,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -48,6 +50,7 @@ import {
   startOfWeek,
 } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { ownerWorkspaceApi, usersApi } from '../services/api';
@@ -65,6 +68,9 @@ import type {
   User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
+
+/** Макс. задач за один запрос для канбана/календаря и вспомогательных списков (лимит API). */
+const OWNER_WS_TASKS_FETCH_CAP = 500;
 
 function isTaskOverdue(t: OwnerWorkspaceTask): boolean {
   if (!t.deadline_at || t.status === 'completed' || t.status === 'cancelled') return false;
@@ -107,6 +113,50 @@ type OwnerWorkspaceTaskPriority = 'low' | 'medium' | 'high' | 'critical';
 const OWNER_WS_STATUSES: OwnerWorkspaceTaskStatus[] = ['new', 'in_progress', 'waiting', 'completed', 'cancelled'];
 const OWNER_WS_PRIORITIES: OwnerWorkspaceTaskPriority[] = ['low', 'medium', 'high', 'critical'];
 
+const OW_TAB_PROJECTS = 0;
+const OW_TAB_CONTACTS = 1;
+const OW_TAB_TASKS = 2;
+const OW_TAB_COMMS = 3;
+const OW_TAB_NOTIFICATIONS = 4;
+const OW_TAB_SETTINGS = 5;
+const OW_TAB_HISTORY = 6;
+
+/** Слаги для deep-link: `/owner-workspace?tab=<slug>&task=<id>` */
+const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'comms', 'notifications', 'settings', 'history'] as const;
+
+function tabSlugFromIndex(index: number): string {
+  return OW_TAB_SLUGS[index] ?? 'projects';
+}
+
+function tabIndexFromSlug(slug: string | null): number | null {
+  if (!slug) return null;
+  const i = OW_TAB_SLUGS.indexOf(slug as (typeof OW_TAB_SLUGS)[number]);
+  return i >= 0 ? i : null;
+}
+
+/** Вкладка из URL: путь `/owner-workspace/notifications` или query `tab`, либо только `task` → вкладка «Задачи». */
+function resolveOwnerWorkspaceTab(pathname: string, search: URLSearchParams): number | null {
+  if (pathname.endsWith('/owner-workspace/notifications')) {
+    return OW_TAB_NOTIFICATIONS;
+  }
+  if (pathname.endsWith('/owner-workspace/settings')) {
+    return OW_TAB_SETTINGS;
+  }
+  const idx = tabIndexFromSlug(search.get('tab'));
+  if (idx !== null) return idx;
+  const tr = search.get('task');
+  const tid = tr ? parseInt(tr, 10) : NaN;
+  if (Number.isFinite(tid) && tid >= 1) return OW_TAB_TASKS;
+  return null;
+}
+
+const OWNER_WS_NOTIF_KIND_LABELS: Record<string, string> = {
+  task_overdue: 'Просрочка',
+  task_due_soon: 'Скоро дедлайн',
+  task_assigned: 'Назначение',
+  task_comment: 'Комментарий',
+};
+
 function coerceTaskStatus(v: string): OwnerWorkspaceTaskStatus {
   return OWNER_WS_STATUSES.includes(v as OwnerWorkspaceTaskStatus) ? (v as OwnerWorkspaceTaskStatus) : 'new';
 }
@@ -144,6 +194,15 @@ const KANBAN_COLUMNS: {
 
 const OwnerWorkspacePage: React.FC = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const skipNextTaskFromUrlEffectRef = useRef(false);
+  const openTaskDialogRef = useRef<
+    (task: OwnerWorkspaceTask, options?: { syncUrl?: boolean }) => Promise<void>
+  >(async () => {});
+  const loadTasksFilteredRef = useRef<() => Promise<void>>(async () => {});
+  const isWorkspaceFullAccess = user?.role === 'admin' || user?.role === 'owner';
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -200,9 +259,13 @@ const OwnerWorkspacePage: React.FC = () => {
     'created_at'
   );
   const [taskSortDir, setTaskSortDir] = useState<'asc' | 'desc'>('desc');
+  const [taskListTotal, setTaskListTotal] = useState(0);
+  const [taskListPage, setTaskListPage] = useState(0);
+  const [taskListRowsPerPage, setTaskListRowsPerPage] = useState(25);
   const [notifAnchor, setNotifAnchor] = useState<null | HTMLElement>(null);
   const [notifEnvelope, setNotifEnvelope] = useState<OwnerWorkspaceNotificationsEnvelope | null>(null);
   const [maxSyncResult, setMaxSyncResult] = useState<string | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
   const [digestProjectFilter, setDigestProjectFilter] = useState<number | ''>('');
@@ -233,6 +296,17 @@ const OwnerWorkspacePage: React.FC = () => {
   const [newContactMessage, setNewContactMessage] = useState('');
 
   const [taskDialog, setTaskDialog] = useState<OwnerWorkspaceTask | null>(null);
+
+  const closeTaskDialog = useCallback(() => {
+    setTaskDialog(null);
+    setSearchParams((prev) => {
+      if (!prev.get('task')) return prev;
+      const next = new URLSearchParams(prev);
+      next.delete('task');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const [taskEditTitle, setTaskEditTitle] = useState('');
   const [taskEditDescription, setTaskEditDescription] = useState('');
   const [taskEditStatus, setTaskEditStatus] = useState<OwnerWorkspaceTaskStatus>('new');
@@ -255,6 +329,12 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const [commsContactId, setCommsContactId] = useState<number | null>(null);
   const [commsMessages, setCommsMessages] = useState<OwnerWorkspaceMessage[]>([]);
+  /** Поиск по списку диалогов (имя / последнее сообщение) */
+  const [commsDialogSearch, setCommsDialogSearch] = useState('');
+  /** Поиск по тексту в открытой переписке */
+  const [commsThreadSearch, setCommsThreadSearch] = useState('');
+  /** Поиск по сообщениям в карточке контакта */
+  const [contactMessageSearch, setContactMessageSearch] = useState('');
   const [messageTaskDialog, setMessageTaskDialog] = useState<{ message: OwnerWorkspaceMessage } | null>(null);
   const [messageTaskTitle, setMessageTaskTitle] = useState('');
   const [linkTaskDialog, setLinkTaskDialog] = useState<{ message: OwnerWorkspaceMessage } | null>(null);
@@ -351,7 +431,32 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const loadTasksFiltered = useCallback(async () => {
     try {
-      const t = await ownerWorkspaceApi.listTasks({
+      const usePaging = taskViewMode === 'list';
+      const filterKey = JSON.stringify({
+        taskSearch,
+        taskStatusFilter,
+        taskPriorityFilter,
+        taskProjectFilter,
+        taskContactFilter,
+        taskOverdueOnly,
+        taskActiveOnly,
+        taskAssigneeFilter,
+        taskSortBy,
+        taskSortDir,
+        taskViewMode,
+        taskListRowsPerPage,
+      });
+      let effectivePage = taskListPage;
+      if (taskFilterKeyRef.current !== filterKey) {
+        taskFilterKeyRef.current = filterKey;
+        effectivePage = 0;
+        if (taskListPage !== 0) {
+          setTaskListPage(0);
+        }
+      }
+      const limit = usePaging ? taskListRowsPerPage : OWNER_WS_TASKS_FETCH_CAP;
+      const offset = usePaging ? effectivePage * taskListRowsPerPage : 0;
+      const taskPage = await ownerWorkspaceApi.listTasks({
         search: taskSearch.trim() || undefined,
         status_filter: taskStatusFilter || undefined,
         priority: taskPriorityFilter || undefined,
@@ -362,8 +467,11 @@ const OwnerWorkspacePage: React.FC = () => {
         active_only: taskActiveOnly || undefined,
         sort_by: taskSortBy,
         sort_dir: taskSortDir,
+        limit,
+        offset,
       });
-      setTasks(t);
+      setTasks(taskPage.items);
+      setTaskListTotal(taskPage.total);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось загрузить задачи'));
     }
@@ -378,11 +486,14 @@ const OwnerWorkspacePage: React.FC = () => {
     taskAssigneeFilter,
     taskSortBy,
     taskSortDir,
+    taskViewMode,
+    taskListPage,
+    taskListRowsPerPage,
   ]);
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (limit = 80) => {
     try {
-      const env = await ownerWorkspaceApi.listNotifications({ limit: 80 });
+      const env = await ownerWorkspaceApi.listNotifications({ limit });
       setNotifEnvelope(env);
     } catch {
       setNotifEnvelope(null);
@@ -430,11 +541,31 @@ const OwnerWorkspacePage: React.FC = () => {
   }, [loadProjectsAndContacts, loadTasksFiltered, loadMeta]);
 
   const skipProjectsContactsFilterReload = useRef(false);
+  const taskFilterKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     skipProjectsContactsFilterReload.current = true;
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- первичная загрузка страницы
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const p = await ownerWorkspaceApi.getMyPreferences();
+        if (cancelled) return;
+        setTaskViewMode(p.default_task_view);
+        setTaskListRowsPerPage(p.task_list_rows_per_page);
+        setDigestDueHours(p.digest_due_within_hours);
+        setDigestScope(p.digest_scope);
+      } catch {
+        /* остаются дефолты в state */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -469,8 +600,19 @@ const OwnerWorkspacePage: React.FC = () => {
   }, [loadDigest]);
 
   useEffect(() => {
-    void loadNotifications();
+    void loadNotifications(80);
   }, [loadNotifications]);
+
+  useEffect(() => {
+    const next = resolveOwnerWorkspaceTab(location.pathname, searchParams);
+    if (next !== null) setTab(next);
+  }, [location.pathname, searchParams]);
+
+  useEffect(() => {
+    if (tab === OW_TAB_NOTIFICATIONS) {
+      void loadNotifications(200);
+    }
+  }, [tab, loadNotifications]);
 
   useEffect(() => {
     if (!searchOpen) return undefined;
@@ -497,7 +639,7 @@ const OwnerWorkspacePage: React.FC = () => {
   }, [searchQuery, searchOpen]);
 
   useEffect(() => {
-    if (tab === 2) {
+    if (tab === OW_TAB_TASKS) {
       loadTasksFiltered();
     }
   }, [tab, loadTasksFiltered]);
@@ -509,7 +651,7 @@ const OwnerWorkspacePage: React.FC = () => {
   }, [taskViewMode]);
 
   useEffect(() => {
-    if (tab !== 4) return undefined;
+    if (tab !== OW_TAB_HISTORY) return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -571,7 +713,16 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
-  const openTaskDialog = async (t: OwnerWorkspaceTask) => {
+  const openTaskDialog = async (t: OwnerWorkspaceTask, options?: { syncUrl?: boolean }) => {
+    const syncUrl = options?.syncUrl !== false;
+    if (syncUrl) {
+      skipNextTaskFromUrlEffectRef.current = true;
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('task', String(t.id));
+        return next;
+      }, { replace: true });
+    }
     setTaskDialog(t);
     setTaskEditTitle(t.title);
     setTaskEditDescription(t.description || '');
@@ -612,9 +763,39 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
+  const taskFormLocked = useMemo(() => {
+    if (!taskDialog) return false;
+    const terminal = ['completed', 'cancelled'].includes(String(taskDialog.status));
+    const reopening = terminal && !['completed', 'cancelled'].includes(taskEditStatus);
+    return terminal && !reopening;
+  }, [taskDialog, taskEditStatus]);
+
+  const deleteTaskDialog = async () => {
+    if (!taskDialog || !isWorkspaceFullAccess) return;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('Удалить задачу безвозвратно? Связи и комментарии будут удалены.')) return;
+    try {
+      await ownerWorkspaceApi.deleteTask(taskDialog.id);
+      closeTaskDialog();
+      await loadTasksFiltered();
+      void loadDigest();
+      void loadNotifications(80);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось удалить задачу'));
+    }
+  };
+
   const saveTaskDialog = async () => {
     if (!taskDialog) return;
     try {
+      if (taskFormLocked) {
+        const updated = await ownerWorkspaceApi.updateTask(taskDialog.id, { status: taskEditStatus });
+        await loadTasksFiltered();
+        void loadDigest();
+        void loadNotifications(80);
+        await openTaskDialog(updated);
+        return;
+      }
       let attachmentsPayload: Array<Record<string, unknown>>;
       try {
         const raw = JSON.parse(taskEditAttachmentsText.trim() || '[]');
@@ -640,9 +821,10 @@ const OwnerWorkspacePage: React.FC = () => {
         checklist: checklistPayload,
         attachments: attachmentsPayload,
       });
-      setTaskDialog(null);
+      closeTaskDialog();
       await loadTasksFiltered();
       void loadDigest();
+      void loadNotifications(80);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось сохранить задачу'));
     }
@@ -655,6 +837,7 @@ const OwnerWorkspacePage: React.FC = () => {
       setNewCommentText('');
       const cm = await ownerWorkspaceApi.getTaskComments(taskDialog.id);
       setTaskComments(cm);
+      void loadNotifications(80);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось добавить комментарий'));
     }
@@ -685,7 +868,7 @@ const OwnerWorkspacePage: React.FC = () => {
       setNextTaskTitle('');
       await loadTasksFiltered();
       void loadDigest();
-      void loadNotifications();
+      void loadNotifications(80);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось завершить задачу'));
     }
@@ -698,8 +881,11 @@ const OwnerWorkspacePage: React.FC = () => {
     setParticipantToAdd(null);
     void (async () => {
       try {
-        const rows = await ownerWorkspaceApi.listTasks({ project_id: p.id });
-        setProjectDialogTasks(rows);
+        const taskPage = await ownerWorkspaceApi.listTasks({
+          project_id: p.id,
+          limit: OWNER_WS_TASKS_FETCH_CAP,
+        });
+        setProjectDialogTasks(taskPage.items);
       } catch {
         setProjectDialogTasks([]);
       }
@@ -798,8 +984,12 @@ const OwnerWorkspacePage: React.FC = () => {
     setLinkTaskDialog({ message: m });
     setLinkTaskSelected(null);
     try {
-      const t = await ownerWorkspaceApi.listTasks({ active_only: true });
-      setLinkTaskOptions(t);
+      const taskPage = await ownerWorkspaceApi.listTasks({
+        active_only: true,
+        limit: OWNER_WS_TASKS_FETCH_CAP,
+        offset: 0,
+      });
+      setLinkTaskOptions(taskPage.items);
     } catch {
       setLinkTaskOptions([]);
     }
@@ -845,8 +1035,12 @@ const OwnerWorkspacePage: React.FC = () => {
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
       setProjectDialog(updated);
       try {
-        const rows = await ownerWorkspaceApi.listTasks({ project_id: projectDialog.id });
-        setProjectDialogTasks(rows);
+        const taskPage = await ownerWorkspaceApi.listTasks({
+          project_id: projectDialog.id,
+          limit: OWNER_WS_TASKS_FETCH_CAP,
+          offset: 0,
+        });
+        setProjectDialogTasks(taskPage.items);
       } catch {
         setProjectDialogTasks([]);
       }
@@ -859,6 +1053,7 @@ const OwnerWorkspacePage: React.FC = () => {
     setContactDialog(c);
     setContactLinkProjectId(null);
     setNewContactMessage('');
+    setContactMessageSearch('');
     try {
       const msgs = await ownerWorkspaceApi.getContactMessages(c.id);
       setContactMessages(msgs.slice().reverse());
@@ -883,6 +1078,24 @@ const OwnerWorkspacePage: React.FC = () => {
       setContactDialog(updated);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось добавить в проект'));
+    }
+  };
+
+  const removeContactFromLinkedProject = async (projectId: number) => {
+    if (!contactDialog) return;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('Убрать контакт из этого проекта? Запись контакта в системе сохранится.')) return;
+    try {
+      await ownerWorkspaceApi.removeProjectContact(projectId, contactDialog.id);
+      await loadProjectsAndContacts();
+      const updated = await ownerWorkspaceApi.getContact(contactDialog.id);
+      setContactDialog(updated);
+      if (projectDialog?.id === projectId) {
+        const refreshedProject = await ownerWorkspaceApi.getProject(projectId);
+        setProjectDialog(refreshedProject);
+      }
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось убрать контакт из проекта'));
     }
   };
 
@@ -936,6 +1149,7 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const selectCommsContact = async (contactId: number) => {
     setCommsContactId(contactId);
+    setCommsThreadSearch('');
     try {
       const msgs = await ownerWorkspaceApi.getContactMessages(contactId);
       setCommsMessages(msgs.slice().reverse());
@@ -944,8 +1158,25 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
+  const openCommsContactCard = async () => {
+    if (commsContactId == null) return;
+    const fromCat =
+      contactsCatalogSorted.find((c) => c.id === commsContactId) || contacts.find((c) => c.id === commsContactId);
+    if (fromCat) {
+      await openContactDialog(fromCat);
+      return;
+    }
+    try {
+      const c = await ownerWorkspaceApi.getContact(commsContactId);
+      await openContactDialog(c);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось открыть карточку контакта'));
+    }
+  };
+
   const submitMessageTask = async () => {
     if (!messageTaskDialog || !messageTaskTitle.trim()) return;
+    const msgContactId = messageTaskDialog.message.contact_id;
     try {
       await ownerWorkspaceApi.createTaskFromMessage(messageTaskDialog.message.id, {
         title: messageTaskTitle.trim(),
@@ -955,6 +1186,14 @@ const OwnerWorkspacePage: React.FC = () => {
       setMessageTaskTitle('');
       await loadTasksFiltered();
       void loadDigest();
+      if (commsContactId != null && msgContactId === commsContactId) {
+        try {
+          const msgs = await ownerWorkspaceApi.getContactMessages(commsContactId);
+          setCommsMessages(msgs.slice().reverse());
+        } catch {
+          /* ignore */
+        }
+      }
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось создать задачу из сообщения'));
     }
@@ -1020,10 +1259,83 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
+  const saveWorkspaceSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      await ownerWorkspaceApi.patchMyPreferences({
+        default_task_view: taskViewMode,
+        task_list_rows_per_page: taskListRowsPerPage,
+        digest_due_within_hours: digestDueHours,
+        digest_scope: digestScope,
+      });
+      setError(null);
+      setMaxSyncResult('Настройки задачника сохранены в вашем профиле.');
+      void loadDigest();
+      if (tab === OW_TAB_TASKS) void loadTasksFiltered();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось сохранить настройки'));
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  const handleWorkspaceTabChange = (_: React.SyntheticEvent, v: number) => {
+    if (v !== OW_TAB_TASKS) {
+      setTaskDialog(null);
+    }
+    setTab(v);
+    const slug = tabSlugFromIndex(v);
+    if (v === OW_TAB_NOTIFICATIONS) {
+      const params = new URLSearchParams(searchParams);
+      params.delete('tab');
+      navigate(
+        { pathname: '/owner-workspace/notifications', search: params.toString() ? `?${params.toString()}` : '' },
+        { replace: true }
+      );
+      return;
+    }
+    if (v === OW_TAB_SETTINGS) {
+      const params = new URLSearchParams(searchParams);
+      params.delete('tab');
+      params.delete('task');
+      navigate(
+        { pathname: '/owner-workspace/settings', search: params.toString() ? `?${params.toString()}` : '' },
+        { replace: true }
+      );
+      return;
+    }
+    if (location.pathname.endsWith('/owner-workspace/notifications')) {
+      const params = new URLSearchParams(searchParams);
+      params.set('tab', slug);
+      if (v !== OW_TAB_TASKS) params.delete('task');
+      navigate(
+        { pathname: '/owner-workspace', search: params.toString() ? `?${params.toString()}` : '' },
+        { replace: true }
+      );
+      return;
+    }
+    if (location.pathname.endsWith('/owner-workspace/settings')) {
+      const params = new URLSearchParams(searchParams);
+      params.set('tab', slug);
+      if (v !== OW_TAB_TASKS) params.delete('task');
+      navigate(
+        { pathname: '/owner-workspace', search: params.toString() ? `?${params.toString()}` : '' },
+        { replace: true }
+      );
+      return;
+    }
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', slug);
+      if (v !== OW_TAB_TASKS) next.delete('task');
+      return next;
+    }, { replace: true });
+  };
+
   const openSearchHitProject = async (id: number) => {
     setSearchOpen(false);
     setSearchQuery('');
-    setTab(0);
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_PROJECTS);
     await loadProjectsAndContacts();
     try {
       const p = await ownerWorkspaceApi.getProject(id);
@@ -1036,7 +1348,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const openSearchHitContact = async (id: number) => {
     setSearchOpen(false);
     setSearchQuery('');
-    setTab(1);
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_CONTACTS);
     await loadProjectsAndContacts();
     try {
       const c = await ownerWorkspaceApi.getContact(id);
@@ -1049,11 +1361,25 @@ const OwnerWorkspacePage: React.FC = () => {
   const openSearchHitTask = async (id: number) => {
     setSearchOpen(false);
     setSearchQuery('');
-    setTab(2);
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
+    skipNextTaskFromUrlEffectRef.current = true;
+    if (
+      location.pathname.endsWith('/owner-workspace/notifications') ||
+      location.pathname.endsWith('/owner-workspace/settings')
+    ) {
+      navigate({ pathname: '/owner-workspace', search: `?tab=tasks&task=${id}` }, { replace: true });
+    } else {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', 'tasks');
+        next.set('task', String(id));
+        return next;
+      }, { replace: true });
+    }
     await loadTasksFiltered();
     try {
       const full = await ownerWorkspaceApi.getTask(id);
-      await openTaskDialog(full);
+      await openTaskDialog(full, { syncUrl: false });
     } catch (e: unknown) {
       setError(extractApiError(e, 'Задача не найдена'));
     }
@@ -1062,9 +1388,39 @@ const OwnerWorkspacePage: React.FC = () => {
   const openSearchHitMessage = async (contactId: number) => {
     setSearchOpen(false);
     setSearchQuery('');
-    setTab(3);
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_COMMS);
     await selectCommsContact(contactId);
   };
+
+  openTaskDialogRef.current = openTaskDialog;
+  loadTasksFilteredRef.current = loadTasksFiltered;
+
+  useEffect(() => {
+    const tidRaw = searchParams.get('task');
+    const tid = tidRaw ? parseInt(tidRaw, 10) : NaN;
+    if (!Number.isFinite(tid) || tid < 1) return undefined;
+    if (skipNextTaskFromUrlEffectRef.current) {
+      skipNextTaskFromUrlEffectRef.current = false;
+      return undefined;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const nextTab = resolveOwnerWorkspaceTab(location.pathname, searchParams);
+        if (nextTab === OW_TAB_TASKS) {
+          await loadTasksFilteredRef.current();
+        }
+        const full = await ownerWorkspaceApi.getTask(tid);
+        if (cancelled) return;
+        await openTaskDialogRef.current(full, { syncUrl: false });
+      } catch (e: unknown) {
+        if (!cancelled) setError(extractApiError(e, 'Задача не найдена'));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, searchParams]);
 
   const userOptions = useMemo(
     () => users.filter((u) => ['admin', 'owner', 'sales', 'trainer'].includes(u.role)),
@@ -1094,6 +1450,50 @@ const OwnerWorkspacePage: React.FC = () => {
     if (!projectDialog) return [];
     return contactsCatalogSorted.filter((c) => c.linked_project_ids.includes(projectDialog.id));
   }, [contactsCatalogSorted, projectDialog]);
+
+  const contactDialogLinkedProjects = useMemo(() => {
+    if (!contactDialog?.linked_project_ids?.length) return [];
+    const ids = new Set(contactDialog.linked_project_ids);
+    return projectsCatalogSorted.filter((p) => ids.has(p.id));
+  }, [contactDialog, projectsCatalogSorted]);
+
+  const contactDialogTasksDone = useMemo(
+    () => contactDialogTasks.filter((t) => ['completed', 'cancelled'].includes(String(t.status))),
+    [contactDialogTasks]
+  );
+  const contactDialogTasksActive = useMemo(
+    () => contactDialogTasks.filter((t) => !['completed', 'cancelled'].includes(String(t.status))),
+    [contactDialogTasks]
+  );
+
+  const contactMessagesFiltered = useMemo(() => {
+    const q = contactMessageSearch.trim().toLowerCase();
+    if (!q) return contactMessages;
+    return contactMessages.filter((m) => (m.text || '').toLowerCase().includes(q));
+  }, [contactMessages, contactMessageSearch]);
+
+  const conversationsFiltered = useMemo(() => {
+    const q = commsDialogSearch.trim().toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter(
+      (c) =>
+        (c.contact_name || '').toLowerCase().includes(q) ||
+        (c.last_message_text || '').toLowerCase().includes(q)
+    );
+  }, [conversations, commsDialogSearch]);
+
+  const commsMessagesFiltered = useMemo(() => {
+    const q = commsThreadSearch.trim().toLowerCase();
+    if (!q) return commsMessages;
+    return commsMessages.filter((m) => (m.text || '').toLowerCase().includes(q));
+  }, [commsMessages, commsThreadSearch]);
+
+  const commsSelectedContact = useMemo(() => {
+    if (commsContactId == null) return null;
+    return (
+      contactsCatalogSorted.find((c) => c.id === commsContactId) || contacts.find((c) => c.id === commsContactId) || null
+    );
+  }, [commsContactId, contactsCatalogSorted, contacts]);
 
   const tasksByDeadlineDay = useMemo(() => {
     const map = new Map<string, OwnerWorkspaceTask[]>();
@@ -1218,7 +1618,7 @@ const OwnerWorkspacePage: React.FC = () => {
           aria-label="Уведомления по дедлайнам"
           onClick={(e) => {
             setNotifAnchor(e.currentTarget);
-            void loadNotifications();
+            void loadNotifications(80);
           }}
         >
           <Badge
@@ -1249,7 +1649,7 @@ const OwnerWorkspacePage: React.FC = () => {
         PaperProps={{ sx: { maxWidth: 420, maxHeight: 480 } }}
       >
         {(notifEnvelope?.items || []).length === 0 ? (
-          <MenuItem disabled>Нет уведомлений (для вас как исполнителя)</MenuItem>
+          <MenuItem disabled>Нет уведомлений</MenuItem>
         ) : (
           (notifEnvelope?.items || []).map((n) => (
             <MenuItem
@@ -1262,7 +1662,7 @@ const OwnerWorkspacePage: React.FC = () => {
                       await ownerWorkspaceApi.markNotificationRead(n.id);
                     }
                     setNotifAnchor(null);
-                    void loadNotifications();
+                    void loadNotifications(80);
                     if (n.task_id != null) {
                       await openSearchHitTask(n.task_id);
                     }
@@ -1273,14 +1673,24 @@ const OwnerWorkspacePage: React.FC = () => {
               }}
             >
               <ListItemText
-                primary={n.title}
+                primary={
+                  <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Chip
+                      size="small"
+                      label={OWNER_WS_NOTIF_KIND_LABELS[n.kind] || n.kind}
+                      sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontSize: 11 } }}
+                    />
+                    <Typography component="span" variant="body2" fontWeight={n.read_at ? 400 : 600}>
+                      {n.title}
+                    </Typography>
+                  </Stack>
+                }
                 secondary={
                   <>
                     {n.body}
                     {n.read_at ? '' : ' · непрочитано'}
                   </>
                 }
-                primaryTypographyProps={{ variant: 'body2', fontWeight: n.read_at ? 400 : 600 }}
                 secondaryTypographyProps={{ variant: 'caption' }}
               />
             </MenuItem>
@@ -1396,15 +1806,17 @@ const OwnerWorkspacePage: React.FC = () => {
         </Alert>
       )}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+      <Tabs value={tab} onChange={handleWorkspaceTabChange} sx={{ mb: 2 }}>
         <Tab label={`Проекты (${projects.length})`} />
         <Tab label={`Контакты (${contacts.length})`} />
-        <Tab label={`Задачи (${tasks.length})`} />
+        <Tab label={`Задачи (${taskListTotal})`} />
         <Tab label="Коммуникации" />
+        <Tab label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
+        <Tab label="Настройки" />
         <Tab label="История" />
       </Tabs>
 
-      {tab === 0 && (
+      {tab === OW_TAB_PROJECTS && (
         <Stack spacing={2}>
           <Card variant="outlined">
             <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -1513,7 +1925,7 @@ const OwnerWorkspacePage: React.FC = () => {
         </Stack>
       )}
 
-      {tab === 1 && (
+      {tab === OW_TAB_CONTACTS && (
         <Stack spacing={2}>
           <Card variant="outlined">
             <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -1606,7 +2018,7 @@ const OwnerWorkspacePage: React.FC = () => {
         </Stack>
       )}
 
-      {tab === 2 && (
+      {tab === OW_TAB_TASKS && (
         <Stack spacing={2}>
           <Card>
             <CardContent>
@@ -1814,6 +2226,13 @@ const OwnerWorkspacePage: React.FC = () => {
             </Typography>
           </Stack>
 
+          {taskViewMode !== 'list' && taskListTotal > OWNER_WS_TASKS_FETCH_CAP && (
+            <Alert severity="warning">
+              Загружено не более {OWNER_WS_TASKS_FETCH_CAP} задач при текущих фильтрах (всего по фильтру: {taskListTotal}
+              ). Уточните фильтры или переключитесь в режим «Список» с пагинацией.
+            </Alert>
+          )}
+
           {taskViewMode === 'list' && (
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} flexWrap="wrap">
               <FormControlLabel
@@ -1914,6 +2333,20 @@ const OwnerWorkspacePage: React.FC = () => {
                   </CardContent>
                 </Card>
               )}
+              <TablePagination
+                component="div"
+                count={taskListTotal}
+                page={taskListPage}
+                onPageChange={(_, newPage) => setTaskListPage(newPage)}
+                rowsPerPage={taskListRowsPerPage}
+                onRowsPerPageChange={(e) => {
+                  setTaskListRowsPerPage(parseInt(e.target.value, 10));
+                  setTaskListPage(0);
+                }}
+                rowsPerPageOptions={[10, 25, 50, 100]}
+                labelRowsPerPage="На странице:"
+                labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count !== -1 ? count : `более ${to}`}`}
+              />
             </Stack>
           ) : taskViewMode === 'kanban' ? (
             <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 1, alignItems: 'flex-start' }}>
@@ -2031,7 +2464,7 @@ const OwnerWorkspacePage: React.FC = () => {
         </Stack>
       )}
 
-      {tab === 3 && (
+      {tab === OW_TAB_COMMS && (
         <Stack spacing={2}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
             <Button variant="outlined" onClick={() => void syncMaxIntoWorkspace()}>
@@ -2042,83 +2475,304 @@ const OwnerWorkspacePage: React.FC = () => {
               пропускаются).
             </Typography>
           </Stack>
-          <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Диалоги
-                </Typography>
-                <Stack spacing={1}>
-                  {conversations.map((c) => (
-                    <Box
-                      key={c.contact_id}
-                      onClick={() => selectCommsContact(c.contact_id)}
-                      sx={{
-                        p: 1,
-                        border: '1px solid',
-                        borderColor: commsContactId === c.contact_id ? 'primary.main' : 'divider',
-                        borderRadius: 1,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Typography variant="subtitle2">{c.contact_name}</Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap display="block">
-                        {c.last_message_text || '—'}
+          <Grid container spacing={2} alignItems="stretch">
+            <Grid item xs={12} md={3}>
+              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 360 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Диалоги
+                  </Typography>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    placeholder="Поиск по имени или тексту…"
+                    value={commsDialogSearch}
+                    onChange={(e) => setCommsDialogSearch(e.target.value)}
+                    sx={{ mb: 1 }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" color="action" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                    {conversationsFiltered.length === conversations.length
+                      ? `${conversations.length} диалогов`
+                      : `Найдено ${conversationsFiltered.length} из ${conversations.length}`}
+                  </Typography>
+                  <Stack spacing={1} sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                    {conversationsFiltered.length === 0 && (
+                      <Typography variant="body2" color="text.secondary">
+                        {conversations.length === 0 ? 'Нет переписок с сообщениями.' : 'Ничего не найдено.'}
                       </Typography>
-                    </Box>
-                  ))}
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={8}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  {commsContactId ? `Переписка · контакт #${commsContactId}` : 'Выберите диалог слева'}
-                </Typography>
-                <Stack spacing={1} sx={{ maxHeight: 420, overflow: 'auto' }}>
-                  {commsMessages.map((m) => (
-                    <Box
-                      key={m.id}
-                      sx={{
-                        p: 1,
-                        borderRadius: 1,
-                        bgcolor: m.direction === 'outgoing' ? 'action.hover' : 'background.paper',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                      }}
-                    >
-                      <Typography variant="caption" color="text.secondary">
-                        {m.direction} · {m.created_at ? new Date(m.created_at).toLocaleString('ru-RU') : ''}
+                    )}
+                    {conversationsFiltered.map((c) => (
+                      <Box
+                        key={c.contact_id}
+                        onClick={() => void selectCommsContact(c.contact_id)}
+                        sx={{
+                          p: 1,
+                          border: '1px solid',
+                          borderColor: commsContactId === c.contact_id ? 'primary.main' : 'divider',
+                          borderRadius: 1,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Typography variant="subtitle2">{c.contact_name}</Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap display="block">
+                          {c.last_message_text || '—'}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 360 }}>
+                  <Typography variant="h6" gutterBottom>
+                    {commsContactId
+                      ? `Переписка · ${commsSelectedContact?.full_name ?? `контакт #${commsContactId}`}`
+                      : 'Выберите диалог слева'}
+                  </Typography>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    placeholder="Поиск по сообщениям…"
+                    value={commsThreadSearch}
+                    onChange={(e) => setCommsThreadSearch(e.target.value)}
+                    disabled={!commsContactId}
+                    sx={{ mb: 1 }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" color="action" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  {commsContactId && commsThreadSearch.trim() && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                      Показано {commsMessagesFiltered.length} из {commsMessages.length}
+                    </Typography>
+                  )}
+                  <Stack spacing={1} sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                    {!commsContactId && (
+                      <Typography variant="body2" color="text.secondary">
+                        Лента сообщений появится после выбора контакта.
                       </Typography>
-                      <Typography variant="body2">{m.text}</Typography>
-                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                        <Button
-                          size="small"
-                          onClick={() => {
-                            setMessageTaskTitle(m.text.slice(0, 80) + (m.text.length > 80 ? '…' : ''));
-                            setMessageTaskDialog({ message: m });
+                    )}
+                    {commsContactId &&
+                      commsMessagesFiltered.map((m) => (
+                        <Box
+                          key={m.id}
+                          sx={{
+                            p: 1,
+                            borderRadius: 1,
+                            bgcolor: m.direction === 'outgoing' ? 'action.hover' : 'background.paper',
+                            border: '1px solid',
+                            borderColor: 'divider',
                           }}
                         >
-                          Задача из сообщения
-                        </Button>
-                        <Button size="small" color="secondary" onClick={() => openLinkToTaskDialog(m)}>
-                          К существующей задаче
-                        </Button>
-                      </Stack>
-                    </Box>
-                  ))}
-                </Stack>
-              </CardContent>
-            </Card>
+                          <Typography variant="caption" color="text.secondary">
+                            {m.direction} · {m.created_at ? new Date(m.created_at).toLocaleString('ru-RU') : ''}
+                          </Typography>
+                          <Typography variant="body2">{m.text}</Typography>
+                          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                            <Button
+                              size="small"
+                              onClick={() => {
+                                setMessageTaskTitle(m.text.slice(0, 80) + (m.text.length > 80 ? '…' : ''));
+                                setMessageTaskDialog({ message: m });
+                              }}
+                            >
+                              Задача из сообщения
+                            </Button>
+                            <Button size="small" color="secondary" onClick={() => openLinkToTaskDialog(m)}>
+                              К существующей задаче
+                            </Button>
+                          </Stack>
+                        </Box>
+                      ))}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Card sx={{ height: '100%' }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Контекст
+                  </Typography>
+                  {!commsContactId && (
+                    <Typography variant="body2" color="text.secondary">
+                      Выберите диалог, чтобы увидеть карточку контакта и быстрые действия.
+                    </Typography>
+                  )}
+                  {commsContactId && (
+                    <Stack spacing={1.5}>
+                      <Typography variant="subtitle1">{commsSelectedContact?.full_name ?? `Контакт #${commsContactId}`}</Typography>
+                      {commsSelectedContact?.phone && (
+                        <Typography variant="body2" color="text.secondary">
+                          {commsSelectedContact.phone}
+                        </Typography>
+                      )}
+                      {commsSelectedContact?.company && (
+                        <Typography variant="body2" color="text.secondary">
+                          {commsSelectedContact.company}
+                        </Typography>
+                      )}
+                      <Button variant="contained" size="small" sx={{ alignSelf: 'flex-start' }} onClick={() => void openCommsContactCard()}>
+                        Открыть карточку контакта
+                      </Button>
+                      <Divider />
+                      <Typography variant="caption" color="text.secondary">
+                        Непрочитанные в API пока не учитываются (поле зарезервировано под будущую синхронизацию).
+                      </Typography>
+                    </Stack>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
           </Grid>
-        </Grid>
         </Stack>
       )}
 
-      {tab === 4 && (
+      {tab === OW_TAB_NOTIFICATIONS && (
+        <Card variant="outlined">
+          <CardContent>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Все уведомления</Typography>
+              <Button size="small" variant="outlined" onClick={() => void loadNotifications(200)}>
+                Обновить
+              </Button>
+              <Typography variant="caption" color="text.secondary">
+                Дедлайны подтягиваются при открытии списка; назначения и комментарии приходят сразу.
+              </Typography>
+            </Stack>
+            <Stack spacing={1} sx={{ maxHeight: 640, overflow: 'auto' }}>
+              {(notifEnvelope?.items || []).length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  Пока пусто. Здесь же появятся просрочки, напоминания о дедлайне, назначения и комментарии к вашим задачам.
+                </Typography>
+              )}
+              {(notifEnvelope?.items || []).map((n) => (
+                <Card key={n.id} variant="outlined" sx={{ bgcolor: n.read_at ? 'transparent' : 'action.hover' }}>
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
+                      <Chip size="small" label={OWNER_WS_NOTIF_KIND_LABELS[n.kind] || n.kind} />
+                      {!n.read_at && <Chip size="small" color="warning" label="Новое" />}
+                      <Typography variant="caption" color="text.secondary">
+                        {n.created_at ? new Date(n.created_at).toLocaleString('ru-RU') : ''}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="subtitle2">{n.title}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      {n.body}
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      {n.task_id != null && (
+                        <Button size="small" variant="contained" onClick={() => void openSearchHitTask(n.task_id!)}>
+                          Открыть задачу
+                        </Button>
+                      )}
+                      {!n.read_at && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            void (async () => {
+                              try {
+                                await ownerWorkspaceApi.markNotificationRead(n.id);
+                                await loadNotifications(200);
+                              } catch (err: unknown) {
+                                setError(extractApiError(err, 'Не удалось отметить прочитанным'));
+                              }
+                            })();
+                          }}
+                        >
+                          Прочитано
+                        </Button>
+                      )}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === OW_TAB_SETTINGS && (
+        <Card variant="outlined">
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Настройки задачника
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Параметры ниже сохраняются в вашем профиле и подставляются при следующем открытии Owner workspace. Изменения
+              на других вкладках (вид задач, сводка) сразу видны в интерфейсе; нажмите «Сохранить», чтобы зафиксировать их
+              как умолчания.
+            </Typography>
+            <Stack spacing={2} sx={{ maxWidth: 480 }}>
+              <TextField
+                select
+                fullWidth
+                label="Вид списка задач по умолчанию"
+                value={taskViewMode}
+                onChange={(e) => setTaskViewMode(e.target.value as 'list' | 'kanban' | 'calendar')}
+              >
+                <MenuItem value="list">Список</MenuItem>
+                <MenuItem value="kanban">Канбан</MenuItem>
+                <MenuItem value="calendar">Календарь</MenuItem>
+              </TextField>
+              <TextField
+                fullWidth
+                type="number"
+                inputProps={{ min: 5, max: 100 }}
+                label="Строк на странице (режим «Список», 5–100)"
+                value={taskListRowsPerPage}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  if (!Number.isFinite(n)) return;
+                  setTaskListRowsPerPage(Math.min(100, Math.max(5, n)));
+                }}
+              />
+              <TextField
+                select
+                fullWidth
+                label="Сводка по дедлайнам: окно (часы)"
+                value={String(digestDueHours)}
+                onChange={(e) => setDigestDueHours(Number(e.target.value))}
+              >
+                {[8, 24, 48, 72, 168, 336].map((n) => (
+                  <MenuItem key={n} value={String(n)}>
+                    {n === 168 ? '7 дней (168 ч)' : `${n} ч`}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                fullWidth
+                label="Сводка: область"
+                value={digestScope}
+                onChange={(e) => setDigestScope(e.target.value as 'all' | 'mine')}
+              >
+                <MenuItem value="all">Все доступные задачи</MenuItem>
+                <MenuItem value="mine">Только мои (исполнитель — я)</MenuItem>
+              </TextField>
+              <Button variant="contained" disabled={settingsSaving} onClick={() => void saveWorkspaceSettings()}>
+                {settingsSaving ? 'Сохранение…' : 'Сохранить настройки'}
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === OW_TAB_HISTORY && (
         <Card>
           <CardContent>
             <Typography variant="subtitle2" gutterBottom>
@@ -2209,7 +2863,7 @@ const OwnerWorkspacePage: React.FC = () => {
               onClick={() => {
                 if (!projectDialog) return;
                 setNewTaskProjectId(projectDialog.id);
-                setTab(2);
+                handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
                 setProjectDialog(null);
               }}
             >
@@ -2362,7 +3016,7 @@ const OwnerWorkspacePage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(contactDialog)} onClose={() => setContactDialog(null)} maxWidth="sm" fullWidth>
+      <Dialog open={Boolean(contactDialog)} onClose={() => setContactDialog(null)} maxWidth="md" fullWidth>
         <DialogTitle>{contactDialog?.full_name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -2423,6 +3077,40 @@ const OwnerWorkspacePage: React.FC = () => {
               Сохранить карточку
             </Button>
             <Divider />
+            <Typography variant="subtitle2">Проекты</Typography>
+            {contactDialogLinkedProjects.length === 0 ? (
+              <Typography variant="caption" color="text.secondary">
+                Не привязан ни к одному проекту. Ниже можно добавить.
+              </Typography>
+            ) : (
+              <Stack spacing={0.5} sx={{ maxHeight: 180, overflow: 'auto' }}>
+                {contactDialogLinkedProjects.map((p) => (
+                  <Box
+                    key={p.id}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      py: 0.5,
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ minWidth: 0 }}>
+                      {p.name}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      aria-label="Убрать из проекта"
+                      onClick={() => void removeContactFromLinkedProject(p.id)}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Stack>
+            )}
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <Autocomplete
                 sx={{ flex: 1 }}
@@ -2444,19 +3132,50 @@ const OwnerWorkspacePage: React.FC = () => {
               onClick={() => {
                 if (!contactDialog) return;
                 setNewTaskContactId(contactDialog.id);
-                setTab(2);
+                handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
                 setContactDialog(null);
               }}
             >
               Создать задачу по этому контакту
             </Button>
-            <Stack spacing={0.5} sx={{ maxHeight: 200, overflow: 'auto' }}>
-              {contactDialogTasks.length === 0 ? (
+            <Typography variant="caption" color="text.secondary">
+              Активные: {contactDialogTasksActive.length} · завершённые / отменённые: {contactDialogTasksDone.length}
+            </Typography>
+            <Typography variant="caption" fontWeight={600}>
+              Активные
+            </Typography>
+            <Stack spacing={0.5} sx={{ maxHeight: 180, overflow: 'auto' }}>
+              {contactDialogTasksActive.length === 0 ? (
                 <Typography variant="caption" color="text.secondary">
-                  Нет задач с привязкой к контакту.
+                  Нет активных задач.
                 </Typography>
               ) : (
-                contactDialogTasks.slice(0, 40).map((t) => (
+                contactDialogTasksActive.slice(0, 50).map((t) => (
+                  <Button
+                    key={t.id}
+                    size="small"
+                    variant="text"
+                    sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                    onClick={() => {
+                      void openTaskDialog(t);
+                      setContactDialog(null);
+                    }}
+                  >
+                    #{t.id} · {t.title.length > 48 ? `${t.title.slice(0, 48)}…` : t.title} ({STATUS_LABELS[t.status] || t.status})
+                  </Button>
+                ))
+              )}
+            </Stack>
+            <Typography variant="caption" fontWeight={600}>
+              Завершённые и отменённые
+            </Typography>
+            <Stack spacing={0.5} sx={{ maxHeight: 180, overflow: 'auto' }}>
+              {contactDialogTasksDone.length === 0 ? (
+                <Typography variant="caption" color="text.secondary">
+                  Нет завершённых или отменённых.
+                </Typography>
+              ) : (
+                contactDialogTasksDone.slice(0, 50).map((t) => (
                   <Button
                     key={t.id}
                     size="small"
@@ -2485,8 +3204,27 @@ const OwnerWorkspacePage: React.FC = () => {
             <Button variant="outlined" onClick={sendContactMessage}>
               Сохранить как исходящее
             </Button>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Поиск по тексту сообщений…"
+              value={contactMessageSearch}
+              onChange={(e) => setContactMessageSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" color="action" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            {contactMessageSearch.trim() && (
+              <Typography variant="caption" color="text.secondary">
+                Показано {contactMessagesFiltered.length} из {contactMessages.length}
+              </Typography>
+            )}
             <Stack spacing={1} sx={{ maxHeight: 240, overflow: 'auto' }}>
-              {contactMessages.map((m) => (
+              {contactMessagesFiltered.map((m) => (
                 <Box key={m.id} sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
                   <Typography variant="caption">{m.direction}</Typography>
                   <Typography variant="body2">{m.text}</Typography>
@@ -2500,7 +3238,7 @@ const OwnerWorkspacePage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(taskDialog)} onClose={() => setTaskDialog(null)} maxWidth="md" fullWidth>
+      <Dialog open={Boolean(taskDialog)} onClose={closeTaskDialog} maxWidth="md" fullWidth>
         <DialogTitle>Задача #{taskDialog?.id}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -2518,7 +3256,18 @@ const OwnerWorkspacePage: React.FC = () => {
                 Открыть предыдущую задачу #{taskDialog.previous_task_id}
               </Button>
             )}
-            <TextField label="Название" fullWidth value={taskEditTitle} onChange={(e) => setTaskEditTitle(e.target.value)} />
+            {taskFormLocked && (
+              <Alert severity="info">
+                Задача завершена или отменена: меняйте только <strong>статус</strong>, чтобы вернуть в работу. После сохранения с активным статусом остальные поля снова станут доступны.
+              </Alert>
+            )}
+            <TextField
+              label="Название"
+              fullWidth
+              value={taskEditTitle}
+              onChange={(e) => setTaskEditTitle(e.target.value)}
+              disabled={taskFormLocked}
+            />
             <TextField
               label="Описание"
               fullWidth
@@ -2526,6 +3275,7 @@ const OwnerWorkspacePage: React.FC = () => {
               minRows={3}
               value={taskEditDescription}
               onChange={(e) => setTaskEditDescription(e.target.value)}
+              disabled={taskFormLocked}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
@@ -2547,6 +3297,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 fullWidth
                 value={taskEditPriority}
                 onChange={(e) => setTaskEditPriority(coerceTaskPriority(e.target.value))}
+                disabled={taskFormLocked}
               >
                 {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
                   <MenuItem key={k} value={k}>
@@ -2562,6 +3313,7 @@ const OwnerWorkspacePage: React.FC = () => {
               onChange={(e) => setTaskEditDeadline(e.target.value)}
               InputLabelProps={{ shrink: true }}
               fullWidth
+              disabled={taskFormLocked}
             />
             <TextField
               label="Начало (start_at)"
@@ -2570,12 +3322,14 @@ const OwnerWorkspacePage: React.FC = () => {
               onChange={(e) => setTaskEditStartAt(e.target.value)}
               InputLabelProps={{ shrink: true }}
               fullWidth
+              disabled={taskFormLocked}
             />
             <Autocomplete
               options={projectsCatalogSorted}
               getOptionLabel={(o) => o.name}
               value={projectsCatalogSorted.find((p) => p.id === taskEditProjectId) || null}
               onChange={(_, v) => setTaskEditProjectId(v ? v.id : '')}
+              disabled={taskFormLocked}
               renderInput={(params) => <TextField {...params} label="Проект" />}
             />
             <Autocomplete
@@ -2583,6 +3337,7 @@ const OwnerWorkspacePage: React.FC = () => {
               getOptionLabel={(o) => o.full_name}
               value={contactsCatalogSorted.find((c) => c.id === taskEditContactId) || null}
               onChange={(_, v) => setTaskEditContactId(v ? v.id : '')}
+              disabled={taskFormLocked}
               renderInput={(params) => <TextField {...params} label="Контакт" />}
             />
             <Autocomplete
@@ -2590,6 +3345,7 @@ const OwnerWorkspacePage: React.FC = () => {
               getOptionLabel={(o) => o.full_name}
               value={userOptions.find((u) => u.id === taskEditAssigneeId) || null}
               onChange={(_, v) => setTaskEditAssigneeId(v ? v.id : '')}
+              disabled={taskFormLocked}
               renderInput={(params) => <TextField {...params} label="Исполнитель" />}
             />
             <Autocomplete
@@ -2598,6 +3354,7 @@ const OwnerWorkspacePage: React.FC = () => {
               options={[] as string[]}
               value={taskEditTags}
               onChange={(_, v) => setTaskEditTags(v.map(String))}
+              disabled={taskFormLocked}
               renderTags={(value, getTagProps) =>
                 value.map((option, index) => (
                   <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
@@ -2610,6 +3367,7 @@ const OwnerWorkspacePage: React.FC = () => {
               <Stack key={item.id} direction="row" spacing={1} alignItems="center">
                 <Checkbox
                   checked={item.done}
+                  disabled={taskFormLocked}
                   onChange={() => {
                     const next = [...taskEditChecklist];
                     next[idx] = { ...item, done: !item.done };
@@ -2620,6 +3378,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   size="small"
                   fullWidth
                   value={item.text}
+                  disabled={taskFormLocked}
                   onChange={(e) => {
                     const next = [...taskEditChecklist];
                     next[idx] = { ...item, text: e.target.value };
@@ -2629,6 +3388,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 <IconButton
                   size="small"
                   aria-label="Удалить пункт"
+                  disabled={taskFormLocked}
                   onClick={() => setTaskEditChecklist(taskEditChecklist.filter((_, i) => i !== idx))}
                 >
                   <DeleteOutlineIcon fontSize="small" />
@@ -2638,6 +3398,7 @@ const OwnerWorkspacePage: React.FC = () => {
             <Button
               size="small"
               variant="text"
+              disabled={taskFormLocked}
               onClick={() =>
                 setTaskEditChecklist((prev) => [...prev, { id: `n-${Date.now()}`, text: '', done: false }])
               }
@@ -2655,6 +3416,7 @@ const OwnerWorkspacePage: React.FC = () => {
               minRows={4}
               value={taskEditAttachmentsText}
               onChange={(e) => setTaskEditAttachmentsText(e.target.value)}
+              disabled={taskFormLocked}
               InputProps={{ sx: { fontFamily: 'monospace', fontSize: 13 } }}
             />
             {(taskDialog?.linked_message_ids?.length ?? 0) > 0 && (
@@ -2701,11 +3463,20 @@ const OwnerWorkspacePage: React.FC = () => {
             </Button>
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTaskDialog(null)}>Отмена</Button>
-          <Button variant="contained" onClick={saveTaskDialog}>
-            Сохранить
-          </Button>
+        <DialogActions sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+          <Box>
+            {isWorkspaceFullAccess && (
+              <Button color="error" variant="outlined" onClick={() => void deleteTaskDialog()}>
+                Удалить задачу
+              </Button>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button onClick={closeTaskDialog}>Отмена</Button>
+            <Button variant="contained" onClick={saveTaskDialog}>
+              Сохранить
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
 

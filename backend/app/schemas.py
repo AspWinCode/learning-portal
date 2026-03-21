@@ -2645,6 +2645,15 @@ class OwnerWorkspaceTaskResponse(BaseModel):
         from_attributes = True
 
 
+class OwnerWorkspaceTaskListResponse(BaseModel):
+    """Пагинированный список задач (GET /tasks)."""
+
+    items: List[OwnerWorkspaceTaskResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class OwnerWorkspaceTaskCompleteResponse(BaseModel):
     """Ответ POST /tasks/{id}/complete: завершённая задача и опционально созданная следующая."""
 
@@ -2781,6 +2790,22 @@ class OwnerWorkspaceNotificationsEnvelope(BaseModel):
 
     items: List[OwnerWorkspaceNotificationResponse]
     unread_count: int
+
+
+class OwnerWorkspaceUserPreferencesResponse(BaseModel):
+    """Персональные настройки UI задачника (хранятся на пользователя)."""
+
+    default_task_view: Literal["list", "kanban", "calendar"] = "list"
+    task_list_rows_per_page: int = 25
+    digest_due_within_hours: int = 48
+    digest_scope: Literal["all", "mine"] = "all"
+
+
+class OwnerWorkspaceUserPreferencesPatch(BaseModel):
+    default_task_view: Optional[Literal["list", "kanban", "calendar"]] = None
+    task_list_rows_per_page: Optional[int] = Field(None, ge=5, le=100)
+    digest_due_within_hours: Optional[int] = Field(None, ge=8, le=336)
+    digest_scope: Optional[Literal["all", "mine"]] = None
 
 
 # Owner funnels (support letters, thank you letters, events)

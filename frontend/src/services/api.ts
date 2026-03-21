@@ -51,12 +51,14 @@ import {
   OwnerWorkspaceProject,
   OwnerWorkspaceContact,
   OwnerWorkspaceTask,
+  OwnerWorkspaceTaskListPage,
   OwnerWorkspaceMessage,
   OwnerWorkspaceConversation,
   OwnerWorkspaceTaskComment,
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceDigest,
   OwnerWorkspaceNotificationsEnvelope,
+  OwnerWorkspaceUserPreferences,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTaskCompleteResult,
 } from '../types';
@@ -2312,7 +2314,9 @@ export const ownerWorkspaceApi = {
     search?: string;
     sort_by?: 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority';
     sort_dir?: 'asc' | 'desc';
-  }): Promise<OwnerWorkspaceTask[]> => {
+    limit?: number;
+    offset?: number;
+  }): Promise<OwnerWorkspaceTaskListPage> => {
     const response = await api.get('/api/owner-workspace/tasks', { params: params || {} });
     return response.data;
   },
@@ -2365,6 +2369,16 @@ export const ownerWorkspaceApi = {
   markNotificationRead: async (notificationId: number): Promise<void> => {
     await api.patch(`/api/owner-workspace/notifications/${notificationId}/read`);
   },
+  getMyPreferences: async (): Promise<OwnerWorkspaceUserPreferences> => {
+    const response = await api.get('/api/owner-workspace/me/preferences');
+    return response.data;
+  },
+  patchMyPreferences: async (
+    payload: Partial<OwnerWorkspaceUserPreferences>
+  ): Promise<OwnerWorkspaceUserPreferences> => {
+    const response = await api.patch('/api/owner-workspace/me/preferences', payload);
+    return response.data;
+  },
   listMessages: async (params?: { contact_id?: number }): Promise<OwnerWorkspaceMessage[]> => {
     const response = await api.get('/api/owner-workspace/messages', { params: params || {} });
     return response.data;
@@ -2390,6 +2404,9 @@ export const ownerWorkspaceApi = {
   getTask: async (taskId: number): Promise<OwnerWorkspaceTask> => {
     const response = await api.get(`/api/owner-workspace/tasks/${taskId}`);
     return response.data;
+  },
+  deleteTask: async (taskId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/tasks/${taskId}`);
   },
   updateTask: async (
     taskId: number,

@@ -1999,6 +1999,18 @@ class OwnerWorkspaceNotification(Base):
     task = relationship("OwnerWorkspaceTask")
 
 
+class OwnerWorkspaceUserPreference(Base):
+    """Персональные настройки UI задачника (JSON, merge при PATCH)."""
+
+    __tablename__ = "owner_workspace_user_preferences"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    preferences = Column(JSON, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User")
+
+
 # Owner funnel constants (owner_funnels router)
 OWNER_FUNNEL_SUPPORT_LETTERS = "support_letters"   # ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╨┐╨╕╤Б╤М╨╝╨░╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╨┐╨╕╤Б╤М╨╝╨░╨┐╨╛╨┤╨┤╨╡╤А╨╢╨║╨╕
 OWNER_FUNNEL_THANK_YOU_LETTERS = "thank_you_letters"  # ╨Я╨╕╤Б╤М╨╝╨░╨▒╨╗╨░╨│╨╛╨┤╨░╤А╨╜╨╛╤Б╤В╨╕

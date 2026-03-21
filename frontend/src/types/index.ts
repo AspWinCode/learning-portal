@@ -1019,6 +1019,8 @@ export interface OwnerWorkspaceContact {
   source?: string | null;
   linked_project_ids: number[];
   active_tasks_count: number;
+  /** ISO datetime: max(сообщение, задача, updated_at карточки) */
+  last_interaction_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

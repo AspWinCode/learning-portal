@@ -403,7 +403,8 @@ class SmsMessage(Base):
     status = Column(String(16), nullable=False, default="pending", index=True)  # pending | scheduled | sent | failed | cancelled
     gateway_id = Column(String(128), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)  # отложенная отправка
+    # Время запланированной отправки (UTC). Если NULL — отправляем сразу.
+    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
@@ -421,7 +422,7 @@ class MaxMessage(Base):
     chat_id = Column(String(64), nullable=True)
     message = Column(Text, nullable=False)
     status = Column(String(16), nullable=False, default="pending", index=True)  # pending | scheduled | sent | failed | cancelled
-    provider = Column(String(32), nullable=True)         # bot | greenapi | api_messenger
+    provider = Column(String(32), nullable=True)  # bot | greenapi | api_messenger
     gateway_message_id = Column(String(128), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)  # отложенная отправка
@@ -1823,6 +1824,159 @@ class TaskCounter(Base):
     value = Column(Integer, nullable=False, server_default="0")
 
     task = relationship("Task", back_populates="counters")
+
+
+# --- Owner workspace: projects, contacts, tasks, communications ---
+class OwnerWorkspaceProject(Base):
+    __tablename__ = "owner_workspace_projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, server_default="active", index=True)  # active | completed | archived
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    parent_project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    parent_project = relationship("OwnerWorkspaceProject", remote_side=[id], backref="subprojects")
+
+
+class OwnerWorkspaceProjectParticipant(Base):
+    __tablename__ = "owner_workspace_project_participants"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_owner_workspace_project_participant"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("OwnerWorkspaceProject")
+    user = relationship("User")
+
+
+class OwnerWorkspaceContact(Base):
+    __tablename__ = "owner_workspace_contacts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String(255), nullable=False, index=True)
+    phone = Column(String(64), nullable=False, index=True)
+    email = Column(String(255), nullable=True, index=True)
+    company = Column(String(255), nullable=True, index=True)
+    position = Column(String(255), nullable=True)
+    tags = Column(JSON, nullable=True)
+    comment = Column(Text, nullable=True)
+    source = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class OwnerWorkspaceProjectContact(Base):
+    __tablename__ = "owner_workspace_project_contacts"
+    __table_args__ = (
+        UniqueConstraint("project_id", "contact_id", name="uq_owner_workspace_project_contact"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("OwnerWorkspaceProject")
+    contact = relationship("OwnerWorkspaceContact")
+
+
+class OwnerWorkspaceTask(Base):
+    __tablename__ = "owner_workspace_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(512), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, server_default="new", index=True)  # new | in_progress | waiting | completed | cancelled
+    priority = Column(String(20), nullable=False, server_default="medium", index=True)  # low | medium | high | critical
+    deadline_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    start_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    assignee_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    creator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="SET NULL"), nullable=True, index=True)
+    tags = Column(JSON, nullable=True)
+    checklist = Column(JSON, nullable=True)
+    attachments = Column(JSON, nullable=True)
+    previous_task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    assignee = relationship("User", foreign_keys=[assignee_id])
+    creator = relationship("User", foreign_keys=[creator_id])
+    project = relationship("OwnerWorkspaceProject")
+    contact = relationship("OwnerWorkspaceContact")
+    previous_task = relationship("OwnerWorkspaceTask", remote_side=[id], backref="next_tasks")
+
+
+class OwnerWorkspaceTaskComment(Base):
+    __tablename__ = "owner_workspace_task_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    task = relationship("OwnerWorkspaceTask")
+    author = relationship("User")
+
+
+class OwnerWorkspaceMessage(Base):
+    __tablename__ = "owner_workspace_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_chat_id = Column(String(128), nullable=True, index=True)
+    external_message_id = Column(String(128), nullable=True, index=True)
+    direction = Column(String(16), nullable=False, server_default="incoming", index=True)  # incoming | outgoing
+    text = Column(Text, nullable=False)
+    attachments = Column(JSON, nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    received_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    contact = relationship("OwnerWorkspaceContact")
+
+
+class OwnerWorkspaceTaskMessage(Base):
+    __tablename__ = "owner_workspace_task_messages"
+    __table_args__ = (
+        UniqueConstraint("task_id", "message_id", name="uq_owner_workspace_task_message"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    message_id = Column(Integer, ForeignKey("owner_workspace_messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    task = relationship("OwnerWorkspaceTask")
+    message = relationship("OwnerWorkspaceMessage")
+
+
+class OwnerWorkspaceAuditLog(Base):
+    __tablename__ = "owner_workspace_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String(64), nullable=False, index=True)
+    entity_id = Column(Integer, nullable=False, index=True)
+    action_type = Column(String(64), nullable=False, index=True)
+    old_value = Column(JSON, nullable=True)
+    new_value = Column(JSON, nullable=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    author = relationship("User")
 
 
 # Owner funnel constants (owner_funnels router)

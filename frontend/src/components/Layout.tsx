@@ -232,6 +232,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Совместимость программ (отработки)', icon: <Assignment />, path: '/sales/program-makeup' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
+      items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace' });
     }
     if (isAdminLike) items.push({ text: 'Настройки', icon: <Settings />, path: '/sales/settings' });
     if (role === 'owner') {

@@ -986,3 +986,88 @@ export interface TaskResponse {
   payment_balance?: number | null;
 }
 
+// Owner workspace task manager
+export interface OwnerWorkspaceProject {
+  id: number;
+  name: string;
+  description?: string | null;
+  status: 'active' | 'completed' | 'archived' | string;
+  owner_id?: number | null;
+  parent_project_id?: number | null;
+  participants: number[];
+  active_tasks_count: number;
+  contacts_count: number;
+  subprojects_count: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  archived_at?: string | null;
+}
+
+export interface OwnerWorkspaceContact {
+  id: number;
+  full_name: string;
+  phone: string;
+  email?: string | null;
+  company?: string | null;
+  position?: string | null;
+  tags?: string[] | null;
+  comment?: string | null;
+  source?: string | null;
+  linked_project_ids: number[];
+  active_tasks_count: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface OwnerWorkspaceTask {
+  id: number;
+  title: string;
+  description?: string | null;
+  status: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled' | string;
+  priority: 'low' | 'medium' | 'high' | 'critical' | string;
+  deadline_at?: string | null;
+  start_at?: string | null;
+  completed_at?: string | null;
+  assignee_id?: number | null;
+  creator_id?: number | null;
+  project_id?: number | null;
+  contact_id?: number | null;
+  linked_message_ids: number[];
+  tags?: string[] | null;
+  checklist?: Array<Record<string, unknown>> | null;
+  attachments?: Array<Record<string, unknown>> | null;
+  previous_task_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface OwnerWorkspaceMessage {
+  id: number;
+  contact_id: number;
+  external_chat_id?: string | null;
+  external_message_id?: string | null;
+  direction: 'incoming' | 'outgoing' | string;
+  text: string;
+  attachments?: Array<Record<string, unknown>> | null;
+  sent_at?: string | null;
+  received_at?: string | null;
+  linked_task_ids: number[];
+  created_at?: string | null;
+}
+
+export interface OwnerWorkspaceConversation {
+  contact_id: number;
+  contact_name: string;
+  last_message_at?: string | null;
+  last_message_text?: string | null;
+  unread_count: number;
+}
+
+export interface OwnerWorkspaceTaskComment {
+  id: number;
+  task_id: number;
+  author_id?: number | null;
+  text: string;
+  created_at?: string | null;
+}
+

@@ -2453,6 +2453,253 @@ class TaskResponse(BaseModel):
         from_attributes = True
 
 
+# --- Owner workspace (owner task manager) ---
+class OwnerWorkspaceProjectParticipantAdd(BaseModel):
+    user_id: int
+
+
+class OwnerWorkspaceProjectContactAdd(BaseModel):
+    contact_id: int
+
+
+class OwnerWorkspaceProjectBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    status: Optional[Literal["active", "completed", "archived"]] = "active"
+    owner_id: Optional[int] = None
+    parent_project_id: Optional[int] = None
+
+
+class OwnerWorkspaceProjectCreate(OwnerWorkspaceProjectBase):
+    pass
+
+
+class OwnerWorkspaceProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[Literal["active", "completed", "archived"]] = None
+    owner_id: Optional[int] = None
+    parent_project_id: Optional[int] = None
+
+
+class OwnerWorkspaceProjectResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    status: str
+    owner_id: Optional[int] = None
+    parent_project_id: Optional[int] = None
+    participants: List[int] = []
+    active_tasks_count: int = 0
+    contacts_count: int = 0
+    subprojects_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceContactBase(BaseModel):
+    full_name: str
+    phone: str
+    email: Optional[str] = None
+    company: Optional[str] = None
+    position: Optional[str] = None
+    tags: Optional[List[str]] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
+
+
+class OwnerWorkspaceContactCreate(OwnerWorkspaceContactBase):
+    project_ids: Optional[List[int]] = None
+
+
+class OwnerWorkspaceContactUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    company: Optional[str] = None
+    position: Optional[str] = None
+    tags: Optional[List[str]] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
+
+
+class OwnerWorkspaceContactResponse(BaseModel):
+    id: int
+    full_name: str
+    phone: str
+    email: Optional[str] = None
+    company: Optional[str] = None
+    position: Optional[str] = None
+    tags: Optional[List[str]] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
+    linked_project_ids: List[int] = []
+    active_tasks_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceTaskBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    status: Optional[Literal["new", "in_progress", "waiting", "completed", "cancelled"]] = "new"
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = "medium"
+    deadline_at: Optional[datetime] = None
+    start_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    project_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    linked_message_ids: Optional[List[int]] = None
+    previous_task_id: Optional[int] = None
+
+
+class OwnerWorkspaceTaskCreate(OwnerWorkspaceTaskBase):
+    pass
+
+
+class OwnerWorkspaceTaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[Literal["new", "in_progress", "waiting", "completed", "cancelled"]] = None
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = None
+    deadline_at: Optional[datetime] = None
+    start_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    project_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    linked_message_ids: Optional[List[int]] = None
+    previous_task_id: Optional[int] = None
+
+
+class OwnerWorkspaceTaskCompleteRequest(BaseModel):
+    action: Literal["close", "close_and_create_next"] = "close"
+    next_task: Optional[OwnerWorkspaceTaskCreate] = None
+
+
+class OwnerWorkspaceTaskCommentCreate(BaseModel):
+    text: str
+
+
+class OwnerWorkspaceTaskCommentResponse(BaseModel):
+    id: int
+    task_id: int
+    author_id: Optional[int] = None
+    text: str
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceTaskMessageLink(BaseModel):
+    message_id: int
+
+
+class OwnerWorkspaceTaskResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    status: str
+    priority: str
+    deadline_at: Optional[datetime] = None
+    start_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    creator_id: Optional[int] = None
+    project_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    linked_message_ids: List[int] = []
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    previous_task_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceMessageBase(BaseModel):
+    contact_id: int
+    external_chat_id: Optional[str] = None
+    external_message_id: Optional[str] = None
+    direction: Literal["incoming", "outgoing"] = "incoming"
+    text: str
+    attachments: Optional[List[Dict[str, Any]]] = None
+    sent_at: Optional[datetime] = None
+    received_at: Optional[datetime] = None
+
+
+class OwnerWorkspaceMessageCreate(OwnerWorkspaceMessageBase):
+    pass
+
+
+class OwnerWorkspaceMessageResponse(BaseModel):
+    id: int
+    contact_id: int
+    external_chat_id: Optional[str] = None
+    external_message_id: Optional[str] = None
+    direction: str
+    text: str
+    attachments: Optional[List[Dict[str, Any]]] = None
+    sent_at: Optional[datetime] = None
+    received_at: Optional[datetime] = None
+    linked_task_ids: List[int] = []
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceMessageCreateTaskRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = "medium"
+    deadline_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    project_id: Optional[int] = None
+
+
+class OwnerWorkspaceMessageLinkTaskRequest(BaseModel):
+    task_id: int
+
+
+class OwnerWorkspaceConversationItem(BaseModel):
+    contact_id: int
+    contact_name: str
+    last_message_at: Optional[datetime] = None
+    last_message_text: Optional[str] = None
+    unread_count: int = 0
+
+
+class OwnerWorkspaceAuditLogResponse(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    action_type: str
+    old_value: Optional[Dict[str, Any]] = None
+    new_value: Optional[Dict[str, Any]] = None
+    author_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 # Owner funnels (support letters, thank you letters, events)
 class OwnerFunnelTypeInfo(BaseModel):
     """Тип воронки: id и этапы для выбора в UI."""

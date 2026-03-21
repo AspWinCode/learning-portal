@@ -48,6 +48,7 @@ import ProLeadPage from './pages/ProLeadPage';
 import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
+import OwnerWorkspacePage from './pages/OwnerWorkspacePage';
 import PersonalFinancePage from './pages/PersonalFinancePage';
 import FinanceOverviewPage from './pages/FinanceOverviewPage';
 import FinanceProjectsPage from './pages/FinanceProjectsPage';
@@ -405,6 +406,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
                   <ProjectKanbanPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin']}>
+                  <OwnerWorkspacePage />
                 </PrivateRoute>
               }
             />

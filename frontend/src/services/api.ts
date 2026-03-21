@@ -48,6 +48,12 @@ import {
   FinanceLedgerTransactionRow,
   FinanceAccountBalance,
   FinancePnlRow,
+  OwnerWorkspaceProject,
+  OwnerWorkspaceContact,
+  OwnerWorkspaceTask,
+  OwnerWorkspaceMessage,
+  OwnerWorkspaceConversation,
+  OwnerWorkspaceTaskComment,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -2185,6 +2191,160 @@ export const ownerCalculationsApi = {
   },
   pay: async (trainerId: number, period: string): Promise<{ ok: boolean }> => {
     const response = await api.post(`/api/owner/calculations/trainers/${trainerId}/pay`, { period });
+    return response.data;
+  },
+};
+
+export const ownerWorkspaceApi = {
+  listProjects: async (params?: { status_filter?: string; parent_project_id?: number; search?: string }): Promise<OwnerWorkspaceProject[]> => {
+    const response = await api.get('/api/owner-workspace/projects', { params: params || {} });
+    return response.data;
+  },
+  createProject: async (payload: {
+    name: string;
+    description?: string | null;
+    status?: 'active' | 'completed' | 'archived';
+    owner_id?: number | null;
+    parent_project_id?: number | null;
+  }): Promise<OwnerWorkspaceProject> => {
+    const response = await api.post('/api/owner-workspace/projects', payload);
+    return response.data;
+  },
+  listContacts: async (params?: { search?: string; project_id?: number }): Promise<OwnerWorkspaceContact[]> => {
+    const response = await api.get('/api/owner-workspace/contacts', { params: params || {} });
+    return response.data;
+  },
+  createContact: async (payload: {
+    full_name: string;
+    phone: string;
+    email?: string | null;
+    company?: string | null;
+    position?: string | null;
+    tags?: string[];
+    comment?: string | null;
+    source?: string | null;
+    project_ids?: number[];
+  }): Promise<OwnerWorkspaceContact> => {
+    const response = await api.post('/api/owner-workspace/contacts', payload);
+    return response.data;
+  },
+  listTasks: async (params?: {
+    project_id?: number;
+    contact_id?: number;
+    status_filter?: string;
+    priority?: string;
+    assignee_id?: number;
+    overdue_only?: boolean;
+    active_only?: boolean;
+    search?: string;
+  }): Promise<OwnerWorkspaceTask[]> => {
+    const response = await api.get('/api/owner-workspace/tasks', { params: params || {} });
+    return response.data;
+  },
+  createTask: async (payload: {
+    title: string;
+    description?: string | null;
+    status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+    priority?: 'low' | 'medium' | 'high' | 'critical';
+    deadline_at?: string | null;
+    start_at?: string | null;
+    assignee_id?: number | null;
+    project_id?: number | null;
+    contact_id?: number | null;
+    tags?: string[];
+    checklist?: Array<Record<string, unknown>>;
+    attachments?: Array<Record<string, unknown>>;
+    linked_message_ids?: number[];
+    previous_task_id?: number | null;
+  }): Promise<OwnerWorkspaceTask> => {
+    const response = await api.post('/api/owner-workspace/tasks', payload);
+    return response.data;
+  },
+  completeTask: async (
+    taskId: number,
+    payload?: {
+      action?: 'close' | 'close_and_create_next';
+      next_task?: {
+        title: string;
+        description?: string | null;
+        status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+        priority?: 'low' | 'medium' | 'high' | 'critical';
+        deadline_at?: string | null;
+        assignee_id?: number | null;
+        project_id?: number | null;
+        contact_id?: number | null;
+      };
+    }
+  ): Promise<OwnerWorkspaceTask> => {
+    const response = await api.post(`/api/owner-workspace/tasks/${taskId}/complete`, payload || { action: 'close' });
+    return response.data;
+  },
+  listMessages: async (params?: { contact_id?: number }): Promise<OwnerWorkspaceMessage[]> => {
+    const response = await api.get('/api/owner-workspace/messages', { params: params || {} });
+    return response.data;
+  },
+  listConversations: async (): Promise<OwnerWorkspaceConversation[]> => {
+    const response = await api.get('/api/owner-workspace/messages/conversations');
+    return response.data;
+  },
+  createTaskFromMessage: async (
+    messageId: number,
+    payload: {
+      title: string;
+      description?: string | null;
+      priority?: 'low' | 'medium' | 'high' | 'critical';
+      deadline_at?: string | null;
+      assignee_id?: number | null;
+      project_id?: number | null;
+    }
+  ): Promise<OwnerWorkspaceTask> => {
+    const response = await api.post(`/api/owner-workspace/messages/${messageId}/create-task`, payload);
+    return response.data;
+  },
+  getTask: async (taskId: number): Promise<OwnerWorkspaceTask> => {
+    const response = await api.get(`/api/owner-workspace/tasks/${taskId}`);
+    return response.data;
+  },
+  updateTask: async (
+    taskId: number,
+    payload: {
+      title?: string;
+      description?: string | null;
+      status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+      priority?: 'low' | 'medium' | 'high' | 'critical';
+      deadline_at?: string | null;
+      start_at?: string | null;
+      assignee_id?: number | null;
+      project_id?: number | null;
+      contact_id?: number | null;
+    }
+  ): Promise<OwnerWorkspaceTask> => {
+    const response = await api.patch(`/api/owner-workspace/tasks/${taskId}`, payload);
+    return response.data;
+  },
+  getTaskComments: async (taskId: number): Promise<OwnerWorkspaceTaskComment[]> => {
+    const response = await api.get(`/api/owner-workspace/tasks/${taskId}/comments`);
+    return response.data;
+  },
+  addTaskComment: async (taskId: number, text: string): Promise<OwnerWorkspaceTaskComment> => {
+    const response = await api.post(`/api/owner-workspace/tasks/${taskId}/comments`, { text });
+    return response.data;
+  },
+  addProjectContact: async (projectId: number, contactId: number): Promise<void> => {
+    await api.post(`/api/owner-workspace/projects/${projectId}/contacts`, { contact_id: contactId });
+  },
+  getContactMessages: async (contactId: number): Promise<OwnerWorkspaceMessage[]> => {
+    const response = await api.get(`/api/owner-workspace/contacts/${contactId}/messages`);
+    return response.data;
+  },
+  createMessage: async (payload: {
+    contact_id: number;
+    text: string;
+    direction?: 'incoming' | 'outgoing';
+    external_chat_id?: string | null;
+    external_message_id?: string | null;
+  }): Promise<OwnerWorkspaceMessage> => {
+    const response = await api.post('/api/owner-workspace/messages', payload);
     return response.data;
   },
 };

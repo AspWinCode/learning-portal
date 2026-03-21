@@ -1,7 +1,7 @@
-"""0081: owner workspace task manager core entities
+"""0082: owner workspace task manager core entities
 
-Revision ID: 0081
-Revises: 0080
+Revision ID: 0082_owner_workspace_task_manager
+Revises: 0081_lead_last_contact_at
 Create Date: 2026-03-21
 """
 
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0081"
-down_revision = "0080"
+revision = "0082_owner_workspace_task_manager"
+down_revision = "0081_lead_last_contact_at"
 branch_labels = None
 depends_on = None
 

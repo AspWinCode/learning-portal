@@ -73,6 +73,20 @@ const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Критический',
 };
 
+type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+type OwnerWorkspaceTaskPriority = 'low' | 'medium' | 'high' | 'critical';
+
+const OWNER_WS_STATUSES: OwnerWorkspaceTaskStatus[] = ['new', 'in_progress', 'waiting', 'completed', 'cancelled'];
+const OWNER_WS_PRIORITIES: OwnerWorkspaceTaskPriority[] = ['low', 'medium', 'high', 'critical'];
+
+function coerceTaskStatus(v: string): OwnerWorkspaceTaskStatus {
+  return OWNER_WS_STATUSES.includes(v as OwnerWorkspaceTaskStatus) ? (v as OwnerWorkspaceTaskStatus) : 'new';
+}
+
+function coerceTaskPriority(v: string): OwnerWorkspaceTaskPriority {
+  return OWNER_WS_PRIORITIES.includes(v as OwnerWorkspaceTaskPriority) ? (v as OwnerWorkspaceTaskPriority) : 'medium';
+}
+
 const OwnerWorkspacePage: React.FC = () => {
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -115,8 +129,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskDialog, setTaskDialog] = useState<OwnerWorkspaceTask | null>(null);
   const [taskEditTitle, setTaskEditTitle] = useState('');
   const [taskEditDescription, setTaskEditDescription] = useState('');
-  const [taskEditStatus, setTaskEditStatus] = useState<string>('new');
-  const [taskEditPriority, setTaskEditPriority] = useState<string>('medium');
+  const [taskEditStatus, setTaskEditStatus] = useState<OwnerWorkspaceTaskStatus>('new');
+  const [taskEditPriority, setTaskEditPriority] = useState<OwnerWorkspaceTaskPriority>('medium');
   const [taskEditDeadline, setTaskEditDeadline] = useState('');
   const [taskEditProjectId, setTaskEditProjectId] = useState<number | ''>('');
   const [taskEditContactId, setTaskEditContactId] = useState<number | ''>('');
@@ -253,8 +267,8 @@ const OwnerWorkspacePage: React.FC = () => {
     setTaskDialog(t);
     setTaskEditTitle(t.title);
     setTaskEditDescription(t.description || '');
-    setTaskEditStatus(t.status);
-    setTaskEditPriority(t.priority);
+    setTaskEditStatus(coerceTaskStatus(String(t.status)));
+    setTaskEditPriority(coerceTaskPriority(String(t.priority)));
     setTaskEditDeadline(deadlineToLocalInput(t.deadline_at));
     setTaskEditProjectId(t.project_id ?? '');
     setTaskEditContactId(t.contact_id ?? '');
@@ -274,8 +288,8 @@ const OwnerWorkspacePage: React.FC = () => {
       await ownerWorkspaceApi.updateTask(taskDialog.id, {
         title: taskEditTitle.trim(),
         description: taskEditDescription.trim() || null,
-        status: taskEditStatus as OwnerWorkspaceTask['status'],
-        priority: taskEditPriority as OwnerWorkspaceTask['priority'],
+        status: taskEditStatus,
+        priority: taskEditPriority,
         deadline_at: localInputToIso(taskEditDeadline),
         project_id: taskEditProjectId === '' ? null : taskEditProjectId,
         contact_id: taskEditContactId === '' ? null : taskEditContactId,
@@ -911,7 +925,13 @@ const OwnerWorkspacePage: React.FC = () => {
               onChange={(e) => setTaskEditDescription(e.target.value)}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <TextField select label="Статус" fullWidth value={taskEditStatus} onChange={(e) => setTaskEditStatus(e.target.value)}>
+              <TextField
+                select
+                label="Статус"
+                fullWidth
+                value={taskEditStatus}
+                onChange={(e) => setTaskEditStatus(coerceTaskStatus(e.target.value))}
+              >
                 {Object.entries(STATUS_LABELS).map(([k, v]) => (
                   <MenuItem key={k} value={k}>
                     {v}
@@ -923,7 +943,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 label="Приоритет"
                 fullWidth
                 value={taskEditPriority}
-                onChange={(e) => setTaskEditPriority(e.target.value)}
+                onChange={(e) => setTaskEditPriority(coerceTaskPriority(e.target.value))}
               >
                 {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
                   <MenuItem key={k} value={k}>

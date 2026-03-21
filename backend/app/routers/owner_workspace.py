@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import String, asc, case, cast, desc, exists, func, nullslast, or_
@@ -33,6 +33,7 @@ from app.services.owner_workspace_task_order import normalize_task_sort_params
 from app.models import (
     OwnerWorkspaceAuditLog,
     OwnerWorkspaceContact,
+    OwnerWorkspaceConversationRead,
     OwnerWorkspaceMessage,
     OwnerWorkspaceNotification,
     OwnerWorkspaceProject,
@@ -90,12 +91,112 @@ async def get_owner_workspace_access(
     return build_owner_workspace_access_context(db, current_user)
 
 
+def _batch_unread_incoming_message_counts(
+    db: Session, user_id: int, contact_ids: List[int]
+) -> Dict[int, int]:
+    """
+    Входящие с created_at после эффективного курсора чтения.
+    Если строки read нет — курсор = max(created_at) по всем сообщениям контакта (релиз без ложных «тысяч непрочитанных»).
+    """
+    if not contact_ids:
+        return {}
+    Read = OwnerWorkspaceConversationRead
+    max_per_contact = (
+        db.query(
+            OwnerWorkspaceMessage.contact_id.label("cid"),
+            func.max(OwnerWorkspaceMessage.created_at).label("mx"),
+        )
+        .filter(OwnerWorkspaceMessage.contact_id.in_(contact_ids))
+        .group_by(OwnerWorkspaceMessage.contact_id)
+        .subquery()
+    )
+    mpc = max_per_contact.alias("mpc")
+    effective_read = func.coalesce(Read.last_read_at, mpc.c.mx)
+    q = (
+        db.query(
+            OwnerWorkspaceMessage.contact_id,
+            func.count(OwnerWorkspaceMessage.id),
+        )
+        .join(mpc, mpc.c.cid == OwnerWorkspaceMessage.contact_id)
+        .outerjoin(
+            Read,
+            (Read.contact_id == OwnerWorkspaceMessage.contact_id) & (Read.user_id == user_id),
+        )
+        .filter(
+            OwnerWorkspaceMessage.contact_id.in_(contact_ids),
+            OwnerWorkspaceMessage.direction == "incoming",
+            OwnerWorkspaceMessage.created_at > effective_read,
+        )
+        .group_by(OwnerWorkspaceMessage.contact_id)
+    )
+    return {int(r[0]): int(r[1]) for r in q.all()}
+
+
+def _mark_conversation_read_for_user(db: Session, user_id: int, contact_id: int) -> None:
+    """После просмотра ленты: курсор = max(created_at) по всем сообщениям контакта."""
+    max_ts = (
+        db.query(func.max(OwnerWorkspaceMessage.created_at))
+        .filter(OwnerWorkspaceMessage.contact_id == contact_id)
+        .scalar()
+    )
+    if max_ts is None:
+        return
+    row = (
+        db.query(OwnerWorkspaceConversationRead)
+        .filter(
+            OwnerWorkspaceConversationRead.user_id == user_id,
+            OwnerWorkspaceConversationRead.contact_id == contact_id,
+        )
+        .first()
+    )
+    if row is None:
+        db.add(
+            OwnerWorkspaceConversationRead(
+                user_id=user_id,
+                contact_id=contact_id,
+                last_read_at=max_ts,
+            )
+        )
+    elif max_ts > row.last_read_at:
+        row.last_read_at = max_ts
+    db.commit()
+
+
 def _digest_filters(q, assignee_id: Optional[int], project_id: Optional[int]):
     if assignee_id is not None:
         q = q.filter(OwnerWorkspaceTask.assignee_id == assignee_id)
     if project_id is not None:
         q = q.filter(OwnerWorkspaceTask.project_id == project_id)
     return q
+
+
+def _assert_valid_project_parent(
+    db: Session,
+    ctx: OwnerWorkspaceAccessContext,
+    project_id: int,
+    new_parent_id: Optional[int],
+) -> None:
+    """Запрет циклов: нельзя сделать родителем сам проект или любого его потомка."""
+    if new_parent_id is None:
+        return
+    if new_parent_id == project_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Проект не может быть родителем самому себе")
+    parent_row = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == new_parent_id).first()
+    if not parent_row or not project_visible(ctx, new_parent_id):
+        raise HTTPException(status_code=404, detail="Родительский проект не найден")
+    cur: Optional[int] = new_parent_id
+    guard = 0
+    while cur is not None and guard < 10_000:
+        if cur == project_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Нельзя перенести проект под своего потомка (цикл в иерархии)",
+            )
+        prow = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == cur).first()
+        if not prow:
+            break
+        cur = prow.parent_project_id
+        guard += 1
 
 
 def _log_audit(
@@ -166,7 +267,68 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
     )
 
 
-def _contact_to_response(db: Session, contact: OwnerWorkspaceContact) -> OwnerWorkspaceContactResponse:
+def _max_datetimes(*values: Optional[datetime]) -> Optional[datetime]:
+    vals = [v for v in values if v is not None]
+    return max(vals) if vals else None
+
+
+def _last_message_time_by_contact_ids(db: Session, contact_ids: List[int]) -> Dict[int, datetime]:
+    if not contact_ids:
+        return {}
+    rows = (
+        db.query(OwnerWorkspaceMessage.contact_id, func.max(OwnerWorkspaceMessage.created_at))
+        .filter(OwnerWorkspaceMessage.contact_id.in_(contact_ids))
+        .group_by(OwnerWorkspaceMessage.contact_id)
+        .all()
+    )
+    out: Dict[int, datetime] = {}
+    for cid, ts in rows:
+        if cid is not None and ts is not None:
+            out[int(cid)] = ts
+    return out
+
+
+def _last_task_activity_by_contact_ids(db: Session, contact_ids: List[int]) -> Dict[int, datetime]:
+    if not contact_ids:
+        return {}
+    rows = (
+        db.query(OwnerWorkspaceTask.contact_id, func.max(OwnerWorkspaceTask.updated_at))
+        .filter(
+            OwnerWorkspaceTask.contact_id.in_(contact_ids),
+            OwnerWorkspaceTask.contact_id.isnot(None),
+        )
+        .group_by(OwnerWorkspaceTask.contact_id)
+        .all()
+    )
+    return {int(cid): ts for cid, ts in rows if cid is not None and ts is not None}
+
+
+def _contact_last_interaction_at(
+    db: Session,
+    contact: OwnerWorkspaceContact,
+    *,
+    message_max_by_id: Optional[Dict[int, datetime]] = None,
+    task_max_by_id: Optional[Dict[int, datetime]] = None,
+) -> Optional[datetime]:
+    cid = contact.id
+    if message_max_by_id is None:
+        message_max_by_id = _last_message_time_by_contact_ids(db, [cid])
+    if task_max_by_id is None:
+        task_max_by_id = _last_task_activity_by_contact_ids(db, [cid])
+    return _max_datetimes(
+        contact.updated_at,
+        message_max_by_id.get(cid),
+        task_max_by_id.get(cid),
+    )
+
+
+def _contact_to_response(
+    db: Session,
+    contact: OwnerWorkspaceContact,
+    *,
+    message_max_by_id: Optional[Dict[int, datetime]] = None,
+    task_max_by_id: Optional[Dict[int, datetime]] = None,
+) -> OwnerWorkspaceContactResponse:
     linked = db.query(OwnerWorkspaceProjectContact).filter(
         OwnerWorkspaceProjectContact.contact_id == contact.id
     ).all()
@@ -174,6 +336,12 @@ def _contact_to_response(db: Session, contact: OwnerWorkspaceContact) -> OwnerWo
         OwnerWorkspaceTask.contact_id == contact.id,
         OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
     ).count()
+    last_interaction_at = _contact_last_interaction_at(
+        db,
+        contact,
+        message_max_by_id=message_max_by_id,
+        task_max_by_id=task_max_by_id,
+    )
     return OwnerWorkspaceContactResponse(
         id=contact.id,
         full_name=contact.full_name,
@@ -186,6 +354,7 @@ def _contact_to_response(db: Session, contact: OwnerWorkspaceContact) -> OwnerWo
         source=contact.source,
         linked_project_ids=[x.project_id for x in linked],
         active_tasks_count=active_tasks_count,
+        last_interaction_at=last_interaction_at,
         created_at=contact.created_at,
         updated_at=contact.updated_at,
     )
@@ -336,6 +505,8 @@ async def update_project(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="Участник может менять только название и описание проекта",
                     )
+    if "parent_project_id" in data:
+        _assert_valid_project_parent(db, ctx, project_id, data["parent_project_id"])
     for k, v in data.items():
         setattr(row, k, v)
     if row.status == "archived" and row.archived_at is None:
@@ -520,7 +691,12 @@ async def list_contacts(
             ).all()
         }
         rows = [r for r in rows if r.id in linked_ids]
-    return [_contact_to_response(db, row) for row in rows]
+    ids = [r.id for r in rows]
+    msg_max = _last_message_time_by_contact_ids(db, ids)
+    task_max = _last_task_activity_by_contact_ids(db, ids)
+    return [
+        _contact_to_response(db, row, message_max_by_id=msg_max, task_max_by_id=task_max) for row in rows
+    ]
 
 
 @router.post("/contacts", response_model=OwnerWorkspaceContactResponse, status_code=status.HTTP_201_CREATED)
@@ -636,7 +812,9 @@ async def get_contact_messages(
     rows = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.contact_id == contact_id).order_by(
         OwnerWorkspaceMessage.created_at.desc()
     ).all()
-    return [_message_to_response(db, row) for row in rows]
+    resp = [_message_to_response(db, row) for row in rows]
+    _mark_conversation_read_for_user(db, ctx.user.id, contact_id)
+    return resp
 
 
 @router.get("/tasks", response_model=OwnerWorkspaceTaskListResponse)
@@ -1146,6 +1324,8 @@ async def list_conversations(
         .order_by(func.max(OwnerWorkspaceMessage.created_at).desc())
         .all()
     )
+    contact_ids = [int(r.contact_id) for r in rows]
+    unread_map = _batch_unread_incoming_message_counts(db, ctx.user.id, contact_ids)
     out: List[OwnerWorkspaceConversationItem] = []
     for row in rows:
         last_message = (
@@ -1154,13 +1334,14 @@ async def list_conversations(
             .order_by(OwnerWorkspaceMessage.created_at.desc())
             .first()
         )
+        cid = int(row.contact_id)
         out.append(
             OwnerWorkspaceConversationItem(
-                contact_id=row.contact_id,
+                contact_id=cid,
                 contact_name=row.contact_name,
                 last_message_at=row.last_message_at,
                 last_message_text=getattr(last_message, "text", None),
-                unread_count=0,
+                unread_count=int(unread_map.get(cid, 0)),
             )
         )
     return out

@@ -2542,6 +2542,10 @@ class OwnerWorkspaceContactResponse(BaseModel):
     source: Optional[str] = None
     linked_project_ids: List[int] = []
     active_tasks_count: int = 0
+    last_interaction_at: Optional[datetime] = Field(
+        None,
+        description="Макс. из: последнее сообщение, последняя активность задачи, updated_at карточки.",
+    )
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -2711,7 +2715,13 @@ class OwnerWorkspaceConversationItem(BaseModel):
     contact_name: str
     last_message_at: Optional[datetime] = None
     last_message_text: Optional[str] = None
-    unread_count: int = 0
+    unread_count: int = Field(
+        0,
+        description=(
+            "Входящие с created_at после last_read_at пользователя; "
+            "если курсора нет — сравнение с max(created_at) по контакту (старт без «всё непрочитано»)."
+        ),
+    )
 
 
 class OwnerWorkspaceAuditLogResponse(BaseModel):

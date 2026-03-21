@@ -107,6 +107,185 @@ const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Критический',
 };
 
+type OwnerWorkspaceSubprojectTreeNode = {
+  project: OwnerWorkspaceProject;
+  children: OwnerWorkspaceSubprojectTreeNode[];
+};
+
+function buildOwnerWsProjectChildrenByParent(catalog: OwnerWorkspaceProject[]) {
+  const m = new Map<number | null, OwnerWorkspaceProject[]>();
+  for (const p of catalog) {
+    const k = p.parent_project_id ?? null;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k)!.push(p);
+  }
+  for (const arr of m.values()) {
+    arr.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }
+  return m;
+}
+
+function buildOwnerWsSubprojectTreeAt(
+  rootId: number,
+  m: Map<number | null, OwnerWorkspaceProject[]>
+): OwnerWorkspaceSubprojectTreeNode[] {
+  const direct = m.get(rootId) || [];
+  return direct.map((project) => ({
+    project,
+    children: buildOwnerWsSubprojectTreeAt(project.id, m),
+  }));
+}
+
+/** Все id строго ниже rootId (без самого rootId). */
+function collectOwnerWsDescendantProjectIds(catalog: OwnerWorkspaceProject[], rootId: number): Set<number> {
+  const byParent = new Map<number, number[]>();
+  for (const p of catalog) {
+    if (p.parent_project_id == null) continue;
+    if (!byParent.has(p.parent_project_id)) byParent.set(p.parent_project_id, []);
+    byParent.get(p.parent_project_id)!.push(p.id);
+  }
+  const out = new Set<number>();
+  const stack = [...(byParent.get(rootId) || [])];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (out.has(id)) continue;
+    out.add(id);
+    for (const c of byParent.get(id) || []) stack.push(c);
+  }
+  return out;
+}
+
+/** Допустимые родители при переносе movingId (без циклов). contextRootId — открытый в диалоге проект (подпись в списке). */
+function ownerWsValidParentProjectOptions(
+  catalog: OwnerWorkspaceProject[],
+  movingId: number,
+  contextRootId: number
+): { id: number | null; label: string }[] {
+  const banned = collectOwnerWsDescendantProjectIds(catalog, movingId);
+  banned.add(movingId);
+  const opts: { id: number | null; label: string }[] = [{ id: null, label: '(корень)' }];
+  for (const p of catalog) {
+    if (banned.has(p.id)) continue;
+    const tag = p.id === contextRootId ? ' (текущий проект)' : '';
+    opts.push({ id: p.id, label: `${p.name}${tag}` });
+  }
+  opts.sort((a, b) => {
+    if (a.id === null) return -1;
+    if (b.id === null) return 1;
+    return a.label.localeCompare(b.label, 'ru');
+  });
+  return opts;
+}
+
+const OwnerWorkspaceSubprojectTreeRow: React.FC<{
+  node: OwnerWorkspaceSubprojectTreeNode;
+  depth: number;
+  catalog: OwnerWorkspaceProject[];
+  contextRootId: number;
+  isWorkspaceFullAccess: boolean;
+  currentUserId: number | undefined;
+  onApplied: () => Promise<void>;
+  setError: (msg: string | null) => void;
+}> = ({
+  node,
+  depth,
+  catalog,
+  contextRootId,
+  isWorkspaceFullAccess,
+  currentUserId,
+  onApplied,
+  setError,
+}) => {
+  const p = node.project;
+  const canReparent = isWorkspaceFullAccess || (currentUserId != null && p.owner_id === currentUserId);
+  const parentOptions = useMemo(
+    () => ownerWsValidParentProjectOptions(catalog, p.id, contextRootId),
+    [catalog, p.id, contextRootId]
+  );
+  const currentParent = p.parent_project_id ?? null;
+  const [draftParent, setDraftParent] = useState<number | null>(currentParent);
+  useEffect(() => {
+    setDraftParent(currentParent);
+  }, [p.id, currentParent]);
+
+  const applyMove = async () => {
+    if (draftParent === currentParent) return;
+    try {
+      await ownerWorkspaceApi.updateProject(p.id, { parent_project_id: draftParent });
+      setError(null);
+      await onApplied();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось перенести подпроект'));
+    }
+  };
+
+  return (
+    <Box sx={{ pl: depth * 2 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1}
+        alignItems={{ sm: 'center' }}
+        sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}
+      >
+        <Typography variant="body2" sx={{ minWidth: 0, flex: '1 1 140px' }}>
+          {p.name}
+        </Typography>
+        <Chip size="small" label={p.status} sx={{ alignSelf: 'flex-start' }} />
+        {canReparent ? (
+          <>
+            <TextField
+              select
+              size="small"
+              label="Родитель"
+              sx={{ minWidth: 200, flex: '2 1 200px' }}
+              value={draftParent === null ? '' : String(draftParent)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDraftParent(v === '' ? null : Number(v));
+              }}
+              SelectProps={{
+                MenuProps: { PaperProps: { sx: { maxHeight: 320 } } },
+              }}
+            >
+              {parentOptions.map((o) => (
+                <MenuItem key={o.id === null ? 'root' : String(o.id)} value={o.id === null ? '' : String(o.id)}>
+                  {o.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={draftParent === currentParent}
+              onClick={() => void applyMove()}
+              sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }}
+            >
+              Перенести
+            </Button>
+          </>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            Перенос: только владелец подпроекта или полный доступ
+          </Typography>
+        )}
+      </Stack>
+      {node.children.map((ch) => (
+        <OwnerWorkspaceSubprojectTreeRow
+          key={ch.project.id}
+          node={ch}
+          depth={depth + 1}
+          catalog={catalog}
+          contextRootId={contextRootId}
+          isWorkspaceFullAccess={isWorkspaceFullAccess}
+          currentUserId={currentUserId}
+          onApplied={onApplied}
+          setError={setError}
+        />
+      ))}
+    </Box>
+  );
+};
+
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 type OwnerWorkspaceTaskPriority = 'low' | 'medium' | 'high' | 'critical';
 
@@ -1026,6 +1205,18 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
+  const refreshProjectDialogAfterHierarchyChange = useCallback(async () => {
+    await loadProjectsAndContacts();
+    const id = projectDialog?.id;
+    if (id == null) return;
+    try {
+      const updated = await ownerWorkspaceApi.getProject(id);
+      setProjectDialog(updated);
+    } catch {
+      /* диалог мог быть закрыт */
+    }
+  }, [loadProjectsAndContacts, projectDialog?.id]);
+
   const linkContactToProject = async () => {
     if (!projectDialog || !linkContactId) return;
     try {
@@ -1155,6 +1346,12 @@ const OwnerWorkspacePage: React.FC = () => {
       setCommsMessages(msgs.slice().reverse());
     } catch {
       setCommsMessages([]);
+    }
+    try {
+      const conv = await ownerWorkspaceApi.listConversations();
+      setConversations(conv);
+    } catch {
+      /* список диалогов — второстепенно */
     }
   };
 
@@ -1451,6 +1648,12 @@ const OwnerWorkspacePage: React.FC = () => {
     return contactsCatalogSorted.filter((c) => c.linked_project_ids.includes(projectDialog.id));
   }, [contactsCatalogSorted, projectDialog]);
 
+  const subprojectTreeRooted = useMemo(() => {
+    if (!projectDialog) return [];
+    const m = buildOwnerWsProjectChildrenByParent(projectsCatalog);
+    return buildOwnerWsSubprojectTreeAt(projectDialog.id, m);
+  }, [projectDialog, projectsCatalog]);
+
   const contactDialogLinkedProjects = useMemo(() => {
     if (!contactDialog?.linked_project_ids?.length) return [];
     const ids = new Set(contactDialog.linked_project_ids);
@@ -1481,6 +1684,11 @@ const OwnerWorkspacePage: React.FC = () => {
         (c.last_message_text || '').toLowerCase().includes(q)
     );
   }, [conversations, commsDialogSearch]);
+
+  const commsUnreadTotal = useMemo(
+    () => conversations.reduce((sum, c) => sum + Math.max(0, c.unread_count || 0), 0),
+    [conversations]
+  );
 
   const commsMessagesFiltered = useMemo(() => {
     const q = commsThreadSearch.trim().toLowerCase();
@@ -1810,7 +2018,7 @@ const OwnerWorkspacePage: React.FC = () => {
         <Tab label={`Проекты (${projects.length})`} />
         <Tab label={`Контакты (${contacts.length})`} />
         <Tab label={`Задачи (${taskListTotal})`} />
-        <Tab label="Коммуникации" />
+        <Tab label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
         <Tab label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
         <Tab label="Настройки" />
         <Tab label="История" />
@@ -1894,8 +2102,13 @@ const OwnerWorkspacePage: React.FC = () => {
               <Grid item xs={12} md={6} key={p.id}>
                 <Card>
                   <CardContent>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Typography variant="h6">{p.name}</Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="h6">{p.name}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                          Ответственный: {userName(p.owner_id)}
+                        </Typography>
+                      </Box>
                       <IconButton size="small" onClick={() => openProjectDialog(p)} aria-label="Открыть">
                         <OpenInNewIcon fontSize="small" />
                       </IconButton>
@@ -1910,6 +2123,12 @@ const OwnerWorkspacePage: React.FC = () => {
                       <Chip size="small" label={`Контактов: ${p.contacts_count}`} />
                       {p.subprojects_count > 0 && <Chip size="small" label={`Подпроектов: ${p.subprojects_count}`} />}
                     </Stack>
+                    {p.updated_at ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
+                        Обновлён:{' '}
+                        {new Date(p.updated_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                      </Typography>
+                    ) : null}
                   </CardContent>
                 </Card>
               </Grid>
@@ -1992,6 +2211,30 @@ const OwnerWorkspacePage: React.FC = () => {
                         <Typography variant="body2" color="text.secondary">
                           {c.phone}
                         </Typography>
+                        {c.company?.trim() ? (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            {c.company}
+                          </Typography>
+                        ) : null}
+                        {(c.tags?.length ?? 0) > 0 ? (
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 1, gap: 0.5 }}>
+                            {(c.tags ?? []).slice(0, 5).map((t, i) => (
+                              <Chip key={`${t}-${i}`} size="small" variant="outlined" label={t} />
+                            ))}
+                            {(c.tags ?? []).length > 5 ? (
+                              <Chip size="small" variant="outlined" label={`+${(c.tags ?? []).length - 5}`} />
+                            ) : null}
+                          </Stack>
+                        ) : null}
+                        {c.last_interaction_at ? (
+                          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.75 }}>
+                            Последнее взаимодействие:{' '}
+                            {new Date(c.last_interaction_at).toLocaleString('ru-RU', {
+                              dateStyle: 'short',
+                              timeStyle: 'short',
+                            })}
+                          </Typography>
+                        ) : null}
                         <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                           <Chip size="small" label={`Активн. задач: ${c.active_tasks_count}`} />
                           {c.linked_project_ids.length > 0 && (
@@ -2520,10 +2763,30 @@ const OwnerWorkspacePage: React.FC = () => {
                           cursor: 'pointer',
                         }}
                       >
-                        <Typography variant="subtitle2">{c.contact_name}</Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap display="block">
-                          {c.last_message_text || '—'}
-                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography variant="subtitle2">{c.contact_name}</Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap display="block">
+                              {c.last_message_text || '—'}
+                            </Typography>
+                            {c.last_message_at ? (
+                              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
+                                {new Date(c.last_message_at).toLocaleString('ru-RU', {
+                                  dateStyle: 'short',
+                                  timeStyle: 'short',
+                                })}
+                              </Typography>
+                            ) : null}
+                          </Box>
+                          {c.unread_count > 0 ? (
+                            <Chip
+                              size="small"
+                              color="error"
+                              label={c.unread_count > 99 ? '99+' : c.unread_count}
+                              sx={{ height: 22, flexShrink: 0 }}
+                            />
+                          ) : null}
+                        </Box>
                       </Box>
                     ))}
                   </Stack>
@@ -2801,7 +3064,7 @@ const OwnerWorkspacePage: React.FC = () => {
 
       {loading && <Typography sx={{ mt: 2 }}>Загрузка…</Typography>}
 
-      <Dialog open={Boolean(projectDialog)} onClose={() => setProjectDialog(null)} maxWidth="sm" fullWidth>
+      <Dialog open={Boolean(projectDialog)} onClose={() => setProjectDialog(null)} maxWidth="md" fullWidth>
         <DialogTitle>Проект: {projectDialog?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -2903,6 +3166,45 @@ const OwnerWorkspacePage: React.FC = () => {
                 Создать подпроект
               </Button>
             </Stack>
+            <Divider />
+            <Typography variant="subtitle2">Дерево подпроектов</Typography>
+            <Typography variant="caption" color="text.secondary" display="block">
+              Перенос: владелец подпроекта или роль с полным доступом к модулю. Родитель можно выбрать среди видимых
+              проектов; циклы блокируются на сервере.
+            </Typography>
+            {subprojectTreeRooted.length === 0 ? (
+              <Typography variant="caption" color="text.secondary">
+                Нет вложенных подпроектов. Создайте выше или перенесите сюда подпроект из другого проекта (сменив
+                родителя на «{projectDialog?.name} (текущий проект)»).
+              </Typography>
+            ) : (
+              <Stack
+                spacing={0}
+                sx={{
+                  maxHeight: 320,
+                  overflow: 'auto',
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 1,
+                }}
+              >
+                {subprojectTreeRooted.map((node) => (
+                  <OwnerWorkspaceSubprojectTreeRow
+                    key={node.project.id}
+                    node={node}
+                    depth={0}
+                    catalog={projectsCatalog}
+                    contextRootId={projectDialog!.id}
+                    isWorkspaceFullAccess={isWorkspaceFullAccess}
+                    currentUserId={user?.id}
+                    onApplied={refreshProjectDialogAfterHierarchyChange}
+                    setError={setError}
+                  />
+                ))}
+              </Stack>
+            )}
+            <Divider />
             <Autocomplete
               options={contactsCatalogSorted}
               getOptionLabel={(o) => `${o.full_name} · ${o.phone}`}

@@ -1999,6 +1999,24 @@ class OwnerWorkspaceNotification(Base):
     task = relationship("OwnerWorkspaceTask")
 
 
+class OwnerWorkspaceConversationRead(Base):
+    """До какого момента пользователь «дочитал» переписку с контактом (по created_at сообщений)."""
+
+    __tablename__ = "owner_workspace_conversation_reads"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    contact_id = Column(
+        Integer,
+        ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    last_read_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User")
+    contact = relationship("OwnerWorkspaceContact")
+
+
 class OwnerWorkspaceUserPreference(Base):
     """Персональные настройки UI задачника (JSON, merge при PATCH)."""
 

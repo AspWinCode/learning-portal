@@ -2285,6 +2285,8 @@ export const ownerWorkspaceApi = {
     search?: string;
     project_id?: number;
     active_tasks_only?: boolean;
+    /** Точное совпадение тега в массиве tags контакта */
+    tag?: string;
   }): Promise<OwnerWorkspaceContact[]> => {
     const response = await api.get('/api/owner-workspace/contacts', { params: params || {} });
     return response.data;

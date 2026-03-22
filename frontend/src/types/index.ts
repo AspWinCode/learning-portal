@@ -1130,6 +1130,7 @@ export interface OwnerWorkspaceNotification {
   title: string;
   body?: string | null;
   task_id?: number | null;
+  contact_id?: number | null;
   read_at?: string | null;
   created_at?: string | null;
 }

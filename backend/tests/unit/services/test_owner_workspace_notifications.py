@@ -7,6 +7,7 @@ from app.services.owner_workspace_notifications import (
     comment_dedupe_key,
     due_soon_dedupe_key,
     overdue_dedupe_key,
+    task_updated_dedupe_key,
 )
 
 
@@ -28,3 +29,7 @@ class TestDedupeKeys:
     def test_comment_key_per_recipient(self):
         assert comment_dedupe_key(99, 3) == "ow:comment:99:u3"
         assert comment_dedupe_key(99, 4) != comment_dedupe_key(99, 3)
+
+    def test_task_updated_key_per_recipient(self):
+        assert task_updated_dedupe_key(1, 2, 1000, 5) == "ow:task_upd:1:2:1000:u5"
+        assert task_updated_dedupe_key(1, 2, 1000, 6) != task_updated_dedupe_key(1, 2, 1000, 5)

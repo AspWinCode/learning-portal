@@ -24,8 +24,10 @@ from app.services.owner_workspace_access import (
 )
 from app.services.owner_workspace_max_sync import sync_max_messages_into_owner_workspace as run_owner_workspace_max_sync
 from app.services.owner_workspace_notifications import (
+    notify_incoming_contact_message,
     notify_task_assigned,
     notify_task_comment_added,
+    notify_task_updated,
     refresh_deadline_notifications_for_user,
 )
 from app.services.owner_workspace_preferences import get_preferences_for_user, merge_preferences_for_user
@@ -656,6 +658,10 @@ async def list_contacts(
     search: Optional[str] = Query(None),
     project_id: Optional[int] = Query(None),
     active_tasks_only: bool = Query(False),
+    tag: Optional[str] = Query(
+        None,
+        description="Контакт должен содержать этот тег в JSON-массиве tags (точное совпадение строки)",
+    ),
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
@@ -682,6 +688,8 @@ async def list_contacts(
             OwnerWorkspaceTask.status.in_(active_statuses),
         )
         q = q.filter(at_exists)
+    if tag and tag.strip():
+        q = q.filter(OwnerWorkspaceContact.tags.contains([tag.strip()]))
     rows = q.order_by(OwnerWorkspaceContact.created_at.desc()).all()
     if project_id is not None:
         linked_ids = {
@@ -1023,6 +1031,8 @@ async def update_task(
     )
     if "assignee_id" in data and row.assignee_id != old.get("assignee_id"):
         notify_task_assigned(db, row, row.assignee_id, ctx.user.id)
+    if data and not set(data.keys()) <= {"assignee_id"}:
+        notify_task_updated(db, row, actor_id=ctx.user.id, changed_fields=data)
     db.commit()
     db.refresh(row)
     return _task_to_response(db, row)
@@ -1391,6 +1401,14 @@ async def create_message(
         received_at=payload.received_at,
     )
     db.add(row)
+    db.flush()
+    if row.direction == "incoming":
+        notify_incoming_contact_message(
+            db,
+            row,
+            contact_name=(contact.full_name or contact.phone or f"Контакт #{contact.id}")[:255],
+            exclude_user_ids={ctx.user.id},
+        )
     db.commit()
     db.refresh(row)
     return _message_to_response(db, row)

@@ -2788,6 +2788,7 @@ class OwnerWorkspaceNotificationResponse(BaseModel):
     title: str
     body: Optional[str] = None
     task_id: Optional[int] = None
+    contact_id: Optional[int] = None
     read_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 

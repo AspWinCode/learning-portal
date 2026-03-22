@@ -1,19 +1,29 @@
-"""In-app уведомления owner workspace: дедлайны, назначение, комментарии."""
+"""In-app уведомления owner workspace: дедлайны, назначение, комментарии, обновление задачи, входящие."""
 
 from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Iterable, Optional, Set
 
 from sqlalchemy.orm import Session
 
-from app.models import OwnerWorkspaceNotification, OwnerWorkspaceTask, User
+from app.models import (
+    OwnerWorkspaceMessage,
+    OwnerWorkspaceNotification,
+    OwnerWorkspaceProject,
+    OwnerWorkspaceProjectContact,
+    OwnerWorkspaceProjectParticipant,
+    OwnerWorkspaceTask,
+    User,
+)
 
 KIND_TASK_OVERDUE = "task_overdue"
 KIND_TASK_DUE_SOON = "task_due_soon"
 KIND_TASK_ASSIGNED = "task_assigned"
 KIND_TASK_COMMENT = "task_comment"
+KIND_TASK_UPDATED = "task_updated"
+KIND_CONTACT_INCOMING_MESSAGE = "contact_incoming_message"
 
 ACTIVE_STATUSES = ("new", "in_progress", "waiting")
 
@@ -34,6 +44,113 @@ def assign_dedupe_key(task_id: int, assignee_id: int, ts_ms: int) -> str:
 
 def comment_dedupe_key(comment_id: int, user_id: int) -> str:
     return f"ow:comment:{comment_id}:u{user_id}"
+
+
+def task_updated_dedupe_key(task_id: int, actor_id: int, ts_ms: int, recipient_id: int) -> str:
+    return f"ow:task_upd:{task_id}:{actor_id}:{ts_ms}:u{recipient_id}"
+
+
+def collect_user_ids_for_contact_notifications(db: Session, contact_id: int) -> Set[int]:
+    """Исполнители активных задач по контакту + владельцы и участники связанных проектов."""
+    ids: Set[int] = set()
+    for (aid,) in (
+        db.query(OwnerWorkspaceTask.assignee_id)
+        .filter(
+            OwnerWorkspaceTask.contact_id == contact_id,
+            OwnerWorkspaceTask.assignee_id.isnot(None),
+            OwnerWorkspaceTask.status.in_(ACTIVE_STATUSES),
+        )
+        .distinct()
+        .all()
+    ):
+        ids.add(int(aid))
+    proj_ids = [
+        r[0]
+        for r in db.query(OwnerWorkspaceProjectContact.project_id)
+        .filter(OwnerWorkspaceProjectContact.contact_id == contact_id)
+        .all()
+    ]
+    for pid in proj_ids:
+        p = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == pid).first()
+        if p and p.owner_id:
+            ids.add(int(p.owner_id))
+        for (uid,) in (
+            db.query(OwnerWorkspaceProjectParticipant.user_id)
+            .filter(OwnerWorkspaceProjectParticipant.project_id == pid)
+            .all()
+        ):
+            ids.add(int(uid))
+    return ids
+
+
+def notify_task_updated(
+    db: Session,
+    task: OwnerWorkspaceTask,
+    *,
+    actor_id: int,
+    changed_fields: dict,
+) -> None:
+    """Уведомить исполнителя и/или автора, если кто-то другой изменил поля (кроме только смены assignee)."""
+    if not changed_fields:
+        return
+    if set(changed_fields.keys()) <= {"assignee_id"}:
+        return
+    actor = db.query(User).filter(User.id == actor_id).first()
+    actor_name = (actor.full_name or actor.email or str(actor_id)) if actor else str(actor_id)
+    keys = sorted(changed_fields.keys())
+    preview = ", ".join(keys[:8])
+    if len(keys) > 8:
+        preview += "…"
+    ttitle = (task.title or f"#{task.id}")[:200]
+    body = f"«{ttitle}» · {actor_name}: {preview}"[:900]
+    recipients: Set[int] = set()
+    if task.assignee_id and int(task.assignee_id) != actor_id:
+        recipients.add(int(task.assignee_id))
+    if task.creator_id and int(task.creator_id) != actor_id:
+        recipients.add(int(task.creator_id))
+    if not recipients:
+        return
+    ts_ms = int(time.time() * 1000)
+    cid = int(task.contact_id) if task.contact_id is not None else None
+    for uid in recipients:
+        db.add(
+            OwnerWorkspaceNotification(
+                user_id=uid,
+                kind=KIND_TASK_UPDATED,
+                title="Задача обновлена",
+                body=body,
+                task_id=task.id,
+                contact_id=cid,
+                dedupe_key=task_updated_dedupe_key(task.id, actor_id, ts_ms, uid),
+            )
+        )
+
+
+def notify_incoming_contact_message(
+    db: Session,
+    message: OwnerWorkspaceMessage,
+    *,
+    contact_name: str,
+    exclude_user_ids: Optional[Iterable[int]] = None,
+) -> None:
+    """Входящее сообщение: уведомить вовлечённых по контакту (кроме exclude, напр. автора записи)."""
+    excluded = {int(x) for x in (exclude_user_ids or ()) if x is not None}
+    recipients = collect_user_ids_for_contact_notifications(db, message.contact_id) - excluded
+    preview = (message.text or "").strip()[:300]
+    line = f"{contact_name}: {preview}" if preview else contact_name
+    body = line[:900]
+    for uid in recipients:
+        db.add(
+            OwnerWorkspaceNotification(
+                user_id=uid,
+                kind=KIND_CONTACT_INCOMING_MESSAGE,
+                title="Новое сообщение по контакту",
+                body=body,
+                task_id=None,
+                contact_id=message.contact_id,
+                dedupe_key=f"ow:msg_in:{message.id}:u{uid}",
+            )
+        )
 
 
 def notify_task_assigned(

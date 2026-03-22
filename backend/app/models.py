@@ -1991,12 +1991,19 @@ class OwnerWorkspaceNotification(Base):
     title = Column(String(255), nullable=False)
     body = Column(Text, nullable=True)
     task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="CASCADE"), nullable=True, index=True)
+    contact_id = Column(
+        Integer,
+        ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     dedupe_key = Column(String(160), nullable=False)
     read_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     user = relationship("User")
     task = relationship("OwnerWorkspaceTask")
+    contact = relationship("OwnerWorkspaceContact")
 
 
 class OwnerWorkspaceConversationRead(Base):

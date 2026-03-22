@@ -334,6 +334,8 @@ const OWNER_WS_NOTIF_KIND_LABELS: Record<string, string> = {
   task_due_soon: 'Скоро дедлайн',
   task_assigned: 'Назначение',
   task_comment: 'Комментарий',
+  task_updated: 'Обновление задачи',
+  contact_incoming_message: 'Сообщение',
 };
 
 function coerceTaskStatus(v: string): OwnerWorkspaceTaskStatus {
@@ -409,6 +411,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [contactListSearch, setContactListSearch] = useState('');
   const [contactListProjectId, setContactListProjectId] = useState<number | ''>('');
   const [contactListActiveTasksOnly, setContactListActiveTasksOnly] = useState(false);
+  const [contactListTag, setContactListTag] = useState<string>('');
 
   const [archiveProjectConfirm, setArchiveProjectConfirm] = useState<OwnerWorkspaceProject | null>(null);
 
@@ -522,6 +525,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [participantToAdd, setParticipantToAdd] = useState<User | null>(null);
   const [contactDialogTasks, setContactDialogTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [projectDialogTasks, setProjectDialogTasks] = useState<OwnerWorkspaceTask[]>([]);
+  const [projectDialogTaskStatus, setProjectDialogTaskStatus] = useState<string>('');
+  const [projectDialogTaskSearch, setProjectDialogTaskSearch] = useState('');
 
   useEffect(() => {
     const id = window.setTimeout(() => setProjectListSearch(projectListSearchInput), 400);
@@ -545,6 +550,7 @@ const OwnerWorkspacePage: React.FC = () => {
         search: contactListSearch.trim() || undefined,
         project_id: contactListProjectId === '' ? undefined : contactListProjectId,
         active_tasks_only: contactListActiveTasksOnly || undefined,
+        tag: contactListTag.trim() || undefined,
       };
       const hasProjectFilters = Boolean(
         projectListStatus ||
@@ -553,7 +559,10 @@ const OwnerWorkspacePage: React.FC = () => {
           projectListOverdueOnly
       );
       const hasContactFilters = Boolean(
-        contactListSearch.trim() || contactListProjectId !== '' || contactListActiveTasksOnly
+        contactListSearch.trim() ||
+          contactListProjectId !== '' ||
+          contactListActiveTasksOnly ||
+          contactListTag.trim()
       );
 
       const tasks: Promise<unknown>[] = [];
@@ -606,6 +615,7 @@ const OwnerWorkspacePage: React.FC = () => {
     contactListSearch,
     contactListProjectId,
     contactListActiveTasksOnly,
+    contactListTag,
   ]);
 
   const loadTasksFiltered = useCallback(async () => {
@@ -1058,6 +1068,8 @@ const OwnerWorkspacePage: React.FC = () => {
     setSubprojectName('');
     setLinkContactId(null);
     setParticipantToAdd(null);
+    setProjectDialogTaskStatus('');
+    setProjectDialogTaskSearch('');
     void (async () => {
       try {
         const taskPage = await ownerWorkspaceApi.listTasks({
@@ -1589,6 +1601,13 @@ const OwnerWorkspacePage: React.FC = () => {
     await selectCommsContact(contactId);
   };
 
+  const openNotificationComms = async (contactId: number) => {
+    setNotifAnchor(null);
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_COMMS);
+    await loadMeta();
+    await selectCommsContact(contactId);
+  };
+
   openTaskDialogRef.current = openTaskDialog;
   loadTasksFilteredRef.current = loadTasksFiltered;
 
@@ -1643,6 +1662,17 @@ const OwnerWorkspacePage: React.FC = () => {
     [contactsCatalog]
   );
 
+  const contactListTagOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of contactsCatalog) {
+      for (const t of c.tags || []) {
+        const x = String(t).trim();
+        if (x) s.add(x);
+      }
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [contactsCatalog]);
+
   const projectDialogLinkedContacts = useMemo(() => {
     if (!projectDialog) return [];
     return contactsCatalogSorted.filter((c) => c.linked_project_ids.includes(projectDialog.id));
@@ -1668,6 +1698,20 @@ const OwnerWorkspacePage: React.FC = () => {
     () => contactDialogTasks.filter((t) => !['completed', 'cancelled'].includes(String(t.status))),
     [contactDialogTasks]
   );
+
+  const projectDialogTasksFiltered = useMemo(() => {
+    let rows = projectDialogTasks;
+    if (projectDialogTaskStatus) {
+      rows = rows.filter((t) => String(t.status) === projectDialogTaskStatus);
+    }
+    const q = projectDialogTaskSearch.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(
+        (t) => (t.title || '').toLowerCase().includes(q) || String(t.id).includes(q)
+      );
+    }
+    return rows;
+  }, [projectDialogTasks, projectDialogTaskStatus, projectDialogTaskSearch]);
 
   const contactMessagesFiltered = useMemo(() => {
     const q = contactMessageSearch.trim().toLowerCase();
@@ -1873,6 +1917,8 @@ const OwnerWorkspacePage: React.FC = () => {
                     void loadNotifications(80);
                     if (n.task_id != null) {
                       await openSearchHitTask(n.task_id);
+                    } else if (n.contact_id != null) {
+                      await openNotificationComms(n.contact_id);
                     }
                   } catch (err: unknown) {
                     setError(extractApiError(err, 'Не удалось обработать уведомление'));
@@ -2174,6 +2220,22 @@ const OwnerWorkspacePage: React.FC = () => {
                   {projectsCatalogSorted.map((p) => (
                     <MenuItem key={p.id} value={String(p.id)}>
                       {p.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  label="Тег"
+                  size="small"
+                  sx={{ minWidth: 180 }}
+                  value={contactListTag}
+                  onChange={(e) => setContactListTag(e.target.value)}
+                  helperText={contactListTagOptions.length === 0 ? 'Нет тегов в каталоге' : undefined}
+                >
+                  <MenuItem value="">Любой</MenuItem>
+                  {contactListTagOptions.map((tg) => (
+                    <MenuItem key={tg} value={tg}>
+                      {tg}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -2913,13 +2975,15 @@ const OwnerWorkspacePage: React.FC = () => {
                 Обновить
               </Button>
               <Typography variant="caption" color="text.secondary">
-                Дедлайны подтягиваются при открытии списка; назначения и комментарии приходят сразу.
+                Дедлайны — при открытии списка; назначения, комментарии, обновления задач и входящие по контакту — по
+                событиям.
               </Typography>
             </Stack>
             <Stack spacing={1} sx={{ maxHeight: 640, overflow: 'auto' }}>
               {(notifEnvelope?.items || []).length === 0 && (
                 <Typography variant="body2" color="text.secondary">
-                  Пока пусто. Здесь же появятся просрочки, напоминания о дедлайне, назначения и комментарии к вашим задачам.
+                  Пока пусто. Здесь: просрочки и дедлайны, назначения, комментарии и обновления задач, новые входящие по
+                  контактам (если вы вовлечены в задачи или проекты контакта).
                 </Typography>
               )}
               {(notifEnvelope?.items || []).map((n) => (
@@ -2936,10 +3000,15 @@ const OwnerWorkspacePage: React.FC = () => {
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                       {n.body}
                     </Typography>
-                    <Stack direction="row" spacing={1}>
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
                       {n.task_id != null && (
                         <Button size="small" variant="contained" onClick={() => void openSearchHitTask(n.task_id!)}>
                           Открыть задачу
+                        </Button>
+                      )}
+                      {n.contact_id != null && (
+                        <Button size="small" variant="outlined" onClick={() => void openNotificationComms(n.contact_id!)}>
+                          Переписка
                         </Button>
                       )}
                       {!n.read_at && (
@@ -3132,13 +3201,41 @@ const OwnerWorkspacePage: React.FC = () => {
             >
               Создать задачу в этом проекте
             </Button>
-            <Stack spacing={0.5} sx={{ maxHeight: 220, overflow: 'auto' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ sm: 'center' }}>
+              <TextField
+                select
+                label="Статус"
+                size="small"
+                sx={{ minWidth: 160 }}
+                value={projectDialogTaskStatus}
+                onChange={(e) => setProjectDialogTaskStatus(e.target.value)}
+              >
+                <MenuItem value="">Все</MenuItem>
+                {OWNER_WS_STATUSES.map((st) => (
+                  <MenuItem key={st} value={st}>
+                    {STATUS_LABELS[st] || st}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Поиск по названию или №"
+                size="small"
+                sx={{ minWidth: 200, flex: 1 }}
+                value={projectDialogTaskSearch}
+                onChange={(e) => setProjectDialogTaskSearch(e.target.value)}
+              />
+            </Stack>
+            <Stack spacing={0.5} sx={{ maxHeight: 260, overflow: 'auto' }}>
               {projectDialogTasks.length === 0 ? (
                 <Typography variant="caption" color="text.secondary">
                   Нет задач с привязкой к этому проекту.
                 </Typography>
+              ) : projectDialogTasksFiltered.length === 0 ? (
+                <Typography variant="caption" color="text.secondary">
+                  Нет задач по текущим фильтрам (всего загружено: {projectDialogTasks.length}).
+                </Typography>
               ) : (
-                projectDialogTasks.slice(0, 40).map((t) => (
+                projectDialogTasksFiltered.slice(0, 80).map((t) => (
                   <Button
                     key={t.id}
                     size="small"

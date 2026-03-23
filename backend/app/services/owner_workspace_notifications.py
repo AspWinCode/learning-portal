@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional, Set
 
+from sqlalchemy import func as sqla_func
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -17,6 +19,7 @@ from app.models import (
     OwnerWorkspaceTask,
     User,
 )
+from app.services.owner_workspace_access import user_can_see_owner_workspace_task
 
 KIND_TASK_OVERDUE = "task_overdue"
 KIND_TASK_DUE_SOON = "task_due_soon"
@@ -24,8 +27,13 @@ KIND_TASK_ASSIGNED = "task_assigned"
 KIND_TASK_COMMENT = "task_comment"
 KIND_TASK_UPDATED = "task_updated"
 KIND_CONTACT_INCOMING_MESSAGE = "contact_incoming_message"
+KIND_TASK_MENTION = "task_mention"
 
 ACTIVE_STATUSES = ("new", "in_progress", "waiting")
+
+# Упоминания: @123 (id пользователя) или @email@domain.ru
+RE_MENTION_USER_ID = re.compile(r"@(\d{1,12})\b")
+RE_MENTION_EMAIL = re.compile(r"@([A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 
 
 def overdue_dedupe_key(task_id: int) -> str:
@@ -44,6 +52,71 @@ def assign_dedupe_key(task_id: int, assignee_id: int, ts_ms: int) -> str:
 
 def comment_dedupe_key(comment_id: int, user_id: int) -> str:
     return f"ow:comment:{comment_id}:u{user_id}"
+
+
+def mention_dedupe_key(comment_id: int, recipient_id: int) -> str:
+    return f"ow:mention:{comment_id}:u{recipient_id}"
+
+
+def extract_mentioned_user_ids(db: Session, text: str) -> Set[int]:
+    ids: Set[int] = set()
+    if not text:
+        return ids
+    for m in RE_MENTION_USER_ID.finditer(text):
+        try:
+            ids.add(int(m.group(1)))
+        except ValueError:
+            continue
+    for m in RE_MENTION_EMAIL.finditer(text):
+        email = m.group(1).strip().lower()
+        u = db.query(User).filter(sqla_func.lower(User.email) == email).first()
+        if u:
+            ids.add(int(u.id))
+    return ids
+
+
+def notify_task_comment_mentions(
+    db: Session,
+    task: OwnerWorkspaceTask,
+    *,
+    comment_id: int,
+    author_id: int,
+    comment_text: str,
+) -> None:
+    """
+    Уведомить упомянутых в комментарии (не дублируем исполнителя/автора, им уже уходит task_comment).
+    Не делает commit.
+    """
+    mentioned = extract_mentioned_user_ids(db, comment_text or "")
+    if not mentioned:
+        return
+    recipients_comment: Set[int] = set()
+    if task.assignee_id and task.assignee_id != author_id:
+        recipients_comment.add(int(task.assignee_id))
+    if task.creator_id and task.creator_id != author_id:
+        recipients_comment.add(int(task.creator_id))
+    author = db.query(User).filter(User.id == author_id).first()
+    author_name = (author.full_name or author.email or str(author_id)) if author else str(author_id)
+    preview = (comment_text or "").strip()[:400]
+    ttitle = (task.title or f"#{task.id}")[:120]
+    for uid in mentioned:
+        if uid == author_id:
+            continue
+        if not user_can_see_owner_workspace_task(db, uid, task):
+            continue
+        if uid in recipients_comment:
+            continue
+        body = f"«{ttitle}» · {author_name}: {preview}"[:900]
+        db.add(
+            OwnerWorkspaceNotification(
+                user_id=uid,
+                kind=KIND_TASK_MENTION,
+                title="Упоминание в комментарии",
+                body=body,
+                task_id=task.id,
+                dedupe_key=mention_dedupe_key(comment_id, uid),
+            )
+        )
 
 
 def task_updated_dedupe_key(task_id: int, actor_id: int, ts_ms: int, recipient_id: int) -> str:

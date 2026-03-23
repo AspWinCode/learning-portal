@@ -1853,6 +1853,8 @@ class OwnerWorkspaceProjectParticipant(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # member | manager — менеджер может вести состав (кроме других менеджеров)
+    role = Column(String(32), nullable=False, server_default="member")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("OwnerWorkspaceProject")

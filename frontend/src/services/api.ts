@@ -52,6 +52,8 @@ import {
   OwnerWorkspaceContact,
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskListPage,
+  OwnerWorkspaceTaskStatusCounts,
+  OwnerWorkspaceTasksAnalyticsOverview,
   OwnerWorkspaceMessage,
   OwnerWorkspaceConversation,
   OwnerWorkspaceTaskComment,
@@ -2322,6 +2324,22 @@ export const ownerWorkspaceApi = {
     const response = await api.get('/api/owner-workspace/tasks', { params: params || {} });
     return response.data;
   },
+  getTaskStatusCounts: async (params?: {
+    project_id?: number;
+    contact_id?: number;
+    priority?: string;
+    assignee_id?: number;
+    overdue_only?: boolean;
+    active_only?: boolean;
+    search?: string;
+  }): Promise<OwnerWorkspaceTaskStatusCounts> => {
+    const response = await api.get('/api/owner-workspace/tasks/status-counts', { params: params || {} });
+    return response.data;
+  },
+  getTasksAnalyticsOverview: async (): Promise<OwnerWorkspaceTasksAnalyticsOverview> => {
+    const response = await api.get('/api/owner-workspace/analytics/tasks-overview');
+    return response.data;
+  },
   createTask: async (payload: {
     title: string;
     description?: string | null;
@@ -2463,8 +2481,19 @@ export const ownerWorkspaceApi = {
     const response = await api.get('/api/owner-workspace/history', { params: params || {} });
     return response.data;
   },
-  addProjectParticipant: async (projectId: number, userId: number): Promise<void> => {
-    await api.post(`/api/owner-workspace/projects/${projectId}/participants`, { user_id: userId });
+  addProjectParticipant: async (
+    projectId: number,
+    userId: number,
+    role: 'member' | 'manager' = 'member'
+  ): Promise<void> => {
+    await api.post(`/api/owner-workspace/projects/${projectId}/participants`, { user_id: userId, role });
+  },
+  patchProjectParticipantRole: async (
+    projectId: number,
+    userId: number,
+    role: 'member' | 'manager'
+  ): Promise<void> => {
+    await api.patch(`/api/owner-workspace/projects/${projectId}/participants/${userId}`, { role });
   },
   removeProjectParticipant: async (projectId: number, userId: number): Promise<void> => {
     await api.delete(`/api/owner-workspace/projects/${projectId}/participants/${userId}`);

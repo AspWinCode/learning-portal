@@ -14,12 +14,15 @@ from app.services.owner_workspace_access import (
     assert_full_workspace,
     build_owner_workspace_access_context,
     can_archive_project,
+    can_change_project_participant_roles,
     can_manage_project_team,
     contact_visible,
     filter_tasks_query,
+    is_project_manager,
     is_project_owner,
     is_project_participant,
     project_visible,
+    project_participant_record,
     task_visible,
 )
 from app.services.owner_workspace_max_sync import sync_max_messages_into_owner_workspace as run_owner_workspace_max_sync
@@ -27,6 +30,7 @@ from app.services.owner_workspace_notifications import (
     notify_incoming_contact_message,
     notify_task_assigned,
     notify_task_comment_added,
+    notify_task_comment_mentions,
     notify_task_updated,
     refresh_deadline_notifications_for_user,
 )
@@ -64,6 +68,7 @@ from app.schemas import (
     OwnerWorkspaceProjectContactAdd,
     OwnerWorkspaceProjectCreate,
     OwnerWorkspaceProjectParticipantAdd,
+    OwnerWorkspaceProjectParticipantRolePatch,
     OwnerWorkspaceProjectResponse,
     OwnerWorkspaceProjectUpdate,
     OwnerWorkspaceSearchContactHit,
@@ -78,6 +83,8 @@ from app.schemas import (
     OwnerWorkspaceTaskCompleteResponse,
     OwnerWorkspaceTaskCreate,
     OwnerWorkspaceTaskListResponse,
+    OwnerWorkspaceTaskStatusCountsResponse,
+    OwnerWorkspaceTasksAnalyticsOverview,
     OwnerWorkspaceTaskMessageLink,
     OwnerWorkspaceTaskResponse,
     OwnerWorkspaceTaskUpdate,
@@ -249,6 +256,7 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
     subprojects_count = db.query(OwnerWorkspaceProject).filter(
         OwnerWorkspaceProject.parent_project_id == project.id
     ).count()
+    role_by_uid = {int(p.user_id): (p.role or "member").strip().lower() or "member" for p in participants}
     return OwnerWorkspaceProjectResponse(
         id=project.id,
         name=project.name,
@@ -257,6 +265,7 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
         owner_id=project.owner_id,
         parent_project_id=project.parent_project_id,
         participants=[p.user_id for p in participants],
+        participant_roles=role_by_uid,
         active_tasks_count=active_tasks_count,
         total_tasks_count=total_tasks_count,
         completed_tasks_count=completed_tasks_count,
@@ -566,13 +575,53 @@ async def add_project_participant(
     user = db.query(User).filter(User.id == payload.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    eff_role = (payload.role or "member").strip().lower()
+    if eff_role not in ("member", "manager"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be member or manager")
+    uid = ctx.user.id
+    if not ctx.full and not is_project_owner(db, uid, project_id):
+        if is_project_manager(db, uid, project_id) and eff_role != "member":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Менеджер проекта может добавлять только участников с ролью «Участник»",
+            )
+    if eff_role == "manager" and not (ctx.full or is_project_owner(db, uid, project_id)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Назначать менеджеров может только владелец проекта или администратор")
     exists = db.query(OwnerWorkspaceProjectParticipant).filter(
         OwnerWorkspaceProjectParticipant.project_id == project_id,
         OwnerWorkspaceProjectParticipant.user_id == payload.user_id,
     ).first()
     if not exists:
-        db.add(OwnerWorkspaceProjectParticipant(project_id=project_id, user_id=payload.user_id))
+        db.add(
+            OwnerWorkspaceProjectParticipant(project_id=project_id, user_id=payload.user_id, role=eff_role)
+        )
         db.commit()
+    return None
+
+
+@router.patch("/projects/{project_id}/participants/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def patch_project_participant_role(
+    project_id: int,
+    user_id: int,
+    payload: OwnerWorkspaceProjectParticipantRolePatch,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_change_project_participant_roles(db, ctx, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Менять роли участников может только владелец проекта или администратор",
+        )
+    row = project_participant_record(db, project_id, user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Participant not found")
+    new_role = payload.role.strip().lower()
+    if new_role not in ("member", "manager"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be member or manager")
+    row.role = new_role
+    db.commit()
     return None
 
 
@@ -592,6 +641,15 @@ async def remove_project_participant(
         OwnerWorkspaceProjectParticipant.user_id == user_id,
     ).first()
     if row:
+        actor_id = ctx.user.id
+        if not ctx.full and not is_project_owner(db, actor_id, project_id):
+            if is_project_manager(db, actor_id, project_id):
+                tgt_role = (row.role or "member").strip().lower() or "member"
+                if tgt_role == "manager":
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Менеджер не может исключить другого менеджера",
+                    )
         db.delete(row)
         db.commit()
     return None
@@ -825,30 +883,19 @@ async def get_contact_messages(
     return resp
 
 
-@router.get("/tasks", response_model=OwnerWorkspaceTaskListResponse)
-async def list_tasks(
-    project_id: Optional[int] = Query(None),
-    contact_id: Optional[int] = Query(None),
-    status_filter: Optional[str] = Query(None),
-    priority: Optional[str] = Query(None),
-    assignee_id: Optional[int] = Query(None),
-    overdue_only: bool = Query(False),
-    active_only: bool = Query(False),
-    search: Optional[str] = Query(None),
-    sort_by: Optional[str] = Query(None, description="created_at|updated_at|deadline_at|title|priority"),
-    sort_dir: Optional[str] = Query(None, description="asc|desc"),
-    limit: int = Query(100, ge=1, le=500, description="Размер страницы"),
-    offset: int = Query(0, ge=0, description="Смещение"),
-    db: Session = Depends(get_db),
-    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+def _owner_workspace_tasks_filtered_query(
+    db: Session,
+    ctx: OwnerWorkspaceAccessContext,
+    *,
+    project_id: Optional[int],
+    contact_id: Optional[int],
+    status_filter: Optional[str],
+    priority: Optional[str],
+    assignee_id: Optional[int],
+    overdue_only: bool,
+    active_only: bool,
+    search: Optional[str],
 ):
-    if not ctx.full:
-        if assignee_id is not None and assignee_id != ctx.user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
-        if project_id is not None and not project_visible(ctx, project_id):
-            raise HTTPException(status_code=404, detail="Project not found")
-        if contact_id is not None and not contact_visible(ctx, contact_id):
-            raise HTTPException(status_code=404, detail="Contact not found")
     q = db.query(OwnerWorkspaceTask)
     if project_id is not None:
         q = q.filter(OwnerWorkspaceTask.project_id == project_id)
@@ -872,6 +919,60 @@ async def list_tasks(
     if search:
         like = f"%{search.strip()}%"
         q = q.filter(or_(OwnerWorkspaceTask.title.ilike(like), OwnerWorkspaceTask.description.ilike(like)))
+    return filter_tasks_query(q, ctx)
+
+
+def _assert_task_list_scope(
+    ctx: OwnerWorkspaceAccessContext,
+    *,
+    assignee_id: Optional[int],
+    project_id: Optional[int],
+    contact_id: Optional[int],
+) -> None:
+    if not ctx.full:
+        if assignee_id is not None and assignee_id != ctx.user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+        if project_id is not None and not project_visible(ctx, project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        if contact_id is not None and not contact_visible(ctx, contact_id):
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+
+@router.get("/tasks", response_model=OwnerWorkspaceTaskListResponse)
+async def list_tasks(
+    project_id: Optional[int] = Query(None),
+    contact_id: Optional[int] = Query(None),
+    status_filter: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
+    assignee_id: Optional[int] = Query(None),
+    overdue_only: bool = Query(False),
+    active_only: bool = Query(False),
+    search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None, description="created_at|updated_at|deadline_at|title|priority"),
+    sort_dir: Optional[str] = Query(None, description="asc|desc"),
+    limit: int = Query(100, ge=1, le=500, description="Размер страницы"),
+    offset: int = Query(0, ge=0, description="Смещение"),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    _assert_task_list_scope(
+        ctx,
+        assignee_id=assignee_id,
+        project_id=project_id,
+        contact_id=contact_id,
+    )
+    q = _owner_workspace_tasks_filtered_query(
+        db,
+        ctx,
+        project_id=project_id,
+        contact_id=contact_id,
+        status_filter=status_filter,
+        priority=priority,
+        assignee_id=assignee_id,
+        overdue_only=overdue_only,
+        active_only=active_only,
+        search=search,
+    )
 
     sb, descending = normalize_task_sort_params(sort_by, sort_dir)
     prio_expr = case(
@@ -896,7 +997,6 @@ async def list_tasks(
         order_expr = nullslast(desc(sort_col) if descending else asc(sort_col))
     else:
         order_expr = desc(sort_col) if descending else asc(sort_col)
-    q = filter_tasks_query(q, ctx)
     total = q.count()
     rows = q.order_by(order_expr).offset(offset).limit(limit).all()
     return OwnerWorkspaceTaskListResponse(
@@ -905,6 +1005,54 @@ async def list_tasks(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/tasks/status-counts", response_model=OwnerWorkspaceTaskStatusCountsResponse)
+async def task_status_counts(
+    project_id: Optional[int] = Query(None),
+    contact_id: Optional[int] = Query(None),
+    priority: Optional[str] = Query(None),
+    assignee_id: Optional[int] = Query(None),
+    overdue_only: bool = Query(False),
+    active_only: bool = Query(False),
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    """
+    Счётчики по статусам при тех же фильтрах, что GET /tasks, но без status_filter
+    (чтобы на вкладке «Задачи» показывать распределение по статусам).
+    """
+    _assert_task_list_scope(
+        ctx,
+        assignee_id=assignee_id,
+        project_id=project_id,
+        contact_id=contact_id,
+    )
+    q = _owner_workspace_tasks_filtered_query(
+        db,
+        ctx,
+        project_id=project_id,
+        contact_id=contact_id,
+        status_filter=None,
+        priority=priority,
+        assignee_id=assignee_id,
+        overdue_only=overdue_only,
+        active_only=active_only,
+        search=search,
+    )
+    rows = (
+        q.with_entities(OwnerWorkspaceTask.status, func.count(OwnerWorkspaceTask.id))
+        .group_by(OwnerWorkspaceTask.status)
+        .all()
+    )
+    known = ("new", "in_progress", "waiting", "completed", "cancelled")
+    by_status: Dict[str, int] = {s: 0 for s in known}
+    for st, cnt in rows:
+        k = st if st is not None else ""
+        by_status[k] = int(cnt)
+    total = sum(by_status.values())
+    return OwnerWorkspaceTaskStatusCountsResponse(total=total, by_status=by_status)
 
 
 @router.post("/tasks", response_model=OwnerWorkspaceTaskResponse, status_code=status.HTTP_201_CREATED)
@@ -1243,6 +1391,13 @@ async def create_task_comment(
         author_id=ctx.user.id,
         comment_text=row.text,
     )
+    notify_task_comment_mentions(
+        db,
+        exists,
+        comment_id=row.id,
+        author_id=ctx.user.id,
+        comment_text=row.text,
+    )
     db.commit()
     db.refresh(row)
     return OwnerWorkspaceTaskCommentResponse.model_validate(row)
@@ -1554,6 +1709,60 @@ async def patch_owner_workspace_my_preferences(
     patch = payload.model_dump(exclude_unset=True)
     data = merge_preferences_for_user(db, ctx.user.id, patch)
     return OwnerWorkspaceUserPreferencesResponse.model_validate(data)
+
+
+@router.get("/analytics/tasks-overview", response_model=OwnerWorkspaceTasksAnalyticsOverview)
+async def owner_workspace_tasks_analytics_overview(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    """
+    Краткая аналитика по задачам в зоне видимости пользователя (§17): завершённые за 7/30 дней,
+    среднее число дней от создания до завершения среди задач, завершённых за последние 30 дней.
+    """
+    now = datetime.now(timezone.utc)
+    d7 = now - timedelta(days=7)
+    d30 = now - timedelta(days=30)
+    T = OwnerWorkspaceTask
+
+    def q():
+        return filter_tasks_query(db.query(T), ctx)
+
+    completed_7 = (
+        q()
+        .filter(T.status == "completed", T.completed_at.isnot(None), T.completed_at >= d7)
+        .count()
+    )
+    completed_30 = (
+        q()
+        .filter(T.status == "completed", T.completed_at.isnot(None), T.completed_at >= d30)
+        .count()
+    )
+    done_rows = (
+        q()
+        .filter(
+            T.status == "completed",
+            T.completed_at.isnot(None),
+            T.created_at.isnot(None),
+            T.completed_at >= d30,
+        )
+        .all()
+    )
+    avg_days: Optional[float] = None
+    if done_rows:
+        deltas = []
+        for r in done_rows:
+            ca = r.completed_at
+            cr = r.created_at
+            if ca and cr:
+                deltas.append((ca - cr).total_seconds() / 86400.0)
+        if deltas:
+            avg_days = round(sum(deltas) / len(deltas), 2)
+    return OwnerWorkspaceTasksAnalyticsOverview(
+        completed_last_7_days=int(completed_7),
+        completed_last_30_days=int(completed_30),
+        avg_days_to_complete_last_30=avg_days,
+    )
 
 
 @router.get("/digest", response_model=OwnerWorkspaceDigestResponse)

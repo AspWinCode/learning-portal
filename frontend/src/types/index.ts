@@ -995,6 +995,8 @@ export interface OwnerWorkspaceProject {
   owner_id?: number | null;
   parent_project_id?: number | null;
   participants: number[];
+  /** user id (строка в JSON) → member | manager */
+  participant_roles?: Record<string, 'member' | 'manager' | string>;
   active_tasks_count: number;
   /** всего задач с project_id = этот проект */
   total_tasks_count?: number;
@@ -1053,6 +1055,19 @@ export interface OwnerWorkspaceTaskListPage {
   total: number;
   limit: number;
   offset: number;
+}
+
+/** Ответ GET /api/owner-workspace/tasks/status-counts */
+export interface OwnerWorkspaceTaskStatusCounts {
+  total: number;
+  by_status: Record<string, number>;
+}
+
+/** GET /api/owner-workspace/analytics/tasks-overview */
+export interface OwnerWorkspaceTasksAnalyticsOverview {
+  completed_last_7_days: number;
+  completed_last_30_days: number;
+  avg_days_to_complete_last_30?: number | null;
 }
 
 export interface OwnerWorkspaceMessage {

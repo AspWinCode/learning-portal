@@ -208,7 +208,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' },
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
-        { text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace' },
+        { text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' },
         { text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' },
         { text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' },
       ];
@@ -226,7 +226,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'trainer') {
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
-      items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace' });
+      items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
@@ -244,7 +244,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Совместимость программ (отработки)', icon: <Assignment />, path: '/sales/program-makeup' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
-      items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace' });
+      items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
@@ -260,6 +260,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     // У админа отдельная страница "Тренеры" убрана — доступ через объединённый раздел Ученики/группы при необходимости
     return items;
   })();
+
+  /** Подсветка «Owner задачник» для любого `/owner-workspace/*`, кроме отдельных пунктов уведомлений и настроек. */
+  const isOwnerWorkspaceMainSection = (pathname: string) =>
+    pathname.startsWith('/owner-workspace') &&
+    pathname !== '/owner-workspace/notifications' &&
+    pathname !== '/owner-workspace/settings';
+
+  const isDrawerItemSelected = (itemPath: string) => {
+    if (itemPath === '/owner-workspace/notifications') return location.pathname === '/owner-workspace/notifications';
+    if (itemPath === '/owner-workspace/settings') return location.pathname === '/owner-workspace/settings';
+    if (itemPath === '/owner-workspace/projects') return isOwnerWorkspaceMainSection(location.pathname);
+    return location.pathname === itemPath;
+  };
+
+  const appBarPageTitle =
+    effectiveMenuItems.find((item) => item.path === location.pathname)?.text ??
+    (isOwnerWorkspaceMainSection(location.pathname) ? 'Owner задачник' : null) ??
+    'Портал управления обучением';
 
   const drawer = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -305,7 +323,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {effectiveMenuItems.map((item) => (
           <ListItemButton
             key={item.text}
-            selected={location.pathname === item.path}
+            selected={isDrawerItemSelected(item.path)}
             onClick={() => {
               navigate(item.path);
               setMobileOpen(false);
@@ -352,7 +370,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 800 }}>
-            {effectiveMenuItems.find((item) => item.path === location.pathname)?.text || 'Портал управления обучением'}
+            {appBarPageTitle}
           </Typography>
           {role === 'sales' && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>

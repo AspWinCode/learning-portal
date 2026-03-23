@@ -154,6 +154,18 @@ def task_visible(ctx: OwnerWorkspaceAccessContext, task: OwnerWorkspaceTask) -> 
     )
 
 
+def user_can_see_owner_workspace_task(db: Session, user_id: int, task: OwnerWorkspaceTask) -> bool:
+    """Проверка видимости задачи для другого пользователя (упоминания, уведомления)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return False
+    role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_val not in OWNER_WORKSPACE_API_ROLES:
+        return False
+    ctx = build_owner_workspace_access_context(db, user)
+    return task_visible(ctx, task)
+
+
 def contact_visible(ctx: OwnerWorkspaceAccessContext, contact_id: int) -> bool:
     if ctx.full:
         return True
@@ -183,8 +195,39 @@ def is_project_participant(db: Session, user_id: int, project_id: int) -> bool:
     )
 
 
+def project_participant_record(db: Session, project_id: int, user_id: int) -> Optional[OwnerWorkspaceProjectParticipant]:
+    return (
+        db.query(OwnerWorkspaceProjectParticipant)
+        .filter(
+            OwnerWorkspaceProjectParticipant.project_id == project_id,
+            OwnerWorkspaceProjectParticipant.user_id == user_id,
+        )
+        .first()
+    )
+
+
+def project_participant_role_name(db: Session, project_id: int, user_id: int) -> Optional[str]:
+    row = project_participant_record(db, project_id, user_id)
+    if not row:
+        return None
+    return (row.role or "member").strip().lower() or "member"
+
+
+def is_project_manager(db: Session, user_id: int, project_id: int) -> bool:
+    return project_participant_role_name(db, project_id, user_id) == "manager"
+
+
 def can_manage_project_team(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
-    """Добавление/удаление участников — только полный доступ или владелец проекта."""
+    """Добавление/удаление участников: полный доступ, владелец проекта или участник с ролью manager."""
+    if ctx.full:
+        return True
+    if is_project_owner(db, ctx.user.id, project_id):
+        return True
+    return is_project_manager(db, ctx.user.id, project_id)
+
+
+def can_change_project_participant_roles(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
+    """Смена роли member/manager — только полный доступ или владелец проекта."""
     if ctx.full:
         return True
     return is_project_owner(db, ctx.user.id, project_id)

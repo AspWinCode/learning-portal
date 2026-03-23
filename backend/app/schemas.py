@@ -2456,6 +2456,11 @@ class TaskResponse(BaseModel):
 # --- Owner workspace (owner task manager) ---
 class OwnerWorkspaceProjectParticipantAdd(BaseModel):
     user_id: int
+    role: Literal["member", "manager"] = "member"
+
+
+class OwnerWorkspaceProjectParticipantRolePatch(BaseModel):
+    role: Literal["member", "manager"]
 
 
 class OwnerWorkspaceProjectContactAdd(BaseModel):
@@ -2490,6 +2495,7 @@ class OwnerWorkspaceProjectResponse(BaseModel):
     owner_id: Optional[int] = None
     parent_project_id: Optional[int] = None
     participants: List[int] = []
+    participant_roles: Dict[int, str] = Field(default_factory=dict)  # user_id -> member|manager
     active_tasks_count: int = 0
     total_tasks_count: int = 0
     completed_tasks_count: int = 0
@@ -2656,6 +2662,21 @@ class OwnerWorkspaceTaskListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class OwnerWorkspaceTaskStatusCountsResponse(BaseModel):
+    """Агрегация задач по статусу (GET /tasks/status-counts): те же фильтры, что у списка, кроме status_filter."""
+
+    total: int
+    by_status: Dict[str, int]
+
+
+class OwnerWorkspaceTasksAnalyticsOverview(BaseModel):
+    """GET /analytics/tasks-overview — краткая сводка по видимым задачам."""
+
+    completed_last_7_days: int
+    completed_last_30_days: int
+    avg_days_to_complete_last_30: Optional[float] = None
 
 
 class OwnerWorkspaceTaskCompleteResponse(BaseModel):

@@ -32,10 +32,14 @@ import {
   ToggleButtonGroup,
   CircularProgress,
   TablePagination,
+  Tooltip,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -65,6 +69,8 @@ import type {
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskComment,
+  OwnerWorkspaceTaskStatusCounts,
+  OwnerWorkspaceTasksAnalyticsOverview,
   User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
@@ -300,11 +306,41 @@ const OW_TAB_NOTIFICATIONS = 4;
 const OW_TAB_SETTINGS = 5;
 const OW_TAB_HISTORY = 6;
 
-/** Слаги для deep-link: `/owner-workspace?tab=<slug>&task=<id>` */
+/** Слаги для deep-link: `/owner-workspace?tab=<slug>&task=<id>` (совместимость) и пути `/owner-workspace/<slug>`. */
 const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'comms', 'notifications', 'settings', 'history'] as const;
 
-function tabSlugFromIndex(index: number): string {
-  return OW_TAB_SLUGS[index] ?? 'projects';
+/** Путь вкладки (§16): отдельные URL как у `/notifications` и `/settings`. */
+function ownerWorkspaceTabPathname(tabIndex: number): string {
+  switch (tabIndex) {
+    case OW_TAB_NOTIFICATIONS:
+      return '/owner-workspace/notifications';
+    case OW_TAB_SETTINGS:
+      return '/owner-workspace/settings';
+    case OW_TAB_PROJECTS:
+      return '/owner-workspace/projects';
+    case OW_TAB_CONTACTS:
+      return '/owner-workspace/contacts';
+    case OW_TAB_TASKS:
+      return '/owner-workspace/tasks';
+    case OW_TAB_COMMS:
+      return '/owner-workspace/comms';
+    case OW_TAB_HISTORY:
+      return '/owner-workspace/history';
+    default:
+      return '/owner-workspace/projects';
+  }
+}
+
+function ownerWorkspacePathToTab(pathname: string): number | null {
+  const p = pathname.replace(/\/$/, '') || pathname;
+  if (p.endsWith('/owner-workspace/notifications')) return OW_TAB_NOTIFICATIONS;
+  if (p.endsWith('/owner-workspace/settings')) return OW_TAB_SETTINGS;
+  if (p.endsWith('/owner-workspace/projects')) return OW_TAB_PROJECTS;
+  if (p.endsWith('/owner-workspace/contacts')) return OW_TAB_CONTACTS;
+  if (p.endsWith('/owner-workspace/tasks')) return OW_TAB_TASKS;
+  if (p.endsWith('/owner-workspace/comms')) return OW_TAB_COMMS;
+  if (p.endsWith('/owner-workspace/history')) return OW_TAB_HISTORY;
+  return null;
 }
 
 function tabIndexFromSlug(slug: string | null): number | null {
@@ -313,14 +349,10 @@ function tabIndexFromSlug(slug: string | null): number | null {
   return i >= 0 ? i : null;
 }
 
-/** Вкладка из URL: путь `/owner-workspace/notifications` или query `tab`, либо только `task` → вкладка «Задачи». */
+/** Вкладка из URL: путь `/owner-workspace/<раздел>`, либо `/owner-workspace?tab=…`, либо только `task` → «Задачи». */
 function resolveOwnerWorkspaceTab(pathname: string, search: URLSearchParams): number | null {
-  if (pathname.endsWith('/owner-workspace/notifications')) {
-    return OW_TAB_NOTIFICATIONS;
-  }
-  if (pathname.endsWith('/owner-workspace/settings')) {
-    return OW_TAB_SETTINGS;
-  }
+  const fromPath = ownerWorkspacePathToTab(pathname);
+  if (fromPath !== null) return fromPath;
   const idx = tabIndexFromSlug(search.get('tab'));
   if (idx !== null) return idx;
   const tr = search.get('task');
@@ -336,6 +368,7 @@ const OWNER_WS_NOTIF_KIND_LABELS: Record<string, string> = {
   task_comment: 'Комментарий',
   task_updated: 'Обновление задачи',
   contact_incoming_message: 'Сообщение',
+  task_mention: 'Упоминание',
 };
 
 function coerceTaskStatus(v: string): OwnerWorkspaceTaskStatus {
@@ -444,6 +477,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskListTotal, setTaskListTotal] = useState(0);
   const [taskListPage, setTaskListPage] = useState(0);
   const [taskListRowsPerPage, setTaskListRowsPerPage] = useState(25);
+  const [taskStatusCounts, setTaskStatusCounts] = useState<OwnerWorkspaceTaskStatusCounts | null>(null);
+  const [tasksAnalytics, setTasksAnalytics] = useState<OwnerWorkspaceTasksAnalyticsOverview | null>(null);
   const [notifAnchor, setNotifAnchor] = useState<null | HTMLElement>(null);
   const [notifEnvelope, setNotifEnvelope] = useState<OwnerWorkspaceNotificationsEnvelope | null>(null);
   const [maxSyncResult, setMaxSyncResult] = useState<string | null>(null);
@@ -523,6 +558,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [linkTaskOptions, setLinkTaskOptions] = useState<OwnerWorkspaceTask[]>([]);
   const [linkTaskSelected, setLinkTaskSelected] = useState<OwnerWorkspaceTask | null>(null);
   const [participantToAdd, setParticipantToAdd] = useState<User | null>(null);
+  const [newParticipantRole, setNewParticipantRole] = useState<'member' | 'manager'>('member');
   const [contactDialogTasks, setContactDialogTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [projectDialogTasks, setProjectDialogTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [projectDialogTaskStatus, setProjectDialogTaskStatus] = useState<string>('');
@@ -618,12 +654,13 @@ const OwnerWorkspacePage: React.FC = () => {
     contactListTag,
   ]);
 
-  const loadTasksFiltered = useCallback(async () => {
+  const loadTasksFiltered = useCallback(async (opts?: { statusFilter?: string }) => {
     try {
       const usePaging = taskViewMode === 'list';
+      const effStatus = opts?.statusFilter !== undefined ? opts.statusFilter : taskStatusFilter;
       const filterKey = JSON.stringify({
         taskSearch,
-        taskStatusFilter,
+        taskStatusFilter: effStatus,
         taskPriorityFilter,
         taskProjectFilter,
         taskContactFilter,
@@ -645,22 +682,29 @@ const OwnerWorkspacePage: React.FC = () => {
       }
       const limit = usePaging ? taskListRowsPerPage : OWNER_WS_TASKS_FETCH_CAP;
       const offset = usePaging ? effectivePage * taskListRowsPerPage : 0;
-      const taskPage = await ownerWorkspaceApi.listTasks({
+      const countParams = {
         search: taskSearch.trim() || undefined,
-        status_filter: taskStatusFilter || undefined,
         priority: taskPriorityFilter || undefined,
         project_id: taskProjectFilter === '' ? undefined : taskProjectFilter,
         contact_id: taskContactFilter === '' ? undefined : taskContactFilter,
         assignee_id: taskAssigneeFilter === '' ? undefined : taskAssigneeFilter,
         overdue_only: taskOverdueOnly || undefined,
         active_only: taskActiveOnly || undefined,
-        sort_by: taskSortBy,
-        sort_dir: taskSortDir,
-        limit,
-        offset,
-      });
+      };
+      const [taskPage, counts] = await Promise.all([
+        ownerWorkspaceApi.listTasks({
+          ...countParams,
+          status_filter: effStatus || undefined,
+          sort_by: taskSortBy,
+          sort_dir: taskSortDir,
+          limit,
+          offset,
+        }),
+        ownerWorkspaceApi.getTaskStatusCounts(countParams),
+      ]);
       setTasks(taskPage.items);
       setTaskListTotal(taskPage.total);
+      setTaskStatusCounts(counts);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось загрузить задачи'));
     }
@@ -792,6 +836,14 @@ const OwnerWorkspacePage: React.FC = () => {
     void loadNotifications(80);
   }, [loadNotifications]);
 
+  /** Канонический вход: `/owner-workspace` без query → `/owner-workspace/projects` (совместимость: `?tab=` / `?task=` остаются). */
+  useEffect(() => {
+    const p = location.pathname.replace(/\/$/, '') || location.pathname;
+    if (p !== '/owner-workspace') return;
+    if (searchParams.get('tab') || searchParams.get('task')) return;
+    navigate('/owner-workspace/projects', { replace: true });
+  }, [location.pathname, searchParams, navigate]);
+
   useEffect(() => {
     const next = resolveOwnerWorkspaceTab(location.pathname, searchParams);
     if (next !== null) setTab(next);
@@ -802,6 +854,22 @@ const OwnerWorkspacePage: React.FC = () => {
       void loadNotifications(200);
     }
   }, [tab, loadNotifications]);
+
+  useEffect(() => {
+    if (tab !== OW_TAB_TASKS) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const a = await ownerWorkspaceApi.getTasksAnalyticsOverview();
+        if (!cancelled) setTasksAnalytics(a);
+      } catch {
+        if (!cancelled) setTasksAnalytics(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
 
   useEffect(() => {
     if (!searchOpen) return undefined;
@@ -906,11 +974,16 @@ const OwnerWorkspacePage: React.FC = () => {
     const syncUrl = options?.syncUrl !== false;
     if (syncUrl) {
       skipNextTaskFromUrlEffectRef.current = true;
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        next.set('task', String(t.id));
-        return next;
-      }, { replace: true });
+      const params = new URLSearchParams(searchParams);
+      params.set('task', String(t.id));
+      params.delete('tab');
+      navigate(
+        {
+          pathname: '/owner-workspace/tasks',
+          search: params.toString() ? `?${params.toString()}` : `?task=${t.id}`,
+        },
+        { replace: true }
+      );
     }
     setTaskDialog(t);
     setTaskEditTitle(t.title);
@@ -1149,13 +1222,30 @@ const OwnerWorkspacePage: React.FC = () => {
   const addProjectParticipantUser = async () => {
     if (!projectDialog || !participantToAdd) return;
     try {
-      await ownerWorkspaceApi.addProjectParticipant(projectDialog.id, participantToAdd.id);
+      await ownerWorkspaceApi.addProjectParticipant(
+        projectDialog.id,
+        participantToAdd.id,
+        canChangeParticipantRoles ? newParticipantRole : 'member'
+      );
       setParticipantToAdd(null);
+      setNewParticipantRole('member');
       await loadProjectsAndContacts();
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
       setProjectDialog(updated);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось добавить участника'));
+    }
+  };
+
+  const patchProjectParticipantRole = async (userId: number, role: 'member' | 'manager') => {
+    if (!projectDialog) return;
+    try {
+      await ownerWorkspaceApi.patchProjectParticipantRole(projectDialog.id, userId, role);
+      await loadProjectsAndContacts();
+      const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
+      setProjectDialog(updated);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось изменить роль участника'));
     }
   };
 
@@ -1493,52 +1583,28 @@ const OwnerWorkspacePage: React.FC = () => {
       setTaskDialog(null);
     }
     setTab(v);
-    const slug = tabSlugFromIndex(v);
-    if (v === OW_TAB_NOTIFICATIONS) {
-      const params = new URLSearchParams(searchParams);
-      params.delete('tab');
-      navigate(
-        { pathname: '/owner-workspace/notifications', search: params.toString() ? `?${params.toString()}` : '' },
-        { replace: true }
-      );
-      return;
-    }
-    if (v === OW_TAB_SETTINGS) {
-      const params = new URLSearchParams(searchParams);
-      params.delete('tab');
+    const params = new URLSearchParams(searchParams);
+    params.delete('tab');
+    if (v !== OW_TAB_TASKS) {
       params.delete('task');
-      navigate(
-        { pathname: '/owner-workspace/settings', search: params.toString() ? `?${params.toString()}` : '' },
-        { replace: true }
-      );
-      return;
     }
-    if (location.pathname.endsWith('/owner-workspace/notifications')) {
-      const params = new URLSearchParams(searchParams);
-      params.set('tab', slug);
-      if (v !== OW_TAB_TASKS) params.delete('task');
-      navigate(
-        { pathname: '/owner-workspace', search: params.toString() ? `?${params.toString()}` : '' },
-        { replace: true }
-      );
-      return;
-    }
-    if (location.pathname.endsWith('/owner-workspace/settings')) {
-      const params = new URLSearchParams(searchParams);
-      params.set('tab', slug);
-      if (v !== OW_TAB_TASKS) params.delete('task');
-      navigate(
-        { pathname: '/owner-workspace', search: params.toString() ? `?${params.toString()}` : '' },
-        { replace: true }
-      );
-      return;
-    }
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set('tab', slug);
-      if (v !== OW_TAB_TASKS) next.delete('task');
-      return next;
-    }, { replace: true });
+    const pathname = ownerWorkspaceTabPathname(v);
+    navigate(
+      { pathname, search: params.toString() ? `?${params.toString()}` : '' },
+      { replace: true }
+    );
+  };
+
+  const openContactQuickComms = async (contactId: number) => {
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_COMMS);
+    await loadMeta();
+    await selectCommsContact(contactId);
+  };
+
+  /** Переход на вкладку «Задачи» с фильтром по контакту (state + URL синхронизируются с табом). */
+  const openContactQuickTasks = (contactId: number) => {
+    setTaskContactFilter(contactId);
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
   };
 
   const openSearchHitProject = async (id: number) => {
@@ -1570,21 +1636,14 @@ const OwnerWorkspacePage: React.FC = () => {
   const openSearchHitTask = async (id: number) => {
     setSearchOpen(false);
     setSearchQuery('');
-    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
     skipNextTaskFromUrlEffectRef.current = true;
-    if (
-      location.pathname.endsWith('/owner-workspace/notifications') ||
-      location.pathname.endsWith('/owner-workspace/settings')
-    ) {
-      navigate({ pathname: '/owner-workspace', search: `?tab=tasks&task=${id}` }, { replace: true });
-    } else {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        next.set('tab', 'tasks');
-        next.set('task', String(id));
-        return next;
-      }, { replace: true });
-    }
+    const params = new URLSearchParams(searchParams);
+    params.delete('tab');
+    params.set('task', String(id));
+    navigate(
+      { pathname: '/owner-workspace/tasks', search: params.toString() ? `?${params.toString()}` : `?task=${id}` },
+      { replace: true }
+    );
     await loadTasksFiltered();
     try {
       const full = await ownerWorkspaceApi.getTask(id);
@@ -1651,6 +1710,19 @@ const OwnerWorkspacePage: React.FC = () => {
     },
     [users]
   );
+
+  const canManageProjectTeam = useMemo(() => {
+    if (!projectDialog || !user?.id) return false;
+    if (isWorkspaceFullAccess) return true;
+    if (projectDialog.owner_id === user.id) return true;
+    return projectDialog.participant_roles?.[String(user.id)] === 'manager';
+  }, [projectDialog, user?.id, isWorkspaceFullAccess]);
+
+  const canChangeParticipantRoles = useMemo(() => {
+    if (!projectDialog || !user?.id) return false;
+    if (isWorkspaceFullAccess) return true;
+    return projectDialog.owner_id === user.id;
+  }, [projectDialog, user?.id, isWorkspaceFullAccess]);
 
   const projectsCatalogSorted = useMemo(
     () => [...projectsCatalog].sort((a, b) => a.name.localeCompare(b.name, 'ru')),
@@ -2304,9 +2376,44 @@ const OwnerWorkspacePage: React.FC = () => {
                           )}
                         </Stack>
                       </Box>
-                      <IconButton size="small" onClick={() => openContactDialog(c)}>
-                        <OpenInNewIcon fontSize="small" />
-                      </IconButton>
+                      <Stack direction="row" spacing={0.25} alignItems="flex-start" flexWrap="wrap" useFlexGap>
+                        <Tooltip title="Карточка контакта">
+                          <IconButton size="small" onClick={() => void openContactDialog(c)} aria-label="Карточка контакта">
+                            <OpenInNewIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Переписка">
+                          <IconButton
+                            size="small"
+                            onClick={() => void openContactQuickComms(c.id)}
+                            aria-label="Открыть переписку"
+                          >
+                            <ChatBubbleOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Задачи по контакту">
+                          <IconButton
+                            size="small"
+                            onClick={() => openContactQuickTasks(c.id)}
+                            aria-label="Задачи по контакту"
+                          >
+                            <AssignmentIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        {c.phone?.trim() ? (
+                          <Tooltip title="Позвонить">
+                            <IconButton
+                              size="small"
+                              component="a"
+                              href={`tel:${c.phone.replace(/\s/g, '')}`}
+                              aria-label="Позвонить"
+                              rel="noopener noreferrer"
+                            >
+                              <PhoneIphoneIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
+                      </Stack>
                     </Box>
                   </CardContent>
                 </Card>
@@ -2390,6 +2497,37 @@ const OwnerWorkspacePage: React.FC = () => {
               <Typography variant="subtitle2" gutterBottom>
                 Фильтры
               </Typography>
+              {taskStatusCounts != null && (
+                <Stack direction="row" flexWrap="wrap" spacing={0.75} sx={{ mb: 1.5 }} useFlexGap>
+                  <Chip
+                    size="small"
+                    color={taskStatusFilter === '' ? 'primary' : 'default'}
+                    variant={taskStatusFilter === '' ? 'filled' : 'outlined'}
+                    label={`Все · ${taskStatusCounts.total}`}
+                    onClick={() => {
+                      setTaskStatusFilter('');
+                      void loadTasksFiltered({ statusFilter: '' });
+                    }}
+                  />
+                  {OWNER_WS_STATUSES.map((s) => {
+                    const n = taskStatusCounts.by_status[s] ?? 0;
+                    return (
+                      <Chip
+                        key={s}
+                        size="small"
+                        color={taskStatusFilter === s ? 'primary' : 'default'}
+                        variant={taskStatusFilter === s ? 'filled' : 'outlined'}
+                        label={`${STATUS_LABELS[s] ?? s} · ${n}`}
+                        onClick={() => {
+                          const next = taskStatusFilter === s ? '' : s;
+                          setTaskStatusFilter(next);
+                          void loadTasksFiltered({ statusFilter: next });
+                        }}
+                      />
+                    );
+                  })}
+                </Stack>
+              )}
               <Grid container spacing={1}>
                 <Grid item xs={12} md={4}>
                   <TextField
@@ -2514,6 +2652,33 @@ const OwnerWorkspacePage: React.FC = () => {
               </Grid>
             </CardContent>
           </Card>
+
+          {tasksAnalytics != null && (
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Аналитика (ваша зона видимости)
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap" useFlexGap>
+                  <Typography variant="body2">
+                    Завершено за 7 дней: <strong>{tasksAnalytics.completed_last_7_days}</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    За 30 дней: <strong>{tasksAnalytics.completed_last_30_days}</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    Среднее время до закрытия (завершённые за 30 дн.):{' '}
+                    <strong>
+                      {tasksAnalytics.avg_days_to_complete_last_30 != null &&
+                      tasksAnalytics.avg_days_to_complete_last_30 !== undefined
+                        ? `${tasksAnalytics.avg_days_to_complete_last_30} дн.`
+                        : '—'}
+                    </strong>
+                  </Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
 
           <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
             <ToggleButtonGroup
@@ -3345,29 +3510,66 @@ const OwnerWorkspacePage: React.FC = () => {
               </>
             )}
             <Typography variant="subtitle2">Участники проекта</Typography>
-            <Stack direction="row" flexWrap="wrap" gap={0.5}>
-              {(projectDialog?.participants || []).map((pid) => (
-                <Chip
-                  key={pid}
-                  size="small"
-                  label={userName(pid)}
-                  onDelete={() => removeProjectParticipantUser(pid)}
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+              <strong>Менеджер</strong> ведёт состав (добавляет/исключает участников, но не других менеджеров).
+              Назначать менеджеров может <strong>владелец проекта</strong> или admin/owner портала.
+            </Typography>
+            <Stack spacing={0.75}>
+              {(projectDialog?.participants || []).map((pid) => {
+                const role = projectDialog?.participant_roles?.[String(pid)] === 'manager' ? 'manager' : 'member';
+                const canDel =
+                  canManageProjectTeam &&
+                  (isWorkspaceFullAccess || projectDialog?.owner_id === user?.id || role !== 'manager');
+                return (
+                  <Stack key={pid} direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                    <Chip
+                      size="small"
+                      label={`${userName(pid)} · ${role === 'manager' ? 'менеджер' : 'участник'}`}
+                      onDelete={canDel ? () => void removeProjectParticipantUser(pid) : undefined}
+                    />
+                    {canChangeParticipantRoles ? (
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() =>
+                          void patchProjectParticipantRole(pid, role === 'manager' ? 'member' : 'manager')
+                        }
+                      >
+                        {role === 'manager' ? 'Сделать участником' : 'Сделать менеджером'}
+                      </Button>
+                    ) : null}
+                  </Stack>
+                );
+              })}
+            </Stack>
+            {canManageProjectTeam ? (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                <Autocomplete
+                  sx={{ flex: 1 }}
+                  options={userOptions.filter((u) => !(projectDialog?.participants || []).includes(u.id))}
+                  getOptionLabel={(o) => o.full_name}
+                  value={participantToAdd}
+                  onChange={(_, v) => setParticipantToAdd(v)}
+                  renderInput={(params) => <TextField {...params} label="Добавить участника" />}
                 />
-              ))}
-            </Stack>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-              <Autocomplete
-                sx={{ flex: 1 }}
-                options={userOptions.filter((u) => !(projectDialog?.participants || []).includes(u.id))}
-                getOptionLabel={(o) => o.full_name}
-                value={participantToAdd}
-                onChange={(_, v) => setParticipantToAdd(v)}
-                renderInput={(params) => <TextField {...params} label="Добавить участника" />}
-              />
-              <Button variant="outlined" onClick={addProjectParticipantUser} disabled={!participantToAdd}>
-                Добавить
-              </Button>
-            </Stack>
+                {canChangeParticipantRoles ? (
+                  <TextField
+                    select
+                    size="small"
+                    label="Роль"
+                    sx={{ minWidth: 160 }}
+                    value={newParticipantRole}
+                    onChange={(e) => setNewParticipantRole(e.target.value as 'member' | 'manager')}
+                  >
+                    <MenuItem value="member">Участник</MenuItem>
+                    <MenuItem value="manager">Менеджер</MenuItem>
+                  </TextField>
+                ) : null}
+                <Button variant="outlined" onClick={addProjectParticipantUser} disabled={!participantToAdd}>
+                  Добавить
+                </Button>
+              </Stack>
+            ) : null}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
@@ -3856,6 +4058,7 @@ const OwnerWorkspacePage: React.FC = () => {
               label="Новый комментарий"
               value={newCommentText}
               onChange={(e) => setNewCommentText(e.target.value)}
+              helperText="Упоминание: @ID пользователя или @email@домен — отдельное уведомление тем, кому уже видна задача (исполнитель и автор получают обычный «Комментарий»)."
             />
             <Button variant="outlined" onClick={addComment}>
               Добавить комментарий

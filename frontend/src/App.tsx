@@ -410,14 +410,6 @@ function App() {
               }
             />
             <Route
-              path="/owner-workspace"
-              element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
-                  <OwnerWorkspacePage />
-                </PrivateRoute>
-              }
-            />
-            <Route
               path="/owner-workspace/notifications"
               element={
                 <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
@@ -427,6 +419,54 @@ function App() {
             />
             <Route
               path="/owner-workspace/settings"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/projects"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/contacts"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/tasks"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/comms"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/history"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace"
               element={
                 <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
                   <OwnerWorkspacePage />

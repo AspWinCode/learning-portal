@@ -86,8 +86,21 @@ Owner Workspace is in a working production state.
   - labels
   - enabled flags
   - settings UI for admin/owner
+- System project status config:
+  - labels
+  - enabled flags
+  - settings UI for admin/owner
+- System notification-type config:
+  - labels
+  - enabled flags
+  - settings UI for admin/owner
+- System dictionaries for:
+  - task tags
+  - contact tags
+  - contact sources
+- Configurable project-role policy for manager capabilities in admin settings.
 - Role matrix section in settings.
-- “Your access” summary block in UI.
+- "Your access" summary block in UI.
 
 ### Roles and permissions
 
@@ -127,24 +140,21 @@ Owner Workspace is in a working production state.
 
 ### Roles and permissions
 
-- Permission behavior is much clearer in backend and UI, but there is still no dedicated admin surface for managing a formal permission matrix as configurable product policy.
+- Permission behavior is much clearer in backend and UI, but there is still no dedicated admin surface for managing a full formal permission matrix beyond the current project manager policy settings.
+
+### Notifications
+
+- Email delivery is present with an application-level outbox/background dispatcher, but it is still not a separate worker/service tier.
 
 ### Analytics
 
 - Analytics now cover task and project visibility well, but they are still embedded in owner-workspace rather than exposed as a separate reporting module.
 
-### Notifications
-
-- Email delivery is present, but it is still a lightweight application-level outbox, not a separate worker/service tier.
-
 ## Deferred
 
 ### System administration
 
-- Full module-level admin settings for:
-  - access rules as configurable policy
-  - notification-type administration
-  - broader dictionaries beyond current task status/priority config
+- Full formal permission-matrix administration beyond the current project manager policy surface.
 
 ### External delivery channels
 
@@ -158,7 +168,7 @@ Owner Workspace is in a working production state.
 
 ### Product process
 
-- Formal acceptance walkthrough against every original TЗ line item.
+- Formal acceptance walkthrough against every original specification line item.
 - Single maintained sign-off record per acceptance criterion.
 
 ## Known Risks
@@ -170,7 +180,7 @@ Owner Workspace is in a working production state.
 ## Recommended Next Steps
 
 1. Stabilize production DB operations and backup discipline.
-2. Add a configurable admin surface for permission policy.
-3. Expand system settings beyond task labels/visibility.
+2. Expand configurable permission policy beyond the current manager/project-role surface.
+3. Add web push or another external notification channel beyond email.
 4. Decide whether reporting should remain embedded or move into a dedicated reporting surface.
 5. Do a line-by-line final acceptance review against the original specification.

@@ -123,6 +123,7 @@ Owner Workspace is in a working production state.
   - outgoing messages
   - task comments
 - Role matrix section in settings.
+- Formal permission-matrix table in settings for the main owner-workspace actions.
 - "Your access" summary block in UI.
 
 ### Roles and permissions
@@ -165,7 +166,7 @@ Owner Workspace is in a working production state.
 ### Roles and permissions
 
 - Permission behavior is much clearer in backend and UI, and admin settings now cover both manager policy and the main limited-role mutate actions.
-- A fully exhaustive formal permission matrix still does not exist for every possible owner-workspace action.
+- A formal matrix for the main actions now exists in settings, but not every edge-case owner-workspace action is maintained there yet.
 
 ### Notifications
 

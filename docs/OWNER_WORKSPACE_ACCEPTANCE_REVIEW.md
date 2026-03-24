@@ -98,7 +98,7 @@ Status legend:
 | Observer as read-only | DONE | Enforced in backend mutate paths and frontend UX. |
 | Manager policy | DONE | Centralized and configurable. |
 | Limited-role create/edit policy | DONE | Centralized and configurable for projects, contacts, tasks, task-field editing, contact-card editing, project-contact binding, task completion, bulk task update, message-to-task linking, messages, comments. |
-| Fully exhaustive permission matrix for every single action | PARTIAL | Main actions are covered, but a single formal matrix for every action is not yet maintained as an enforceable artifact. |
+| Fully exhaustive permission matrix for every single action | PARTIAL | Main actions are covered and an explicit permission matrix is shown in settings, but edge-case actions are still not maintained as one fully exhaustive enforceable artifact. |
 
 ## 9. Analytics
 

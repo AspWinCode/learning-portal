@@ -23,6 +23,12 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Tab,
   Tabs,
   TextField,
@@ -786,6 +792,183 @@ const OwnerWorkspacePage: React.FC = () => {
     permissionPolicy.limited_can_send_messages,
     permissionPolicy.limited_can_comment_tasks,
   ]);
+
+  const permissionMatrixRows = useMemo(
+    () => [
+      {
+        action: 'Просмотр проектов, контактов и задач',
+        adminOwner: 'Да',
+        limited: 'Своя зона',
+        projectOwner: 'Да',
+        manager: 'Да',
+        member: 'Да',
+        observer: 'Да',
+      },
+      {
+        action: 'Создание проектов',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_create_projects ? 'По policy' : 'Нет',
+        projectOwner: '—',
+        manager: '—',
+        member: '—',
+        observer: '—',
+      },
+      {
+        action: 'Создание контактов',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_create_contacts ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_create_contacts ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_create_contacts ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Редактирование карточки контакта',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_edit_contacts ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_edit_contacts ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_edit_contacts ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Создание задач',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_create_tasks ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_create_tasks ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_create_tasks ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Редактирование полей задач',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_edit_tasks ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_edit_tasks ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_edit_tasks ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Завершение задач',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_complete_tasks ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_complete_tasks ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_complete_tasks ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Массовое обновление задач',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_bulk_update_tasks ? 'По policy' : 'Нет',
+        projectOwner: permissionPolicy.limited_can_bulk_update_tasks ? 'По policy' : 'Нет',
+        manager: permissionPolicy.limited_can_bulk_update_tasks ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_bulk_update_tasks ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Комментарии к задачам',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_comment_tasks ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_comment_tasks ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_comment_tasks ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Привязка сообщений к задачам',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_link_messages ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_link_messages ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_link_messages ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Исходящие сообщения',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_send_messages ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_send_messages ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_send_messages ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Привязка контактов к проекту',
+        adminOwner: 'Да',
+        limited: permissionPolicy.limited_can_manage_project_contacts ? 'По policy' : 'Нет',
+        projectOwner: 'Да',
+        manager: permissionPolicy.limited_can_manage_project_contacts ? 'По policy' : 'Нет',
+        member: permissionPolicy.limited_can_manage_project_contacts ? 'По policy' : 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Управление участниками проекта',
+        adminOwner: 'Да',
+        limited: 'По роли в проекте',
+        projectOwner: 'Да',
+        manager: permissionPolicy.manager_can_manage_team ? 'По manager policy' : 'Нет',
+        member: 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Смена ролей участников',
+        adminOwner: 'Да',
+        limited: 'По роли в проекте',
+        projectOwner: 'Да',
+        manager: permissionPolicy.manager_can_change_roles ? 'По manager policy' : 'Нет',
+        member: 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Назначение менеджеров',
+        adminOwner: 'Да',
+        limited: 'По роли в проекте',
+        projectOwner: 'Да',
+        manager: permissionPolicy.manager_can_assign_manager ? 'По manager policy' : 'Нет',
+        member: 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Назначение наблюдателей',
+        adminOwner: 'Да',
+        limited: 'По роли в проекте',
+        projectOwner: 'Да',
+        manager: permissionPolicy.manager_can_assign_observer ? 'По manager policy' : 'Нет',
+        member: 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Удаление менеджеров из проекта',
+        adminOwner: 'Да',
+        limited: 'По роли в проекте',
+        projectOwner: 'Да',
+        manager: permissionPolicy.manager_can_remove_manager ? 'По manager policy' : 'Нет',
+        member: 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Редактирование метаданных проекта',
+        adminOwner: 'Да',
+        limited: 'По роли в проекте',
+        projectOwner: 'Да',
+        manager: permissionPolicy.manager_can_edit_project_meta ? 'По manager policy' : 'Нет',
+        member: 'Нет',
+        observer: 'Нет',
+      },
+      {
+        action: 'Архивирование проекта',
+        adminOwner: 'Да',
+        limited: 'По роли в проекте',
+        projectOwner: 'Да',
+        manager: permissionPolicy.manager_can_archive_project ? 'По manager policy' : 'Нет',
+        member: 'Нет',
+        observer: 'Нет',
+      },
+    ],
+    [permissionPolicy]
+  );
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
   const [digestProjectFilter, setDigestProjectFilter] = useState<number | ''>('');
@@ -5369,6 +5552,48 @@ const OwnerWorkspacePage: React.FC = () => {
                       Сбросить
                     </Button>
                   </Stack>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        <Box>
+                          <Typography variant="subtitle2">Формальная матрица прав</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Таблица ниже показывает, как текущая policy-модель owner workspace влияет на основные действия по ролям.
+                            Для `sales / trainer` действует только своя зона видимости, а project-scoped роли применяются внутри
+                            доступного проекта.
+                          </Typography>
+                        </Box>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Действие</TableCell>
+                                <TableCell>Admin / Owner</TableCell>
+                                <TableCell>Sales / Trainer</TableCell>
+                                <TableCell>Владелец проекта</TableCell>
+                                <TableCell>Manager</TableCell>
+                                <TableCell>Member</TableCell>
+                                <TableCell>Observer</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {permissionMatrixRows.map((row) => (
+                                <TableRow key={row.action}>
+                                  <TableCell sx={{ minWidth: 220 }}>{row.action}</TableCell>
+                                  <TableCell>{row.adminOwner}</TableCell>
+                                  <TableCell>{row.limited}</TableCell>
+                                  <TableCell>{row.projectOwner}</TableCell>
+                                  <TableCell>{row.manager}</TableCell>
+                                  <TableCell>{row.member}</TableCell>
+                                  <TableCell>{row.observer}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Stack>
+                    </CardContent>
+                  </Card>
                 </Stack>
               </>
             )}

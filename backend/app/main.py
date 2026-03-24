@@ -147,11 +147,35 @@ def _validate_production_env() -> None:
         except Exception:
             traceback.print_exc()
 
+    def _run_owner_workspace_notification_email_dispatch() -> None:
+        """Dispatch queued owner workspace notification emails."""
+        try:
+            flag = (os.getenv("OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED") or "1").strip().lower()
+            if flag not in ("1", "true", "yes"):
+                return
+            from app.services.owner_workspace_notifications import (
+                dispatch_pending_owner_workspace_notification_emails,
+            )
+
+            db = SessionLocal()
+            try:
+                dispatch_pending_owner_workspace_notification_emails(db, limit=100)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
     scheduler.add_job(_run_payment_overdue_tasks, "interval", days=1, id="payment_overdue_tasks")
     scheduler.add_job(_run_scheduled_messages, "interval", minutes=1, id="scheduled_messages")
     scheduler.add_job(_run_owner_workspace_max_sync, "interval", minutes=30, id="owner_workspace_max_sync")
+    scheduler.add_job(
+        _run_owner_workspace_notification_email_dispatch,
+        "interval",
+        minutes=1,
+        id="owner_workspace_notification_email_dispatch",
+    )
     # Автоповышение класса учеников 1 сентября (cron-задача раз в год).
     scheduler.add_job(
         _run_student_class_autopromo,
@@ -277,4 +301,5 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
 

@@ -2001,6 +2001,11 @@ class OwnerWorkspaceNotification(Base):
     )
     dedupe_key = Column(String(160), nullable=False)
     read_at = Column(DateTime(timezone=True), nullable=True)
+    email_delivery_status = Column(String(24), nullable=False, server_default="disabled", index=True)
+    email_last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    email_sent_at = Column(DateTime(timezone=True), nullable=True)
+    email_attempts = Column(Integer, nullable=False, server_default="0")
+    email_last_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     user = relationship("User")

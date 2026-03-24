@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -57,7 +57,7 @@ import { ru } from 'date-fns/locale';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
-import { ownerWorkspaceApi, usersApi } from '../services/api';
+import { ownerWorkspaceApi, settingsApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceContact,
@@ -69,13 +69,14 @@ import type {
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskComment,
+  OwnerWorkspaceTaskConfig,
   OwnerWorkspaceTaskStatusCounts,
   OwnerWorkspaceTasksAnalyticsOverview,
   User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 
-/** Макс. задач за один запрос для канбана/календаря и вспомогательных списков (лимит API). */
+/** РњР°РєСЃ. Р·Р°РґР°С‡ Р·Р° РѕРґРёРЅ Р·Р°РїСЂРѕСЃ РґР»СЏ РєР°РЅР±Р°РЅР°/РєР°Р»РµРЅРґР°СЂСЏ Рё РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹С… СЃРїРёСЃРєРѕРІ (Р»РёРјРёС‚ API). */
 const OWNER_WS_TASKS_FETCH_CAP = 500;
 
 function isTaskOverdue(t: OwnerWorkspaceTask): boolean {
@@ -98,19 +99,19 @@ function localInputToIso(local: string): string | null {
   return d.toISOString();
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  new: 'Новая',
-  in_progress: 'В работе',
-  waiting: 'Ожидание',
-  completed: 'Завершена',
-  cancelled: 'Отменена',
+const DEFAULT_STATUS_LABELS: Record<string, string> = {
+  new: 'РќРѕРІР°СЏ',
+  in_progress: 'Р’ СЂР°Р±РѕС‚Рµ',
+  waiting: 'РћР¶РёРґР°РЅРёРµ',
+  completed: 'Р—Р°РІРµСЂС€РµРЅР°',
+  cancelled: 'РћС‚РјРµРЅРµРЅР°',
 };
 
-const PRIORITY_LABELS: Record<string, string> = {
-  low: 'Низкий',
-  medium: 'Средний',
-  high: 'Высокий',
-  critical: 'Критический',
+const DEFAULT_PRIORITY_LABELS: Record<string, string> = {
+  low: 'РќРёР·РєРёР№',
+  medium: 'РЎСЂРµРґРЅРёР№',
+  high: 'Р’С‹СЃРѕРєРёР№',
+  critical: 'РљСЂРёС‚РёС‡РµСЃРєРёР№',
 };
 
 type OwnerWorkspaceSubprojectTreeNode = {
@@ -142,7 +143,7 @@ function buildOwnerWsSubprojectTreeAt(
   }));
 }
 
-/** Все id строго ниже rootId (без самого rootId). */
+/** Р’СЃРµ id СЃС‚СЂРѕРіРѕ РЅРёР¶Рµ rootId (Р±РµР· СЃР°РјРѕРіРѕ rootId). */
 function collectOwnerWsDescendantProjectIds(catalog: OwnerWorkspaceProject[], rootId: number): Set<number> {
   const byParent = new Map<number, number[]>();
   for (const p of catalog) {
@@ -161,7 +162,7 @@ function collectOwnerWsDescendantProjectIds(catalog: OwnerWorkspaceProject[], ro
   return out;
 }
 
-/** Допустимые родители при переносе movingId (без циклов). contextRootId — открытый в диалоге проект (подпись в списке). */
+/** Р”РѕРїСѓСЃС‚РёРјС‹Рµ СЂРѕРґРёС‚РµР»Рё РїСЂРё РїРµСЂРµРЅРѕСЃРµ movingId (Р±РµР· С†РёРєР»РѕРІ). contextRootId вЂ” РѕС‚РєСЂС‹С‚С‹Р№ РІ РґРёР°Р»РѕРіРµ РїСЂРѕРµРєС‚ (РїРѕРґРїРёСЃСЊ РІ СЃРїРёСЃРєРµ). */
 function ownerWsValidParentProjectOptions(
   catalog: OwnerWorkspaceProject[],
   movingId: number,
@@ -169,10 +170,10 @@ function ownerWsValidParentProjectOptions(
 ): { id: number | null; label: string }[] {
   const banned = collectOwnerWsDescendantProjectIds(catalog, movingId);
   banned.add(movingId);
-  const opts: { id: number | null; label: string }[] = [{ id: null, label: '(корень)' }];
+  const opts: { id: number | null; label: string }[] = [{ id: null, label: '(РєРѕСЂРµРЅСЊ)' }];
   for (const p of catalog) {
     if (banned.has(p.id)) continue;
-    const tag = p.id === contextRootId ? ' (текущий проект)' : '';
+    const tag = p.id === contextRootId ? ' (С‚РµРєСѓС‰РёР№ РїСЂРѕРµРєС‚)' : '';
     opts.push({ id: p.id, label: `${p.name}${tag}` });
   }
   opts.sort((a, b) => {
@@ -221,7 +222,7 @@ const OwnerWorkspaceSubprojectTreeRow: React.FC<{
       setError(null);
       await onApplied();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось перенести подпроект'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРЅРµСЃС‚Рё РїРѕРґРїСЂРѕРµРєС‚'));
     }
   };
 
@@ -242,7 +243,7 @@ const OwnerWorkspaceSubprojectTreeRow: React.FC<{
             <TextField
               select
               size="small"
-              label="Родитель"
+              label="Р РѕРґРёС‚РµР»СЊ"
               sx={{ minWidth: 200, flex: '2 1 200px' }}
               value={draftParent === null ? '' : String(draftParent)}
               onChange={(e) => {
@@ -266,12 +267,12 @@ const OwnerWorkspaceSubprojectTreeRow: React.FC<{
               onClick={() => void applyMove()}
               sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }}
             >
-              Перенести
+              РџРµСЂРµРЅРµСЃС‚Рё
             </Button>
           </>
         ) : (
           <Typography variant="caption" color="text.secondary">
-            Перенос: только владелец подпроекта или полный доступ
+            РџРµСЂРµРЅРѕСЃ: С‚РѕР»СЊРєРѕ РІР»Р°РґРµР»РµС† РїРѕРґРїСЂРѕРµРєС‚Р° РёР»Рё РїРѕР»РЅС‹Р№ РґРѕСЃС‚СѓРї
           </Typography>
         )}
       </Stack>
@@ -294,9 +295,95 @@ const OwnerWorkspaceSubprojectTreeRow: React.FC<{
 
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 type OwnerWorkspaceTaskPriority = 'low' | 'medium' | 'high' | 'critical';
+type OwnerWorkspaceProjectParticipantRole = 'member' | 'manager' | 'observer';
 
 const OWNER_WS_STATUSES: OwnerWorkspaceTaskStatus[] = ['new', 'in_progress', 'waiting', 'completed', 'cancelled'];
 const OWNER_WS_PRIORITIES: OwnerWorkspaceTaskPriority[] = ['low', 'medium', 'high', 'critical'];
+const OWNER_WS_PROJECT_PARTICIPANT_ROLE_LABELS: Record<OwnerWorkspaceProjectParticipantRole, string> = {
+  member: 'СѓС‡Р°СЃС‚РЅРёРє',
+  manager: 'РјРµРЅРµРґР¶РµСЂ',
+  observer: 'РЅР°Р±Р»СЋРґР°С‚РµР»СЊ',
+};
+
+const OWNER_WS_ACCESS_MATRIX: Array<{
+  role: string;
+  scope: string;
+  capabilities: string[];
+}> = [
+  {
+    role: 'admin / owner',
+    scope: 'Р’РµСЃСЊ РјРѕРґСѓР»СЊ owner workspace',
+    capabilities: [
+      'РџРѕР»РЅС‹Р№ РґРѕСЃС‚СѓРї РєРѕ РІСЃРµРј РїСЂРѕРµРєС‚Р°Рј, РєРѕРЅС‚Р°РєС‚Р°Рј, Р·Р°РґР°С‡Р°Рј Рё СЃРѕРѕР±С‰РµРЅРёСЏРј',
+      'РЎРјРµРЅР° РІР»Р°РґРµР»СЊС†Р° РїСЂРѕРµРєС‚Р° Рё Р°СЂС…РёРІРёСЂРѕРІР°РЅРёРµ',
+      'РќР°Р·РЅР°С‡РµРЅРёРµ manager Рё observer',
+      'РЎРёСЃС‚РµРјРЅС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё СЃС‚Р°С‚СѓСЃРѕРІ Рё РїСЂРёРѕСЂРёС‚РµС‚РѕРІ',
+    ],
+  },
+  {
+    role: 'project owner',
+    scope: 'РЎРІРѕР№ РїСЂРѕРµРєС‚ Рё СЃРІСЏР·Р°РЅРЅС‹Рµ СЃСѓС‰РЅРѕСЃС‚Рё',
+    capabilities: [
+      'Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ РїСЂРѕРµРєС‚Р°, Р·Р°РґР°С‡, РєРѕРЅС‚Р°РєС‚РѕРІ Рё СЃРѕРѕР±С‰РµРЅРёР№ РІ РїСЂРѕРµРєС‚Рµ',
+      'РЈРїСЂР°РІР»РµРЅРёРµ СЃРѕСЃС‚Р°РІРѕРј РїСЂРѕРµРєС‚Р°',
+      'РќР°Р·РЅР°С‡РµРЅРёРµ manager Рё observer РІРЅСѓС‚СЂРё РїСЂРѕРµРєС‚Р°',
+      'РђСЂС…РёРІРёСЂРѕРІР°РЅРёРµ СЃРІРѕРµРіРѕ РїСЂРѕРµРєС‚Р°',
+    ],
+  },
+  {
+    role: 'manager',
+    scope: 'РџСЂРѕРµРєС‚, РіРґРµ РЅР°Р·РЅР°С‡РµРЅ manager',
+    capabilities: [
+      'Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ Р·Р°РґР°С‡, РєРѕРЅС‚Р°РєС‚РѕРІ Рё СЃРѕРѕР±С‰РµРЅРёР№ РїСЂРѕРµРєС‚Р°',
+      'Р”РѕР±Р°РІР»РµРЅРёРµ Рё СѓРґР°Р»РµРЅРёРµ СѓС‡Р°СЃС‚РЅРёРєРѕРІ РїСЂРѕРµРєС‚Р°',
+      'РќРµ РјРѕР¶РµС‚ РЅР°Р·РЅР°С‡Р°С‚СЊ РґСЂСѓРіРёС… manager РёР»Рё observer',
+      'РќРµ РјРµРЅСЏРµС‚ РІР»Р°РґРµР»СЊС†Р° Рё РЅРµ Р°СЂС…РёРІРёСЂСѓРµС‚ РїСЂРѕРµРєС‚',
+    ],
+  },
+  {
+    role: 'member',
+    scope: 'РџСЂРѕРµРєС‚, РіРґРµ РґРѕР±Р°РІР»РµРЅ СѓС‡Р°СЃС‚РЅРёРєРѕРј',
+    capabilities: [
+      'Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ Р·Р°РґР°С‡, РєРѕРЅС‚Р°РєС‚РѕРІ Рё СЃРѕРѕР±С‰РµРЅРёР№ РїСЂРѕРµРєС‚Р°',
+      'РќРµС‚ СѓРїСЂР°РІР»РµРЅРёСЏ СЃРѕСЃС‚Р°РІРѕРј РїСЂРѕРµРєС‚Р°',
+      'РќРµС‚ СЃРјРµРЅС‹ РІР»Р°РґРµР»СЊС†Р° Рё Р°СЂС…РёРІРёСЂРѕРІР°РЅРёСЏ',
+    ],
+  },
+  {
+    role: 'observer',
+    scope: 'РџСЂРѕРµРєС‚, РіРґРµ РґРѕР±Р°РІР»РµРЅ РЅР°Р±Р»СЋРґР°С‚РµР»РµРј',
+    capabilities: [
+      'РўРѕР»СЊРєРѕ РїСЂРѕСЃРјРѕС‚СЂ РїСЂРѕРµРєС‚Р°, Р·Р°РґР°С‡, РєРѕРЅС‚Р°РєС‚РѕРІ Рё СЃРѕРѕР±С‰РµРЅРёР№',
+      'РќРµ СЂРµРґР°РєС‚РёСЂСѓРµС‚ РєР°СЂС‚РѕС‡РєРё, РєРѕРјРјРµРЅС‚Р°СЂРёРё, СЃРѕРѕР±С‰РµРЅРёСЏ Рё РїСЂРёРІСЏР·РєРё',
+      'РќРµ Р·Р°РІРµСЂС€Р°РµС‚ Р·Р°РґР°С‡Рё Рё РЅРµ СѓРїСЂР°РІР»СЏРµС‚ СЃРѕСЃС‚Р°РІРѕРј РїСЂРѕРµРєС‚Р°',
+    ],
+  },
+  {
+    role: 'sales / trainer',
+    scope: 'РўРѕР»СЊРєРѕ СЃРІРѕСЏ Р·РѕРЅР° РІРёРґРёРјРѕСЃС‚Рё',
+    capabilities: [
+      'Р’РёРґРёС‚ СЃРІРѕРё РїСЂРѕРµРєС‚С‹, СЃРІСЏР·Р°РЅРЅС‹Рµ РєРѕРЅС‚Р°РєС‚С‹ Рё СЃРІРѕРё Р·Р°РґР°С‡Рё',
+      'РњРѕР¶РµС‚ СЂР°Р±РѕС‚Р°С‚СЊ С‚РѕР»СЊРєРѕ РІРЅСѓС‚СЂРё РґРѕСЃС‚СѓРїРЅРѕР№ Р·РѕРЅС‹',
+      'РџСЂР°РІР° РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ РѕРіСЂР°РЅРёС‡РёРІР°СЋС‚СЃСЏ СЂРѕР»СЊСЋ РІ РїСЂРѕРµРєС‚Рµ',
+    ],
+  },
+];
+
+const OWNER_WS_GLOBAL_ROLE_LABELS: Record<string, string> = {
+  admin: 'admin',
+  owner: 'owner',
+  sales: 'sales',
+  trainer: 'trainer',
+};
+
+type OwnerWorkspaceAssigneeAnalyticsRow = {
+  assigneeId: number | null;
+  assigneeName: string;
+  activeCount: number;
+  overdueCount: number;
+  completedCount: number;
+  avgDaysToComplete: number | null;
+};
 
 const OW_TAB_PROJECTS = 0;
 const OW_TAB_CONTACTS = 1;
@@ -306,10 +393,10 @@ const OW_TAB_NOTIFICATIONS = 4;
 const OW_TAB_SETTINGS = 5;
 const OW_TAB_HISTORY = 6;
 
-/** Слаги для deep-link: `/owner-workspace?tab=<slug>&task=<id>` (совместимость) и пути `/owner-workspace/<slug>`. */
+/** РЎР»Р°РіРё РґР»СЏ deep-link: `/owner-workspace?tab=<slug>&task=<id>` (СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚СЊ) Рё РїСѓС‚Рё `/owner-workspace/<slug>`. */
 const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'comms', 'notifications', 'settings', 'history'] as const;
 
-/** Путь вкладки (§16): отдельные URL как у `/notifications` и `/settings`. */
+/** РџСѓС‚СЊ РІРєР»Р°РґРєРё (В§16): РѕС‚РґРµР»СЊРЅС‹Рµ URL РєР°Рє Сѓ `/notifications` Рё `/settings`. */
 function ownerWorkspaceTabPathname(tabIndex: number): string {
   switch (tabIndex) {
     case OW_TAB_NOTIFICATIONS:
@@ -333,14 +420,27 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
 
 function ownerWorkspacePathToTab(pathname: string): number | null {
   const p = pathname.replace(/\/$/, '') || pathname;
-  if (p.endsWith('/owner-workspace/notifications')) return OW_TAB_NOTIFICATIONS;
-  if (p.endsWith('/owner-workspace/settings')) return OW_TAB_SETTINGS;
-  if (p.endsWith('/owner-workspace/projects')) return OW_TAB_PROJECTS;
-  if (p.endsWith('/owner-workspace/contacts')) return OW_TAB_CONTACTS;
-  if (p.endsWith('/owner-workspace/tasks')) return OW_TAB_TASKS;
-  if (p.endsWith('/owner-workspace/comms')) return OW_TAB_COMMS;
-  if (p.endsWith('/owner-workspace/history')) return OW_TAB_HISTORY;
+  if (p === '/owner-workspace/notifications') return OW_TAB_NOTIFICATIONS;
+  if (p === '/owner-workspace/settings') return OW_TAB_SETTINGS;
+  if (p.startsWith('/owner-workspace/projects')) return OW_TAB_PROJECTS;
+  if (p.startsWith('/owner-workspace/contacts')) return OW_TAB_CONTACTS;
+  if (p.startsWith('/owner-workspace/tasks')) return OW_TAB_TASKS;
+  if (p === '/owner-workspace/comms') return OW_TAB_COMMS;
+  if (p === '/owner-workspace/history') return OW_TAB_HISTORY;
   return null;
+}
+
+function ownerWorkspaceEntityFromPath(
+  pathname: string
+): { kind: 'project' | 'contact' | 'task' | null; id: number | null } {
+  const p = pathname.replace(/\/$/, '') || pathname;
+  const projectMatch = p.match(/^\/owner-workspace\/projects\/(\d+)$/);
+  if (projectMatch) return { kind: 'project', id: parseInt(projectMatch[1], 10) };
+  const contactMatch = p.match(/^\/owner-workspace\/contacts\/(\d+)$/);
+  if (contactMatch) return { kind: 'contact', id: parseInt(contactMatch[1], 10) };
+  const taskMatch = p.match(/^\/owner-workspace\/tasks\/(\d+)$/);
+  if (taskMatch) return { kind: 'task', id: parseInt(taskMatch[1], 10) };
+  return { kind: null, id: null };
 }
 
 function tabIndexFromSlug(slug: string | null): number | null {
@@ -349,7 +449,7 @@ function tabIndexFromSlug(slug: string | null): number | null {
   return i >= 0 ? i : null;
 }
 
-/** Вкладка из URL: путь `/owner-workspace/<раздел>`, либо `/owner-workspace?tab=…`, либо только `task` → «Задачи». */
+/** Р’РєР»Р°РґРєР° РёР· URL: РїСѓС‚СЊ `/owner-workspace/<СЂР°Р·РґРµР»>`, Р»РёР±Рѕ `/owner-workspace?tab=вЂ¦`, Р»РёР±Рѕ С‚РѕР»СЊРєРѕ `task` в†’ В«Р—Р°РґР°С‡РёВ». */
 function resolveOwnerWorkspaceTab(pathname: string, search: URLSearchParams): number | null {
   const fromPath = ownerWorkspacePathToTab(pathname);
   if (fromPath !== null) return fromPath;
@@ -362,13 +462,13 @@ function resolveOwnerWorkspaceTab(pathname: string, search: URLSearchParams): nu
 }
 
 const OWNER_WS_NOTIF_KIND_LABELS: Record<string, string> = {
-  task_overdue: 'Просрочка',
-  task_due_soon: 'Скоро дедлайн',
-  task_assigned: 'Назначение',
-  task_comment: 'Комментарий',
-  task_updated: 'Обновление задачи',
-  contact_incoming_message: 'Сообщение',
-  task_mention: 'Упоминание',
+  task_overdue: 'РџСЂРѕСЃСЂРѕС‡РєР°',
+  task_due_soon: 'РЎРєРѕСЂРѕ РґРµРґР»Р°Р№РЅ',
+  task_assigned: 'РќР°Р·РЅР°С‡РµРЅРёРµ',
+  task_comment: 'РљРѕРјРјРµРЅС‚Р°СЂРёР№',
+  task_updated: 'РћР±РЅРѕРІР»РµРЅРёРµ Р·Р°РґР°С‡Рё',
+  contact_incoming_message: 'РЎРѕРѕР±С‰РµРЅРёРµ',
+  task_mention: 'РЈРїРѕРјРёРЅР°РЅРёРµ',
 };
 
 function coerceTaskStatus(v: string): OwnerWorkspaceTaskStatus {
@@ -379,6 +479,10 @@ function coerceTaskPriority(v: string): OwnerWorkspaceTaskPriority {
   return OWNER_WS_PRIORITIES.includes(v as OwnerWorkspaceTaskPriority) ? (v as OwnerWorkspaceTaskPriority) : 'medium';
 }
 
+function ensureTaskOption<T extends string>(options: T[], current: T): T[] {
+  return options.includes(current) ? options : [...options, current];
+}
+
 type ChecklistRow = { id: string; text: string; done: boolean };
 
 function parseChecklistFromTask(raw: OwnerWorkspaceTask['checklist']): ChecklistRow[] {
@@ -386,7 +490,7 @@ function parseChecklistFromTask(raw: OwnerWorkspaceTask['checklist']): Checklist
   return raw.map((item, i) => {
     if (typeof item === 'object' && item !== null) {
       const o = item as Record<string, unknown>;
-      const text = String(o.text ?? o.title ?? o.label ?? `Шаг ${i + 1}`);
+      const text = String(o.text ?? o.title ?? o.label ?? `РЁР°Рі ${i + 1}`);
       const done = Boolean(o.done ?? o.completed ?? o.checked);
       return { id: `chk-${i}-${text.slice(0, 12)}`, text, done };
     }
@@ -399,11 +503,11 @@ const KANBAN_COLUMNS: {
   statuses: OwnerWorkspaceTaskStatus[];
   dropStatus: OwnerWorkspaceTaskStatus;
 }[] = [
-  { label: 'Новые', statuses: ['new'], dropStatus: 'new' },
-  { label: 'В работе', statuses: ['in_progress'], dropStatus: 'in_progress' },
-  { label: 'Ожидание', statuses: ['waiting'], dropStatus: 'waiting' },
-  { label: 'Выполнено', statuses: ['completed'], dropStatus: 'completed' },
-  { label: 'Отменено', statuses: ['cancelled'], dropStatus: 'cancelled' },
+  { label: 'РќРѕРІС‹Рµ', statuses: ['new'], dropStatus: 'new' },
+  { label: 'Р’ СЂР°Р±РѕС‚Рµ', statuses: ['in_progress'], dropStatus: 'in_progress' },
+  { label: 'РћР¶РёРґР°РЅРёРµ', statuses: ['waiting'], dropStatus: 'waiting' },
+  { label: 'Р’С‹РїРѕР»РЅРµРЅРѕ', statuses: ['completed'], dropStatus: 'completed' },
+  { label: 'РћС‚РјРµРЅРµРЅРѕ', statuses: ['cancelled'], dropStatus: 'cancelled' },
 ];
 
 const OwnerWorkspacePage: React.FC = () => {
@@ -411,12 +515,37 @@ const OwnerWorkspacePage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const entityRoute = useMemo(() => ownerWorkspaceEntityFromPath(location.pathname), [location.pathname]);
+  const skipNextProjectFromUrlEffectRef = useRef(false);
+  const skipNextContactFromUrlEffectRef = useRef(false);
   const skipNextTaskFromUrlEffectRef = useRef(false);
+  const openProjectDialogRef = useRef<
+    (project: OwnerWorkspaceProject, options?: { syncUrl?: boolean }) => Promise<void>
+  >(async () => {});
+  const openContactDialogRef = useRef<
+    (contact: OwnerWorkspaceContact, options?: { syncUrl?: boolean }) => Promise<void>
+  >(async () => {});
   const openTaskDialogRef = useRef<
     (task: OwnerWorkspaceTask, options?: { syncUrl?: boolean }) => Promise<void>
   >(async () => {});
   const loadTasksFilteredRef = useRef<() => Promise<void>>(async () => {});
   const isWorkspaceFullAccess = user?.role === 'admin' || user?.role === 'owner';
+  const isLimitedWorkspaceUser = user?.role === 'sales' || user?.role === 'trainer';
+  const currentWorkspaceRoleLabel = OWNER_WS_GLOBAL_ROLE_LABELS[user?.role || ''] || (user?.role ?? 'unknown');
+  const currentWorkspaceAccessSummary = useMemo(() => {
+    if (isWorkspaceFullAccess) {
+      return [
+        'Полный доступ ко всем проектам, контактам, задачам и сообщениям.',
+        'Управление владельцем проекта, архивом и системными настройками.',
+        'Назначение project manager и observer внутри проектов.',
+      ];
+    }
+    return [
+      'Доступ только к собственной зоне видимости: свои проекты, связанные контакты и свои задачи.',
+      'Создание контакта требует явной привязки к доступному проекту.',
+      'Фактический уровень редактирования внутри проекта дополнительно зависит от роли member / manager / observer.',
+    ];
+  }, [isWorkspaceFullAccess]);
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -433,6 +562,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [projectName, setProjectName] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [newContactProjectId, setNewContactProjectId] = useState<number | ''>('');
 
   const [projectListSearchInput, setProjectListSearchInput] = useState('');
   const [projectListSearch, setProjectListSearch] = useState('');
@@ -447,6 +577,13 @@ const OwnerWorkspacePage: React.FC = () => {
   const [contactListTag, setContactListTag] = useState<string>('');
 
   const [archiveProjectConfirm, setArchiveProjectConfirm] = useState<OwnerWorkspaceProject | null>(null);
+  const [unlinkContactConfirm, setUnlinkContactConfirm] = useState<{
+    projectId: number;
+    projectName: string;
+    contactId: number;
+    contactName: string;
+    activeTaskCount: number;
+  } | null>(null);
 
   const [taskTitle, setTaskTitle] = useState('');
   const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
@@ -483,10 +620,21 @@ const OwnerWorkspacePage: React.FC = () => {
   const [notifEnvelope, setNotifEnvelope] = useState<OwnerWorkspaceNotificationsEnvelope | null>(null);
   const [maxSyncResult, setMaxSyncResult] = useState<string | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [taskConfig, setTaskConfig] = useState<OwnerWorkspaceTaskConfig | null>(null);
+  const [taskConfigDraft, setTaskConfigDraft] = useState<OwnerWorkspaceTaskConfig | null>(null);
+  const [taskConfigSaving, setTaskConfigSaving] = useState(false);
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
   const [digestProjectFilter, setDigestProjectFilter] = useState<number | ''>('');
   const [digestDueHours, setDigestDueHours] = useState(48);
+  const [notifyEmailEnabled, setNotifyEmailEnabled] = useState(false);
+  const [notifyTaskOverdue, setNotifyTaskOverdue] = useState(true);
+  const [notifyTaskDueSoon, setNotifyTaskDueSoon] = useState(true);
+  const [notifyTaskAssigned, setNotifyTaskAssigned] = useState(true);
+  const [notifyTaskComment, setNotifyTaskComment] = useState(true);
+  const [notifyTaskUpdated, setNotifyTaskUpdated] = useState(true);
+  const [notifyContactIncomingMessage, setNotifyContactIncomingMessage] = useState(true);
+  const [notifyTaskMention, setNotifyTaskMention] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<OwnerWorkspaceSearchResult | null>(null);
@@ -513,16 +661,35 @@ const OwnerWorkspacePage: React.FC = () => {
   const [newContactMessage, setNewContactMessage] = useState('');
 
   const [taskDialog, setTaskDialog] = useState<OwnerWorkspaceTask | null>(null);
+  const [deleteTaskConfirm, setDeleteTaskConfirm] = useState<OwnerWorkspaceTask | null>(null);
+
+  const closeProjectDialog = useCallback(() => {
+    setProjectDialog(null);
+    if (entityRoute.kind === 'project') {
+      navigate('/owner-workspace/projects', { replace: true });
+    }
+  }, [entityRoute.kind, navigate]);
+
+  const closeContactDialog = useCallback(() => {
+    setContactDialog(null);
+    if (entityRoute.kind === 'contact') {
+      navigate('/owner-workspace/contacts', { replace: true });
+    }
+  }, [entityRoute.kind, navigate]);
 
   const closeTaskDialog = useCallback(() => {
     setTaskDialog(null);
+    if (entityRoute.kind === 'task') {
+      navigate('/owner-workspace/tasks', { replace: true });
+      return;
+    }
     setSearchParams((prev) => {
       if (!prev.get('task')) return prev;
       const next = new URLSearchParams(prev);
       next.delete('task');
       return next;
     }, { replace: true });
-  }, [setSearchParams]);
+  }, [entityRoute.kind, navigate, setSearchParams]);
 
   const [taskEditTitle, setTaskEditTitle] = useState('');
   const [taskEditDescription, setTaskEditDescription] = useState('');
@@ -546,11 +713,11 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const [commsContactId, setCommsContactId] = useState<number | null>(null);
   const [commsMessages, setCommsMessages] = useState<OwnerWorkspaceMessage[]>([]);
-  /** Поиск по списку диалогов (имя / последнее сообщение) */
+  /** РџРѕРёСЃРє РїРѕ СЃРїРёСЃРєСѓ РґРёР°Р»РѕРіРѕРІ (РёРјСЏ / РїРѕСЃР»РµРґРЅРµРµ СЃРѕРѕР±С‰РµРЅРёРµ) */
   const [commsDialogSearch, setCommsDialogSearch] = useState('');
-  /** Поиск по тексту в открытой переписке */
+  /** РџРѕРёСЃРє РїРѕ С‚РµРєСЃС‚Сѓ РІ РѕС‚РєСЂС‹С‚РѕР№ РїРµСЂРµРїРёСЃРєРµ */
   const [commsThreadSearch, setCommsThreadSearch] = useState('');
-  /** Поиск по сообщениям в карточке контакта */
+  /** РџРѕРёСЃРє РїРѕ СЃРѕРѕР±С‰РµРЅРёСЏРј РІ РєР°СЂС‚РѕС‡РєРµ РєРѕРЅС‚Р°РєС‚Р° */
   const [contactMessageSearch, setContactMessageSearch] = useState('');
   const [messageTaskDialog, setMessageTaskDialog] = useState<{ message: OwnerWorkspaceMessage } | null>(null);
   const [messageTaskTitle, setMessageTaskTitle] = useState('');
@@ -558,11 +725,56 @@ const OwnerWorkspacePage: React.FC = () => {
   const [linkTaskOptions, setLinkTaskOptions] = useState<OwnerWorkspaceTask[]>([]);
   const [linkTaskSelected, setLinkTaskSelected] = useState<OwnerWorkspaceTask | null>(null);
   const [participantToAdd, setParticipantToAdd] = useState<User | null>(null);
-  const [newParticipantRole, setNewParticipantRole] = useState<'member' | 'manager'>('member');
+  const [newParticipantRole, setNewParticipantRole] = useState<OwnerWorkspaceProjectParticipantRole>('member');
   const [contactDialogTasks, setContactDialogTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [projectDialogTasks, setProjectDialogTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [projectDialogTaskStatus, setProjectDialogTaskStatus] = useState<string>('');
   const [projectDialogTaskSearch, setProjectDialogTaskSearch] = useState('');
+
+  const statusLabels = useMemo(() => {
+    const merged: Record<string, string> = { ...DEFAULT_STATUS_LABELS };
+    for (const item of taskConfig?.statuses ?? []) {
+      merged[item.key] = item.label;
+    }
+    return merged;
+  }, [taskConfig]);
+
+  const priorityLabels = useMemo(() => {
+    const merged: Record<string, string> = { ...DEFAULT_PRIORITY_LABELS };
+    for (const item of taskConfig?.priorities ?? []) {
+      merged[item.key] = item.label;
+    }
+    return merged;
+  }, [taskConfig]);
+
+  const enabledStatuses = useMemo(() => {
+    const configured = (taskConfig?.statuses ?? [])
+      .filter((item) => item.enabled !== false)
+      .map((item) => coerceTaskStatus(item.key));
+    return configured.length > 0 ? Array.from(new Set(configured)) : OWNER_WS_STATUSES;
+  }, [taskConfig]);
+
+  const enabledPriorities = useMemo(() => {
+    const configured = (taskConfig?.priorities ?? [])
+      .filter((item) => item.enabled !== false)
+      .map((item) => coerceTaskPriority(item.key));
+    return configured.length > 0 ? Array.from(new Set(configured)) : OWNER_WS_PRIORITIES;
+  }, [taskConfig]);
+
+  const editStatusOptions = useMemo(
+    () => ensureTaskOption(enabledStatuses, taskEditStatus),
+    [enabledStatuses, taskEditStatus]
+  );
+
+  const editPriorityOptions = useMemo(
+    () => ensureTaskOption(enabledPriorities, taskEditPriority),
+    [enabledPriorities, taskEditPriority]
+  );
+
+  const createPriorityOptions = useMemo(
+    () => ensureTaskOption(enabledPriorities, taskPriority),
+    [enabledPriorities, taskPriority]
+  );
 
   useEffect(() => {
     const id = window.setTimeout(() => setProjectListSearch(projectListSearchInput), 400);
@@ -641,7 +853,7 @@ const OwnerWorkspacePage: React.FC = () => {
       setContacts(cFiltered);
       setContactsCatalog(cAll);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось загрузить проекты/контакты'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РїСЂРѕРµРєС‚С‹/РєРѕРЅС‚Р°РєС‚С‹'));
     }
   }, [
     projectListStatus,
@@ -706,7 +918,7 @@ const OwnerWorkspacePage: React.FC = () => {
       setTaskListTotal(taskPage.total);
       setTaskStatusCounts(counts);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось загрузить задачи'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ Р·Р°РґР°С‡Рё'));
     }
   }, [
     taskSearch,
@@ -735,11 +947,17 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const loadMeta = useCallback(async () => {
     try {
-      const [conv, u] = await Promise.all([ownerWorkspaceApi.listConversations(), usersApi.getAll()]);
+      const [conv, u, cfg] = await Promise.all([
+        ownerWorkspaceApi.listConversations(),
+        usersApi.getAll(),
+        settingsApi.getOwnerWorkspaceTaskConfig(),
+      ]);
       setConversations(conv);
       setUsers(Array.isArray(u) ? u : []);
+      setTaskConfig(cfg);
+      setTaskConfigDraft(cfg);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось загрузить вспомогательные данные'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ'));
     }
   }, []);
 
@@ -779,7 +997,7 @@ const OwnerWorkspacePage: React.FC = () => {
   useEffect(() => {
     skipProjectsContactsFilterReload.current = true;
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- первичная загрузка страницы
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- РїРµСЂРІРёС‡РЅР°СЏ Р·Р°РіСЂСѓР·РєР° СЃС‚СЂР°РЅРёС†С‹
   }, []);
 
   useEffect(() => {
@@ -792,8 +1010,16 @@ const OwnerWorkspacePage: React.FC = () => {
         setTaskListRowsPerPage(p.task_list_rows_per_page);
         setDigestDueHours(p.digest_due_within_hours);
         setDigestScope(p.digest_scope);
+        setNotifyEmailEnabled(p.notify_email_enabled);
+        setNotifyTaskOverdue(p.notify_task_overdue);
+        setNotifyTaskDueSoon(p.notify_task_due_soon);
+        setNotifyTaskAssigned(p.notify_task_assigned);
+        setNotifyTaskComment(p.notify_task_comment);
+        setNotifyTaskUpdated(p.notify_task_updated);
+        setNotifyContactIncomingMessage(p.notify_contact_incoming_message);
+        setNotifyTaskMention(p.notify_task_mention);
       } catch {
-        /* остаются дефолты в state */
+        /* РѕСЃС‚Р°СЋС‚СЃСЏ РґРµС„РѕР»С‚С‹ РІ state */
       }
     })();
     return () => {
@@ -836,7 +1062,7 @@ const OwnerWorkspacePage: React.FC = () => {
     void loadNotifications(80);
   }, [loadNotifications]);
 
-  /** Канонический вход: `/owner-workspace` без query → `/owner-workspace/projects` (совместимость: `?tab=` / `?task=` остаются). */
+  /** РљР°РЅРѕРЅРёС‡РµСЃРєРёР№ РІС…РѕРґ: `/owner-workspace` Р±РµР· query в†’ `/owner-workspace/projects` (СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚СЊ: `?tab=` / `?task=` РѕСЃС‚Р°СЋС‚СЃСЏ). */
   useEffect(() => {
     const p = location.pathname.replace(/\/$/, '') || location.pathname;
     if (p !== '/owner-workspace') return;
@@ -915,7 +1141,7 @@ const OwnerWorkspacePage: React.FC = () => {
         const rows = await ownerWorkspaceApi.listHistory();
         if (!cancelled) setHistoryLogs(rows);
       } catch (e: unknown) {
-        if (!cancelled) setError(extractApiError(e, 'Не удалось загрузить историю'));
+        if (!cancelled) setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РёСЃС‚РѕСЂРёСЋ'));
       }
     })();
     return () => {
@@ -924,25 +1150,38 @@ const OwnerWorkspacePage: React.FC = () => {
   }, [tab]);
 
   const createProject = async () => {
+    if (!isWorkspaceFullAccess) {
+      setError('Создание проекта доступно только admin / owner.');
+      return;
+    }
     if (!projectName.trim()) return;
     try {
       await ownerWorkspaceApi.createProject({ name: projectName.trim() });
       setProjectName('');
       await loadProjectsAndContacts();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось создать проект'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РїСЂРѕРµРєС‚'));
     }
   };
 
   const createContact = async () => {
+    if (!isWorkspaceFullAccess && newContactProjectId === '') {
+      setError('Для создания контакта выберите проект, к которому он будет привязан.');
+      return;
+    }
     if (!contactName.trim() || !contactPhone.trim()) return;
     try {
-      await ownerWorkspaceApi.createContact({ full_name: contactName.trim(), phone: contactPhone.trim() });
+      await ownerWorkspaceApi.createContact({
+        full_name: contactName.trim(),
+        phone: contactPhone.trim(),
+        project_ids: newContactProjectId === '' ? undefined : [newContactProjectId],
+      });
       setContactName('');
       setContactPhone('');
+      setNewContactProjectId('');
       await loadProjectsAndContacts();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось создать контакт'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РєРѕРЅС‚Р°РєС‚'));
     }
   };
 
@@ -966,7 +1205,7 @@ const OwnerWorkspacePage: React.FC = () => {
       await loadTasksFiltered();
       void loadDigest();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось создать задачу'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ Р·Р°РґР°С‡Сѓ'));
     }
   };
 
@@ -975,12 +1214,12 @@ const OwnerWorkspacePage: React.FC = () => {
     if (syncUrl) {
       skipNextTaskFromUrlEffectRef.current = true;
       const params = new URLSearchParams(searchParams);
-      params.set('task', String(t.id));
       params.delete('tab');
+      params.delete('task');
       navigate(
         {
-          pathname: '/owner-workspace/tasks',
-          search: params.toString() ? `?${params.toString()}` : `?task=${t.id}`,
+          pathname: `/owner-workspace/tasks/${t.id}`,
+          search: params.toString() ? `?${params.toString()}` : '',
         },
         { replace: true }
       );
@@ -1021,7 +1260,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const full = await ownerWorkspaceApi.getTask(taskDialog.previous_task_id);
       await openTaskDialog(full);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось открыть предыдущую задачу'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РїСЂРµРґС‹РґСѓС‰СѓСЋ Р·Р°РґР°С‡Сѓ'));
     }
   };
 
@@ -1032,18 +1271,37 @@ const OwnerWorkspacePage: React.FC = () => {
     return terminal && !reopening;
   }, [taskDialog, taskEditStatus]);
 
-  const deleteTaskDialog = async () => {
-    if (!taskDialog || !isWorkspaceFullAccess) return;
-    // eslint-disable-next-line no-alert
-    if (!window.confirm('Удалить задачу безвозвратно? Связи и комментарии будут удалены.')) return;
+  const deleteTaskSummary = useMemo(() => {
+    if (!deleteTaskConfirm) return [];
+    const summary: string[] = [];
+    if (deleteTaskConfirm.project_id != null) summary.push('Задача отвязана от проекта только через полное удаление записи.');
+    if (deleteTaskConfirm.contact_id != null) summary.push('Связь с контактом исчезнет вместе с задачей.');
+    if ((deleteTaskConfirm.linked_message_ids?.length ?? 0) > 0) {
+      summary.push(`Будут удалены связи с сообщениями: ${deleteTaskConfirm.linked_message_ids!.length}.`);
+    }
+    if (deleteTaskConfirm.previous_task_id != null) {
+      summary.push('Цепочка повторных/следующих задач потеряет ссылку на предыдущую задачу.');
+    }
+    if (taskDialog?.id === deleteTaskConfirm.id && taskComments.length > 0) {
+      summary.push(`Будут удалены комментарии к задаче: ${taskComments.length}.`);
+    }
+    if (summary.length === 0) {
+      summary.push('Запись будет удалена без возможности восстановления из интерфейса.');
+    }
+    return summary;
+  }, [deleteTaskConfirm, taskComments, taskDialog?.id]);
+
+  const submitDeleteTask = async () => {
+    if (!deleteTaskConfirm || !isWorkspaceFullAccess) return;
     try {
-      await ownerWorkspaceApi.deleteTask(taskDialog.id);
+      await ownerWorkspaceApi.deleteTask(deleteTaskConfirm.id);
+      setDeleteTaskConfirm(null);
       closeTaskDialog();
       await loadTasksFiltered();
       void loadDigest();
       void loadNotifications(80);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось удалить задачу'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ Р·Р°РґР°С‡Сѓ'));
     }
   };
 
@@ -1063,7 +1321,7 @@ const OwnerWorkspacePage: React.FC = () => {
         const raw = JSON.parse(taskEditAttachmentsText.trim() || '[]');
         attachmentsPayload = Array.isArray(raw) ? raw : [];
       } catch {
-        setError('Вложения: укажите корректный JSON-массив, например [{"url":"https://…","name":"Файл"}]');
+        setError('Р’Р»РѕР¶РµРЅРёСЏ: СѓРєР°Р¶РёС‚Рµ РєРѕСЂСЂРµРєС‚РЅС‹Р№ JSON-РјР°СЃСЃРёРІ, РЅР°РїСЂРёРјРµСЂ [{"url":"https://вЂ¦","name":"Р¤Р°Р№Р»"}]');
         return;
       }
       const checklistPayload = taskEditChecklist
@@ -1088,7 +1346,7 @@ const OwnerWorkspacePage: React.FC = () => {
       void loadDigest();
       void loadNotifications(80);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось сохранить задачу'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ Р·Р°РґР°С‡Сѓ'));
     }
   };
 
@@ -1101,7 +1359,7 @@ const OwnerWorkspacePage: React.FC = () => {
       setTaskComments(cm);
       void loadNotifications(80);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось добавить комментарий'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёР№'));
     }
   };
 
@@ -1114,7 +1372,7 @@ const OwnerWorkspacePage: React.FC = () => {
         const res = await ownerWorkspaceApi.completeTask(completeDialogTask.id, {
           action: 'close_and_create_next',
           next_task: {
-            title: nextTaskTitle.trim() || `Следующий шаг: ${completeDialogTask.title}`,
+            title: nextTaskTitle.trim() || `РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі: ${completeDialogTask.title}`,
             description: null,
             project_id: completeDialogTask.project_id,
             contact_id: completeDialogTask.contact_id,
@@ -1132,28 +1390,31 @@ const OwnerWorkspacePage: React.FC = () => {
       void loadDigest();
       void loadNotifications(80);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось завершить задачу'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ Р·Р°РґР°С‡Сѓ'));
     }
   };
 
-  const openProjectDialog = (p: OwnerWorkspaceProject) => {
+  const openProjectDialog = async (p: OwnerWorkspaceProject, options?: { syncUrl?: boolean }) => {
+    const syncUrl = options?.syncUrl !== false;
+    if (syncUrl) {
+      skipNextProjectFromUrlEffectRef.current = true;
+      navigate(`/owner-workspace/projects/${p.id}`, { replace: true });
+    }
     setProjectDialog(p);
     setSubprojectName('');
     setLinkContactId(null);
     setParticipantToAdd(null);
     setProjectDialogTaskStatus('');
     setProjectDialogTaskSearch('');
-    void (async () => {
-      try {
-        const taskPage = await ownerWorkspaceApi.listTasks({
-          project_id: p.id,
-          limit: OWNER_WS_TASKS_FETCH_CAP,
-        });
-        setProjectDialogTasks(taskPage.items);
-      } catch {
-        setProjectDialogTasks([]);
-      }
-    })();
+    try {
+      const taskPage = await ownerWorkspaceApi.listTasks({
+        project_id: p.id,
+        limit: OWNER_WS_TASKS_FETCH_CAP,
+      });
+      setProjectDialogTasks(taskPage.items);
+    } catch {
+      setProjectDialogTasks([]);
+    }
   };
 
   const saveProjectOwner = async (u: User | null) => {
@@ -1165,7 +1426,7 @@ const OwnerWorkspacePage: React.FC = () => {
       setProjectDialog(updated);
       await loadProjectsAndContacts();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось сменить ответственного'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРјРµРЅРёС‚СЊ РѕС‚РІРµС‚СЃС‚РІРµРЅРЅРѕРіРѕ'));
     }
   };
 
@@ -1173,7 +1434,7 @@ const OwnerWorkspacePage: React.FC = () => {
     if (!projectDialog) return;
     const name = projectEditName.trim();
     if (!name) {
-      setError('Укажите название проекта');
+      setError('РЈРєР°Р¶РёС‚Рµ РЅР°Р·РІР°РЅРёРµ РїСЂРѕРµРєС‚Р°');
       return;
     }
     try {
@@ -1186,23 +1447,45 @@ const OwnerWorkspacePage: React.FC = () => {
       setError(null);
       await loadProjectsAndContacts();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось сохранить проект'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РїСЂРѕРµРєС‚'));
     }
   };
 
-  const removeContactFromProject = async (contactId: number) => {
-    if (!projectDialog) return;
-    // eslint-disable-next-line no-alert
-    if (!window.confirm('Убрать контакт из этого проекта? Запись контакта в системе сохранится.')) return;
+  const submitUnlinkContactFromProject = async () => {
+    if (!unlinkContactConfirm) return;
     try {
-      await ownerWorkspaceApi.removeProjectContact(projectDialog.id, contactId);
-      if (linkContactId?.id === contactId) setLinkContactId(null);
-      const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
-      setProjectDialog(updated);
+      await ownerWorkspaceApi.removeProjectContact(unlinkContactConfirm.projectId, unlinkContactConfirm.contactId);
+      if (linkContactId?.id === unlinkContactConfirm.contactId) setLinkContactId(null);
+      if (projectDialog?.id === unlinkContactConfirm.projectId) {
+        const updated = await ownerWorkspaceApi.getProject(unlinkContactConfirm.projectId);
+        setProjectDialog(updated);
+      }
+      if (contactDialog?.id === unlinkContactConfirm.contactId) {
+        const updatedContact = await ownerWorkspaceApi.getContact(unlinkContactConfirm.contactId);
+        setContactDialog(updatedContact);
+      }
+      setUnlinkContactConfirm(null);
       await loadProjectsAndContacts();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось убрать контакт из проекта'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓР±СЂР°С‚СЊ РєРѕРЅС‚Р°РєС‚ РёР· РїСЂРѕРµРєС‚Р°'));
     }
+  };
+
+  const requestRemoveContactFromProject = (contactId: number) => {
+    if (!projectDialog) return;
+    const contact = contacts.find((row) => row.id === contactId);
+    const activeTaskCount = projectDialogTasks.filter(
+      (task) =>
+        task.contact_id === contactId &&
+        ['new', 'in_progress', 'waiting'].includes(String(task.status))
+    ).length;
+    setUnlinkContactConfirm({
+      projectId: projectDialog.id,
+      projectName: projectDialog.name,
+      contactId,
+      contactName: contact?.full_name || `#${contactId}`,
+      activeTaskCount,
+    });
   };
 
   const submitArchiveProject = async () => {
@@ -1210,12 +1493,12 @@ const OwnerWorkspacePage: React.FC = () => {
     try {
       await ownerWorkspaceApi.archiveProject(archiveProjectConfirm.id);
       setArchiveProjectConfirm(null);
-      setProjectDialog(null);
+      closeProjectDialog();
       await loadTasksFiltered();
       void loadDigest();
       await loadProjectsAndContacts();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось архивировать проект'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р°СЂС…РёРІРёСЂРѕРІР°С‚СЊ РїСЂРѕРµРєС‚'));
     }
   };
 
@@ -1233,11 +1516,11 @@ const OwnerWorkspacePage: React.FC = () => {
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
       setProjectDialog(updated);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось добавить участника'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР°'));
     }
   };
 
-  const patchProjectParticipantRole = async (userId: number, role: 'member' | 'manager') => {
+  const patchProjectParticipantRole = async (userId: number, role: OwnerWorkspaceProjectParticipantRole) => {
     if (!projectDialog) return;
     try {
       await ownerWorkspaceApi.patchProjectParticipantRole(projectDialog.id, userId, role);
@@ -1245,7 +1528,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
       setProjectDialog(updated);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось изменить роль участника'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ СЂРѕР»СЊ СѓС‡Р°СЃС‚РЅРёРєР°'));
     }
   };
 
@@ -1257,7 +1540,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
       setProjectDialog(updated);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось удалить участника'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР°'));
     }
   };
 
@@ -1287,7 +1570,7 @@ const OwnerWorkspacePage: React.FC = () => {
         setCommsMessages(msgs.slice().reverse());
       }
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось привязать к задаче'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРІСЏР·Р°С‚СЊ Рє Р·Р°РґР°С‡Рµ'));
     }
   };
 
@@ -1303,7 +1586,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
       setProjectDialog(updated);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось создать подпроект'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РїРѕРґРїСЂРѕРµРєС‚'));
     }
   };
 
@@ -1315,7 +1598,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const updated = await ownerWorkspaceApi.getProject(id);
       setProjectDialog(updated);
     } catch {
-      /* диалог мог быть закрыт */
+      /* РґРёР°Р»РѕРі РјРѕРі Р±С‹С‚СЊ Р·Р°РєСЂС‹С‚ */
     }
   }, [loadProjectsAndContacts, projectDialog?.id]);
 
@@ -1338,11 +1621,16 @@ const OwnerWorkspacePage: React.FC = () => {
         setProjectDialogTasks([]);
       }
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось привязать контакт'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРІСЏР·Р°С‚СЊ РєРѕРЅС‚Р°РєС‚'));
     }
   };
 
-  const openContactDialog = async (c: OwnerWorkspaceContact) => {
+  const openContactDialog = async (c: OwnerWorkspaceContact, options?: { syncUrl?: boolean }) => {
+    const syncUrl = options?.syncUrl !== false;
+    if (syncUrl) {
+      skipNextContactFromUrlEffectRef.current = true;
+      navigate(`/owner-workspace/contacts/${c.id}`, { replace: true });
+    }
     setContactDialog(c);
     setContactLinkProjectId(null);
     setNewContactMessage('');
@@ -1370,26 +1658,25 @@ const OwnerWorkspacePage: React.FC = () => {
       const updated = await ownerWorkspaceApi.getContact(contactDialog.id);
       setContactDialog(updated);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось добавить в проект'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ РІ РїСЂРѕРµРєС‚'));
     }
   };
 
-  const removeContactFromLinkedProject = async (projectId: number) => {
+  const requestRemoveContactFromLinkedProject = (projectId: number) => {
     if (!contactDialog) return;
-    // eslint-disable-next-line no-alert
-    if (!window.confirm('Убрать контакт из этого проекта? Запись контакта в системе сохранится.')) return;
-    try {
-      await ownerWorkspaceApi.removeProjectContact(projectId, contactDialog.id);
-      await loadProjectsAndContacts();
-      const updated = await ownerWorkspaceApi.getContact(contactDialog.id);
-      setContactDialog(updated);
-      if (projectDialog?.id === projectId) {
-        const refreshedProject = await ownerWorkspaceApi.getProject(projectId);
-        setProjectDialog(refreshedProject);
-      }
-    } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось убрать контакт из проекта'));
-    }
+    const project = projects.find((row) => row.id === projectId);
+    const activeTaskCount = contactDialogTasks.filter(
+      (task) =>
+        task.project_id === projectId &&
+        ['new', 'in_progress', 'waiting'].includes(String(task.status))
+    ).length;
+    setUnlinkContactConfirm({
+      projectId,
+      projectName: project?.name || `#${projectId}`,
+      contactId: contactDialog.id,
+      contactName: contactDialog.full_name,
+      activeTaskCount,
+    });
   };
 
   const sendContactMessage = async () => {
@@ -1405,7 +1692,7 @@ const OwnerWorkspacePage: React.FC = () => {
       setContactMessages(msgs.slice().reverse());
       await loadMeta();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось сохранить сообщение'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ'));
     }
   };
 
@@ -1414,7 +1701,7 @@ const OwnerWorkspacePage: React.FC = () => {
     const fn = contactEditFullName.trim();
     const ph = contactEditPhone.trim();
     if (!fn || !ph) {
-      setError('Укажите ФИО и телефон');
+      setError('РЈРєР°Р¶РёС‚Рµ Р¤РРћ Рё С‚РµР»РµС„РѕРЅ');
       return;
     }
     try {
@@ -1436,7 +1723,7 @@ const OwnerWorkspacePage: React.FC = () => {
       setError(null);
       await loadProjectsAndContacts();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось сохранить контакт'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РєРѕРЅС‚Р°РєС‚'));
     }
   };
 
@@ -1453,7 +1740,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const conv = await ownerWorkspaceApi.listConversations();
       setConversations(conv);
     } catch {
-      /* список диалогов — второстепенно */
+      /* СЃРїРёСЃРѕРє РґРёР°Р»РѕРіРѕРІ вЂ” РІС‚РѕСЂРѕСЃС‚РµРїРµРЅРЅРѕ */
     }
   };
 
@@ -1469,7 +1756,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const c = await ownerWorkspaceApi.getContact(commsContactId);
       await openContactDialog(c);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось открыть карточку контакта'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РєР°СЂС‚РѕС‡РєСѓ РєРѕРЅС‚Р°РєС‚Р°'));
     }
   };
 
@@ -1494,7 +1781,7 @@ const OwnerWorkspacePage: React.FC = () => {
         }
       }
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось создать задачу из сообщения'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ Р·Р°РґР°С‡Сѓ РёР· СЃРѕРѕР±С‰РµРЅРёСЏ'));
     }
   };
 
@@ -1504,7 +1791,7 @@ const OwnerWorkspacePage: React.FC = () => {
       await loadTasksFiltered();
       void loadDigest();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось изменить статус'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ'));
     }
   };
 
@@ -1515,7 +1802,7 @@ const OwnerWorkspacePage: React.FC = () => {
     const hasAssigneeSet = bulkAssigneeMode === 'set' && bulkAssigneeUserId !== '';
     const hasPriority = Boolean(bulkPriority);
     if (!hasStatus && !hasAssigneeClear && !hasAssigneeSet && !hasPriority) {
-      setError('Выберите статус, исполнителя и/или приоритет');
+      setError('Р’С‹Р±РµСЂРёС‚Рµ СЃС‚Р°С‚СѓСЃ, РёСЃРїРѕР»РЅРёС‚РµР»СЏ Рё/РёР»Рё РїСЂРёРѕСЂРёС‚РµС‚');
       return;
     }
     const payload: {
@@ -1538,23 +1825,23 @@ const OwnerWorkspacePage: React.FC = () => {
       await loadTasksFiltered();
       void loadDigest();
       setError(null);
-      setMaxSyncResult(`Массовое обновление: изменено задач — ${res.updated}.`);
+      setMaxSyncResult(`РњР°СЃСЃРѕРІРѕРµ РѕР±РЅРѕРІР»РµРЅРёРµ: РёР·РјРµРЅРµРЅРѕ Р·Р°РґР°С‡ вЂ” ${res.updated}.`);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Массовое обновление не удалось'));
+      setError(extractApiError(e, 'РњР°СЃСЃРѕРІРѕРµ РѕР±РЅРѕРІР»РµРЅРёРµ РЅРµ СѓРґР°Р»РѕСЃСЊ'));
     }
   };
 
   const syncMaxIntoWorkspace = async () => {
     try {
       const r = await ownerWorkspaceApi.syncMessagesFromMax(800);
-      setMaxSyncResult(`Импорт MAX: добавлено ${r.imported}, пропущено ${r.skipped} (нет телефона / контакта / дубликат).`);
+      setMaxSyncResult(`РРјРїРѕСЂС‚ MAX: РґРѕР±Р°РІР»РµРЅРѕ ${r.imported}, РїСЂРѕРїСѓС‰РµРЅРѕ ${r.skipped} (РЅРµС‚ С‚РµР»РµС„РѕРЅР° / РєРѕРЅС‚Р°РєС‚Р° / РґСѓР±Р»РёРєР°С‚).`);
       await loadMeta();
       if (commsContactId) {
         const msgs = await ownerWorkspaceApi.getContactMessages(commsContactId);
         setCommsMessages(msgs.slice().reverse());
       }
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Импорт из MAX не удался'));
+      setError(extractApiError(e, 'РРјРїРѕСЂС‚ РёР· MAX РЅРµ СѓРґР°Р»СЃСЏ'));
     }
   };
 
@@ -1566,15 +1853,47 @@ const OwnerWorkspacePage: React.FC = () => {
         task_list_rows_per_page: taskListRowsPerPage,
         digest_due_within_hours: digestDueHours,
         digest_scope: digestScope,
+        notify_email_enabled: notifyEmailEnabled,
+        notify_task_overdue: notifyTaskOverdue,
+        notify_task_due_soon: notifyTaskDueSoon,
+        notify_task_assigned: notifyTaskAssigned,
+        notify_task_comment: notifyTaskComment,
+        notify_task_updated: notifyTaskUpdated,
+        notify_contact_incoming_message: notifyContactIncomingMessage,
+        notify_task_mention: notifyTaskMention,
       });
       setError(null);
-      setMaxSyncResult('Настройки задачника сохранены в вашем профиле.');
+      setMaxSyncResult('РќР°СЃС‚СЂРѕР№РєРё Р·Р°РґР°С‡РЅРёРєР° СЃРѕС…СЂР°РЅРµРЅС‹ РІ РІР°С€РµРј РїСЂРѕС„РёР»Рµ.');
       void loadDigest();
       if (tab === OW_TAB_TASKS) void loadTasksFiltered();
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось сохранить настройки'));
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё'));
     } finally {
       setSettingsSaving(false);
+    }
+  };
+
+  const saveWorkspaceTaskConfig = async () => {
+    if (!taskConfigDraft) return;
+    if (!taskConfigDraft.statuses.some((item) => item.enabled !== false)) {
+      setError('РќСѓР¶РЅРѕ РѕСЃС‚Р°РІРёС‚СЊ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ РІРёРґРёРјС‹Р№ СЃС‚Р°С‚СѓСЃ Р·Р°РґР°С‡.');
+      return;
+    }
+    if (!taskConfigDraft.priorities.some((item) => item.enabled !== false)) {
+      setError('РќСѓР¶РЅРѕ РѕСЃС‚Р°РІРёС‚СЊ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ РІРёРґРёРјС‹Р№ РїСЂРёРѕСЂРёС‚РµС‚ Р·Р°РґР°С‡.');
+      return;
+    }
+    setTaskConfigSaving(true);
+    try {
+      const saved = await settingsApi.setOwnerWorkspaceTaskConfig(taskConfigDraft);
+      setTaskConfig(saved);
+      setTaskConfigDraft(saved);
+      setError(null);
+      setMaxSyncResult('РЎРёСЃС‚РµРјРЅС‹Рµ РЅР°Р·РІР°РЅРёСЏ СЃС‚Р°С‚СѓСЃРѕРІ Рё РїСЂРёРѕСЂРёС‚РµС‚РѕРІ СЃРѕС…СЂР°РЅРµРЅС‹.');
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ СЃРёСЃС‚РµРјРЅС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё Р·Р°РґР°С‡'));
+    } finally {
+      setTaskConfigSaving(false);
     }
   };
 
@@ -1595,13 +1914,38 @@ const OwnerWorkspacePage: React.FC = () => {
     );
   };
 
+  const drillDownToAssigneeTasks = (
+    assigneeId: number | null,
+    opts?: { overdueOnly?: boolean; projectId?: number | null }
+  ) => {
+    setTaskAssigneeFilter(assigneeId == null ? '' : assigneeId);
+    setTaskActiveOnly(true);
+    setTaskOverdueOnly(Boolean(opts?.overdueOnly));
+    setTaskProjectFilter(opts?.projectId == null ? '' : opts.projectId);
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
+  };
+
+  const drillDownToProjectTasks = (projectId: number, opts?: { overdueOnly?: boolean }) => {
+    setTaskProjectFilter(projectId);
+    setTaskAssigneeFilter('');
+    setTaskActiveOnly(true);
+    setTaskOverdueOnly(Boolean(opts?.overdueOnly));
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
+  };
+
   const openContactQuickComms = async (contactId: number) => {
     handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_COMMS);
     await loadMeta();
     await selectCommsContact(contactId);
   };
 
-  /** Переход на вкладку «Задачи» с фильтром по контакту (state + URL синхронизируются с табом). */
+  const reviewArchiveProjectTasks = (projectId: number, overdueOnly = false) => {
+    setArchiveProjectConfirm(null);
+    closeProjectDialog();
+    drillDownToProjectTasks(projectId, { overdueOnly });
+  };
+
+  /** РџРµСЂРµС…РѕРґ РЅР° РІРєР»Р°РґРєСѓ В«Р—Р°РґР°С‡РёВ» СЃ С„РёР»СЊС‚СЂРѕРј РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ (state + URL СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓСЋС‚СЃСЏ СЃ С‚Р°Р±РѕРј). */
   const openContactQuickTasks = (contactId: number) => {
     setTaskContactFilter(contactId);
     handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
@@ -1616,7 +1960,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const p = await ownerWorkspaceApi.getProject(id);
       openProjectDialog(p);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Проект не найден'));
+      setError(extractApiError(e, 'РџСЂРѕРµРєС‚ РЅРµ РЅР°Р№РґРµРЅ'));
     }
   };
 
@@ -1629,7 +1973,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const c = await ownerWorkspaceApi.getContact(id);
       await openContactDialog(c);
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Контакт не найден'));
+      setError(extractApiError(e, 'РљРѕРЅС‚Р°РєС‚ РЅРµ РЅР°Р№РґРµРЅ'));
     }
   };
 
@@ -1639,9 +1983,9 @@ const OwnerWorkspacePage: React.FC = () => {
     skipNextTaskFromUrlEffectRef.current = true;
     const params = new URLSearchParams(searchParams);
     params.delete('tab');
-    params.set('task', String(id));
+    params.delete('task');
     navigate(
-      { pathname: '/owner-workspace/tasks', search: params.toString() ? `?${params.toString()}` : `?task=${id}` },
+      { pathname: `/owner-workspace/tasks/${id}`, search: params.toString() ? `?${params.toString()}` : '' },
       { replace: true }
     );
     await loadTasksFiltered();
@@ -1649,7 +1993,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const full = await ownerWorkspaceApi.getTask(id);
       await openTaskDialog(full, { syncUrl: false });
     } catch (e: unknown) {
-      setError(extractApiError(e, 'Задача не найдена'));
+      setError(extractApiError(e, 'Р—Р°РґР°С‡Р° РЅРµ РЅР°Р№РґРµРЅР°'));
     }
   };
 
@@ -1667,11 +2011,55 @@ const OwnerWorkspacePage: React.FC = () => {
     await selectCommsContact(contactId);
   };
 
+  openProjectDialogRef.current = openProjectDialog;
+  openContactDialogRef.current = openContactDialog;
   openTaskDialogRef.current = openTaskDialog;
   loadTasksFilteredRef.current = loadTasksFiltered;
 
   useEffect(() => {
-    const tidRaw = searchParams.get('task');
+    if (entityRoute.kind !== 'project' || !entityRoute.id) return undefined;
+    if (skipNextProjectFromUrlEffectRef.current) {
+      skipNextProjectFromUrlEffectRef.current = false;
+      return undefined;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const full = await ownerWorkspaceApi.getProject(entityRoute.id!);
+        if (cancelled) return;
+        await openProjectDialogRef.current(full, { syncUrl: false });
+      } catch (e: unknown) {
+        if (!cancelled) setError(extractApiError(e, 'Проект не найден'));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entityRoute.kind, entityRoute.id]);
+
+  useEffect(() => {
+    if (entityRoute.kind !== 'contact' || !entityRoute.id) return undefined;
+    if (skipNextContactFromUrlEffectRef.current) {
+      skipNextContactFromUrlEffectRef.current = false;
+      return undefined;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const full = await ownerWorkspaceApi.getContact(entityRoute.id!);
+        if (cancelled) return;
+        await openContactDialogRef.current(full, { syncUrl: false });
+      } catch (e: unknown) {
+        if (!cancelled) setError(extractApiError(e, 'Контакт не найден'));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entityRoute.kind, entityRoute.id]);
+
+  useEffect(() => {
+    const tidRaw = entityRoute.kind === 'task' && entityRoute.id ? String(entityRoute.id) : searchParams.get('task');
     const tid = tidRaw ? parseInt(tidRaw, 10) : NaN;
     if (!Number.isFinite(tid) || tid < 1) return undefined;
     if (skipNextTaskFromUrlEffectRef.current) {
@@ -1689,13 +2077,13 @@ const OwnerWorkspacePage: React.FC = () => {
         if (cancelled) return;
         await openTaskDialogRef.current(full, { syncUrl: false });
       } catch (e: unknown) {
-        if (!cancelled) setError(extractApiError(e, 'Задача не найдена'));
+        if (!cancelled) setError(extractApiError(e, 'Р—Р°РґР°С‡Р° РЅРµ РЅР°Р№РґРµРЅР°'));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [location.pathname, searchParams]);
+  }, [entityRoute.id, entityRoute.kind, location.pathname, searchParams]);
 
   const userOptions = useMemo(
     () => users.filter((u) => ['admin', 'owner', 'sales', 'trainer'].includes(u.role)),
@@ -1704,7 +2092,7 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const userName = useCallback(
     (userId: number | null | undefined) => {
-      if (userId == null) return '—';
+      if (userId == null) return 'вЂ”';
       const u = users.find((x) => x.id === userId);
       return u?.full_name || `#${userId}`;
     },
@@ -1723,6 +2111,279 @@ const OwnerWorkspacePage: React.FC = () => {
     if (isWorkspaceFullAccess) return true;
     return projectDialog.owner_id === user.id;
   }, [projectDialog, user?.id, isWorkspaceFullAccess]);
+
+  const canEditProjectContentUi = useCallback(
+    (projectId: number | null | undefined) => {
+      if (projectId == null || !user?.id) return false;
+      if (isWorkspaceFullAccess) return true;
+      const project =
+        (projectDialog?.id === projectId ? projectDialog : null) ??
+        projectsCatalog.find((item) => item.id === projectId) ??
+        null;
+      if (!project) return false;
+      if (project.owner_id === user.id) return true;
+      const rawRole = project.participant_roles?.[String(user.id)];
+      return rawRole === 'member' || rawRole === 'manager';
+    },
+    [isWorkspaceFullAccess, projectDialog, projectsCatalog, user?.id]
+  );
+
+  const canEditProjectDialogContent = useMemo(
+    () => (projectDialog ? canEditProjectContentUi(projectDialog.id) : false),
+    [canEditProjectContentUi, projectDialog]
+  );
+
+  const canEditContactContentUi = useCallback(
+    (contactId: number | null | undefined) => {
+      if (contactId == null || !user?.id) return false;
+      if (isWorkspaceFullAccess) return true;
+      const contact =
+        (contactDialog?.id === contactId ? contactDialog : null) ??
+        contactsCatalog.find((item) => item.id === contactId) ??
+        contacts.find((item) => item.id === contactId) ??
+        null;
+      if (!contact) return true;
+      const linkedProjectIds = Array.isArray(contact.linked_project_ids) ? contact.linked_project_ids : [];
+      if (linkedProjectIds.length === 0) return true;
+      if (linkedProjectIds.some((projectId) => canEditProjectContentUi(projectId))) {
+        return true;
+      }
+      if (contactDialog?.id === contactId) {
+        return contactDialogTasks.some((task) => task.creator_id === user.id || task.assignee_id === user.id);
+      }
+      return false;
+    },
+    [canEditProjectContentUi, contactDialog, contactDialogTasks, contacts, contactsCatalog, isWorkspaceFullAccess, user?.id]
+  );
+
+  const canEditContactDialogContent = useMemo(() => {
+    if (!contactDialog || !user?.id) return false;
+    if (isWorkspaceFullAccess) return true;
+    return canEditContactContentUi(contactDialog.id);
+  }, [canEditContactContentUi, contactDialog, isWorkspaceFullAccess, user?.id]);
+
+  const canEditTaskDialogContent = useMemo(() => {
+    if (!taskDialog) return false;
+    if (isWorkspaceFullAccess) return true;
+    if (taskDialog.project_id != null) {
+      return canEditProjectContentUi(taskDialog.project_id);
+    }
+    return true;
+  }, [canEditProjectContentUi, isWorkspaceFullAccess, taskDialog]);
+
+  const taskDialogReadOnly = taskFormLocked || !canEditTaskDialogContent;
+
+  const canCreateNewTaskInSelectedContext = useMemo(() => {
+    const selectedProjectOk =
+      newTaskProjectId === '' ? true : canEditProjectContentUi(Number(newTaskProjectId));
+    const selectedContactOk =
+      newTaskContactId === '' ? true : canEditContactContentUi(Number(newTaskContactId));
+    return selectedProjectOk && selectedContactOk;
+  }, [canEditContactContentUi, canEditProjectContentUi, newTaskContactId, newTaskProjectId]);
+
+  const canCreateTaskFromMessageUi = useMemo(() => {
+    if (!messageTaskDialog) return false;
+    return canEditContactContentUi(messageTaskDialog.message.contact_id);
+  }, [canEditContactContentUi, messageTaskDialog]);
+
+  const canMutateTaskUi = useCallback(
+    (task: OwnerWorkspaceTask | null | undefined) => {
+      if (!task) return false;
+      if (isWorkspaceFullAccess) return true;
+      if (task.project_id != null) {
+        return canEditProjectContentUi(task.project_id);
+      }
+      return true;
+    },
+    [canEditProjectContentUi, isWorkspaceFullAccess]
+  );
+
+  const editableLinkTaskOptions = useMemo(
+    () => linkTaskOptions.filter((task) => canMutateTaskUi(task)),
+    [canMutateTaskUi, linkTaskOptions]
+  );
+
+  const assigneeAnalyticsRows = useMemo<OwnerWorkspaceAssigneeAnalyticsRow[]>(() => {
+    const now = Date.now();
+    const buckets = new Map<
+      string,
+      {
+        assigneeId: number | null;
+        assigneeName: string;
+        activeCount: number;
+        overdueCount: number;
+        completedCount: number;
+        completionDays: number[];
+      }
+    >();
+
+    for (const task of tasks) {
+      const assigneeId = task.assignee_id ?? null;
+      const key = assigneeId == null ? 'unassigned' : String(assigneeId);
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          assigneeId,
+          assigneeName: assigneeId == null ? 'Без исполнителя' : userName(assigneeId),
+          activeCount: 0,
+          overdueCount: 0,
+          completedCount: 0,
+          completionDays: [],
+        });
+      }
+      const bucket = buckets.get(key)!;
+      const status = String(task.status);
+      const isDone = status === 'completed';
+      const isCancelled = status === 'cancelled';
+      if (!isDone && !isCancelled) {
+        bucket.activeCount += 1;
+        if (task.deadline_at && new Date(task.deadline_at).getTime() < now) {
+          bucket.overdueCount += 1;
+        }
+      }
+      if (isDone) {
+        bucket.completedCount += 1;
+        if (task.created_at && task.completed_at) {
+          const ms = new Date(task.completed_at).getTime() - new Date(task.created_at).getTime();
+          if (Number.isFinite(ms) && ms >= 0) {
+            bucket.completionDays.push(ms / 86400000);
+          }
+        }
+      }
+    }
+
+    return Array.from(buckets.values())
+      .map((bucket) => ({
+        assigneeId: bucket.assigneeId,
+        assigneeName: bucket.assigneeName,
+        activeCount: bucket.activeCount,
+        overdueCount: bucket.overdueCount,
+        completedCount: bucket.completedCount,
+        avgDaysToComplete:
+          bucket.completionDays.length > 0
+            ? Math.round((bucket.completionDays.reduce((sum, value) => sum + value, 0) / bucket.completionDays.length) * 10) / 10
+            : null,
+      }))
+      .filter((row) => row.activeCount > 0 || row.overdueCount > 0 || row.completedCount > 0)
+      .sort((a, b) => {
+        if (b.activeCount !== a.activeCount) return b.activeCount - a.activeCount;
+        if (b.overdueCount !== a.overdueCount) return b.overdueCount - a.overdueCount;
+        return a.assigneeName.localeCompare(b.assigneeName, 'ru');
+      });
+  }, [tasks, userName]);
+
+  const assigneeAnalyticsSummary = useMemo(
+    () => ({
+      assigneesWithActiveTasks: assigneeAnalyticsRows.filter((row) => row.activeCount > 0).length,
+      assigneesWithOverdueTasks: assigneeAnalyticsRows.filter((row) => row.overdueCount > 0).length,
+      overloadedAssignees: assigneeAnalyticsRows.filter((row) => row.activeCount >= 5).length,
+    }),
+    [assigneeAnalyticsRows]
+  );
+
+  const assigneeAttentionRows = useMemo(
+    () =>
+      assigneeAnalyticsRows
+        .filter((row) => row.overdueCount > 0 || row.activeCount >= 5)
+        .sort((a, b) => {
+          if (b.overdueCount !== a.overdueCount) return b.overdueCount - a.overdueCount;
+          if (b.activeCount !== a.activeCount) return b.activeCount - a.activeCount;
+          return a.assigneeName.localeCompare(b.assigneeName, 'ru');
+        })
+        .slice(0, 5),
+    [assigneeAnalyticsRows]
+  );
+
+  const projectParticipantAnalyticsRows = useMemo<OwnerWorkspaceAssigneeAnalyticsRow[]>(() => {
+    if (!projectDialog) return [];
+    const now = Date.now();
+    const relevantIds = new Set<number>();
+    if (projectDialog.owner_id != null) relevantIds.add(projectDialog.owner_id);
+    for (const pid of projectDialog.participants || []) relevantIds.add(pid);
+
+    const buckets = new Map<
+      string,
+      {
+        assigneeId: number | null;
+        assigneeName: string;
+        activeCount: number;
+        overdueCount: number;
+        completedCount: number;
+        completionDays: number[];
+      }
+    >();
+
+    const ensureBucket = (assigneeId: number | null) => {
+      const key = assigneeId == null ? 'unassigned' : String(assigneeId);
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          assigneeId,
+          assigneeName: assigneeId == null ? 'Без исполнителя' : userName(assigneeId),
+          activeCount: 0,
+          overdueCount: 0,
+          completedCount: 0,
+          completionDays: [],
+        });
+      }
+      return buckets.get(key)!;
+    };
+
+    for (const assigneeId of relevantIds) ensureBucket(assigneeId);
+
+    for (const task of projectDialogTasks) {
+      const assigneeId = task.assignee_id ?? null;
+      const bucket = ensureBucket(assigneeId);
+      const status = String(task.status);
+      const isDone = status === 'completed';
+      const isCancelled = status === 'cancelled';
+      if (!isDone && !isCancelled) {
+        bucket.activeCount += 1;
+        if (task.deadline_at && new Date(task.deadline_at).getTime() < now) {
+          bucket.overdueCount += 1;
+        }
+      }
+      if (isDone) {
+        bucket.completedCount += 1;
+        if (task.created_at && task.completed_at) {
+          const ms = new Date(task.completed_at).getTime() - new Date(task.created_at).getTime();
+          if (Number.isFinite(ms) && ms >= 0) {
+            bucket.completionDays.push(ms / 86400000);
+          }
+        }
+      }
+    }
+
+    return Array.from(buckets.values())
+      .map((bucket) => ({
+        assigneeId: bucket.assigneeId,
+        assigneeName: bucket.assigneeName,
+        activeCount: bucket.activeCount,
+        overdueCount: bucket.overdueCount,
+        completedCount: bucket.completedCount,
+        avgDaysToComplete:
+          bucket.completionDays.length > 0
+            ? Math.round((bucket.completionDays.reduce((sum, value) => sum + value, 0) / bucket.completionDays.length) * 10) / 10
+            : null,
+      }))
+      .filter((row) => row.activeCount > 0 || row.overdueCount > 0 || row.completedCount > 0)
+      .sort((a, b) => {
+        if (b.activeCount !== a.activeCount) return b.activeCount - a.activeCount;
+        if (b.overdueCount !== a.overdueCount) return b.overdueCount - a.overdueCount;
+        return a.assigneeName.localeCompare(b.assigneeName, 'ru');
+      });
+  }, [projectDialog, projectDialogTasks, userName]);
+
+  const topOverdueProjects = useMemo(
+    () =>
+      [...projects]
+        .filter((project) => (project.overdue_tasks_count ?? 0) > 0)
+        .sort((a, b) => {
+          const overdueDiff = (b.overdue_tasks_count ?? 0) - (a.overdue_tasks_count ?? 0);
+          if (overdueDiff !== 0) return overdueDiff;
+          return (b.active_tasks_count ?? 0) - (a.active_tasks_count ?? 0);
+        })
+        .slice(0, 6),
+    [projects]
+  );
 
   const projectsCatalogSorted = useMemo(
     () => [...projectsCatalog].sort((a, b) => a.name.localeCompare(b.name, 'ru')),
@@ -1871,10 +2532,10 @@ const OwnerWorkspacePage: React.FC = () => {
               <Box sx={{ cursor: 'pointer', minWidth: 0 }} onClick={() => openTaskDialog(t)}>
                 <Typography variant={compact ? 'body2' : 'subtitle1'}>{t.title}</Typography>
                 <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap' }}>
-                  <Chip size="small" label={STATUS_LABELS[t.status] || t.status} />
+                  <Chip size="small" label={statusLabels[t.status] || t.status} />
                   <Chip
                     size="small"
-                    label={PRIORITY_LABELS[t.priority] || t.priority}
+                    label={priorityLabels[t.priority] || t.priority}
                     color={t.priority === 'critical' ? 'error' : t.priority === 'high' ? 'warning' : 'default'}
                   />
                   {t.assignee_id != null && (
@@ -1893,8 +2554,8 @@ const OwnerWorkspacePage: React.FC = () => {
                       color={isTaskOverdue(t) ? 'error' : 'default'}
                     />
                   )}
-                  {t.project_id && <Chip size="small" label={`Проект #${t.project_id}`} variant="outlined" />}
-                  {t.contact_id && <Chip size="small" label={`Контакт #${t.contact_id}`} variant="outlined" />}
+                  {t.project_id && <Chip size="small" label={`РџСЂРѕРµРєС‚ #${t.project_id}`} variant="outlined" />}
+                  {t.contact_id && <Chip size="small" label={`РљРѕРЅС‚Р°РєС‚ #${t.contact_id}`} variant="outlined" />}
                   {(t.tags || []).slice(0, 4).map((tag, ti) => (
                     <Chip key={`${t.id}-tag-${ti}`} size="small" variant="outlined" color="primary" label={tag} />
                   ))}
@@ -1902,7 +2563,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     <Chip
                       size="small"
                       variant="outlined"
-                      label={`Обн. ${new Date(t.updated_at).toLocaleString('ru-RU', {
+                      label={`РћР±РЅ. ${new Date(t.updated_at).toLocaleString('ru-RU', {
                         day: '2-digit',
                         month: '2-digit',
                         hour: '2-digit',
@@ -1917,10 +2578,11 @@ const OwnerWorkspacePage: React.FC = () => {
               <Button
                 size="small"
                 variant="outlined"
+                disabled={!canMutateTaskUi(t)}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => setCompleteDialogTask(t)}
               >
-                Завершить…
+                Р—Р°РІРµСЂС€РёС‚СЊвЂ¦
               </Button>
             )}
           </Box>
@@ -1929,17 +2591,17 @@ const OwnerWorkspacePage: React.FC = () => {
     );
   };
 
-  const WEEKDAYS_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  const WEEKDAYS_SHORT = ['РџРЅ', 'Р’С‚', 'РЎСЂ', 'Р§С‚', 'РџС‚', 'РЎР±', 'Р’СЃ'];
 
   return (
     <Layout>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
         <Typography variant="h4" sx={{ flex: '1 1 auto' }}>
-          Owner: задачник
+          Owner: Р·Р°РґР°С‡РЅРёРє
         </Typography>
         <IconButton
           color="default"
-          aria-label="Уведомления по дедлайнам"
+          aria-label="РЈРІРµРґРѕРјР»РµРЅРёСЏ РїРѕ РґРµРґР»Р°Р№РЅР°Рј"
           onClick={(e) => {
             setNotifAnchor(e.currentTarget);
             void loadNotifications(80);
@@ -1963,7 +2625,7 @@ const OwnerWorkspacePage: React.FC = () => {
             setSearchResults(null);
           }}
         >
-          Поиск
+          РџРѕРёСЃРє
         </Button>
       </Box>
       <Menu
@@ -1973,7 +2635,7 @@ const OwnerWorkspacePage: React.FC = () => {
         PaperProps={{ sx: { maxWidth: 420, maxHeight: 480 } }}
       >
         {(notifEnvelope?.items || []).length === 0 ? (
-          <MenuItem disabled>Нет уведомлений</MenuItem>
+          <MenuItem disabled>РќРµС‚ СѓРІРµРґРѕРјР»РµРЅРёР№</MenuItem>
         ) : (
           (notifEnvelope?.items || []).map((n) => (
             <MenuItem
@@ -1993,7 +2655,7 @@ const OwnerWorkspacePage: React.FC = () => {
                       await openNotificationComms(n.contact_id);
                     }
                   } catch (err: unknown) {
-                    setError(extractApiError(err, 'Не удалось обработать уведомление'));
+                    setError(extractApiError(err, 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±СЂР°Р±РѕС‚Р°С‚СЊ СѓРІРµРґРѕРјР»РµРЅРёРµ'));
                   }
                 })();
               }}
@@ -2014,7 +2676,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 secondary={
                   <>
                     {n.body}
-                    {n.read_at ? '' : ' · непрочитано'}
+                    {n.read_at ? '' : ' В· РЅРµРїСЂРѕС‡РёС‚Р°РЅРѕ'}
                   </>
                 }
                 secondaryTypographyProps={{ variant: 'caption' }}
@@ -2024,10 +2686,16 @@ const OwnerWorkspacePage: React.FC = () => {
         )}
       </Menu>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Проекты (участники), контакты, задачи — список, канбан (в т.ч. отдельно «Выполнено» / «Отменено»), календарь,
-        массовые действия; единый поиск; сводка по дедлайнам; коммуникации и MAX (ручной импорт + опциональный
-        автосинк на сервере: OWNER_WORKSPACE_AUTO_SYNC_MAX=1).
+        РџСЂРѕРµРєС‚С‹ (СѓС‡Р°СЃС‚РЅРёРєРё), РєРѕРЅС‚Р°РєС‚С‹, Р·Р°РґР°С‡Рё вЂ” СЃРїРёСЃРѕРє, РєР°РЅР±Р°РЅ (РІ С‚.С‡. РѕС‚РґРµР»СЊРЅРѕ В«Р’С‹РїРѕР»РЅРµРЅРѕВ» / В«РћС‚РјРµРЅРµРЅРѕВ»), РєР°Р»РµРЅРґР°СЂСЊ,
+        РјР°СЃСЃРѕРІС‹Рµ РґРµР№СЃС‚РІРёСЏ; РµРґРёРЅС‹Р№ РїРѕРёСЃРє; СЃРІРѕРґРєР° РїРѕ РґРµРґР»Р°Р№РЅР°Рј; РєРѕРјРјСѓРЅРёРєР°С†РёРё Рё MAX (СЂСѓС‡РЅРѕР№ РёРјРїРѕСЂС‚ + РѕРїС†РёРѕРЅР°Р»СЊРЅС‹Р№
+        Р°РІС‚РѕСЃРёРЅРє РЅР° СЃРµСЂРІРµСЂРµ: OWNER_WORKSPACE_AUTO_SYNC_MAX=1).
       </Typography>
+      {isLimitedWorkspaceUser && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Режим ограниченного доступа: вам доступны только ваши проекты, связанные контакты и собственные задачи. Создание новых
+          контактов требует явной привязки к доступному проекту.
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -2041,8 +2709,35 @@ const OwnerWorkspacePage: React.FC = () => {
       )}
       <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+          <Stack spacing={1.25}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+              <Typography variant="subtitle2">Ваш доступ</Typography>
+              <Chip
+                size="small"
+                color={isWorkspaceFullAccess ? 'primary' : 'default'}
+                label={`Глобальная роль: ${currentWorkspaceRoleLabel}`}
+              />
+              <Chip
+                size="small"
+                variant={isWorkspaceFullAccess ? 'filled' : 'outlined'}
+                color={isWorkspaceFullAccess ? 'success' : 'warning'}
+                label={isWorkspaceFullAccess ? 'Полный доступ' : 'Ограниченный доступ'}
+              />
+            </Stack>
+            <Stack spacing={0.5}>
+              {currentWorkspaceAccessSummary.map((item) => (
+                <Typography key={item} variant="body2" color="text.secondary">
+                  • {item}
+                </Typography>
+              ))}
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
+      <Card variant="outlined" sx={{ mb: 2 }}>
+        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} flexWrap="wrap">
-            <Typography variant="subtitle2">Сводка по дедлайнам</Typography>
+            <Typography variant="subtitle2">РЎРІРѕРґРєР° РїРѕ РґРµРґР»Р°Р№РЅР°Рј</Typography>
             <ToggleButtonGroup
               size="small"
               value={digestScope}
@@ -2051,13 +2746,13 @@ const OwnerWorkspacePage: React.FC = () => {
                 if (v != null) setDigestScope(v);
               }}
             >
-              <ToggleButton value="all">Все задачи</ToggleButton>
-              <ToggleButton value="mine">Только мои</ToggleButton>
+              <ToggleButton value="all">Р’СЃРµ Р·Р°РґР°С‡Рё</ToggleButton>
+              <ToggleButton value="mine">РўРѕР»СЊРєРѕ РјРѕРё</ToggleButton>
             </ToggleButtonGroup>
             <TextField
               select
               size="small"
-              label="Проект"
+              label="РџСЂРѕРµРєС‚"
               sx={{ minWidth: 200 }}
               value={digestProjectFilter === '' ? '' : String(digestProjectFilter)}
               onChange={(e) => {
@@ -2065,7 +2760,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 setDigestProjectFilter(v === '' ? '' : Number(v));
               }}
             >
-              <MenuItem value="">Все проекты</MenuItem>
+              <MenuItem value="">Р’СЃРµ РїСЂРѕРµРєС‚С‹</MenuItem>
               {projectsCatalogSorted.map((p) => (
                 <MenuItem key={p.id} value={String(p.id)}>
                   {p.name}
@@ -2075,19 +2770,19 @@ const OwnerWorkspacePage: React.FC = () => {
             <TextField
               select
               size="small"
-              label="Горизонт"
+              label="Р“РѕСЂРёР·РѕРЅС‚"
               sx={{ minWidth: 140 }}
               value={String(digestDueHours)}
               onChange={(e) => setDigestDueHours(Number(e.target.value))}
             >
-              <MenuItem value="24">24 ч</MenuItem>
-              <MenuItem value="48">48 ч</MenuItem>
-              <MenuItem value="72">72 ч</MenuItem>
-              <MenuItem value="168">7 дней</MenuItem>
+              <MenuItem value="24">24 С‡</MenuItem>
+              <MenuItem value="48">48 С‡</MenuItem>
+              <MenuItem value="72">72 С‡</MenuItem>
+              <MenuItem value="168">7 РґРЅРµР№</MenuItem>
             </TextField>
             {digestScope === 'mine' && user?.id == null && (
               <Typography variant="caption" color="text.secondary">
-                Войдите, чтобы фильтр «Только мои» учитывал вашего пользователя.
+                Р’РѕР№РґРёС‚Рµ, С‡С‚РѕР±С‹ С„РёР»СЊС‚СЂ В«РўРѕР»СЊРєРѕ РјРѕРёВ» СѓС‡РёС‚С‹РІР°Р» РІР°С€РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
               </Typography>
             )}
           </Stack>
@@ -2096,14 +2791,14 @@ const OwnerWorkspacePage: React.FC = () => {
       {digest && digest.overdue_count > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           <Typography variant="subtitle2" gutterBottom>
-            Просроченных активных задач: {digest.overdue_count}
+            РџСЂРѕСЃСЂРѕС‡РµРЅРЅС‹С… Р°РєС‚РёРІРЅС‹С… Р·Р°РґР°С‡: {digest.overdue_count}
           </Typography>
           <Stack direction="row" flexWrap="wrap" gap={0.5}>
             {digest.overdue_tasks.slice(0, 8).map((t) => (
               <Chip
                 key={t.id}
                 size="small"
-                label={`#${t.id} ${t.title.slice(0, 28)}${t.title.length > 28 ? '…' : ''}`}
+                label={`#${t.id} ${t.title.slice(0, 28)}${t.title.length > 28 ? 'вЂ¦' : ''}`}
                 onClick={() => void openSearchHitTask(t.id)}
                 sx={{ cursor: 'pointer' }}
               />
@@ -2114,7 +2809,7 @@ const OwnerWorkspacePage: React.FC = () => {
       {digest && digest.due_soon_tasks.length > 0 && (
         <Alert severity="info" sx={{ mb: 2 }}>
           <Typography variant="subtitle2" gutterBottom>
-            Дедлайн в ближайшие {digestDueHours === 168 ? '7 дней' : `${digestDueHours} ч`}:{' '}
+            Р”РµРґР»Р°Р№РЅ РІ Р±Р»РёР¶Р°Р№С€РёРµ {digestDueHours === 168 ? '7 РґРЅРµР№' : `${digestDueHours} С‡`}:{' '}
             {digest.due_soon_tasks.length}
             {digest.due_soon_tasks.length >= 25 ? '+' : ''}
           </Typography>
@@ -2123,7 +2818,7 @@ const OwnerWorkspacePage: React.FC = () => {
               <Chip
                 key={t.id}
                 size="small"
-                label={`#${t.id} ${t.title.length > 24 ? `${t.title.slice(0, 24)}…` : t.title}`}
+                label={`#${t.id} ${t.title.length > 24 ? `${t.title.slice(0, 24)}вЂ¦` : t.title}`}
                 onClick={() => void openSearchHitTask(t.id)}
                 sx={{ cursor: 'pointer' }}
               />
@@ -2133,38 +2828,84 @@ const OwnerWorkspacePage: React.FC = () => {
       )}
 
       <Tabs value={tab} onChange={handleWorkspaceTabChange} sx={{ mb: 2 }}>
-        <Tab label={`Проекты (${projects.length})`} />
-        <Tab label={`Контакты (${contacts.length})`} />
-        <Tab label={`Задачи (${taskListTotal})`} />
-        <Tab label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
-        <Tab label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
-        <Tab label="Настройки" />
-        <Tab label="История" />
+        <Tab label={`РџСЂРѕРµРєС‚С‹ (${projects.length})`} />
+        <Tab label={`РљРѕРЅС‚Р°РєС‚С‹ (${contacts.length})`} />
+        <Tab label={`Р—Р°РґР°С‡Рё (${taskListTotal})`} />
+        <Tab label={commsUnreadTotal > 0 ? `РљРѕРјРјСѓРЅРёРєР°С†РёРё (${commsUnreadTotal})` : 'РљРѕРјРјСѓРЅРёРєР°С†РёРё'} />
+        <Tab label={`РЈРІРµРґРѕРјР»РµРЅРёСЏ${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
+        <Tab label="РќР°СЃС‚СЂРѕР№РєРё" />
+        <Tab label="РСЃС‚РѕСЂРёСЏ" />
       </Tabs>
 
       {tab === OW_TAB_PROJECTS && (
         <Stack spacing={2}>
+          {topOverdueProjects.length > 0 && (
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle2">Проекты с самой большой просрочкой</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Блок строится по текущей видимой выборке проектов и помогает быстро перейти к проблемным задачам.
+                  </Typography>
+                  <Grid container spacing={1.5}>
+                    {topOverdueProjects.map((project) => (
+                      <Grid key={project.id} item xs={12} md={6} xl={4}>
+                        <Card variant="outlined" sx={{ height: '100%' }}>
+                          <CardContent>
+                            <Stack spacing={1}>
+                              <Typography variant="subtitle2">{project.name}</Typography>
+                              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                <Chip size="small" color="warning" label={`Просрочено: ${project.overdue_tasks_count ?? 0}`} />
+                                <Chip size="small" label={`Активных: ${project.active_tasks_count ?? 0}`} />
+                                <Chip size="small" variant="outlined" label={`Всего: ${project.total_tasks_count ?? 0}`} />
+                              </Stack>
+                              <Typography variant="body2" color="text.secondary">
+                                Ответственный: <strong>{userName(project.owner_id)}</strong>
+                              </Typography>
+                              <Stack direction="row" spacing={1} flexWrap="wrap">
+                                <Button size="small" variant="outlined" onClick={() => openProjectDialog(project)}>
+                                  Открыть проект
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="warning"
+                                  onClick={() => drillDownToProjectTasks(project.id, { overdueOnly: true })}
+                                >
+                                  Просроченные задачи
+                                </Button>
+                              </Stack>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
           <Card variant="outlined">
             <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
               <Typography variant="subtitle2" gutterBottom>
-                Фильтры списка проектов
+                Р¤РёР»СЊС‚СЂС‹ СЃРїРёСЃРєР° РїСЂРѕРµРєС‚РѕРІ
               </Typography>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ md: 'center' }}>
                 <TextField
                   select
-                  label="Статус"
+                  label="РЎС‚Р°С‚СѓСЃ"
                   size="small"
                   sx={{ minWidth: 160 }}
                   value={projectListStatus}
                   onChange={(e) => setProjectListStatus(e.target.value)}
                 >
-                  <MenuItem value="">Все</MenuItem>
-                  <MenuItem value="active">Активный</MenuItem>
-                  <MenuItem value="completed">Завершён</MenuItem>
-                  <MenuItem value="archived">Архив</MenuItem>
+                  <MenuItem value="">Р’СЃРµ</MenuItem>
+                  <MenuItem value="active">РђРєС‚РёРІРЅС‹Р№</MenuItem>
+                  <MenuItem value="completed">Р—Р°РІРµСЂС€С‘РЅ</MenuItem>
+                  <MenuItem value="archived">РђСЂС…РёРІ</MenuItem>
                 </TextField>
                 <TextField
-                  label="Поиск по названию/описанию"
+                  label="РџРѕРёСЃРє РїРѕ РЅР°Р·РІР°РЅРёСЋ/РѕРїРёСЃР°РЅРёСЋ"
                   size="small"
                   sx={{ minWidth: 220, flex: 1 }}
                   value={projectListSearchInput}
@@ -2172,7 +2913,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 />
                 <TextField
                   select
-                  label="Ответственный"
+                  label="РћС‚РІРµС‚СЃС‚РІРµРЅРЅС‹Р№"
                   size="small"
                   sx={{ minWidth: 200 }}
                   value={projectListOwnerId === '' ? '' : String(projectListOwnerId)}
@@ -2181,7 +2922,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     setProjectListOwnerId(v === '' ? '' : Number(v));
                   }}
                 >
-                  <MenuItem value="">Все</MenuItem>
+                  <MenuItem value="">Р’СЃРµ</MenuItem>
                   {userOptions.map((u) => (
                     <MenuItem key={u.id} value={String(u.id)}>
                       {u.full_name}
@@ -2195,7 +2936,7 @@ const OwnerWorkspacePage: React.FC = () => {
                       onChange={(_, c) => setProjectListOverdueOnly(c)}
                     />
                   }
-                  label="Только с просроченными активными задачами"
+                  label="РўРѕР»СЊРєРѕ СЃ РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹РјРё Р°РєС‚РёРІРЅС‹РјРё Р·Р°РґР°С‡Р°РјРё"
                 />
               </Stack>
             </CardContent>
@@ -2205,14 +2946,20 @@ const OwnerWorkspacePage: React.FC = () => {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <TextField
                   fullWidth
-                  label="Название проекта"
+                  label="РќР°Р·РІР°РЅРёРµ РїСЂРѕРµРєС‚Р°"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
+                  disabled={!isWorkspaceFullAccess}
                 />
-                <Button variant="contained" onClick={createProject}>
-                  Создать
+                <Button variant="contained" onClick={createProject} disabled={!isWorkspaceFullAccess}>
+                  РЎРѕР·РґР°С‚СЊ
                 </Button>
               </Stack>
+              {!isWorkspaceFullAccess && (
+                <Alert severity="info" sx={{ mt: 1.5 }}>
+                  Создание новых проектов доступно только admin / owner.
+                </Alert>
+              )}
             </CardContent>
           </Card>
           <Grid container spacing={2}>
@@ -2224,26 +2971,26 @@ const OwnerWorkspacePage: React.FC = () => {
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="h6">{p.name}</Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                          Ответственный: {userName(p.owner_id)}
+                          РћС‚РІРµС‚СЃС‚РІРµРЅРЅС‹Р№: {userName(p.owner_id)}
                         </Typography>
                       </Box>
-                      <IconButton size="small" onClick={() => openProjectDialog(p)} aria-label="Открыть">
+                      <IconButton size="small" onClick={() => openProjectDialog(p)} aria-label="РћС‚РєСЂС‹С‚СЊ">
                         <OpenInNewIcon fontSize="small" />
                       </IconButton>
                     </Box>
                     <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
                       <Chip size="small" label={p.status} />
-                      <Chip size="small" label={`Задач всего: ${p.total_tasks_count ?? 0}`} />
-                      <Chip size="small" label={`Активн.: ${p.active_tasks_count}`} />
+                      <Chip size="small" label={`Р—Р°РґР°С‡ РІСЃРµРіРѕ: ${p.total_tasks_count ?? 0}`} />
+                      <Chip size="small" label={`РђРєС‚РёРІРЅ.: ${p.active_tasks_count}`} />
                       {(p.overdue_tasks_count ?? 0) > 0 && (
-                        <Chip size="small" color="warning" label={`Просроч.: ${p.overdue_tasks_count}`} />
+                        <Chip size="small" color="warning" label={`РџСЂРѕСЃСЂРѕС‡.: ${p.overdue_tasks_count}`} />
                       )}
-                      <Chip size="small" label={`Контактов: ${p.contacts_count}`} />
-                      {p.subprojects_count > 0 && <Chip size="small" label={`Подпроектов: ${p.subprojects_count}`} />}
+                      <Chip size="small" label={`РљРѕРЅС‚Р°РєС‚РѕРІ: ${p.contacts_count}`} />
+                      {p.subprojects_count > 0 && <Chip size="small" label={`РџРѕРґРїСЂРѕРµРєС‚РѕРІ: ${p.subprojects_count}`} />}
                     </Stack>
                     {p.updated_at ? (
                       <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                        Обновлён:{' '}
+                        РћР±РЅРѕРІР»С‘РЅ:{' '}
                         {new Date(p.updated_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
                       </Typography>
                     ) : null}
@@ -2254,7 +3001,7 @@ const OwnerWorkspacePage: React.FC = () => {
             {projects.length === 0 && (
               <Grid item xs={12}>
                 <Typography variant="body2" color="text.secondary">
-                  Нет проектов по текущим фильтрам.
+                  РќРµС‚ РїСЂРѕРµРєС‚РѕРІ РїРѕ С‚РµРєСѓС‰РёРј С„РёР»СЊС‚СЂР°Рј.
                 </Typography>
               </Grid>
             )}
@@ -2267,11 +3014,11 @@ const OwnerWorkspacePage: React.FC = () => {
           <Card variant="outlined">
             <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
               <Typography variant="subtitle2" gutterBottom>
-                Фильтры списка контактов
+                Р¤РёР»СЊС‚СЂС‹ СЃРїРёСЃРєР° РєРѕРЅС‚Р°РєС‚РѕРІ
               </Typography>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ md: 'center' }}>
                 <TextField
-                  label="Поиск (ФИО, телефон, компания)"
+                  label="РџРѕРёСЃРє (Р¤РРћ, С‚РµР»РµС„РѕРЅ, РєРѕРјРїР°РЅРёСЏ)"
                   size="small"
                   sx={{ minWidth: 240, flex: 1 }}
                   value={contactListSearchInput}
@@ -2279,7 +3026,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 />
                 <TextField
                   select
-                  label="В проекте"
+                  label="Р’ РїСЂРѕРµРєС‚Рµ"
                   size="small"
                   sx={{ minWidth: 220 }}
                   value={contactListProjectId === '' ? '' : String(contactListProjectId)}
@@ -2288,7 +3035,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     setContactListProjectId(v === '' ? '' : Number(v));
                   }}
                 >
-                  <MenuItem value="">Любой</MenuItem>
+                  <MenuItem value="">Р›СЋР±РѕР№</MenuItem>
                   {projectsCatalogSorted.map((p) => (
                     <MenuItem key={p.id} value={String(p.id)}>
                       {p.name}
@@ -2297,14 +3044,14 @@ const OwnerWorkspacePage: React.FC = () => {
                 </TextField>
                 <TextField
                   select
-                  label="Тег"
+                  label="РўРµРі"
                   size="small"
                   sx={{ minWidth: 180 }}
                   value={contactListTag}
                   onChange={(e) => setContactListTag(e.target.value)}
-                  helperText={contactListTagOptions.length === 0 ? 'Нет тегов в каталоге' : undefined}
+                  helperText={contactListTagOptions.length === 0 ? 'РќРµС‚ С‚РµРіРѕРІ РІ РєР°С‚Р°Р»РѕРіРµ' : undefined}
                 >
-                  <MenuItem value="">Любой</MenuItem>
+                  <MenuItem value="">Р›СЋР±РѕР№</MenuItem>
                   {contactListTagOptions.map((tg) => (
                     <MenuItem key={tg} value={tg}>
                       {tg}
@@ -2318,20 +3065,39 @@ const OwnerWorkspacePage: React.FC = () => {
                       onChange={(_, c) => setContactListActiveTasksOnly(c)}
                     />
                   }
-                  label="Только с активными задачами"
+                  label="РўРѕР»СЊРєРѕ СЃ Р°РєС‚РёРІРЅС‹РјРё Р·Р°РґР°С‡Р°РјРё"
                 />
               </Stack>
             </CardContent>
           </Card>
           <Card>
             <CardContent>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <TextField fullWidth label="ФИО" value={contactName} onChange={(e) => setContactName(e.target.value)} />
-                <TextField fullWidth label="Телефон" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
-                <Button variant="contained" onClick={createContact}>
-                  Создать
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
+                <TextField fullWidth label="Р¤РРћ" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+                <TextField fullWidth label="РўРµР»РµС„РѕРЅ" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+                {!isWorkspaceFullAccess && (
+                  <Autocomplete
+                    sx={{ minWidth: 260, flex: 1 }}
+                    options={projectsCatalogSorted}
+                    getOptionLabel={(o) => o.name}
+                    value={projectsCatalogSorted.find((p) => p.id === newContactProjectId) || null}
+                    onChange={(_, v) => setNewContactProjectId(v ? v.id : '')}
+                    renderInput={(params) => <TextField {...params} label="Проект для привязки" />}
+                  />
+                )}
+                <Button
+                  variant="contained"
+                  onClick={createContact}
+                  disabled={!isWorkspaceFullAccess && newContactProjectId === ''}
+                >
+                  РЎРѕР·РґР°С‚СЊ
                 </Button>
               </Stack>
+              {!isWorkspaceFullAccess && (
+                <Alert severity="info" sx={{ mt: 1.5 }}>
+                  Для sales / trainer новый контакт создаётся только вместе с привязкой к доступному проекту.
+                </Alert>
+              )}
             </CardContent>
           </Card>
           <Grid container spacing={2}>
@@ -2362,7 +3128,7 @@ const OwnerWorkspacePage: React.FC = () => {
                         ) : null}
                         {c.last_interaction_at ? (
                           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.75 }}>
-                            Последнее взаимодействие:{' '}
+                            РџРѕСЃР»РµРґРЅРµРµ РІР·Р°РёРјРѕРґРµР№СЃС‚РІРёРµ:{' '}
                             {new Date(c.last_interaction_at).toLocaleString('ru-RU', {
                               dateStyle: 'short',
                               timeStyle: 'short',
@@ -2370,43 +3136,43 @@ const OwnerWorkspacePage: React.FC = () => {
                           </Typography>
                         ) : null}
                         <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                          <Chip size="small" label={`Активн. задач: ${c.active_tasks_count}`} />
+                          <Chip size="small" label={`РђРєС‚РёРІРЅ. Р·Р°РґР°С‡: ${c.active_tasks_count}`} />
                           {c.linked_project_ids.length > 0 && (
-                            <Chip size="small" label={`Проектов: ${c.linked_project_ids.length}`} />
+                            <Chip size="small" label={`РџСЂРѕРµРєС‚РѕРІ: ${c.linked_project_ids.length}`} />
                           )}
                         </Stack>
                       </Box>
                       <Stack direction="row" spacing={0.25} alignItems="flex-start" flexWrap="wrap" useFlexGap>
-                        <Tooltip title="Карточка контакта">
-                          <IconButton size="small" onClick={() => void openContactDialog(c)} aria-label="Карточка контакта">
+                        <Tooltip title="РљР°СЂС‚РѕС‡РєР° РєРѕРЅС‚Р°РєС‚Р°">
+                          <IconButton size="small" onClick={() => void openContactDialog(c)} aria-label="РљР°СЂС‚РѕС‡РєР° РєРѕРЅС‚Р°РєС‚Р°">
                             <OpenInNewIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Переписка">
+                        <Tooltip title="РџРµСЂРµРїРёСЃРєР°">
                           <IconButton
                             size="small"
                             onClick={() => void openContactQuickComms(c.id)}
-                            aria-label="Открыть переписку"
+                            aria-label="РћС‚РєСЂС‹С‚СЊ РїРµСЂРµРїРёСЃРєСѓ"
                           >
                             <ChatBubbleOutlineIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Задачи по контакту">
+                        <Tooltip title="Р—Р°РґР°С‡Рё РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ">
                           <IconButton
                             size="small"
                             onClick={() => openContactQuickTasks(c.id)}
-                            aria-label="Задачи по контакту"
+                            aria-label="Р—Р°РґР°С‡Рё РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ"
                           >
                             <AssignmentIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                         {c.phone?.trim() ? (
-                          <Tooltip title="Позвонить">
+                          <Tooltip title="РџРѕР·РІРѕРЅРёС‚СЊ">
                             <IconButton
                               size="small"
                               component="a"
                               href={`tel:${c.phone.replace(/\s/g, '')}`}
-                              aria-label="Позвонить"
+                              aria-label="РџРѕР·РІРѕРЅРёС‚СЊ"
                               rel="noopener noreferrer"
                             >
                               <PhoneIphoneIcon fontSize="small" />
@@ -2422,7 +3188,7 @@ const OwnerWorkspacePage: React.FC = () => {
             {contacts.length === 0 && (
               <Grid item xs={12}>
                 <Typography variant="body2" color="text.secondary">
-                  Нет контактов по текущим фильтрам.
+                  РќРµС‚ РєРѕРЅС‚Р°РєС‚РѕРІ РїРѕ С‚РµРєСѓС‰РёРј С„РёР»СЊС‚СЂР°Рј.
                 </Typography>
               </Grid>
             )}
@@ -2435,37 +3201,43 @@ const OwnerWorkspacePage: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="subtitle2" gutterBottom>
-                Новая задача
+                РќРѕРІР°СЏ Р·Р°РґР°С‡Р°
               </Typography>
               <Stack spacing={1}>
-                <TextField fullWidth label="Название" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
+                {!canCreateNewTaskInSelectedContext && (
+                  <Alert severity="info">
+                    Р’С‹Р±СЂР°РЅРЅС‹Р№ РїСЂРѕРµРєС‚ РёР»Рё РєРѕРЅС‚Р°РєС‚ РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РЎРѕР·РґР°РЅРёРµ Р·Р°РґР°С‡Рё РІ СЌС‚РѕРј РєРѕРЅС‚РµРєСЃС‚Рµ РѕС‚РєР»СЋС‡РµРЅРѕ.
+                  </Alert>
+                )}
+                <TextField fullWidth label="РќР°Р·РІР°РЅРёРµ" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                   <TextField
                     select
-                    label="Приоритет"
+                    label="РџСЂРёРѕСЂРёС‚РµС‚"
                     value={taskPriority}
                     onChange={(e) => setTaskPriority(e.target.value as typeof taskPriority)}
                     sx={{ minWidth: 160 }}
                   >
-                    <MenuItem value="low">Низкий</MenuItem>
-                    <MenuItem value="medium">Средний</MenuItem>
-                    <MenuItem value="high">Высокий</MenuItem>
-                    <MenuItem value="critical">Критический</MenuItem>
+                    {createPriorityOptions.map((p) => (
+                      <MenuItem key={p} value={p}>
+                        {priorityLabels[p] ?? p}
+                      </MenuItem>
+                    ))}
                   </TextField>
                   <Autocomplete
                     options={projectsCatalogSorted}
                     getOptionLabel={(o) => o.name}
                     value={projectsCatalogSorted.find((p) => p.id === newTaskProjectId) || null}
                     onChange={(_, v) => setNewTaskProjectId(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Проект (необяз.)" />}
+                    renderInput={(params) => <TextField {...params} label="РџСЂРѕРµРєС‚ (РЅРµРѕР±СЏР·.)" />}
                     sx={{ flex: 1 }}
                   />
                   <Autocomplete
                     options={contactsCatalogSorted}
-                    getOptionLabel={(o) => `${o.full_name} · ${o.phone}`}
+                    getOptionLabel={(o) => `${o.full_name} В· ${o.phone}`}
                     value={contactsCatalogSorted.find((c) => c.id === newTaskContactId) || null}
                     onChange={(_, v) => setNewTaskContactId(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Контакт (необяз.)" />}
+                    renderInput={(params) => <TextField {...params} label="РљРѕРЅС‚Р°РєС‚ (РЅРµРѕР±СЏР·.)" />}
                     sx={{ flex: 1 }}
                   />
                   <Autocomplete
@@ -2473,20 +3245,25 @@ const OwnerWorkspacePage: React.FC = () => {
                     getOptionLabel={(o) => o.full_name}
                     value={userOptions.find((u) => u.id === newTaskAssigneeId) || null}
                     onChange={(_, v) => setNewTaskAssigneeId(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Исполнитель" />}
+                    renderInput={(params) => <TextField {...params} label="РСЃРїРѕР»РЅРёС‚РµР»СЊ" />}
                     sx={{ flex: 1 }}
                   />
                 </Stack>
                 <TextField
-                  label="Дедлайн"
+                  label="Р”РµРґР»Р°Р№РЅ"
                   type="datetime-local"
                   value={newTaskDeadline}
                   onChange={(e) => setNewTaskDeadline(e.target.value)}
                   InputLabelProps={{ shrink: true }}
                   sx={{ maxWidth: 280 }}
                 />
-                <Button variant="contained" onClick={createTask} sx={{ alignSelf: 'flex-start' }}>
-                  Создать задачу
+                <Button
+                  variant="contained"
+                  onClick={createTask}
+                  sx={{ alignSelf: 'flex-start' }}
+                  disabled={!canCreateNewTaskInSelectedContext}
+                >
+                  РЎРѕР·РґР°С‚СЊ Р·Р°РґР°С‡Сѓ
                 </Button>
               </Stack>
             </CardContent>
@@ -2495,7 +3272,7 @@ const OwnerWorkspacePage: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="subtitle2" gutterBottom>
-                Фильтры
+                Р¤РёР»СЊС‚СЂС‹
               </Typography>
               {taskStatusCounts != null && (
                 <Stack direction="row" flexWrap="wrap" spacing={0.75} sx={{ mb: 1.5 }} useFlexGap>
@@ -2503,13 +3280,13 @@ const OwnerWorkspacePage: React.FC = () => {
                     size="small"
                     color={taskStatusFilter === '' ? 'primary' : 'default'}
                     variant={taskStatusFilter === '' ? 'filled' : 'outlined'}
-                    label={`Все · ${taskStatusCounts.total}`}
+                    label={`Р’СЃРµ В· ${taskStatusCounts.total}`}
                     onClick={() => {
                       setTaskStatusFilter('');
                       void loadTasksFiltered({ statusFilter: '' });
                     }}
                   />
-                  {OWNER_WS_STATUSES.map((s) => {
+                  {enabledStatuses.map((s) => {
                     const n = taskStatusCounts.by_status[s] ?? 0;
                     return (
                       <Chip
@@ -2517,7 +3294,7 @@ const OwnerWorkspacePage: React.FC = () => {
                         size="small"
                         color={taskStatusFilter === s ? 'primary' : 'default'}
                         variant={taskStatusFilter === s ? 'filled' : 'outlined'}
-                        label={`${STATUS_LABELS[s] ?? s} · ${n}`}
+                        label={`${statusLabels[s] ?? s} В· ${n}`}
                         onClick={() => {
                           const next = taskStatusFilter === s ? '' : s;
                           setTaskStatusFilter(next);
@@ -2533,7 +3310,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   <TextField
                     fullWidth
                     size="small"
-                    label="Поиск"
+                    label="РџРѕРёСЃРє"
                     value={taskSearch}
                     onChange={(e) => setTaskSearch(e.target.value)}
                     onBlur={() => loadTasksFiltered()}
@@ -2544,14 +3321,14 @@ const OwnerWorkspacePage: React.FC = () => {
                     select
                     fullWidth
                     size="small"
-                    label="Статус"
+                    label="РЎС‚Р°С‚СѓСЃ"
                     value={taskStatusFilter}
                     onChange={(e) => setTaskStatusFilter(e.target.value)}
                   >
-                    <MenuItem value="">Все</MenuItem>
-                    {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                    <MenuItem value="">Р’СЃРµ</MenuItem>
+                    {enabledStatuses.map((k) => (
                       <MenuItem key={k} value={k}>
-                        {v}
+                        {statusLabels[k] ?? k}
                       </MenuItem>
                     ))}
                   </TextField>
@@ -2561,14 +3338,14 @@ const OwnerWorkspacePage: React.FC = () => {
                     select
                     fullWidth
                     size="small"
-                    label="Приоритет"
+                    label="РџСЂРёРѕСЂРёС‚РµС‚"
                     value={taskPriorityFilter}
                     onChange={(e) => setTaskPriorityFilter(e.target.value)}
                   >
-                    <MenuItem value="">Все</MenuItem>
-                    {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
+                    <MenuItem value="">Р’СЃРµ</MenuItem>
+                    {enabledPriorities.map((k) => (
                       <MenuItem key={k} value={k}>
-                        {v}
+                        {priorityLabels[k] ?? k}
                       </MenuItem>
                     ))}
                   </TextField>
@@ -2580,7 +3357,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     getOptionLabel={(o) => o.name}
                     value={projectsCatalogSorted.find((p) => p.id === taskProjectFilter) || null}
                     onChange={(_, v) => setTaskProjectFilter(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Проект" />}
+                    renderInput={(params) => <TextField {...params} label="РџСЂРѕРµРєС‚" />}
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -2590,7 +3367,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     getOptionLabel={(o) => `${o.full_name}`}
                     value={contactsCatalogSorted.find((c) => c.id === taskContactFilter) || null}
                     onChange={(_, v) => setTaskContactFilter(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Контакт" />}
+                    renderInput={(params) => <TextField {...params} label="РљРѕРЅС‚Р°РєС‚" />}
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -2600,7 +3377,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     getOptionLabel={(o) => o.full_name}
                     value={userOptions.find((u) => u.id === taskAssigneeFilter) || null}
                     onChange={(_, v) => setTaskAssigneeFilter(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Исполнитель" />}
+                    renderInput={(params) => <TextField {...params} label="РСЃРїРѕР»РЅРёС‚РµР»СЊ" />}
                   />
                 </Grid>
                 <Grid item xs={6} md={2}>
@@ -2608,17 +3385,17 @@ const OwnerWorkspacePage: React.FC = () => {
                     select
                     fullWidth
                     size="small"
-                    label="Сортировка"
+                    label="РЎРѕСЂС‚РёСЂРѕРІРєР°"
                     value={taskSortBy}
                     onChange={(e) =>
                       setTaskSortBy(e.target.value as 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority')
                     }
                   >
-                    <MenuItem value="created_at">По дате создания</MenuItem>
-                    <MenuItem value="updated_at">По обновлению</MenuItem>
-                    <MenuItem value="deadline_at">По дедлайну</MenuItem>
-                    <MenuItem value="priority">По приоритету</MenuItem>
-                    <MenuItem value="title">По названию</MenuItem>
+                    <MenuItem value="created_at">РџРѕ РґР°С‚Рµ СЃРѕР·РґР°РЅРёСЏ</MenuItem>
+                    <MenuItem value="updated_at">РџРѕ РѕР±РЅРѕРІР»РµРЅРёСЋ</MenuItem>
+                    <MenuItem value="deadline_at">РџРѕ РґРµРґР»Р°Р№РЅСѓ</MenuItem>
+                    <MenuItem value="priority">РџРѕ РїСЂРёРѕСЂРёС‚РµС‚Сѓ</MenuItem>
+                    <MenuItem value="title">РџРѕ РЅР°Р·РІР°РЅРёСЋ</MenuItem>
                   </TextField>
                 </Grid>
                 <Grid item xs={6} md={2}>
@@ -2626,26 +3403,26 @@ const OwnerWorkspacePage: React.FC = () => {
                     select
                     fullWidth
                     size="small"
-                    label="Порядок"
+                    label="РџРѕСЂСЏРґРѕРє"
                     value={taskSortDir}
                     onChange={(e) => setTaskSortDir(e.target.value as 'asc' | 'desc')}
                   >
-                    <MenuItem value="desc">По убыванию</MenuItem>
-                    <MenuItem value="asc">По возрастанию</MenuItem>
+                    <MenuItem value="desc">РџРѕ СѓР±С‹РІР°РЅРёСЋ</MenuItem>
+                    <MenuItem value="asc">РџРѕ РІРѕР·СЂР°СЃС‚Р°РЅРёСЋ</MenuItem>
                   </TextField>
                 </Grid>
                 <Grid item xs={12}>
                   <Stack direction="row" spacing={2} alignItems="center">
                     <FormControlLabel
                       control={<Checkbox checked={taskOverdueOnly} onChange={(e) => setTaskOverdueOnly(e.target.checked)} />}
-                      label="Только просроченные"
+                      label="РўРѕР»СЊРєРѕ РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹Рµ"
                     />
                     <FormControlLabel
                       control={<Checkbox checked={taskActiveOnly} onChange={(e) => setTaskActiveOnly(e.target.checked)} />}
-                      label="Только активные"
+                      label="РўРѕР»СЊРєРѕ Р°РєС‚РёРІРЅС‹Рµ"
                     />
                     <Button size="small" variant="outlined" onClick={() => loadTasksFiltered()}>
-                      Применить
+                      РџСЂРёРјРµРЅРёС‚СЊ
                     </Button>
                   </Stack>
                 </Grid>
@@ -2657,24 +3434,117 @@ const OwnerWorkspacePage: React.FC = () => {
             <Card variant="outlined">
               <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  Аналитика (ваша зона видимости)
+                  РђРЅР°Р»РёС‚РёРєР° (РІР°С€Р° Р·РѕРЅР° РІРёРґРёРјРѕСЃС‚Рё)
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap" useFlexGap>
                   <Typography variant="body2">
-                    Завершено за 7 дней: <strong>{tasksAnalytics.completed_last_7_days}</strong>
+                    Р—Р°РІРµСЂС€РµРЅРѕ Р·Р° 7 РґРЅРµР№: <strong>{tasksAnalytics.completed_last_7_days}</strong>
                   </Typography>
                   <Typography variant="body2">
-                    За 30 дней: <strong>{tasksAnalytics.completed_last_30_days}</strong>
+                    Р—Р° 30 РґРЅРµР№: <strong>{tasksAnalytics.completed_last_30_days}</strong>
                   </Typography>
                   <Typography variant="body2">
-                    Среднее время до закрытия (завершённые за 30 дн.):{' '}
+                    РЎСЂРµРґРЅРµРµ РІСЂРµРјСЏ РґРѕ Р·Р°РєСЂС‹С‚РёСЏ (Р·Р°РІРµСЂС€С‘РЅРЅС‹Рµ Р·Р° 30 РґРЅ.):{' '}
                     <strong>
                       {tasksAnalytics.avg_days_to_complete_last_30 != null &&
                       tasksAnalytics.avg_days_to_complete_last_30 !== undefined
-                        ? `${tasksAnalytics.avg_days_to_complete_last_30} дн.`
-                        : '—'}
+                        ? `${tasksAnalytics.avg_days_to_complete_last_30} РґРЅ.`
+                        : 'вЂ”'}
                     </strong>
                   </Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
+
+          {assigneeAnalyticsRows.length > 0 && (
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle2">Нагрузка по сотрудникам</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Блок строится по текущей видимой выборке задач с учётом активных фильтров.
+                  </Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip size="small" label={`С активными задачами: ${assigneeAnalyticsSummary.assigneesWithActiveTasks}`} />
+                    <Chip
+                      size="small"
+                      color={assigneeAnalyticsSummary.assigneesWithOverdueTasks > 0 ? 'warning' : 'default'}
+                      label={`С просрочкой: ${assigneeAnalyticsSummary.assigneesWithOverdueTasks}`}
+                    />
+                    <Chip
+                      size="small"
+                      color={assigneeAnalyticsSummary.overloadedAssignees > 0 ? 'error' : 'default'}
+                      variant={assigneeAnalyticsSummary.overloadedAssignees > 0 ? 'filled' : 'outlined'}
+                      label={`Перегружены (5+ активных): ${assigneeAnalyticsSummary.overloadedAssignees}`}
+                    />
+                  </Stack>
+                  {assigneeAttentionRows.length > 0 && (
+                    <Alert severity="warning">
+                      <Typography variant="subtitle2" gutterBottom>
+                        Зона внимания
+                      </Typography>
+                      <Stack spacing={0.5}>
+                        {assigneeAttentionRows.map((row) => (
+                          <Stack
+                            key={`attention-${row.assigneeId == null ? 'unassigned' : row.assigneeId}`}
+                            direction={{ xs: 'column', sm: 'row' }}
+                            spacing={1}
+                            alignItems={{ sm: 'center' }}
+                          >
+                            <Typography variant="body2">
+                              {row.assigneeName}: активных {row.activeCount}, просрочено {row.overdueCount}
+                            </Typography>
+                            <Stack direction="row" spacing={1}>
+                              <Button size="small" variant="outlined" onClick={() => drillDownToAssigneeTasks(row.assigneeId)}>
+                                Все активные
+                              </Button>
+                              {row.overdueCount > 0 && (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="warning"
+                                  onClick={() => drillDownToAssigneeTasks(row.assigneeId, { overdueOnly: true })}
+                                >
+                                  Только просрочка
+                                </Button>
+                              )}
+                            </Stack>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Alert>
+                  )}
+                  <Grid container spacing={1.5}>
+                    {assigneeAnalyticsRows.slice(0, 8).map((row) => (
+                      <Grid key={row.assigneeId == null ? 'unassigned' : row.assigneeId} item xs={12} md={6} xl={4}>
+                        <Card variant="outlined" sx={{ height: '100%' }}>
+                          <CardContent>
+                            <Stack spacing={1}>
+                              <Typography variant="subtitle2">{row.assigneeName}</Typography>
+                              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                <Chip size="small" label={`Активных: ${row.activeCount}`} />
+                                <Chip size="small" color={row.overdueCount > 0 ? 'warning' : 'default'} label={`Просрочено: ${row.overdueCount}`} />
+                                <Chip size="small" color="success" variant="outlined" label={`Завершено: ${row.completedCount}`} />
+                              </Stack>
+                              <Typography variant="body2" color="text.secondary">
+                                Среднее время закрытия:{' '}
+                                <strong>{row.avgDaysToComplete != null ? `${row.avgDaysToComplete} дн.` : '—'}</strong>
+                              </Typography>
+                              <Button
+                                size="small"
+                                variant="text"
+                                sx={{ alignSelf: 'flex-start' }}
+                                onClick={() => drillDownToAssigneeTasks(row.assigneeId)}
+                              >
+                                Открыть задачи
+                              </Button>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
                 </Stack>
               </CardContent>
             </Card>
@@ -2687,19 +3557,19 @@ const OwnerWorkspacePage: React.FC = () => {
               exclusive
               onChange={(_, v) => v && setTaskViewMode(v)}
             >
-              <ToggleButton value="list">Список</ToggleButton>
-              <ToggleButton value="kanban">Канбан</ToggleButton>
-              <ToggleButton value="calendar">Календарь</ToggleButton>
+              <ToggleButton value="list">РЎРїРёСЃРѕРє</ToggleButton>
+              <ToggleButton value="kanban">РљР°РЅР±Р°РЅ</ToggleButton>
+              <ToggleButton value="calendar">РљР°Р»РµРЅРґР°СЂСЊ</ToggleButton>
             </ToggleButtonGroup>
             <Typography variant="caption" color="text.secondary">
-              В канбане перетащите карточку на другую колонку, чтобы сменить статус.
+              Р’ РєР°РЅР±Р°РЅРµ РїРµСЂРµС‚Р°С‰РёС‚Рµ РєР°СЂС‚РѕС‡РєСѓ РЅР° РґСЂСѓРіСѓСЋ РєРѕР»РѕРЅРєСѓ, С‡С‚РѕР±С‹ СЃРјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ.
             </Typography>
           </Stack>
 
           {taskViewMode !== 'list' && taskListTotal > OWNER_WS_TASKS_FETCH_CAP && (
             <Alert severity="warning">
-              Загружено не более {OWNER_WS_TASKS_FETCH_CAP} задач при текущих фильтрах (всего по фильтру: {taskListTotal}
-              ). Уточните фильтры или переключитесь в режим «Список» с пагинацией.
+              Р—Р°РіСЂСѓР¶РµРЅРѕ РЅРµ Р±РѕР»РµРµ {OWNER_WS_TASKS_FETCH_CAP} Р·Р°РґР°С‡ РїСЂРё С‚РµРєСѓС‰РёС… С„РёР»СЊС‚СЂР°С… (РІСЃРµРіРѕ РїРѕ С„РёР»СЊС‚СЂСѓ: {taskListTotal}
+              ). РЈС‚РѕС‡РЅРёС‚Рµ С„РёР»СЊС‚СЂС‹ РёР»Рё РїРµСЂРµРєР»СЋС‡РёС‚РµСЃСЊ РІ СЂРµР¶РёРј В«РЎРїРёСЃРѕРєВ» СЃ РїР°РіРёРЅР°С†РёРµР№.
             </Alert>
           )}
 
@@ -2716,35 +3586,35 @@ const OwnerWorkspacePage: React.FC = () => {
                     }}
                   />
                 }
-                label="Все на странице"
+                label="Р’СЃРµ РЅР° СЃС‚СЂР°РЅРёС†Рµ"
               />
-              <Typography variant="body2">{selectedTaskIds.length} выбрано</Typography>
+              <Typography variant="body2">{selectedTaskIds.length} РІС‹Р±СЂР°РЅРѕ</Typography>
               <TextField
                 select
                 size="small"
-                label="Статус"
+                label="РЎС‚Р°С‚СѓСЃ"
                 sx={{ minWidth: 160 }}
                 value={bulkStatus}
                 onChange={(e) => setBulkStatus(e.target.value)}
               >
-                <MenuItem value="">Не менять</MenuItem>
-                {OWNER_WS_STATUSES.map((s) => (
+                <MenuItem value="">РќРµ РјРµРЅСЏС‚СЊ</MenuItem>
+                {enabledStatuses.map((s) => (
                   <MenuItem key={s} value={s}>
-                    {STATUS_LABELS[s]}
+                    {statusLabels[s]}
                   </MenuItem>
                 ))}
               </TextField>
               <TextField
                 select
                 size="small"
-                label="Исполнитель"
+                label="РСЃРїРѕР»РЅРёС‚РµР»СЊ"
                 sx={{ minWidth: 200 }}
                 value={bulkAssigneeMode}
                 onChange={(e) => setBulkAssigneeMode(e.target.value as 'skip' | 'set' | 'clear')}
               >
-                <MenuItem value="skip">Не менять</MenuItem>
-                <MenuItem value="set">Назначить…</MenuItem>
-                <MenuItem value="clear">Снять исполнителя</MenuItem>
+                <MenuItem value="skip">РќРµ РјРµРЅСЏС‚СЊ</MenuItem>
+                <MenuItem value="set">РќР°Р·РЅР°С‡РёС‚СЊвЂ¦</MenuItem>
+                <MenuItem value="clear">РЎРЅСЏС‚СЊ РёСЃРїРѕР»РЅРёС‚РµР»СЏ</MenuItem>
               </TextField>
               {bulkAssigneeMode === 'set' && (
                 <Autocomplete
@@ -2754,26 +3624,26 @@ const OwnerWorkspacePage: React.FC = () => {
                   getOptionLabel={(o) => o.full_name}
                   value={userOptions.find((u) => u.id === bulkAssigneeUserId) || null}
                   onChange={(_, v) => setBulkAssigneeUserId(v ? v.id : '')}
-                  renderInput={(params) => <TextField {...params} label="Кому" />}
+                  renderInput={(params) => <TextField {...params} label="РљРѕРјСѓ" />}
                 />
               )}
               <TextField
                 select
                 size="small"
-                label="Приоритет"
+                label="РџСЂРёРѕСЂРёС‚РµС‚"
                 sx={{ minWidth: 160 }}
                 value={bulkPriority}
                 onChange={(e) => setBulkPriority(e.target.value)}
               >
-                <MenuItem value="">Не менять</MenuItem>
-                {OWNER_WS_PRIORITIES.map((p) => (
+                <MenuItem value="">РќРµ РјРµРЅСЏС‚СЊ</MenuItem>
+                {enabledPriorities.map((p) => (
                   <MenuItem key={p} value={p}>
-                    {PRIORITY_LABELS[p]}
+                    {priorityLabels[p]}
                   </MenuItem>
                 ))}
               </TextField>
               <Button variant="contained" disabled={selectedTaskIds.length === 0} onClick={applyBulkTaskUpdate}>
-                Применить к выбранным
+                РџСЂРёРјРµРЅРёС‚СЊ Рє РІС‹Р±СЂР°РЅРЅС‹Рј
               </Button>
             </Stack>
           )}
@@ -2795,10 +3665,10 @@ const OwnerWorkspacePage: React.FC = () => {
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="subtitle2" gutterBottom>
-                      Пока нет задач
+                      РџРѕРєР° РЅРµС‚ Р·Р°РґР°С‡
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Создайте первую задачу формой выше или измените фильтры и нажмите «Применить».
+                      РЎРѕР·РґР°Р№С‚Рµ РїРµСЂРІСѓСЋ Р·Р°РґР°С‡Сѓ С„РѕСЂРјРѕР№ РІС‹С€Рµ РёР»Рё РёР·РјРµРЅРёС‚Рµ С„РёР»СЊС‚СЂС‹ Рё РЅР°Р¶РјРёС‚Рµ В«РџСЂРёРјРµРЅРёС‚СЊВ».
                     </Typography>
                   </CardContent>
                 </Card>
@@ -2814,8 +3684,8 @@ const OwnerWorkspacePage: React.FC = () => {
                   setTaskListPage(0);
                 }}
                 rowsPerPageOptions={[10, 25, 50, 100]}
-                labelRowsPerPage="На странице:"
-                labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count !== -1 ? count : `более ${to}`}`}
+                labelRowsPerPage="РќР° СЃС‚СЂР°РЅРёС†Рµ:"
+                labelDisplayedRows={({ from, to, count }) => `${from}вЂ“${to} РёР· ${count !== -1 ? count : `Р±РѕР»РµРµ ${to}`}`}
               />
             </Stack>
           ) : taskViewMode === 'kanban' ? (
@@ -2860,13 +3730,13 @@ const OwnerWorkspacePage: React.FC = () => {
             <Card>
               <CardContent>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                  <IconButton aria-label="Предыдущий месяц" onClick={() => setCalendarMonth((d) => startOfMonth(new Date(d.getFullYear(), d.getMonth() - 1, 1)))}>
+                  <IconButton aria-label="РџСЂРµРґС‹РґСѓС‰РёР№ РјРµСЃСЏС†" onClick={() => setCalendarMonth((d) => startOfMonth(new Date(d.getFullYear(), d.getMonth() - 1, 1)))}>
                     <ChevronLeftIcon />
                   </IconButton>
                   <Typography variant="h6">
                     {format(calendarMonth, 'LLLL yyyy', { locale: ru })}
                   </Typography>
-                  <IconButton aria-label="Следующий месяц" onClick={() => setCalendarMonth((d) => startOfMonth(new Date(d.getFullYear(), d.getMonth() + 1, 1)))}>
+                  <IconButton aria-label="РЎР»РµРґСѓСЋС‰РёР№ РјРµСЃСЏС†" onClick={() => setCalendarMonth((d) => startOfMonth(new Date(d.getFullYear(), d.getMonth() + 1, 1)))}>
                     <ChevronRightIcon />
                   </IconButton>
                 </Stack>
@@ -2913,7 +3783,7 @@ const OwnerWorkspacePage: React.FC = () => {
                             <Chip
                               key={t.id}
                               size="small"
-                              label={t.title.length > 22 ? `${t.title.slice(0, 22)}…` : t.title}
+                              label={t.title.length > 22 ? `${t.title.slice(0, 22)}вЂ¦` : t.title}
                               onClick={() => openTaskDialog(t)}
                               sx={{ height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
                             />
@@ -2938,11 +3808,11 @@ const OwnerWorkspacePage: React.FC = () => {
         <Stack spacing={2}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
             <Button variant="outlined" onClick={() => void syncMaxIntoWorkspace()}>
-              Импорт MAX в переписки
+              РРјРїРѕСЂС‚ MAX РІ РїРµСЂРµРїРёСЃРєРё
             </Button>
             <Typography variant="caption" color="text.secondary">
-              Исходящие из max_messages → сообщения контакта по совпадению нормализованного телефона (дубликаты по id
-              пропускаются).
+              РСЃС…РѕРґСЏС‰РёРµ РёР· max_messages в†’ СЃРѕРѕР±С‰РµРЅРёСЏ РєРѕРЅС‚Р°РєС‚Р° РїРѕ СЃРѕРІРїР°РґРµРЅРёСЋ РЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅРѕРіРѕ С‚РµР»РµС„РѕРЅР° (РґСѓР±Р»РёРєР°С‚С‹ РїРѕ id
+              РїСЂРѕРїСѓСЃРєР°СЋС‚СЃСЏ).
             </Typography>
           </Stack>
           <Grid container spacing={2} alignItems="stretch">
@@ -2950,12 +3820,12 @@ const OwnerWorkspacePage: React.FC = () => {
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 360 }}>
                   <Typography variant="h6" gutterBottom>
-                    Диалоги
+                    Р”РёР°Р»РѕРіРё
                   </Typography>
                   <TextField
                     size="small"
                     fullWidth
-                    placeholder="Поиск по имени или тексту…"
+                    placeholder="РџРѕРёСЃРє РїРѕ РёРјРµРЅРё РёР»Рё С‚РµРєСЃС‚СѓвЂ¦"
                     value={commsDialogSearch}
                     onChange={(e) => setCommsDialogSearch(e.target.value)}
                     sx={{ mb: 1 }}
@@ -2969,13 +3839,13 @@ const OwnerWorkspacePage: React.FC = () => {
                   />
                   <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
                     {conversationsFiltered.length === conversations.length
-                      ? `${conversations.length} диалогов`
-                      : `Найдено ${conversationsFiltered.length} из ${conversations.length}`}
+                      ? `${conversations.length} РґРёР°Р»РѕРіРѕРІ`
+                      : `РќР°Р№РґРµРЅРѕ ${conversationsFiltered.length} РёР· ${conversations.length}`}
                   </Typography>
                   <Stack spacing={1} sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                     {conversationsFiltered.length === 0 && (
                       <Typography variant="body2" color="text.secondary">
-                        {conversations.length === 0 ? 'Нет переписок с сообщениями.' : 'Ничего не найдено.'}
+                        {conversations.length === 0 ? 'РќРµС‚ РїРµСЂРµРїРёСЃРѕРє СЃ СЃРѕРѕР±С‰РµРЅРёСЏРјРё.' : 'РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ.'}
                       </Typography>
                     )}
                     {conversationsFiltered.map((c) => (
@@ -2994,7 +3864,7 @@ const OwnerWorkspacePage: React.FC = () => {
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography variant="subtitle2">{c.contact_name}</Typography>
                             <Typography variant="caption" color="text.secondary" noWrap display="block">
-                              {c.last_message_text || '—'}
+                              {c.last_message_text || 'вЂ”'}
                             </Typography>
                             {c.last_message_at ? (
                               <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
@@ -3025,13 +3895,13 @@ const OwnerWorkspacePage: React.FC = () => {
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 360 }}>
                   <Typography variant="h6" gutterBottom>
                     {commsContactId
-                      ? `Переписка · ${commsSelectedContact?.full_name ?? `контакт #${commsContactId}`}`
-                      : 'Выберите диалог слева'}
+                      ? `РџРµСЂРµРїРёСЃРєР° В· ${commsSelectedContact?.full_name ?? `РєРѕРЅС‚Р°РєС‚ #${commsContactId}`}`
+                      : 'Р’С‹Р±РµСЂРёС‚Рµ РґРёР°Р»РѕРі СЃР»РµРІР°'}
                   </Typography>
                   <TextField
                     size="small"
                     fullWidth
-                    placeholder="Поиск по сообщениям…"
+                    placeholder="РџРѕРёСЃРє РїРѕ СЃРѕРѕР±С‰РµРЅРёСЏРјвЂ¦"
                     value={commsThreadSearch}
                     onChange={(e) => setCommsThreadSearch(e.target.value)}
                     disabled={!commsContactId}
@@ -3046,13 +3916,13 @@ const OwnerWorkspacePage: React.FC = () => {
                   />
                   {commsContactId && commsThreadSearch.trim() && (
                     <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-                      Показано {commsMessagesFiltered.length} из {commsMessages.length}
+                      РџРѕРєР°Р·Р°РЅРѕ {commsMessagesFiltered.length} РёР· {commsMessages.length}
                     </Typography>
                   )}
                   <Stack spacing={1} sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                     {!commsContactId && (
                       <Typography variant="body2" color="text.secondary">
-                        Лента сообщений появится после выбора контакта.
+                        Р›РµРЅС‚Р° СЃРѕРѕР±С‰РµРЅРёР№ РїРѕСЏРІРёС‚СЃСЏ РїРѕСЃР»Рµ РІС‹Р±РѕСЂР° РєРѕРЅС‚Р°РєС‚Р°.
                       </Typography>
                     )}
                     {commsContactId &&
@@ -3068,21 +3938,22 @@ const OwnerWorkspacePage: React.FC = () => {
                           }}
                         >
                           <Typography variant="caption" color="text.secondary">
-                            {m.direction} · {m.created_at ? new Date(m.created_at).toLocaleString('ru-RU') : ''}
+                            {m.direction} В· {m.created_at ? new Date(m.created_at).toLocaleString('ru-RU') : ''}
                           </Typography>
                           <Typography variant="body2">{m.text}</Typography>
                           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
                             <Button
                               size="small"
+                              disabled={!canEditContactContentUi(m.contact_id)}
                               onClick={() => {
-                                setMessageTaskTitle(m.text.slice(0, 80) + (m.text.length > 80 ? '…' : ''));
+                                setMessageTaskTitle(m.text.slice(0, 80) + (m.text.length > 80 ? 'вЂ¦' : ''));
                                 setMessageTaskDialog({ message: m });
                               }}
                             >
-                              Задача из сообщения
+                              Р—Р°РґР°С‡Р° РёР· СЃРѕРѕР±С‰РµРЅРёСЏ
                             </Button>
                             <Button size="small" color="secondary" onClick={() => openLinkToTaskDialog(m)}>
-                              К существующей задаче
+                              Рљ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµР№ Р·Р°РґР°С‡Рµ
                             </Button>
                           </Stack>
                         </Box>
@@ -3095,16 +3966,16 @@ const OwnerWorkspacePage: React.FC = () => {
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
-                    Контекст
+                    РљРѕРЅС‚РµРєСЃС‚
                   </Typography>
                   {!commsContactId && (
                     <Typography variant="body2" color="text.secondary">
-                      Выберите диалог, чтобы увидеть карточку контакта и быстрые действия.
+                      Р’С‹Р±РµСЂРёС‚Рµ РґРёР°Р»РѕРі, С‡С‚РѕР±С‹ СѓРІРёРґРµС‚СЊ РєР°СЂС‚РѕС‡РєСѓ РєРѕРЅС‚Р°РєС‚Р° Рё Р±С‹СЃС‚СЂС‹Рµ РґРµР№СЃС‚РІРёСЏ.
                     </Typography>
                   )}
                   {commsContactId && (
                     <Stack spacing={1.5}>
-                      <Typography variant="subtitle1">{commsSelectedContact?.full_name ?? `Контакт #${commsContactId}`}</Typography>
+                      <Typography variant="subtitle1">{commsSelectedContact?.full_name ?? `РљРѕРЅС‚Р°РєС‚ #${commsContactId}`}</Typography>
                       {commsSelectedContact?.phone && (
                         <Typography variant="body2" color="text.secondary">
                           {commsSelectedContact.phone}
@@ -3116,11 +3987,11 @@ const OwnerWorkspacePage: React.FC = () => {
                         </Typography>
                       )}
                       <Button variant="contained" size="small" sx={{ alignSelf: 'flex-start' }} onClick={() => void openCommsContactCard()}>
-                        Открыть карточку контакта
+                        РћС‚РєСЂС‹С‚СЊ РєР°СЂС‚РѕС‡РєСѓ РєРѕРЅС‚Р°РєС‚Р°
                       </Button>
                       <Divider />
                       <Typography variant="caption" color="text.secondary">
-                        Непрочитанные в API пока не учитываются (поле зарезервировано под будущую синхронизацию).
+                        РќРµРїСЂРѕС‡РёС‚Р°РЅРЅС‹Рµ РІ API РїРѕРєР° РЅРµ СѓС‡РёС‚С‹РІР°СЋС‚СЃСЏ (РїРѕР»Рµ Р·Р°СЂРµР·РµСЂРІРёСЂРѕРІР°РЅРѕ РїРѕРґ Р±СѓРґСѓС‰СѓСЋ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЋ).
                       </Typography>
                     </Stack>
                   )}
@@ -3135,20 +4006,20 @@ const OwnerWorkspacePage: React.FC = () => {
         <Card variant="outlined">
           <CardContent>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
-              <Typography variant="subtitle1">Все уведомления</Typography>
+              <Typography variant="subtitle1">Р’СЃРµ СѓРІРµРґРѕРјР»РµРЅРёСЏ</Typography>
               <Button size="small" variant="outlined" onClick={() => void loadNotifications(200)}>
-                Обновить
+                РћР±РЅРѕРІРёС‚СЊ
               </Button>
               <Typography variant="caption" color="text.secondary">
-                Дедлайны — при открытии списка; назначения, комментарии, обновления задач и входящие по контакту — по
-                событиям.
+                Р”РµРґР»Р°Р№РЅС‹ вЂ” РїСЂРё РѕС‚РєСЂС‹С‚РёРё СЃРїРёСЃРєР°; РЅР°Р·РЅР°С‡РµРЅРёСЏ, РєРѕРјРјРµРЅС‚Р°СЂРёРё, РѕР±РЅРѕРІР»РµРЅРёСЏ Р·Р°РґР°С‡ Рё РІС…РѕРґСЏС‰РёРµ РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ вЂ” РїРѕ
+                СЃРѕР±С‹С‚РёСЏРј.
               </Typography>
             </Stack>
             <Stack spacing={1} sx={{ maxHeight: 640, overflow: 'auto' }}>
               {(notifEnvelope?.items || []).length === 0 && (
                 <Typography variant="body2" color="text.secondary">
-                  Пока пусто. Здесь: просрочки и дедлайны, назначения, комментарии и обновления задач, новые входящие по
-                  контактам (если вы вовлечены в задачи или проекты контакта).
+                  РџРѕРєР° РїСѓСЃС‚Рѕ. Р—РґРµСЃСЊ: РїСЂРѕСЃСЂРѕС‡РєРё Рё РґРµРґР»Р°Р№РЅС‹, РЅР°Р·РЅР°С‡РµРЅРёСЏ, РєРѕРјРјРµРЅС‚Р°СЂРёРё Рё РѕР±РЅРѕРІР»РµРЅРёСЏ Р·Р°РґР°С‡, РЅРѕРІС‹Рµ РІС…РѕРґСЏС‰РёРµ РїРѕ
+                  РєРѕРЅС‚Р°РєС‚Р°Рј (РµСЃР»Рё РІС‹ РІРѕРІР»РµС‡РµРЅС‹ РІ Р·Р°РґР°С‡Рё РёР»Рё РїСЂРѕРµРєС‚С‹ РєРѕРЅС‚Р°РєС‚Р°).
                 </Typography>
               )}
               {(notifEnvelope?.items || []).map((n) => (
@@ -3156,7 +4027,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
                       <Chip size="small" label={OWNER_WS_NOTIF_KIND_LABELS[n.kind] || n.kind} />
-                      {!n.read_at && <Chip size="small" color="warning" label="Новое" />}
+                      {!n.read_at && <Chip size="small" color="warning" label="РќРѕРІРѕРµ" />}
                       <Typography variant="caption" color="text.secondary">
                         {n.created_at ? new Date(n.created_at).toLocaleString('ru-RU') : ''}
                       </Typography>
@@ -3168,12 +4039,12 @@ const OwnerWorkspacePage: React.FC = () => {
                     <Stack direction="row" spacing={1} flexWrap="wrap">
                       {n.task_id != null && (
                         <Button size="small" variant="contained" onClick={() => void openSearchHitTask(n.task_id!)}>
-                          Открыть задачу
+                          РћС‚РєСЂС‹С‚СЊ Р·Р°РґР°С‡Сѓ
                         </Button>
                       )}
                       {n.contact_id != null && (
                         <Button size="small" variant="outlined" onClick={() => void openNotificationComms(n.contact_id!)}>
-                          Переписка
+                          РџРµСЂРµРїРёСЃРєР°
                         </Button>
                       )}
                       {!n.read_at && (
@@ -3186,12 +4057,12 @@ const OwnerWorkspacePage: React.FC = () => {
                                 await ownerWorkspaceApi.markNotificationRead(n.id);
                                 await loadNotifications(200);
                               } catch (err: unknown) {
-                                setError(extractApiError(err, 'Не удалось отметить прочитанным'));
+                                setError(extractApiError(err, 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РјРµС‚РёС‚СЊ РїСЂРѕС‡РёС‚Р°РЅРЅС‹Рј'));
                               }
                             })();
                           }}
                         >
-                          Прочитано
+                          РџСЂРѕС‡РёС‚Р°РЅРѕ
                         </Button>
                       )}
                     </Stack>
@@ -3207,30 +4078,64 @@ const OwnerWorkspacePage: React.FC = () => {
         <Card variant="outlined">
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              Настройки задачника
+              РќР°СЃС‚СЂРѕР№РєРё Р·Р°РґР°С‡РЅРёРєР°
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Параметры ниже сохраняются в вашем профиле и подставляются при следующем открытии Owner workspace. Изменения
-              на других вкладках (вид задач, сводка) сразу видны в интерфейсе; нажмите «Сохранить», чтобы зафиксировать их
-              как умолчания.
+              РџР°СЂР°РјРµС‚СЂС‹ РЅРёР¶Рµ СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ РІ РІР°С€РµРј РїСЂРѕС„РёР»Рµ Рё РїРѕРґСЃС‚Р°РІР»СЏСЋС‚СЃСЏ РїСЂРё СЃР»РµРґСѓСЋС‰РµРј РѕС‚РєСЂС‹С‚РёРё Owner workspace. РР·РјРµРЅРµРЅРёСЏ
+              РЅР° РґСЂСѓРіРёС… РІРєР»Р°РґРєР°С… (РІРёРґ Р·Р°РґР°С‡, СЃРІРѕРґРєР°) СЃСЂР°Р·Сѓ РІРёРґРЅС‹ РІ РёРЅС‚РµСЂС„РµР№СЃРµ; РЅР°Р¶РјРёС‚Рµ В«РЎРѕС…СЂР°РЅРёС‚СЊВ», С‡С‚РѕР±С‹ Р·Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РёС…
+              РєР°Рє СѓРјРѕР»С‡Р°РЅРёСЏ.
             </Typography>
+            <Card variant="outlined" sx={{ mb: 3 }}>
+              <CardContent>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle1">РњР°С‚СЂРёС†Р° СЂРѕР»РµР№ Рё РїСЂР°РІ</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    РќРёР¶Рµ Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅС‹ С‚РµРєСѓС‰РёРµ СЂРѕР»Рё owner workspace Рё РёС… РѕР¶РёРґР°РµРјС‹Р№ СѓСЂРѕРІРµРЅСЊ РґРѕСЃС‚СѓРїР°. Р­С‚Рѕ РѕРїРѕСЂРЅР°СЏ СЃС…РµРјР° РґР»СЏ РїСЂРѕРґСѓРєС‚Р° Рё
+                    РґР»СЏ РґР°Р»СЊРЅРµР№С€РµР№ РґРѕСЂР°Р±РѕС‚РєРё permission matrix.
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {OWNER_WS_ACCESS_MATRIX.map((item) => (
+                      <Grid key={item.role} item xs={12} md={6}>
+                        <Card variant="outlined" sx={{ height: '100%' }}>
+                          <CardContent>
+                            <Stack spacing={1}>
+                              <Typography variant="subtitle2">{item.role}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {item.scope}
+                              </Typography>
+                              <Stack spacing={0.5}>
+                                {item.capabilities.map((capability) => (
+                                  <Typography key={capability} variant="body2" color="text.secondary">
+                                    вЂў {capability}
+                                  </Typography>
+                                ))}
+                              </Stack>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Stack>
+              </CardContent>
+            </Card>
             <Stack spacing={2} sx={{ maxWidth: 480 }}>
               <TextField
                 select
                 fullWidth
-                label="Вид списка задач по умолчанию"
+                label="Р’РёРґ СЃРїРёСЃРєР° Р·Р°РґР°С‡ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ"
                 value={taskViewMode}
                 onChange={(e) => setTaskViewMode(e.target.value as 'list' | 'kanban' | 'calendar')}
               >
-                <MenuItem value="list">Список</MenuItem>
-                <MenuItem value="kanban">Канбан</MenuItem>
-                <MenuItem value="calendar">Календарь</MenuItem>
+                <MenuItem value="list">РЎРїРёСЃРѕРє</MenuItem>
+                <MenuItem value="kanban">РљР°РЅР±Р°РЅ</MenuItem>
+                <MenuItem value="calendar">РљР°Р»РµРЅРґР°СЂСЊ</MenuItem>
               </TextField>
               <TextField
                 fullWidth
                 type="number"
                 inputProps={{ min: 5, max: 100 }}
-                label="Строк на странице (режим «Список», 5–100)"
+                label="РЎС‚СЂРѕРє РЅР° СЃС‚СЂР°РЅРёС†Рµ (СЂРµР¶РёРј В«РЎРїРёСЃРѕРєВ», 5вЂ“100)"
                 value={taskListRowsPerPage}
                 onChange={(e) => {
                   const n = parseInt(e.target.value, 10);
@@ -3241,30 +4146,212 @@ const OwnerWorkspacePage: React.FC = () => {
               <TextField
                 select
                 fullWidth
-                label="Сводка по дедлайнам: окно (часы)"
+                label="РЎРІРѕРґРєР° РїРѕ РґРµРґР»Р°Р№РЅР°Рј: РѕРєРЅРѕ (С‡Р°СЃС‹)"
                 value={String(digestDueHours)}
                 onChange={(e) => setDigestDueHours(Number(e.target.value))}
               >
                 {[8, 24, 48, 72, 168, 336].map((n) => (
                   <MenuItem key={n} value={String(n)}>
-                    {n === 168 ? '7 дней (168 ч)' : `${n} ч`}
+                    {n === 168 ? '7 РґРЅРµР№ (168 С‡)' : `${n} С‡`}
                   </MenuItem>
                 ))}
               </TextField>
               <TextField
                 select
                 fullWidth
-                label="Сводка: область"
+                label="РЎРІРѕРґРєР°: РѕР±Р»Р°СЃС‚СЊ"
                 value={digestScope}
                 onChange={(e) => setDigestScope(e.target.value as 'all' | 'mine')}
               >
-                <MenuItem value="all">Все доступные задачи</MenuItem>
-                <MenuItem value="mine">Только мои (исполнитель — я)</MenuItem>
+                <MenuItem value="all">Р’СЃРµ РґРѕСЃС‚СѓРїРЅС‹Рµ Р·Р°РґР°С‡Рё</MenuItem>
+                <MenuItem value="mine">РўРѕР»СЊРєРѕ РјРѕРё (РёСЃРїРѕР»РЅРёС‚РµР»СЊ вЂ” СЏ)</MenuItem>
               </TextField>
+              <Divider />
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Настройки уведомлений
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Эти переключатели управляют созданием новых in-app уведомлений и, если включён email-канал, их отправкой на
+                  вашу почту.
+                </Typography>
+                <Stack spacing={0.5}>
+                  <FormControlLabel
+                    control={<Checkbox checked={notifyEmailEnabled} onChange={(_, checked) => setNotifyEmailEnabled(checked)} />}
+                    label="Дублировать включённые уведомления на email"
+                  />
+                  <FormControlLabel
+                    control={<Checkbox checked={notifyTaskOverdue} onChange={(_, checked) => setNotifyTaskOverdue(checked)} />}
+                    label="Просроченные задачи"
+                  />
+                  <FormControlLabel
+                    control={<Checkbox checked={notifyTaskDueSoon} onChange={(_, checked) => setNotifyTaskDueSoon(checked)} />}
+                    label="Скоро дедлайн"
+                  />
+                  <FormControlLabel
+                    control={<Checkbox checked={notifyTaskAssigned} onChange={(_, checked) => setNotifyTaskAssigned(checked)} />}
+                    label="Назначение задачи"
+                  />
+                  <FormControlLabel
+                    control={<Checkbox checked={notifyTaskComment} onChange={(_, checked) => setNotifyTaskComment(checked)} />}
+                    label="Комментарии к задаче"
+                  />
+                  <FormControlLabel
+                    control={<Checkbox checked={notifyTaskUpdated} onChange={(_, checked) => setNotifyTaskUpdated(checked)} />}
+                    label="Обновления задачи"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={notifyContactIncomingMessage}
+                        onChange={(_, checked) => setNotifyContactIncomingMessage(checked)}
+                      />
+                    }
+                    label="Входящие сообщения по контакту"
+                  />
+                  <FormControlLabel
+                    control={<Checkbox checked={notifyTaskMention} onChange={(_, checked) => setNotifyTaskMention(checked)} />}
+                    label="Упоминания в комментариях"
+                  />
+                </Stack>
+              </Box>
               <Button variant="contained" disabled={settingsSaving} onClick={() => void saveWorkspaceSettings()}>
-                {settingsSaving ? 'Сохранение…' : 'Сохранить настройки'}
+                {settingsSaving ? 'РЎРѕС…СЂР°РЅРµРЅРёРµвЂ¦' : 'РЎРѕС…СЂР°РЅРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё'}
               </Button>
             </Stack>
+            {isWorkspaceFullAccess && taskConfigDraft && (
+              <>
+                <Divider sx={{ my: 3 }} />
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="h6" gutterBottom>
+                      РЎРёСЃС‚РµРјРЅС‹Рµ РЅР°Р·РІР°РЅРёСЏ Р·Р°РґР°С‡
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Р­С‚Рё РїРѕРґРїРёСЃРё РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ РІ СЃРїРёСЃРєР°С… Р·Р°РґР°С‡, РєР°РЅР±Р°РЅРµ, РєР°СЂС‚РѕС‡РєР°С… Рё С„РёР»СЊС‚СЂР°С….
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="subtitle2" gutterBottom>
+                            РЎС‚Р°С‚СѓСЃС‹
+                          </Typography>
+                          <Stack spacing={1.5}>
+                            {(taskConfigDraft?.statuses ?? []).map((item, index) => (
+                              <Box key={item.key}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  label={item.key}
+                                  value={item.label}
+                                  onChange={(e) =>
+                                    setTaskConfigDraft((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            statuses: prev.statuses.map((current, currentIndex) =>
+                                              currentIndex === index ? { ...current, label: e.target.value } : current
+                                            ),
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                />
+                                <FormControlLabel
+                                  sx={{ mt: 0.5 }}
+                                  control={
+                                    <Checkbox
+                                      checked={item.enabled !== false}
+                                      onChange={(e) =>
+                                        setTaskConfigDraft((prev) =>
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                statuses: prev.statuses.map((current, currentIndex) =>
+                                                  currentIndex === index ? { ...current, enabled: e.target.checked } : current
+                                                ),
+                                              }
+                                            : prev
+                                        )
+                                      }
+                                    />
+                                  }
+                                  label="РџРѕРєР°Р·С‹РІР°С‚СЊ РІ РёРЅС‚РµСЂС„РµР№СЃРµ"
+                                />
+                              </Box>
+                            ))}
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="subtitle2" gutterBottom>
+                            РџСЂРёРѕСЂРёС‚РµС‚С‹
+                          </Typography>
+                          <Stack spacing={1.5}>
+                            {(taskConfigDraft?.priorities ?? []).map((item, index) => (
+                              <Box key={item.key}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  label={item.key}
+                                  value={item.label}
+                                  onChange={(e) =>
+                                    setTaskConfigDraft((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            priorities: prev.priorities.map((current, currentIndex) =>
+                                              currentIndex === index ? { ...current, label: e.target.value } : current
+                                            ),
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                />
+                                <FormControlLabel
+                                  sx={{ mt: 0.5 }}
+                                  control={
+                                    <Checkbox
+                                      checked={item.enabled !== false}
+                                      onChange={(e) =>
+                                        setTaskConfigDraft((prev) =>
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                priorities: prev.priorities.map((current, currentIndex) =>
+                                                  currentIndex === index ? { ...current, enabled: e.target.checked } : current
+                                                ),
+                                              }
+                                            : prev
+                                        )
+                                      }
+                                    />
+                                  }
+                                  label="РџРѕРєР°Р·С‹РІР°С‚СЊ РІ РёРЅС‚РµСЂС„РµР№СЃРµ"
+                                />
+                              </Box>
+                            ))}
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                    <Button variant="contained" disabled={taskConfigSaving} onClick={() => void saveWorkspaceTaskConfig()}>
+                      {taskConfigSaving ? 'РЎРѕС…СЂР°РЅРµРЅРёРµ...' : 'РЎРѕС…СЂР°РЅРёС‚СЊ РЅР°Р·РІР°РЅРёСЏ'}
+                    </Button>
+                    <Button variant="outlined" disabled={taskConfigSaving || !taskConfig} onClick={() => setTaskConfigDraft(taskConfig)}>
+                      РЎР±СЂРѕСЃРёС‚СЊ
+                    </Button>
+                  </Stack>
+                </Stack>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -3273,21 +4360,21 @@ const OwnerWorkspacePage: React.FC = () => {
         <Card>
           <CardContent>
             <Typography variant="subtitle2" gutterBottom>
-              История действий (аудит)
+              РСЃС‚РѕСЂРёСЏ РґРµР№СЃС‚РІРёР№ (Р°СѓРґРёС‚)
             </Typography>
             <Stack spacing={1} sx={{ maxHeight: 560, overflow: 'auto' }}>
               {historyLogs.length === 0 && (
                 <Typography variant="body2" color="text.secondary">
-                  Нет записей или ещё не загружено.
+                  РќРµС‚ Р·Р°РїРёСЃРµР№ РёР»Рё РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅРѕ.
                 </Typography>
               )}
               {historyLogs.map((h) => (
                 <Box key={h.id} sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
                   <Typography variant="caption" color="text.secondary" display="block">
-                    {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} · {userName(h.author_id)}
+                    {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} В· {userName(h.author_id)}
                   </Typography>
                   <Typography variant="body2">
-                    <strong>{h.entity_type}</strong> #{h.entity_id} — {h.action_type}
+                    <strong>{h.entity_type}</strong> #{h.entity_id} вЂ” {h.action_type}
                   </Typography>
                 </Box>
               ))}
@@ -3296,94 +4383,150 @@ const OwnerWorkspacePage: React.FC = () => {
         </Card>
       )}
 
-      {loading && <Typography sx={{ mt: 2 }}>Загрузка…</Typography>}
+      {loading && <Typography sx={{ mt: 2 }}>Р—Р°РіСЂСѓР·РєР°вЂ¦</Typography>}
 
-      <Dialog open={Boolean(projectDialog)} onClose={() => setProjectDialog(null)} maxWidth="md" fullWidth>
-        <DialogTitle>Проект: {projectDialog?.name}</DialogTitle>
+      <Dialog open={Boolean(projectDialog)} onClose={closeProjectDialog} maxWidth="md" fullWidth>
+        <DialogTitle>РџСЂРѕРµРєС‚: {projectDialog?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Всего задач: {projectDialog?.total_tasks_count ?? 0} · Активных: {projectDialog?.active_tasks_count ?? 0} ·
-              Завершённых: {projectDialog?.completed_tasks_count ?? 0} · Просрочено (активн.):{' '}
+              Р’СЃРµРіРѕ Р·Р°РґР°С‡: {projectDialog?.total_tasks_count ?? 0} В· РђРєС‚РёРІРЅС‹С…: {projectDialog?.active_tasks_count ?? 0} В·
+              Р—Р°РІРµСЂС€С‘РЅРЅС‹С…: {projectDialog?.completed_tasks_count ?? 0} В· РџСЂРѕСЃСЂРѕС‡РµРЅРѕ (Р°РєС‚РёРІРЅ.):{' '}
               {projectDialog?.overdue_tasks_count ?? 0}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Контакты: {projectDialog?.contacts_count ?? 0} · Подпроекты: {projectDialog?.subprojects_count ?? 0}
+              РљРѕРЅС‚Р°РєС‚С‹: {projectDialog?.contacts_count ?? 0} В· РџРѕРґРїСЂРѕРµРєС‚С‹: {projectDialog?.subprojects_count ?? 0}
               {projectDialog?.updated_at
-                ? ` · Обновлён: ${new Date(projectDialog.updated_at).toLocaleString('ru-RU')}`
+                ? ` В· РћР±РЅРѕРІР»С‘РЅ: ${new Date(projectDialog.updated_at).toLocaleString('ru-RU')}`
                 : ''}
             </Typography>
+            {!canEditProjectDialogContent && (
+              <Alert severity="info">
+                Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё РїСЂРѕРµРєС‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РР·РјРµРЅРµРЅРёРµ Р·Р°РґР°С‡ Рё РїСЂРёРІСЏР·РѕРє РєРѕРЅС‚Р°РєС‚РѕРІ РѕС‚РєР»СЋС‡РµРЅРѕ.
+              </Alert>
+            )}
             <Divider />
-            <Typography variant="subtitle2">Карточка проекта</Typography>
+            <Typography variant="subtitle2">РљР°СЂС‚РѕС‡РєР° РїСЂРѕРµРєС‚Р°</Typography>
             <TextField
               fullWidth
-              label="Название"
+              label="РќР°Р·РІР°РЅРёРµ"
               value={projectEditName}
               onChange={(e) => setProjectEditName(e.target.value)}
+              disabled={!canEditProjectDialogContent}
             />
             <TextField
               fullWidth
-              label="Описание"
+              label="РћРїРёСЃР°РЅРёРµ"
               multiline
               minRows={2}
               value={projectEditDescription}
               onChange={(e) => setProjectEditDescription(e.target.value)}
+              disabled={!canEditProjectDialogContent}
             />
             <TextField
               select
               fullWidth
-              label="Статус"
+              label="РЎС‚Р°С‚СѓСЃ"
               value={projectEditStatus}
               onChange={(e) => setProjectEditStatus(e.target.value)}
+              disabled={!canEditProjectDialogContent}
             >
-              <MenuItem value="active">Активный</MenuItem>
-              <MenuItem value="completed">Завершён</MenuItem>
-              <MenuItem value="archived">Архив</MenuItem>
+              <MenuItem value="active">РђРєС‚РёРІРЅС‹Р№</MenuItem>
+              <MenuItem value="completed">Р—Р°РІРµСЂС€С‘РЅ</MenuItem>
+              <MenuItem value="archived">РђСЂС…РёРІ</MenuItem>
             </TextField>
-            <Button variant="contained" size="small" sx={{ alignSelf: 'flex-start' }} onClick={() => void saveProjectDetails()}>
-              Сохранить карточку
-            </Button>
-            <Divider />
-            <Typography variant="subtitle2">Ответственный (владелец проекта)</Typography>
-            <Autocomplete
-              options={userOptions}
-              getOptionLabel={(o) => o.full_name}
-              value={userOptions.find((u) => u.id === projectDialog?.owner_id) || null}
-              onChange={(_, v) => void saveProjectOwner(v)}
-              renderInput={(params) => <TextField {...params} label="Пользователь" size="small" />}
-            />
-            <Typography variant="subtitle2">Задачи проекта</Typography>
             <Button
               variant="contained"
               size="small"
               sx={{ alignSelf: 'flex-start' }}
+              onClick={() => void saveProjectDetails()}
+              disabled={!canEditProjectDialogContent}
+            >
+              РЎРѕС…СЂР°РЅРёС‚СЊ РєР°СЂС‚РѕС‡РєСѓ
+            </Button>
+            <Divider />
+            <Typography variant="subtitle2">РћС‚РІРµС‚СЃС‚РІРµРЅРЅС‹Р№ (РІР»Р°РґРµР»РµС† РїСЂРѕРµРєС‚Р°)</Typography>
+            <Autocomplete
+              options={userOptions}
+              getOptionLabel={(o) => o.full_name}
+              value={userOptions.find((u) => u.id === projectDialog?.owner_id) || null}
+              disabled={!canEditProjectDialogContent}
+              onChange={(_, v) => void saveProjectOwner(v)}
+              renderInput={(params) => <TextField {...params} label="РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ" size="small" />}
+            />
+            {projectParticipantAnalyticsRows.length > 0 && (
+              <>
+                <Typography variant="subtitle2">Нагрузка участников проекта</Typography>
+                <Grid container spacing={1.5}>
+                  {projectParticipantAnalyticsRows.map((row) => (
+                    <Grid key={`project-analytics-${row.assigneeId == null ? 'unassigned' : row.assigneeId}`} item xs={12} md={6}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Stack spacing={1}>
+                            <Typography variant="subtitle2">{row.assigneeName}</Typography>
+                            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                              <Chip size="small" label={`Активных: ${row.activeCount}`} />
+                              <Chip size="small" color={row.overdueCount > 0 ? 'warning' : 'default'} label={`Просрочено: ${row.overdueCount}`} />
+                              <Chip size="small" color="success" variant="outlined" label={`Завершено: ${row.completedCount}`} />
+                            </Stack>
+                            <Typography variant="body2" color="text.secondary">
+                              Среднее время закрытия:{' '}
+                              <strong>{row.avgDaysToComplete != null ? `${row.avgDaysToComplete} дн.` : '—'}</strong>
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="text"
+                              sx={{ alignSelf: 'flex-start' }}
+                              onClick={() => {
+                                if (!projectDialog) return;
+                                closeProjectDialog();
+                                drillDownToAssigneeTasks(row.assigneeId, { projectId: projectDialog.id });
+                              }}
+                            >
+                              Открыть задачи участника
+                            </Button>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+                <Divider />
+              </>
+            )}
+            <Typography variant="subtitle2">Р—Р°РґР°С‡Рё РїСЂРѕРµРєС‚Р°</Typography>
+            <Button
+              variant="contained"
+              size="small"
+              sx={{ alignSelf: 'flex-start' }}
+              disabled={!canEditProjectDialogContent}
               onClick={() => {
                 if (!projectDialog) return;
                 setNewTaskProjectId(projectDialog.id);
                 handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
-                setProjectDialog(null);
+                closeProjectDialog();
               }}
             >
-              Создать задачу в этом проекте
+              РЎРѕР·РґР°С‚СЊ Р·Р°РґР°С‡Сѓ РІ СЌС‚РѕРј РїСЂРѕРµРєС‚Рµ
             </Button>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ sm: 'center' }}>
               <TextField
                 select
-                label="Статус"
+                label="РЎС‚Р°С‚СѓСЃ"
                 size="small"
                 sx={{ minWidth: 160 }}
                 value={projectDialogTaskStatus}
                 onChange={(e) => setProjectDialogTaskStatus(e.target.value)}
               >
-                <MenuItem value="">Все</MenuItem>
-                {OWNER_WS_STATUSES.map((st) => (
+                <MenuItem value="">Р’СЃРµ</MenuItem>
+                {enabledStatuses.map((st) => (
                   <MenuItem key={st} value={st}>
-                    {STATUS_LABELS[st] || st}
+                    {statusLabels[st] || st}
                   </MenuItem>
                 ))}
               </TextField>
               <TextField
-                label="Поиск по названию или №"
+                label="РџРѕРёСЃРє РїРѕ РЅР°Р·РІР°РЅРёСЋ РёР»Рё в„–"
                 size="small"
                 sx={{ minWidth: 200, flex: 1 }}
                 value={projectDialogTaskSearch}
@@ -3393,11 +4536,11 @@ const OwnerWorkspacePage: React.FC = () => {
             <Stack spacing={0.5} sx={{ maxHeight: 260, overflow: 'auto' }}>
               {projectDialogTasks.length === 0 ? (
                 <Typography variant="caption" color="text.secondary">
-                  Нет задач с привязкой к этому проекту.
+                  РќРµС‚ Р·Р°РґР°С‡ СЃ РїСЂРёРІСЏР·РєРѕР№ Рє СЌС‚РѕРјСѓ РїСЂРѕРµРєС‚Сѓ.
                 </Typography>
               ) : projectDialogTasksFiltered.length === 0 ? (
                 <Typography variant="caption" color="text.secondary">
-                  Нет задач по текущим фильтрам (всего загружено: {projectDialogTasks.length}).
+                  РќРµС‚ Р·Р°РґР°С‡ РїРѕ С‚РµРєСѓС‰РёРј С„РёР»СЊС‚СЂР°Рј (РІСЃРµРіРѕ Р·Р°РіСЂСѓР¶РµРЅРѕ: {projectDialogTasks.length}).
                 </Typography>
               ) : (
                 projectDialogTasksFiltered.slice(0, 80).map((t) => (
@@ -3408,10 +4551,10 @@ const OwnerWorkspacePage: React.FC = () => {
                     sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
                     onClick={() => {
                       void openTaskDialog(t);
-                      setProjectDialog(null);
+                      closeProjectDialog();
                     }}
                   >
-                    #{t.id} · {t.title.length > 48 ? `${t.title.slice(0, 48)}…` : t.title} ({STATUS_LABELS[t.status] || t.status})
+                    #{t.id} В· {t.title.length > 48 ? `${t.title.slice(0, 48)}вЂ¦` : t.title} ({statusLabels[t.status] || t.status})
                   </Button>
                 ))
               )}
@@ -3420,24 +4563,25 @@ const OwnerWorkspacePage: React.FC = () => {
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
                 fullWidth
-                label="Название подпроекта"
+                label="РќР°Р·РІР°РЅРёРµ РїРѕРґРїСЂРѕРµРєС‚Р°"
                 value={subprojectName}
                 onChange={(e) => setSubprojectName(e.target.value)}
+                disabled={!canEditProjectDialogContent}
               />
-              <Button variant="contained" onClick={createSubproject}>
-                Создать подпроект
+              <Button variant="contained" onClick={createSubproject} disabled={!canEditProjectDialogContent}>
+                РЎРѕР·РґР°С‚СЊ РїРѕРґРїСЂРѕРµРєС‚
               </Button>
             </Stack>
             <Divider />
-            <Typography variant="subtitle2">Дерево подпроектов</Typography>
+            <Typography variant="subtitle2">Р”РµСЂРµРІРѕ РїРѕРґРїСЂРѕРµРєС‚РѕРІ</Typography>
             <Typography variant="caption" color="text.secondary" display="block">
-              Перенос: владелец подпроекта или роль с полным доступом к модулю. Родитель можно выбрать среди видимых
-              проектов; циклы блокируются на сервере.
+              РџРµСЂРµРЅРѕСЃ: РІР»Р°РґРµР»РµС† РїРѕРґРїСЂРѕРµРєС‚Р° РёР»Рё СЂРѕР»СЊ СЃ РїРѕР»РЅС‹Рј РґРѕСЃС‚СѓРїРѕРј Рє РјРѕРґСѓР»СЋ. Р РѕРґРёС‚РµР»СЊ РјРѕР¶РЅРѕ РІС‹Р±СЂР°С‚СЊ СЃСЂРµРґРё РІРёРґРёРјС‹С…
+              РїСЂРѕРµРєС‚РѕРІ; С†РёРєР»С‹ Р±Р»РѕРєРёСЂСѓСЋС‚СЃСЏ РЅР° СЃРµСЂРІРµСЂРµ.
             </Typography>
             {subprojectTreeRooted.length === 0 ? (
               <Typography variant="caption" color="text.secondary">
-                Нет вложенных подпроектов. Создайте выше или перенесите сюда подпроект из другого проекта (сменив
-                родителя на «{projectDialog?.name} (текущий проект)»).
+                РќРµС‚ РІР»РѕР¶РµРЅРЅС‹С… РїРѕРґРїСЂРѕРµРєС‚РѕРІ. РЎРѕР·РґР°Р№С‚Рµ РІС‹С€Рµ РёР»Рё РїРµСЂРµРЅРµСЃРёС‚Рµ СЃСЋРґР° РїРѕРґРїСЂРѕРµРєС‚ РёР· РґСЂСѓРіРѕРіРѕ РїСЂРѕРµРєС‚Р° (СЃРјРµРЅРёРІ
+                СЂРѕРґРёС‚РµР»СЏ РЅР° В«{projectDialog?.name} (С‚РµРєСѓС‰РёР№ РїСЂРѕРµРєС‚)В»).
               </Typography>
             ) : (
               <Stack
@@ -3469,17 +4613,18 @@ const OwnerWorkspacePage: React.FC = () => {
             <Divider />
             <Autocomplete
               options={contactsCatalogSorted}
-              getOptionLabel={(o) => `${o.full_name} · ${o.phone}`}
+              getOptionLabel={(o) => `${o.full_name} В· ${o.phone}`}
               value={linkContactId}
               onChange={(_, v) => setLinkContactId(v)}
-              renderInput={(params) => <TextField {...params} label="Добавить контакт в проект" />}
+              disabled={!canEditProjectDialogContent}
+              renderInput={(params) => <TextField {...params} label="Р”РѕР±Р°РІРёС‚СЊ РєРѕРЅС‚Р°РєС‚ РІ РїСЂРѕРµРєС‚" />}
             />
-            <Button variant="outlined" onClick={linkContactToProject} disabled={!linkContactId}>
-              Привязать контакт
+            <Button variant="outlined" onClick={linkContactToProject} disabled={!linkContactId || !canEditProjectDialogContent}>
+              РџСЂРёРІСЏР·Р°С‚СЊ РєРѕРЅС‚Р°РєС‚
             </Button>
             {projectDialogLinkedContacts.length > 0 && (
               <>
-                <Typography variant="subtitle2">Контакты в проекте</Typography>
+                <Typography variant="subtitle2">РљРѕРЅС‚Р°РєС‚С‹ РІ РїСЂРѕРµРєС‚Рµ</Typography>
                 <Stack spacing={0.5} sx={{ maxHeight: 200, overflow: 'auto' }}>
                   {projectDialogLinkedContacts.map((c) => (
                     <Box
@@ -3495,12 +4640,13 @@ const OwnerWorkspacePage: React.FC = () => {
                       }}
                     >
                       <Typography variant="body2" sx={{ minWidth: 0 }}>
-                        {c.full_name} · {c.phone}
+                        {c.full_name} В· {c.phone}
                       </Typography>
                       <IconButton
                         size="small"
-                        aria-label="Убрать контакт из проекта"
-                        onClick={() => void removeContactFromProject(c.id)}
+                        aria-label="РЈР±СЂР°С‚СЊ РєРѕРЅС‚Р°РєС‚ РёР· РїСЂРѕРµРєС‚Р°"
+                        disabled={!canEditProjectDialogContent}
+                        onClick={() => requestRemoveContactFromProject(c.id)}
                       >
                         <DeleteOutlineIcon fontSize="small" />
                       </IconButton>
@@ -3509,14 +4655,16 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Stack>
               </>
             )}
-            <Typography variant="subtitle2">Участники проекта</Typography>
+            <Typography variant="subtitle2">РЈС‡Р°СЃС‚РЅРёРєРё РїСЂРѕРµРєС‚Р°</Typography>
             <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-              <strong>Менеджер</strong> ведёт состав (добавляет/исключает участников, но не других менеджеров).
-              Назначать менеджеров может <strong>владелец проекта</strong> или admin/owner портала.
+              <strong>РњРµРЅРµРґР¶РµСЂ</strong> РІРµРґС‘С‚ СЃРѕСЃС‚Р°РІ (РґРѕР±Р°РІР»СЏРµС‚/РёСЃРєР»СЋС‡Р°РµС‚ СѓС‡Р°СЃС‚РЅРёРєРѕРІ, РЅРѕ РЅРµ РґСЂСѓРіРёС… РјРµРЅРµРґР¶РµСЂРѕРІ).
+              РќР°Р·РЅР°С‡Р°С‚СЊ РјРµРЅРµРґР¶РµСЂРѕРІ РјРѕР¶РµС‚ <strong>РІР»Р°РґРµР»РµС† РїСЂРѕРµРєС‚Р°</strong> РёР»Рё admin/owner РїРѕСЂС‚Р°Р»Р°.
             </Typography>
             <Stack spacing={0.75}>
               {(projectDialog?.participants || []).map((pid) => {
-                const role = projectDialog?.participant_roles?.[String(pid)] === 'manager' ? 'manager' : 'member';
+                const rawRole = projectDialog?.participant_roles?.[String(pid)];
+                const role: OwnerWorkspaceProjectParticipantRole =
+                  rawRole === 'manager' || rawRole === 'observer' ? rawRole : 'member';
                 const canDel =
                   canManageProjectTeam &&
                   (isWorkspaceFullAccess || projectDialog?.owner_id === user?.id || role !== 'manager');
@@ -3524,24 +4672,34 @@ const OwnerWorkspacePage: React.FC = () => {
                   <Stack key={pid} direction="row" alignItems="center" spacing={1} flexWrap="wrap">
                     <Chip
                       size="small"
-                      label={`${userName(pid)} · ${role === 'manager' ? 'менеджер' : 'участник'}`}
+                      label={`${userName(pid)} В· ${OWNER_WS_PROJECT_PARTICIPANT_ROLE_LABELS[role]}`}
                       onDelete={canDel ? () => void removeProjectParticipantUser(pid) : undefined}
                     />
                     {canChangeParticipantRoles ? (
-                      <Button
+                      <TextField
+                        select
                         size="small"
-                        variant="text"
-                        onClick={() =>
-                          void patchProjectParticipantRole(pid, role === 'manager' ? 'member' : 'manager')
+                        label="Роль"
+                        sx={{ minWidth: 170 }}
+                        value={role}
+                        onChange={(e) =>
+                          void patchProjectParticipantRole(pid, e.target.value as OwnerWorkspaceProjectParticipantRole)
                         }
                       >
-                        {role === 'manager' ? 'Сделать участником' : 'Сделать менеджером'}
-                      </Button>
+                        <MenuItem value="member">Участник</MenuItem>
+                        <MenuItem value="manager">Менеджер</MenuItem>
+                        <MenuItem value="observer">Наблюдатель</MenuItem>
+                      </TextField>
                     ) : null}
                   </Stack>
                 );
               })}
             </Stack>
+            {canManageProjectTeam && !canChangeParticipantRoles ? (
+              <Alert severity="info">
+                Менеджер проекта может управлять составом команды, но не назначает роли manager и observer.
+              </Alert>
+            ) : null}
             {canManageProjectTeam ? (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
                 <Autocomplete
@@ -3550,23 +4708,24 @@ const OwnerWorkspacePage: React.FC = () => {
                   getOptionLabel={(o) => o.full_name}
                   value={participantToAdd}
                   onChange={(_, v) => setParticipantToAdd(v)}
-                  renderInput={(params) => <TextField {...params} label="Добавить участника" />}
+                  renderInput={(params) => <TextField {...params} label="Р”РѕР±Р°РІРёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР°" />}
                 />
                 {canChangeParticipantRoles ? (
                   <TextField
                     select
                     size="small"
-                    label="Роль"
+                    label="Р РѕР»СЊ"
                     sx={{ minWidth: 160 }}
                     value={newParticipantRole}
-                    onChange={(e) => setNewParticipantRole(e.target.value as 'member' | 'manager')}
+                    onChange={(e) => setNewParticipantRole(e.target.value as OwnerWorkspaceProjectParticipantRole)}
                   >
-                    <MenuItem value="member">Участник</MenuItem>
-                    <MenuItem value="manager">Менеджер</MenuItem>
+                    <MenuItem value="member">РЈС‡Р°СЃС‚РЅРёРє</MenuItem>
+                    <MenuItem value="manager">РњРµРЅРµРґР¶РµСЂ</MenuItem>
+                    <MenuItem value="observer">РќР°Р±Р»СЋРґР°С‚РµР»СЊ</MenuItem>
                   </TextField>
                 ) : null}
                 <Button variant="outlined" onClick={addProjectParticipantUser} disabled={!participantToAdd}>
-                  Добавить
+                  Р”РѕР±Р°РІРёС‚СЊ
                 </Button>
               </Stack>
             ) : null}
@@ -3574,114 +4733,201 @@ const OwnerWorkspacePage: React.FC = () => {
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
           {projectDialog?.status !== 'archived' && (
-            <Button color="error" onClick={() => setArchiveProjectConfirm(projectDialog)}>
-              В архив
+            <Button color="error" onClick={() => setArchiveProjectConfirm(projectDialog)} disabled={!canEditProjectDialogContent}>
+              Р’ Р°СЂС…РёРІ
             </Button>
           )}
           <Box sx={{ flex: 1 }} />
-          <Button onClick={() => setProjectDialog(null)}>Закрыть</Button>
+          <Button onClick={closeProjectDialog}>Р—Р°РєСЂС‹С‚СЊ</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(archiveProjectConfirm)} onClose={() => setArchiveProjectConfirm(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Архивировать проект?</DialogTitle>
+        <DialogTitle>РђСЂС…РёРІРёСЂРѕРІР°С‚СЊ РїСЂРѕРµРєС‚?</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             {(archiveProjectConfirm?.subprojects_count ?? 0) > 0 && (
               <Alert severity="warning">
-                У проекта есть подпроекты ({archiveProjectConfirm!.subprojects_count}). Они останутся с привязкой к этому
-                проекту как к родителю.
+                РЈ РїСЂРѕРµРєС‚Р° РµСЃС‚СЊ РїРѕРґРїСЂРѕРµРєС‚С‹ ({archiveProjectConfirm!.subprojects_count}). РћРЅРё РѕСЃС‚Р°РЅСѓС‚СЃСЏ СЃ РїСЂРёРІСЏР·РєРѕР№ Рє СЌС‚РѕРјСѓ
+                РїСЂРѕРµРєС‚Сѓ РєР°Рє Рє СЂРѕРґРёС‚РµР»СЋ.
               </Alert>
             )}
             {(archiveProjectConfirm?.active_tasks_count ?? 0) > 0 && (
               <Alert severity="warning">
-                Есть активные задачи: {archiveProjectConfirm!.active_tasks_count}. Статусы задач автоматически не
-                меняются — проверьте вручную при необходимости.
+                Р•СЃС‚СЊ Р°РєС‚РёРІРЅС‹Рµ Р·Р°РґР°С‡Рё: {archiveProjectConfirm!.active_tasks_count}. РЎС‚Р°С‚СѓСЃС‹ Р·Р°РґР°С‡ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РЅРµ
+                РјРµРЅСЏСЋС‚СЃСЏ вЂ” РїСЂРѕРІРµСЂСЊС‚Рµ РІСЂСѓС‡РЅСѓСЋ РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё.
               </Alert>
             )}
             {(archiveProjectConfirm?.overdue_tasks_count ?? 0) > 0 && (
               <Alert severity="warning">
-                Среди активных задач есть просроченные: {archiveProjectConfirm!.overdue_tasks_count}.
+                РЎСЂРµРґРё Р°РєС‚РёРІРЅС‹С… Р·Р°РґР°С‡ РµСЃС‚СЊ РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹Рµ: {archiveProjectConfirm!.overdue_tasks_count}.
               </Alert>
             )}
             <Typography variant="body2">
-              Проект «{archiveProjectConfirm?.name}» будет переведён в статус «archived». Продолжить?
+              РџСЂРѕРµРєС‚ В«{archiveProjectConfirm?.name}В» Р±СѓРґРµС‚ РїРµСЂРµРІРµРґС‘РЅ РІ СЃС‚Р°С‚СѓСЃ В«archivedВ». РџСЂРѕРґРѕР»Р¶РёС‚СЊ?
             </Typography>
+            {(archiveProjectConfirm?.active_tasks_count ?? 0) > 0 && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button variant="outlined" onClick={() => reviewArchiveProjectTasks(archiveProjectConfirm!.id)}>
+                  РћС‚РєСЂС‹С‚СЊ Р°РєС‚РёРІРЅС‹Рµ Р·Р°РґР°С‡Рё
+                </Button>
+                {(archiveProjectConfirm?.overdue_tasks_count ?? 0) > 0 && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    onClick={() => reviewArchiveProjectTasks(archiveProjectConfirm!.id, true)}
+                  >
+                    РћС‚РєСЂС‹С‚СЊ С‚РѕР»СЊРєРѕ РїСЂРѕСЃСЂРѕС‡РєСѓ
+                  </Button>
+                )}
+              </Stack>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setArchiveProjectConfirm(null)}>Отмена</Button>
-          <Button color="error" variant="contained" onClick={() => void submitArchiveProject()}>
-            В архив
+          <Button onClick={() => setArchiveProjectConfirm(null)}>РћС‚РјРµРЅР°</Button>
+          <Button color="error" variant="contained" onClick={() => void submitArchiveProject()} disabled={!canEditProjectDialogContent}>
+            Р’ Р°СЂС…РёРІ
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(contactDialog)} onClose={() => setContactDialog(null)} maxWidth="md" fullWidth>
+      <Dialog open={Boolean(deleteTaskConfirm)} onClose={() => setDeleteTaskConfirm(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>РЈРґР°Р»РёС‚СЊ Р·Р°РґР°С‡Сѓ?</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Alert severity="error">
+              Р—Р°РґР°С‡Р° Р±СѓРґРµС‚ СѓРґР°Р»РµРЅР° Р±РµР· РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РёР· РёРЅС‚РµСЂС„РµР№СЃР°.
+            </Alert>
+            <Typography variant="body2">
+              Р—Р°РґР°С‡Р°: <strong>{deleteTaskConfirm?.title || '—'}</strong>
+            </Typography>
+            <Stack spacing={0.75}>
+              {deleteTaskSummary.map((item) => (
+                <Typography key={item} variant="body2" color="text.secondary">
+                  • {item}
+                </Typography>
+              ))}
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTaskConfirm(null)}>РћС‚РјРµРЅР°</Button>
+          <Button color="error" variant="contained" onClick={() => void submitDeleteTask()} disabled={!isWorkspaceFullAccess}>
+            РЈРґР°Р»РёС‚СЊ РЅР°РІСЃРµРіРґР°
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(unlinkContactConfirm)} onClose={() => setUnlinkContactConfirm(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>РЈР±СЂР°С‚СЊ РєРѕРЅС‚Р°РєС‚ РёР· РїСЂРѕРµРєС‚Р°?</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Typography variant="body2">
+              РљРѕРЅС‚Р°РєС‚ <strong>{unlinkContactConfirm?.contactName || '—'}</strong> Р±СѓРґРµС‚ РѕС‚РІСЏР·Р°РЅ РѕС‚ РїСЂРѕРµРєС‚Р°{' '}
+              <strong>{unlinkContactConfirm?.projectName || '—'}</strong>.
+            </Typography>
+            <Alert severity="info">
+              РљР°СЂС‚РѕС‡РєР° РєРѕРЅС‚Р°РєС‚Р° РІ СЃРёСЃС‚РµРјРµ СЃРѕС…СЂР°РЅРёС‚СЃСЏ. РЈР±РµСЂС‘С‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРёРІСЏР·РєР° Рє СЌС‚РѕРјСѓ РїСЂРѕРµРєС‚Сѓ.
+            </Alert>
+            {(unlinkContactConfirm?.activeTaskCount ?? 0) > 0 && (
+              <Alert severity="warning">
+                РЈ СЌС‚РѕР№ СЃРІСЏР·РєРё РµСЃС‚СЊ Р°РєС‚РёРІРЅС‹Рµ Р·Р°РґР°С‡Рё: {unlinkContactConfirm!.activeTaskCount}. РџСЂРѕРІРµСЂСЊС‚Рµ, РЅСѓР¶РЅРѕ Р»Рё СЃРЅР°С‡Р°Р»Р° РїРµСЂРµРЅРµСЃС‚Рё РёС… РІ РґСЂСѓРіРѕР№ РїСЂРѕРµРєС‚.
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUnlinkContactConfirm(null)}>РћС‚РјРµРЅР°</Button>
+          <Button color="warning" variant="contained" onClick={() => void submitUnlinkContactFromProject()}>
+            РЈР±СЂР°С‚СЊ РёР· РїСЂРѕРµРєС‚Р°
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(contactDialog)} onClose={closeContactDialog} maxWidth="md" fullWidth>
         <DialogTitle>{contactDialog?.full_name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <Typography variant="subtitle2">Карточка контакта</Typography>
+            {!canEditContactDialogContent && (
+              <Alert severity="info">
+                Р­С‚РѕС‚ РєРѕРЅС‚Р°РєС‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РР·РјРµРЅРµРЅРёРµ РєР°СЂС‚РѕС‡РєРё, РїСЂРёРІСЏР·РѕРє, Р·Р°РґР°С‡ Рё СЃРѕРѕР±С‰РµРЅРёР№ РѕС‚РєР»СЋС‡РµРЅРѕ.
+              </Alert>
+            )}
+            <Typography variant="subtitle2">РљР°СЂС‚РѕС‡РєР° РєРѕРЅС‚Р°РєС‚Р°</Typography>
             <TextField
               fullWidth
-              label="ФИО"
+              label="Р¤РРћ"
               value={contactEditFullName}
               onChange={(e) => setContactEditFullName(e.target.value)}
+              disabled={!canEditContactDialogContent}
             />
             <TextField
               fullWidth
-              label="Телефон"
+              label="РўРµР»РµС„РѕРЅ"
               value={contactEditPhone}
               onChange={(e) => setContactEditPhone(e.target.value)}
+              disabled={!canEditContactDialogContent}
             />
             <TextField
               fullWidth
               label="Email"
               value={contactEditEmail}
               onChange={(e) => setContactEditEmail(e.target.value)}
+              disabled={!canEditContactDialogContent}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
                 fullWidth
-                label="Компания"
+                label="РљРѕРјРїР°РЅРёСЏ"
                 value={contactEditCompany}
                 onChange={(e) => setContactEditCompany(e.target.value)}
+                disabled={!canEditContactDialogContent}
               />
               <TextField
                 fullWidth
-                label="Должность"
+                label="Р”РѕР»Р¶РЅРѕСЃС‚СЊ"
                 value={contactEditPosition}
                 onChange={(e) => setContactEditPosition(e.target.value)}
+                disabled={!canEditContactDialogContent}
               />
             </Stack>
             <TextField
               fullWidth
-              label="Теги (через запятую)"
+              label="РўРµРіРё (С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ)"
               value={contactEditTags}
               onChange={(e) => setContactEditTags(e.target.value)}
+              disabled={!canEditContactDialogContent}
             />
             <TextField
               fullWidth
-              label="Комментарий"
+              label="РљРѕРјРјРµРЅС‚Р°СЂРёР№"
               multiline
               minRows={2}
               value={contactEditComment}
               onChange={(e) => setContactEditComment(e.target.value)}
+              disabled={!canEditContactDialogContent}
             />
             <TextField
               fullWidth
-              label="Источник"
+              label="РСЃС‚РѕС‡РЅРёРє"
               value={contactEditSource}
               onChange={(e) => setContactEditSource(e.target.value)}
+              disabled={!canEditContactDialogContent}
             />
-            <Button variant="contained" onClick={() => void saveContactDetails()} sx={{ alignSelf: 'flex-start' }}>
-              Сохранить карточку
+            <Button
+              variant="contained"
+              onClick={() => void saveContactDetails()}
+              sx={{ alignSelf: 'flex-start' }}
+              disabled={!canEditContactDialogContent}
+            >
+              РЎРѕС…СЂР°РЅРёС‚СЊ РєР°СЂС‚РѕС‡РєСѓ
             </Button>
             <Divider />
-            <Typography variant="subtitle2">Проекты</Typography>
+            <Typography variant="subtitle2">РџСЂРѕРµРєС‚С‹</Typography>
             {contactDialogLinkedProjects.length === 0 ? (
               <Typography variant="caption" color="text.secondary">
-                Не привязан ни к одному проекту. Ниже можно добавить.
+                РќРµ РїСЂРёРІСЏР·Р°РЅ РЅРё Рє РѕРґРЅРѕРјСѓ РїСЂРѕРµРєС‚Сѓ. РќРёР¶Рµ РјРѕР¶РЅРѕ РґРѕР±Р°РІРёС‚СЊ.
               </Typography>
             ) : (
               <Stack spacing={0.5} sx={{ maxHeight: 180, overflow: 'auto' }}>
@@ -3703,8 +4949,9 @@ const OwnerWorkspacePage: React.FC = () => {
                     </Typography>
                     <IconButton
                       size="small"
-                      aria-label="Убрать из проекта"
-                      onClick={() => void removeContactFromLinkedProject(p.id)}
+                      aria-label="РЈР±СЂР°С‚СЊ РёР· РїСЂРѕРµРєС‚Р°"
+                      disabled={!canEditContactDialogContent}
+                      onClick={() => requestRemoveContactFromLinkedProject(p.id)}
                     >
                       <DeleteOutlineIcon fontSize="small" />
                     </IconButton>
@@ -3719,36 +4966,42 @@ const OwnerWorkspacePage: React.FC = () => {
                 getOptionLabel={(o) => o.name}
                 value={contactLinkProjectId}
                 onChange={(_, v) => setContactLinkProjectId(v)}
-                renderInput={(params) => <TextField {...params} label="Добавить в проект" />}
+                disabled={!canEditContactDialogContent}
+                renderInput={(params) => <TextField {...params} label="Р”РѕР±Р°РІРёС‚СЊ РІ РїСЂРѕРµРєС‚" />}
               />
-              <Button variant="contained" onClick={linkContactToSelectedProject} disabled={!contactLinkProjectId}>
-                Добавить
+              <Button
+                variant="contained"
+                onClick={linkContactToSelectedProject}
+                disabled={!contactLinkProjectId || !canEditContactDialogContent}
+              >
+                Р”РѕР±Р°РІРёС‚СЊ
               </Button>
             </Stack>
-            <Typography variant="subtitle2">Задачи по контакту</Typography>
+            <Typography variant="subtitle2">Р—Р°РґР°С‡Рё РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ</Typography>
             <Button
               variant="contained"
               size="small"
               sx={{ alignSelf: 'flex-start' }}
+              disabled={!canEditContactDialogContent}
               onClick={() => {
                 if (!contactDialog) return;
                 setNewTaskContactId(contactDialog.id);
                 handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
-                setContactDialog(null);
+                closeContactDialog();
               }}
             >
-              Создать задачу по этому контакту
+              РЎРѕР·РґР°С‚СЊ Р·Р°РґР°С‡Сѓ РїРѕ СЌС‚РѕРјСѓ РєРѕРЅС‚Р°РєС‚Сѓ
             </Button>
             <Typography variant="caption" color="text.secondary">
-              Активные: {contactDialogTasksActive.length} · завершённые / отменённые: {contactDialogTasksDone.length}
+              РђРєС‚РёРІРЅС‹Рµ: {contactDialogTasksActive.length} В· Р·Р°РІРµСЂС€С‘РЅРЅС‹Рµ / РѕС‚РјРµРЅС‘РЅРЅС‹Рµ: {contactDialogTasksDone.length}
             </Typography>
             <Typography variant="caption" fontWeight={600}>
-              Активные
+              РђРєС‚РёРІРЅС‹Рµ
             </Typography>
             <Stack spacing={0.5} sx={{ maxHeight: 180, overflow: 'auto' }}>
               {contactDialogTasksActive.length === 0 ? (
                 <Typography variant="caption" color="text.secondary">
-                  Нет активных задач.
+                  РќРµС‚ Р°РєС‚РёРІРЅС‹С… Р·Р°РґР°С‡.
                 </Typography>
               ) : (
                 contactDialogTasksActive.slice(0, 50).map((t) => (
@@ -3759,21 +5012,21 @@ const OwnerWorkspacePage: React.FC = () => {
                     sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
                     onClick={() => {
                       void openTaskDialog(t);
-                      setContactDialog(null);
+                      closeContactDialog();
                     }}
                   >
-                    #{t.id} · {t.title.length > 48 ? `${t.title.slice(0, 48)}…` : t.title} ({STATUS_LABELS[t.status] || t.status})
+                    #{t.id} В· {t.title.length > 48 ? `${t.title.slice(0, 48)}вЂ¦` : t.title} ({statusLabels[t.status] || t.status})
                   </Button>
                 ))
               )}
             </Stack>
             <Typography variant="caption" fontWeight={600}>
-              Завершённые и отменённые
+              Р—Р°РІРµСЂС€С‘РЅРЅС‹Рµ Рё РѕС‚РјРµРЅС‘РЅРЅС‹Рµ
             </Typography>
             <Stack spacing={0.5} sx={{ maxHeight: 180, overflow: 'auto' }}>
               {contactDialogTasksDone.length === 0 ? (
                 <Typography variant="caption" color="text.secondary">
-                  Нет завершённых или отменённых.
+                  РќРµС‚ Р·Р°РІРµСЂС€С‘РЅРЅС‹С… РёР»Рё РѕС‚РјРµРЅС‘РЅРЅС‹С….
                 </Typography>
               ) : (
                 contactDialogTasksDone.slice(0, 50).map((t) => (
@@ -3784,31 +5037,32 @@ const OwnerWorkspacePage: React.FC = () => {
                     sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
                     onClick={() => {
                       void openTaskDialog(t);
-                      setContactDialog(null);
+                      closeContactDialog();
                     }}
                   >
-                    #{t.id} · {t.title.length > 48 ? `${t.title.slice(0, 48)}…` : t.title} ({STATUS_LABELS[t.status] || t.status})
+                    #{t.id} В· {t.title.length > 48 ? `${t.title.slice(0, 48)}вЂ¦` : t.title} ({statusLabels[t.status] || t.status})
                   </Button>
                 ))
               )}
             </Stack>
             <Divider />
-            <Typography variant="subtitle2">Переписка (ручной ввод для MVP)</Typography>
+            <Typography variant="subtitle2">РџРµСЂРµРїРёСЃРєР° (СЂСѓС‡РЅРѕР№ РІРІРѕРґ РґР»СЏ MVP)</Typography>
             <TextField
               fullWidth
               multiline
               minRows={2}
-              label="Сообщение"
+              label="РЎРѕРѕР±С‰РµРЅРёРµ"
               value={newContactMessage}
               onChange={(e) => setNewContactMessage(e.target.value)}
+              disabled={!canEditContactDialogContent}
             />
-            <Button variant="outlined" onClick={sendContactMessage}>
-              Сохранить как исходящее
+            <Button variant="outlined" onClick={sendContactMessage} disabled={!canEditContactDialogContent}>
+              РЎРѕС…СЂР°РЅРёС‚СЊ РєР°Рє РёСЃС…РѕРґСЏС‰РµРµ
             </Button>
             <TextField
               size="small"
               fullWidth
-              placeholder="Поиск по тексту сообщений…"
+              placeholder="РџРѕРёСЃРє РїРѕ С‚РµРєСЃС‚Сѓ СЃРѕРѕР±С‰РµРЅРёР№вЂ¦"
               value={contactMessageSearch}
               onChange={(e) => setContactMessageSearch(e.target.value)}
               InputProps={{
@@ -3821,7 +5075,7 @@ const OwnerWorkspacePage: React.FC = () => {
             />
             {contactMessageSearch.trim() && (
               <Typography variant="caption" color="text.secondary">
-                Показано {contactMessagesFiltered.length} из {contactMessages.length}
+                РџРѕРєР°Р·Р°РЅРѕ {contactMessagesFiltered.length} РёР· {contactMessages.length}
               </Typography>
             )}
             <Stack spacing={1} sx={{ maxHeight: 240, overflow: 'auto' }}>
@@ -3835,119 +5089,125 @@ const OwnerWorkspacePage: React.FC = () => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setContactDialog(null)}>Закрыть</Button>
+          <Button onClick={closeContactDialog}>Р—Р°РєСЂС‹С‚СЊ</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(taskDialog)} onClose={closeTaskDialog} maxWidth="md" fullWidth>
-        <DialogTitle>Задача #{taskDialog?.id}</DialogTitle>
+        <DialogTitle>Р—Р°РґР°С‡Р° #{taskDialog?.id}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="caption" color="text.secondary">
-              Автор: {userName(taskDialog?.creator_id)} · Создана:{' '}
+              РђРІС‚РѕСЂ: {userName(taskDialog?.creator_id)} В· РЎРѕР·РґР°РЅР°:{' '}
               {taskDialog?.created_at
                 ? new Date(taskDialog.created_at).toLocaleString('ru-RU')
-                : '—'}
+                : 'вЂ”'}
               {taskDialog?.updated_at
-                ? ` · Обновлена: ${new Date(taskDialog.updated_at).toLocaleString('ru-RU')}`
+                ? ` В· РћР±РЅРѕРІР»РµРЅР°: ${new Date(taskDialog.updated_at).toLocaleString('ru-RU')}`
                 : ''}
             </Typography>
             {taskDialog?.previous_task_id != null && (
               <Button size="small" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => void openPreviousWorkspaceTask()}>
-                Открыть предыдущую задачу #{taskDialog.previous_task_id}
+                РћС‚РєСЂС‹С‚СЊ РїСЂРµРґС‹РґСѓС‰СѓСЋ Р·Р°РґР°С‡Сѓ #{taskDialog.previous_task_id}
               </Button>
             )}
             {taskFormLocked && (
               <Alert severity="info">
-                Задача завершена или отменена: меняйте только <strong>статус</strong>, чтобы вернуть в работу. После сохранения с активным статусом остальные поля снова станут доступны.
+                Р—Р°РґР°С‡Р° Р·Р°РІРµСЂС€РµРЅР° РёР»Рё РѕС‚РјРµРЅРµРЅР°: РјРµРЅСЏР№С‚Рµ С‚РѕР»СЊРєРѕ <strong>СЃС‚Р°С‚СѓСЃ</strong>, С‡С‚РѕР±С‹ РІРµСЂРЅСѓС‚СЊ РІ СЂР°Р±РѕС‚Сѓ. РџРѕСЃР»Рµ СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃ Р°РєС‚РёРІРЅС‹Рј СЃС‚Р°С‚СѓСЃРѕРј РѕСЃС‚Р°Р»СЊРЅС‹Рµ РїРѕР»СЏ СЃРЅРѕРІР° СЃС‚Р°РЅСѓС‚ РґРѕСЃС‚СѓРїРЅС‹.
+              </Alert>
+            )}
+            {!canEditTaskDialogContent && (
+              <Alert severity="info">
+                Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё СЌС‚Р° Р·Р°РґР°С‡Р° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ Рё РєРѕРјРјРµРЅС‚Р°СЂРёРё РѕС‚РєР»СЋС‡РµРЅС‹.
               </Alert>
             )}
             <TextField
-              label="Название"
+              label="РќР°Р·РІР°РЅРёРµ"
               fullWidth
               value={taskEditTitle}
               onChange={(e) => setTaskEditTitle(e.target.value)}
-              disabled={taskFormLocked}
+              disabled={taskDialogReadOnly}
             />
             <TextField
-              label="Описание"
+              label="РћРїРёСЃР°РЅРёРµ"
               fullWidth
               multiline
               minRows={3}
               value={taskEditDescription}
               onChange={(e) => setTaskEditDescription(e.target.value)}
-              disabled={taskFormLocked}
+              disabled={taskDialogReadOnly}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
                 select
-                label="Статус"
+                label="РЎС‚Р°С‚СѓСЃ"
                 fullWidth
                 value={taskEditStatus}
                 onChange={(e) => setTaskEditStatus(coerceTaskStatus(e.target.value))}
+                disabled={!canEditTaskDialogContent}
               >
-                {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                {editStatusOptions.map((k) => (
                   <MenuItem key={k} value={k}>
-                    {v}
+                    {statusLabels[k] ?? k}
                   </MenuItem>
                 ))}
               </TextField>
               <TextField
                 select
-                label="Приоритет"
+                label="РџСЂРёРѕСЂРёС‚РµС‚"
                 fullWidth
                 value={taskEditPriority}
                 onChange={(e) => setTaskEditPriority(coerceTaskPriority(e.target.value))}
-                disabled={taskFormLocked}
+                disabled={taskDialogReadOnly}
               >
-                {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
+                {editPriorityOptions.map((k) => (
                   <MenuItem key={k} value={k}>
-                    {v}
+                    {priorityLabels[k] ?? k}
                   </MenuItem>
                 ))}
               </TextField>
             </Stack>
             <TextField
-              label="Дедлайн"
+              label="Р”РµРґР»Р°Р№РЅ"
               type="datetime-local"
               value={taskEditDeadline}
               onChange={(e) => setTaskEditDeadline(e.target.value)}
               InputLabelProps={{ shrink: true }}
               fullWidth
-              disabled={taskFormLocked}
+              disabled={taskDialogReadOnly}
             />
             <TextField
-              label="Начало (start_at)"
+              label="РќР°С‡Р°Р»Рѕ (start_at)"
               type="datetime-local"
               value={taskEditStartAt}
               onChange={(e) => setTaskEditStartAt(e.target.value)}
               InputLabelProps={{ shrink: true }}
               fullWidth
-              disabled={taskFormLocked}
+              disabled={taskDialogReadOnly}
             />
             <Autocomplete
               options={projectsCatalogSorted}
               getOptionLabel={(o) => o.name}
               value={projectsCatalogSorted.find((p) => p.id === taskEditProjectId) || null}
               onChange={(_, v) => setTaskEditProjectId(v ? v.id : '')}
-              disabled={taskFormLocked}
-              renderInput={(params) => <TextField {...params} label="Проект" />}
+              disabled={taskDialogReadOnly}
+              renderInput={(params) => <TextField {...params} label="РџСЂРѕРµРєС‚" />}
             />
             <Autocomplete
               options={contactsCatalogSorted}
               getOptionLabel={(o) => o.full_name}
               value={contactsCatalogSorted.find((c) => c.id === taskEditContactId) || null}
               onChange={(_, v) => setTaskEditContactId(v ? v.id : '')}
-              disabled={taskFormLocked}
-              renderInput={(params) => <TextField {...params} label="Контакт" />}
+              disabled={taskDialogReadOnly}
+              renderInput={(params) => <TextField {...params} label="РљРѕРЅС‚Р°РєС‚" />}
             />
             <Autocomplete
               options={userOptions}
               getOptionLabel={(o) => o.full_name}
               value={userOptions.find((u) => u.id === taskEditAssigneeId) || null}
               onChange={(_, v) => setTaskEditAssigneeId(v ? v.id : '')}
-              disabled={taskFormLocked}
-              renderInput={(params) => <TextField {...params} label="Исполнитель" />}
+              disabled={taskDialogReadOnly}
+              renderInput={(params) => <TextField {...params} label="РСЃРїРѕР»РЅРёС‚РµР»СЊ" />}
             />
             <Autocomplete
               multiple
@@ -3955,20 +5215,20 @@ const OwnerWorkspacePage: React.FC = () => {
               options={[] as string[]}
               value={taskEditTags}
               onChange={(_, v) => setTaskEditTags(v.map(String))}
-              disabled={taskFormLocked}
+              disabled={taskDialogReadOnly}
               renderTags={(value, getTagProps) =>
                 value.map((option, index) => (
                   <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
                 ))
               }
-              renderInput={(params) => <TextField {...params} label="Теги" placeholder="Ввод и Enter" />}
+              renderInput={(params) => <TextField {...params} label="РўРµРіРё" placeholder="Р’РІРѕРґ Рё Enter" />}
             />
-            <Typography variant="subtitle2">Чеклист</Typography>
+            <Typography variant="subtitle2">Р§РµРєР»РёСЃС‚</Typography>
             {taskEditChecklist.map((item, idx) => (
               <Stack key={item.id} direction="row" spacing={1} alignItems="center">
                 <Checkbox
                   checked={item.done}
-                  disabled={taskFormLocked}
+                  disabled={taskDialogReadOnly}
                   onChange={() => {
                     const next = [...taskEditChecklist];
                     next[idx] = { ...item, done: !item.done };
@@ -3979,7 +5239,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   size="small"
                   fullWidth
                   value={item.text}
-                  disabled={taskFormLocked}
+                  disabled={taskDialogReadOnly}
                   onChange={(e) => {
                     const next = [...taskEditChecklist];
                     next[idx] = { ...item, text: e.target.value };
@@ -3988,8 +5248,8 @@ const OwnerWorkspacePage: React.FC = () => {
                 />
                 <IconButton
                   size="small"
-                  aria-label="Удалить пункт"
-                  disabled={taskFormLocked}
+                  aria-label="РЈРґР°Р»РёС‚СЊ РїСѓРЅРєС‚"
+                  disabled={taskDialogReadOnly}
                   onClick={() => setTaskEditChecklist(taskEditChecklist.filter((_, i) => i !== idx))}
                 >
                   <DeleteOutlineIcon fontSize="small" />
@@ -3999,17 +5259,17 @@ const OwnerWorkspacePage: React.FC = () => {
             <Button
               size="small"
               variant="text"
-              disabled={taskFormLocked}
+              disabled={taskDialogReadOnly}
               onClick={() =>
                 setTaskEditChecklist((prev) => [...prev, { id: `n-${Date.now()}`, text: '', done: false }])
               }
             >
-              + Пункт чеклиста
+              + РџСѓРЅРєС‚ С‡РµРєР»РёСЃС‚Р°
             </Button>
             <Divider />
-            <Typography variant="subtitle2">Вложения (JSON-массив)</Typography>
+            <Typography variant="subtitle2">Р’Р»РѕР¶РµРЅРёСЏ (JSON-РјР°СЃСЃРёРІ)</Typography>
             <Typography variant="caption" color="text.secondary">
-              Например: [&#123; &quot;url&quot;: &quot;https://…&quot;, &quot;name&quot;: &quot;Документ&quot; &#125;]
+              РќР°РїСЂРёРјРµСЂ: [&#123; &quot;url&quot;: &quot;https://вЂ¦&quot;, &quot;name&quot;: &quot;Р”РѕРєСѓРјРµРЅС‚&quot; &#125;]
             </Typography>
             <TextField
               fullWidth
@@ -4017,32 +5277,32 @@ const OwnerWorkspacePage: React.FC = () => {
               minRows={4}
               value={taskEditAttachmentsText}
               onChange={(e) => setTaskEditAttachmentsText(e.target.value)}
-              disabled={taskFormLocked}
+              disabled={taskDialogReadOnly}
               InputProps={{ sx: { fontFamily: 'monospace', fontSize: 13 } }}
             />
             {(taskDialog?.linked_message_ids?.length ?? 0) > 0 && (
               <Typography variant="caption" color="text.secondary">
-                Связанные сообщения (id): {taskDialog!.linked_message_ids!.join(', ')}
+                РЎРІСЏР·Р°РЅРЅС‹Рµ СЃРѕРѕР±С‰РµРЅРёСЏ (id): {taskDialog!.linked_message_ids!.join(', ')}
               </Typography>
             )}
             <Divider />
-            <Typography variant="subtitle2">История изменений (эта задача)</Typography>
+            <Typography variant="subtitle2">РСЃС‚РѕСЂРёСЏ РёР·РјРµРЅРµРЅРёР№ (СЌС‚Р° Р·Р°РґР°С‡Р°)</Typography>
             <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}>
               {taskDialogHistory.length === 0 && (
                 <Typography variant="caption" color="text.secondary">
-                  Записей аудита по этой задаче пока нет.
+                  Р—Р°РїРёСЃРµР№ Р°СѓРґРёС‚Р° РїРѕ СЌС‚РѕР№ Р·Р°РґР°С‡Рµ РїРѕРєР° РЅРµС‚.
                 </Typography>
               )}
               {taskDialogHistory.map((h) => (
                 <Box key={h.id} sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
                   <Typography variant="caption" color="text.secondary">
-                    {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} · {userName(h.author_id)}
+                    {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} В· {userName(h.author_id)}
                   </Typography>
                   <Typography variant="body2">{h.action_type}</Typography>
                 </Box>
               ))}
             </Stack>
-            <Typography variant="subtitle2">Комментарии</Typography>
+            <Typography variant="subtitle2">РљРѕРјРјРµРЅС‚Р°СЂРёРё</Typography>
             <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}>
               {taskComments.map((c) => (
                 <Box key={c.id} sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
@@ -4055,111 +5315,133 @@ const OwnerWorkspacePage: React.FC = () => {
             </Stack>
             <TextField
               fullWidth
-              label="Новый комментарий"
+              label="РќРѕРІС‹Р№ РєРѕРјРјРµРЅС‚Р°СЂРёР№"
               value={newCommentText}
               onChange={(e) => setNewCommentText(e.target.value)}
-              helperText="Упоминание: @ID пользователя или @email@домен — отдельное уведомление тем, кому уже видна задача (исполнитель и автор получают обычный «Комментарий»)."
+              disabled={!canEditTaskDialogContent}
+              helperText="РЈРїРѕРјРёРЅР°РЅРёРµ: @ID РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РёР»Рё @email@РґРѕРјРµРЅ вЂ” РѕС‚РґРµР»СЊРЅРѕРµ СѓРІРµРґРѕРјР»РµРЅРёРµ С‚РµРј, РєРѕРјСѓ СѓР¶Рµ РІРёРґРЅР° Р·Р°РґР°С‡Р° (РёСЃРїРѕР»РЅРёС‚РµР»СЊ Рё Р°РІС‚РѕСЂ РїРѕР»СѓС‡Р°СЋС‚ РѕР±С‹С‡РЅС‹Р№ В«РљРѕРјРјРµРЅС‚Р°СЂРёР№В»)."
             />
-            <Button variant="outlined" onClick={addComment}>
-              Добавить комментарий
+            <Button variant="outlined" onClick={addComment} disabled={!canEditTaskDialogContent}>
+              Р”РѕР±Р°РІРёС‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёР№
             </Button>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
           <Box>
             {isWorkspaceFullAccess && (
-              <Button color="error" variant="outlined" onClick={() => void deleteTaskDialog()}>
-                Удалить задачу
+              <Button color="error" variant="outlined" onClick={() => setDeleteTaskConfirm(taskDialog)}>
+                РЈРґР°Р»РёС‚СЊ Р·Р°РґР°С‡Сѓ
               </Button>
             )}
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button onClick={closeTaskDialog}>Отмена</Button>
-            <Button variant="contained" onClick={saveTaskDialog}>
-              Сохранить
+            <Button onClick={closeTaskDialog}>РћС‚РјРµРЅР°</Button>
+            <Button variant="contained" onClick={saveTaskDialog} disabled={!canEditTaskDialogContent}>
+              РЎРѕС…СЂР°РЅРёС‚СЊ
             </Button>
           </Box>
         </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(completeDialogTask)} onClose={() => setCompleteDialogTask(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Завершить задачу</DialogTitle>
+        <DialogTitle>Р—Р°РІРµСЂС€РёС‚СЊ Р·Р°РґР°С‡Сѓ</DialogTitle>
         <DialogContent>
+          {completeDialogTask && !canMutateTaskUi(completeDialogTask) && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё СЌС‚Р° Р·Р°РґР°С‡Р° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. Р—Р°РІРµСЂС€РµРЅРёРµ РѕС‚РєР»СЋС‡РµРЅРѕ.
+            </Alert>
+          )}
           <RadioGroup value={completeMode} onChange={(e) => setCompleteMode(e.target.value as typeof completeMode)}>
-            <FormControlLabel value="close" control={<Radio />} label="Просто закрыть" />
+            <FormControlLabel value="close" control={<Radio />} label="РџСЂРѕСЃС‚Рѕ Р·Р°РєСЂС‹С‚СЊ" />
             <FormControlLabel
               value="close_and_create_next"
               control={<Radio />}
-              label="Закрыть и создать следующую"
+              label="Р—Р°РєСЂС‹С‚СЊ Рё СЃРѕР·РґР°С‚СЊ СЃР»РµРґСѓСЋС‰СѓСЋ"
             />
           </RadioGroup>
           {completeMode === 'close_and_create_next' && (
             <TextField
               fullWidth
               sx={{ mt: 2 }}
-              label="Название следующей задачи"
+              label="РќР°Р·РІР°РЅРёРµ СЃР»РµРґСѓСЋС‰РµР№ Р·Р°РґР°С‡Рё"
               value={nextTaskTitle}
               onChange={(e) => setNextTaskTitle(e.target.value)}
-              placeholder="Оставьте пустым — подставится автоматически"
+              disabled={completeDialogTask ? !canMutateTaskUi(completeDialogTask) : false}
+              placeholder="РћСЃС‚Р°РІСЊС‚Рµ РїСѓСЃС‚С‹Рј вЂ” РїРѕРґСЃС‚Р°РІРёС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё"
             />
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCompleteDialogTask(null)}>Отмена</Button>
-          <Button variant="contained" onClick={submitComplete}>
-            Подтвердить
+          <Button onClick={() => setCompleteDialogTask(null)}>РћС‚РјРµРЅР°</Button>
+          <Button variant="contained" onClick={submitComplete} disabled={completeDialogTask ? !canMutateTaskUi(completeDialogTask) : true}>
+            РџРѕРґС‚РІРµСЂРґРёС‚СЊ
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(messageTaskDialog)} onClose={() => setMessageTaskDialog(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Задача из сообщения</DialogTitle>
+        <DialogTitle>Р—Р°РґР°С‡Р° РёР· СЃРѕРѕР±С‰РµРЅРёСЏ</DialogTitle>
         <DialogContent>
+          {messageTaskDialog && !canCreateTaskFromMessageUi && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              РљРѕРЅС‚Р°РєС‚ РёР· СЌС‚РѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РЎРѕР·РґР°РЅРёРµ Р·Р°РґР°С‡Рё РѕС‚РєР»СЋС‡РµРЅРѕ.
+            </Alert>
+          )}
           <TextField
             fullWidth
             sx={{ mt: 1 }}
-            label="Название задачи"
+            label="РќР°Р·РІР°РЅРёРµ Р·Р°РґР°С‡Рё"
             value={messageTaskTitle}
             onChange={(e) => setMessageTaskTitle(e.target.value)}
+            disabled={!canCreateTaskFromMessageUi}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setMessageTaskDialog(null)}>Отмена</Button>
-          <Button variant="contained" onClick={submitMessageTask}>
-            Создать
+          <Button onClick={() => setMessageTaskDialog(null)}>РћС‚РјРµРЅР°</Button>
+          <Button variant="contained" onClick={submitMessageTask} disabled={!canCreateTaskFromMessageUi}>
+            РЎРѕР·РґР°С‚СЊ
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(linkTaskDialog)} onClose={() => setLinkTaskDialog(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Привязать сообщение к задаче</DialogTitle>
+        <DialogTitle>РџСЂРёРІСЏР·Р°С‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ Рє Р·Р°РґР°С‡Рµ</DialogTitle>
         <DialogContent>
+          {linkTaskDialog && editableLinkTaskOptions.length === 0 && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              РќРµС‚ РґРѕСЃС‚СѓРїРЅС‹С… Р·Р°РґР°С‡ СЃ РїСЂР°РІРѕРј СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёСЏ РґР»СЏ РїСЂРёРІСЏР·РєРё СЌС‚РѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ.
+            </Alert>
+          )}
           <Autocomplete
             sx={{ mt: 1 }}
-            options={linkTaskOptions}
-            getOptionLabel={(o) => `#${o.id} · ${o.title}`}
+            options={editableLinkTaskOptions}
+            getOptionLabel={(o) => `#${o.id} В· ${o.title}`}
             value={linkTaskSelected}
             onChange={(_, v) => setLinkTaskSelected(v)}
-            renderInput={(params) => <TextField {...params} label="Активная задача" />}
+            renderInput={(params) => <TextField {...params} label="РђРєС‚РёРІРЅР°СЏ Р·Р°РґР°С‡Р°" />}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setLinkTaskDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!linkTaskSelected} onClick={submitLinkToTask}>
-            Привязать
+          <Button onClick={() => setLinkTaskDialog(null)}>РћС‚РјРµРЅР°</Button>
+          <Button
+            variant="contained"
+            disabled={!linkTaskSelected || !canMutateTaskUi(linkTaskSelected)}
+            onClick={submitLinkToTask}
+          >
+            РџСЂРёРІСЏР·Р°С‚СЊ
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Поиск по задачнику</DialogTitle>
+        <DialogTitle>РџРѕРёСЃРє РїРѕ Р·Р°РґР°С‡РЅРёРєСѓ</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
             autoFocus
             margin="dense"
-            label="Запрос"
-            placeholder="Минимум 2 символа — проекты, контакты, задачи, переписка"
+            label="Р—Р°РїСЂРѕСЃ"
+            placeholder="РњРёРЅРёРјСѓРј 2 СЃРёРјРІРѕР»Р° вЂ” РїСЂРѕРµРєС‚С‹, РєРѕРЅС‚Р°РєС‚С‹, Р·Р°РґР°С‡Рё, РїРµСЂРµРїРёСЃРєР°"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -4167,7 +5449,7 @@ const OwnerWorkspacePage: React.FC = () => {
             {searchLoading && <CircularProgress size={24} />}
             {searchQuery.trim().length > 0 && searchQuery.trim().length < 2 && (
               <Typography variant="caption" color="text.secondary">
-                Введите ещё символы
+                Р’РІРµРґРёС‚Рµ РµС‰С‘ СЃРёРјРІРѕР»С‹
               </Typography>
             )}
           </Box>
@@ -4175,7 +5457,7 @@ const OwnerWorkspacePage: React.FC = () => {
             <Stack spacing={2} sx={{ mt: 1 }}>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Проекты ({searchResults.projects.length})
+                  РџСЂРѕРµРєС‚С‹ ({searchResults.projects.length})
                 </Typography>
                 <Stack spacing={0.25}>
                   {searchResults.projects.map((p) => (
@@ -4186,19 +5468,19 @@ const OwnerWorkspacePage: React.FC = () => {
                       sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
                       onClick={() => void openSearchHitProject(p.id)}
                     >
-                      {p.name} · {p.status}
+                      {p.name} В· {p.status}
                     </Button>
                   ))}
                   {searchResults.projects.length === 0 && (
                     <Typography variant="body2" color="text.secondary">
-                      —
+                      вЂ”
                     </Typography>
                   )}
                 </Stack>
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Контакты ({searchResults.contacts.length})
+                  РљРѕРЅС‚Р°РєС‚С‹ ({searchResults.contacts.length})
                 </Typography>
                 <Stack spacing={0.25}>
                   {searchResults.contacts.map((c) => (
@@ -4209,19 +5491,19 @@ const OwnerWorkspacePage: React.FC = () => {
                       sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
                       onClick={() => void openSearchHitContact(c.id)}
                     >
-                      {c.full_name} · {c.phone}
+                      {c.full_name} В· {c.phone}
                     </Button>
                   ))}
                   {searchResults.contacts.length === 0 && (
                     <Typography variant="body2" color="text.secondary">
-                      —
+                      вЂ”
                     </Typography>
                   )}
                 </Stack>
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Задачи ({searchResults.tasks.length})
+                  Р—Р°РґР°С‡Рё ({searchResults.tasks.length})
                 </Typography>
                 <Stack spacing={0.25}>
                   {searchResults.tasks.map((t) => (
@@ -4232,19 +5514,19 @@ const OwnerWorkspacePage: React.FC = () => {
                       sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
                       onClick={() => void openSearchHitTask(t.id)}
                     >
-                      #{t.id} · {t.title} ({STATUS_LABELS[t.status] || t.status})
+                      #{t.id} В· {t.title} ({statusLabels[t.status] || t.status})
                     </Button>
                   ))}
                   {searchResults.tasks.length === 0 && (
                     <Typography variant="body2" color="text.secondary">
-                      —
+                      вЂ”
                     </Typography>
                   )}
                 </Stack>
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Сообщения ({(searchResults.messages ?? []).length})
+                  РЎРѕРѕР±С‰РµРЅРёСЏ ({(searchResults.messages ?? []).length})
                 </Typography>
                 <Stack spacing={0.25}>
                   {(searchResults.messages ?? []).map((m) => (
@@ -4257,10 +5539,10 @@ const OwnerWorkspacePage: React.FC = () => {
                     >
                       <Box sx={{ textAlign: 'left' }}>
                         <Typography variant="caption" color="text.secondary" display="block">
-                          {m.contact_name || `Контакт #${m.contact_id}`} ·{' '}
-                          {m.direction === 'incoming' ? 'входящее' : m.direction === 'outgoing' ? 'исходящее' : m.direction}
+                          {m.contact_name || `РљРѕРЅС‚Р°РєС‚ #${m.contact_id}`} В·{' '}
+                          {m.direction === 'incoming' ? 'РІС…РѕРґСЏС‰РµРµ' : m.direction === 'outgoing' ? 'РёСЃС…РѕРґСЏС‰РµРµ' : m.direction}
                           {m.created_at
-                            ? ` · ${new Date(m.created_at).toLocaleString('ru-RU', {
+                            ? ` В· ${new Date(m.created_at).toLocaleString('ru-RU', {
                                 day: '2-digit',
                                 month: '2-digit',
                                 hour: '2-digit',
@@ -4274,7 +5556,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   ))}
                   {(searchResults.messages ?? []).length === 0 && (
                     <Typography variant="body2" color="text.secondary">
-                      —
+                      вЂ”
                     </Typography>
                   )}
                 </Stack>
@@ -4283,7 +5565,7 @@ const OwnerWorkspacePage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSearchOpen(false)}>Закрыть</Button>
+          <Button onClick={() => setSearchOpen(false)}>Р—Р°РєСЂС‹С‚СЊ</Button>
         </DialogActions>
       </Dialog>
     </Layout>

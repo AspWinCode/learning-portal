@@ -1161,6 +1161,25 @@ export interface OwnerWorkspaceUserPreferences {
   task_list_rows_per_page: number;
   digest_due_within_hours: number;
   digest_scope: 'all' | 'mine';
+  notify_email_enabled: boolean;
+  notify_task_overdue: boolean;
+  notify_task_due_soon: boolean;
+  notify_task_assigned: boolean;
+  notify_task_comment: boolean;
+  notify_task_updated: boolean;
+  notify_contact_incoming_message: boolean;
+  notify_task_mention: boolean;
+}
+
+export interface OwnerWorkspaceTaskConfigItem {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+
+export interface OwnerWorkspaceTaskConfig {
+  statuses: OwnerWorkspaceTaskConfigItem[];
+  priorities: OwnerWorkspaceTaskConfigItem[];
 }
 
 export interface OwnerWorkspaceTaskCompleteResult {

@@ -233,6 +233,46 @@ def can_change_project_participant_roles(db: Session, ctx: OwnerWorkspaceAccessC
     return is_project_owner(db, ctx.user.id, project_id)
 
 
+def can_edit_project_content(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
+    """Read-write access inside a project. observer stays read-only."""
+    if ctx.full:
+        return True
+    if is_project_owner(db, ctx.user.id, project_id):
+        return True
+    role = project_participant_role_name(db, project_id, ctx.user.id)
+    return role in {"member", "manager"}
+
+
+def can_edit_contact_content(db: Session, ctx: OwnerWorkspaceAccessContext, contact_id: int) -> bool:
+    """Write access for contact-centric actions.
+
+    Limited users can edit a contact if they can write in at least one linked project
+    or if the contact is reachable through one of their own tasks.
+    """
+    if ctx.full:
+        return True
+    linked_project_ids = {
+        row[0]
+        for row in db.query(OwnerWorkspaceProjectContact.project_id)
+        .filter(OwnerWorkspaceProjectContact.contact_id == contact_id)
+        .all()
+    }
+    if any(can_edit_project_content(db, ctx, project_id) for project_id in linked_project_ids):
+        return True
+    own_task = (
+        db.query(OwnerWorkspaceTask.id)
+        .filter(
+            OwnerWorkspaceTask.contact_id == contact_id,
+            or_(
+                OwnerWorkspaceTask.assignee_id == ctx.user.id,
+                OwnerWorkspaceTask.creator_id == ctx.user.id,
+            ),
+        )
+        .first()
+    )
+    return own_task is not None
+
+
 def can_archive_project(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
     if ctx.full:
         return True

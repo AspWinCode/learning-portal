@@ -1,4 +1,4 @@
-"""In-app уведомления owner workspace: дедлайны, назначение, комментарии, обновление задачи, входящие."""
+"""Owner workspace notifications: in-app rows plus queued email delivery."""
 
 from __future__ import annotations
 
@@ -19,7 +19,9 @@ from app.models import (
     OwnerWorkspaceTask,
     User,
 )
+from app.services.email_sender import is_email_configured, send_email
 from app.services.owner_workspace_access import user_can_see_owner_workspace_task
+from app.services.owner_workspace_preferences import get_preferences_for_user
 
 KIND_TASK_OVERDUE = "task_overdue"
 KIND_TASK_DUE_SOON = "task_due_soon"
@@ -30,10 +32,78 @@ KIND_CONTACT_INCOMING_MESSAGE = "contact_incoming_message"
 KIND_TASK_MENTION = "task_mention"
 
 ACTIVE_STATUSES = ("new", "in_progress", "waiting")
+EMAIL_STATUS_DISABLED = "disabled"
+EMAIL_STATUS_PENDING = "pending"
+EMAIL_STATUS_SENT = "sent"
+EMAIL_STATUS_FAILED = "failed"
+MAX_EMAIL_ATTEMPTS = 5
 
-# Упоминания: @123 (id пользователя) или @email@domain.ru
 RE_MENTION_USER_ID = re.compile(r"@(\d{1,12})\b")
 RE_MENTION_EMAIL = re.compile(r"@([A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})")
+
+KIND_TO_PREFERENCE_KEY = {
+    KIND_TASK_OVERDUE: "notify_task_overdue",
+    KIND_TASK_DUE_SOON: "notify_task_due_soon",
+    KIND_TASK_ASSIGNED: "notify_task_assigned",
+    KIND_TASK_COMMENT: "notify_task_comment",
+    KIND_TASK_UPDATED: "notify_task_updated",
+    KIND_CONTACT_INCOMING_MESSAGE: "notify_contact_incoming_message",
+    KIND_TASK_MENTION: "notify_task_mention",
+}
+
+
+def notifications_enabled_for_user(db: Session, user_id: int, kind: str) -> bool:
+    pref_key = KIND_TO_PREFERENCE_KEY.get(kind)
+    if not pref_key:
+        return True
+    prefs = get_preferences_for_user(db, user_id)
+    return bool(prefs.get(pref_key, True))
+
+
+def email_delivery_enabled_for_user(db: Session, user_id: int, kind: str) -> bool:
+    if not is_email_configured():
+        return False
+    prefs = get_preferences_for_user(db, user_id)
+    if not bool(prefs.get("notify_email_enabled", False)):
+        return False
+    pref_key = KIND_TO_PREFERENCE_KEY.get(kind)
+    if pref_key and not bool(prefs.get(pref_key, True)):
+        return False
+    user = db.query(User).filter(User.id == user_id).first()
+    return bool(user and getattr(user, "email", None))
+
+
+def queue_notification(
+    db: Session,
+    *,
+    user_id: int,
+    kind: str,
+    title: str,
+    body: str | None,
+    dedupe_key: str,
+    task_id: int | None = None,
+    contact_id: int | None = None,
+) -> OwnerWorkspaceNotification:
+    notification = OwnerWorkspaceNotification(
+        user_id=user_id,
+        kind=kind,
+        title=title,
+        body=body,
+        task_id=task_id,
+        contact_id=contact_id,
+        dedupe_key=dedupe_key,
+        email_delivery_status=(
+            EMAIL_STATUS_PENDING
+            if email_delivery_enabled_for_user(db, user_id, kind)
+            else EMAIL_STATUS_DISABLED
+        ),
+        email_attempts=0,
+        email_last_error=None,
+        email_last_attempt_at=None,
+        email_sent_at=None,
+    )
+    db.add(notification)
+    return notification
 
 
 def overdue_dedupe_key(task_id: int) -> str:
@@ -41,7 +111,6 @@ def overdue_dedupe_key(task_id: int) -> str:
 
 
 def due_soon_dedupe_key(task_id: int, deadline_at: datetime) -> str:
-    """Один ключ на задачу на календарную дату дедлайна (UTC)."""
     day = deadline_at.astimezone(timezone.utc).date().isoformat()
     return f"ow:due_soon:{task_id}:{day}"
 
@@ -62,16 +131,16 @@ def extract_mentioned_user_ids(db: Session, text: str) -> Set[int]:
     ids: Set[int] = set()
     if not text:
         return ids
-    for m in RE_MENTION_USER_ID.finditer(text):
+    for match in RE_MENTION_USER_ID.finditer(text):
         try:
-            ids.add(int(m.group(1)))
+            ids.add(int(match.group(1)))
         except ValueError:
             continue
-    for m in RE_MENTION_EMAIL.finditer(text):
-        email = m.group(1).strip().lower()
-        u = db.query(User).filter(sqla_func.lower(User.email) == email).first()
-        if u:
-            ids.add(int(u.id))
+    for match in RE_MENTION_EMAIL.finditer(text):
+        email = match.group(1).strip().lower()
+        user = db.query(User).filter(sqla_func.lower(User.email) == email).first()
+        if user:
+            ids.add(int(user.id))
     return ids
 
 
@@ -83,10 +152,6 @@ def notify_task_comment_mentions(
     author_id: int,
     comment_text: str,
 ) -> None:
-    """
-    Уведомить упомянутых в комментарии (не дублируем исполнителя/автора, им уже уходит task_comment).
-    Не делает commit.
-    """
     mentioned = extract_mentioned_user_ids(db, comment_text or "")
     if not mentioned:
         return
@@ -98,24 +163,25 @@ def notify_task_comment_mentions(
     author = db.query(User).filter(User.id == author_id).first()
     author_name = (author.full_name or author.email or str(author_id)) if author else str(author_id)
     preview = (comment_text or "").strip()[:400]
-    ttitle = (task.title or f"#{task.id}")[:120]
-    for uid in mentioned:
-        if uid == author_id:
+    task_title = (task.title or f"#{task.id}")[:120]
+    body = f'"{task_title}" · {author_name}: {preview}'[:900]
+    for user_id in mentioned:
+        if user_id == author_id:
             continue
-        if not user_can_see_owner_workspace_task(db, uid, task):
+        if not user_can_see_owner_workspace_task(db, user_id, task):
             continue
-        if uid in recipients_comment:
+        if user_id in recipients_comment:
             continue
-        body = f"«{ttitle}» · {author_name}: {preview}"[:900]
-        db.add(
-            OwnerWorkspaceNotification(
-                user_id=uid,
-                kind=KIND_TASK_MENTION,
-                title="Упоминание в комментарии",
-                body=body,
-                task_id=task.id,
-                dedupe_key=mention_dedupe_key(comment_id, uid),
-            )
+        if not notifications_enabled_for_user(db, user_id, KIND_TASK_MENTION):
+            continue
+        queue_notification(
+            db,
+            user_id=user_id,
+            kind=KIND_TASK_MENTION,
+            title="Упоминание в комментарии",
+            body=body,
+            task_id=task.id,
+            dedupe_key=mention_dedupe_key(comment_id, user_id),
         )
 
 
@@ -124,9 +190,8 @@ def task_updated_dedupe_key(task_id: int, actor_id: int, ts_ms: int, recipient_i
 
 
 def collect_user_ids_for_contact_notifications(db: Session, contact_id: int) -> Set[int]:
-    """Исполнители активных задач по контакту + владельцы и участники связанных проектов."""
     ids: Set[int] = set()
-    for (aid,) in (
+    for (assignee_id,) in (
         db.query(OwnerWorkspaceTask.assignee_id)
         .filter(
             OwnerWorkspaceTask.contact_id == contact_id,
@@ -136,23 +201,23 @@ def collect_user_ids_for_contact_notifications(db: Session, contact_id: int) -> 
         .distinct()
         .all()
     ):
-        ids.add(int(aid))
-    proj_ids = [
-        r[0]
-        for r in db.query(OwnerWorkspaceProjectContact.project_id)
+        ids.add(int(assignee_id))
+    project_ids = [
+        row[0]
+        for row in db.query(OwnerWorkspaceProjectContact.project_id)
         .filter(OwnerWorkspaceProjectContact.contact_id == contact_id)
         .all()
     ]
-    for pid in proj_ids:
-        p = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == pid).first()
-        if p and p.owner_id:
-            ids.add(int(p.owner_id))
-        for (uid,) in (
+    for project_id in project_ids:
+        project = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
+        if project and project.owner_id:
+            ids.add(int(project.owner_id))
+        for (user_id,) in (
             db.query(OwnerWorkspaceProjectParticipant.user_id)
-            .filter(OwnerWorkspaceProjectParticipant.project_id == pid)
+            .filter(OwnerWorkspaceProjectParticipant.project_id == project_id)
             .all()
         ):
-            ids.add(int(uid))
+            ids.add(int(user_id))
     return ids
 
 
@@ -163,7 +228,6 @@ def notify_task_updated(
     actor_id: int,
     changed_fields: dict,
 ) -> None:
-    """Уведомить исполнителя и/или автора, если кто-то другой изменил поля (кроме только смены assignee)."""
     if not changed_fields:
         return
     if set(changed_fields.keys()) <= {"assignee_id"}:
@@ -173,9 +237,9 @@ def notify_task_updated(
     keys = sorted(changed_fields.keys())
     preview = ", ".join(keys[:8])
     if len(keys) > 8:
-        preview += "…"
-    ttitle = (task.title or f"#{task.id}")[:200]
-    body = f"«{ttitle}» · {actor_name}: {preview}"[:900]
+        preview += "..."
+    task_title = (task.title or f"#{task.id}")[:200]
+    body = f'"{task_title}" · {actor_name}: {preview}'[:900]
     recipients: Set[int] = set()
     if task.assignee_id and int(task.assignee_id) != actor_id:
         recipients.add(int(task.assignee_id))
@@ -184,18 +248,19 @@ def notify_task_updated(
     if not recipients:
         return
     ts_ms = int(time.time() * 1000)
-    cid = int(task.contact_id) if task.contact_id is not None else None
-    for uid in recipients:
-        db.add(
-            OwnerWorkspaceNotification(
-                user_id=uid,
-                kind=KIND_TASK_UPDATED,
-                title="Задача обновлена",
-                body=body,
-                task_id=task.id,
-                contact_id=cid,
-                dedupe_key=task_updated_dedupe_key(task.id, actor_id, ts_ms, uid),
-            )
+    contact_id = int(task.contact_id) if task.contact_id is not None else None
+    for user_id in recipients:
+        if not notifications_enabled_for_user(db, user_id, KIND_TASK_UPDATED):
+            continue
+        queue_notification(
+            db,
+            user_id=user_id,
+            kind=KIND_TASK_UPDATED,
+            title="Задача обновлена",
+            body=body,
+            task_id=task.id,
+            contact_id=contact_id,
+            dedupe_key=task_updated_dedupe_key(task.id, actor_id, ts_ms, user_id),
         )
 
 
@@ -206,23 +271,21 @@ def notify_incoming_contact_message(
     contact_name: str,
     exclude_user_ids: Optional[Iterable[int]] = None,
 ) -> None:
-    """Входящее сообщение: уведомить вовлечённых по контакту (кроме exclude, напр. автора записи)."""
-    excluded = {int(x) for x in (exclude_user_ids or ()) if x is not None}
+    excluded = {int(value) for value in (exclude_user_ids or ()) if value is not None}
     recipients = collect_user_ids_for_contact_notifications(db, message.contact_id) - excluded
     preview = (message.text or "").strip()[:300]
-    line = f"{contact_name}: {preview}" if preview else contact_name
-    body = line[:900]
-    for uid in recipients:
-        db.add(
-            OwnerWorkspaceNotification(
-                user_id=uid,
-                kind=KIND_CONTACT_INCOMING_MESSAGE,
-                title="Новое сообщение по контакту",
-                body=body,
-                task_id=None,
-                contact_id=message.contact_id,
-                dedupe_key=f"ow:msg_in:{message.id}:u{uid}",
-            )
+    body = (f"{contact_name}: {preview}" if preview else contact_name)[:900]
+    for user_id in recipients:
+        if not notifications_enabled_for_user(db, user_id, KIND_CONTACT_INCOMING_MESSAGE):
+            continue
+        queue_notification(
+            db,
+            user_id=user_id,
+            kind=KIND_CONTACT_INCOMING_MESSAGE,
+            title="Новое сообщение по контакту",
+            body=body,
+            contact_id=message.contact_id,
+            dedupe_key=f"ow:msg_in:{message.id}:u{user_id}",
         )
 
 
@@ -232,21 +295,20 @@ def notify_task_assigned(
     new_assignee_id: Optional[int],
     actor_id: int,
 ) -> None:
-    """Уведомить нового исполнителя (если он не сам себя назначил). Не делает commit."""
     if new_assignee_id is None or new_assignee_id == actor_id:
         return
+    if not notifications_enabled_for_user(db, new_assignee_id, KIND_TASK_ASSIGNED):
+        return
     ts_ms = int(time.time() * 1000)
-    dk = assign_dedupe_key(task.id, new_assignee_id, ts_ms)
     body = (task.title or f"Задача #{task.id}")[:500]
-    db.add(
-        OwnerWorkspaceNotification(
-            user_id=new_assignee_id,
-            kind=KIND_TASK_ASSIGNED,
-            title="Вам назначена задача",
-            body=body,
-            task_id=task.id,
-            dedupe_key=dk,
-        )
+    queue_notification(
+        db,
+        user_id=new_assignee_id,
+        kind=KIND_TASK_ASSIGNED,
+        title="Вам назначена задача",
+        body=body,
+        task_id=task.id,
+        dedupe_key=assign_dedupe_key(task.id, new_assignee_id, ts_ms),
     )
 
 
@@ -258,32 +320,30 @@ def notify_task_comment_added(
     author_id: int,
     comment_text: str,
 ) -> None:
-    """Уведомить исполнителя и автора задачи о новом комментарии. Не делает commit."""
     author = db.query(User).filter(User.id == author_id).first()
-    author_name = (
-        (author.full_name or author.email or str(author_id)) if author else f"#{author_id}"
-    )
+    author_name = (author.full_name or author.email or str(author_id)) if author else f"#{author_id}"
     preview = (comment_text or "").strip()[:400]
     line = f"{author_name}: {preview}" if preview else author_name
-    ttitle = (task.title or f"#{task.id}")[:120]
-    body = f"«{ttitle}» · {line}"[:900]
+    task_title = (task.title or f"#{task.id}")[:120]
+    body = f'"{task_title}" · {line}'[:900]
 
-    recipients = set()
+    recipients: Set[int] = set()
     if task.assignee_id and task.assignee_id != author_id:
         recipients.add(task.assignee_id)
     if task.creator_id and task.creator_id != author_id:
         recipients.add(task.creator_id)
 
-    for uid in recipients:
-        db.add(
-            OwnerWorkspaceNotification(
-                user_id=uid,
-                kind=KIND_TASK_COMMENT,
-                title="Комментарий к задаче",
-                body=body,
-                task_id=task.id,
-                dedupe_key=comment_dedupe_key(comment_id, uid),
-            )
+    for user_id in recipients:
+        if not notifications_enabled_for_user(db, user_id, KIND_TASK_COMMENT):
+            continue
+        queue_notification(
+            db,
+            user_id=user_id,
+            kind=KIND_TASK_COMMENT,
+            title="Комментарий к задаче",
+            body=body,
+            task_id=task.id,
+            dedupe_key=comment_dedupe_key(comment_id, user_id),
         )
 
 
@@ -293,13 +353,6 @@ def refresh_deadline_notifications_for_user(
     *,
     due_soon_hours: int = 24,
 ) -> int:
-    """
-    Создаёт недостающие уведомления для задач, назначенных на user_id:
-    - просроченные активные;
-    - дедлайн в ближайшие due_soon_hours (не просрочено).
-
-    Дедупликация по (user_id, dedupe_key). Возвращает число новых записей.
-    """
     if due_soon_hours < 1 or due_soon_hours > 336:
         due_soon_hours = 24
 
@@ -328,21 +381,20 @@ def refresh_deadline_notifications_for_user(
         )
         .all()
     )
-    for t in overdue_tasks:
-        dk = overdue_dedupe_key(t.id)
-        if _exists(dk):
+    for task in overdue_tasks:
+        dedupe_key = overdue_dedupe_key(task.id)
+        if _exists(dedupe_key):
             continue
-        title = "Просрочена задача"
-        body = t.title[:500] if t.title else f"Задача #{t.id}"
-        db.add(
-            OwnerWorkspaceNotification(
-                user_id=user_id,
-                kind=KIND_TASK_OVERDUE,
-                title=title,
-                body=body,
-                task_id=t.id,
-                dedupe_key=dk,
-            )
+        if not notifications_enabled_for_user(db, user_id, KIND_TASK_OVERDUE):
+            break
+        queue_notification(
+            db,
+            user_id=user_id,
+            kind=KIND_TASK_OVERDUE,
+            title="Просрочена задача",
+            body=task.title[:500] if task.title else f"Задача #{task.id}",
+            task_id=task.id,
+            dedupe_key=dedupe_key,
         )
         created += 1
 
@@ -357,25 +409,73 @@ def refresh_deadline_notifications_for_user(
         )
         .all()
     )
-    for t in due_soon_tasks:
-        assert t.deadline_at is not None
-        dk = due_soon_dedupe_key(t.id, t.deadline_at)
-        if _exists(dk):
+    for task in due_soon_tasks:
+        assert task.deadline_at is not None
+        if not notifications_enabled_for_user(db, user_id, KIND_TASK_DUE_SOON):
+            break
+        dedupe_key = due_soon_dedupe_key(task.id, task.deadline_at)
+        if _exists(dedupe_key):
             continue
-        title = f"Дедлайн в ближайшие {due_soon_hours} ч"
-        body = t.title[:500] if t.title else f"Задача #{t.id}"
-        db.add(
-            OwnerWorkspaceNotification(
-                user_id=user_id,
-                kind=KIND_TASK_DUE_SOON,
-                title=title,
-                body=body,
-                task_id=t.id,
-                dedupe_key=dk,
-            )
+        queue_notification(
+            db,
+            user_id=user_id,
+            kind=KIND_TASK_DUE_SOON,
+            title=f"Дедлайн в ближайшие {due_soon_hours} ч",
+            body=task.title[:500] if task.title else f"Задача #{task.id}",
+            task_id=task.id,
+            dedupe_key=dedupe_key,
         )
         created += 1
-
-    if created:
-        db.commit()
     return created
+
+
+def dispatch_pending_owner_workspace_notification_emails(db: Session, limit: int = 100) -> int:
+    pending_rows = (
+        db.query(OwnerWorkspaceNotification)
+        .filter(
+            OwnerWorkspaceNotification.email_delivery_status.in_(
+                (EMAIL_STATUS_PENDING, EMAIL_STATUS_FAILED)
+            ),
+            OwnerWorkspaceNotification.email_attempts < MAX_EMAIL_ATTEMPTS,
+        )
+        .order_by(OwnerWorkspaceNotification.created_at.asc(), OwnerWorkspaceNotification.id.asc())
+        .limit(limit)
+        .all()
+    )
+    if not pending_rows:
+        return 0
+
+    sent_count = 0
+    now = datetime.now(timezone.utc)
+
+    for notification in pending_rows:
+        notification.email_last_attempt_at = now
+        notification.email_attempts = int(notification.email_attempts or 0) + 1
+
+        user = db.query(User).filter(User.id == notification.user_id).first()
+        if (
+            not user
+            or not getattr(user, "email", None)
+            or not email_delivery_enabled_for_user(db, notification.user_id, notification.kind)
+        ):
+            notification.email_delivery_status = EMAIL_STATUS_DISABLED
+            notification.email_last_error = None
+            notification.email_sent_at = None
+            continue
+
+        try:
+            send_email(
+                to_email=user.email,
+                subject=f"Owner Workspace: {notification.title}",
+                body=notification.body or notification.title,
+            )
+            notification.email_delivery_status = EMAIL_STATUS_SENT
+            notification.email_sent_at = now
+            notification.email_last_error = None
+            sent_count += 1
+        except Exception as exc:
+            notification.email_delivery_status = EMAIL_STATUS_FAILED
+            notification.email_last_error = str(exc)[:500]
+
+    db.commit()
+    return sent_count

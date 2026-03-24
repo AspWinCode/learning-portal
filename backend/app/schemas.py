@@ -2456,11 +2456,11 @@ class TaskResponse(BaseModel):
 # --- Owner workspace (owner task manager) ---
 class OwnerWorkspaceProjectParticipantAdd(BaseModel):
     user_id: int
-    role: Literal["member", "manager"] = "member"
+    role: Literal["member", "manager", "observer"] = "member"
 
 
 class OwnerWorkspaceProjectParticipantRolePatch(BaseModel):
-    role: Literal["member", "manager"]
+    role: Literal["member", "manager", "observer"]
 
 
 class OwnerWorkspaceProjectContactAdd(BaseModel):
@@ -2831,6 +2831,14 @@ class OwnerWorkspaceUserPreferencesResponse(BaseModel):
     task_list_rows_per_page: int = 25
     digest_due_within_hours: int = 48
     digest_scope: Literal["all", "mine"] = "all"
+    notify_email_enabled: bool = False
+    notify_task_overdue: bool = True
+    notify_task_due_soon: bool = True
+    notify_task_assigned: bool = True
+    notify_task_comment: bool = True
+    notify_task_updated: bool = True
+    notify_contact_incoming_message: bool = True
+    notify_task_mention: bool = True
 
 
 class OwnerWorkspaceUserPreferencesPatch(BaseModel):
@@ -2838,6 +2846,14 @@ class OwnerWorkspaceUserPreferencesPatch(BaseModel):
     task_list_rows_per_page: Optional[int] = Field(None, ge=5, le=100)
     digest_due_within_hours: Optional[int] = Field(None, ge=8, le=336)
     digest_scope: Optional[Literal["all", "mine"]] = None
+    notify_email_enabled: Optional[bool] = None
+    notify_task_overdue: Optional[bool] = None
+    notify_task_due_soon: Optional[bool] = None
+    notify_task_assigned: Optional[bool] = None
+    notify_task_comment: Optional[bool] = None
+    notify_task_updated: Optional[bool] = None
+    notify_contact_incoming_message: Optional[bool] = None
+    notify_task_mention: Optional[bool] = None
 
 
 # Owner funnels (support letters, thank you letters, events)

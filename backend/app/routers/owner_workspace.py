@@ -14,7 +14,9 @@ from app.services.owner_workspace_access import (
     assert_full_workspace,
     build_owner_workspace_access_context,
     can_archive_project,
+    can_edit_contact_content,
     can_change_project_participant_roles,
+    can_edit_project_content,
     can_manage_project_team,
     contact_visible,
     filter_tasks_query,
@@ -396,6 +398,13 @@ def _task_to_response(db: Session, task: OwnerWorkspaceTask) -> OwnerWorkspaceTa
     )
 
 
+def _assert_task_write_access(db: Session, ctx: OwnerWorkspaceAccessContext, task: OwnerWorkspaceTask) -> None:
+    if task.project_id is None:
+        return
+    if not can_edit_project_content(db, ctx, task.project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+
+
 def _message_to_response(db: Session, message: OwnerWorkspaceMessage) -> OwnerWorkspaceMessageResponse:
     links = db.query(OwnerWorkspaceTaskMessage).filter(OwnerWorkspaceTaskMessage.message_id == message.id).all()
     return OwnerWorkspaceMessageResponse(
@@ -576,8 +585,8 @@ async def add_project_participant(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     eff_role = (payload.role or "member").strip().lower()
-    if eff_role not in ("member", "manager"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be member or manager")
+    if eff_role not in ("member", "manager", "observer"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be member, manager or observer")
     uid = ctx.user.id
     if not ctx.full and not is_project_owner(db, uid, project_id):
         if is_project_manager(db, uid, project_id) and eff_role != "member":
@@ -587,6 +596,8 @@ async def add_project_participant(
             )
     if eff_role == "manager" and not (ctx.full or is_project_owner(db, uid, project_id)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Назначать менеджеров может только владелец проекта или администратор")
+    if eff_role == "observer" and not (ctx.full or is_project_owner(db, uid, project_id)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Назначать наблюдателей может только владелец проекта или администратор")
     exists = db.query(OwnerWorkspaceProjectParticipant).filter(
         OwnerWorkspaceProjectParticipant.project_id == project_id,
         OwnerWorkspaceProjectParticipant.user_id == payload.user_id,
@@ -618,8 +629,8 @@ async def patch_project_participant_role(
     if not row:
         raise HTTPException(status_code=404, detail="Participant not found")
     new_role = payload.role.strip().lower()
-    if new_role not in ("member", "manager"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be member or manager")
+    if new_role not in ("member", "manager", "observer"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be member, manager or observer")
     row.role = new_role
     db.commit()
     return None
@@ -666,9 +677,7 @@ async def add_contact_to_project(
     if not project or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     uid = ctx.user.id
-    if not ctx.full and not (
-        is_project_owner(db, uid, project_id) or is_project_participant(db, uid, project_id)
-    ):
+    if not can_edit_project_content(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
     if not contact:
@@ -695,9 +704,7 @@ async def remove_contact_from_project(
     if not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     uid = ctx.user.id
-    if not ctx.full and not (
-        is_project_owner(db, uid, project_id) or is_project_participant(db, uid, project_id)
-    ):
+    if not can_edit_project_content(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if not ctx.full and not contact_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -794,9 +801,7 @@ async def create_contact(
             continue
         if not ctx.full and not project_visible(ctx, project_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
-        if not ctx.full and not (
-            is_project_owner(db, ctx.user.id, project_id) or is_project_participant(db, ctx.user.id, project_id)
-        ):
+        if not can_edit_project_content(db, ctx, project_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для привязки к проекту")
         db.add(OwnerWorkspaceProjectContact(project_id=project_id, contact_id=row.id))
     _log_audit(
@@ -834,6 +839,8 @@ async def update_contact(
     row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
     if not row or not contact_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
+    if not can_edit_contact_content(db, ctx, contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     old = {"full_name": row.full_name, "phone": row.phone}
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
@@ -1061,10 +1068,16 @@ async def create_task(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if payload.contact_id is not None and not can_edit_contact_content(db, ctx, payload.contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if payload.project_id is not None and not project_visible(ctx, payload.project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
+    if payload.project_id is not None and not can_edit_project_content(db, ctx, payload.project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if payload.contact_id is not None and not contact_visible(ctx, payload.contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к контакту")
+    if payload.contact_id is not None and not can_edit_contact_content(db, ctx, payload.contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if payload.previous_task_id is not None:
         prev = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == payload.previous_task_id).first()
         if not prev or not task_visible(ctx, prev):
@@ -1135,8 +1148,19 @@ async def update_task(
     row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not row or not task_visible(ctx, row):
         raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_write_access(db, ctx, row)
 
     data = payload.model_dump(exclude_unset=True)
+    new_project_id = data.get("project_id", row.project_id)
+    new_contact_id = data.get("contact_id", row.contact_id)
+    if new_project_id is not None and not project_visible(ctx, new_project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
+    if new_project_id is not None and not can_edit_project_content(db, ctx, new_project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    if new_contact_id is not None and not contact_visible(ctx, new_contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к контакту")
+    if new_contact_id is not None and not can_edit_contact_content(db, ctx, new_contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if row.status in ("completed", "cancelled"):
         new_status = data.get("status", row.status)
         extra = {k for k in data if k != "status"}
@@ -1226,6 +1250,8 @@ async def bulk_update_tasks(
         row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == tid).first()
         if not row or not task_visible(ctx, row):
             continue
+        if row.project_id is not None and not can_edit_project_content(db, ctx, row.project_id):
+            continue
         if row.status in ("completed", "cancelled"):
             new_status = data.get("status", row.status)
             extra = {k for k in data if k != "status"}
@@ -1268,6 +1294,7 @@ async def complete_task(
     row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not row or not task_visible(ctx, row):
         raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_write_access(db, ctx, row)
     row.status = "completed"
     row.completed_at = datetime.now(timezone.utc)
     _log_audit(
@@ -1298,6 +1325,16 @@ async def complete_task(
                 linked_message_ids=[m.message_id for m in db.query(OwnerWorkspaceTaskMessage).filter(OwnerWorkspaceTaskMessage.task_id == row.id).all()],
                 previous_task_id=row.id,
             )
+        target_project_id = next_data.project_id if next_data.project_id is not None else row.project_id
+        target_contact_id = next_data.contact_id if next_data.contact_id is not None else row.contact_id
+        if target_project_id is not None and not project_visible(ctx, target_project_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
+        if target_project_id is not None and not can_edit_project_content(db, ctx, target_project_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+        if target_contact_id is not None and not contact_visible(ctx, target_contact_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к контакту")
+        if target_contact_id is not None and not can_edit_contact_content(db, ctx, target_contact_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
         new_task_row = OwnerWorkspaceTask(
             title=next_data.title.strip(),
             description=(next_data.description or "").strip() or None,
@@ -1381,6 +1418,7 @@ async def create_task_comment(
     exists = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not exists or not task_visible(ctx, exists):
         raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_write_access(db, ctx, exists)
     row = OwnerWorkspaceTaskComment(task_id=task_id, author_id=ctx.user.id, text=payload.text.strip())
     db.add(row)
     db.flush()
@@ -1413,6 +1451,7 @@ async def link_message_to_task(
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_write_access(db, ctx, task)
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == payload.message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -1438,6 +1477,7 @@ async def unlink_message_from_task(
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_write_access(db, ctx, task)
     link = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == task_id,
         OwnerWorkspaceTaskMessage.message_id == message_id,
@@ -1545,6 +1585,17 @@ async def create_message(
     contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
     if not contact or not contact_visible(ctx, payload.contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
+    if not ctx.full:
+        linked_project_ids = {
+            row.project_id
+            for row in db.query(OwnerWorkspaceProjectContact.project_id)
+            .filter(OwnerWorkspaceProjectContact.contact_id == payload.contact_id)
+            .all()
+        }
+        if linked_project_ids and not any(can_edit_project_content(db, ctx, pid) for pid in linked_project_ids):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    if not can_edit_contact_content(db, ctx, payload.contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     row = OwnerWorkspaceMessage(
         contact_id=payload.contact_id,
         external_chat_id=payload.external_chat_id,
@@ -1581,8 +1632,12 @@ async def create_task_from_message(
         raise HTTPException(status_code=404, detail="Message not found")
     if not ctx.full and not contact_visible(ctx, message.contact_id):
         raise HTTPException(status_code=404, detail="Message not found")
+    if not can_edit_contact_content(db, ctx, message.contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if payload.project_id is not None and not project_visible(ctx, payload.project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
+    if payload.project_id is not None and not can_edit_project_content(db, ctx, payload.project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     row = OwnerWorkspaceTask(
         title=payload.title.strip(),
         description=(payload.description or message.text or "").strip() or None,
@@ -1626,6 +1681,7 @@ async def link_message_with_task(
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == payload.task_id).first()
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_write_access(db, ctx, task)
     exists = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == payload.task_id,
         OwnerWorkspaceTaskMessage.message_id == message_id,
@@ -1948,3 +2004,4 @@ async def list_history(
         q = q.filter(OwnerWorkspaceAuditLog.entity_id == entity_id)
     rows = q.order_by(OwnerWorkspaceAuditLog.created_at.desc()).limit(300).all()
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
+

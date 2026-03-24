@@ -13,6 +13,14 @@ DEFAULT_PREFERENCES: Dict[str, Any] = {
     "task_list_rows_per_page": 25,
     "digest_due_within_hours": 48,
     "digest_scope": "all",
+    "notify_email_enabled": False,
+    "notify_task_overdue": True,
+    "notify_task_due_soon": True,
+    "notify_task_assigned": True,
+    "notify_task_comment": True,
+    "notify_task_updated": True,
+    "notify_contact_incoming_message": True,
+    "notify_task_mention": True,
 }
 
 _VALID_VIEWS = frozenset({"list", "kanban", "calendar"})
@@ -51,6 +59,19 @@ def normalize_preferences(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     s = src.get("digest_scope", out["digest_scope"])
     out["digest_scope"] = s if s in _VALID_SCOPES else DEFAULT_PREFERENCES["digest_scope"]
+
+    out["notify_email_enabled"] = bool(src.get("notify_email_enabled", DEFAULT_PREFERENCES["notify_email_enabled"]))
+
+    for key in (
+        "notify_task_overdue",
+        "notify_task_due_soon",
+        "notify_task_assigned",
+        "notify_task_comment",
+        "notify_task_updated",
+        "notify_contact_incoming_message",
+        "notify_task_mention",
+    ):
+        out[key] = bool(src.get(key, DEFAULT_PREFERENCES[key]))
 
     return out
 

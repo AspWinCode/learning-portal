@@ -434,6 +434,14 @@ function App() {
               }
             />
             <Route
+              path="/owner-workspace/projects/:projectId"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/owner-workspace/contacts"
               element={
                 <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
@@ -442,7 +450,23 @@ function App() {
               }
             />
             <Route
+              path="/owner-workspace/contacts/:contactId"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/owner-workspace/tasks"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/tasks/:taskId"
               element={
                 <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
                   <OwnerWorkspacePage />

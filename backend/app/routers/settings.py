@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -16,6 +16,25 @@ router = APIRouter()
 LOGO_KEY = "site_logo_data_url"
 DISTRICTS_KEY = "b2b_districts"
 REFUSED_REASONS_KEY = "sales_refused_reasons"
+OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
+
+DEFAULT_OWNER_WS_TASK_CONFIG = {
+    "statuses": [
+        {"key": "new", "label": "Новая"},
+        {"key": "in_progress", "label": "В работе"},
+        {"key": "waiting", "label": "Ожидание"},
+        {"key": "completed", "label": "Завершена"},
+        {"key": "cancelled", "label": "Отменена"},
+    ],
+    "priorities": [
+        {"key": "low", "label": "Низкий"},
+        {"key": "medium", "label": "Средний"},
+        {"key": "high", "label": "Высокий"},
+        {"key": "critical", "label": "Критический"},
+    ],
+}
+OWNER_WS_STATUS_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["statuses"]]
+OWNER_WS_PRIORITY_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["priorities"]]
 
 
 class B2BDistrictsResponse(BaseModel):
@@ -32,6 +51,104 @@ class RefusedReasonsResponse(BaseModel):
 
 class RefusedReasonsUpdate(BaseModel):
     items: List[str]
+
+
+class OwnerWorkspaceTaskConfigItem(BaseModel):
+    key: str
+    label: str
+    enabled: bool = True
+
+
+class OwnerWorkspaceTaskConfigResponse(BaseModel):
+    statuses: List[OwnerWorkspaceTaskConfigItem]
+    priorities: List[OwnerWorkspaceTaskConfigItem]
+
+
+class OwnerWorkspaceTaskConfigUpdate(BaseModel):
+    statuses: List[OwnerWorkspaceTaskConfigItem]
+    priorities: List[OwnerWorkspaceTaskConfigItem]
+
+
+def _get_json_setting(db: Session, key: str):
+    setting = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if not setting or not (setting.value or "").strip():
+        return None
+    try:
+        return json.loads(setting.value)
+    except Exception:
+        return None
+
+
+def _set_json_setting(db: Session, key: str, value) -> None:
+    raw = json.dumps(value, ensure_ascii=False)
+    setting = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if not setting:
+        setting = AppSetting(key=key, value=raw)
+        db.add(setting)
+    else:
+        setting.value = raw
+        db.add(setting)
+
+
+def _normalize_owner_ws_task_items(items: List[OwnerWorkspaceTaskConfigItem], *, allowed_keys: List[str], defaults: List[dict]) -> List[dict]:
+    by_key: Dict[str, dict] = {}
+    for item in items:
+        key = (item.key or "").strip()
+        if key not in allowed_keys:
+            continue
+        label = (item.label or "").strip()
+        if not label:
+            continue
+        by_key[key] = {
+            "label": label[:120],
+            "enabled": bool(item.enabled),
+        }
+    out: List[dict] = []
+    seen = set()
+    default_map = {item["key"]: item for item in defaults}
+    ordered_keys = [item.key for item in items if item.key in allowed_keys]
+    for key in allowed_keys:
+        if key not in ordered_keys:
+            ordered_keys.append(key)
+    for key in ordered_keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        default = default_map[key]
+        value = by_key.get(key, {})
+        out.append(
+            {
+                "key": key,
+                "label": value.get("label", default["label"]),
+                "enabled": value.get("enabled", default.get("enabled", True)),
+            }
+        )
+    return out
+
+
+def _get_owner_ws_task_config(db: Session) -> dict:
+    raw = _get_json_setting(db, OWNER_WS_TASK_CONFIG_KEY)
+    if not isinstance(raw, dict):
+        return DEFAULT_OWNER_WS_TASK_CONFIG
+    statuses = raw.get("statuses")
+    priorities = raw.get("priorities")
+    try:
+        status_items = [OwnerWorkspaceTaskConfigItem.model_validate(x) for x in statuses] if isinstance(statuses, list) else []
+        priority_items = [OwnerWorkspaceTaskConfigItem.model_validate(x) for x in priorities] if isinstance(priorities, list) else []
+    except Exception:
+        return DEFAULT_OWNER_WS_TASK_CONFIG
+    return {
+        "statuses": _normalize_owner_ws_task_items(
+            status_items,
+            allowed_keys=OWNER_WS_STATUS_KEYS,
+            defaults=DEFAULT_OWNER_WS_TASK_CONFIG["statuses"],
+        ),
+        "priorities": _normalize_owner_ws_task_items(
+            priority_items,
+            allowed_keys=OWNER_WS_PRIORITY_KEYS,
+            defaults=DEFAULT_OWNER_WS_TASK_CONFIG["priorities"],
+        ),
+    }
 
 
 @router.get("/logo", response_model=LogoResponse)
@@ -146,5 +263,37 @@ async def set_refused_reasons(
     db.commit()
     db.refresh(setting)
     return RefusedReasonsResponse(items=items)
+
+
+@router.get("/owner-workspace-task-config", response_model=OwnerWorkspaceTaskConfigResponse)
+async def get_owner_workspace_task_config(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    data = _get_owner_ws_task_config(db)
+    return OwnerWorkspaceTaskConfigResponse.model_validate(data)
+
+
+@router.post("/owner-workspace-task-config", response_model=OwnerWorkspaceTaskConfigResponse)
+async def set_owner_workspace_task_config(
+    body: OwnerWorkspaceTaskConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    data = {
+        "statuses": _normalize_owner_ws_task_items(
+            body.statuses,
+            allowed_keys=OWNER_WS_STATUS_KEYS,
+            defaults=DEFAULT_OWNER_WS_TASK_CONFIG["statuses"],
+        ),
+        "priorities": _normalize_owner_ws_task_items(
+            body.priorities,
+            allowed_keys=OWNER_WS_PRIORITY_KEYS,
+            defaults=DEFAULT_OWNER_WS_TASK_CONFIG["priorities"],
+        ),
+    }
+    _set_json_setting(db, OWNER_WS_TASK_CONFIG_KEY, data)
+    db.commit()
+    return OwnerWorkspaceTaskConfigResponse.model_validate(data)
 
 

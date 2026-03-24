@@ -60,6 +60,7 @@ import {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceDigest,
   OwnerWorkspaceNotificationsEnvelope,
+  OwnerWorkspaceTaskConfig,
   OwnerWorkspaceUserPreferences,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTaskCompleteResult,
@@ -977,6 +978,14 @@ export const settingsApi = {
   },
   setRefusedReasons: async (items: string[]): Promise<{ items: string[] }> => {
     const response = await api.post('/api/settings/refused-reasons', { items });
+    return response.data;
+  },
+  getOwnerWorkspaceTaskConfig: async (): Promise<OwnerWorkspaceTaskConfig> => {
+    const response = await api.get('/api/settings/owner-workspace-task-config');
+    return response.data;
+  },
+  setOwnerWorkspaceTaskConfig: async (payload: OwnerWorkspaceTaskConfig): Promise<OwnerWorkspaceTaskConfig> => {
+    const response = await api.post('/api/settings/owner-workspace-task-config', payload);
     return response.data;
   },
 };
@@ -2484,14 +2493,14 @@ export const ownerWorkspaceApi = {
   addProjectParticipant: async (
     projectId: number,
     userId: number,
-    role: 'member' | 'manager' = 'member'
+    role: 'member' | 'manager' | 'observer' = 'member'
   ): Promise<void> => {
     await api.post(`/api/owner-workspace/projects/${projectId}/participants`, { user_id: userId, role });
   },
   patchProjectParticipantRole: async (
     projectId: number,
     userId: number,
-    role: 'member' | 'manager'
+    role: 'member' | 'manager' | 'observer'
   ): Promise<void> => {
     await api.patch(`/api/owner-workspace/projects/${projectId}/participants/${userId}`, { role });
   },

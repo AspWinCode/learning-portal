@@ -808,6 +808,9 @@ async def create_contact(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    permission_policy = get_owner_workspace_permission_policy(db)
+    if not ctx.full and not permission_policy["limited_can_create_contacts"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if not ctx.full and not (payload.project_ids or []):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

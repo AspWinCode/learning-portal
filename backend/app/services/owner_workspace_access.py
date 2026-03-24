@@ -35,6 +35,7 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "manager_can_edit_project_meta": False,
     "manager_can_archive_project": False,
     "limited_can_create_projects": False,
+    "limited_can_create_contacts": False,
 }
 
 
@@ -69,6 +70,7 @@ def get_owner_workspace_permission_policy(db: Session) -> dict:
         "manager_can_edit_project_meta": bool(raw.get("manager_can_edit_project_meta", False)),
         "manager_can_archive_project": bool(raw.get("manager_can_archive_project", False)),
         "limited_can_create_projects": bool(raw.get("limited_can_create_projects", False)),
+        "limited_can_create_contacts": bool(raw.get("limited_can_create_contacts", False)),
     }
 
 

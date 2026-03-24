@@ -1195,6 +1195,7 @@ export interface OwnerWorkspacePermissionPolicy {
   manager_can_edit_project_meta: boolean;
   manager_can_archive_project: boolean;
   limited_can_create_projects: boolean;
+  limited_can_create_contacts: boolean;
 }
 
 export interface OwnerWorkspaceNotificationConfig {

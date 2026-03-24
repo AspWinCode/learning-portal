@@ -397,6 +397,7 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   manager_can_edit_project_meta: false,
   manager_can_archive_project: false,
   limited_can_create_projects: false,
+  limited_can_create_contacts: false,
 };
 
 type OwnerWorkspaceAssigneeAnalyticsRow = {
@@ -671,14 +672,26 @@ const OwnerWorkspacePage: React.FC = () => {
     }
     const limitedSummary = [
       'Доступ только к собственной зоне видимости: свои проекты, связанные контакты и свои задачи.',
-      'Создание контакта требует явной привязки к доступному проекту.',
       'Фактический уровень редактирования внутри проекта дополнительно зависит от роли member / manager / observer.',
     ];
     if (permissionPolicy.limited_can_create_projects) {
       limitedSummary.splice(1, 0, 'Создание новых проектов разрешено системной policy-моделью.');
     }
+    if (permissionPolicy.limited_can_create_contacts) {
+      limitedSummary.splice(
+        permissionPolicy.limited_can_create_projects ? 2 : 1,
+        0,
+        'Создание новых контактов разрешено системной policy-моделью, но требует привязки к доступному проекту.'
+      );
+    } else {
+      limitedSummary.splice(
+        permissionPolicy.limited_can_create_projects ? 2 : 1,
+        0,
+        'Создание контактов для ограниченных ролей может быть отключено policy-моделью.'
+      );
+    }
     return limitedSummary;
-  }, [isWorkspaceFullAccess, permissionPolicy.limited_can_create_projects]);
+  }, [isWorkspaceFullAccess, permissionPolicy.limited_can_create_contacts, permissionPolicy.limited_can_create_projects]);
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
   const [digestProjectFilter, setDigestProjectFilter] = useState<number | ''>('');
@@ -1270,6 +1283,10 @@ const OwnerWorkspacePage: React.FC = () => {
   };
 
   const createContact = async () => {
+    if (!canCreateContactUi) {
+      setError('Создание контакта запрещено текущей policy-моделью.');
+      return;
+    }
     if (!isWorkspaceFullAccess && newContactProjectId === '') {
       setError('Для создания контакта выберите проект, к которому он будет привязан.');
       return;
@@ -2354,6 +2371,10 @@ const OwnerWorkspacePage: React.FC = () => {
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_create_projects,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_create_projects]
   );
+  const canCreateContactUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_create_contacts,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_create_contacts]
+  );
 
   const canChangeParticipantRoles = useMemo(() => {
     if (!projectDialog || !user?.id) return false;
@@ -3431,19 +3452,24 @@ const OwnerWorkspacePage: React.FC = () => {
                     renderInput={(params) => <TextField {...params} label="Проект для привязки" />}
                   />
                 )}
-                <Button
-                  variant="contained"
-                  onClick={createContact}
-                  disabled={!isWorkspaceFullAccess && newContactProjectId === ''}
-                >
-                  РЎРѕР·РґР°С‚СЊ
-                </Button>
-              </Stack>
-              {!isWorkspaceFullAccess && (
-                <Alert severity="info" sx={{ mt: 1.5 }}>
-                  Для sales / trainer новый контакт создаётся только вместе с привязкой к доступному проекту.
-                </Alert>
-              )}
+                  <Button
+                    variant="contained"
+                    onClick={createContact}
+                    disabled={!canCreateContactUi || (!isWorkspaceFullAccess && newContactProjectId === '')}
+                  >
+                    РЎРѕР·РґР°С‚СЊ
+                  </Button>
+                </Stack>
+                {!isWorkspaceFullAccess && !canCreateContactUi && (
+                  <Alert severity="info" sx={{ mt: 1.5 }}>
+                    Создание контактов для ограниченных ролей сейчас отключено policy-моделью.
+                  </Alert>
+                )}
+                {!isWorkspaceFullAccess && canCreateContactUi && (
+                  <Alert severity="info" sx={{ mt: 1.5 }}>
+                    Для sales / trainer новый контакт создаётся только вместе с привязкой к доступному проекту.
+                  </Alert>
+                )}
             </CardContent>
           </Card>
           <Grid container spacing={2}>
@@ -5150,6 +5176,17 @@ const OwnerWorkspacePage: React.FC = () => {
                               />
                             }
                             label="Ограниченные роли (sales / trainer) могут создавать проекты"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.limited_can_create_contacts}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_create_contacts: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут создавать контакты"
                           />
                         </Stack>
                       </CardContent>

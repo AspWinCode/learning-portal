@@ -59,6 +59,8 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "limited_can_create_tasks": False,
     "limited_can_edit_contacts": False,
     "limited_can_edit_tasks": False,
+    "limited_can_manage_project_contacts": False,
+    "limited_can_complete_tasks": False,
     "limited_can_send_messages": False,
     "limited_can_comment_tasks": False,
 }
@@ -124,6 +126,8 @@ class OwnerWorkspacePermissionPolicyResponse(BaseModel):
     limited_can_create_tasks: bool = False
     limited_can_edit_contacts: bool = False
     limited_can_edit_tasks: bool = False
+    limited_can_manage_project_contacts: bool = False
+    limited_can_complete_tasks: bool = False
     limited_can_send_messages: bool = False
     limited_can_comment_tasks: bool = False
 
@@ -141,6 +145,8 @@ class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
     limited_can_create_tasks: bool = False
     limited_can_edit_contacts: bool = False
     limited_can_edit_tasks: bool = False
+    limited_can_manage_project_contacts: bool = False
+    limited_can_complete_tasks: bool = False
     limited_can_send_messages: bool = False
     limited_can_comment_tasks: bool = False
 
@@ -268,6 +274,8 @@ def _get_owner_ws_permission_policy(db: Session) -> dict:
         "limited_can_create_tasks": bool(raw.get("limited_can_create_tasks", False)),
         "limited_can_edit_contacts": bool(raw.get("limited_can_edit_contacts", False)),
         "limited_can_edit_tasks": bool(raw.get("limited_can_edit_tasks", False)),
+        "limited_can_manage_project_contacts": bool(raw.get("limited_can_manage_project_contacts", False)),
+        "limited_can_complete_tasks": bool(raw.get("limited_can_complete_tasks", False)),
         "limited_can_send_messages": bool(raw.get("limited_can_send_messages", False)),
         "limited_can_comment_tasks": bool(raw.get("limited_can_comment_tasks", False)),
     }
@@ -533,6 +541,8 @@ async def set_owner_workspace_permission_policy(
         "limited_can_create_tasks": bool(body.limited_can_create_tasks),
         "limited_can_edit_contacts": bool(body.limited_can_edit_contacts),
         "limited_can_edit_tasks": bool(body.limited_can_edit_tasks),
+        "limited_can_manage_project_contacts": bool(body.limited_can_manage_project_contacts),
+        "limited_can_complete_tasks": bool(body.limited_can_complete_tasks),
         "limited_can_send_messages": bool(body.limited_can_send_messages),
         "limited_can_comment_tasks": bool(body.limited_can_comment_tasks),
     }

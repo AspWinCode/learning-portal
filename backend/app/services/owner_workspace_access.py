@@ -39,6 +39,8 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "limited_can_create_tasks": False,
     "limited_can_edit_contacts": False,
     "limited_can_edit_tasks": False,
+    "limited_can_manage_project_contacts": False,
+    "limited_can_complete_tasks": False,
     "limited_can_send_messages": False,
     "limited_can_comment_tasks": False,
 }
@@ -79,6 +81,8 @@ def get_owner_workspace_permission_policy(db: Session) -> dict:
         "limited_can_create_tasks": bool(raw.get("limited_can_create_tasks", False)),
         "limited_can_edit_contacts": bool(raw.get("limited_can_edit_contacts", False)),
         "limited_can_edit_tasks": bool(raw.get("limited_can_edit_tasks", False)),
+        "limited_can_manage_project_contacts": bool(raw.get("limited_can_manage_project_contacts", False)),
+        "limited_can_complete_tasks": bool(raw.get("limited_can_complete_tasks", False)),
         "limited_can_send_messages": bool(raw.get("limited_can_send_messages", False)),
         "limited_can_comment_tasks": bool(raw.get("limited_can_comment_tasks", False)),
     }
@@ -347,6 +351,24 @@ def can_update_task_content(db: Session, ctx: OwnerWorkspaceAccessContext, task:
     if task.project_id is not None and not can_edit_project_content(db, ctx, task.project_id):
         return False
     return get_owner_workspace_permission_policy(db)["limited_can_edit_tasks"]
+
+
+def can_manage_project_contacts(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
+    if not can_edit_project_content(db, ctx, project_id):
+        return False
+    if ctx.full:
+        return True
+    return get_owner_workspace_permission_policy(db)["limited_can_manage_project_contacts"]
+
+
+def can_complete_task(db: Session, ctx: OwnerWorkspaceAccessContext, task: OwnerWorkspaceTask) -> bool:
+    if not task_visible(ctx, task):
+        return False
+    if ctx.full:
+        return True
+    if task.project_id is not None and not can_edit_project_content(db, ctx, task.project_id):
+        return False
+    return get_owner_workspace_permission_policy(db)["limited_can_complete_tasks"]
 
 
 def can_archive_project(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:

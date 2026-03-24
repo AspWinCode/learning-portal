@@ -424,6 +424,8 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   limited_can_create_tasks: false,
   limited_can_edit_contacts: false,
   limited_can_edit_tasks: false,
+  limited_can_manage_project_contacts: false,
+  limited_can_complete_tasks: false,
   limited_can_send_messages: false,
   limited_can_comment_tasks: false,
 };
@@ -738,6 +740,16 @@ const OwnerWorkspacePage: React.FC = () => {
         : 'Редактирование полей задач для ограниченных ролей может быть отключено policy-моделью.'
     );
     limitedSummary.push(
+      permissionPolicy.limited_can_manage_project_contacts
+        ? 'Привязка и отвязка контактов в проектах разрешены системной policy-моделью.'
+        : 'Привязка и отвязка контактов в проектах для ограниченных ролей могут быть отключены policy-моделью.'
+    );
+    limitedSummary.push(
+      permissionPolicy.limited_can_complete_tasks
+        ? 'Завершение задач разрешено системной policy-моделью.'
+        : 'Завершение задач для ограниченных ролей может быть отключено policy-моделью.'
+    );
+    limitedSummary.push(
       permissionPolicy.limited_can_send_messages
         ? 'Отправка исходящих сообщений разрешена системной policy-моделью.'
         : 'Отправка исходящих сообщений для ограниченных ролей может быть отключена policy-моделью.'
@@ -755,6 +767,8 @@ const OwnerWorkspacePage: React.FC = () => {
     permissionPolicy.limited_can_create_tasks,
     permissionPolicy.limited_can_edit_contacts,
     permissionPolicy.limited_can_edit_tasks,
+    permissionPolicy.limited_can_manage_project_contacts,
+    permissionPolicy.limited_can_complete_tasks,
     permissionPolicy.limited_can_send_messages,
     permissionPolicy.limited_can_comment_tasks,
   ]);
@@ -1934,6 +1948,10 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const linkContactToProject = async () => {
     if (!projectDialog || !linkContactId) return;
+    if (!canManageProjectContactsDialog) {
+      setError('Привязка контактов к проекту запрещена текущей policy-моделью.');
+      return;
+    }
     try {
       await ownerWorkspaceApi.addProjectContact(projectDialog.id, linkContactId.id);
       setLinkContactId(null);
@@ -1981,6 +1999,10 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const linkContactToSelectedProject = async () => {
     if (!contactDialog || !contactLinkProjectId) return;
+    if (!canManageProjectContactsUi) {
+      setError('Привязка контактов к проекту запрещена текущей policy-моделью.');
+      return;
+    }
     try {
       await ownerWorkspaceApi.addProjectContact(contactLinkProjectId.id, contactDialog.id);
       setContactLinkProjectId(null);
@@ -2570,6 +2592,14 @@ const OwnerWorkspacePage: React.FC = () => {
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_edit_tasks,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_edit_tasks]
   );
+  const canManageProjectContactsUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_manage_project_contacts,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_manage_project_contacts]
+  );
+  const canCompleteTaskUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_complete_tasks,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_complete_tasks]
+  );
   const canSendMessageUi = useMemo(
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_send_messages,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_send_messages]
@@ -2695,6 +2725,10 @@ const OwnerWorkspacePage: React.FC = () => {
     () => (projectDialog ? canArchiveProjectUi(projectDialog.id) : false),
     [canArchiveProjectUi, projectDialog]
   );
+  const canManageProjectContactsDialog = useMemo(
+    () => canEditProjectDialogContent && canManageProjectContactsUi,
+    [canEditProjectDialogContent, canManageProjectContactsUi]
+  );
 
   const canEditContactContentUi = useCallback(
     (contactId: number | null | undefined) => {
@@ -2769,6 +2803,10 @@ const OwnerWorkspacePage: React.FC = () => {
       return true;
     },
     [canEditProjectContentUi, isWorkspaceFullAccess]
+  );
+  const canCompleteTaskActionUi = useCallback(
+    (task: OwnerWorkspaceTask | null | undefined) => canMutateTaskUi(task) && canCompleteTaskUi,
+    [canCompleteTaskUi, canMutateTaskUi]
   );
 
   const editableLinkTaskOptions = useMemo(
@@ -3151,7 +3189,7 @@ const OwnerWorkspacePage: React.FC = () => {
               <Button
                 size="small"
                 variant="outlined"
-                disabled={!canMutateTaskUi(t)}
+                disabled={!canCompleteTaskActionUi(t)}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => setCompleteDialogTask(t)}
               >
@@ -5687,6 +5725,28 @@ const OwnerWorkspacePage: React.FC = () => {
                           <FormControlLabel
                             control={
                               <Checkbox
+                                checked={permissionPolicyDraft.limited_can_manage_project_contacts}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_manage_project_contacts: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут привязывать и отвязывать контакты в проектах"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.limited_can_complete_tasks}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_complete_tasks: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут завершать задачи"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
                                 checked={permissionPolicyDraft.limited_can_send_messages}
                                 onChange={(_, checked) =>
                                   setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_send_messages: checked }))
@@ -6004,10 +6064,10 @@ const OwnerWorkspacePage: React.FC = () => {
               getOptionLabel={(o) => `${o.full_name} В· ${o.phone}`}
               value={linkContactId}
               onChange={(_, v) => setLinkContactId(v)}
-              disabled={!canEditProjectDialogContent}
+              disabled={!canManageProjectContactsDialog}
               renderInput={(params) => <TextField {...params} label="Р”РѕР±Р°РІРёС‚СЊ РєРѕРЅС‚Р°РєС‚ РІ РїСЂРѕРµРєС‚" />}
             />
-            <Button variant="outlined" onClick={linkContactToProject} disabled={!linkContactId || !canEditProjectDialogContent}>
+            <Button variant="outlined" onClick={linkContactToProject} disabled={!linkContactId || !canManageProjectContactsDialog}>
               РџСЂРёРІСЏР·Р°С‚СЊ РєРѕРЅС‚Р°РєС‚
             </Button>
             {projectDialogLinkedContacts.length > 0 && (
@@ -6033,7 +6093,7 @@ const OwnerWorkspacePage: React.FC = () => {
                       <IconButton
                         size="small"
                         aria-label="РЈР±СЂР°С‚СЊ РєРѕРЅС‚Р°РєС‚ РёР· РїСЂРѕРµРєС‚Р°"
-                        disabled={!canEditProjectDialogContent}
+                        disabled={!canManageProjectContactsDialog}
                         onClick={() => requestRemoveContactFromProject(c.id)}
                       >
                         <DeleteOutlineIcon fontSize="small" />
@@ -6394,7 +6454,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     <IconButton
                       size="small"
                       aria-label="РЈР±СЂР°С‚СЊ РёР· РїСЂРѕРµРєС‚Р°"
-                      disabled={!canEditContactDialogContent}
+                      disabled={!canManageProjectContactsUi}
                       onClick={() => requestRemoveContactFromLinkedProject(p.id)}
                     >
                       <DeleteOutlineIcon fontSize="small" />
@@ -6410,13 +6470,13 @@ const OwnerWorkspacePage: React.FC = () => {
                 getOptionLabel={(o) => o.name}
                 value={contactLinkProjectId}
                 onChange={(_, v) => setContactLinkProjectId(v)}
-                disabled={!canEditContactDialogContent}
+                disabled={!canManageProjectContactsUi}
                 renderInput={(params) => <TextField {...params} label="Р”РѕР±Р°РІРёС‚СЊ РІ РїСЂРѕРµРєС‚" />}
               />
               <Button
                 variant="contained"
                 onClick={linkContactToSelectedProject}
-                disabled={!contactLinkProjectId || !canEditContactDialogContent}
+                disabled={!contactLinkProjectId || !canManageProjectContactsUi}
               >
                 Р”РѕР±Р°РІРёС‚СЊ
               </Button>
@@ -6805,7 +6865,7 @@ const OwnerWorkspacePage: React.FC = () => {
       <Dialog open={Boolean(completeDialogTask)} onClose={() => setCompleteDialogTask(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Р—Р°РІРµСЂС€РёС‚СЊ Р·Р°РґР°С‡Сѓ</DialogTitle>
         <DialogContent>
-          {completeDialogTask && !canMutateTaskUi(completeDialogTask) && (
+          {completeDialogTask && !canCompleteTaskActionUi(completeDialogTask) && (
             <Alert severity="info" sx={{ mb: 2 }}>
               Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё СЌС‚Р° Р·Р°РґР°С‡Р° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. Р—Р°РІРµСЂС€РµРЅРёРµ РѕС‚РєР»СЋС‡РµРЅРѕ.
             </Alert>
@@ -6830,14 +6890,14 @@ const OwnerWorkspacePage: React.FC = () => {
                 label="РќР°Р·РІР°РЅРёРµ СЃР»РµРґСѓСЋС‰РµР№ Р·Р°РґР°С‡Рё"
                 value={nextTaskTitle}
                 onChange={(e) => setNextTaskTitle(e.target.value)}
-                disabled={completeDialogTask ? !canMutateTaskUi(completeDialogTask) || !canCreateTaskUi : false}
+                disabled={completeDialogTask ? !canCompleteTaskActionUi(completeDialogTask) || !canCreateTaskUi : false}
                 placeholder="РћСЃС‚Р°РІСЊС‚Рµ РїСѓСЃС‚С‹Рј вЂ” РїРѕРґСЃС‚Р°РІРёС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё"
               />
             )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCompleteDialogTask(null)}>РћС‚РјРµРЅР°</Button>
-          <Button variant="contained" onClick={submitComplete} disabled={completeDialogTask ? !canMutateTaskUi(completeDialogTask) : true}>
+          <Button variant="contained" onClick={submitComplete} disabled={completeDialogTask ? !canCompleteTaskActionUi(completeDialogTask) : true}>
             РџРѕРґС‚РІРµСЂРґРёС‚СЊ
           </Button>
         </DialogActions>

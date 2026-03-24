@@ -14,11 +14,13 @@ from app.services.owner_workspace_access import (
     assert_full_workspace,
     build_owner_workspace_access_context,
     can_archive_project,
+    can_complete_task,
     can_edit_contact_content,
     can_update_contact_content,
     can_change_project_participant_roles,
     can_edit_project_meta,
     can_edit_project_content,
+    can_manage_project_contacts,
     can_update_task_content,
     can_manage_project_team,
     contact_visible,
@@ -714,7 +716,7 @@ async def add_contact_to_project(
     if not project or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     uid = ctx.user.id
-    if not can_edit_project_content(db, ctx, project_id):
+    if not can_manage_project_contacts(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
     if not contact:
@@ -741,7 +743,7 @@ async def remove_contact_from_project(
     if not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     uid = ctx.user.id
-    if not can_edit_project_content(db, ctx, project_id):
+    if not can_manage_project_contacts(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if not ctx.full and not contact_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -1340,6 +1342,8 @@ async def complete_task(
     if not row or not task_visible(ctx, row):
         raise HTTPException(status_code=404, detail="Task not found")
     _assert_task_write_access(db, ctx, row)
+    if not can_complete_task(db, ctx, row):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
     row.status = "completed"
     row.completed_at = datetime.now(timezone.utc)
     _log_audit(

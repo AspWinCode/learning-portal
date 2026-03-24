@@ -32,6 +32,8 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "manager_can_assign_manager": False,
     "manager_can_assign_observer": False,
     "manager_can_remove_manager": False,
+    "manager_can_edit_project_meta": False,
+    "manager_can_archive_project": False,
 }
 
 
@@ -63,6 +65,8 @@ def get_owner_workspace_permission_policy(db: Session) -> dict:
         "manager_can_assign_manager": bool(raw.get("manager_can_assign_manager", False)),
         "manager_can_assign_observer": bool(raw.get("manager_can_assign_observer", False)),
         "manager_can_remove_manager": bool(raw.get("manager_can_remove_manager", False)),
+        "manager_can_edit_project_meta": bool(raw.get("manager_can_edit_project_meta", False)),
+        "manager_can_archive_project": bool(raw.get("manager_can_archive_project", False)),
     }
 
 
@@ -274,6 +278,15 @@ def can_edit_project_content(db: Session, ctx: OwnerWorkspaceAccessContext, proj
     return role in {"member", "manager"}
 
 
+def can_edit_project_meta(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
+    """Project card meta: name and description."""
+    if ctx.full:
+        return True
+    if is_project_owner(db, ctx.user.id, project_id):
+        return True
+    return is_project_manager(db, ctx.user.id, project_id) and get_owner_workspace_permission_policy(db)["manager_can_edit_project_meta"]
+
+
 def can_edit_contact_content(db: Session, ctx: OwnerWorkspaceAccessContext, contact_id: int) -> bool:
     """Write access for contact-centric actions.
 
@@ -307,7 +320,9 @@ def can_edit_contact_content(db: Session, ctx: OwnerWorkspaceAccessContext, cont
 def can_archive_project(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
     if ctx.full:
         return True
-    return is_project_owner(db, ctx.user.id, project_id)
+    if is_project_owner(db, ctx.user.id, project_id):
+        return True
+    return is_project_manager(db, ctx.user.id, project_id) and get_owner_workspace_permission_policy(db)["manager_can_archive_project"]
 
 
 def assert_full_workspace(ctx: OwnerWorkspaceAccessContext) -> None:

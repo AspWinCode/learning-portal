@@ -1192,6 +1192,8 @@ export interface OwnerWorkspacePermissionPolicy {
   manager_can_assign_manager: boolean;
   manager_can_assign_observer: boolean;
   manager_can_remove_manager: boolean;
+  manager_can_edit_project_meta: boolean;
+  manager_can_archive_project: boolean;
 }
 
 export interface OwnerWorkspaceNotificationConfig {

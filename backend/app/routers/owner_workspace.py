@@ -16,6 +16,7 @@ from app.services.owner_workspace_access import (
     can_archive_project,
     can_edit_contact_content,
     can_change_project_participant_roles,
+    can_edit_project_meta,
     can_edit_project_content,
     can_manage_project_team,
     contact_visible,
@@ -519,6 +520,12 @@ async def update_project(
         if row.owner_id != uid:
             if not is_project_participant(db, uid, project_id):
                 raise HTTPException(status_code=404, detail="Project not found")
+            meta_fields = {"name", "description"}
+            if any(k in meta_fields for k in data) and not can_edit_project_meta(db, ctx, project_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Недостаточно прав для изменения карточки проекта",
+                )
             forbidden = {"owner_id", "parent_project_id", "status"}
             for k in data:
                 if k in forbidden:

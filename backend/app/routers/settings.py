@@ -52,6 +52,8 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "manager_can_assign_manager": False,
     "manager_can_assign_observer": False,
     "manager_can_remove_manager": False,
+    "manager_can_edit_project_meta": False,
+    "manager_can_archive_project": False,
 }
 DEFAULT_OWNER_WS_NOTIFICATION_CONFIG = {
     "items": [
@@ -108,6 +110,8 @@ class OwnerWorkspacePermissionPolicyResponse(BaseModel):
     manager_can_assign_manager: bool = False
     manager_can_assign_observer: bool = False
     manager_can_remove_manager: bool = False
+    manager_can_edit_project_meta: bool = False
+    manager_can_archive_project: bool = False
 
 
 class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
@@ -116,6 +120,8 @@ class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
     manager_can_assign_manager: bool = False
     manager_can_assign_observer: bool = False
     manager_can_remove_manager: bool = False
+    manager_can_edit_project_meta: bool = False
+    manager_can_archive_project: bool = False
 
 
 class OwnerWorkspaceProjectConfigResponse(BaseModel):
@@ -234,6 +240,8 @@ def _get_owner_ws_permission_policy(db: Session) -> dict:
         "manager_can_assign_manager": bool(raw.get("manager_can_assign_manager", False)),
         "manager_can_assign_observer": bool(raw.get("manager_can_assign_observer", False)),
         "manager_can_remove_manager": bool(raw.get("manager_can_remove_manager", False)),
+        "manager_can_edit_project_meta": bool(raw.get("manager_can_edit_project_meta", False)),
+        "manager_can_archive_project": bool(raw.get("manager_can_archive_project", False)),
     }
 
 
@@ -490,6 +498,8 @@ async def set_owner_workspace_permission_policy(
         "manager_can_assign_manager": bool(body.manager_can_assign_manager),
         "manager_can_assign_observer": bool(body.manager_can_assign_observer),
         "manager_can_remove_manager": bool(body.manager_can_remove_manager),
+        "manager_can_edit_project_meta": bool(body.manager_can_edit_project_meta),
+        "manager_can_archive_project": bool(body.manager_can_archive_project),
     }
     _set_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY, data)
     db.commit()

@@ -394,6 +394,8 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   manager_can_assign_manager: false,
   manager_can_assign_observer: false,
   manager_can_remove_manager: false,
+  manager_can_edit_project_meta: false,
+  manager_can_archive_project: false,
 };
 
 type OwnerWorkspaceAssigneeAnalyticsRow = {
@@ -2397,9 +2399,53 @@ const OwnerWorkspacePage: React.FC = () => {
     [isWorkspaceFullAccess, projectDialog, projectsCatalog, user?.id]
   );
 
+  const canEditProjectMetaUi = useCallback(
+    (projectId: number | null | undefined) => {
+      if (projectId == null || !user?.id) return false;
+      if (isWorkspaceFullAccess) return true;
+      const project =
+        (projectDialog?.id === projectId ? projectDialog : null) ??
+        projectsCatalog.find((item) => item.id === projectId) ??
+        null;
+      if (!project) return false;
+      if (project.owner_id === user.id) return true;
+      return (
+        project.participant_roles?.[String(user.id)] === 'manager' &&
+        permissionPolicy.manager_can_edit_project_meta
+      );
+    },
+    [isWorkspaceFullAccess, permissionPolicy.manager_can_edit_project_meta, projectDialog, projectsCatalog, user?.id]
+  );
+
+  const canArchiveProjectUi = useCallback(
+    (projectId: number | null | undefined) => {
+      if (projectId == null || !user?.id) return false;
+      if (isWorkspaceFullAccess) return true;
+      const project =
+        (projectDialog?.id === projectId ? projectDialog : null) ??
+        projectsCatalog.find((item) => item.id === projectId) ??
+        null;
+      if (!project) return false;
+      if (project.owner_id === user.id) return true;
+      return (
+        project.participant_roles?.[String(user.id)] === 'manager' &&
+        permissionPolicy.manager_can_archive_project
+      );
+    },
+    [isWorkspaceFullAccess, permissionPolicy.manager_can_archive_project, projectDialog, projectsCatalog, user?.id]
+  );
+
   const canEditProjectDialogContent = useMemo(
     () => (projectDialog ? canEditProjectContentUi(projectDialog.id) : false),
     [canEditProjectContentUi, projectDialog]
+  );
+  const canEditProjectDialogMeta = useMemo(
+    () => (projectDialog ? canEditProjectMetaUi(projectDialog.id) : false),
+    [canEditProjectMetaUi, projectDialog]
+  );
+  const canArchiveProjectDialog = useMemo(
+    () => (projectDialog ? canArchiveProjectUi(projectDialog.id) : false),
+    [canArchiveProjectUi, projectDialog]
   );
 
   const canEditContactContentUi = useCallback(
@@ -5043,6 +5089,28 @@ const OwnerWorkspacePage: React.FC = () => {
                           }
                           label="Менеджер проекта может удалять других менеджеров"
                         />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={permissionPolicyDraft.manager_can_edit_project_meta}
+                              onChange={(_, checked) =>
+                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_edit_project_meta: checked }))
+                              }
+                            />
+                          }
+                          label="Менеджер проекта может редактировать название и описание проекта"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={permissionPolicyDraft.manager_can_archive_project}
+                              onChange={(_, checked) =>
+                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_archive_project: checked }))
+                              }
+                            />
+                          }
+                          label="Менеджер проекта может архивировать проект"
+                        />
                       </Stack>
                     </CardContent>
                   </Card>
@@ -5113,7 +5181,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 ? ` В· РћР±РЅРѕРІР»С‘РЅ: ${new Date(projectDialog.updated_at).toLocaleString('ru-RU')}`
                 : ''}
             </Typography>
-            {!canEditProjectDialogContent && (
+            {!canEditProjectDialogContent && !canEditProjectDialogMeta && (
               <Alert severity="info">
                 Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё РїСЂРѕРµРєС‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РР·РјРµРЅРµРЅРёРµ Р·Р°РґР°С‡ Рё РїСЂРёРІСЏР·РѕРє РєРѕРЅС‚Р°РєС‚РѕРІ РѕС‚РєР»СЋС‡РµРЅРѕ.
               </Alert>
@@ -5121,28 +5189,28 @@ const OwnerWorkspacePage: React.FC = () => {
             <Divider />
             <Typography variant="subtitle2">РљР°СЂС‚РѕС‡РєР° РїСЂРѕРµРєС‚Р°</Typography>
             <TextField
-              fullWidth
-              label="РќР°Р·РІР°РЅРёРµ"
-              value={projectEditName}
-              onChange={(e) => setProjectEditName(e.target.value)}
-              disabled={!canEditProjectDialogContent}
-            />
+                fullWidth
+                label="РќР°Р·РІР°РЅРёРµ"
+                value={projectEditName}
+                onChange={(e) => setProjectEditName(e.target.value)}
+                disabled={!canEditProjectDialogMeta}
+              />
             <TextField
               fullWidth
               label="РћРїРёСЃР°РЅРёРµ"
               multiline
-              minRows={2}
-              value={projectEditDescription}
-              onChange={(e) => setProjectEditDescription(e.target.value)}
-              disabled={!canEditProjectDialogContent}
-            />
+                minRows={2}
+                value={projectEditDescription}
+                onChange={(e) => setProjectEditDescription(e.target.value)}
+                disabled={!canEditProjectDialogMeta}
+              />
               <TextField
                 select
                 fullWidth
                 label="РЎС‚Р°С‚СѓСЃ"
                 value={projectEditStatus}
                 onChange={(e) => setProjectEditStatus(coerceProjectStatus(e.target.value))}
-                disabled={!canEditProjectDialogContent}
+                disabled={!canArchiveProjectDialog && !isWorkspaceFullAccess && projectDialog?.owner_id !== user?.id}
               >
                 {editProjectStatusOptions.map((status) => (
                   <MenuItem key={status} value={status}>
@@ -5155,25 +5223,25 @@ const OwnerWorkspacePage: React.FC = () => {
                 РџСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё РѕС‚РєСЂРѕРµС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ Р°СЂС…РёРІР° СЃ РїСЂРѕРІРµСЂРєРѕР№ Р°РєС‚РёРІРЅС‹С… Рё РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹С… Р·Р°РґР°С‡.
               </Alert>
             )}
-            <Button
-              variant="contained"
-              size="small"
-              sx={{ alignSelf: 'flex-start' }}
-              onClick={() => void saveProjectDetails()}
-              disabled={!canEditProjectDialogContent}
-            >
-              РЎРѕС…СЂР°РЅРёС‚СЊ РєР°СЂС‚РѕС‡РєСѓ
-            </Button>
+              <Button
+                variant="contained"
+                size="small"
+                sx={{ alignSelf: 'flex-start' }}
+                onClick={() => void saveProjectDetails()}
+                disabled={!canEditProjectDialogMeta}
+              >
+                РЎРѕС…СЂР°РЅРёС‚СЊ РєР°СЂС‚РѕС‡РєСѓ
+              </Button>
             <Divider />
             <Typography variant="subtitle2">РћС‚РІРµС‚СЃС‚РІРµРЅРЅС‹Р№ (РІР»Р°РґРµР»РµС† РїСЂРѕРµРєС‚Р°)</Typography>
             <Autocomplete
-              options={userOptions}
-              getOptionLabel={(o) => o.full_name}
-              value={userOptions.find((u) => u.id === projectDialog?.owner_id) || null}
-              disabled={!canEditProjectDialogContent}
-              onChange={(_, v) => void saveProjectOwner(v)}
-              renderInput={(params) => <TextField {...params} label="РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ" size="small" />}
-            />
+                options={userOptions}
+                getOptionLabel={(o) => o.full_name}
+                value={userOptions.find((u) => u.id === projectDialog?.owner_id) || null}
+                disabled={!isWorkspaceFullAccess && projectDialog?.owner_id !== user?.id}
+                onChange={(_, v) => void saveProjectOwner(v)}
+                renderInput={(params) => <TextField {...params} label="РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ" size="small" />}
+              />
             {projectParticipantAnalyticsRows.length > 0 && (
               <>
                 <Typography variant="subtitle2">Нагрузка участников проекта</Typography>
@@ -5283,14 +5351,14 @@ const OwnerWorkspacePage: React.FC = () => {
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
                 fullWidth
-                label="РќР°Р·РІР°РЅРёРµ РїРѕРґРїСЂРѕРµРєС‚Р°"
-                value={subprojectName}
-                onChange={(e) => setSubprojectName(e.target.value)}
-                disabled={!canEditProjectDialogContent}
-              />
-              <Button variant="contained" onClick={createSubproject} disabled={!canEditProjectDialogContent}>
-                РЎРѕР·РґР°С‚СЊ РїРѕРґРїСЂРѕРµРєС‚
-              </Button>
+                  label="РќР°Р·РІР°РЅРёРµ РїРѕРґРїСЂРѕРµРєС‚Р°"
+                  value={subprojectName}
+                  onChange={(e) => setSubprojectName(e.target.value)}
+                  disabled={!isWorkspaceFullAccess}
+                />
+               <Button variant="contained" onClick={createSubproject} disabled={!isWorkspaceFullAccess}>
+                  РЎРѕР·РґР°С‚СЊ РїРѕРґРїСЂРѕРµРєС‚
+                </Button>
             </Stack>
             <Divider />
             <Typography variant="subtitle2">Р”РµСЂРµРІРѕ РїРѕРґРїСЂРѕРµРєС‚РѕРІ</Typography>
@@ -5462,11 +5530,11 @@ const OwnerWorkspacePage: React.FC = () => {
           </Stack>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-          {projectDialog?.status !== 'archived' && (
-            <Button color="error" onClick={() => setArchiveProjectConfirm(projectDialog)} disabled={!canEditProjectDialogContent}>
-              Р’ Р°СЂС…РёРІ
-            </Button>
-          )}
+            {projectDialog?.status !== 'archived' && (
+             <Button color="error" onClick={() => setArchiveProjectConfirm(projectDialog)} disabled={!canArchiveProjectDialog}>
+                Р’ Р°СЂС…РёРІ
+              </Button>
+            )}
           <Box sx={{ flex: 1 }} />
           <Button onClick={closeProjectDialog}>Р—Р°РєСЂС‹С‚СЊ</Button>
         </DialogActions>
@@ -5516,9 +5584,9 @@ const OwnerWorkspacePage: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setArchiveProjectConfirm(null)}>РћС‚РјРµРЅР°</Button>
-          <Button color="error" variant="contained" onClick={() => void submitArchiveProject()} disabled={!canEditProjectDialogContent}>
-            Р’ Р°СЂС…РёРІ
-          </Button>
+           <Button color="error" variant="contained" onClick={() => void submitArchiveProject()} disabled={!canArchiveProjectDialog}>
+              Р’ Р°СЂС…РёРІ
+            </Button>
         </DialogActions>
       </Dialog>
 

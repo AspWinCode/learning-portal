@@ -1218,6 +1218,38 @@ export interface OwnerWorkspaceNotificationConfig {
   items: OwnerWorkspaceTaskConfigItem[];
 }
 
+export interface OwnerWorkspaceNotificationDeliveryChannelStats {
+  pending: number;
+  failed: number;
+  terminal_failed: number;
+  sent_last_24h: number;
+  disabled: number;
+}
+
+export interface OwnerWorkspaceNotificationDeliveryFailureItem {
+  id: number;
+  user_id: number;
+  user_name: string;
+  kind: string;
+  title: string;
+  created_at: string | null;
+  email_delivery_status: string;
+  email_attempts: number;
+  email_last_error: string | null;
+  web_push_delivery_status: string;
+  web_push_attempts: number;
+  web_push_last_error: string | null;
+}
+
+export interface OwnerWorkspaceNotificationDeliveryStats {
+  email_configured: boolean;
+  web_push_configured: boolean;
+  web_push_subscriptions_total: number;
+  email: OwnerWorkspaceNotificationDeliveryChannelStats;
+  web_push: OwnerWorkspaceNotificationDeliveryChannelStats;
+  recent_failures: OwnerWorkspaceNotificationDeliveryFailureItem[];
+}
+
 export interface OwnerWorkspaceTagDictionary {
   items: string[];
 }

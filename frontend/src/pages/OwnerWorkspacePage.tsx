@@ -72,6 +72,7 @@ import type {
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceMessage,
   OwnerWorkspaceNotificationConfig,
+  OwnerWorkspaceNotificationDeliveryStats,
   OwnerWorkspaceProjectConfig,
   OwnerWorkspaceProject,
   OwnerWorkspaceSearchResult,
@@ -692,6 +693,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [notificationConfig, setNotificationConfig] = useState<OwnerWorkspaceNotificationConfig | null>(null);
   const [notificationConfigDraft, setNotificationConfigDraft] = useState<OwnerWorkspaceNotificationConfig | null>(null);
   const [notificationConfigSaving, setNotificationConfigSaving] = useState(false);
+  const [notificationDeliveryStats, setNotificationDeliveryStats] = useState<OwnerWorkspaceNotificationDeliveryStats | null>(null);
+  const [notificationDeliveryStatsLoading, setNotificationDeliveryStatsLoading] = useState(false);
   const [taskTagDictionary, setTaskTagDictionary] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
   const [taskTagDictionaryDraft, setTaskTagDictionaryDraft] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
   const [taskTagDictionarySaving, setTaskTagDictionarySaving] = useState(false);
@@ -1362,6 +1365,22 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   }, []);
 
+  const loadNotificationDeliveryStats = useCallback(async () => {
+    if (!isWorkspaceFullAccess) {
+      setNotificationDeliveryStats(null);
+      return;
+    }
+    setNotificationDeliveryStatsLoading(true);
+    try {
+      const stats = await settingsApi.getOwnerWorkspaceNotificationDeliveryStats();
+      setNotificationDeliveryStats(stats);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось загрузить диагностику доставки уведомлений'));
+    } finally {
+      setNotificationDeliveryStatsLoading(false);
+    }
+  }, [isWorkspaceFullAccess]);
+
   const loadDigest = useCallback(async () => {
     try {
       const params: {
@@ -1391,6 +1410,12 @@ const OwnerWorkspacePage: React.FC = () => {
       setLoading(false);
     }
   }, [loadProjectsAndContacts, loadTasksFiltered, loadMeta]);
+
+  useEffect(() => {
+    if (tab === OW_TAB_SETTINGS && isWorkspaceFullAccess) {
+      void loadNotificationDeliveryStats();
+    }
+  }, [isWorkspaceFullAccess, loadNotificationDeliveryStats, tab]);
 
   const refreshWebPushState = useCallback(async () => {
     const supported =
@@ -5675,6 +5700,118 @@ const OwnerWorkspacePage: React.FC = () => {
                       Сбросить
                     </Button>
                   </Stack>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
+                          <Box>
+                            <Typography variant="subtitle2">Диагностика доставки уведомлений</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Состояние owner-workspace outbox по email и web push, включая свежие ошибки доставки.
+                            </Typography>
+                          </Box>
+                          <Button
+                            variant="outlined"
+                            disabled={notificationDeliveryStatsLoading}
+                            onClick={() => void loadNotificationDeliveryStats()}
+                          >
+                            {notificationDeliveryStatsLoading ? 'Обновление...' : 'Обновить'}
+                          </Button>
+                        </Stack>
+                        {notificationDeliveryStats ? (
+                          <>
+                            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                              <Card variant="outlined" sx={{ flex: 1 }}>
+                                <CardContent>
+                                  <Stack spacing={1}>
+                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                      <Typography variant="subtitle2">Email</Typography>
+                                      <Chip
+                                        size="small"
+                                        color={notificationDeliveryStats.email_configured ? 'success' : 'default'}
+                                        label={notificationDeliveryStats.email_configured ? 'Сконфигурирован' : 'Не настроен'}
+                                      />
+                                    </Stack>
+                                    <Typography variant="body2" color="text.secondary">
+                                      Pending: {notificationDeliveryStats.email.pending} · Failed: {notificationDeliveryStats.email.failed} ·
+                                      Terminal: {notificationDeliveryStats.email.terminal_failed}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                      Sent 24h: {notificationDeliveryStats.email.sent_last_24h} · Disabled: {notificationDeliveryStats.email.disabled}
+                                    </Typography>
+                                  </Stack>
+                                </CardContent>
+                              </Card>
+                              <Card variant="outlined" sx={{ flex: 1 }}>
+                                <CardContent>
+                                  <Stack spacing={1}>
+                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                      <Typography variant="subtitle2">Web push</Typography>
+                                      <Chip
+                                        size="small"
+                                        color={notificationDeliveryStats.web_push_configured ? 'success' : 'default'}
+                                        label={notificationDeliveryStats.web_push_configured ? 'Сконфигурирован' : 'Не настроен'}
+                                      />
+                                      <Chip
+                                        size="small"
+                                        variant="outlined"
+                                        label={`Подписок: ${notificationDeliveryStats.web_push_subscriptions_total}`}
+                                      />
+                                    </Stack>
+                                    <Typography variant="body2" color="text.secondary">
+                                      Pending: {notificationDeliveryStats.web_push.pending} · Failed: {notificationDeliveryStats.web_push.failed} ·
+                                      Terminal: {notificationDeliveryStats.web_push.terminal_failed}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                      Sent 24h: {notificationDeliveryStats.web_push.sent_last_24h} · Disabled: {notificationDeliveryStats.web_push.disabled}
+                                    </Typography>
+                                  </Stack>
+                                </CardContent>
+                              </Card>
+                            </Stack>
+                            <Box>
+                              <Typography variant="subtitle2" gutterBottom>
+                                Последние ошибки доставки
+                              </Typography>
+                              {notificationDeliveryStats.recent_failures.length === 0 ? (
+                                <Typography variant="body2" color="text.secondary">
+                                  Свежих ошибок доставки нет.
+                                </Typography>
+                              ) : (
+                                <Stack spacing={1}>
+                                  {notificationDeliveryStats.recent_failures.map((item) => (
+                                    <Box key={item.id} sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                                      <Stack spacing={0.5}>
+                                        <Typography variant="body2">
+                                          <strong>{item.title}</strong> · {item.kind} · {item.user_name}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                          #{item.id}
+                                          {item.created_at ? ` · ${new Date(item.created_at).toLocaleString('ru-RU')}` : ''}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                          Email: {item.email_delivery_status} ({item.email_attempts})
+                                          {item.email_last_error ? ` · ${item.email_last_error}` : ''}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                          Web push: {item.web_push_delivery_status} ({item.web_push_attempts})
+                                          {item.web_push_last_error ? ` · ${item.web_push_last_error}` : ''}
+                                        </Typography>
+                                      </Stack>
+                                    </Box>
+                                  ))}
+                                </Stack>
+                              )}
+                            </Box>
+                          </>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            Диагностика ещё не загружена.
+                          </Typography>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
                 </Stack>
               </>
             )}

@@ -1,14 +1,30 @@
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import json
 
 from app.database import get_db
 from app import auth
-from app.models import AppSetting, User
+from app.models import AppSetting, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, User
 from app.schemas import LogoResponse, LogoUpdate
+from app.services.email_sender import is_email_configured
+from app.services.owner_workspace_notifications import (
+    EMAIL_STATUS_DISABLED,
+    EMAIL_STATUS_FAILED,
+    EMAIL_STATUS_PENDING,
+    EMAIL_STATUS_SENT,
+    MAX_EMAIL_ATTEMPTS,
+    MAX_WEB_PUSH_ATTEMPTS,
+    WEB_PUSH_STATUS_DISABLED,
+    WEB_PUSH_STATUS_FAILED,
+    WEB_PUSH_STATUS_PENDING,
+    WEB_PUSH_STATUS_SENT,
+    is_web_push_configured,
+)
 
 
 router = APIRouter()
@@ -181,6 +197,38 @@ class OwnerWorkspaceTagDictionaryUpdate(BaseModel):
     items: List[str]
 
 
+class OwnerWorkspaceNotificationDeliveryChannelStats(BaseModel):
+    pending: int
+    failed: int
+    terminal_failed: int
+    sent_last_24h: int
+    disabled: int
+
+
+class OwnerWorkspaceNotificationDeliveryFailureItem(BaseModel):
+    id: int
+    user_id: int
+    user_name: str
+    kind: str
+    title: str
+    created_at: datetime | None = None
+    email_delivery_status: str
+    email_attempts: int
+    email_last_error: str | None = None
+    web_push_delivery_status: str
+    web_push_attempts: int
+    web_push_last_error: str | None = None
+
+
+class OwnerWorkspaceNotificationDeliveryStatsResponse(BaseModel):
+    email_configured: bool
+    web_push_configured: bool
+    web_push_subscriptions_total: int
+    email: OwnerWorkspaceNotificationDeliveryChannelStats
+    web_push: OwnerWorkspaceNotificationDeliveryChannelStats
+    recent_failures: List[OwnerWorkspaceNotificationDeliveryFailureItem]
+
+
 def _get_json_setting(db: Session, key: str):
     setting = db.query(AppSetting).filter(AppSetting.key == key).first()
     if not setting or not (setting.value or "").strip():
@@ -339,6 +387,58 @@ def _normalize_owner_ws_tag_items(items: List[str]) -> List[str]:
         seen.add(lowered)
         out.append(normalized)
     return out
+
+
+def _build_delivery_channel_stats(
+    db: Session,
+    *,
+    sent_field,
+    status_field,
+    attempts_field,
+    pending_value: str,
+    failed_value: str,
+    sent_value: str,
+    disabled_value: str,
+    max_attempts: int,
+) -> OwnerWorkspaceNotificationDeliveryChannelStats:
+    sent_since = datetime.now(timezone.utc) - timedelta(hours=24)
+    pending = (
+        db.query(func.count(OwnerWorkspaceNotification.id))
+        .filter(status_field == pending_value)
+        .scalar()
+        or 0
+    )
+    failed = (
+        db.query(func.count(OwnerWorkspaceNotification.id))
+        .filter(status_field == failed_value)
+        .scalar()
+        or 0
+    )
+    terminal_failed = (
+        db.query(func.count(OwnerWorkspaceNotification.id))
+        .filter(status_field == failed_value, attempts_field >= max_attempts)
+        .scalar()
+        or 0
+    )
+    sent_last_24h = (
+        db.query(func.count(OwnerWorkspaceNotification.id))
+        .filter(status_field == sent_value, sent_field.isnot(None), sent_field >= sent_since)
+        .scalar()
+        or 0
+    )
+    disabled = (
+        db.query(func.count(OwnerWorkspaceNotification.id))
+        .filter(status_field == disabled_value)
+        .scalar()
+        or 0
+    )
+    return OwnerWorkspaceNotificationDeliveryChannelStats(
+        pending=int(pending),
+        failed=int(failed),
+        terminal_failed=int(terminal_failed),
+        sent_last_24h=int(sent_last_24h),
+        disabled=int(disabled),
+    )
 
 
 def _get_owner_ws_tag_dictionary(db: Session, key: str) -> List[str]:
@@ -646,5 +746,75 @@ async def set_owner_workspace_contact_sources(
     _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, items)
     db.commit()
     return OwnerWorkspaceTagDictionaryResponse(items=items)
+
+
+@router.get(
+    "/owner-workspace-notification-delivery-stats",
+    response_model=OwnerWorkspaceNotificationDeliveryStatsResponse,
+)
+async def get_owner_workspace_notification_delivery_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    email_stats = _build_delivery_channel_stats(
+        db,
+        sent_field=OwnerWorkspaceNotification.email_sent_at,
+        status_field=OwnerWorkspaceNotification.email_delivery_status,
+        attempts_field=OwnerWorkspaceNotification.email_attempts,
+        pending_value=EMAIL_STATUS_PENDING,
+        failed_value=EMAIL_STATUS_FAILED,
+        sent_value=EMAIL_STATUS_SENT,
+        disabled_value=EMAIL_STATUS_DISABLED,
+        max_attempts=MAX_EMAIL_ATTEMPTS,
+    )
+    web_push_stats = _build_delivery_channel_stats(
+        db,
+        sent_field=OwnerWorkspaceNotification.web_push_sent_at,
+        status_field=OwnerWorkspaceNotification.web_push_delivery_status,
+        attempts_field=OwnerWorkspaceNotification.web_push_attempts,
+        pending_value=WEB_PUSH_STATUS_PENDING,
+        failed_value=WEB_PUSH_STATUS_FAILED,
+        sent_value=WEB_PUSH_STATUS_SENT,
+        disabled_value=WEB_PUSH_STATUS_DISABLED,
+        max_attempts=MAX_WEB_PUSH_ATTEMPTS,
+    )
+    web_push_subscriptions_total = (
+        db.query(func.count(OwnerWorkspaceWebPushSubscription.id)).scalar() or 0
+    )
+    recent_rows = (
+        db.query(OwnerWorkspaceNotification, User)
+        .join(User, User.id == OwnerWorkspaceNotification.user_id)
+        .filter(
+            (OwnerWorkspaceNotification.email_delivery_status == EMAIL_STATUS_FAILED)
+            | (OwnerWorkspaceNotification.web_push_delivery_status == WEB_PUSH_STATUS_FAILED)
+        )
+        .order_by(OwnerWorkspaceNotification.created_at.desc(), OwnerWorkspaceNotification.id.desc())
+        .limit(10)
+        .all()
+    )
+    return OwnerWorkspaceNotificationDeliveryStatsResponse(
+        email_configured=is_email_configured(),
+        web_push_configured=is_web_push_configured(),
+        web_push_subscriptions_total=int(web_push_subscriptions_total),
+        email=email_stats,
+        web_push=web_push_stats,
+        recent_failures=[
+            OwnerWorkspaceNotificationDeliveryFailureItem(
+                id=int(notification.id),
+                user_id=int(notification.user_id),
+                user_name=(user.full_name or user.email or f"#{user.id}")[:160],
+                kind=str(notification.kind),
+                title=str(notification.title),
+                created_at=notification.created_at,
+                email_delivery_status=str(notification.email_delivery_status or EMAIL_STATUS_DISABLED),
+                email_attempts=int(notification.email_attempts or 0),
+                email_last_error=notification.email_last_error or None,
+                web_push_delivery_status=str(notification.web_push_delivery_status or WEB_PUSH_STATUS_DISABLED),
+                web_push_attempts=int(notification.web_push_attempts or 0),
+                web_push_last_error=notification.web_push_last_error or None,
+            )
+            for notification, user in recent_rows
+        ],
+    )
 
 

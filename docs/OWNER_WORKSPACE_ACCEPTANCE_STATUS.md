@@ -2,6 +2,9 @@
 
 Last updated: 2026-03-24
 
+Reference review:
+- Detailed line-by-line acceptance review: [OWNER_WORKSPACE_ACCEPTANCE_REVIEW.md](OWNER_WORKSPACE_ACCEPTANCE_REVIEW.md)
+
 ## Current State
 
 Owner Workspace is in a working production state.

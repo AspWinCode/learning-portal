@@ -695,6 +695,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [notificationConfigSaving, setNotificationConfigSaving] = useState(false);
   const [notificationDeliveryStats, setNotificationDeliveryStats] = useState<OwnerWorkspaceNotificationDeliveryStats | null>(null);
   const [notificationDeliveryStatsLoading, setNotificationDeliveryStatsLoading] = useState(false);
+  const [notificationDeliveryRetrying, setNotificationDeliveryRetrying] = useState<number | 'all' | null>(null);
   const [taskTagDictionary, setTaskTagDictionary] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
   const [taskTagDictionaryDraft, setTaskTagDictionaryDraft] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
   const [taskTagDictionarySaving, setTaskTagDictionarySaving] = useState(false);
@@ -1380,6 +1381,30 @@ const OwnerWorkspacePage: React.FC = () => {
       setNotificationDeliveryStatsLoading(false);
     }
   }, [isWorkspaceFullAccess]);
+
+  const retryNotificationDelivery = useCallback(
+    async (notificationIds: number[]) => {
+      if (!notificationIds.length) return;
+      const marker = notificationIds.length === 1 ? notificationIds[0] : 'all';
+      setNotificationDeliveryRetrying(marker);
+      try {
+        const result = await settingsApi.retryOwnerWorkspaceNotificationDelivery({
+          notification_ids: notificationIds,
+          include_email: true,
+          include_web_push: true,
+        });
+        setMaxSyncResult(
+          `Повторная доставка поставлена в очередь: email ${result.retried_email}, web push ${result.retried_web_push}.`
+        );
+        await loadNotificationDeliveryStats();
+      } catch (e: unknown) {
+        setError(extractApiError(e, 'Не удалось повторно поставить доставку уведомлений в очередь'));
+      } finally {
+        setNotificationDeliveryRetrying(null);
+      }
+    },
+    [loadNotificationDeliveryStats]
+  );
 
   const loadDigest = useCallback(async () => {
     try {
@@ -5779,6 +5804,20 @@ const OwnerWorkspacePage: React.FC = () => {
                                 </Typography>
                               ) : (
                                 <Stack spacing={1}>
+                                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      disabled={notificationDeliveryRetrying === 'all'}
+                                      onClick={() =>
+                                        void retryNotificationDelivery(
+                                          notificationDeliveryStats.recent_failures.map((item) => item.id)
+                                        )
+                                      }
+                                    >
+                                      {notificationDeliveryRetrying === 'all' ? 'Повторяем...' : 'Повторить все видимые ошибки'}
+                                    </Button>
+                                  </Stack>
                                   {notificationDeliveryStats.recent_failures.map((item) => (
                                     <Box key={item.id} sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
                                       <Stack spacing={0.5}>
@@ -5797,6 +5836,16 @@ const OwnerWorkspacePage: React.FC = () => {
                                           Web push: {item.web_push_delivery_status} ({item.web_push_attempts})
                                           {item.web_push_last_error ? ` · ${item.web_push_last_error}` : ''}
                                         </Typography>
+                                        <Box>
+                                          <Button
+                                            variant="outlined"
+                                            size="small"
+                                            disabled={notificationDeliveryRetrying === item.id}
+                                            onClick={() => void retryNotificationDelivery([item.id])}
+                                          >
+                                            {notificationDeliveryRetrying === item.id ? 'Повторяем...' : 'Повторить доставку'}
+                                          </Button>
+                                        </Box>
                                       </Stack>
                                     </Box>
                                   ))}

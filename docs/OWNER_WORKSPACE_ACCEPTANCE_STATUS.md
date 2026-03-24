@@ -109,6 +109,7 @@ Owner Workspace is in a working production state.
   - email / web push outbox counters
   - recent delivery failures
   - web push subscription count
+  - retry/requeue for failed deliveries
 - System dictionaries for:
   - task tags
   - contact tags
@@ -175,7 +176,7 @@ Owner Workspace is in a working production state.
 ### Notifications
 
 - Email and web push delivery are present through an outbox/background dispatcher in a dedicated worker service.
-- Delivery diagnostics are available in settings, but there is still no full retry/replay/admin workflow beyond visibility.
+- Delivery diagnostics and manual retry/requeue for failed notifications are available in settings, but there is still no broader replay/audit console beyond the owner-workspace admin surface.
 
 ### Analytics
 

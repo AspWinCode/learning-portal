@@ -64,6 +64,7 @@ import {
   OwnerWorkspaceProjectConfig,
   OwnerWorkspaceNotificationConfig,
   OwnerWorkspaceNotificationDeliveryStats,
+  OwnerWorkspaceNotificationDeliveryRetryResult,
   OwnerWorkspaceTagDictionary,
   OwnerWorkspacePermissionPolicy,
   OwnerWorkspaceUserPreferences,
@@ -1020,6 +1021,14 @@ export const settingsApi = {
   },
   getOwnerWorkspaceNotificationDeliveryStats: async (): Promise<OwnerWorkspaceNotificationDeliveryStats> => {
     const response = await api.get('/api/settings/owner-workspace-notification-delivery-stats');
+    return response.data;
+  },
+  retryOwnerWorkspaceNotificationDelivery: async (payload: {
+    notification_ids: number[];
+    include_email?: boolean;
+    include_web_push?: boolean;
+  }): Promise<OwnerWorkspaceNotificationDeliveryRetryResult> => {
+    const response = await api.post('/api/settings/owner-workspace-notification-delivery-retry', payload);
     return response.data;
   },
   setOwnerWorkspaceNotificationConfig: async (

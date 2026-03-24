@@ -14,6 +14,7 @@ from app.schemas import LogoResponse, LogoUpdate
 from app.services.email_sender import is_email_configured
 from app.services.owner_workspace_notifications import (
     EMAIL_STATUS_DISABLED,
+    email_delivery_enabled_for_user,
     EMAIL_STATUS_FAILED,
     EMAIL_STATUS_PENDING,
     EMAIL_STATUS_SENT,
@@ -24,6 +25,7 @@ from app.services.owner_workspace_notifications import (
     WEB_PUSH_STATUS_PENDING,
     WEB_PUSH_STATUS_SENT,
     is_web_push_configured,
+    web_push_delivery_enabled_for_user,
 )
 
 
@@ -227,6 +229,17 @@ class OwnerWorkspaceNotificationDeliveryStatsResponse(BaseModel):
     email: OwnerWorkspaceNotificationDeliveryChannelStats
     web_push: OwnerWorkspaceNotificationDeliveryChannelStats
     recent_failures: List[OwnerWorkspaceNotificationDeliveryFailureItem]
+
+
+class OwnerWorkspaceNotificationDeliveryRetryRequest(BaseModel):
+    notification_ids: List[int]
+    include_email: bool = True
+    include_web_push: bool = True
+
+
+class OwnerWorkspaceNotificationDeliveryRetryResponse(BaseModel):
+    retried_email: int
+    retried_web_push: int
 
 
 def _get_json_setting(db: Session, key: str):
@@ -817,4 +830,49 @@ async def get_owner_workspace_notification_delivery_stats(
         ],
     )
 
+
+@router.post(
+    "/owner-workspace-notification-delivery-retry",
+    response_model=OwnerWorkspaceNotificationDeliveryRetryResponse,
+)
+async def retry_owner_workspace_notification_delivery(
+    body: OwnerWorkspaceNotificationDeliveryRetryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    notification_ids = sorted({int(item) for item in body.notification_ids if int(item) > 0})
+    if not notification_ids:
+        raise HTTPException(status_code=400, detail="notification_ids must not be empty")
+
+    rows = (
+        db.query(OwnerWorkspaceNotification)
+        .filter(OwnerWorkspaceNotification.id.in_(notification_ids))
+        .all()
+    )
+    retried_email = 0
+    retried_web_push = 0
+
+    for notification in rows:
+      if body.include_email and notification.email_delivery_status == EMAIL_STATUS_FAILED:
+          if email_delivery_enabled_for_user(db, notification.user_id, notification.kind):
+              notification.email_delivery_status = EMAIL_STATUS_PENDING
+              notification.email_attempts = 0
+              notification.email_last_error = None
+              notification.email_last_attempt_at = None
+              notification.email_sent_at = None
+              retried_email += 1
+      if body.include_web_push and notification.web_push_delivery_status == WEB_PUSH_STATUS_FAILED:
+          if web_push_delivery_enabled_for_user(db, notification.user_id, notification.kind):
+              notification.web_push_delivery_status = WEB_PUSH_STATUS_PENDING
+              notification.web_push_attempts = 0
+              notification.web_push_last_error = None
+              notification.web_push_last_attempt_at = None
+              notification.web_push_sent_at = None
+              retried_web_push += 1
+
+    db.commit()
+    return OwnerWorkspaceNotificationDeliveryRetryResponse(
+        retried_email=retried_email,
+        retried_web_push=retried_web_push,
+    )
 

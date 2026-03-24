@@ -1250,6 +1250,11 @@ export interface OwnerWorkspaceNotificationDeliveryStats {
   recent_failures: OwnerWorkspaceNotificationDeliveryFailureItem[];
 }
 
+export interface OwnerWorkspaceNotificationDeliveryRetryResult {
+  retried_email: number;
+  retried_web_push: number;
+}
+
 export interface OwnerWorkspaceTagDictionary {
   items: string[];
 }

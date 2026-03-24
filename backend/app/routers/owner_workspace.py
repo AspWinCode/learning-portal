@@ -468,7 +468,11 @@ async def create_project(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    assert_full_workspace(ctx)
+    permission_policy = get_owner_workspace_permission_policy(db)
+    if not ctx.full and not permission_policy["limited_can_create_projects"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    if payload.parent_project_id is not None and not ctx.full and not can_edit_project_content(db, ctx, payload.parent_project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для создания подпроекта")
     row = OwnerWorkspaceProject(
         name=payload.name.strip(),
         description=(payload.description or "").strip() or None,

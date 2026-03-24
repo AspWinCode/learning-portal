@@ -396,6 +396,7 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   manager_can_remove_manager: false,
   manager_can_edit_project_meta: false,
   manager_can_archive_project: false,
+  limited_can_create_projects: false,
 };
 
 type OwnerWorkspaceAssigneeAnalyticsRow = {
@@ -558,20 +559,6 @@ const OwnerWorkspacePage: React.FC = () => {
   const isWorkspaceFullAccess = user?.role === 'admin' || user?.role === 'owner';
   const isLimitedWorkspaceUser = user?.role === 'sales' || user?.role === 'trainer';
   const currentWorkspaceRoleLabel = OWNER_WS_GLOBAL_ROLE_LABELS[user?.role || ''] || (user?.role ?? 'unknown');
-  const currentWorkspaceAccessSummary = useMemo(() => {
-    if (isWorkspaceFullAccess) {
-      return [
-        'Полный доступ ко всем проектам, контактам, задачам и сообщениям.',
-        'Управление владельцем проекта, архивом и системными настройками.',
-        'Назначение project manager и observer внутри проектов.',
-      ];
-    }
-    return [
-      'Доступ только к собственной зоне видимости: свои проекты, связанные контакты и свои задачи.',
-      'Создание контакта требует явной привязки к доступному проекту.',
-      'Фактический уровень редактирования внутри проекта дополнительно зависит от роли member / manager / observer.',
-    ];
-  }, [isWorkspaceFullAccess]);
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -674,6 +661,24 @@ const OwnerWorkspacePage: React.FC = () => {
   const [permissionPolicy, setPermissionPolicy] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicyDraft, setPermissionPolicyDraft] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicySaving, setPermissionPolicySaving] = useState(false);
+  const currentWorkspaceAccessSummary = useMemo(() => {
+    if (isWorkspaceFullAccess) {
+      return [
+        'Полный доступ ко всем проектам, контактам, задачам и сообщениям.',
+        'Управление владельцем проекта, архивом и системными настройками.',
+        'Назначение project manager и observer внутри проектов.',
+      ];
+    }
+    const limitedSummary = [
+      'Доступ только к собственной зоне видимости: свои проекты, связанные контакты и свои задачи.',
+      'Создание контакта требует явной привязки к доступному проекту.',
+      'Фактический уровень редактирования внутри проекта дополнительно зависит от роли member / manager / observer.',
+    ];
+    if (permissionPolicy.limited_can_create_projects) {
+      limitedSummary.splice(1, 0, 'Создание новых проектов разрешено системной policy-моделью.');
+    }
+    return limitedSummary;
+  }, [isWorkspaceFullAccess, permissionPolicy.limited_can_create_projects]);
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
   const [digestProjectFilter, setDigestProjectFilter] = useState<number | ''>('');
@@ -1250,8 +1255,8 @@ const OwnerWorkspacePage: React.FC = () => {
   }, [tab]);
 
   const createProject = async () => {
-    if (!isWorkspaceFullAccess) {
-      setError('Создание проекта доступно только admin / owner.');
+    if (!canCreateProjectUi) {
+      setError('Создание проекта запрещено текущей policy-моделью.');
       return;
     }
     if (!projectName.trim()) return;
@@ -1698,6 +1703,14 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const createSubproject = async () => {
     if (!projectDialog || !subprojectName.trim()) return;
+    if (!canCreateProjectUi) {
+      setError('Создание подпроекта запрещено текущей policy-моделью.');
+      return;
+    }
+    if (!isWorkspaceFullAccess && !canEditProjectContentUi(projectDialog.id)) {
+      setError('Недостаточно прав для создания подпроекта в этом проекте.');
+      return;
+    }
     try {
       await ownerWorkspaceApi.createProject({
         name: subprojectName.trim(),
@@ -2337,6 +2350,11 @@ const OwnerWorkspacePage: React.FC = () => {
     );
   }, [projectDialog, user?.id, isWorkspaceFullAccess, permissionPolicy.manager_can_manage_team]);
 
+  const canCreateProjectUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_create_projects,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_create_projects]
+  );
+
   const canChangeParticipantRoles = useMemo(() => {
     if (!projectDialog || !user?.id) return false;
     if (isWorkspaceFullAccess) return true;
@@ -2434,6 +2452,12 @@ const OwnerWorkspacePage: React.FC = () => {
     },
     [isWorkspaceFullAccess, permissionPolicy.manager_can_archive_project, projectDialog, projectsCatalog, user?.id]
   );
+  const canCreateSubprojectUi = useMemo(() => {
+    if (!projectDialog) return false;
+    if (!canCreateProjectUi) return false;
+    if (isWorkspaceFullAccess) return true;
+    return canEditProjectContentUi(projectDialog.id);
+  }, [canCreateProjectUi, canEditProjectContentUi, isWorkspaceFullAccess, projectDialog]);
 
   const canEditProjectDialogContent = useMemo(
     () => (projectDialog ? canEditProjectContentUi(projectDialog.id) : false),
@@ -3261,24 +3285,29 @@ const OwnerWorkspacePage: React.FC = () => {
           <Card>
             <CardContent>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <TextField
-                  fullWidth
-                  label="РќР°Р·РІР°РЅРёРµ РїСЂРѕРµРєС‚Р°"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  disabled={!isWorkspaceFullAccess}
-                />
-                <Button variant="contained" onClick={createProject} disabled={!isWorkspaceFullAccess}>
-                  РЎРѕР·РґР°С‚СЊ
-                </Button>
-              </Stack>
-              {!isWorkspaceFullAccess && (
-                <Alert severity="info" sx={{ mt: 1.5 }}>
-                  Создание новых проектов доступно только admin / owner.
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
+                  <TextField
+                    fullWidth
+                    label="РќР°Р·РІР°РЅРёРµ РїСЂРѕРµРєС‚Р°"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    disabled={!canCreateProjectUi}
+                  />
+                  <Button variant="contained" onClick={createProject} disabled={!canCreateProjectUi}>
+                    РЎРѕР·РґР°С‚СЊ
+                  </Button>
+                </Stack>
+                {!canCreateProjectUi && (
+                  <Alert severity="info" sx={{ mt: 1.5 }}>
+                    Создание новых проектов доступно только admin / owner.
+                  </Alert>
+                )}
+                {!isWorkspaceFullAccess && canCreateProjectUi && (
+                  <Alert severity="info" sx={{ mt: 1.5 }}>
+                    Создание новых проектов разрешено для ограниченных ролей текущей policy-моделью.
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
           <Grid container spacing={2}>
             {projects.map((p) => (
               <Grid item xs={12} md={6} key={p.id}>
@@ -5100,20 +5129,31 @@ const OwnerWorkspacePage: React.FC = () => {
                           }
                           label="Менеджер проекта может редактировать название и описание проекта"
                         />
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={permissionPolicyDraft.manager_can_archive_project}
-                              onChange={(_, checked) =>
-                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_archive_project: checked }))
-                              }
-                            />
-                          }
-                          label="Менеджер проекта может архивировать проект"
-                        />
-                      </Stack>
-                    </CardContent>
-                  </Card>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.manager_can_archive_project}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_archive_project: checked }))
+                                }
+                              />
+                            }
+                            label="Менеджер проекта может архивировать проект"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.limited_can_create_projects}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_create_projects: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут создавать проекты"
+                          />
+                        </Stack>
+                      </CardContent>
+                    </Card>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                     <Button
                       variant="contained"
@@ -5349,18 +5389,23 @@ const OwnerWorkspacePage: React.FC = () => {
             </Stack>
             <Divider />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <TextField
-                fullWidth
-                  label="РќР°Р·РІР°РЅРёРµ РїРѕРґРїСЂРѕРµРєС‚Р°"
-                  value={subprojectName}
-                  onChange={(e) => setSubprojectName(e.target.value)}
-                  disabled={!isWorkspaceFullAccess}
-                />
-               <Button variant="contained" onClick={createSubproject} disabled={!isWorkspaceFullAccess}>
-                  РЎРѕР·РґР°С‚СЊ РїРѕРґРїСЂРѕРµРєС‚
-                </Button>
-            </Stack>
-            <Divider />
+                <TextField
+                  fullWidth
+                    label="РќР°Р·РІР°РЅРёРµ РїРѕРґРїСЂРѕРµРєС‚Р°"
+                    value={subprojectName}
+                    onChange={(e) => setSubprojectName(e.target.value)}
+                    disabled={!canCreateSubprojectUi}
+                  />
+                 <Button variant="contained" onClick={createSubproject} disabled={!canCreateSubprojectUi}>
+                    РЎРѕР·РґР°С‚СЊ РїРѕРґРїСЂРѕРµРєС‚
+                  </Button>
+              </Stack>
+              {!canCreateSubprojectUi && (
+                <Alert severity="info">
+                  Создание подпроекта доступно владельцу workspace или роли с правом записи в этот проект, если это разрешено policy-моделью.
+                </Alert>
+              )}
+              <Divider />
             <Typography variant="subtitle2">Р”РµСЂРµРІРѕ РїРѕРґРїСЂРѕРµРєС‚РѕРІ</Typography>
             <Typography variant="caption" color="text.secondary" display="block">
               РџРµСЂРµРЅРѕСЃ: РІР»Р°РґРµР»РµС† РїРѕРґРїСЂРѕРµРєС‚Р° РёР»Рё СЂРѕР»СЊ СЃ РїРѕР»РЅС‹Рј РґРѕСЃС‚СѓРїРѕРј Рє РјРѕРґСѓР»СЋ. Р РѕРґРёС‚РµР»СЊ РјРѕР¶РЅРѕ РІС‹Р±СЂР°С‚СЊ СЃСЂРµРґРё РІРёРґРёРјС‹С…

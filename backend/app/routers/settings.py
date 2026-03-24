@@ -54,6 +54,7 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "manager_can_remove_manager": False,
     "manager_can_edit_project_meta": False,
     "manager_can_archive_project": False,
+    "limited_can_create_projects": False,
 }
 DEFAULT_OWNER_WS_NOTIFICATION_CONFIG = {
     "items": [
@@ -112,6 +113,7 @@ class OwnerWorkspacePermissionPolicyResponse(BaseModel):
     manager_can_remove_manager: bool = False
     manager_can_edit_project_meta: bool = False
     manager_can_archive_project: bool = False
+    limited_can_create_projects: bool = False
 
 
 class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
@@ -122,6 +124,7 @@ class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
     manager_can_remove_manager: bool = False
     manager_can_edit_project_meta: bool = False
     manager_can_archive_project: bool = False
+    limited_can_create_projects: bool = False
 
 
 class OwnerWorkspaceProjectConfigResponse(BaseModel):
@@ -242,6 +245,7 @@ def _get_owner_ws_permission_policy(db: Session) -> dict:
         "manager_can_remove_manager": bool(raw.get("manager_can_remove_manager", False)),
         "manager_can_edit_project_meta": bool(raw.get("manager_can_edit_project_meta", False)),
         "manager_can_archive_project": bool(raw.get("manager_can_archive_project", False)),
+        "limited_can_create_projects": bool(raw.get("limited_can_create_projects", False)),
     }
 
 
@@ -500,6 +504,7 @@ async def set_owner_workspace_permission_policy(
         "manager_can_remove_manager": bool(body.manager_can_remove_manager),
         "manager_can_edit_project_meta": bool(body.manager_can_edit_project_meta),
         "manager_can_archive_project": bool(body.manager_can_archive_project),
+        "limited_can_create_projects": bool(body.limited_can_create_projects),
     }
     _set_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY, data)
     db.commit()

@@ -37,6 +37,7 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "limited_can_create_projects": False,
     "limited_can_create_contacts": False,
     "limited_can_create_tasks": False,
+    "limited_can_send_messages": False,
 }
 
 
@@ -73,6 +74,7 @@ def get_owner_workspace_permission_policy(db: Session) -> dict:
         "limited_can_create_projects": bool(raw.get("limited_can_create_projects", False)),
         "limited_can_create_contacts": bool(raw.get("limited_can_create_contacts", False)),
         "limited_can_create_tasks": bool(raw.get("limited_can_create_tasks", False)),
+        "limited_can_send_messages": bool(raw.get("limited_can_send_messages", False)),
     }
 
 

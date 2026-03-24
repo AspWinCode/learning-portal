@@ -1621,6 +1621,9 @@ async def create_message(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    permission_policy = get_owner_workspace_permission_policy(db)
+    if payload.direction != "incoming" and not ctx.full and not permission_policy["limited_can_send_messages"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
     if not contact or not contact_visible(ctx, payload.contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")

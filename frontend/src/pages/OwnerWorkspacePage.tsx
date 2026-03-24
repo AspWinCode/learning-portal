@@ -399,6 +399,7 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   limited_can_create_projects: false,
   limited_can_create_contacts: false,
   limited_can_create_tasks: false,
+  limited_can_send_messages: false,
 };
 
 type OwnerWorkspaceAssigneeAnalyticsRow = {
@@ -696,12 +697,18 @@ const OwnerWorkspacePage: React.FC = () => {
         ? 'Создание новых задач разрешено системной policy-моделью.'
         : 'Создание новых задач для ограниченных ролей может быть отключено policy-моделью.'
     );
+    limitedSummary.push(
+      permissionPolicy.limited_can_send_messages
+        ? 'Отправка исходящих сообщений разрешена системной policy-моделью.'
+        : 'Отправка исходящих сообщений для ограниченных ролей может быть отключена policy-моделью.'
+    );
     return limitedSummary;
   }, [
     isWorkspaceFullAccess,
     permissionPolicy.limited_can_create_contacts,
     permissionPolicy.limited_can_create_projects,
     permissionPolicy.limited_can_create_tasks,
+    permissionPolicy.limited_can_send_messages,
   ]);
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
@@ -1851,6 +1858,10 @@ const OwnerWorkspacePage: React.FC = () => {
   };
 
   const sendContactMessage = async () => {
+    if (!canSendMessageUi) {
+      setError('Отправка исходящих сообщений запрещена текущей policy-моделью.');
+      return;
+    }
     if (!contactDialog || !newContactMessage.trim()) return;
     try {
       await ownerWorkspaceApi.createMessage({
@@ -2397,6 +2408,10 @@ const OwnerWorkspacePage: React.FC = () => {
   const canCreateTaskUi = useMemo(
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_create_tasks,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_create_tasks]
+  );
+  const canSendMessageUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_send_messages,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_send_messages]
   );
 
   const canChangeParticipantRoles = useMemo(() => {
@@ -5229,6 +5244,17 @@ const OwnerWorkspacePage: React.FC = () => {
                             }
                             label="Ограниченные роли (sales / trainer) могут создавать задачи"
                           />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.limited_can_send_messages}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_send_messages: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут отправлять сообщения"
+                          />
                         </Stack>
                       </CardContent>
                     </Card>
@@ -6009,18 +6035,23 @@ const OwnerWorkspacePage: React.FC = () => {
             </Stack>
             <Divider />
             <Typography variant="subtitle2">РџРµСЂРµРїРёСЃРєР° (СЂСѓС‡РЅРѕР№ РІРІРѕРґ РґР»СЏ MVP)</Typography>
-            <TextField
-              fullWidth
-              multiline
-              minRows={2}
-              label="РЎРѕРѕР±С‰РµРЅРёРµ"
-              value={newContactMessage}
-              onChange={(e) => setNewContactMessage(e.target.value)}
-              disabled={!canEditContactDialogContent}
-            />
-            <Button variant="outlined" onClick={sendContactMessage} disabled={!canEditContactDialogContent}>
-              РЎРѕС…СЂР°РЅРёС‚СЊ РєР°Рє РёСЃС…РѕРґСЏС‰РµРµ
-            </Button>
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                label="РЎРѕРѕР±С‰РµРЅРёРµ"
+                value={newContactMessage}
+                onChange={(e) => setNewContactMessage(e.target.value)}
+                disabled={!canEditContactDialogContent || !canSendMessageUi}
+              />
+              {!canSendMessageUi && (
+                <Alert severity="info">
+                  Отправка исходящих сообщений для ограниченных ролей сейчас отключена policy-моделью.
+                </Alert>
+              )}
+              <Button variant="outlined" onClick={sendContactMessage} disabled={!canEditContactDialogContent || !canSendMessageUi}>
+                РЎРѕС…СЂР°РЅРёС‚СЊ РєР°Рє РёСЃС…РѕРґСЏС‰РµРµ
+              </Button>
             <TextField
               size="small"
               fullWidth

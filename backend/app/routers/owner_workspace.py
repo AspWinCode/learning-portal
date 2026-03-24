@@ -31,6 +31,7 @@ from app.services.owner_workspace_access import (
 )
 from app.services.owner_workspace_max_sync import sync_max_messages_into_owner_workspace as run_owner_workspace_max_sync
 from app.services.owner_workspace_notifications import (
+    get_web_push_public_key,
     notify_incoming_contact_message,
     notify_task_assigned,
     notify_task_comment_added,
@@ -52,6 +53,7 @@ from app.models import (
     OwnerWorkspaceTask,
     OwnerWorkspaceTaskComment,
     OwnerWorkspaceTaskMessage,
+    OwnerWorkspaceWebPushSubscription,
     User,
 )
 from app.schemas import (
@@ -67,6 +69,9 @@ from app.schemas import (
     OwnerWorkspaceMessageResponse,
     OwnerWorkspaceNotificationsEnvelope,
     OwnerWorkspaceNotificationResponse,
+    OwnerWorkspaceWebPushStatusResponse,
+    OwnerWorkspaceWebPushSubscriptionDelete,
+    OwnerWorkspaceWebPushSubscriptionUpsert,
     OwnerWorkspaceUserPreferencesPatch,
     OwnerWorkspaceUserPreferencesResponse,
     OwnerWorkspaceProjectContactAdd,
@@ -1813,6 +1818,99 @@ async def patch_owner_workspace_my_preferences(
     patch = payload.model_dump(exclude_unset=True)
     data = merge_preferences_for_user(db, ctx.user.id, patch)
     return OwnerWorkspaceUserPreferencesResponse.model_validate(data)
+
+
+@router.get("/me/web-push", response_model=OwnerWorkspaceWebPushStatusResponse)
+async def get_owner_workspace_web_push_status(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    count = (
+        db.query(func.count(OwnerWorkspaceWebPushSubscription.id))
+        .filter(OwnerWorkspaceWebPushSubscription.user_id == ctx.user.id)
+        .scalar()
+        or 0
+    )
+    public_key = get_web_push_public_key()
+    return OwnerWorkspaceWebPushStatusResponse(
+        configured=bool(public_key),
+        public_key=public_key,
+        subscription_count=int(count),
+    )
+
+
+@router.post("/me/web-push/subscriptions", response_model=OwnerWorkspaceWebPushStatusResponse)
+async def upsert_owner_workspace_web_push_subscription(
+    payload: OwnerWorkspaceWebPushSubscriptionUpsert,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    endpoint = payload.endpoint.strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Endpoint is required")
+    row = (
+        db.query(OwnerWorkspaceWebPushSubscription)
+        .filter(OwnerWorkspaceWebPushSubscription.endpoint == endpoint)
+        .first()
+    )
+    if row is None:
+        row = OwnerWorkspaceWebPushSubscription(
+            user_id=ctx.user.id,
+            endpoint=endpoint,
+            p256dh=payload.p256dh.strip(),
+            auth=payload.auth.strip(),
+            user_agent=(payload.user_agent or "").strip() or None,
+        )
+        db.add(row)
+    else:
+        row.user_id = ctx.user.id
+        row.p256dh = payload.p256dh.strip()
+        row.auth = payload.auth.strip()
+        row.user_agent = (payload.user_agent or "").strip() or None
+    db.commit()
+    count = (
+        db.query(func.count(OwnerWorkspaceWebPushSubscription.id))
+        .filter(OwnerWorkspaceWebPushSubscription.user_id == ctx.user.id)
+        .scalar()
+        or 0
+    )
+    public_key = get_web_push_public_key()
+    return OwnerWorkspaceWebPushStatusResponse(
+        configured=bool(public_key),
+        public_key=public_key,
+        subscription_count=int(count),
+    )
+
+
+@router.post("/me/web-push/subscriptions/remove", response_model=OwnerWorkspaceWebPushStatusResponse)
+async def remove_owner_workspace_web_push_subscription(
+    payload: OwnerWorkspaceWebPushSubscriptionDelete,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    endpoint = payload.endpoint.strip()
+    if endpoint:
+        (
+            db.query(OwnerWorkspaceWebPushSubscription)
+            .filter(
+                OwnerWorkspaceWebPushSubscription.user_id == ctx.user.id,
+                OwnerWorkspaceWebPushSubscription.endpoint == endpoint,
+            )
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+    count = (
+        db.query(func.count(OwnerWorkspaceWebPushSubscription.id))
+        .filter(OwnerWorkspaceWebPushSubscription.user_id == ctx.user.id)
+        .scalar()
+        or 0
+    )
+    public_key = get_web_push_public_key()
+    return OwnerWorkspaceWebPushStatusResponse(
+        configured=bool(public_key),
+        public_key=public_key,
+        subscription_count=int(count),
+    )
 
 
 @router.get("/analytics/tasks-overview", response_model=OwnerWorkspaceTasksAnalyticsOverview)

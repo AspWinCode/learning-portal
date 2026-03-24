@@ -76,6 +76,7 @@ import type {
   OwnerWorkspacePermissionPolicy,
   OwnerWorkspaceTaskStatusCounts,
   OwnerWorkspaceTasksAnalyticsOverview,
+  OwnerWorkspaceWebPushStatus,
   User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
@@ -101,6 +102,28 @@ function localInputToIso(local: string): string | null {
   const d = new Date(local);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const normalized = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(normalized);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+  if (!buffer) return '';
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return window.btoa(binary);
 }
 
 const DEFAULT_STATUS_LABELS: Record<string, string> = {
@@ -722,6 +745,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [digestProjectFilter, setDigestProjectFilter] = useState<number | ''>('');
   const [digestDueHours, setDigestDueHours] = useState(48);
   const [notifyEmailEnabled, setNotifyEmailEnabled] = useState(false);
+  const [notifyWebPushEnabled, setNotifyWebPushEnabled] = useState(false);
   const [notifyTaskOverdue, setNotifyTaskOverdue] = useState(true);
   const [notifyTaskDueSoon, setNotifyTaskDueSoon] = useState(true);
   const [notifyTaskAssigned, setNotifyTaskAssigned] = useState(true);
@@ -729,6 +753,11 @@ const OwnerWorkspacePage: React.FC = () => {
   const [notifyTaskUpdated, setNotifyTaskUpdated] = useState(true);
   const [notifyContactIncomingMessage, setNotifyContactIncomingMessage] = useState(true);
   const [notifyTaskMention, setNotifyTaskMention] = useState(true);
+  const [webPushStatus, setWebPushStatus] = useState<OwnerWorkspaceWebPushStatus | null>(null);
+  const [webPushBrowserSupported, setWebPushBrowserSupported] = useState(false);
+  const [webPushPermission, setWebPushPermission] = useState<string>('default');
+  const [webPushConnected, setWebPushConnected] = useState(false);
+  const [webPushBusy, setWebPushBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<OwnerWorkspaceSearchResult | null>(null);
@@ -1134,6 +1163,99 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   }, [loadProjectsAndContacts, loadTasksFiltered, loadMeta]);
 
+  const refreshWebPushState = useCallback(async () => {
+    const supported =
+      typeof window !== 'undefined' &&
+      'serviceWorker' in navigator &&
+      'PushManager' in window &&
+      typeof Notification !== 'undefined';
+    setWebPushBrowserSupported(supported);
+    setWebPushPermission(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+    try {
+      const status = await ownerWorkspaceApi.getMyWebPushStatus();
+      setWebPushStatus(status);
+    } catch {
+      setWebPushStatus(null);
+    }
+    if (!supported) {
+      setWebPushConnected(false);
+      return;
+    }
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const subscription = await registration.pushManager.getSubscription();
+      setWebPushConnected(Boolean(subscription));
+    } catch {
+      setWebPushConnected(false);
+    }
+  }, []);
+
+  const connectWebPush = useCallback(async () => {
+    if (webPushBusy) return;
+    if (!webPushStatus?.configured || !webPushStatus.public_key) {
+      setError('Web push не настроен на сервере: отсутствует публичный VAPID ключ.');
+      return;
+    }
+    if (!webPushBrowserSupported || typeof Notification === 'undefined') {
+      setError('Этот браузер не поддерживает web push.');
+      return;
+    }
+    setWebPushBusy(true);
+    try {
+      let permission = Notification.permission;
+      if (permission !== 'granted') {
+        permission = await Notification.requestPermission();
+      }
+      setWebPushPermission(permission);
+      if (permission !== 'granted') {
+        setError('Браузер не выдал разрешение на push-уведомления.');
+        return;
+      }
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(webPushStatus.public_key),
+        });
+      }
+      await ownerWorkspaceApi.upsertMyWebPushSubscription({
+        endpoint: subscription.endpoint,
+        p256dh: arrayBufferToBase64(subscription.getKey('p256dh')),
+        auth: arrayBufferToBase64(subscription.getKey('auth')),
+        user_agent: navigator.userAgent,
+      });
+      setError(null);
+      await refreshWebPushState();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось подключить web push.'));
+    } finally {
+      setWebPushBusy(false);
+    }
+  }, [refreshWebPushState, webPushBrowserSupported, webPushBusy, webPushStatus]);
+
+  const disconnectWebPush = useCallback(async () => {
+    if (webPushBusy || !webPushBrowserSupported) return;
+    setWebPushBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const subscription = await registration.pushManager.getSubscription();
+      const endpoint = subscription?.endpoint || '';
+      if (subscription) {
+        await subscription.unsubscribe();
+      }
+      if (endpoint) {
+        await ownerWorkspaceApi.removeMyWebPushSubscription(endpoint);
+      }
+      setError(null);
+      await refreshWebPushState();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось отключить web push.'));
+    } finally {
+      setWebPushBusy(false);
+    }
+  }, [refreshWebPushState, webPushBrowserSupported, webPushBusy]);
+
   const skipProjectsContactsFilterReload = useRef(false);
   const taskFilterKeyRef = useRef<string | null>(null);
 
@@ -1154,6 +1276,7 @@ const OwnerWorkspacePage: React.FC = () => {
         setDigestDueHours(p.digest_due_within_hours);
         setDigestScope(p.digest_scope);
         setNotifyEmailEnabled(p.notify_email_enabled);
+        setNotifyWebPushEnabled(p.notify_web_push_enabled);
         setNotifyTaskOverdue(p.notify_task_overdue);
         setNotifyTaskDueSoon(p.notify_task_due_soon);
         setNotifyTaskAssigned(p.notify_task_assigned);
@@ -1169,6 +1292,10 @@ const OwnerWorkspacePage: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    void refreshWebPushState();
+  }, [refreshWebPushState]);
 
   useEffect(() => {
     if (skipProjectsContactsFilterReload.current) {
@@ -2040,6 +2167,7 @@ const OwnerWorkspacePage: React.FC = () => {
         digest_due_within_hours: digestDueHours,
         digest_scope: digestScope,
         notify_email_enabled: notifyEmailEnabled,
+        notify_web_push_enabled: notifyWebPushEnabled,
         notify_task_overdue: notifyTaskOverdue,
         notify_task_due_soon: notifyTaskDueSoon,
         notify_task_assigned: notifyTaskAssigned,
@@ -4608,6 +4736,46 @@ const OwnerWorkspacePage: React.FC = () => {
                     control={<Checkbox checked={notifyEmailEnabled} onChange={(_, checked) => setNotifyEmailEnabled(checked)} />}
                     label="Дублировать включённые уведомления на email"
                   />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={notifyWebPushEnabled}
+                        disabled={!webPushStatus?.configured}
+                        onChange={(_, checked) => setNotifyWebPushEnabled(checked)}
+                      />
+                    }
+                    label="Дублировать включённые уведомления в web push"
+                  />
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    alignItems={{ sm: 'center' }}
+                    sx={{ pl: 1, pb: 0.5 }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {webPushBrowserSupported
+                        ? webPushConnected
+                          ? `Браузер подключён, подписок на сервере: ${webPushStatus?.subscription_count ?? 0}`
+                          : webPushStatus?.configured
+                            ? `Браузер не подключён. Разрешение: ${webPushPermission}.`
+                            : 'Web push не настроен на сервере.'
+                        : 'Этот браузер не поддерживает web push.'}
+                    </Typography>
+                    {webPushConnected ? (
+                      <Button size="small" variant="outlined" disabled={webPushBusy} onClick={() => void disconnectWebPush()}>
+                        {webPushBusy ? 'Отключение…' : 'Отключить браузер'}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={webPushBusy || !webPushBrowserSupported || !webPushStatus?.configured}
+                        onClick={() => void connectWebPush()}
+                      >
+                        {webPushBusy ? 'Подключение…' : 'Подключить браузер'}
+                      </Button>
+                    )}
+                  </Stack>
                   <FormControlLabel
                     control={
                       <Checkbox

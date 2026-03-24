@@ -2832,6 +2832,7 @@ class OwnerWorkspaceUserPreferencesResponse(BaseModel):
     digest_due_within_hours: int = 48
     digest_scope: Literal["all", "mine"] = "all"
     notify_email_enabled: bool = False
+    notify_web_push_enabled: bool = False
     notify_task_overdue: bool = True
     notify_task_due_soon: bool = True
     notify_task_assigned: bool = True
@@ -2847,6 +2848,7 @@ class OwnerWorkspaceUserPreferencesPatch(BaseModel):
     digest_due_within_hours: Optional[int] = Field(None, ge=8, le=336)
     digest_scope: Optional[Literal["all", "mine"]] = None
     notify_email_enabled: Optional[bool] = None
+    notify_web_push_enabled: Optional[bool] = None
     notify_task_overdue: Optional[bool] = None
     notify_task_due_soon: Optional[bool] = None
     notify_task_assigned: Optional[bool] = None
@@ -2854,6 +2856,23 @@ class OwnerWorkspaceUserPreferencesPatch(BaseModel):
     notify_task_updated: Optional[bool] = None
     notify_contact_incoming_message: Optional[bool] = None
     notify_task_mention: Optional[bool] = None
+
+
+class OwnerWorkspaceWebPushSubscriptionUpsert(BaseModel):
+    endpoint: str = Field(..., min_length=1, max_length=4000)
+    p256dh: str = Field(..., min_length=1, max_length=512)
+    auth: str = Field(..., min_length=1, max_length=512)
+    user_agent: Optional[str] = Field(None, max_length=255)
+
+
+class OwnerWorkspaceWebPushSubscriptionDelete(BaseModel):
+    endpoint: str = Field(..., min_length=1, max_length=4000)
+
+
+class OwnerWorkspaceWebPushStatusResponse(BaseModel):
+    configured: bool
+    public_key: Optional[str] = None
+    subscription_count: int = 0
 
 
 # Owner funnels (support letters, thank you letters, events)

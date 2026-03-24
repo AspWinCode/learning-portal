@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -18,6 +20,7 @@ from app.models import (
     OwnerWorkspaceProjectContact,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
+    OwnerWorkspaceWebPushSubscription,
     User,
 )
 from app.services.email_sender import is_email_configured, send_email
@@ -38,6 +41,11 @@ EMAIL_STATUS_PENDING = "pending"
 EMAIL_STATUS_SENT = "sent"
 EMAIL_STATUS_FAILED = "failed"
 MAX_EMAIL_ATTEMPTS = 5
+WEB_PUSH_STATUS_DISABLED = "disabled"
+WEB_PUSH_STATUS_PENDING = "pending"
+WEB_PUSH_STATUS_SENT = "sent"
+WEB_PUSH_STATUS_FAILED = "failed"
+MAX_WEB_PUSH_ATTEMPTS = 5
 
 RE_MENTION_USER_ID = re.compile(r"@(\d{1,12})\b")
 RE_MENTION_EMAIL = re.compile(r"@([A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})")
@@ -118,6 +126,37 @@ def email_delivery_enabled_for_user(db: Session, user_id: int, kind: str) -> boo
     return bool(user and getattr(user, "email", None))
 
 
+def get_web_push_public_key() -> str | None:
+    value = (os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY") or "").strip()
+    return value or None
+
+
+def is_web_push_configured() -> bool:
+    public_key = (os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY") or "").strip()
+    private_key = (os.getenv("WEB_PUSH_VAPID_PRIVATE_KEY") or "").strip()
+    subject = (os.getenv("WEB_PUSH_VAPID_SUBJECT") or "").strip()
+    return bool(public_key and private_key and subject)
+
+
+def web_push_delivery_enabled_for_user(db: Session, user_id: int, kind: str) -> bool:
+    if not is_web_push_configured():
+        return False
+    if not notification_kind_enabled(db, kind):
+        return False
+    prefs = get_preferences_for_user(db, user_id)
+    if not bool(prefs.get("notify_web_push_enabled", False)):
+        return False
+    pref_key = KIND_TO_PREFERENCE_KEY.get(kind)
+    if pref_key and not bool(prefs.get(pref_key, True)):
+        return False
+    has_subscription = (
+        db.query(OwnerWorkspaceWebPushSubscription.id)
+        .filter(OwnerWorkspaceWebPushSubscription.user_id == user_id)
+        .first()
+    )
+    return bool(has_subscription)
+
+
 def queue_notification(
     db: Session,
     *,
@@ -146,9 +185,130 @@ def queue_notification(
         email_last_error=None,
         email_last_attempt_at=None,
         email_sent_at=None,
+        web_push_delivery_status=(
+            WEB_PUSH_STATUS_PENDING
+            if web_push_delivery_enabled_for_user(db, user_id, kind)
+            else WEB_PUSH_STATUS_DISABLED
+        ),
+        web_push_attempts=0,
+        web_push_last_error=None,
+        web_push_last_attempt_at=None,
+        web_push_sent_at=None,
     )
     db.add(notification)
     return notification
+
+
+def build_notification_target_path(notification: OwnerWorkspaceNotification) -> str:
+    if notification.task_id:
+        return f"/owner-workspace/tasks/{notification.task_id}"
+    if notification.contact_id:
+        return f"/owner-workspace/contacts/{notification.contact_id}"
+    return "/owner-workspace/notifications"
+
+
+def _send_web_push(subscription: OwnerWorkspaceWebPushSubscription, payload: dict) -> None:
+    from pywebpush import webpush
+
+    private_key = (os.getenv("WEB_PUSH_VAPID_PRIVATE_KEY") or "").strip()
+    subject = (os.getenv("WEB_PUSH_VAPID_SUBJECT") or "").strip()
+    webpush(
+        subscription_info={
+            "endpoint": subscription.endpoint,
+            "keys": {
+                "p256dh": subscription.p256dh,
+                "auth": subscription.auth,
+            },
+        },
+        data=json.dumps(payload, ensure_ascii=False),
+        vapid_private_key=private_key,
+        vapid_claims={"sub": subject},
+    )
+
+
+def dispatch_pending_owner_workspace_notification_web_push(db: Session, limit: int = 100) -> int:
+    pending_rows = (
+        db.query(OwnerWorkspaceNotification)
+        .filter(
+            OwnerWorkspaceNotification.web_push_delivery_status.in_(
+                (WEB_PUSH_STATUS_PENDING, WEB_PUSH_STATUS_FAILED)
+            ),
+            OwnerWorkspaceNotification.web_push_attempts < MAX_WEB_PUSH_ATTEMPTS,
+        )
+        .order_by(OwnerWorkspaceNotification.created_at.asc(), OwnerWorkspaceNotification.id.asc())
+        .limit(limit)
+        .all()
+    )
+    if not pending_rows:
+        return 0
+
+    sent_count = 0
+    now = datetime.now(timezone.utc)
+
+    for notification in pending_rows:
+        notification.web_push_last_attempt_at = now
+        notification.web_push_attempts = int(notification.web_push_attempts or 0) + 1
+
+        if not web_push_delivery_enabled_for_user(db, notification.user_id, notification.kind):
+            notification.web_push_delivery_status = WEB_PUSH_STATUS_DISABLED
+            notification.web_push_last_error = None
+            notification.web_push_sent_at = None
+            continue
+
+        subscriptions = (
+            db.query(OwnerWorkspaceWebPushSubscription)
+            .filter(OwnerWorkspaceWebPushSubscription.user_id == notification.user_id)
+            .all()
+        )
+        if not subscriptions:
+            notification.web_push_delivery_status = WEB_PUSH_STATUS_DISABLED
+            notification.web_push_last_error = None
+            notification.web_push_sent_at = None
+            continue
+
+        payload = {
+            "title": notification.title,
+            "body": notification.body or notification.title,
+            "kind": notification.kind,
+            "task_id": notification.task_id,
+            "contact_id": notification.contact_id,
+            "notification_id": notification.id,
+            "url": build_notification_target_path(notification),
+        }
+
+        delivered = False
+        last_error: str | None = None
+        stale_ids: list[int] = []
+
+        for subscription in subscriptions:
+            try:
+                _send_web_push(subscription, payload)
+                delivered = True
+            except Exception as exc:
+                last_error = str(exc)[:500]
+                response = getattr(exc, "response", None)
+                status_code = getattr(response, "status_code", None)
+                if status_code in (404, 410):
+                    stale_ids.append(int(subscription.id))
+
+        if stale_ids:
+            (
+                db.query(OwnerWorkspaceWebPushSubscription)
+                .filter(OwnerWorkspaceWebPushSubscription.id.in_(stale_ids))
+                .delete(synchronize_session=False)
+            )
+
+        if delivered:
+            notification.web_push_delivery_status = WEB_PUSH_STATUS_SENT
+            notification.web_push_sent_at = now
+            notification.web_push_last_error = None
+            sent_count += 1
+        else:
+            notification.web_push_delivery_status = WEB_PUSH_STATUS_FAILED
+            notification.web_push_last_error = last_error or "web push delivery failed"
+
+    db.commit()
+    return sent_count
 
 
 def overdue_dedupe_key(task_id: int) -> str:

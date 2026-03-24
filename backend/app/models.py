@@ -2006,11 +2006,34 @@ class OwnerWorkspaceNotification(Base):
     email_sent_at = Column(DateTime(timezone=True), nullable=True)
     email_attempts = Column(Integer, nullable=False, server_default="0")
     email_last_error = Column(Text, nullable=True)
+    web_push_delivery_status = Column(String(24), nullable=False, server_default="disabled", index=True)
+    web_push_last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    web_push_sent_at = Column(DateTime(timezone=True), nullable=True)
+    web_push_attempts = Column(Integer, nullable=False, server_default="0")
+    web_push_last_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     user = relationship("User")
     task = relationship("OwnerWorkspaceTask")
     contact = relationship("OwnerWorkspaceContact")
+
+
+class OwnerWorkspaceWebPushSubscription(Base):
+    __tablename__ = "owner_workspace_web_push_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("endpoint", name="uq_owner_workspace_web_push_subscription_endpoint"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    endpoint = Column(Text, nullable=False)
+    p256dh = Column(Text, nullable=False)
+    auth = Column(Text, nullable=False)
+    user_agent = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User")
 
 
 class OwnerWorkspaceConversationRead(Base):

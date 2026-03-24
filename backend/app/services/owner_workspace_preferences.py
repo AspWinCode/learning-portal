@@ -14,6 +14,7 @@ DEFAULT_PREFERENCES: Dict[str, Any] = {
     "digest_due_within_hours": 48,
     "digest_scope": "all",
     "notify_email_enabled": False,
+    "notify_web_push_enabled": False,
     "notify_task_overdue": True,
     "notify_task_due_soon": True,
     "notify_task_assigned": True,
@@ -61,6 +62,9 @@ def normalize_preferences(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     out["digest_scope"] = s if s in _VALID_SCOPES else DEFAULT_PREFERENCES["digest_scope"]
 
     out["notify_email_enabled"] = bool(src.get("notify_email_enabled", DEFAULT_PREFERENCES["notify_email_enabled"]))
+    out["notify_web_push_enabled"] = bool(
+        src.get("notify_web_push_enabled", DEFAULT_PREFERENCES["notify_web_push_enabled"])
+    )
 
     for key in (
         "notify_task_overdue",

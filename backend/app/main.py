@@ -165,6 +165,24 @@ def _validate_production_env() -> None:
         except Exception:
             traceback.print_exc()
 
+    def _run_owner_workspace_notification_web_push_dispatch() -> None:
+        """Dispatch queued owner workspace web push notifications."""
+        try:
+            flag = (os.getenv("OWNER_WORKSPACE_WEB_PUSH_DISPATCH_ENABLED") or "1").strip().lower()
+            if flag not in ("1", "true", "yes"):
+                return
+            from app.services.owner_workspace_notifications import (
+                dispatch_pending_owner_workspace_notification_web_push,
+            )
+
+            db = SessionLocal()
+            try:
+                dispatch_pending_owner_workspace_notification_web_push(db, limit=100)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
     scheduler.add_job(_run_payment_overdue_tasks, "interval", days=1, id="payment_overdue_tasks")
@@ -175,6 +193,12 @@ def _validate_production_env() -> None:
         "interval",
         minutes=1,
         id="owner_workspace_notification_email_dispatch",
+    )
+    scheduler.add_job(
+        _run_owner_workspace_notification_web_push_dispatch,
+        "interval",
+        minutes=1,
+        id="owner_workspace_notification_web_push_dispatch",
     )
     # Автоповышение класса учеников 1 сентября (cron-задача раз в год).
     scheduler.add_job(

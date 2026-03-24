@@ -1162,6 +1162,7 @@ export interface OwnerWorkspaceUserPreferences {
   digest_due_within_hours: number;
   digest_scope: 'all' | 'mine';
   notify_email_enabled: boolean;
+  notify_web_push_enabled: boolean;
   notify_task_overdue: boolean;
   notify_task_due_soon: boolean;
   notify_task_assigned: boolean;
@@ -1169,6 +1170,12 @@ export interface OwnerWorkspaceUserPreferences {
   notify_task_updated: boolean;
   notify_contact_incoming_message: boolean;
   notify_task_mention: boolean;
+}
+
+export interface OwnerWorkspaceWebPushStatus {
+  configured: boolean;
+  public_key?: string | null;
+  subscription_count: number;
 }
 
 export interface OwnerWorkspaceTaskConfigItem {

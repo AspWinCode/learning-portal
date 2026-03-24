@@ -66,6 +66,7 @@ import {
   OwnerWorkspaceTagDictionary,
   OwnerWorkspacePermissionPolicy,
   OwnerWorkspaceUserPreferences,
+  OwnerWorkspaceWebPushStatus,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTaskCompleteResult,
 } from '../types';
@@ -2468,6 +2469,23 @@ export const ownerWorkspaceApi = {
     payload: Partial<OwnerWorkspaceUserPreferences>
   ): Promise<OwnerWorkspaceUserPreferences> => {
     const response = await api.patch('/api/owner-workspace/me/preferences', payload);
+    return response.data;
+  },
+  getMyWebPushStatus: async (): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.get('/api/owner-workspace/me/web-push');
+    return response.data;
+  },
+  upsertMyWebPushSubscription: async (payload: {
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    user_agent?: string | null;
+  }): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.post('/api/owner-workspace/me/web-push/subscriptions', payload);
+    return response.data;
+  },
+  removeMyWebPushSubscription: async (endpoint: string): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.post('/api/owner-workspace/me/web-push/subscriptions/remove', { endpoint });
     return response.data;
   },
   listMessages: async (params?: { contact_id?: number }): Promise<OwnerWorkspaceMessage[]> => {

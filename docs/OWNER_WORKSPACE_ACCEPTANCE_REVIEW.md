@@ -75,7 +75,7 @@ Status legend:
 | Email delivery channel | DONE | Implemented through notification outbox/background dispatch. |
 | Web push delivery channel | DONE | Implemented through subscription management and outbox/background dispatch. |
 | Mobile push channel | DEFERRED | Not implemented. |
-| Separate worker/service tier for delivery | PARTIAL | Delivery works, but still runs in application scheduler rather than a dedicated worker. |
+| Separate worker/service tier for delivery | DONE | Owner-workspace email and web-push delivery run in a dedicated worker service instead of the API process. |
 
 ## 7. Settings
 
@@ -156,7 +156,6 @@ Status legend:
 
 - Fully standalone page architecture per entity
 - Fully exhaustive permission matrix
-- Separate worker/service tier for delivery
 - Fully exhaustive admin surface
 - Fully exhaustive audit model
 - Full dependency wizard for archive/delete

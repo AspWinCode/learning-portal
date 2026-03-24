@@ -17,6 +17,10 @@ app = FastAPI(
 # Если при старте не прошла проверка production (SECRET_KEY/DATABASE_URL), не падаем с 502, а отдаём 503 на запросах
 _startup_config_error: str | None = None
 
+
+def _env_enabled(name: str, default: str = "1") -> bool:
+    return (os.getenv(name, default).strip().lower() in ("1", "true", "yes"))
+
 def _run_tochka_auto_import() -> None:
     """Периодическая задача: импорт выписки Точка Банк, матч по телефону (и ФИО как fallback), за последние 14 дней. Каждые 10 мин."""
     try:
@@ -42,7 +46,7 @@ def _run_tochka_auto_import() -> None:
 @app.on_event("startup")
 def _run_migrations_on_startup() -> None:
     """При старте приложения применить миграции (чтобы не было 502 из-за отсутствующих колонок)."""
-    run_migrate = os.getenv("RUN_MIGRATIONS_ON_STARTUP", "1").strip().lower() in ("1", "true", "yes")
+    run_migrate = _env_enabled("RUN_MIGRATIONS_ON_STARTUP", "1")
     if not run_migrate:
         return
     try:
@@ -150,8 +154,7 @@ def _validate_production_env() -> None:
     def _run_owner_workspace_notification_email_dispatch() -> None:
         """Dispatch queued owner workspace notification emails."""
         try:
-            flag = (os.getenv("OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED") or "1").strip().lower()
-            if flag not in ("1", "true", "yes"):
+            if not _env_enabled("OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED", "1"):
                 return
             from app.services.owner_workspace_notifications import (
                 dispatch_pending_owner_workspace_notification_emails,
@@ -168,8 +171,7 @@ def _validate_production_env() -> None:
     def _run_owner_workspace_notification_web_push_dispatch() -> None:
         """Dispatch queued owner workspace web push notifications."""
         try:
-            flag = (os.getenv("OWNER_WORKSPACE_WEB_PUSH_DISPATCH_ENABLED") or "1").strip().lower()
-            if flag not in ("1", "true", "yes"):
+            if not _env_enabled("OWNER_WORKSPACE_WEB_PUSH_DISPATCH_ENABLED", "1"):
                 return
             from app.services.owner_workspace_notifications import (
                 dispatch_pending_owner_workspace_notification_web_push,
@@ -188,18 +190,19 @@ def _validate_production_env() -> None:
     scheduler.add_job(_run_payment_overdue_tasks, "interval", days=1, id="payment_overdue_tasks")
     scheduler.add_job(_run_scheduled_messages, "interval", minutes=1, id="scheduled_messages")
     scheduler.add_job(_run_owner_workspace_max_sync, "interval", minutes=30, id="owner_workspace_max_sync")
-    scheduler.add_job(
-        _run_owner_workspace_notification_email_dispatch,
-        "interval",
-        minutes=1,
-        id="owner_workspace_notification_email_dispatch",
-    )
-    scheduler.add_job(
-        _run_owner_workspace_notification_web_push_dispatch,
-        "interval",
-        minutes=1,
-        id="owner_workspace_notification_web_push_dispatch",
-    )
+    if _env_enabled("OWNER_WORKSPACE_DELIVERY_IN_APP", "1"):
+        scheduler.add_job(
+            _run_owner_workspace_notification_email_dispatch,
+            "interval",
+            minutes=1,
+            id="owner_workspace_notification_email_dispatch",
+        )
+        scheduler.add_job(
+            _run_owner_workspace_notification_web_push_dispatch,
+            "interval",
+            minutes=1,
+            id="owner_workspace_notification_web_push_dispatch",
+        )
     # Автоповышение класса учеников 1 сентября (cron-задача раз в год).
     scheduler.add_job(
         _run_student_class_autopromo,

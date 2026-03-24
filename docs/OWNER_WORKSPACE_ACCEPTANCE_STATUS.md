@@ -15,6 +15,7 @@ Owner Workspace is in a working production state.
 - In-app notifications are live.
 - Email notifications are live through background outbox delivery.
 - Web push notifications are live through background outbox delivery.
+- Owner-workspace notification delivery runs in a dedicated worker service.
 
 ## Done
 
@@ -87,6 +88,7 @@ Owner Workspace is in a working production state.
 - Email outbox/background dispatcher with retry state on notifications.
 - Web push subscription management for the current browser.
 - Web push outbox/background dispatcher with retry state on notifications.
+- Dedicated owner-workspace delivery worker service for email and web push dispatch.
 
 ### Settings
 
@@ -167,7 +169,7 @@ Owner Workspace is in a working production state.
 
 ### Notifications
 
-- Email and web push delivery are present with an application-level outbox/background dispatcher, but they are still not a separate worker/service tier.
+- Email and web push delivery are present through an outbox/background dispatcher in a dedicated worker service.
 
 ### Analytics
 

@@ -14,12 +14,14 @@ from app.services.owner_workspace_access import (
     assert_full_workspace,
     build_owner_workspace_access_context,
     can_archive_project,
+    can_bulk_update_tasks,
     can_complete_task,
     can_edit_contact_content,
     can_update_contact_content,
     can_change_project_participant_roles,
     can_edit_project_meta,
     can_edit_project_content,
+    can_link_task_messages,
     can_manage_project_contacts,
     can_update_task_content,
     can_manage_project_team,
@@ -1288,6 +1290,8 @@ async def bulk_update_tasks(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    if not can_bulk_update_tasks(db, ctx):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
     data = payload.model_dump(exclude_unset=True)
     task_ids = data.pop("task_ids", [])
     if not data:
@@ -1506,7 +1510,8 @@ async def link_message_to_task(
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
-    _assert_task_write_access(db, ctx, task)
+    if not can_link_task_messages(db, ctx, task):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == payload.message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -1532,7 +1537,8 @@ async def unlink_message_from_task(
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
-    _assert_task_write_access(db, ctx, task)
+    if not can_link_task_messages(db, ctx, task):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
     link = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == task_id,
         OwnerWorkspaceTaskMessage.message_id == message_id,
@@ -1742,7 +1748,8 @@ async def link_message_with_task(
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == payload.task_id).first()
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
-    _assert_task_write_access(db, ctx, task)
+    if not can_link_task_messages(db, ctx, task):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
     exists = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == payload.task_id,
         OwnerWorkspaceTaskMessage.message_id == message_id,

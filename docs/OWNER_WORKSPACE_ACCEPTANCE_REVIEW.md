@@ -97,7 +97,7 @@ Status legend:
 | Project-scoped role model | DONE | `member`, `manager`, `observer` implemented. |
 | Observer as read-only | DONE | Enforced in backend mutate paths and frontend UX. |
 | Manager policy | DONE | Centralized and configurable. |
-| Limited-role create/edit policy | DONE | Centralized and configurable for projects, contacts, tasks, task-field editing, contact-card editing, project-contact binding, task completion, messages, comments. |
+| Limited-role create/edit policy | DONE | Centralized and configurable for projects, contacts, tasks, task-field editing, contact-card editing, project-contact binding, task completion, bulk task update, message-to-task linking, messages, comments. |
 | Fully exhaustive permission matrix for every single action | PARTIAL | Main actions are covered, but a single formal matrix for every action is not yet maintained as an enforceable artifact. |
 
 ## 9. Analytics

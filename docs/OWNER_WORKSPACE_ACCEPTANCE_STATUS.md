@@ -116,6 +116,8 @@ Owner Workspace is in a working production state.
   - task editing
   - project contact binding / unbinding
   - task completion
+  - task bulk update
+  - message-to-task linking
   - outgoing messages
   - task comments
 - Role matrix section in settings.

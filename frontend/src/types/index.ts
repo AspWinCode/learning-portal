@@ -1208,6 +1208,8 @@ export interface OwnerWorkspacePermissionPolicy {
   limited_can_edit_tasks: boolean;
   limited_can_manage_project_contacts: boolean;
   limited_can_complete_tasks: boolean;
+  limited_can_bulk_update_tasks: boolean;
+  limited_can_link_messages: boolean;
   limited_can_send_messages: boolean;
   limited_can_comment_tasks: boolean;
 }

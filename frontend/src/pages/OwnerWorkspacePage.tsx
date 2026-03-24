@@ -426,6 +426,8 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   limited_can_edit_tasks: false,
   limited_can_manage_project_contacts: false,
   limited_can_complete_tasks: false,
+  limited_can_bulk_update_tasks: false,
+  limited_can_link_messages: false,
   limited_can_send_messages: false,
   limited_can_comment_tasks: false,
 };
@@ -750,6 +752,16 @@ const OwnerWorkspacePage: React.FC = () => {
         : 'Завершение задач для ограниченных ролей может быть отключено policy-моделью.'
     );
     limitedSummary.push(
+      permissionPolicy.limited_can_bulk_update_tasks
+        ? 'Массовое обновление задач разрешено системной policy-моделью.'
+        : 'Массовое обновление задач для ограниченных ролей может быть отключено policy-моделью.'
+    );
+    limitedSummary.push(
+      permissionPolicy.limited_can_link_messages
+        ? 'Привязка сообщений к задачам разрешена системной policy-моделью.'
+        : 'Привязка сообщений к задачам для ограниченных ролей может быть отключена policy-моделью.'
+    );
+    limitedSummary.push(
       permissionPolicy.limited_can_send_messages
         ? 'Отправка исходящих сообщений разрешена системной policy-моделью.'
         : 'Отправка исходящих сообщений для ограниченных ролей может быть отключена policy-моделью.'
@@ -769,6 +781,8 @@ const OwnerWorkspacePage: React.FC = () => {
     permissionPolicy.limited_can_edit_tasks,
     permissionPolicy.limited_can_manage_project_contacts,
     permissionPolicy.limited_can_complete_tasks,
+    permissionPolicy.limited_can_bulk_update_tasks,
+    permissionPolicy.limited_can_link_messages,
     permissionPolicy.limited_can_send_messages,
     permissionPolicy.limited_can_comment_tasks,
   ]);
@@ -1897,6 +1911,10 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const submitLinkToTask = async () => {
     if (!linkTaskDialog || !linkTaskSelected) return;
+    if (!canLinkMessagesUi) {
+      setError('Привязка сообщений к задачам запрещена текущей policy-моделью.');
+      return;
+    }
     try {
       await ownerWorkspaceApi.linkMessageToTask(linkTaskDialog.message.id, linkTaskSelected.id);
       setLinkTaskDialog(null);
@@ -2150,6 +2168,10 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const applyBulkTaskUpdate = async () => {
     if (selectedTaskIds.length === 0) return;
+    if (!canBulkUpdateTasksUi) {
+      setError('Массовое обновление задач запрещено текущей policy-моделью.');
+      return;
+    }
     const hasStatus = Boolean(bulkStatus);
     const hasAssigneeClear = bulkAssigneeMode === 'clear';
     const hasAssigneeSet = bulkAssigneeMode === 'set' && bulkAssigneeUserId !== '';
@@ -2600,6 +2622,14 @@ const OwnerWorkspacePage: React.FC = () => {
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_complete_tasks,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_complete_tasks]
   );
+  const canBulkUpdateTasksUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_bulk_update_tasks,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_bulk_update_tasks]
+  );
+  const canLinkMessagesUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_link_messages,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_link_messages]
+  );
   const canSendMessageUi = useMemo(
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_send_messages,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_send_messages]
@@ -2810,8 +2840,8 @@ const OwnerWorkspacePage: React.FC = () => {
   );
 
   const editableLinkTaskOptions = useMemo(
-    () => linkTaskOptions.filter((task) => canMutateTaskUi(task)),
-    [canMutateTaskUi, linkTaskOptions]
+    () => (canLinkMessagesUi ? linkTaskOptions.filter((task) => canMutateTaskUi(task)) : []),
+    [canLinkMessagesUi, canMutateTaskUi, linkTaskOptions]
   );
 
   const assigneeAnalyticsRows = useMemo<OwnerWorkspaceAssigneeAnalyticsRow[]>(() => {
@@ -4271,7 +4301,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   </MenuItem>
                 ))}
               </TextField>
-              <Button variant="contained" disabled={selectedTaskIds.length === 0} onClick={applyBulkTaskUpdate}>
+              <Button variant="contained" disabled={selectedTaskIds.length === 0 || !canBulkUpdateTasksUi} onClick={applyBulkTaskUpdate}>
                 РџСЂРёРјРµРЅРёС‚СЊ Рє РІС‹Р±СЂР°РЅРЅС‹Рј
               </Button>
             </Stack>
@@ -5747,6 +5777,28 @@ const OwnerWorkspacePage: React.FC = () => {
                           <FormControlLabel
                             control={
                               <Checkbox
+                                checked={permissionPolicyDraft.limited_can_bulk_update_tasks}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_bulk_update_tasks: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут массово обновлять задачи"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.limited_can_link_messages}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_link_messages: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут привязывать сообщения к задачам"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
                                 checked={permissionPolicyDraft.limited_can_send_messages}
                                 onChange={(_, checked) =>
                                   setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_send_messages: checked }))
@@ -6883,6 +6935,11 @@ const OwnerWorkspacePage: React.FC = () => {
                 Создание следующей задачи после завершения сейчас отключено policy-моделью.
               </Alert>
             )}
+            {completeMode === 'close_and_create_next' && canCompleteTaskActionUi(completeDialogTask) && !canCreateTaskUi && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                Завершение доступно, но создание следующей задачи отключено policy-моделью.
+              </Alert>
+            )}
             {completeMode === 'close_and_create_next' && (
               <TextField
                 fullWidth
@@ -6931,7 +6988,12 @@ const OwnerWorkspacePage: React.FC = () => {
       <Dialog open={Boolean(linkTaskDialog)} onClose={() => setLinkTaskDialog(null)} maxWidth="sm" fullWidth>
         <DialogTitle>РџСЂРёРІСЏР·Р°С‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ Рє Р·Р°РґР°С‡Рµ</DialogTitle>
         <DialogContent>
-          {linkTaskDialog && editableLinkTaskOptions.length === 0 && (
+          {linkTaskDialog && !canLinkMessagesUi && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              Привязка сообщений к задачам для ограниченных ролей сейчас отключена policy-моделью.
+            </Alert>
+          )}
+          {linkTaskDialog && canLinkMessagesUi && editableLinkTaskOptions.length === 0 && (
             <Alert severity="info" sx={{ mt: 1 }}>
               РќРµС‚ РґРѕСЃС‚СѓРїРЅС‹С… Р·Р°РґР°С‡ СЃ РїСЂР°РІРѕРј СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёСЏ РґР»СЏ РїСЂРёРІСЏР·РєРё СЌС‚РѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ.
             </Alert>
@@ -6949,7 +7011,7 @@ const OwnerWorkspacePage: React.FC = () => {
           <Button onClick={() => setLinkTaskDialog(null)}>РћС‚РјРµРЅР°</Button>
           <Button
             variant="contained"
-            disabled={!linkTaskSelected || !canMutateTaskUi(linkTaskSelected)}
+            disabled={!linkTaskSelected || !canMutateTaskUi(linkTaskSelected) || !canLinkMessagesUi}
             onClick={submitLinkToTask}
           >
             РџСЂРёРІСЏР·Р°С‚СЊ

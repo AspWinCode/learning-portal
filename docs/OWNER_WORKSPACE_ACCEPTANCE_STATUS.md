@@ -8,9 +8,10 @@ Owner Workspace is in a working production state.
 
 - Production backend is live.
 - Deep links for project/contact/task are live.
-- Alembic is aligned through `0088_owner_workspace_notification_email_outbox`.
+- Alembic is aligned through `0089_owner_workspace_web_push_outbox`.
 - In-app notifications are live.
 - Email notifications are live through background outbox delivery.
+- Web push notifications are live through background outbox delivery.
 
 ## Done
 
@@ -77,7 +78,10 @@ Owner Workspace is in a working production state.
   - incoming contact messages
 - User-level notification preferences in settings.
 - Email delivery toggle in user preferences.
+- Web push delivery toggle in user preferences.
 - Email outbox/background dispatcher with retry state on notifications.
+- Web push subscription management for the current browser.
+- Web push outbox/background dispatcher with retry state on notifications.
 
 ### Settings
 
@@ -151,7 +155,7 @@ Owner Workspace is in a working production state.
 
 ### Notifications
 
-- Email delivery is present with an application-level outbox/background dispatcher, but it is still not a separate worker/service tier.
+- Email and web push delivery are present with an application-level outbox/background dispatcher, but they are still not a separate worker/service tier.
 
 ### Analytics
 
@@ -165,7 +169,6 @@ Owner Workspace is in a working production state.
 
 ### External delivery channels
 
-- Web push notifications.
 - Mobile push notifications.
 
 ### Reporting expansion
@@ -187,7 +190,7 @@ Owner Workspace is in a working production state.
 ## Recommended Next Steps
 
 1. Stabilize production DB operations and backup discipline.
-2. Finish the acceptance/status documentation so it exactly matches the current permission-policy surface.
-3. Add web push or another external notification channel beyond email.
-4. Decide whether reporting should remain embedded or move into a dedicated reporting surface.
-5. Do a line-by-line final acceptance review against the original specification.
+2. Finish the acceptance/status documentation so it exactly matches the current notification and policy surface.
+3. Decide whether reporting should remain embedded or move into a dedicated reporting surface.
+4. Do a line-by-line final acceptance review against the original specification.
+5. Decide whether mobile push is needed beyond the current web push channel.

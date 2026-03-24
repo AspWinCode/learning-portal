@@ -1190,6 +1190,10 @@ export interface OwnerWorkspacePermissionPolicy {
   manager_can_remove_manager: boolean;
 }
 
+export interface OwnerWorkspaceNotificationConfig {
+  items: OwnerWorkspaceTaskConfigItem[];
+}
+
 export interface OwnerWorkspaceTaskCompleteResult {
   completed_task: OwnerWorkspaceTask;
   next_task: OwnerWorkspaceTask | null;

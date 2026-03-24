@@ -11,6 +11,7 @@ from sqlalchemy import func as sqla_func
 from sqlalchemy.orm import Session
 
 from app.models import (
+    AppSetting,
     OwnerWorkspaceMessage,
     OwnerWorkspaceNotification,
     OwnerWorkspaceProject,
@@ -50,9 +51,51 @@ KIND_TO_PREFERENCE_KEY = {
     KIND_CONTACT_INCOMING_MESSAGE: "notify_contact_incoming_message",
     KIND_TASK_MENTION: "notify_task_mention",
 }
+NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
+DEFAULT_NOTIFICATION_CONFIG = {
+    "task_overdue": {"label": "Просрочка", "enabled": True},
+    "task_due_soon": {"label": "Скоро дедлайн", "enabled": True},
+    "task_assigned": {"label": "Назначение", "enabled": True},
+    "task_comment": {"label": "Комментарий", "enabled": True},
+    "task_updated": {"label": "Обновление задачи", "enabled": True},
+    "contact_incoming_message": {"label": "Сообщение по контакту", "enabled": True},
+    "task_mention": {"label": "Упоминание", "enabled": True},
+}
+
+
+def get_owner_workspace_notification_config(db: Session) -> dict[str, dict]:
+    setting = db.query(AppSetting).filter(AppSetting.key == NOTIFICATION_CONFIG_KEY).first()
+    if not setting or not (setting.value or "").strip():
+        return DEFAULT_NOTIFICATION_CONFIG
+    try:
+        import json
+
+        raw = json.loads(setting.value)
+    except Exception:
+        return DEFAULT_NOTIFICATION_CONFIG
+    items = raw.get("items") if isinstance(raw, dict) else None
+    if not isinstance(items, list):
+        return DEFAULT_NOTIFICATION_CONFIG
+    config = dict(DEFAULT_NOTIFICATION_CONFIG)
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip()
+        if key not in config:
+            continue
+        label = str(item.get("label") or config[key]["label"]).strip() or config[key]["label"]
+        enabled = bool(item.get("enabled", config[key]["enabled"]))
+        config[key] = {"label": label[:120], "enabled": enabled}
+    return config
+
+
+def notification_kind_enabled(db: Session, kind: str) -> bool:
+    return bool(get_owner_workspace_notification_config(db).get(kind, {}).get("enabled", True))
 
 
 def notifications_enabled_for_user(db: Session, user_id: int, kind: str) -> bool:
+    if not notification_kind_enabled(db, kind):
+        return False
     pref_key = KIND_TO_PREFERENCE_KEY.get(kind)
     if not pref_key:
         return True
@@ -62,6 +105,8 @@ def notifications_enabled_for_user(db: Session, user_id: int, kind: str) -> bool
 
 def email_delivery_enabled_for_user(db: Session, user_id: int, kind: str) -> bool:
     if not is_email_configured():
+        return False
+    if not notification_kind_enabled(db, kind):
         return False
     prefs = get_preferences_for_user(db, user_id)
     if not bool(prefs.get("notify_email_enabled", False)):

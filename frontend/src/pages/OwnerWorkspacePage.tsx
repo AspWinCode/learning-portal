@@ -65,6 +65,7 @@ import type {
   OwnerWorkspaceDigest,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceMessage,
+  OwnerWorkspaceNotificationConfig,
   OwnerWorkspaceProject,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTask,
@@ -639,6 +640,9 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskConfig, setTaskConfig] = useState<OwnerWorkspaceTaskConfig | null>(null);
   const [taskConfigDraft, setTaskConfigDraft] = useState<OwnerWorkspaceTaskConfig | null>(null);
   const [taskConfigSaving, setTaskConfigSaving] = useState(false);
+  const [notificationConfig, setNotificationConfig] = useState<OwnerWorkspaceNotificationConfig | null>(null);
+  const [notificationConfigDraft, setNotificationConfigDraft] = useState<OwnerWorkspaceNotificationConfig | null>(null);
+  const [notificationConfigSaving, setNotificationConfigSaving] = useState(false);
   const [permissionPolicy, setPermissionPolicy] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicyDraft, setPermissionPolicyDraft] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicySaving, setPermissionPolicySaving] = useState(false);
@@ -765,6 +769,20 @@ const OwnerWorkspacePage: React.FC = () => {
     }
     return merged;
   }, [taskConfig]);
+  const notificationLabels = useMemo(() => {
+    const map: Record<string, string> = { ...OWNER_WS_NOTIF_KIND_LABELS };
+    for (const item of notificationConfig?.items ?? []) {
+      if (item.key) map[item.key] = item.label || item.key;
+    }
+    return map;
+  }, [notificationConfig]);
+  const notificationConfigMap = useMemo(() => {
+    const map: Record<string, { label: string; enabled: boolean }> = {};
+    for (const item of notificationConfig?.items ?? []) {
+      map[item.key] = { label: item.label || item.key, enabled: item.enabled !== false };
+    }
+    return map;
+  }, [notificationConfig]);
 
   const enabledStatuses = useMemo(() => {
     const configured = (taskConfig?.statuses ?? [])
@@ -966,16 +984,19 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const loadMeta = useCallback(async () => {
     try {
-      const [conv, u, cfg, permissionCfg] = await Promise.all([
+      const [conv, u, cfg, permissionCfg, notificationCfg] = await Promise.all([
         ownerWorkspaceApi.listConversations(),
         usersApi.getAll(),
         settingsApi.getOwnerWorkspaceTaskConfig(),
         settingsApi.getOwnerWorkspacePermissionPolicy(),
+        settingsApi.getOwnerWorkspaceNotificationConfig(),
       ]);
       setConversations(conv);
       setUsers(Array.isArray(u) ? u : []);
       setTaskConfig(cfg);
       setTaskConfigDraft(cfg);
+      setNotificationConfig(notificationCfg);
+      setNotificationConfigDraft(notificationCfg);
       setPermissionPolicy(permissionCfg);
       setPermissionPolicyDraft(permissionCfg);
     } catch (e: unknown) {
@@ -1956,6 +1977,26 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
+  const saveWorkspaceNotificationConfig = async () => {
+    if (!notificationConfigDraft) return;
+    if (!notificationConfigDraft.items.some((item) => item.enabled !== false)) {
+      setError('Нужно оставить хотя бы один видимый тип уведомлений owner workspace.');
+      return;
+    }
+    setNotificationConfigSaving(true);
+    try {
+      const saved = await settingsApi.setOwnerWorkspaceNotificationConfig(notificationConfigDraft);
+      setNotificationConfig(saved);
+      setNotificationConfigDraft(saved);
+      setError(null);
+      setMaxSyncResult('Системная конфигурация типов уведомлений owner workspace сохранена.');
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось сохранить системную конфигурацию уведомлений owner workspace'));
+    } finally {
+      setNotificationConfigSaving(false);
+    }
+  };
+
   const handleWorkspaceTabChange = (_: React.SyntheticEvent, v: number) => {
     if (v !== OW_TAB_TASKS) {
       setTaskDialog(null);
@@ -2767,7 +2808,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
                     <Chip
                       size="small"
-                      label={OWNER_WS_NOTIF_KIND_LABELS[n.kind] || n.kind}
+                      label={notificationLabels[n.kind] || n.kind}
                       sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontSize: 11 } }}
                     />
                     <Typography component="span" variant="body2" fontWeight={n.read_at ? 400 : 600}>
@@ -4128,7 +4169,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 <Card key={n.id} variant="outlined" sx={{ bgcolor: n.read_at ? 'transparent' : 'action.hover' }}>
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
-                      <Chip size="small" label={OWNER_WS_NOTIF_KIND_LABELS[n.kind] || n.kind} />
+                      <Chip size="small" label={notificationLabels[n.kind] || n.kind} />
                       {!n.read_at && <Chip size="small" color="warning" label="РќРѕРІРѕРµ" />}
                       <Typography variant="caption" color="text.secondary">
                         {n.created_at ? new Date(n.created_at).toLocaleString('ru-RU') : ''}
@@ -4283,37 +4324,74 @@ const OwnerWorkspacePage: React.FC = () => {
                     label="Дублировать включённые уведомления на email"
                   />
                   <FormControlLabel
-                    control={<Checkbox checked={notifyTaskOverdue} onChange={(_, checked) => setNotifyTaskOverdue(checked)} />}
-                    label="Просроченные задачи"
+                    control={
+                      <Checkbox
+                        checked={notifyTaskOverdue}
+                        disabled={notificationConfigMap.task_overdue?.enabled === false}
+                        onChange={(_, checked) => setNotifyTaskOverdue(checked)}
+                      />
+                    }
+                    label={notificationLabels.task_overdue || 'Просроченные задачи'}
                   />
                   <FormControlLabel
-                    control={<Checkbox checked={notifyTaskDueSoon} onChange={(_, checked) => setNotifyTaskDueSoon(checked)} />}
-                    label="Скоро дедлайн"
+                    control={
+                      <Checkbox
+                        checked={notifyTaskDueSoon}
+                        disabled={notificationConfigMap.task_due_soon?.enabled === false}
+                        onChange={(_, checked) => setNotifyTaskDueSoon(checked)}
+                      />
+                    }
+                    label={notificationLabels.task_due_soon || 'Скоро дедлайн'}
                   />
                   <FormControlLabel
-                    control={<Checkbox checked={notifyTaskAssigned} onChange={(_, checked) => setNotifyTaskAssigned(checked)} />}
-                    label="Назначение задачи"
+                    control={
+                      <Checkbox
+                        checked={notifyTaskAssigned}
+                        disabled={notificationConfigMap.task_assigned?.enabled === false}
+                        onChange={(_, checked) => setNotifyTaskAssigned(checked)}
+                      />
+                    }
+                    label={notificationLabels.task_assigned || 'Назначение задачи'}
                   />
                   <FormControlLabel
-                    control={<Checkbox checked={notifyTaskComment} onChange={(_, checked) => setNotifyTaskComment(checked)} />}
-                    label="Комментарии к задаче"
+                    control={
+                      <Checkbox
+                        checked={notifyTaskComment}
+                        disabled={notificationConfigMap.task_comment?.enabled === false}
+                        onChange={(_, checked) => setNotifyTaskComment(checked)}
+                      />
+                    }
+                    label={notificationLabels.task_comment || 'Комментарии к задаче'}
                   />
                   <FormControlLabel
-                    control={<Checkbox checked={notifyTaskUpdated} onChange={(_, checked) => setNotifyTaskUpdated(checked)} />}
-                    label="Обновления задачи"
+                    control={
+                      <Checkbox
+                        checked={notifyTaskUpdated}
+                        disabled={notificationConfigMap.task_updated?.enabled === false}
+                        onChange={(_, checked) => setNotifyTaskUpdated(checked)}
+                      />
+                    }
+                    label={notificationLabels.task_updated || 'Обновления задачи'}
                   />
                   <FormControlLabel
                     control={
                       <Checkbox
                         checked={notifyContactIncomingMessage}
+                        disabled={notificationConfigMap.contact_incoming_message?.enabled === false}
                         onChange={(_, checked) => setNotifyContactIncomingMessage(checked)}
                       />
                     }
-                    label="Входящие сообщения по контакту"
+                    label={notificationLabels.contact_incoming_message || 'Входящие сообщения по контакту'}
                   />
                   <FormControlLabel
-                    control={<Checkbox checked={notifyTaskMention} onChange={(_, checked) => setNotifyTaskMention(checked)} />}
-                    label="Упоминания в комментариях"
+                    control={
+                      <Checkbox
+                        checked={notifyTaskMention}
+                        disabled={notificationConfigMap.task_mention?.enabled === false}
+                        onChange={(_, checked) => setNotifyTaskMention(checked)}
+                      />
+                    }
+                    label={notificationLabels.task_mention || 'Упоминания в комментариях'}
                   />
                 </Stack>
               </Box>
@@ -4449,6 +4527,87 @@ const OwnerWorkspacePage: React.FC = () => {
                     </Button>
                     <Button variant="outlined" disabled={taskConfigSaving || !taskConfig} onClick={() => setTaskConfigDraft(taskConfig)}>
                       РЎР±СЂРѕСЃРёС‚СЊ
+                    </Button>
+                  </Stack>
+                </Stack>
+              </>
+            )}
+            {isWorkspaceFullAccess && notificationConfigDraft && (
+              <>
+                <Divider sx={{ my: 3 }} />
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="h6" gutterBottom>
+                      Системные типы уведомлений
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Здесь задаются подписи и глобальная видимость типов owner-workspace уведомлений. Отключённый тип больше не
+                      создаётся ни в in-app, ни в email-канале.
+                    </Typography>
+                  </Box>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        {notificationConfigDraft.items.map((item, index) => (
+                          <Box key={item.key}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label={item.key}
+                              value={item.label}
+                              onChange={(e) =>
+                                setNotificationConfigDraft((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        items: prev.items.map((current, currentIndex) =>
+                                          currentIndex === index ? { ...current, label: e.target.value } : current
+                                        ),
+                                      }
+                                    : prev
+                                )
+                              }
+                            />
+                            <FormControlLabel
+                              sx={{ mt: 0.5 }}
+                              control={
+                                <Checkbox
+                                  checked={item.enabled !== false}
+                                  onChange={(e) =>
+                                    setNotificationConfigDraft((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            items: prev.items.map((current, currentIndex) =>
+                                              currentIndex === index ? { ...current, enabled: e.target.checked } : current
+                                            ),
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                />
+                              }
+                              label="Показывать и генерировать в модуле"
+                            />
+                          </Box>
+                        ))}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                    <Button
+                      variant="contained"
+                      disabled={notificationConfigSaving}
+                      onClick={() => void saveWorkspaceNotificationConfig()}
+                    >
+                      {notificationConfigSaving ? 'Сохранение...' : 'Сохранить типы уведомлений'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      disabled={notificationConfigSaving || !notificationConfig}
+                      onClick={() => setNotificationConfigDraft(notificationConfig)}
+                    >
+                      Сбросить
                     </Button>
                   </Stack>
                 </Stack>

@@ -18,6 +18,7 @@ DISTRICTS_KEY = "b2b_districts"
 REFUSED_REASONS_KEY = "sales_refused_reasons"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
 OWNER_WS_PERMISSION_POLICY_KEY = "owner_workspace_permission_policy"
+OWNER_WS_NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
 
 DEFAULT_OWNER_WS_TASK_CONFIG = {
     "statuses": [
@@ -41,8 +42,20 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "manager_can_assign_observer": False,
     "manager_can_remove_manager": False,
 }
+DEFAULT_OWNER_WS_NOTIFICATION_CONFIG = {
+    "items": [
+        {"key": "task_overdue", "label": "Просрочка", "enabled": True},
+        {"key": "task_due_soon", "label": "Скоро дедлайн", "enabled": True},
+        {"key": "task_assigned", "label": "Назначение", "enabled": True},
+        {"key": "task_comment", "label": "Комментарий", "enabled": True},
+        {"key": "task_updated", "label": "Обновление задачи", "enabled": True},
+        {"key": "contact_incoming_message", "label": "Сообщение по контакту", "enabled": True},
+        {"key": "task_mention", "label": "Упоминание", "enabled": True},
+    ]
+}
 OWNER_WS_STATUS_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["statuses"]]
 OWNER_WS_PRIORITY_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["priorities"]]
+OWNER_WS_NOTIFICATION_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_NOTIFICATION_CONFIG["items"]]
 
 
 class B2BDistrictsResponse(BaseModel):
@@ -91,6 +104,14 @@ class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
     manager_can_assign_manager: bool = False
     manager_can_assign_observer: bool = False
     manager_can_remove_manager: bool = False
+
+
+class OwnerWorkspaceNotificationConfigResponse(BaseModel):
+    items: List[OwnerWorkspaceTaskConfigItem]
+
+
+class OwnerWorkspaceNotificationConfigUpdate(BaseModel):
+    items: List[OwnerWorkspaceTaskConfigItem]
 
 
 def _get_json_setting(db: Session, key: str):
@@ -185,6 +206,24 @@ def _get_owner_ws_permission_policy(db: Session) -> dict:
         "manager_can_assign_manager": bool(raw.get("manager_can_assign_manager", False)),
         "manager_can_assign_observer": bool(raw.get("manager_can_assign_observer", False)),
         "manager_can_remove_manager": bool(raw.get("manager_can_remove_manager", False)),
+    }
+
+
+def _get_owner_ws_notification_config(db: Session) -> dict:
+    raw = _get_json_setting(db, OWNER_WS_NOTIFICATION_CONFIG_KEY)
+    if not isinstance(raw, dict):
+        return DEFAULT_OWNER_WS_NOTIFICATION_CONFIG
+    items = raw.get("items")
+    try:
+        parsed_items = [OwnerWorkspaceTaskConfigItem.model_validate(x) for x in items] if isinstance(items, list) else []
+    except Exception:
+        return DEFAULT_OWNER_WS_NOTIFICATION_CONFIG
+    return {
+        "items": _normalize_owner_ws_task_items(
+            parsed_items,
+            allowed_keys=OWNER_WS_NOTIFICATION_KEYS,
+            defaults=DEFAULT_OWNER_WS_NOTIFICATION_CONFIG["items"],
+        )
     }
 
 
@@ -359,5 +398,32 @@ async def set_owner_workspace_permission_policy(
     _set_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY, data)
     db.commit()
     return OwnerWorkspacePermissionPolicyResponse.model_validate(data)
+
+
+@router.get("/owner-workspace-notification-config", response_model=OwnerWorkspaceNotificationConfigResponse)
+async def get_owner_workspace_notification_config(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    data = _get_owner_ws_notification_config(db)
+    return OwnerWorkspaceNotificationConfigResponse.model_validate(data)
+
+
+@router.post("/owner-workspace-notification-config", response_model=OwnerWorkspaceNotificationConfigResponse)
+async def set_owner_workspace_notification_config(
+    body: OwnerWorkspaceNotificationConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    data = {
+        "items": _normalize_owner_ws_task_items(
+            body.items,
+            allowed_keys=OWNER_WS_NOTIFICATION_KEYS,
+            defaults=DEFAULT_OWNER_WS_NOTIFICATION_CONFIG["items"],
+        )
+    }
+    _set_json_setting(db, OWNER_WS_NOTIFICATION_CONFIG_KEY, data)
+    db.commit()
+    return OwnerWorkspaceNotificationConfigResponse.model_validate(data)
 
 

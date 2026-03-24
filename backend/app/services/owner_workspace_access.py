@@ -37,6 +37,8 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "limited_can_create_projects": False,
     "limited_can_create_contacts": False,
     "limited_can_create_tasks": False,
+    "limited_can_edit_contacts": False,
+    "limited_can_edit_tasks": False,
     "limited_can_send_messages": False,
     "limited_can_comment_tasks": False,
 }
@@ -75,6 +77,8 @@ def get_owner_workspace_permission_policy(db: Session) -> dict:
         "limited_can_create_projects": bool(raw.get("limited_can_create_projects", False)),
         "limited_can_create_contacts": bool(raw.get("limited_can_create_contacts", False)),
         "limited_can_create_tasks": bool(raw.get("limited_can_create_tasks", False)),
+        "limited_can_edit_contacts": bool(raw.get("limited_can_edit_contacts", False)),
+        "limited_can_edit_tasks": bool(raw.get("limited_can_edit_tasks", False)),
         "limited_can_send_messages": bool(raw.get("limited_can_send_messages", False)),
         "limited_can_comment_tasks": bool(raw.get("limited_can_comment_tasks", False)),
     }
@@ -325,6 +329,24 @@ def can_edit_contact_content(db: Session, ctx: OwnerWorkspaceAccessContext, cont
         .first()
     )
     return own_task is not None
+
+
+def can_update_contact_content(db: Session, ctx: OwnerWorkspaceAccessContext, contact_id: int) -> bool:
+    if not can_edit_contact_content(db, ctx, contact_id):
+        return False
+    if ctx.full:
+        return True
+    return get_owner_workspace_permission_policy(db)["limited_can_edit_contacts"]
+
+
+def can_update_task_content(db: Session, ctx: OwnerWorkspaceAccessContext, task: OwnerWorkspaceTask) -> bool:
+    if not task_visible(ctx, task):
+        return False
+    if ctx.full:
+        return True
+    if task.project_id is not None and not can_edit_project_content(db, ctx, task.project_id):
+        return False
+    return get_owner_workspace_permission_policy(db)["limited_can_edit_tasks"]
 
 
 def can_archive_project(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:

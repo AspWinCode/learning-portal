@@ -422,6 +422,8 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   limited_can_create_projects: false,
   limited_can_create_contacts: false,
   limited_can_create_tasks: false,
+  limited_can_edit_contacts: false,
+  limited_can_edit_tasks: false,
   limited_can_send_messages: false,
   limited_can_comment_tasks: false,
 };
@@ -726,6 +728,16 @@ const OwnerWorkspacePage: React.FC = () => {
         : 'Создание новых задач для ограниченных ролей может быть отключено policy-моделью.'
     );
     limitedSummary.push(
+      permissionPolicy.limited_can_edit_contacts
+        ? 'Редактирование карточек контактов разрешено системной policy-моделью.'
+        : 'Редактирование карточек контактов для ограниченных ролей может быть отключено policy-моделью.'
+    );
+    limitedSummary.push(
+      permissionPolicy.limited_can_edit_tasks
+        ? 'Редактирование полей задач разрешено системной policy-моделью.'
+        : 'Редактирование полей задач для ограниченных ролей может быть отключено policy-моделью.'
+    );
+    limitedSummary.push(
       permissionPolicy.limited_can_send_messages
         ? 'Отправка исходящих сообщений разрешена системной policy-моделью.'
         : 'Отправка исходящих сообщений для ограниченных ролей может быть отключена policy-моделью.'
@@ -741,6 +753,8 @@ const OwnerWorkspacePage: React.FC = () => {
     permissionPolicy.limited_can_create_contacts,
     permissionPolicy.limited_can_create_projects,
     permissionPolicy.limited_can_create_tasks,
+    permissionPolicy.limited_can_edit_contacts,
+    permissionPolicy.limited_can_edit_tasks,
     permissionPolicy.limited_can_send_messages,
     permissionPolicy.limited_can_comment_tasks,
   ]);
@@ -2548,6 +2562,14 @@ const OwnerWorkspacePage: React.FC = () => {
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_create_tasks,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_create_tasks]
   );
+  const canEditContactCardUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_edit_contacts,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_edit_contacts]
+  );
+  const canEditTaskFieldsUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_edit_tasks,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_edit_tasks]
+  );
   const canSendMessageUi = useMemo(
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_send_messages,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_send_messages]
@@ -2702,6 +2724,10 @@ const OwnerWorkspacePage: React.FC = () => {
     if (isWorkspaceFullAccess) return true;
     return canEditContactContentUi(contactDialog.id);
   }, [canEditContactContentUi, contactDialog, isWorkspaceFullAccess, user?.id]);
+  const canEditContactCardDialogContent = useMemo(
+    () => canEditContactDialogContent && canEditContactCardUi,
+    [canEditContactCardUi, canEditContactDialogContent]
+  );
 
   const canEditTaskDialogContent = useMemo(() => {
     if (!taskDialog) return false;
@@ -2711,6 +2737,10 @@ const OwnerWorkspacePage: React.FC = () => {
     }
     return true;
   }, [canEditProjectContentUi, isWorkspaceFullAccess, taskDialog]);
+  const canEditTaskFieldsDialogContent = useMemo(
+    () => canEditTaskDialogContent && canEditTaskFieldsUi,
+    [canEditTaskDialogContent, canEditTaskFieldsUi]
+  );
 
   const taskDialogReadOnly = taskFormLocked || !canEditTaskDialogContent;
 
@@ -5635,6 +5665,28 @@ const OwnerWorkspacePage: React.FC = () => {
                           <FormControlLabel
                             control={
                               <Checkbox
+                                checked={permissionPolicyDraft.limited_can_edit_contacts}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_edit_contacts: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут редактировать карточки контактов"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.limited_can_edit_tasks}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_edit_tasks: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут редактировать поля задач"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
                                 checked={permissionPolicyDraft.limited_can_send_messages}
                                 onChange={(_, checked) =>
                                   setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_send_messages: checked }))
@@ -6230,27 +6282,32 @@ const OwnerWorkspacePage: React.FC = () => {
                 Р­С‚РѕС‚ РєРѕРЅС‚Р°РєС‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РР·РјРµРЅРµРЅРёРµ РєР°СЂС‚РѕС‡РєРё, РїСЂРёРІСЏР·РѕРє, Р·Р°РґР°С‡ Рё СЃРѕРѕР±С‰РµРЅРёР№ РѕС‚РєР»СЋС‡РµРЅРѕ.
               </Alert>
             )}
+            {canEditContactDialogContent && !canEditContactCardDialogContent && (
+              <Alert severity="info">
+                Р”Р»СЏ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹С… СЂРѕР»РµР№ СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ РєР°СЂС‚РѕС‡РєРё РєРѕРЅС‚Р°РєС‚Р° СЃРµР№С‡Р°СЃ РѕС‚РєР»СЋС‡РµРЅРѕ policy-РјРѕРґРµР»СЊСЋ.
+              </Alert>
+            )}
             <Typography variant="subtitle2">РљР°СЂС‚РѕС‡РєР° РєРѕРЅС‚Р°РєС‚Р°</Typography>
             <TextField
               fullWidth
               label="Р¤РРћ"
               value={contactEditFullName}
               onChange={(e) => setContactEditFullName(e.target.value)}
-              disabled={!canEditContactDialogContent}
+              disabled={!canEditContactCardDialogContent}
             />
             <TextField
               fullWidth
               label="РўРµР»РµС„РѕРЅ"
               value={contactEditPhone}
               onChange={(e) => setContactEditPhone(e.target.value)}
-              disabled={!canEditContactDialogContent}
+              disabled={!canEditContactCardDialogContent}
             />
             <TextField
               fullWidth
               label="Email"
               value={contactEditEmail}
               onChange={(e) => setContactEditEmail(e.target.value)}
-              disabled={!canEditContactDialogContent}
+              disabled={!canEditContactCardDialogContent}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
@@ -6258,14 +6315,14 @@ const OwnerWorkspacePage: React.FC = () => {
                 label="РљРѕРјРїР°РЅРёСЏ"
                 value={contactEditCompany}
                 onChange={(e) => setContactEditCompany(e.target.value)}
-                disabled={!canEditContactDialogContent}
+                disabled={!canEditContactCardDialogContent}
               />
               <TextField
                 fullWidth
                 label="Р”РѕР»Р¶РЅРѕСЃС‚СЊ"
                 value={contactEditPosition}
                 onChange={(e) => setContactEditPosition(e.target.value)}
-                disabled={!canEditContactDialogContent}
+                disabled={!canEditContactCardDialogContent}
               />
             </Stack>
             <Autocomplete
@@ -6274,7 +6331,7 @@ const OwnerWorkspacePage: React.FC = () => {
               options={contactTagDictionary.items}
               value={contactEditTags}
               onChange={(_, v) => setContactEditTags(v.map(String))}
-              disabled={!canEditContactDialogContent}
+              disabled={!canEditContactCardDialogContent}
               renderTags={(value, getTagProps) =>
                 value.map((option, index) => (
                   <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
@@ -6291,7 +6348,7 @@ const OwnerWorkspacePage: React.FC = () => {
               minRows={2}
               value={contactEditComment}
               onChange={(e) => setContactEditComment(e.target.value)}
-              disabled={!canEditContactDialogContent}
+              disabled={!canEditContactCardDialogContent}
             />
             <Autocomplete
               freeSolo
@@ -6299,14 +6356,14 @@ const OwnerWorkspacePage: React.FC = () => {
               value={contactEditSource}
               onChange={(_, value) => setContactEditSource(String(value || ''))}
               onInputChange={(_, value) => setContactEditSource(value)}
-              disabled={!canEditContactDialogContent}
+              disabled={!canEditContactCardDialogContent}
               renderInput={(params) => <TextField {...params} fullWidth label="Источник" />}
             />
             <Button
               variant="contained"
               onClick={() => void saveContactDetails()}
               sx={{ alignSelf: 'flex-start' }}
-              disabled={!canEditContactDialogContent}
+              disabled={!canEditContactCardDialogContent}
             >
               РЎРѕС…СЂР°РЅРёС‚СЊ РєР°СЂС‚РѕС‡РєСѓ
             </Button>
@@ -6513,6 +6570,11 @@ const OwnerWorkspacePage: React.FC = () => {
                 Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё СЌС‚Р° Р·Р°РґР°С‡Р° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ Рё РєРѕРјРјРµРЅС‚Р°СЂРёРё РѕС‚РєР»СЋС‡РµРЅС‹.
               </Alert>
             )}
+            {canEditTaskDialogContent && !canEditTaskFieldsDialogContent && (
+              <Alert severity="info">
+                Р”Р»СЏ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹С… СЂРѕР»РµР№ СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ РїРѕР»РµР№ Р·Р°РґР°С‡Рё СЃРµР№С‡Р°СЃ РѕС‚РєР»СЋС‡РµРЅРѕ policy-РјРѕРґРµР»СЊСЋ.
+              </Alert>
+            )}
             {canEditTaskDialogContent && !canCommentTaskUi && (
               <Alert severity="info">
                 Комментарии к задачам для ограниченных ролей сейчас отключены policy-моделью.
@@ -6523,7 +6585,7 @@ const OwnerWorkspacePage: React.FC = () => {
               fullWidth
               value={taskEditTitle}
               onChange={(e) => setTaskEditTitle(e.target.value)}
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
             />
             <TextField
               label="РћРїРёСЃР°РЅРёРµ"
@@ -6532,7 +6594,7 @@ const OwnerWorkspacePage: React.FC = () => {
               minRows={3}
               value={taskEditDescription}
               onChange={(e) => setTaskEditDescription(e.target.value)}
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
@@ -6541,7 +6603,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 fullWidth
                 value={taskEditStatus}
                 onChange={(e) => setTaskEditStatus(coerceTaskStatus(e.target.value))}
-                disabled={!canEditTaskDialogContent}
+                disabled={!canEditTaskFieldsDialogContent}
               >
                 {editStatusOptions.map((k) => (
                   <MenuItem key={k} value={k}>
@@ -6555,7 +6617,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 fullWidth
                 value={taskEditPriority}
                 onChange={(e) => setTaskEditPriority(coerceTaskPriority(e.target.value))}
-                disabled={taskDialogReadOnly}
+                disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
               >
                 {editPriorityOptions.map((k) => (
                   <MenuItem key={k} value={k}>
@@ -6571,7 +6633,7 @@ const OwnerWorkspacePage: React.FC = () => {
               onChange={(e) => setTaskEditDeadline(e.target.value)}
               InputLabelProps={{ shrink: true }}
               fullWidth
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
             />
             <TextField
               label="РќР°С‡Р°Р»Рѕ (start_at)"
@@ -6580,14 +6642,14 @@ const OwnerWorkspacePage: React.FC = () => {
               onChange={(e) => setTaskEditStartAt(e.target.value)}
               InputLabelProps={{ shrink: true }}
               fullWidth
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
             />
             <Autocomplete
               options={projectsCatalogSorted}
               getOptionLabel={(o) => o.name}
               value={projectsCatalogSorted.find((p) => p.id === taskEditProjectId) || null}
               onChange={(_, v) => setTaskEditProjectId(v ? v.id : '')}
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
               renderInput={(params) => <TextField {...params} label="РџСЂРѕРµРєС‚" />}
             />
             <Autocomplete
@@ -6595,7 +6657,7 @@ const OwnerWorkspacePage: React.FC = () => {
               getOptionLabel={(o) => o.full_name}
               value={contactsCatalogSorted.find((c) => c.id === taskEditContactId) || null}
               onChange={(_, v) => setTaskEditContactId(v ? v.id : '')}
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
               renderInput={(params) => <TextField {...params} label="РљРѕРЅС‚Р°РєС‚" />}
             />
             <Autocomplete
@@ -6603,7 +6665,7 @@ const OwnerWorkspacePage: React.FC = () => {
               getOptionLabel={(o) => o.full_name}
               value={userOptions.find((u) => u.id === taskEditAssigneeId) || null}
               onChange={(_, v) => setTaskEditAssigneeId(v ? v.id : '')}
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
               renderInput={(params) => <TextField {...params} label="РСЃРїРѕР»РЅРёС‚РµР»СЊ" />}
             />
             <Autocomplete
@@ -6612,7 +6674,7 @@ const OwnerWorkspacePage: React.FC = () => {
               options={taskTagDictionary.items}
               value={taskEditTags}
               onChange={(_, v) => setTaskEditTags(v.map(String))}
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
               renderTags={(value, getTagProps) =>
                 value.map((option, index) => (
                   <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
@@ -6625,7 +6687,7 @@ const OwnerWorkspacePage: React.FC = () => {
               <Stack key={item.id} direction="row" spacing={1} alignItems="center">
                 <Checkbox
                   checked={item.done}
-                  disabled={taskDialogReadOnly}
+                  disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
                   onChange={() => {
                     const next = [...taskEditChecklist];
                     next[idx] = { ...item, done: !item.done };
@@ -6636,7 +6698,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   size="small"
                   fullWidth
                   value={item.text}
-                  disabled={taskDialogReadOnly}
+                  disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
                   onChange={(e) => {
                     const next = [...taskEditChecklist];
                     next[idx] = { ...item, text: e.target.value };
@@ -6646,7 +6708,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 <IconButton
                   size="small"
                   aria-label="РЈРґР°Р»РёС‚СЊ РїСѓРЅРєС‚"
-                  disabled={taskDialogReadOnly}
+                  disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
                   onClick={() => setTaskEditChecklist(taskEditChecklist.filter((_, i) => i !== idx))}
                 >
                   <DeleteOutlineIcon fontSize="small" />
@@ -6656,7 +6718,7 @@ const OwnerWorkspacePage: React.FC = () => {
             <Button
               size="small"
               variant="text"
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
               onClick={() =>
                 setTaskEditChecklist((prev) => [...prev, { id: `n-${Date.now()}`, text: '', done: false }])
               }
@@ -6674,7 +6736,7 @@ const OwnerWorkspacePage: React.FC = () => {
               minRows={4}
               value={taskEditAttachmentsText}
               onChange={(e) => setTaskEditAttachmentsText(e.target.value)}
-              disabled={taskDialogReadOnly}
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
               InputProps={{ sx: { fontFamily: 'monospace', fontSize: 13 } }}
             />
             {(taskDialog?.linked_message_ids?.length ?? 0) > 0 && (
@@ -6733,7 +6795,7 @@ const OwnerWorkspacePage: React.FC = () => {
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button onClick={closeTaskDialog}>РћС‚РјРµРЅР°</Button>
-            <Button variant="contained" onClick={saveTaskDialog} disabled={!canEditTaskDialogContent}>
+            <Button variant="contained" onClick={saveTaskDialog} disabled={!canEditTaskFieldsDialogContent}>
               РЎРѕС…СЂР°РЅРёС‚СЊ
             </Button>
           </Box>

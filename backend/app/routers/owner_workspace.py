@@ -15,9 +15,11 @@ from app.services.owner_workspace_access import (
     build_owner_workspace_access_context,
     can_archive_project,
     can_edit_contact_content,
+    can_update_contact_content,
     can_change_project_participant_roles,
     can_edit_project_meta,
     can_edit_project_content,
+    can_update_task_content,
     can_manage_project_team,
     contact_visible,
     filter_tasks_query,
@@ -877,7 +879,7 @@ async def update_contact(
     row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
     if not row or not contact_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
-    if not can_edit_contact_content(db, ctx, contact_id):
+    if not can_update_contact_content(db, ctx, contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     old = {"full_name": row.full_name, "phone": row.phone}
     data = payload.model_dump(exclude_unset=True)
@@ -1190,6 +1192,8 @@ async def update_task(
     if not row or not task_visible(ctx, row):
         raise HTTPException(status_code=404, detail="Task not found")
     _assert_task_write_access(db, ctx, row)
+    if not can_update_task_content(db, ctx, row):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
 
     data = payload.model_dump(exclude_unset=True)
     new_project_id = data.get("project_id", row.project_id)

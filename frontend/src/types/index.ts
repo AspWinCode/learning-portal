@@ -1204,6 +1204,8 @@ export interface OwnerWorkspacePermissionPolicy {
   limited_can_create_projects: boolean;
   limited_can_create_contacts: boolean;
   limited_can_create_tasks: boolean;
+  limited_can_edit_contacts: boolean;
+  limited_can_edit_tasks: boolean;
   limited_can_send_messages: boolean;
   limited_can_comment_tasks: boolean;
 }

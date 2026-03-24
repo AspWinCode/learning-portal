@@ -1194,6 +1194,10 @@ export interface OwnerWorkspaceNotificationConfig {
   items: OwnerWorkspaceTaskConfigItem[];
 }
 
+export interface OwnerWorkspaceTagDictionary {
+  items: string[];
+}
+
 export interface OwnerWorkspaceTaskCompleteResult {
   completed_task: OwnerWorkspaceTask;
   next_task: OwnerWorkspaceTask | null;

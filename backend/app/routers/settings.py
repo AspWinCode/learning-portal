@@ -19,6 +19,8 @@ REFUSED_REASONS_KEY = "sales_refused_reasons"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
 OWNER_WS_PERMISSION_POLICY_KEY = "owner_workspace_permission_policy"
 OWNER_WS_NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
+OWNER_WS_TASK_TAGS_KEY = "owner_workspace_task_tag_dictionary"
+OWNER_WS_CONTACT_TAGS_KEY = "owner_workspace_contact_tag_dictionary"
 
 DEFAULT_OWNER_WS_TASK_CONFIG = {
     "statuses": [
@@ -112,6 +114,14 @@ class OwnerWorkspaceNotificationConfigResponse(BaseModel):
 
 class OwnerWorkspaceNotificationConfigUpdate(BaseModel):
     items: List[OwnerWorkspaceTaskConfigItem]
+
+
+class OwnerWorkspaceTagDictionaryResponse(BaseModel):
+    items: List[str]
+
+
+class OwnerWorkspaceTagDictionaryUpdate(BaseModel):
+    items: List[str]
 
 
 def _get_json_setting(db: Session, key: str):
@@ -225,6 +235,29 @@ def _get_owner_ws_notification_config(db: Session) -> dict:
             defaults=DEFAULT_OWNER_WS_NOTIFICATION_CONFIG["items"],
         )
     }
+
+
+def _normalize_owner_ws_tag_items(items: List[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for item in items:
+        value = str(item or "").strip()
+        if not value:
+            continue
+        normalized = value[:64]
+        lowered = normalized.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        out.append(normalized)
+    return out
+
+
+def _get_owner_ws_tag_dictionary(db: Session, key: str) -> List[str]:
+    raw = _get_json_setting(db, key)
+    if not isinstance(raw, list):
+        return []
+    return _normalize_owner_ws_tag_items([str(item) for item in raw])
 
 
 @router.get("/logo", response_model=LogoResponse)
@@ -425,5 +458,45 @@ async def set_owner_workspace_notification_config(
     _set_json_setting(db, OWNER_WS_NOTIFICATION_CONFIG_KEY, data)
     db.commit()
     return OwnerWorkspaceNotificationConfigResponse.model_validate(data)
+
+
+@router.get("/owner-workspace-task-tags", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def get_owner_workspace_task_tags(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    return OwnerWorkspaceTagDictionaryResponse(items=_get_owner_ws_tag_dictionary(db, OWNER_WS_TASK_TAGS_KEY))
+
+
+@router.post("/owner-workspace-task-tags", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def set_owner_workspace_task_tags(
+    body: OwnerWorkspaceTagDictionaryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    items = _normalize_owner_ws_tag_items(body.items)
+    _set_json_setting(db, OWNER_WS_TASK_TAGS_KEY, items)
+    db.commit()
+    return OwnerWorkspaceTagDictionaryResponse(items=items)
+
+
+@router.get("/owner-workspace-contact-tags", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def get_owner_workspace_contact_tags(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    return OwnerWorkspaceTagDictionaryResponse(items=_get_owner_ws_tag_dictionary(db, OWNER_WS_CONTACT_TAGS_KEY))
+
+
+@router.post("/owner-workspace-contact-tags", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def set_owner_workspace_contact_tags(
+    body: OwnerWorkspaceTagDictionaryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    items = _normalize_owner_ws_tag_items(body.items)
+    _set_json_setting(db, OWNER_WS_CONTACT_TAGS_KEY, items)
+    db.commit()
+    return OwnerWorkspaceTagDictionaryResponse(items=items)
 
 

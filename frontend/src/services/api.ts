@@ -62,6 +62,7 @@ import {
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceTaskConfig,
   OwnerWorkspaceNotificationConfig,
+  OwnerWorkspaceTagDictionary,
   OwnerWorkspacePermissionPolicy,
   OwnerWorkspaceUserPreferences,
   OwnerWorkspaceSearchResult,
@@ -1008,6 +1009,24 @@ export const settingsApi = {
     payload: OwnerWorkspaceNotificationConfig
   ): Promise<OwnerWorkspaceNotificationConfig> => {
     const response = await api.post('/api/settings/owner-workspace-notification-config', payload);
+    return response.data;
+  },
+  getOwnerWorkspaceTaskTags: async (): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.get('/api/settings/owner-workspace-task-tags');
+    return response.data;
+  },
+  setOwnerWorkspaceTaskTags: async (payload: OwnerWorkspaceTagDictionary): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.post('/api/settings/owner-workspace-task-tags', payload);
+    return response.data;
+  },
+  getOwnerWorkspaceContactTags: async (): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.get('/api/settings/owner-workspace-contact-tags');
+    return response.data;
+  },
+  setOwnerWorkspaceContactTags: async (
+    payload: OwnerWorkspaceTagDictionary
+  ): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.post('/api/settings/owner-workspace-contact-tags', payload);
     return response.data;
   },
 };

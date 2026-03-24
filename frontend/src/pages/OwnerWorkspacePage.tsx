@@ -71,6 +71,7 @@ import type {
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskComment,
   OwnerWorkspaceTaskConfig,
+  OwnerWorkspaceTagDictionary,
   OwnerWorkspacePermissionPolicy,
   OwnerWorkspaceTaskStatusCounts,
   OwnerWorkspaceTasksAnalyticsOverview,
@@ -643,6 +644,12 @@ const OwnerWorkspacePage: React.FC = () => {
   const [notificationConfig, setNotificationConfig] = useState<OwnerWorkspaceNotificationConfig | null>(null);
   const [notificationConfigDraft, setNotificationConfigDraft] = useState<OwnerWorkspaceNotificationConfig | null>(null);
   const [notificationConfigSaving, setNotificationConfigSaving] = useState(false);
+  const [taskTagDictionary, setTaskTagDictionary] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
+  const [taskTagDictionaryDraft, setTaskTagDictionaryDraft] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
+  const [taskTagDictionarySaving, setTaskTagDictionarySaving] = useState(false);
+  const [contactTagDictionary, setContactTagDictionary] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
+  const [contactTagDictionaryDraft, setContactTagDictionaryDraft] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
+  const [contactTagDictionarySaving, setContactTagDictionarySaving] = useState(false);
   const [permissionPolicy, setPermissionPolicy] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicyDraft, setPermissionPolicyDraft] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicySaving, setPermissionPolicySaving] = useState(false);
@@ -676,7 +683,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [contactEditEmail, setContactEditEmail] = useState('');
   const [contactEditCompany, setContactEditCompany] = useState('');
   const [contactEditPosition, setContactEditPosition] = useState('');
-  const [contactEditTags, setContactEditTags] = useState('');
+  const [contactEditTags, setContactEditTags] = useState<string[]>([]);
   const [contactEditComment, setContactEditComment] = useState('');
   const [contactEditSource, setContactEditSource] = useState('');
   const [contactLinkProjectId, setContactLinkProjectId] = useState<OwnerWorkspaceProject | null>(null);
@@ -984,12 +991,14 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const loadMeta = useCallback(async () => {
     try {
-      const [conv, u, cfg, permissionCfg, notificationCfg] = await Promise.all([
+      const [conv, u, cfg, permissionCfg, notificationCfg, taskTagsCfg, contactTagsCfg] = await Promise.all([
         ownerWorkspaceApi.listConversations(),
         usersApi.getAll(),
         settingsApi.getOwnerWorkspaceTaskConfig(),
         settingsApi.getOwnerWorkspacePermissionPolicy(),
         settingsApi.getOwnerWorkspaceNotificationConfig(),
+        settingsApi.getOwnerWorkspaceTaskTags(),
+        settingsApi.getOwnerWorkspaceContactTags(),
       ]);
       setConversations(conv);
       setUsers(Array.isArray(u) ? u : []);
@@ -997,6 +1006,10 @@ const OwnerWorkspacePage: React.FC = () => {
       setTaskConfigDraft(cfg);
       setNotificationConfig(notificationCfg);
       setNotificationConfigDraft(notificationCfg);
+      setTaskTagDictionary(taskTagsCfg);
+      setTaskTagDictionaryDraft(taskTagsCfg);
+      setContactTagDictionary(contactTagsCfg);
+      setContactTagDictionaryDraft(contactTagsCfg);
       setPermissionPolicy(permissionCfg);
       setPermissionPolicyDraft(permissionCfg);
     } catch (e: unknown) {
@@ -1094,7 +1107,7 @@ const OwnerWorkspacePage: React.FC = () => {
     setContactEditPosition(contactDialog.position ?? '');
     setContactEditComment(contactDialog.comment ?? '');
     setContactEditSource(contactDialog.source ?? '');
-    setContactEditTags(Array.isArray(contactDialog.tags) ? contactDialog.tags.join(', ') : '');
+    setContactEditTags(Array.isArray(contactDialog.tags) ? [...contactDialog.tags] : []);
   }, [contactDialog]);
 
   useEffect(() => {
@@ -1770,10 +1783,7 @@ const OwnerWorkspacePage: React.FC = () => {
       return;
     }
     try {
-      const tagParts = contactEditTags
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const tagParts = contactEditTags.map((s) => s.trim()).filter(Boolean);
       const updated = await ownerWorkspaceApi.updateContact(contactDialog.id, {
         full_name: fn,
         phone: ph,
@@ -1994,6 +2004,42 @@ const OwnerWorkspacePage: React.FC = () => {
       setError(extractApiError(e, 'Не удалось сохранить системную конфигурацию уведомлений owner workspace'));
     } finally {
       setNotificationConfigSaving(false);
+    }
+  };
+
+  const saveWorkspaceTaskTagDictionary = async () => {
+    const normalized = Array.from(
+      new Set(taskTagDictionaryDraft.items.map((item) => item.trim()).filter(Boolean).map((item) => item.slice(0, 64)))
+    );
+    setTaskTagDictionarySaving(true);
+    try {
+      const saved = await settingsApi.setOwnerWorkspaceTaskTags({ items: normalized });
+      setTaskTagDictionary(saved);
+      setTaskTagDictionaryDraft(saved);
+      setError(null);
+      setMaxSyncResult('Справочник тегов задач owner workspace сохранён.');
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось сохранить справочник тегов задач owner workspace'));
+    } finally {
+      setTaskTagDictionarySaving(false);
+    }
+  };
+
+  const saveWorkspaceContactTagDictionary = async () => {
+    const normalized = Array.from(
+      new Set(contactTagDictionaryDraft.items.map((item) => item.trim()).filter(Boolean).map((item) => item.slice(0, 64)))
+    );
+    setContactTagDictionarySaving(true);
+    try {
+      const saved = await settingsApi.setOwnerWorkspaceContactTags({ items: normalized });
+      setContactTagDictionary(saved);
+      setContactTagDictionaryDraft(saved);
+      setError(null);
+      setMaxSyncResult('Справочник тегов контактов owner workspace сохранён.');
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось сохранить справочник тегов контактов owner workspace'));
+    } finally {
+      setContactTagDictionarySaving(false);
     }
   };
 
@@ -4613,6 +4659,110 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Stack>
               </>
             )}
+            {isWorkspaceFullAccess && (
+              <>
+                <Divider sx={{ my: 3 }} />
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="h6" gutterBottom>
+                      Справочники тегов
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Эти списки используются как рекомендованные теги в карточках задач и контактов. Пользователь всё ещё может
+                      вводить новые значения вручную.
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Stack spacing={1.5}>
+                            <Typography variant="subtitle2">Теги задач</Typography>
+                            <Autocomplete
+                              multiple
+                              freeSolo
+                              options={[] as string[]}
+                              value={taskTagDictionaryDraft.items}
+                              onChange={(_, v) =>
+                                setTaskTagDictionaryDraft({
+                                  items: v.map(String),
+                                })
+                              }
+                              renderTags={(value, getTagProps) =>
+                                value.map((option, index) => (
+                                  <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
+                                ))
+                              }
+                              renderInput={(params) => <TextField {...params} label="Теги задач" placeholder="Ввод и Enter" />}
+                            />
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                              <Button
+                                variant="contained"
+                                disabled={taskTagDictionarySaving}
+                                onClick={() => void saveWorkspaceTaskTagDictionary()}
+                              >
+                                {taskTagDictionarySaving ? 'Сохранение...' : 'Сохранить'}
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                disabled={taskTagDictionarySaving}
+                                onClick={() => setTaskTagDictionaryDraft(taskTagDictionary)}
+                              >
+                                Сбросить
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Stack spacing={1.5}>
+                            <Typography variant="subtitle2">Теги контактов</Typography>
+                            <Autocomplete
+                              multiple
+                              freeSolo
+                              options={[] as string[]}
+                              value={contactTagDictionaryDraft.items}
+                              onChange={(_, v) =>
+                                setContactTagDictionaryDraft({
+                                  items: v.map(String),
+                                })
+                              }
+                              renderTags={(value, getTagProps) =>
+                                value.map((option, index) => (
+                                  <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
+                                ))
+                              }
+                              renderInput={(params) => (
+                                <TextField {...params} label="Теги контактов" placeholder="Ввод и Enter" />
+                              )}
+                            />
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                              <Button
+                                variant="contained"
+                                disabled={contactTagDictionarySaving}
+                                onClick={() => void saveWorkspaceContactTagDictionary()}
+                              >
+                                {contactTagDictionarySaving ? 'Сохранение...' : 'Сохранить'}
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                disabled={contactTagDictionarySaving}
+                                onClick={() => setContactTagDictionaryDraft(contactTagDictionary)}
+                              >
+                                Сбросить
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Stack>
+              </>
+            )}
             {isWorkspaceFullAccess && permissionPolicyDraft && (
               <>
                 <Divider sx={{ my: 3 }} />
@@ -5294,12 +5444,21 @@ const OwnerWorkspacePage: React.FC = () => {
                 disabled={!canEditContactDialogContent}
               />
             </Stack>
-            <TextField
-              fullWidth
-              label="РўРµРіРё (С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ)"
+            <Autocomplete
+              multiple
+              freeSolo
+              options={contactTagDictionary.items}
               value={contactEditTags}
-              onChange={(e) => setContactEditTags(e.target.value)}
+              onChange={(_, v) => setContactEditTags(v.map(String))}
               disabled={!canEditContactDialogContent}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => (
+                  <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
+                ))
+              }
+              renderInput={(params) => (
+                <TextField {...params} fullWidth label="Теги контакта" placeholder="Ввод и Enter" />
+              )}
             />
             <TextField
               fullWidth
@@ -5614,7 +5773,7 @@ const OwnerWorkspacePage: React.FC = () => {
             <Autocomplete
               multiple
               freeSolo
-              options={[] as string[]}
+              options={taskTagDictionary.items}
               value={taskEditTags}
               onChange={(_, v) => setTaskEditTags(v.map(String))}
               disabled={taskDialogReadOnly}

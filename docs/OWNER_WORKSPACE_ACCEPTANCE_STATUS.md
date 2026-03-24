@@ -99,6 +99,12 @@ Owner Workspace is in a working production state.
   - contact tags
   - contact sources
 - Configurable project-role policy for manager capabilities in admin settings.
+- Configurable limited-role policy for `sales` / `trainer` in admin settings:
+  - project creation
+  - contact creation
+  - task creation
+  - outgoing messages
+  - task comments
 - Role matrix section in settings.
 - "Your access" summary block in UI.
 
@@ -108,7 +114,7 @@ Owner Workspace is in a working production state.
 - Project-scoped roles for `member`, `manager`, `observer`.
 - `observer` enforced as read-only in backend mutate paths.
 - `observer` reflected in frontend UI with disabled actions and explanatory alerts.
-- `sales` and `trainer` create/edit flows aligned more closely with backend restrictions.
+- `sales` and `trainer` create/edit flows aligned with backend restrictions and configurable policy flags for the main limited-role mutate actions.
 
 ### Analytics
 
@@ -140,7 +146,8 @@ Owner Workspace is in a working production state.
 
 ### Roles and permissions
 
-- Permission behavior is much clearer in backend and UI, but there is still no dedicated admin surface for managing a full formal permission matrix beyond the current project manager policy settings.
+- Permission behavior is much clearer in backend and UI, and admin settings now cover both manager policy and the main limited-role mutate actions.
+- A fully exhaustive formal permission matrix still does not exist for every possible owner-workspace action.
 
 ### Notifications
 
@@ -154,7 +161,7 @@ Owner Workspace is in a working production state.
 
 ### System administration
 
-- Full formal permission-matrix administration beyond the current project manager policy surface.
+- Full formal permission-matrix administration beyond the current manager + limited-role policy surface.
 
 ### External delivery channels
 
@@ -180,7 +187,7 @@ Owner Workspace is in a working production state.
 ## Recommended Next Steps
 
 1. Stabilize production DB operations and backup discipline.
-2. Expand configurable permission policy beyond the current manager/project-role surface.
+2. Finish the acceptance/status documentation so it exactly matches the current permission-policy surface.
 3. Add web push or another external notification channel beyond email.
 4. Decide whether reporting should remain embedded or move into a dedicated reporting surface.
 5. Do a line-by-line final acceptance review against the original specification.

@@ -17,6 +17,7 @@ LOGO_KEY = "site_logo_data_url"
 DISTRICTS_KEY = "b2b_districts"
 REFUSED_REASONS_KEY = "sales_refused_reasons"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
+OWNER_WS_PROJECT_CONFIG_KEY = "owner_workspace_project_config"
 OWNER_WS_PERMISSION_POLICY_KEY = "owner_workspace_permission_policy"
 OWNER_WS_NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
 OWNER_WS_TASK_TAGS_KEY = "owner_workspace_task_tag_dictionary"
@@ -36,6 +37,13 @@ DEFAULT_OWNER_WS_TASK_CONFIG = {
         {"key": "high", "label": "Высокий"},
         {"key": "critical", "label": "Критический"},
     ],
+}
+DEFAULT_OWNER_WS_PROJECT_CONFIG = {
+    "statuses": [
+        {"key": "active", "label": "Активный", "enabled": True},
+        {"key": "completed", "label": "Завершён", "enabled": True},
+        {"key": "archived", "label": "Архив", "enabled": True},
+    ]
 }
 DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "manager_can_manage_team": True,
@@ -57,6 +65,7 @@ DEFAULT_OWNER_WS_NOTIFICATION_CONFIG = {
 }
 OWNER_WS_STATUS_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["statuses"]]
 OWNER_WS_PRIORITY_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["priorities"]]
+OWNER_WS_PROJECT_STATUS_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_PROJECT_CONFIG["statuses"]]
 OWNER_WS_NOTIFICATION_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_NOTIFICATION_CONFIG["items"]]
 
 
@@ -106,6 +115,14 @@ class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
     manager_can_assign_manager: bool = False
     manager_can_assign_observer: bool = False
     manager_can_remove_manager: bool = False
+
+
+class OwnerWorkspaceProjectConfigResponse(BaseModel):
+    statuses: List[OwnerWorkspaceTaskConfigItem]
+
+
+class OwnerWorkspaceProjectConfigUpdate(BaseModel):
+    statuses: List[OwnerWorkspaceTaskConfigItem]
 
 
 class OwnerWorkspaceNotificationConfigResponse(BaseModel):
@@ -216,6 +233,24 @@ def _get_owner_ws_permission_policy(db: Session) -> dict:
         "manager_can_assign_manager": bool(raw.get("manager_can_assign_manager", False)),
         "manager_can_assign_observer": bool(raw.get("manager_can_assign_observer", False)),
         "manager_can_remove_manager": bool(raw.get("manager_can_remove_manager", False)),
+    }
+
+
+def _get_owner_ws_project_config(db: Session) -> dict:
+    raw = _get_json_setting(db, OWNER_WS_PROJECT_CONFIG_KEY)
+    if not isinstance(raw, dict):
+        return DEFAULT_OWNER_WS_PROJECT_CONFIG
+    statuses = raw.get("statuses")
+    try:
+        status_items = [OwnerWorkspaceTaskConfigItem.model_validate(x) for x in statuses] if isinstance(statuses, list) else []
+    except Exception:
+        return DEFAULT_OWNER_WS_PROJECT_CONFIG
+    return {
+        "statuses": _normalize_owner_ws_task_items(
+            status_items,
+            allowed_keys=OWNER_WS_PROJECT_STATUS_KEYS,
+            defaults=DEFAULT_OWNER_WS_PROJECT_CONFIG["statuses"],
+        )
     }
 
 
@@ -404,6 +439,33 @@ async def set_owner_workspace_task_config(
     _set_json_setting(db, OWNER_WS_TASK_CONFIG_KEY, data)
     db.commit()
     return OwnerWorkspaceTaskConfigResponse.model_validate(data)
+
+
+@router.get("/owner-workspace-project-config", response_model=OwnerWorkspaceProjectConfigResponse)
+async def get_owner_workspace_project_config(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    data = _get_owner_ws_project_config(db)
+    return OwnerWorkspaceProjectConfigResponse.model_validate(data)
+
+
+@router.post("/owner-workspace-project-config", response_model=OwnerWorkspaceProjectConfigResponse)
+async def set_owner_workspace_project_config(
+    body: OwnerWorkspaceProjectConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    data = {
+        "statuses": _normalize_owner_ws_task_items(
+            body.statuses,
+            allowed_keys=OWNER_WS_PROJECT_STATUS_KEYS,
+            defaults=DEFAULT_OWNER_WS_PROJECT_CONFIG["statuses"],
+        )
+    }
+    _set_json_setting(db, OWNER_WS_PROJECT_CONFIG_KEY, data)
+    db.commit()
+    return OwnerWorkspaceProjectConfigResponse.model_validate(data)
 
 
 @router.get("/owner-workspace-permission-policy", response_model=OwnerWorkspacePermissionPolicyResponse)

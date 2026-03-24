@@ -66,6 +66,7 @@ import type {
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceMessage,
   OwnerWorkspaceNotificationConfig,
+  OwnerWorkspaceProjectConfig,
   OwnerWorkspaceProject,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTask,
@@ -115,6 +116,12 @@ const DEFAULT_PRIORITY_LABELS: Record<string, string> = {
   medium: 'РЎСЂРµРґРЅРёР№',
   high: 'Р’С‹СЃРѕРєРёР№',
   critical: 'РљСЂРёС‚РёС‡РµСЃРєРёР№',
+};
+
+const DEFAULT_PROJECT_STATUS_LABELS: Record<string, string> = {
+  active: 'Активный',
+  completed: 'Завершён',
+  archived: 'Архив',
 };
 
 type OwnerWorkspaceSubprojectTreeNode = {
@@ -298,10 +305,12 @@ const OwnerWorkspaceSubprojectTreeRow: React.FC<{
 
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 type OwnerWorkspaceTaskPriority = 'low' | 'medium' | 'high' | 'critical';
+type OwnerWorkspaceProjectStatus = 'active' | 'completed' | 'archived';
 type OwnerWorkspaceProjectParticipantRole = 'member' | 'manager' | 'observer';
 
 const OWNER_WS_STATUSES: OwnerWorkspaceTaskStatus[] = ['new', 'in_progress', 'waiting', 'completed', 'cancelled'];
 const OWNER_WS_PRIORITIES: OwnerWorkspaceTaskPriority[] = ['low', 'medium', 'high', 'critical'];
+const OWNER_WS_PROJECT_STATUSES: OwnerWorkspaceProjectStatus[] = ['active', 'completed', 'archived'];
 const OWNER_WS_PROJECT_PARTICIPANT_ROLE_LABELS: Record<OwnerWorkspaceProjectParticipantRole, string> = {
   member: 'СѓС‡Р°СЃС‚РЅРёРє',
   manager: 'РјРµРЅРµРґР¶РµСЂ',
@@ -490,6 +499,10 @@ function coerceTaskPriority(v: string): OwnerWorkspaceTaskPriority {
   return OWNER_WS_PRIORITIES.includes(v as OwnerWorkspaceTaskPriority) ? (v as OwnerWorkspaceTaskPriority) : 'medium';
 }
 
+function coerceProjectStatus(v: string): OwnerWorkspaceProjectStatus {
+  return OWNER_WS_PROJECT_STATUSES.includes(v as OwnerWorkspaceProjectStatus) ? (v as OwnerWorkspaceProjectStatus) : 'active';
+}
+
 function ensureTaskOption<T extends string>(options: T[], current: T): T[] {
   return options.includes(current) ? options : [...options, current];
 }
@@ -641,6 +654,9 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskConfig, setTaskConfig] = useState<OwnerWorkspaceTaskConfig | null>(null);
   const [taskConfigDraft, setTaskConfigDraft] = useState<OwnerWorkspaceTaskConfig | null>(null);
   const [taskConfigSaving, setTaskConfigSaving] = useState(false);
+  const [projectConfig, setProjectConfig] = useState<OwnerWorkspaceProjectConfig | null>(null);
+  const [projectConfigDraft, setProjectConfigDraft] = useState<OwnerWorkspaceProjectConfig | null>(null);
+  const [projectConfigSaving, setProjectConfigSaving] = useState(false);
   const [notificationConfig, setNotificationConfig] = useState<OwnerWorkspaceNotificationConfig | null>(null);
   const [notificationConfigDraft, setNotificationConfigDraft] = useState<OwnerWorkspaceNotificationConfig | null>(null);
   const [notificationConfigSaving, setNotificationConfigSaving] = useState(false);
@@ -673,7 +689,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [projectDialog, setProjectDialog] = useState<OwnerWorkspaceProject | null>(null);
   const [projectEditName, setProjectEditName] = useState('');
   const [projectEditDescription, setProjectEditDescription] = useState('');
-  const [projectEditStatus, setProjectEditStatus] = useState<string>('active');
+  const [projectEditStatus, setProjectEditStatus] = useState<OwnerWorkspaceProjectStatus>('active');
   const [subprojectName, setSubprojectName] = useState('');
   const [linkContactId, setLinkContactId] = useState<OwnerWorkspaceContact | null>(null);
 
@@ -776,6 +792,13 @@ const OwnerWorkspacePage: React.FC = () => {
     }
     return merged;
   }, [taskConfig]);
+  const projectStatusLabels = useMemo(() => {
+    const merged: Record<string, string> = { ...DEFAULT_PROJECT_STATUS_LABELS };
+    for (const item of projectConfig?.statuses ?? []) {
+      merged[item.key] = item.label;
+    }
+    return merged;
+  }, [projectConfig]);
   const notificationLabels = useMemo(() => {
     const map: Record<string, string> = { ...OWNER_WS_NOTIF_KIND_LABELS };
     for (const item of notificationConfig?.items ?? []) {
@@ -804,6 +827,12 @@ const OwnerWorkspacePage: React.FC = () => {
       .map((item) => coerceTaskPriority(item.key));
     return configured.length > 0 ? Array.from(new Set(configured)) : OWNER_WS_PRIORITIES;
   }, [taskConfig]);
+  const enabledProjectStatuses = useMemo(() => {
+    const configured = (projectConfig?.statuses ?? [])
+      .filter((item) => item.enabled !== false)
+      .map((item) => coerceProjectStatus(item.key));
+    return configured.length > 0 ? Array.from(new Set(configured)) : OWNER_WS_PROJECT_STATUSES;
+  }, [projectConfig]);
 
   const editStatusOptions = useMemo(
     () => ensureTaskOption(enabledStatuses, taskEditStatus),
@@ -818,6 +847,10 @@ const OwnerWorkspacePage: React.FC = () => {
   const createPriorityOptions = useMemo(
     () => ensureTaskOption(enabledPriorities, taskPriority),
     [enabledPriorities, taskPriority]
+  );
+  const editProjectStatusOptions = useMemo(
+    () => ensureTaskOption(enabledProjectStatuses, coerceProjectStatus(projectEditStatus)),
+    [enabledProjectStatuses, projectEditStatus]
   );
 
   useEffect(() => {
@@ -991,10 +1024,11 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const loadMeta = useCallback(async () => {
     try {
-      const [conv, u, cfg, permissionCfg, notificationCfg, taskTagsCfg, contactTagsCfg] = await Promise.all([
+      const [conv, u, cfg, projectCfg, permissionCfg, notificationCfg, taskTagsCfg, contactTagsCfg] = await Promise.all([
         ownerWorkspaceApi.listConversations(),
         usersApi.getAll(),
         settingsApi.getOwnerWorkspaceTaskConfig(),
+        settingsApi.getOwnerWorkspaceProjectConfig(),
         settingsApi.getOwnerWorkspacePermissionPolicy(),
         settingsApi.getOwnerWorkspaceNotificationConfig(),
         settingsApi.getOwnerWorkspaceTaskTags(),
@@ -1004,6 +1038,8 @@ const OwnerWorkspacePage: React.FC = () => {
       setUsers(Array.isArray(u) ? u : []);
       setTaskConfig(cfg);
       setTaskConfigDraft(cfg);
+      setProjectConfig(projectCfg);
+      setProjectConfigDraft(projectCfg);
       setNotificationConfig(notificationCfg);
       setNotificationConfigDraft(notificationCfg);
       setTaskTagDictionary(taskTagsCfg);
@@ -1095,7 +1131,7 @@ const OwnerWorkspacePage: React.FC = () => {
     if (!projectDialog) return;
     setProjectEditName(projectDialog.name);
     setProjectEditDescription(projectDialog.description ?? '');
-    setProjectEditStatus(projectDialog.status || 'active');
+    setProjectEditStatus(coerceProjectStatus(String(projectDialog.status || 'active')));
   }, [projectDialog]);
 
   useEffect(() => {
@@ -1501,7 +1537,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const updated = await ownerWorkspaceApi.updateProject(projectDialog.id, {
         name,
         description: projectEditDescription.trim() || null,
-        status: projectEditStatus as 'active' | 'completed' | 'archived',
+        status: projectEditStatus,
       });
       setProjectDialog(updated);
       setError(null);
@@ -2004,6 +2040,26 @@ const OwnerWorkspacePage: React.FC = () => {
       setError(extractApiError(e, 'Не удалось сохранить системную конфигурацию уведомлений owner workspace'));
     } finally {
       setNotificationConfigSaving(false);
+    }
+  };
+
+  const saveWorkspaceProjectConfig = async () => {
+    if (!projectConfigDraft) return;
+    if (!projectConfigDraft.statuses.some((item) => item.enabled !== false)) {
+      setError('Нужно оставить хотя бы один видимый статус проектов.');
+      return;
+    }
+    setProjectConfigSaving(true);
+    try {
+      const saved = await settingsApi.setOwnerWorkspaceProjectConfig(projectConfigDraft);
+      setProjectConfig(saved);
+      setProjectConfigDraft(saved);
+      setError(null);
+      setMaxSyncResult('Системные названия статусов проектов сохранены.');
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось сохранить системные настройки статусов проектов'));
+    } finally {
+      setProjectConfigSaving(false);
     }
   };
 
@@ -3089,9 +3145,11 @@ const OwnerWorkspacePage: React.FC = () => {
                   onChange={(e) => setProjectListStatus(e.target.value)}
                 >
                   <MenuItem value="">Р’СЃРµ</MenuItem>
-                  <MenuItem value="active">РђРєС‚РёРІРЅС‹Р№</MenuItem>
-                  <MenuItem value="completed">Р—Р°РІРµСЂС€С‘РЅ</MenuItem>
-                  <MenuItem value="archived">РђСЂС…РёРІ</MenuItem>
+                  {enabledProjectStatuses.map((status) => (
+                    <MenuItem key={status} value={status}>
+                      {projectStatusLabels[status] ?? status}
+                    </MenuItem>
+                  ))}
                 </TextField>
                 <TextField
                   label="РџРѕРёСЃРє РїРѕ РЅР°Р·РІР°РЅРёСЋ/РѕРїРёСЃР°РЅРёСЋ"
@@ -3168,7 +3226,7 @@ const OwnerWorkspacePage: React.FC = () => {
                       </IconButton>
                     </Box>
                     <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
-                      <Chip size="small" label={p.status} />
+                      <Chip size="small" label={projectStatusLabels[p.status] ?? p.status} />
                       <Chip size="small" label={`Р—Р°РґР°С‡ РІСЃРµРіРѕ: ${p.total_tasks_count ?? 0}`} />
                       <Chip size="small" label={`РђРєС‚РёРІРЅ.: ${p.active_tasks_count}`} />
                       {(p.overdue_tasks_count ?? 0) > 0 && (
@@ -4578,6 +4636,86 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Stack>
               </>
             )}
+            {isWorkspaceFullAccess && projectConfigDraft && (
+              <>
+                <Divider sx={{ my: 3 }} />
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="h6" gutterBottom>
+                      Системные статусы проектов
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Эти подписи используются в списке проектов, карточке проекта и фильтрах owner-workspace.
+                    </Typography>
+                  </Box>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        {projectConfigDraft.statuses.map((item, index) => (
+                          <Box key={item.key}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label={item.key}
+                              value={item.label}
+                              onChange={(e) =>
+                                setProjectConfigDraft((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        statuses: prev.statuses.map((current, currentIndex) =>
+                                          currentIndex === index ? { ...current, label: e.target.value } : current
+                                        ),
+                                      }
+                                    : prev
+                                )
+                              }
+                            />
+                            <FormControlLabel
+                              sx={{ mt: 0.5 }}
+                              control={
+                                <Checkbox
+                                  checked={item.enabled !== false}
+                                  onChange={(e) =>
+                                    setProjectConfigDraft((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            statuses: prev.statuses.map((current, currentIndex) =>
+                                              currentIndex === index ? { ...current, enabled: e.target.checked } : current
+                                            ),
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                />
+                              }
+                              label="Показывать в интерфейсе"
+                            />
+                          </Box>
+                        ))}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                    <Button
+                      variant="contained"
+                      disabled={projectConfigSaving}
+                      onClick={() => void saveWorkspaceProjectConfig()}
+                    >
+                      {projectConfigSaving ? 'Сохранение...' : 'Сохранить статусы проектов'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      disabled={projectConfigSaving || !projectConfig}
+                      onClick={() => setProjectConfigDraft(projectConfig)}
+                    >
+                      Сбросить
+                    </Button>
+                  </Stack>
+                </Stack>
+              </>
+            )}
             {isWorkspaceFullAccess && notificationConfigDraft && (
               <>
                 <Divider sx={{ my: 3 }} />
@@ -4930,18 +5068,20 @@ const OwnerWorkspacePage: React.FC = () => {
               onChange={(e) => setProjectEditDescription(e.target.value)}
               disabled={!canEditProjectDialogContent}
             />
-            <TextField
-              select
-              fullWidth
-              label="РЎС‚Р°С‚СѓСЃ"
-              value={projectEditStatus}
-              onChange={(e) => setProjectEditStatus(e.target.value)}
-              disabled={!canEditProjectDialogContent}
-            >
-              <MenuItem value="active">РђРєС‚РёРІРЅС‹Р№</MenuItem>
-              <MenuItem value="completed">Р—Р°РІРµСЂС€С‘РЅ</MenuItem>
-              <MenuItem value="archived">РђСЂС…РёРІ</MenuItem>
-            </TextField>
+              <TextField
+                select
+                fullWidth
+                label="РЎС‚Р°С‚СѓСЃ"
+                value={projectEditStatus}
+                onChange={(e) => setProjectEditStatus(coerceProjectStatus(e.target.value))}
+                disabled={!canEditProjectDialogContent}
+              >
+                {editProjectStatusOptions.map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {projectStatusLabels[status] ?? status}
+                  </MenuItem>
+                ))}
+              </TextField>
             {projectEditStatus === 'archived' && projectDialog?.status !== 'archived' && (
               <Alert severity="info">
                 РџСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё РѕС‚РєСЂРѕРµС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ Р°СЂС…РёРІР° СЃ РїСЂРѕРІРµСЂРєРѕР№ Р°РєС‚РёРІРЅС‹С… Рё РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹С… Р·Р°РґР°С‡.

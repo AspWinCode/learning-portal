@@ -1182,6 +1182,10 @@ export interface OwnerWorkspaceTaskConfig {
   priorities: OwnerWorkspaceTaskConfigItem[];
 }
 
+export interface OwnerWorkspaceProjectConfig {
+  statuses: OwnerWorkspaceTaskConfigItem[];
+}
+
 export interface OwnerWorkspacePermissionPolicy {
   manager_can_manage_team: boolean;
   manager_can_change_roles: boolean;

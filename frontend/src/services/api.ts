@@ -1040,6 +1040,16 @@ export const settingsApi = {
     const response = await api.post('/api/settings/owner-workspace-contact-tags', payload);
     return response.data;
   },
+  getOwnerWorkspaceContactSources: async (): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.get('/api/settings/owner-workspace-contact-sources');
+    return response.data;
+  },
+  setOwnerWorkspaceContactSources: async (
+    payload: OwnerWorkspaceTagDictionary
+  ): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.post('/api/settings/owner-workspace-contact-sources', payload);
+    return response.data;
+  },
 };
 
 // Урок на сегодня для раздела «Позвать детей на занятие»

@@ -22,6 +22,7 @@ OWNER_WS_PERMISSION_POLICY_KEY = "owner_workspace_permission_policy"
 OWNER_WS_NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
 OWNER_WS_TASK_TAGS_KEY = "owner_workspace_task_tag_dictionary"
 OWNER_WS_CONTACT_TAGS_KEY = "owner_workspace_contact_tag_dictionary"
+OWNER_WS_CONTACT_SOURCES_KEY = "owner_workspace_contact_source_dictionary"
 
 DEFAULT_OWNER_WS_TASK_CONFIG = {
     "statuses": [
@@ -558,6 +559,26 @@ async def set_owner_workspace_contact_tags(
 ):
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_CONTACT_TAGS_KEY, items)
+    db.commit()
+    return OwnerWorkspaceTagDictionaryResponse(items=items)
+
+
+@router.get("/owner-workspace-contact-sources", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def get_owner_workspace_contact_sources(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    return OwnerWorkspaceTagDictionaryResponse(items=_get_owner_ws_tag_dictionary(db, OWNER_WS_CONTACT_SOURCES_KEY))
+
+
+@router.post("/owner-workspace-contact-sources", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def set_owner_workspace_contact_sources(
+    body: OwnerWorkspaceTagDictionaryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    items = _normalize_owner_ws_tag_items(body.items)
+    _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, items)
     db.commit()
     return OwnerWorkspaceTagDictionaryResponse(items=items)
 

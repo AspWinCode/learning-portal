@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import FrozenSet, Optional, Set
 
 from sqlalchemy import or_
@@ -17,12 +18,21 @@ from app.models import (
     OwnerWorkspaceProjectContact,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
+    AppSetting,
     User,
     UserRole,
 )
 
 # Роли, которым разрешён вход в API owner-workspace (роутер).
 OWNER_WORKSPACE_API_ROLES = ["admin", "owner", "sales", "trainer"]
+OWNER_WS_PERMISSION_POLICY_KEY = "owner_workspace_permission_policy"
+DEFAULT_OWNER_WS_PERMISSION_POLICY = {
+    "manager_can_manage_team": True,
+    "manager_can_change_roles": False,
+    "manager_can_assign_manager": False,
+    "manager_can_assign_observer": False,
+    "manager_can_remove_manager": False,
+}
 
 
 def is_full_workspace_user(user: User) -> bool:
@@ -35,6 +45,25 @@ class OwnerWorkspaceAccessContext:
     full: bool
     project_ids: FrozenSet[int]
     contact_ids: FrozenSet[int]
+
+
+def get_owner_workspace_permission_policy(db: Session) -> dict:
+    setting = db.query(AppSetting).filter(AppSetting.key == OWNER_WS_PERMISSION_POLICY_KEY).first()
+    if not setting or not (setting.value or "").strip():
+        return DEFAULT_OWNER_WS_PERMISSION_POLICY
+    try:
+        raw = json.loads(setting.value)
+    except Exception:
+        return DEFAULT_OWNER_WS_PERMISSION_POLICY
+    if not isinstance(raw, dict):
+        return DEFAULT_OWNER_WS_PERMISSION_POLICY
+    return {
+        "manager_can_manage_team": bool(raw.get("manager_can_manage_team", True)),
+        "manager_can_change_roles": bool(raw.get("manager_can_change_roles", False)),
+        "manager_can_assign_manager": bool(raw.get("manager_can_assign_manager", False)),
+        "manager_can_assign_observer": bool(raw.get("manager_can_assign_observer", False)),
+        "manager_can_remove_manager": bool(raw.get("manager_can_remove_manager", False)),
+    }
 
 
 def _base_accessible_project_ids(db: Session, user_id: int) -> Set[int]:
@@ -223,14 +252,16 @@ def can_manage_project_team(db: Session, ctx: OwnerWorkspaceAccessContext, proje
         return True
     if is_project_owner(db, ctx.user.id, project_id):
         return True
-    return is_project_manager(db, ctx.user.id, project_id)
+    return is_project_manager(db, ctx.user.id, project_id) and get_owner_workspace_permission_policy(db)["manager_can_manage_team"]
 
 
 def can_change_project_participant_roles(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
     """Смена роли member/manager — только полный доступ или владелец проекта."""
     if ctx.full:
         return True
-    return is_project_owner(db, ctx.user.id, project_id)
+    if is_project_owner(db, ctx.user.id, project_id):
+        return True
+    return is_project_manager(db, ctx.user.id, project_id) and get_owner_workspace_permission_policy(db)["manager_can_change_roles"]
 
 
 def can_edit_project_content(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:

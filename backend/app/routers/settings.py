@@ -17,6 +17,7 @@ LOGO_KEY = "site_logo_data_url"
 DISTRICTS_KEY = "b2b_districts"
 REFUSED_REASONS_KEY = "sales_refused_reasons"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
+OWNER_WS_PERMISSION_POLICY_KEY = "owner_workspace_permission_policy"
 
 DEFAULT_OWNER_WS_TASK_CONFIG = {
     "statuses": [
@@ -32,6 +33,13 @@ DEFAULT_OWNER_WS_TASK_CONFIG = {
         {"key": "high", "label": "Высокий"},
         {"key": "critical", "label": "Критический"},
     ],
+}
+DEFAULT_OWNER_WS_PERMISSION_POLICY = {
+    "manager_can_manage_team": True,
+    "manager_can_change_roles": False,
+    "manager_can_assign_manager": False,
+    "manager_can_assign_observer": False,
+    "manager_can_remove_manager": False,
 }
 OWNER_WS_STATUS_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["statuses"]]
 OWNER_WS_PRIORITY_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["priorities"]]
@@ -67,6 +75,22 @@ class OwnerWorkspaceTaskConfigResponse(BaseModel):
 class OwnerWorkspaceTaskConfigUpdate(BaseModel):
     statuses: List[OwnerWorkspaceTaskConfigItem]
     priorities: List[OwnerWorkspaceTaskConfigItem]
+
+
+class OwnerWorkspacePermissionPolicyResponse(BaseModel):
+    manager_can_manage_team: bool = True
+    manager_can_change_roles: bool = False
+    manager_can_assign_manager: bool = False
+    manager_can_assign_observer: bool = False
+    manager_can_remove_manager: bool = False
+
+
+class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
+    manager_can_manage_team: bool = True
+    manager_can_change_roles: bool = False
+    manager_can_assign_manager: bool = False
+    manager_can_assign_observer: bool = False
+    manager_can_remove_manager: bool = False
 
 
 def _get_json_setting(db: Session, key: str):
@@ -148,6 +172,19 @@ def _get_owner_ws_task_config(db: Session) -> dict:
             allowed_keys=OWNER_WS_PRIORITY_KEYS,
             defaults=DEFAULT_OWNER_WS_TASK_CONFIG["priorities"],
         ),
+    }
+
+
+def _get_owner_ws_permission_policy(db: Session) -> dict:
+    raw = _get_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY)
+    if not isinstance(raw, dict):
+        return DEFAULT_OWNER_WS_PERMISSION_POLICY
+    return {
+        "manager_can_manage_team": bool(raw.get("manager_can_manage_team", True)),
+        "manager_can_change_roles": bool(raw.get("manager_can_change_roles", False)),
+        "manager_can_assign_manager": bool(raw.get("manager_can_assign_manager", False)),
+        "manager_can_assign_observer": bool(raw.get("manager_can_assign_observer", False)),
+        "manager_can_remove_manager": bool(raw.get("manager_can_remove_manager", False)),
     }
 
 
@@ -295,5 +332,32 @@ async def set_owner_workspace_task_config(
     _set_json_setting(db, OWNER_WS_TASK_CONFIG_KEY, data)
     db.commit()
     return OwnerWorkspaceTaskConfigResponse.model_validate(data)
+
+
+@router.get("/owner-workspace-permission-policy", response_model=OwnerWorkspacePermissionPolicyResponse)
+async def get_owner_workspace_permission_policy(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    data = _get_owner_ws_permission_policy(db)
+    return OwnerWorkspacePermissionPolicyResponse.model_validate(data)
+
+
+@router.post("/owner-workspace-permission-policy", response_model=OwnerWorkspacePermissionPolicyResponse)
+async def set_owner_workspace_permission_policy(
+    body: OwnerWorkspacePermissionPolicyUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    data = {
+        "manager_can_manage_team": bool(body.manager_can_manage_team),
+        "manager_can_change_roles": bool(body.manager_can_change_roles),
+        "manager_can_assign_manager": bool(body.manager_can_assign_manager),
+        "manager_can_assign_observer": bool(body.manager_can_assign_observer),
+        "manager_can_remove_manager": bool(body.manager_can_remove_manager),
+    }
+    _set_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY, data)
+    db.commit()
+    return OwnerWorkspacePermissionPolicyResponse.model_validate(data)
 
 

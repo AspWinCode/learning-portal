@@ -1182,6 +1182,14 @@ export interface OwnerWorkspaceTaskConfig {
   priorities: OwnerWorkspaceTaskConfigItem[];
 }
 
+export interface OwnerWorkspacePermissionPolicy {
+  manager_can_manage_team: boolean;
+  manager_can_change_roles: boolean;
+  manager_can_assign_manager: boolean;
+  manager_can_assign_observer: boolean;
+  manager_can_remove_manager: boolean;
+}
+
 export interface OwnerWorkspaceTaskCompleteResult {
   completed_task: OwnerWorkspaceTask;
   next_task: OwnerWorkspaceTask | null;

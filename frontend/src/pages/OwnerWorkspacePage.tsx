@@ -70,6 +70,7 @@ import type {
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskComment,
   OwnerWorkspaceTaskConfig,
+  OwnerWorkspacePermissionPolicy,
   OwnerWorkspaceTaskStatusCounts,
   OwnerWorkspaceTasksAnalyticsOverview,
   User,
@@ -376,6 +377,14 @@ const OWNER_WS_GLOBAL_ROLE_LABELS: Record<string, string> = {
   trainer: 'trainer',
 };
 
+const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
+  manager_can_manage_team: true,
+  manager_can_change_roles: false,
+  manager_can_assign_manager: false,
+  manager_can_assign_observer: false,
+  manager_can_remove_manager: false,
+};
+
 type OwnerWorkspaceAssigneeAnalyticsRow = {
   assigneeId: number | null;
   assigneeName: string;
@@ -630,6 +639,9 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskConfig, setTaskConfig] = useState<OwnerWorkspaceTaskConfig | null>(null);
   const [taskConfigDraft, setTaskConfigDraft] = useState<OwnerWorkspaceTaskConfig | null>(null);
   const [taskConfigSaving, setTaskConfigSaving] = useState(false);
+  const [permissionPolicy, setPermissionPolicy] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
+  const [permissionPolicyDraft, setPermissionPolicyDraft] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
+  const [permissionPolicySaving, setPermissionPolicySaving] = useState(false);
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
   const [digestProjectFilter, setDigestProjectFilter] = useState<number | ''>('');
@@ -954,15 +966,18 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const loadMeta = useCallback(async () => {
     try {
-      const [conv, u, cfg] = await Promise.all([
+      const [conv, u, cfg, permissionCfg] = await Promise.all([
         ownerWorkspaceApi.listConversations(),
         usersApi.getAll(),
         settingsApi.getOwnerWorkspaceTaskConfig(),
+        settingsApi.getOwnerWorkspacePermissionPolicy(),
       ]);
       setConversations(conv);
       setUsers(Array.isArray(u) ? u : []);
       setTaskConfig(cfg);
       setTaskConfigDraft(cfg);
+      setPermissionPolicy(permissionCfg);
+      setPermissionPolicyDraft(permissionCfg);
     } catch (e: unknown) {
       setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ'));
     }
@@ -1515,11 +1530,14 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const addProjectParticipantUser = async () => {
     if (!projectDialog || !participantToAdd) return;
+    const requestedRole = allowedParticipantRoleOptions.some((item) => item.value === newParticipantRole)
+      ? newParticipantRole
+      : 'member';
     try {
       await ownerWorkspaceApi.addProjectParticipant(
         projectDialog.id,
         participantToAdd.id,
-        canChangeParticipantRoles ? newParticipantRole : 'member'
+        requestedRole
       );
       setParticipantToAdd(null);
       setNewParticipantRole('member');
@@ -1923,6 +1941,21 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
+  const saveWorkspacePermissionPolicy = async () => {
+    setPermissionPolicySaving(true);
+    try {
+      const saved = await settingsApi.setOwnerWorkspacePermissionPolicy(permissionPolicyDraft);
+      setPermissionPolicy(saved);
+      setPermissionPolicyDraft(saved);
+      setError(null);
+      setMaxSyncResult('Системная policy-модель ролей owner workspace сохранена.');
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось сохранить policy-настройки ролей owner workspace'));
+    } finally {
+      setPermissionPolicySaving(false);
+    }
+  };
+
   const handleWorkspaceTabChange = (_: React.SyntheticEvent, v: number) => {
     if (v !== OW_TAB_TASKS) {
       setTaskDialog(null);
@@ -2129,14 +2162,57 @@ const OwnerWorkspacePage: React.FC = () => {
     if (!projectDialog || !user?.id) return false;
     if (isWorkspaceFullAccess) return true;
     if (projectDialog.owner_id === user.id) return true;
-    return projectDialog.participant_roles?.[String(user.id)] === 'manager';
-  }, [projectDialog, user?.id, isWorkspaceFullAccess]);
+    return (
+      projectDialog.participant_roles?.[String(user.id)] === 'manager' &&
+      permissionPolicy.manager_can_manage_team
+    );
+  }, [projectDialog, user?.id, isWorkspaceFullAccess, permissionPolicy.manager_can_manage_team]);
 
   const canChangeParticipantRoles = useMemo(() => {
     if (!projectDialog || !user?.id) return false;
     if (isWorkspaceFullAccess) return true;
-    return projectDialog.owner_id === user.id;
-  }, [projectDialog, user?.id, isWorkspaceFullAccess]);
+    if (projectDialog.owner_id === user.id) return true;
+    return (
+      projectDialog.participant_roles?.[String(user.id)] === 'manager' &&
+      permissionPolicy.manager_can_change_roles
+    );
+  }, [projectDialog, user?.id, isWorkspaceFullAccess, permissionPolicy.manager_can_change_roles]);
+
+  const canCurrentActorAssignManager = useMemo(() => {
+    if (!projectDialog || !user?.id) return false;
+    if (isWorkspaceFullAccess || projectDialog.owner_id === user.id) return true;
+    return (
+      permissionPolicy.manager_can_manage_team &&
+      projectDialog.participant_roles?.[String(user.id)] === 'manager' &&
+      permissionPolicy.manager_can_assign_manager
+    );
+  }, [projectDialog, user?.id, isWorkspaceFullAccess, permissionPolicy.manager_can_manage_team, permissionPolicy.manager_can_assign_manager]);
+
+  const canCurrentActorAssignObserver = useMemo(() => {
+    if (!projectDialog || !user?.id) return false;
+    if (isWorkspaceFullAccess || projectDialog.owner_id === user.id) return true;
+    return (
+      permissionPolicy.manager_can_manage_team &&
+      projectDialog.participant_roles?.[String(user.id)] === 'manager' &&
+      permissionPolicy.manager_can_assign_observer
+    );
+  }, [projectDialog, user?.id, isWorkspaceFullAccess, permissionPolicy.manager_can_manage_team, permissionPolicy.manager_can_assign_observer]);
+
+  const allowedParticipantRoleOptions = useMemo(
+    () =>
+      ([
+        { value: 'member', label: 'Участник', allowed: true },
+        { value: 'manager', label: 'Менеджер', allowed: canCurrentActorAssignManager },
+        { value: 'observer', label: 'Наблюдатель', allowed: canCurrentActorAssignObserver },
+      ] as const).filter((item) => item.allowed),
+    [canCurrentActorAssignManager, canCurrentActorAssignObserver]
+  );
+
+  useEffect(() => {
+    if (!allowedParticipantRoleOptions.some((item) => item.value === newParticipantRole)) {
+      setNewParticipantRole('member');
+    }
+  }, [allowedParticipantRoleOptions, newParticipantRole]);
 
   const canEditProjectContentUi = useCallback(
     (projectId: number | null | undefined) => {
@@ -4378,6 +4454,102 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Stack>
               </>
             )}
+            {isWorkspaceFullAccess && permissionPolicyDraft && (
+              <>
+                <Divider sx={{ my: 3 }} />
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="h6" gutterBottom>
+                      Policy ролей проекта
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Эти правила управляют тем, что project manager может делать с составом команды без участия owner/admin.
+                    </Typography>
+                  </Box>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={0.5}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={permissionPolicyDraft.manager_can_manage_team}
+                              onChange={(_, checked) =>
+                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_manage_team: checked }))
+                              }
+                            />
+                          }
+                          label="Менеджер проекта может управлять составом команды"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={permissionPolicyDraft.manager_can_change_roles}
+                              onChange={(_, checked) =>
+                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_change_roles: checked }))
+                              }
+                              disabled={!permissionPolicyDraft.manager_can_manage_team}
+                            />
+                          }
+                          label="Менеджер проекта может менять роли существующих участников"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={permissionPolicyDraft.manager_can_assign_manager}
+                              onChange={(_, checked) =>
+                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_assign_manager: checked }))
+                              }
+                              disabled={!permissionPolicyDraft.manager_can_manage_team}
+                            />
+                          }
+                          label="Менеджер проекта может назначать других менеджеров"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={permissionPolicyDraft.manager_can_assign_observer}
+                              onChange={(_, checked) =>
+                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_assign_observer: checked }))
+                              }
+                              disabled={!permissionPolicyDraft.manager_can_manage_team}
+                            />
+                          }
+                          label="Менеджер проекта может назначать наблюдателей"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={permissionPolicyDraft.manager_can_remove_manager}
+                              onChange={(_, checked) =>
+                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_remove_manager: checked }))
+                              }
+                              disabled={!permissionPolicyDraft.manager_can_manage_team}
+                            />
+                          }
+                          label="Менеджер проекта может удалять других менеджеров"
+                        />
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                    <Button
+                      variant="contained"
+                      disabled={permissionPolicySaving}
+                      onClick={() => void saveWorkspacePermissionPolicy()}
+                    >
+                      {permissionPolicySaving ? 'Сохранение...' : 'Сохранить policy'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      disabled={permissionPolicySaving}
+                      onClick={() => setPermissionPolicyDraft(permissionPolicy)}
+                    >
+                      Сбросить
+                    </Button>
+                  </Stack>
+                </Stack>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -4698,7 +4870,13 @@ const OwnerWorkspacePage: React.FC = () => {
                   rawRole === 'manager' || rawRole === 'observer' ? rawRole : 'member';
                 const canDel =
                   canManageProjectTeam &&
-                  (isWorkspaceFullAccess || projectDialog?.owner_id === user?.id || role !== 'manager');
+                  (isWorkspaceFullAccess ||
+                    projectDialog?.owner_id === user?.id ||
+                    role !== 'manager' ||
+                    permissionPolicy.manager_can_remove_manager);
+                const participantRoleOptions = allowedParticipantRoleOptions.some((item) => item.value === role)
+                  ? allowedParticipantRoleOptions
+                  : [...allowedParticipantRoleOptions, { value: role, label: OWNER_WS_PROJECT_PARTICIPANT_ROLE_LABELS[role] }];
                 return (
                   <Stack key={pid} direction="row" alignItems="center" spacing={1} flexWrap="wrap">
                     <Chip
@@ -4717,9 +4895,11 @@ const OwnerWorkspacePage: React.FC = () => {
                           void patchProjectParticipantRole(pid, e.target.value as OwnerWorkspaceProjectParticipantRole)
                         }
                       >
-                        <MenuItem value="member">Участник</MenuItem>
-                        <MenuItem value="manager">Менеджер</MenuItem>
-                        <MenuItem value="observer">Наблюдатель</MenuItem>
+                        {participantRoleOptions.map((item) => (
+                          <MenuItem key={item.value} value={item.value}>
+                            {item.label}
+                          </MenuItem>
+                        ))}
                       </TextField>
                     ) : null}
                   </Stack>
@@ -4728,7 +4908,7 @@ const OwnerWorkspacePage: React.FC = () => {
             </Stack>
             {canManageProjectTeam && !canChangeParticipantRoles ? (
               <Alert severity="info">
-                Менеджер проекта может управлять составом команды, но не назначает роли manager и observer.
+                Права project manager на состав команды сейчас ограничены системной policy-моделью owner workspace.
               </Alert>
             ) : null}
             {canManageProjectTeam ? (
@@ -4741,7 +4921,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   onChange={(_, v) => setParticipantToAdd(v)}
                   renderInput={(params) => <TextField {...params} label="Р”РѕР±Р°РІРёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР°" />}
                 />
-                {canChangeParticipantRoles ? (
+                {allowedParticipantRoleOptions.length > 1 ? (
                   <TextField
                     select
                     size="small"
@@ -4750,9 +4930,11 @@ const OwnerWorkspacePage: React.FC = () => {
                     value={newParticipantRole}
                     onChange={(e) => setNewParticipantRole(e.target.value as OwnerWorkspaceProjectParticipantRole)}
                   >
-                    <MenuItem value="member">РЈС‡Р°СЃС‚РЅРёРє</MenuItem>
-                    <MenuItem value="manager">РњРµРЅРµРґР¶РµСЂ</MenuItem>
-                    <MenuItem value="observer">РќР°Р±Р»СЋРґР°С‚РµР»СЊ</MenuItem>
+                    {allowedParticipantRoleOptions.map((item) => (
+                      <MenuItem key={item.value} value={item.value}>
+                        {item.label}
+                      </MenuItem>
+                    ))}
                   </TextField>
                 ) : null}
                 <Button variant="outlined" onClick={addProjectParticipantUser} disabled={!participantToAdd}>

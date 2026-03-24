@@ -61,6 +61,7 @@ import {
   OwnerWorkspaceDigest,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceTaskConfig,
+  OwnerWorkspacePermissionPolicy,
   OwnerWorkspaceUserPreferences,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTaskCompleteResult,
@@ -986,6 +987,16 @@ export const settingsApi = {
   },
   setOwnerWorkspaceTaskConfig: async (payload: OwnerWorkspaceTaskConfig): Promise<OwnerWorkspaceTaskConfig> => {
     const response = await api.post('/api/settings/owner-workspace-task-config', payload);
+    return response.data;
+  },
+  getOwnerWorkspacePermissionPolicy: async (): Promise<OwnerWorkspacePermissionPolicy> => {
+    const response = await api.get('/api/settings/owner-workspace-permission-policy');
+    return response.data;
+  },
+  setOwnerWorkspacePermissionPolicy: async (
+    payload: OwnerWorkspacePermissionPolicy
+  ): Promise<OwnerWorkspacePermissionPolicy> => {
+    const response = await api.post('/api/settings/owner-workspace-permission-policy', payload);
     return response.data;
   },
 };

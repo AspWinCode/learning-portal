@@ -20,6 +20,7 @@ from app.services.owner_workspace_access import (
     can_manage_project_team,
     contact_visible,
     filter_tasks_query,
+    get_owner_workspace_permission_policy,
     is_project_manager,
     is_project_owner,
     is_project_participant,
@@ -579,6 +580,7 @@ async def add_project_participant(
     project = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
     if not project or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+    permission_policy = get_owner_workspace_permission_policy(db)
     if not can_manage_project_team(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для управления участниками")
     user = db.query(User).filter(User.id == payload.user_id).first()
@@ -588,15 +590,22 @@ async def add_project_participant(
     if eff_role not in ("member", "manager", "observer"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be member, manager or observer")
     uid = ctx.user.id
-    if not ctx.full and not is_project_owner(db, uid, project_id):
-        if is_project_manager(db, uid, project_id) and eff_role != "member":
+    is_owner = is_project_owner(db, uid, project_id)
+    is_manager = is_project_manager(db, uid, project_id)
+    if not ctx.full and not is_owner and is_manager:
+        if eff_role == "manager" and not permission_policy["manager_can_assign_manager"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Менеджер проекта может добавлять только участников с ролью «Участник»",
+                detail="По настройкам модуля менеджер не может назначать других менеджеров",
             )
-    if eff_role == "manager" and not (ctx.full or is_project_owner(db, uid, project_id)):
+        if eff_role == "observer" and not permission_policy["manager_can_assign_observer"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="По настройкам модуля менеджер не может назначать наблюдателей",
+            )
+    if eff_role == "manager" and not (ctx.full or is_owner or (is_manager and permission_policy["manager_can_assign_manager"])):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Назначать менеджеров может только владелец проекта или администратор")
-    if eff_role == "observer" and not (ctx.full or is_project_owner(db, uid, project_id)):
+    if eff_role == "observer" and not (ctx.full or is_owner or (is_manager and permission_policy["manager_can_assign_observer"])):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Назначать наблюдателей может только владелец проекта или администратор")
     exists = db.query(OwnerWorkspaceProjectParticipant).filter(
         OwnerWorkspaceProjectParticipant.project_id == project_id,
@@ -610,6 +619,7 @@ async def add_project_participant(
     return None
 
 
+
 @router.patch("/projects/{project_id}/participants/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def patch_project_participant_role(
     project_id: int,
@@ -620,6 +630,7 @@ async def patch_project_participant_role(
 ):
     if not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+    permission_policy = get_owner_workspace_permission_policy(db)
     if not can_change_project_participant_roles(db, ctx, project_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -631,9 +642,15 @@ async def patch_project_participant_role(
     new_role = payload.role.strip().lower()
     if new_role not in ("member", "manager", "observer"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be member, manager or observer")
+    if not ctx.full and not is_project_owner(db, ctx.user.id, project_id) and is_project_manager(db, ctx.user.id, project_id):
+        if new_role == "manager" and not permission_policy["manager_can_assign_manager"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="По настройкам модуля менеджер не может назначать других менеджеров")
+        if new_role == "observer" and not permission_policy["manager_can_assign_observer"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="По настройкам модуля менеджер не может назначать наблюдателей")
     row.role = new_role
     db.commit()
     return None
+
 
 
 @router.delete("/projects/{project_id}/participants/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -645,6 +662,7 @@ async def remove_project_participant(
 ):
     if not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+    permission_policy = get_owner_workspace_permission_policy(db)
     if not can_manage_project_team(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для управления участниками")
     row = db.query(OwnerWorkspaceProjectParticipant).filter(
@@ -656,7 +674,7 @@ async def remove_project_participant(
         if not ctx.full and not is_project_owner(db, actor_id, project_id):
             if is_project_manager(db, actor_id, project_id):
                 tgt_role = (row.role or "member").strip().lower() or "member"
-                if tgt_role == "manager":
+                if tgt_role == "manager" and not permission_policy["manager_can_remove_manager"]:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="Менеджер не может исключить другого менеджера",
@@ -664,6 +682,7 @@ async def remove_project_participant(
         db.delete(row)
         db.commit()
     return None
+
 
 
 @router.post("/projects/{project_id}/contacts", status_code=status.HTTP_204_NO_CONTENT)
@@ -2004,4 +2023,5 @@ async def list_history(
         q = q.filter(OwnerWorkspaceAuditLog.entity_id == entity_id)
     rows = q.order_by(OwnerWorkspaceAuditLog.created_at.desc()).limit(300).all()
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
+
 

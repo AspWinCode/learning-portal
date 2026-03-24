@@ -1444,6 +1444,10 @@ const OwnerWorkspacePage: React.FC = () => {
       setError('РЈРєР°Р¶РёС‚Рµ РЅР°Р·РІР°РЅРёРµ РїСЂРѕРµРєС‚Р°');
       return;
     }
+    if (projectEditStatus === 'archived' && projectDialog.status !== 'archived') {
+      setArchiveProjectConfirm(projectDialog);
+      return;
+    }
     try {
       const updated = await ownerWorkspaceApi.updateProject(projectDialog.id, {
         name,
@@ -4457,6 +4461,11 @@ const OwnerWorkspacePage: React.FC = () => {
               <MenuItem value="completed">Р—Р°РІРµСЂС€С‘РЅ</MenuItem>
               <MenuItem value="archived">РђСЂС…РёРІ</MenuItem>
             </TextField>
+            {projectEditStatus === 'archived' && projectDialog?.status !== 'archived' && (
+              <Alert severity="info">
+                РџСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё РѕС‚РєСЂРѕРµС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ Р°СЂС…РёРІР° СЃ РїСЂРѕРІРµСЂРєРѕР№ Р°РєС‚РёРІРЅС‹С… Рё РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹С… Р·Р°РґР°С‡.
+              </Alert>
+            )}
             <Button
               variant="contained"
               size="small"

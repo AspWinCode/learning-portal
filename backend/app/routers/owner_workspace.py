@@ -1454,6 +1454,9 @@ async def create_task_comment(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    permission_policy = get_owner_workspace_permission_policy(db)
+    if not ctx.full and not permission_policy["limited_can_comment_tasks"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     exists = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not exists or not task_visible(ctx, exists):
         raise HTTPException(status_code=404, detail="Task not found")

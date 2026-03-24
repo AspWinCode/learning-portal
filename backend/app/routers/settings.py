@@ -58,6 +58,7 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "limited_can_create_contacts": False,
     "limited_can_create_tasks": False,
     "limited_can_send_messages": False,
+    "limited_can_comment_tasks": False,
 }
 DEFAULT_OWNER_WS_NOTIFICATION_CONFIG = {
     "items": [
@@ -120,6 +121,7 @@ class OwnerWorkspacePermissionPolicyResponse(BaseModel):
     limited_can_create_contacts: bool = False
     limited_can_create_tasks: bool = False
     limited_can_send_messages: bool = False
+    limited_can_comment_tasks: bool = False
 
 
 class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
@@ -134,6 +136,7 @@ class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
     limited_can_create_contacts: bool = False
     limited_can_create_tasks: bool = False
     limited_can_send_messages: bool = False
+    limited_can_comment_tasks: bool = False
 
 
 class OwnerWorkspaceProjectConfigResponse(BaseModel):
@@ -258,6 +261,7 @@ def _get_owner_ws_permission_policy(db: Session) -> dict:
         "limited_can_create_contacts": bool(raw.get("limited_can_create_contacts", False)),
         "limited_can_create_tasks": bool(raw.get("limited_can_create_tasks", False)),
         "limited_can_send_messages": bool(raw.get("limited_can_send_messages", False)),
+        "limited_can_comment_tasks": bool(raw.get("limited_can_comment_tasks", False)),
     }
 
 
@@ -520,6 +524,7 @@ async def set_owner_workspace_permission_policy(
         "limited_can_create_contacts": bool(body.limited_can_create_contacts),
         "limited_can_create_tasks": bool(body.limited_can_create_tasks),
         "limited_can_send_messages": bool(body.limited_can_send_messages),
+        "limited_can_comment_tasks": bool(body.limited_can_comment_tasks),
     }
     _set_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY, data)
     db.commit()

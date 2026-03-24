@@ -400,6 +400,7 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   limited_can_create_contacts: false,
   limited_can_create_tasks: false,
   limited_can_send_messages: false,
+  limited_can_comment_tasks: false,
 };
 
 type OwnerWorkspaceAssigneeAnalyticsRow = {
@@ -702,6 +703,11 @@ const OwnerWorkspacePage: React.FC = () => {
         ? 'Отправка исходящих сообщений разрешена системной policy-моделью.'
         : 'Отправка исходящих сообщений для ограниченных ролей может быть отключена policy-моделью.'
     );
+    limitedSummary.push(
+      permissionPolicy.limited_can_comment_tasks
+        ? 'Комментарии к задачам разрешены системной policy-моделью.'
+        : 'Комментарии к задачам для ограниченных ролей могут быть отключены policy-моделью.'
+    );
     return limitedSummary;
   }, [
     isWorkspaceFullAccess,
@@ -709,6 +715,7 @@ const OwnerWorkspacePage: React.FC = () => {
     permissionPolicy.limited_can_create_projects,
     permissionPolicy.limited_can_create_tasks,
     permissionPolicy.limited_can_send_messages,
+    permissionPolicy.limited_can_comment_tasks,
   ]);
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
@@ -2412,6 +2419,10 @@ const OwnerWorkspacePage: React.FC = () => {
   const canSendMessageUi = useMemo(
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_send_messages,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_send_messages]
+  );
+  const canCommentTaskUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_comment_tasks,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_comment_tasks]
   );
 
   const canChangeParticipantRoles = useMemo(() => {
@@ -5255,6 +5266,17 @@ const OwnerWorkspacePage: React.FC = () => {
                             }
                             label="Ограниченные роли (sales / trainer) могут отправлять сообщения"
                           />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.limited_can_comment_tasks}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_comment_tasks: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут комментировать задачи"
+                          />
                         </Stack>
                       </CardContent>
                     </Card>
@@ -6114,6 +6136,11 @@ const OwnerWorkspacePage: React.FC = () => {
                 Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё СЌС‚Р° Р·Р°РґР°С‡Р° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ Рё РєРѕРјРјРµРЅС‚Р°СЂРёРё РѕС‚РєР»СЋС‡РµРЅС‹.
               </Alert>
             )}
+            {canEditTaskDialogContent && !canCommentTaskUi && (
+              <Alert severity="info">
+                Комментарии к задачам для ограниченных ролей сейчас отключены policy-моделью.
+              </Alert>
+            )}
             <TextField
               label="РќР°Р·РІР°РЅРёРµ"
               fullWidth
@@ -6311,10 +6338,10 @@ const OwnerWorkspacePage: React.FC = () => {
               label="РќРѕРІС‹Р№ РєРѕРјРјРµРЅС‚Р°СЂРёР№"
               value={newCommentText}
               onChange={(e) => setNewCommentText(e.target.value)}
-              disabled={!canEditTaskDialogContent}
+              disabled={!canEditTaskDialogContent || !canCommentTaskUi}
               helperText="РЈРїРѕРјРёРЅР°РЅРёРµ: @ID РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РёР»Рё @email@РґРѕРјРµРЅ вЂ” РѕС‚РґРµР»СЊРЅРѕРµ СѓРІРµРґРѕРјР»РµРЅРёРµ С‚РµРј, РєРѕРјСѓ СѓР¶Рµ РІРёРґРЅР° Р·Р°РґР°С‡Р° (РёСЃРїРѕР»РЅРёС‚РµР»СЊ Рё Р°РІС‚РѕСЂ РїРѕР»СѓС‡Р°СЋС‚ РѕР±С‹С‡РЅС‹Р№ В«РљРѕРјРјРµРЅС‚Р°СЂРёР№В»)."
             />
-            <Button variant="outlined" onClick={addComment} disabled={!canEditTaskDialogContent}>
+            <Button variant="outlined" onClick={addComment} disabled={!canEditTaskDialogContent || !canCommentTaskUi}>
               Р”РѕР±Р°РІРёС‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёР№
             </Button>
           </Stack>

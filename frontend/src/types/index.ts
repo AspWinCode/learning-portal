@@ -1198,6 +1198,7 @@ export interface OwnerWorkspacePermissionPolicy {
   limited_can_create_contacts: boolean;
   limited_can_create_tasks: boolean;
   limited_can_send_messages: boolean;
+  limited_can_comment_tasks: boolean;
 }
 
 export interface OwnerWorkspaceNotificationConfig {

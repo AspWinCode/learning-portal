@@ -105,11 +105,12 @@ Status legend:
 | Requirement area | Verdict | Notes |
 |---|---|---|
 | Task counters and overview | DONE | Implemented. |
+| Dedicated reporting surface inside owner-workspace | DONE | `/owner-workspace/reports` consolidates the main analytics blocks and drill-down entrypoints. |
 | Employee workload analytics | DONE | Active, overdue, completed, average close time are present. |
 | Attention zone / overloaded assignees | DONE | Implemented. |
 | Drill-down into filtered task lists | DONE | Implemented from analytics blocks. |
 | Project overdue ranking | DONE | Implemented. |
-| Separate reporting module outside owner-workspace | DEFERRED | Reporting remains embedded in owner-workspace. |
+| Separate reporting module outside owner-workspace | DEFERRED | Reporting now has a dedicated surface inside owner-workspace, but not a standalone external module. |
 
 ## 10. Audit and history
 
@@ -148,7 +149,7 @@ Status legend:
 - Email delivery
 - Web push delivery
 - Main policy-based roles/permissions
-- Embedded analytics
+- Dedicated reporting surface inside owner-workspace
 - Destructive-flow confirms
 
 ### PARTIAL
@@ -169,6 +170,6 @@ Status legend:
 ## Recommended Next Acceptance Steps
 
 1. Decide whether the dialog-in-shell architecture is accepted as the final interpretation of the specification, or whether fully standalone entity pages are still required.
-2. Decide whether reporting remains embedded or must be promoted into a dedicated reporting surface.
+2. Decide whether the current dedicated reporting surface inside owner-workspace is sufficient, or whether reporting must move into a standalone module.
 3. Decide whether mobile push is required for sign-off, or whether email + web push is sufficient for the current release.
 4. Close infra follow-up on PostgreSQL reliability so acceptance is not blocked by operational risk.

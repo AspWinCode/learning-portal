@@ -21,6 +21,8 @@ Owner Workspace is in a working production state.
 ### Core workspace
 
 - Separate owner-workspace sections and routes for projects, contacts, tasks, communications, history, notifications, and settings.
+- Dedicated reporting route and tab inside owner-workspace:
+  - `/owner-workspace/reports`
 - Deep-link entity routes for:
   - `/owner-workspace/projects/:projectId`
   - `/owner-workspace/contacts/:contactId`
@@ -127,6 +129,7 @@ Owner Workspace is in a working production state.
 
 - Task status counters.
 - Task overview analytics block.
+- Dedicated reporting surface inside owner-workspace.
 - Employee workload analytics:
   - active
   - overdue
@@ -162,7 +165,7 @@ Owner Workspace is in a working production state.
 
 ### Analytics
 
-- Analytics now cover task and project visibility well, but they are still embedded in owner-workspace rather than exposed as a separate reporting module.
+- Analytics now have a dedicated reporting surface inside owner-workspace, but not a separate standalone reporting module outside it.
 
 ## Deferred
 
@@ -177,7 +180,7 @@ Owner Workspace is in a working production state.
 ### Reporting expansion
 
 - Dedicated reporting screens outside the owner-workspace surface.
-- Wider manager dashboards beyond current embedded analytics blocks.
+- Wider manager dashboards beyond current reporting blocks.
 
 ### Product process
 
@@ -194,6 +197,6 @@ Owner Workspace is in a working production state.
 
 1. Stabilize production DB operations and backup discipline.
 2. Finish the acceptance/status documentation so it exactly matches the current notification and policy surface.
-3. Decide whether reporting should remain embedded or move into a dedicated reporting surface.
+3. Decide whether reporting must remain inside owner-workspace or move into a standalone reporting module.
 4. Do a line-by-line final acceptance review against the original specification.
 5. Decide whether mobile push is needed beyond the current web push channel.

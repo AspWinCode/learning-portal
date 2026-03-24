@@ -438,13 +438,14 @@ type OwnerWorkspaceAssigneeAnalyticsRow = {
 const OW_TAB_PROJECTS = 0;
 const OW_TAB_CONTACTS = 1;
 const OW_TAB_TASKS = 2;
-const OW_TAB_COMMS = 3;
-const OW_TAB_NOTIFICATIONS = 4;
-const OW_TAB_SETTINGS = 5;
-const OW_TAB_HISTORY = 6;
+const OW_TAB_REPORTS = 3;
+const OW_TAB_COMMS = 4;
+const OW_TAB_NOTIFICATIONS = 5;
+const OW_TAB_SETTINGS = 6;
+const OW_TAB_HISTORY = 7;
 
 /** РЎР»Р°РіРё РґР»СЏ deep-link: `/owner-workspace?tab=<slug>&task=<id>` (СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚СЊ) Рё РїСѓС‚Рё `/owner-workspace/<slug>`. */
-const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'comms', 'notifications', 'settings', 'history'] as const;
+const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'reports', 'comms', 'notifications', 'settings', 'history'] as const;
 
 /** РџСѓС‚СЊ РІРєР»Р°РґРєРё (В§16): РѕС‚РґРµР»СЊРЅС‹Рµ URL РєР°Рє Сѓ `/notifications` Рё `/settings`. */
 function ownerWorkspaceTabPathname(tabIndex: number): string {
@@ -459,6 +460,8 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
       return '/owner-workspace/contacts';
     case OW_TAB_TASKS:
       return '/owner-workspace/tasks';
+    case OW_TAB_REPORTS:
+      return '/owner-workspace/reports';
     case OW_TAB_COMMS:
       return '/owner-workspace/comms';
     case OW_TAB_HISTORY:
@@ -475,6 +478,7 @@ function ownerWorkspacePathToTab(pathname: string): number | null {
   if (p.startsWith('/owner-workspace/projects')) return OW_TAB_PROJECTS;
   if (p.startsWith('/owner-workspace/contacts')) return OW_TAB_CONTACTS;
   if (p.startsWith('/owner-workspace/tasks')) return OW_TAB_TASKS;
+  if (p === '/owner-workspace/reports') return OW_TAB_REPORTS;
   if (p === '/owner-workspace/comms') return OW_TAB_COMMS;
   if (p === '/owner-workspace/history') return OW_TAB_HISTORY;
   return null;
@@ -3370,6 +3374,7 @@ const OwnerWorkspacePage: React.FC = () => {
         <Tab label={`РџСЂРѕРµРєС‚С‹ (${projects.length})`} />
         <Tab label={`РљРѕРЅС‚Р°РєС‚С‹ (${contacts.length})`} />
         <Tab label={`Р—Р°РґР°С‡Рё (${taskListTotal})`} />
+        <Tab label="РћС‚С‡С‘С‚С‹" />
         <Tab label={commsUnreadTotal > 0 ? `РљРѕРјРјСѓРЅРёРєР°С†РёРё (${commsUnreadTotal})` : 'РљРѕРјРјСѓРЅРёРєР°С†РёРё'} />
         <Tab label={`РЈРІРµРґРѕРјР»РµРЅРёСЏ${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
         <Tab label="РќР°СЃС‚СЂРѕР№РєРё" />
@@ -4354,6 +4359,210 @@ const OwnerWorkspacePage: React.FC = () => {
                     );
                   })}
                 </Box>
+              </CardContent>
+            </Card>
+          )}
+        </Stack>
+      )}
+
+      {tab === OW_TAB_REPORTS && (
+        <Stack spacing={2}>
+          <Card variant="outlined">
+            <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+              <Stack spacing={1}>
+                <Typography variant="h6">Отчёты owner-workspace</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Выделенный reporting surface над текущей зоной видимости пользователя. Данные здесь не заменяют рабочие вкладки,
+                  а собирают основные аналитические срезы в одном месте.
+                </Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          {(tasksAnalytics != null || taskStatusCounts != null) && (
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle2">Сводка по задачам</Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    {taskStatusCounts != null && (
+                      <>
+                        <Chip size="small" label={`Новые: ${taskStatusCounts.by_status.new ?? 0}`} />
+                        <Chip size="small" label={`В работе: ${taskStatusCounts.by_status.in_progress ?? 0}`} />
+                        <Chip size="small" label={`Ожидание: ${taskStatusCounts.by_status.waiting ?? 0}`} />
+                        <Chip size="small" color="success" label={`Завершено: ${taskStatusCounts.by_status.completed ?? 0}`} />
+                        <Chip size="small" variant="outlined" label={`Отменено: ${taskStatusCounts.by_status.cancelled ?? 0}`} />
+                      </>
+                    )}
+                  </Stack>
+                  {tasksAnalytics != null && (
+                    <Grid container spacing={1.5}>
+                      <Grid item xs={12} md={4}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="body2" color="text.secondary">
+                              Завершено за 7 дней
+                            </Typography>
+                            <Typography variant="h5">{tasksAnalytics.completed_last_7_days}</Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="body2" color="text.secondary">
+                              Завершено за 30 дней
+                            </Typography>
+                            <Typography variant="h5">{tasksAnalytics.completed_last_30_days}</Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="body2" color="text.secondary">
+                              Среднее время закрытия
+                            </Typography>
+                            <Typography variant="h5">
+                              {tasksAnalytics.avg_days_to_complete_last_30 != null &&
+                              tasksAnalytics.avg_days_to_complete_last_30 !== undefined
+                                ? `${tasksAnalytics.avg_days_to_complete_last_30} дн.`
+                                : '—'}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    </Grid>
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
+
+          {assigneeAnalyticsRows.length > 0 && (
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack spacing={1.5}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                    <Typography variant="subtitle2">Нагрузка по сотрудникам</Typography>
+                    <Chip size="small" label={`С активными задачами: ${assigneeAnalyticsSummary.assigneesWithActiveTasks}`} />
+                    <Chip
+                      size="small"
+                      color={assigneeAnalyticsSummary.assigneesWithOverdueTasks > 0 ? 'warning' : 'default'}
+                      label={`С просрочкой: ${assigneeAnalyticsSummary.assigneesWithOverdueTasks}`}
+                    />
+                    <Chip
+                      size="small"
+                      color={assigneeAnalyticsSummary.overloadedAssignees > 0 ? 'error' : 'default'}
+                      variant={assigneeAnalyticsSummary.overloadedAssignees > 0 ? 'filled' : 'outlined'}
+                      label={`Перегружены (5+ активных): ${assigneeAnalyticsSummary.overloadedAssignees}`}
+                    />
+                  </Stack>
+                  {assigneeAttentionRows.length > 0 && (
+                    <Alert severity="warning">
+                      <Typography variant="subtitle2" gutterBottom>
+                        Зона внимания
+                      </Typography>
+                      <Stack spacing={1}>
+                        {assigneeAttentionRows.map((row) => (
+                          <Stack
+                            key={`report-attention-${row.assigneeId == null ? 'unassigned' : row.assigneeId}`}
+                            direction={{ xs: 'column', sm: 'row' }}
+                            spacing={1}
+                            justifyContent="space-between"
+                            alignItems={{ sm: 'center' }}
+                          >
+                            <Typography variant="body2">
+                              <strong>{row.assigneeName}</strong>: активных {row.activeCount}, просроченных {row.overdueCount}
+                            </Typography>
+                            <Stack direction="row" spacing={1}>
+                              <Button size="small" variant="outlined" onClick={() => drillDownToAssigneeTasks(row.assigneeId)}>
+                                Все активные
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                color="warning"
+                                onClick={() => drillDownToAssigneeTasks(row.assigneeId, { overdueOnly: true })}
+                              >
+                                Только просрочка
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Alert>
+                  )}
+                  <Grid container spacing={1.5}>
+                    {assigneeAnalyticsRows.map((row) => (
+                      <Grid key={`report-assignee-${row.assigneeId == null ? 'unassigned' : row.assigneeId}`} item xs={12} md={6} xl={4}>
+                        <Card variant="outlined" sx={{ height: '100%' }}>
+                          <CardContent>
+                            <Stack spacing={1}>
+                              <Typography variant="subtitle2">{row.assigneeName}</Typography>
+                              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                <Chip size="small" label={`Активные: ${row.activeCount}`} />
+                                <Chip size="small" color={row.overdueCount > 0 ? 'warning' : 'default'} label={`Просрочено: ${row.overdueCount}`} />
+                                <Chip size="small" variant="outlined" label={`Завершено: ${row.completedCount}`} />
+                              </Stack>
+                              <Typography variant="body2" color="text.secondary">
+                                Среднее время закрытия:{' '}
+                                <strong>{row.avgDaysToComplete != null ? `${row.avgDaysToComplete} дн.` : '—'}</strong>
+                              </Typography>
+                              <Button size="small" variant="outlined" onClick={() => drillDownToAssigneeTasks(row.assigneeId)}>
+                                Открыть задачи
+                              </Button>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
+
+          {topOverdueProjects.length > 0 && (
+            <Card variant="outlined">
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle2">Проекты с самой большой просрочкой</Typography>
+                  <Grid container spacing={1.5}>
+                    {topOverdueProjects.map((project) => (
+                      <Grid key={`report-project-${project.id}`} item xs={12} md={6} xl={4}>
+                        <Card variant="outlined" sx={{ height: '100%' }}>
+                          <CardContent>
+                            <Stack spacing={1}>
+                              <Typography variant="subtitle2">{project.name}</Typography>
+                              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                <Chip size="small" color="warning" label={`Просрочено: ${project.overdue_tasks_count ?? 0}`} />
+                                <Chip size="small" label={`Активных: ${project.active_tasks_count ?? 0}`} />
+                                <Chip size="small" variant="outlined" label={`Всего: ${project.total_tasks_count ?? 0}`} />
+                              </Stack>
+                              <Typography variant="body2" color="text.secondary">
+                                Ответственный: <strong>{userName(project.owner_id)}</strong>
+                              </Typography>
+                              <Stack direction="row" spacing={1} flexWrap="wrap">
+                                <Button size="small" variant="outlined" onClick={() => openProjectDialog(project)}>
+                                  Открыть проект
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="warning"
+                                  onClick={() => drillDownToProjectTasks(project.id, { overdueOnly: true })}
+                                >
+                                  Просроченные задачи
+                                </Button>
+                              </Stack>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Stack>
               </CardContent>
             </Card>
           )}

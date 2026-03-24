@@ -474,6 +474,14 @@ function App() {
               }
             />
             <Route
+              path="/owner-workspace/reports"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/owner-workspace/comms"
               element={
                 <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>

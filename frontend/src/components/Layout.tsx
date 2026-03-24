@@ -209,6 +209,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' },
+        { text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' },
         { text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' },
         { text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' },
       ];
@@ -227,6 +228,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
+      items.push({ text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' });
       items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
@@ -245,6 +247,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
+      items.push({ text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' });
       items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
@@ -264,10 +267,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   /** Подсветка «Owner задачник» для любого `/owner-workspace/*`, кроме отдельных пунктов уведомлений и настроек. */
   const isOwnerWorkspaceMainSection = (pathname: string) =>
     pathname.startsWith('/owner-workspace') &&
+    pathname !== '/owner-workspace/reports' &&
     pathname !== '/owner-workspace/notifications' &&
     pathname !== '/owner-workspace/settings';
 
   const isDrawerItemSelected = (itemPath: string) => {
+    if (itemPath === '/owner-workspace/reports') return location.pathname === '/owner-workspace/reports';
     if (itemPath === '/owner-workspace/notifications') return location.pathname === '/owner-workspace/notifications';
     if (itemPath === '/owner-workspace/settings') return location.pathname === '/owner-workspace/settings';
     if (itemPath === '/owner-workspace/projects') return isOwnerWorkspaceMainSection(location.pathname);

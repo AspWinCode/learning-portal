@@ -584,6 +584,13 @@ const OwnerWorkspacePage: React.FC = () => {
     contactName: string;
     activeTaskCount: number;
   } | null>(null);
+  const [removeParticipantConfirm, setRemoveParticipantConfirm] = useState<{
+    projectId: number;
+    projectName: string;
+    userId: number;
+    userName: string;
+    role: OwnerWorkspaceProjectParticipantRole;
+  } | null>(null);
 
   const [taskTitle, setTaskTitle] = useState('');
   const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
@@ -1536,12 +1543,27 @@ const OwnerWorkspacePage: React.FC = () => {
     if (!projectDialog) return;
     try {
       await ownerWorkspaceApi.removeProjectParticipant(projectDialog.id, userId);
+      setRemoveParticipantConfirm(null);
       await loadProjectsAndContacts();
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
       setProjectDialog(updated);
     } catch (e: unknown) {
       setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР°'));
     }
+  };
+
+  const requestRemoveProjectParticipantUser = (
+    userId: number,
+    role: OwnerWorkspaceProjectParticipantRole
+  ) => {
+    if (!projectDialog) return;
+    setRemoveParticipantConfirm({
+      projectId: projectDialog.id,
+      projectName: projectDialog.name,
+      userId,
+      userName: userName(userId),
+      role,
+    });
   };
 
   const openLinkToTaskDialog = async (m: OwnerWorkspaceMessage) => {
@@ -4673,7 +4695,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     <Chip
                       size="small"
                       label={`${userName(pid)} В· ${OWNER_WS_PROJECT_PARTICIPANT_ROLE_LABELS[role]}`}
-                      onDelete={canDel ? () => void removeProjectParticipantUser(pid) : undefined}
+                      onDelete={canDel ? () => requestRemoveProjectParticipantUser(pid, role) : undefined}
                     />
                     {canChangeParticipantRoles ? (
                       <TextField
@@ -4841,6 +4863,36 @@ const OwnerWorkspacePage: React.FC = () => {
           <Button onClick={() => setUnlinkContactConfirm(null)}>РћС‚РјРµРЅР°</Button>
           <Button color="warning" variant="contained" onClick={() => void submitUnlinkContactFromProject()}>
             РЈР±СЂР°С‚СЊ РёР· РїСЂРѕРµРєС‚Р°
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(removeParticipantConfirm)} onClose={() => setRemoveParticipantConfirm(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>РЈРґР°Р»РёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР° РёР· РїСЂРѕРµРєС‚Р°?</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Typography variant="body2">
+              РЈС‡Р°СЃС‚РЅРёРє <strong>{removeParticipantConfirm?.userName || '—'}</strong> Р±СѓРґРµС‚ СѓР±СЂР°РЅ РёР· РїСЂРѕРµРєС‚Р°{' '}
+              <strong>{removeParticipantConfirm?.projectName || '—'}</strong>.
+            </Typography>
+            <Alert severity="info">
+              РЈС‡Р°СЃС‚РЅРёРє РїРѕС‚РµСЂСЏРµС‚ РґРѕСЃС‚СѓРї Рє РїСЂРѕРµРєС‚Сѓ Рё РµРіРѕ РєРѕРЅС‚РµРЅС‚Сѓ С‡РµСЂРµР· owner-workspace.
+            </Alert>
+            {removeParticipantConfirm?.role === 'manager' && (
+              <Alert severity="warning">
+                РЈРґР°Р»СЏРµС‚СЃСЏ РјРµРЅРµРґР¶РµСЂ РїСЂРѕРµРєС‚Р°. РџРѕСЃР»Рµ СЌС‚РѕРіРѕ РѕРЅ Р±РѕР»СЊС€Рµ РЅРµ СЃРјРѕР¶РµС‚ СѓРїСЂР°РІР»СЏС‚СЊ СЃРѕСЃС‚Р°РІРѕРј РєРѕРјР°РЅРґС‹.
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRemoveParticipantConfirm(null)}>РћС‚РјРµРЅР°</Button>
+          <Button
+            color="warning"
+            variant="contained"
+            onClick={() => removeParticipantConfirm && void removeProjectParticipantUser(removeParticipantConfirm.userId)}
+          >
+            РЈРґР°Р»РёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР°
           </Button>
         </DialogActions>
       </Dialog>

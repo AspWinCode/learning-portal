@@ -1101,6 +1101,9 @@ async def create_task(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    permission_policy = get_owner_workspace_permission_policy(db)
+    if not ctx.full and not permission_policy["limited_can_create_tasks"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if payload.contact_id is not None and not can_edit_contact_content(db, ctx, payload.contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if payload.project_id is not None and not project_visible(ctx, payload.project_id):
@@ -1340,6 +1343,9 @@ async def complete_task(
 
     new_task_row: Optional[OwnerWorkspaceTask] = None
     if payload.action == "close_and_create_next":
+        permission_policy = get_owner_workspace_permission_policy(db)
+        if not ctx.full and not permission_policy["limited_can_create_tasks"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
         next_data = payload.next_task
         if next_data is None:
             next_data = OwnerWorkspaceTaskCreate(
@@ -1660,6 +1666,9 @@ async def create_task_from_message(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    permission_policy = get_owner_workspace_permission_policy(db)
+    if not ctx.full and not permission_policy["limited_can_create_tasks"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")

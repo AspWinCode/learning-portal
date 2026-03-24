@@ -398,6 +398,7 @@ const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   manager_can_archive_project: false,
   limited_can_create_projects: false,
   limited_can_create_contacts: false,
+  limited_can_create_tasks: false,
 };
 
 type OwnerWorkspaceAssigneeAnalyticsRow = {
@@ -690,8 +691,18 @@ const OwnerWorkspacePage: React.FC = () => {
         'Создание контактов для ограниченных ролей может быть отключено policy-моделью.'
       );
     }
+    limitedSummary.push(
+      permissionPolicy.limited_can_create_tasks
+        ? 'Создание новых задач разрешено системной policy-моделью.'
+        : 'Создание новых задач для ограниченных ролей может быть отключено policy-моделью.'
+    );
     return limitedSummary;
-  }, [isWorkspaceFullAccess, permissionPolicy.limited_can_create_contacts, permissionPolicy.limited_can_create_projects]);
+  }, [
+    isWorkspaceFullAccess,
+    permissionPolicy.limited_can_create_contacts,
+    permissionPolicy.limited_can_create_projects,
+    permissionPolicy.limited_can_create_tasks,
+  ]);
   const [digest, setDigest] = useState<OwnerWorkspaceDigest | null>(null);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');
   const [digestProjectFilter, setDigestProjectFilter] = useState<number | ''>('');
@@ -1308,6 +1319,10 @@ const OwnerWorkspacePage: React.FC = () => {
   };
 
   const createTask = async () => {
+    if (!canCreateTaskUi) {
+      setError('Создание задачи запрещено текущей policy-моделью.');
+      return;
+    }
     if (!taskTitle.trim()) return;
     try {
       await ownerWorkspaceApi.createTask({
@@ -1487,6 +1502,10 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const submitComplete = async () => {
     if (!completeDialogTask) return;
+    if (completeMode === 'close_and_create_next' && !canCreateTaskUi) {
+      setError('Создание следующей задачи запрещено текущей policy-моделью.');
+      return;
+    }
     try {
       if (completeMode === 'close') {
         await ownerWorkspaceApi.completeTask(completeDialogTask.id, { action: 'close' });
@@ -2375,6 +2394,10 @@ const OwnerWorkspacePage: React.FC = () => {
     () => isWorkspaceFullAccess || permissionPolicy.limited_can_create_contacts,
     [isWorkspaceFullAccess, permissionPolicy.limited_can_create_contacts]
   );
+  const canCreateTaskUi = useMemo(
+    () => isWorkspaceFullAccess || permissionPolicy.limited_can_create_tasks,
+    [isWorkspaceFullAccess, permissionPolicy.limited_can_create_tasks]
+  );
 
   const canChangeParticipantRoles = useMemo(() => {
     if (!projectDialog || !user?.id) return false;
@@ -2534,17 +2557,19 @@ const OwnerWorkspacePage: React.FC = () => {
   const taskDialogReadOnly = taskFormLocked || !canEditTaskDialogContent;
 
   const canCreateNewTaskInSelectedContext = useMemo(() => {
+    if (!canCreateTaskUi) return false;
     const selectedProjectOk =
       newTaskProjectId === '' ? true : canEditProjectContentUi(Number(newTaskProjectId));
     const selectedContactOk =
       newTaskContactId === '' ? true : canEditContactContentUi(Number(newTaskContactId));
     return selectedProjectOk && selectedContactOk;
-  }, [canEditContactContentUi, canEditProjectContentUi, newTaskContactId, newTaskProjectId]);
+  }, [canCreateTaskUi, canEditContactContentUi, canEditProjectContentUi, newTaskContactId, newTaskProjectId]);
 
   const canCreateTaskFromMessageUi = useMemo(() => {
     if (!messageTaskDialog) return false;
+    if (!canCreateTaskUi) return false;
     return canEditContactContentUi(messageTaskDialog.message.contact_id);
-  }, [canEditContactContentUi, messageTaskDialog]);
+  }, [canCreateTaskUi, canEditContactContentUi, messageTaskDialog]);
 
   const canMutateTaskUi = useCallback(
     (task: OwnerWorkspaceTask | null | undefined) => {
@@ -3572,15 +3597,20 @@ const OwnerWorkspacePage: React.FC = () => {
         <Stack spacing={2}>
           <Card>
             <CardContent>
-              <Typography variant="subtitle2" gutterBottom>
-                РќРѕРІР°СЏ Р·Р°РґР°С‡Р°
-              </Typography>
-              <Stack spacing={1}>
-                {!canCreateNewTaskInSelectedContext && (
-                  <Alert severity="info">
-                    Р’С‹Р±СЂР°РЅРЅС‹Р№ РїСЂРѕРµРєС‚ РёР»Рё РєРѕРЅС‚Р°РєС‚ РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РЎРѕР·РґР°РЅРёРµ Р·Р°РґР°С‡Рё РІ СЌС‚РѕРј РєРѕРЅС‚РµРєСЃС‚Рµ РѕС‚РєР»СЋС‡РµРЅРѕ.
-                  </Alert>
-                )}
+                <Typography variant="subtitle2" gutterBottom>
+                  РќРѕРІР°СЏ Р·Р°РґР°С‡Р°
+                </Typography>
+                <Stack spacing={1}>
+                  {!canCreateTaskUi && (
+                    <Alert severity="info">
+                      Создание задач для ограниченных ролей сейчас отключено policy-моделью.
+                    </Alert>
+                  )}
+                  {canCreateTaskUi && !canCreateNewTaskInSelectedContext && (
+                    <Alert severity="info">
+                      Р’С‹Р±СЂР°РЅРЅС‹Р№ РїСЂРѕРµРєС‚ РёР»Рё РєРѕРЅС‚Р°РєС‚ РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РЎРѕР·РґР°РЅРёРµ Р·Р°РґР°С‡Рё РІ СЌС‚РѕРј РєРѕРЅС‚РµРєСЃС‚Рµ РѕС‚РєР»СЋС‡РµРЅРѕ.
+                    </Alert>
+                  )}
                 <TextField fullWidth label="РќР°Р·РІР°РЅРёРµ" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                   <TextField
@@ -4316,7 +4346,7 @@ const OwnerWorkspacePage: React.FC = () => {
                           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
                             <Button
                               size="small"
-                              disabled={!canEditContactContentUi(m.contact_id)}
+                              disabled={!canCreateTaskUi || !canEditContactContentUi(m.contact_id)}
                               onClick={() => {
                                 setMessageTaskTitle(m.text.slice(0, 80) + (m.text.length > 80 ? 'вЂ¦' : ''));
                                 setMessageTaskDialog({ message: m });
@@ -5188,6 +5218,17 @@ const OwnerWorkspacePage: React.FC = () => {
                             }
                             label="Ограниченные роли (sales / trainer) могут создавать контакты"
                           />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={permissionPolicyDraft.limited_can_create_tasks}
+                                onChange={(_, checked) =>
+                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_create_tasks: checked }))
+                                }
+                              />
+                            }
+                            label="Ограниченные роли (sales / trainer) могут создавать задачи"
+                          />
                         </Stack>
                       </CardContent>
                     </Card>
@@ -5364,7 +5405,7 @@ const OwnerWorkspacePage: React.FC = () => {
               variant="contained"
               size="small"
               sx={{ alignSelf: 'flex-start' }}
-              disabled={!canEditProjectDialogContent}
+              disabled={!canCreateTaskUi || !canEditProjectDialogContent}
               onClick={() => {
                 if (!projectDialog) return;
                 setNewTaskProjectId(projectDialog.id);
@@ -5903,7 +5944,7 @@ const OwnerWorkspacePage: React.FC = () => {
               variant="contained"
               size="small"
               sx={{ alignSelf: 'flex-start' }}
-              disabled={!canEditContactDialogContent}
+              disabled={!canCreateTaskUi || !canEditContactDialogContent}
               onClick={() => {
                 if (!contactDialog) return;
                 setNewTaskContactId(contactDialog.id);
@@ -6273,24 +6314,29 @@ const OwnerWorkspacePage: React.FC = () => {
             </Alert>
           )}
           <RadioGroup value={completeMode} onChange={(e) => setCompleteMode(e.target.value as typeof completeMode)}>
-            <FormControlLabel value="close" control={<Radio />} label="РџСЂРѕСЃС‚Рѕ Р·Р°РєСЂС‹С‚СЊ" />
-            <FormControlLabel
-              value="close_and_create_next"
-              control={<Radio />}
-              label="Р—Р°РєСЂС‹С‚СЊ Рё СЃРѕР·РґР°С‚СЊ СЃР»РµРґСѓСЋС‰СѓСЋ"
-            />
-          </RadioGroup>
-          {completeMode === 'close_and_create_next' && (
-            <TextField
-              fullWidth
-              sx={{ mt: 2 }}
-              label="РќР°Р·РІР°РЅРёРµ СЃР»РµРґСѓСЋС‰РµР№ Р·Р°РґР°С‡Рё"
-              value={nextTaskTitle}
-              onChange={(e) => setNextTaskTitle(e.target.value)}
-              disabled={completeDialogTask ? !canMutateTaskUi(completeDialogTask) : false}
-              placeholder="РћСЃС‚Р°РІСЊС‚Рµ РїСѓСЃС‚С‹Рј вЂ” РїРѕРґСЃС‚Р°РІРёС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё"
-            />
-          )}
+              <FormControlLabel value="close" control={<Radio />} label="РџСЂРѕСЃС‚Рѕ Р·Р°РєСЂС‹С‚СЊ" />
+              <FormControlLabel
+                value="close_and_create_next"
+                control={<Radio disabled={!canCreateTaskUi} />}
+                label="Р—Р°РєСЂС‹С‚СЊ Рё СЃРѕР·РґР°С‚СЊ СЃР»РµРґСѓСЋС‰СѓСЋ"
+              />
+            </RadioGroup>
+            {!canCreateTaskUi && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                Создание следующей задачи после завершения сейчас отключено policy-моделью.
+              </Alert>
+            )}
+            {completeMode === 'close_and_create_next' && (
+              <TextField
+                fullWidth
+                sx={{ mt: 2 }}
+                label="РќР°Р·РІР°РЅРёРµ СЃР»РµРґСѓСЋС‰РµР№ Р·Р°РґР°С‡Рё"
+                value={nextTaskTitle}
+                onChange={(e) => setNextTaskTitle(e.target.value)}
+                disabled={completeDialogTask ? !canMutateTaskUi(completeDialogTask) || !canCreateTaskUi : false}
+                placeholder="РћСЃС‚Р°РІСЊС‚Рµ РїСѓСЃС‚С‹Рј вЂ” РїРѕРґСЃС‚Р°РІРёС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё"
+              />
+            )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCompleteDialogTask(null)}>РћС‚РјРµРЅР°</Button>

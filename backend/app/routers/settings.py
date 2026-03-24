@@ -56,6 +56,7 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
     "manager_can_archive_project": False,
     "limited_can_create_projects": False,
     "limited_can_create_contacts": False,
+    "limited_can_create_tasks": False,
 }
 DEFAULT_OWNER_WS_NOTIFICATION_CONFIG = {
     "items": [
@@ -116,6 +117,7 @@ class OwnerWorkspacePermissionPolicyResponse(BaseModel):
     manager_can_archive_project: bool = False
     limited_can_create_projects: bool = False
     limited_can_create_contacts: bool = False
+    limited_can_create_tasks: bool = False
 
 
 class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
@@ -128,6 +130,7 @@ class OwnerWorkspacePermissionPolicyUpdate(BaseModel):
     manager_can_archive_project: bool = False
     limited_can_create_projects: bool = False
     limited_can_create_contacts: bool = False
+    limited_can_create_tasks: bool = False
 
 
 class OwnerWorkspaceProjectConfigResponse(BaseModel):
@@ -250,6 +253,7 @@ def _get_owner_ws_permission_policy(db: Session) -> dict:
         "manager_can_archive_project": bool(raw.get("manager_can_archive_project", False)),
         "limited_can_create_projects": bool(raw.get("limited_can_create_projects", False)),
         "limited_can_create_contacts": bool(raw.get("limited_can_create_contacts", False)),
+        "limited_can_create_tasks": bool(raw.get("limited_can_create_tasks", False)),
     }
 
 
@@ -510,6 +514,7 @@ async def set_owner_workspace_permission_policy(
         "manager_can_archive_project": bool(body.manager_can_archive_project),
         "limited_can_create_projects": bool(body.limited_can_create_projects),
         "limited_can_create_contacts": bool(body.limited_can_create_contacts),
+        "limited_can_create_tasks": bool(body.limited_can_create_tasks),
     }
     _set_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY, data)
     db.commit()

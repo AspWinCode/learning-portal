@@ -6759,6 +6759,9 @@ const OwnerWorkspacePage: React.FC = () => {
               </TextField>
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+              <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(12)}>
+                Сегодня
+              </Button>
               <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(24)}>
                 Последние 24ч
               </Button>

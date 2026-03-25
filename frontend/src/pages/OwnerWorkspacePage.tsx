@@ -1960,6 +1960,13 @@ const OwnerWorkspacePage: React.FC = () => {
     void openContactDialog(deleteTaskContact);
   };
 
+  const reviewDeleteTaskContactTasks = () => {
+    if (!deleteTaskContact) return;
+    setDeleteTaskConfirm(null);
+    closeTaskDialog();
+    openContactQuickTasks(deleteTaskContact.id);
+  };
+
   const reviewDeleteTaskPrevious = async () => {
     if (!deleteTaskConfirm?.previous_task_id) return;
     try {
@@ -7367,6 +7374,11 @@ const OwnerWorkspacePage: React.FC = () => {
                 {deleteTaskContact && (
                   <Button variant="outlined" onClick={reviewDeleteTaskContact}>
                     {'Открыть контакт'}
+                  </Button>
+                )}
+                {deleteTaskContact && (
+                  <Button variant="outlined" onClick={reviewDeleteTaskContactTasks}>
+                    {'Открыть задачи контакта'}
                   </Button>
                 )}
                 {deleteTaskConfirm?.previous_task_id != null && (

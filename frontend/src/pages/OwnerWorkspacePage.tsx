@@ -2874,6 +2874,20 @@ const OwnerWorkspacePage: React.FC = () => {
       return true;
     });
   }, [historyLogs]);
+  const applyHistoryPreset = useCallback((hours: number) => {
+    const now = new Date();
+    const from = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    setHistoryCreatedFrom(deadlineToLocalInput(from.toISOString()));
+    setHistoryCreatedTo(deadlineToLocalInput(now.toISOString()));
+  }, []);
+  const resetHistoryFilters = useCallback(() => {
+    setHistoryEntityFilter('');
+    setHistoryActionFilter('');
+    setHistoryAuthorFilter('');
+    setHistoryCreatedFrom('');
+    setHistoryCreatedTo('');
+    setHistoryLimit(300);
+  }, []);
 
   const userName = useCallback(
     (userId: number | null | undefined) => {
@@ -6425,6 +6439,20 @@ const OwnerWorkspacePage: React.FC = () => {
                   </MenuItem>
                 ))}
               </TextField>
+            </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+              <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(24)}>
+                Последние 24ч
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(24 * 7)}>
+                Последние 7 дней
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(24 * 30)}>
+                Последние 30 дней
+              </Button>
+              <Button size="small" color="secondary" onClick={resetHistoryFilters}>
+                Сбросить фильтры
+              </Button>
             </Stack>
             <Stack spacing={1} sx={{ maxHeight: 560, overflow: 'auto' }}>
               {historyLoading && (

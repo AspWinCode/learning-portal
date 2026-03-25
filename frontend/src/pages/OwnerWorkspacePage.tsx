@@ -1953,6 +1953,18 @@ const OwnerWorkspacePage: React.FC = () => {
     void openContactDialog(deleteTaskContact);
   };
 
+  const reviewDeleteTaskPrevious = async () => {
+    if (!deleteTaskConfirm?.previous_task_id) return;
+    try {
+      const full = await ownerWorkspaceApi.getTask(deleteTaskConfirm.previous_task_id);
+      setDeleteTaskConfirm(null);
+      closeTaskDialog();
+      await openTaskDialog(full);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось открыть предыдущую задачу'));
+    }
+  };
+
   const submitDeleteTask = async () => {
     if (!deleteTaskConfirm || !isWorkspaceFullAccess) return;
     try {
@@ -7264,7 +7276,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Typography>
               ))}
             </Stack>
-            {(deleteTaskProject || deleteTaskContact) && (
+            {(deleteTaskProject || deleteTaskContact || deleteTaskConfirm?.previous_task_id) && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 {deleteTaskProject && (
                   <Button variant="outlined" onClick={reviewDeleteTaskProject}>
@@ -7274,6 +7286,11 @@ const OwnerWorkspacePage: React.FC = () => {
                 {deleteTaskContact && (
                   <Button variant="outlined" onClick={reviewDeleteTaskContact}>
                     {'Открыть контакт'}
+                  </Button>
+                )}
+                {deleteTaskConfirm?.previous_task_id != null && (
+                  <Button variant="outlined" onClick={() => void reviewDeleteTaskPrevious()}>
+                    {'Открыть предыдущую задачу'}
                   </Button>
                 )}
               </Stack>

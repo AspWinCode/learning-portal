@@ -2745,6 +2745,12 @@ const OwnerWorkspacePage: React.FC = () => {
   };
 
   /** РџРµСЂРµС…РѕРґ РЅР° РІРєР»Р°РґРєСѓ В«Р—Р°РґР°С‡РёВ» СЃ С„РёР»СЊС‚СЂРѕРј РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ (state + URL СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓСЋС‚СЃСЏ СЃ С‚Р°Р±РѕРј). */
+  const reviewParticipantProjectTasks = (projectId: number, userId: number, overdueOnly = false) => {
+    setRemoveParticipantConfirm(null);
+    closeProjectDialog();
+    drillDownToAssigneeTasks(userId, { projectId, overdueOnly });
+  };
+
   const openContactQuickTasks = (contactId: number) => {
     setTaskContactFilter(contactId);
     handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
@@ -3190,6 +3196,36 @@ const OwnerWorkspacePage: React.FC = () => {
       })
       .slice(0, 5);
   }, [archiveProjectConfirm, projectDialogTasks]);
+  const removeParticipantTaskPreview = useMemo(() => {
+    if (!removeParticipantConfirm) return [] as OwnerWorkspaceTask[];
+    return projectDialogTasks
+      .filter(
+        (task) =>
+          task.project_id === removeParticipantConfirm.projectId &&
+          task.assignee_id === removeParticipantConfirm.userId &&
+          task.status !== 'completed' &&
+          task.status !== 'cancelled'
+      )
+      .sort((a, b) => {
+        const overdueDiff = Number(isTaskOverdue(b)) - Number(isTaskOverdue(a));
+        if (overdueDiff !== 0) return overdueDiff;
+        const aDeadline = a.deadline_at ? new Date(a.deadline_at).getTime() : Number.POSITIVE_INFINITY;
+        const bDeadline = b.deadline_at ? new Date(b.deadline_at).getTime() : Number.POSITIVE_INFINITY;
+        if (aDeadline !== bDeadline) return aDeadline - bDeadline;
+        return a.title.localeCompare(b.title, 'ru');
+      })
+      .slice(0, 5);
+  }, [projectDialogTasks, removeParticipantConfirm]);
+  const removeParticipantActiveTaskCount = useMemo(() => {
+    if (!removeParticipantConfirm) return 0;
+    return projectDialogTasks.filter(
+      (task) =>
+        task.project_id === removeParticipantConfirm.projectId &&
+        task.assignee_id === removeParticipantConfirm.userId &&
+        task.status !== 'completed' &&
+        task.status !== 'cancelled'
+    ).length;
+  }, [projectDialogTasks, removeParticipantConfirm]);
   const canCreateSubprojectUi = useMemo(() => {
     if (!projectDialog) return false;
     if (!canCreateProjectUi) return false;
@@ -7201,31 +7237,85 @@ const OwnerWorkspacePage: React.FC = () => {
       </Dialog>
 
       <Dialog open={Boolean(removeParticipantConfirm)} onClose={() => setRemoveParticipantConfirm(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>РЈРґР°Р»РёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР° РёР· РїСЂРѕРµРєС‚Р°?</DialogTitle>
+        <DialogTitle>{'Удалить участника из проекта?'}</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             <Typography variant="body2">
-              РЈС‡Р°СЃС‚РЅРёРє <strong>{removeParticipantConfirm?.userName || '—'}</strong> Р±СѓРґРµС‚ СѓР±СЂР°РЅ РёР· РїСЂРѕРµРєС‚Р°{' '}
-              <strong>{removeParticipantConfirm?.projectName || '—'}</strong>.
+              {'Участник '}
+              <strong>{removeParticipantConfirm?.userName || '—'}</strong>
+              {' будет убран из проекта '}
+              <strong>{removeParticipantConfirm?.projectName || '—'}</strong>
+              {'.'}
             </Typography>
             <Alert severity="info">
-              РЈС‡Р°СЃС‚РЅРёРє РїРѕС‚РµСЂСЏРµС‚ РґРѕСЃС‚СѓРї Рє РїСЂРѕРµРєС‚Сѓ Рё РµРіРѕ РєРѕРЅС‚РµРЅС‚Сѓ С‡РµСЂРµР· owner-workspace.
+              {'Участник потеряет доступ к проекту и его контенту через owner-workspace.'}
             </Alert>
             {removeParticipantConfirm?.role === 'manager' && (
               <Alert severity="warning">
-                РЈРґР°Р»СЏРµС‚СЃСЏ РјРµРЅРµРґР¶РµСЂ РїСЂРѕРµРєС‚Р°. РџРѕСЃР»Рµ СЌС‚РѕРіРѕ РѕРЅ Р±РѕР»СЊС€Рµ РЅРµ СЃРјРѕР¶РµС‚ СѓРїСЂР°РІР»СЏС‚СЊ СЃРѕСЃС‚Р°РІРѕРј РєРѕРјР°РЅРґС‹.
+                {'Удаляется менеджер проекта. После этого он больше не сможет управлять составом команды.'}
               </Alert>
+            )}
+            {removeParticipantActiveTaskCount > 0 && (
+              <Alert severity="warning">
+                {'На участнике остаются активные задачи в этом проекте: '}
+                {removeParticipantActiveTaskCount}
+                {'. '}
+                {'Проверьте, нужно ли сначала переназначить их.'}
+              </Alert>
+            )}
+            {removeParticipantTaskPreview.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  {'Примеры активных задач участника'}
+                </Typography>
+                <Stack spacing={0.75}>
+                  {removeParticipantTaskPreview.map((task) => (
+                    <Typography key={task.id} variant="body2" color="text.secondary">
+                      {'•'} #{task.id} {task.title}
+                      {isTaskOverdue(task) ? ' · просрочена' : ''}
+                    </Typography>
+                  ))}
+                  {removeParticipantActiveTaskCount > removeParticipantTaskPreview.length && (
+                    <Typography variant="caption" color="text.secondary">
+                      {'И ещё '} {removeParticipantActiveTaskCount - removeParticipantTaskPreview.length}
+                    </Typography>
+                  )}
+                </Stack>
+              </Box>
+            )}
+            {removeParticipantConfirm && removeParticipantActiveTaskCount > 0 && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button
+                  variant="outlined"
+                  onClick={() =>
+                    reviewParticipantProjectTasks(removeParticipantConfirm.projectId, removeParticipantConfirm.userId)
+                  }
+                >
+                  {'Открыть активные задачи'}
+                </Button>
+                {removeParticipantTaskPreview.some((task) => isTaskOverdue(task)) && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    onClick={() =>
+                      reviewParticipantProjectTasks(removeParticipantConfirm.projectId, removeParticipantConfirm.userId, true)
+                    }
+                  >
+                    {'Открыть только просрочку'}
+                  </Button>
+                )}
+              </Stack>
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRemoveParticipantConfirm(null)}>РћС‚РјРµРЅР°</Button>
+          <Button onClick={() => setRemoveParticipantConfirm(null)}>{'Отмена'}</Button>
           <Button
             color="warning"
             variant="contained"
             onClick={() => removeParticipantConfirm && void removeProjectParticipantUser(removeParticipantConfirm.userId)}
           >
-            РЈРґР°Р»РёС‚СЊ СѓС‡Р°СЃС‚РЅРёРєР°
+            {'Удалить участника'}
           </Button>
         </DialogActions>
       </Dialog>

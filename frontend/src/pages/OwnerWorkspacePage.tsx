@@ -1946,6 +1946,13 @@ const OwnerWorkspacePage: React.FC = () => {
     void openProjectDialog(deleteTaskProject);
   };
 
+  const reviewDeleteTaskProjectTasks = () => {
+    if (!deleteTaskProject) return;
+    setDeleteTaskConfirm(null);
+    closeTaskDialog();
+    drillDownToProjectTasks(deleteTaskProject.id);
+  };
+
   const reviewDeleteTaskContact = () => {
     if (!deleteTaskContact) return;
     setDeleteTaskConfirm(null);
@@ -7350,6 +7357,11 @@ const OwnerWorkspacePage: React.FC = () => {
                 {deleteTaskProject && (
                   <Button variant="outlined" onClick={reviewDeleteTaskProject}>
                     {'Открыть проект'}
+                  </Button>
+                )}
+                {deleteTaskProject && (
+                  <Button variant="outlined" onClick={reviewDeleteTaskProjectTasks}>
+                    {'Открыть задачи проекта'}
                   </Button>
                 )}
                 {deleteTaskContact && (

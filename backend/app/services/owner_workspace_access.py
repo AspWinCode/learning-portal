@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import FrozenSet, Optional, Set
+from typing import Dict, FrozenSet, Optional, Set
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -441,7 +441,9 @@ def audit_history_allowed(
     return False
 
 
-def audit_log_visible(db: Session, ctx: OwnerWorkspaceAccessContext, row: OwnerWorkspaceAuditLog) -> bool:
+def audit_log_visible(
+    db: Session, ctx: OwnerWorkspaceAccessContext, row: OwnerWorkspaceAuditLog, task_visibility_cache: Optional[Dict[int, bool]] = None
+) -> bool:
     if ctx.full:
         return True
     et = (row.entity_type or "").strip().lower()
@@ -451,6 +453,11 @@ def audit_log_visible(db: Session, ctx: OwnerWorkspaceAccessContext, row: OwnerW
     if et == "contact":
         return contact_visible(ctx, entity_id)
     if et == "task":
+        if task_visibility_cache is not None and entity_id in task_visibility_cache:
+            return task_visibility_cache[entity_id]
         task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == entity_id).first()
-        return bool(task and task_visible(ctx, task))
+        visible = bool(task and task_visible(ctx, task))
+        if task_visibility_cache is not None:
+            task_visibility_cache[entity_id] = visible
+        return visible
     return False

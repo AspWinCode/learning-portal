@@ -2188,12 +2188,13 @@ async def list_history(
         rows = []
         offset = 0
         batch_size = min(max(limit * 2, 100), 500)
+        task_visibility_cache = {}
         while len(rows) < limit:
             batch = ordered_q.offset(offset).limit(batch_size).all()
             if not batch:
                 break
             for row in batch:
-                if audit_log_visible(db, ctx, row):
+                if audit_log_visible(db, ctx, row, task_visibility_cache=task_visibility_cache):
                     rows.append(row)
                     if len(rows) >= limit:
                         break

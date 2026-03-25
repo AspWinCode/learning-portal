@@ -154,6 +154,23 @@ const DEFAULT_PROJECT_STATUS_LABELS: Record<string, string> = {
   archived: 'Архив',
 };
 
+const OWNER_WS_HISTORY_ENTITY_LABELS: Record<string, string> = {
+  project: 'Проект',
+  contact: 'Контакт',
+  task: 'Задача',
+};
+
+const OWNER_WS_HISTORY_ACTION_LABELS: Record<string, string> = {
+  create: 'Создание',
+  update: 'Изменение',
+  archive: 'Архивация',
+  delete: 'Удаление',
+  bulk_update: 'Массовое изменение',
+  complete: 'Завершение',
+  create_from_previous: 'Из предыдущей задачи',
+  create_from_message: 'Из сообщения',
+};
+
 type OwnerWorkspaceSubprojectTreeNode = {
   project: OwnerWorkspaceProject;
   children: OwnerWorkspaceSubprojectTreeNode[];
@@ -615,6 +632,11 @@ const OwnerWorkspacePage: React.FC = () => {
   const [conversations, setConversations] = useState<OwnerWorkspaceConversation[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [historyLogs, setHistoryLogs] = useState<OwnerWorkspaceAuditLog[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyEntityFilter, setHistoryEntityFilter] = useState<string>('');
+  const [historyActionFilter, setHistoryActionFilter] = useState<string>('');
+  const [historyAuthorFilter, setHistoryAuthorFilter] = useState<number | ''>('');
+  const [historyLimit, setHistoryLimit] = useState<number>(300);
 
   const [projectName, setProjectName] = useState('');
   const [contactName, setContactName] = useState('');
@@ -1687,8 +1709,17 @@ const OwnerWorkspacePage: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const rows = await ownerWorkspaceApi.listHistory();
-        if (!cancelled) setHistoryLogs(rows);
+        if (!cancelled) setHistoryLoading(true);
+        const rows = await ownerWorkspaceApi.listHistory({
+          entity_type: historyEntityFilter || undefined,
+          action_type: historyActionFilter || undefined,
+          author_id: historyAuthorFilter === '' ? undefined : historyAuthorFilter,
+          limit: historyLimit,
+        });
+        if (!cancelled) {
+          setHistoryLogs(rows);
+          setHistoryLoading(false);
+        }
       } catch (e: unknown) {
         if (!cancelled) setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РёСЃС‚РѕСЂРёСЋ'));
       }
@@ -1696,7 +1727,13 @@ const OwnerWorkspacePage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tab]);
+  }, [tab, historyActionFilter, historyAuthorFilter, historyEntityFilter, historyLimit]);
+
+  useEffect(() => {
+    if (tab === OW_TAB_HISTORY && error) {
+      setHistoryLoading(false);
+    }
+  }, [error, tab]);
 
   const createProject = async () => {
     if (!canCreateProjectUi) {
@@ -2807,6 +2844,15 @@ const OwnerWorkspacePage: React.FC = () => {
     () => users.filter((u) => ['admin', 'owner', 'sales', 'trainer'].includes(u.role)),
     [users]
   );
+  const historyActionOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const keys = [...Object.keys(OWNER_WS_HISTORY_ACTION_LABELS), ...historyLogs.map((item) => item.action_type)];
+    return keys.filter((key) => {
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [historyLogs]);
 
   const userName = useCallback(
     (userId: number | null | undefined) => {
@@ -2815,6 +2861,33 @@ const OwnerWorkspacePage: React.FC = () => {
       return u?.full_name || `#${userId}`;
     },
     [users]
+  );
+
+  const openHistoryEntity = useCallback(
+    async (entry: OwnerWorkspaceAuditLog) => {
+      try {
+        if (entry.entity_type === 'project') {
+          const project = await ownerWorkspaceApi.getProject(entry.entity_id);
+          setTab(OW_TAB_PROJECTS);
+          await openProjectDialogRef.current(project, { syncUrl: true });
+          return;
+        }
+        if (entry.entity_type === 'contact') {
+          const contact = await ownerWorkspaceApi.getContact(entry.entity_id);
+          setTab(OW_TAB_CONTACTS);
+          await openContactDialogRef.current(contact, { syncUrl: true });
+          return;
+        }
+        if (entry.entity_type === 'task') {
+          const task = await ownerWorkspaceApi.getTask(entry.entity_id);
+          setTab(OW_TAB_TASKS);
+          await openTaskDialogRef.current(task, { syncUrl: true });
+        }
+      } catch (e: unknown) {
+        setError(extractApiError(e, 'Не удалось открыть сущность из истории'));
+      }
+    },
+    [setTab]
   );
 
   const canManageProjectTeam = useMemo(() => {
@@ -6259,14 +6332,91 @@ const OwnerWorkspacePage: React.FC = () => {
             <Typography variant="subtitle2" gutterBottom>
               РСЃС‚РѕСЂРёСЏ РґРµР№СЃС‚РІРёР№ (Р°СѓРґРёС‚)
             </Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+              <TextField
+                select
+                label="Сущность"
+                value={historyEntityFilter}
+                onChange={(e) => setHistoryEntityFilter(e.target.value)}
+                sx={{ minWidth: 180 }}
+              >
+                <MenuItem value="">Все сущности</MenuItem>
+                {Object.entries(OWNER_WS_HISTORY_ENTITY_LABELS).map(([key, label]) => (
+                  <MenuItem key={key} value={key}>
+                    {label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Действие"
+                value={historyActionFilter}
+                onChange={(e) => setHistoryActionFilter(e.target.value)}
+                sx={{ minWidth: 220 }}
+              >
+                <MenuItem value="">Все действия</MenuItem>
+                {historyActionOptions.map((key) => (
+                  <MenuItem key={key} value={key}>
+                    {OWNER_WS_HISTORY_ACTION_LABELS[key] || key}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Автор"
+                value={historyAuthorFilter}
+                onChange={(e) => setHistoryAuthorFilter(e.target.value ? Number(e.target.value) : '')}
+                sx={{ minWidth: 220 }}
+              >
+                <MenuItem value="">Все авторы</MenuItem>
+                {userOptions.map((u) => (
+                  <MenuItem key={u.id} value={u.id}>
+                    {u.full_name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Лимит"
+                value={historyLimit}
+                onChange={(e) => setHistoryLimit(Number(e.target.value) || 300)}
+                sx={{ minWidth: 120 }}
+              >
+                {[100, 200, 300, 500, 1000].map((value) => (
+                  <MenuItem key={value} value={value}>
+                    {value}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Stack>
             <Stack spacing={1} sx={{ maxHeight: 560, overflow: 'auto' }}>
+              {historyLoading && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <CircularProgress size={18} />
+                  <Typography variant="body2" color="text.secondary">
+                    Загружаем историю...
+                  </Typography>
+                </Stack>
+              )}
               {historyLogs.length === 0 && (
                 <Typography variant="body2" color="text.secondary">
                   РќРµС‚ Р·Р°РїРёСЃРµР№ РёР»Рё РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅРѕ.
                 </Typography>
               )}
               {historyLogs.map((h) => (
-                <Box key={h.id} sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Box
+                  key={h.id}
+                  sx={{
+                    p: 1,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    cursor: ['project', 'contact', 'task'].includes(h.entity_type) ? 'pointer' : 'default',
+                  }}
+                  onClick={() => {
+                    if (['project', 'contact', 'task'].includes(h.entity_type)) void openHistoryEntity(h);
+                  }}
+                >
                   <Typography variant="caption" color="text.secondary" display="block">
                     {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} В· {userName(h.author_id)}
                   </Typography>

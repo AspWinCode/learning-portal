@@ -2580,7 +2580,13 @@ export const ownerWorkspaceApi = {
     const response = await api.post('/api/owner-workspace/messages', payload);
     return response.data;
   },
-  listHistory: async (params?: { entity_type?: string; entity_id?: number }): Promise<OwnerWorkspaceAuditLog[]> => {
+  listHistory: async (params?: {
+    entity_type?: string;
+    entity_id?: number;
+    action_type?: string;
+    author_id?: number;
+    limit?: number;
+  }): Promise<OwnerWorkspaceAuditLog[]> => {
     const response = await api.get('/api/owner-workspace/history', { params: params || {} });
     return response.data;
   },

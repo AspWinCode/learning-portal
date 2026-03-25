@@ -3066,6 +3066,11 @@ const OwnerWorkspacePage: React.FC = () => {
     },
     [users]
   );
+  const historyExportStamp = useCallback(() => {
+    const now = new Date();
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  }, []);
 
   const exportHistoryJson = useCallback(() => {
     const payload = historyLogs.map((entry) => ({
@@ -3076,10 +3081,10 @@ const OwnerWorkspacePage: React.FC = () => {
     }));
     downloadTextFile(
       `${JSON.stringify(payload, null, 2)}\n`,
-      `owner_workspace_history_${new Date().toISOString().slice(0, 10)}.json`,
+      `owner_workspace_history_${historyExportStamp()}.json`,
       'application/json;charset=utf-8'
     );
-  }, [historyLogs, userName]);
+  }, [historyExportStamp, historyLogs, userName]);
   const exportHistoryCsv = useCallback(() => {
     const header = [
       'created_at',
@@ -3110,8 +3115,8 @@ const OwnerWorkspacePage: React.FC = () => {
         .join(',')
     );
     const csv = `\uFEFF${header.map(ownerWsCsvCell).join(',')}\n${rows.join('\n')}\n`;
-    downloadTextFile(csv, `owner_workspace_history_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
-  }, [historyLogs, userName]);
+    downloadTextFile(csv, `owner_workspace_history_${historyExportStamp()}.csv`, 'text/csv;charset=utf-8');
+  }, [historyExportStamp, historyLogs, userName]);
   const copyWorkspaceEntityLink = useCallback(
     async (kind: 'project' | 'contact' | 'task', id: number) => {
       try {

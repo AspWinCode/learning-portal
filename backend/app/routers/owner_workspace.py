@@ -2222,6 +2222,7 @@ async def list_history(
         cursor_created_at = None
         cursor_id = None
         while len(rows) < limit:
+            remaining = limit - len(rows)
             batch_q = ordered_q
             if cursor_created_at is not None and cursor_id is not None:
                 if sort_order == "asc":
@@ -2250,11 +2251,19 @@ async def list_history(
             cursor_created_at = batch[-1].created_at
             cursor_id = batch[-1].id
             prefill_audit_log_task_visibility_cache(db, ctx, batch, task_visibility_cache)
+            visible_in_batch = 0
             for row in batch:
                 if audit_log_visible(db, ctx, row, task_visibility_cache=task_visibility_cache):
                     rows.append(row)
+                    visible_in_batch += 1
                     if len(rows) >= limit:
                         break
+            if visible_in_batch == 0:
+                batch_size = min(max(batch_size * 2, 100), 1000)
+            else:
+                estimated_next = max(remaining - visible_in_batch, 1) * len(batch)
+                estimated_next = (estimated_next + visible_in_batch - 1) // visible_in_batch
+                batch_size = min(max(estimated_next, 100), 1000)
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
 
 

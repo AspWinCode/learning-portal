@@ -3071,6 +3071,23 @@ const OwnerWorkspacePage: React.FC = () => {
     const pad = (value: number) => value.toString().padStart(2, '0');
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
   }, []);
+  const historyExportContextSlug = useMemo(() => {
+    const normalize = (value: string) =>
+      value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    const parts: string[] = [];
+    if (historyEntityFilter) parts.push(`entity-${normalize(historyEntityFilter)}`);
+    if (historyActionFilter) parts.push(`action-${normalize(historyActionFilter)}`);
+    if (historyAuthorFilter !== '') parts.push(`author-${historyAuthorFilter}`);
+    if (historyCreatedFrom) parts.push(`from-${normalize(historyCreatedFrom)}`);
+    if (historyCreatedTo) parts.push(`to-${normalize(historyCreatedTo)}`);
+    if (historyLimit !== 300) parts.push(`limit-${historyLimit}`);
+    parts.push(`rows-${historyLogs.length}`);
+    return parts.join('_') || 'all';
+  }, [historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historyLogs.length]);
 
   const exportHistoryJson = useCallback(() => {
     const payload = historyLogs.map((entry) => ({
@@ -3081,10 +3098,10 @@ const OwnerWorkspacePage: React.FC = () => {
     }));
     downloadTextFile(
       `${JSON.stringify(payload, null, 2)}\n`,
-      `owner_workspace_history_${historyExportStamp()}.json`,
+      `owner_workspace_history_${historyExportContextSlug}_${historyExportStamp()}.json`,
       'application/json;charset=utf-8'
     );
-  }, [historyExportStamp, historyLogs, userName]);
+  }, [historyExportContextSlug, historyExportStamp, historyLogs, userName]);
   const exportHistoryCsv = useCallback(() => {
     const header = [
       'created_at',
@@ -3115,8 +3132,8 @@ const OwnerWorkspacePage: React.FC = () => {
         .join(',')
     );
     const csv = `\uFEFF${header.map(ownerWsCsvCell).join(',')}\n${rows.join('\n')}\n`;
-    downloadTextFile(csv, `owner_workspace_history_${historyExportStamp()}.csv`, 'text/csv;charset=utf-8');
-  }, [historyExportStamp, historyLogs, userName]);
+    downloadTextFile(csv, `owner_workspace_history_${historyExportContextSlug}_${historyExportStamp()}.csv`, 'text/csv;charset=utf-8');
+  }, [historyExportContextSlug, historyExportStamp, historyLogs, userName]);
   const copyWorkspaceEntityLink = useCallback(
     async (kind: 'project' | 'contact' | 'task', id: number) => {
       try {

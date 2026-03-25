@@ -2165,6 +2165,8 @@ async def list_history(
     if not audit_history_allowed(db, ctx, entity_type, entity_id):
         return []
     normalized_entity_type = (entity_type or "").strip().lower()
+    if normalized_entity_type and normalized_entity_type not in {"project", "contact", "task"}:
+        return []
     if entity_id is not None and not normalized_entity_type:
         return []
     if entity_id is not None and entity_id <= 0:

@@ -7426,7 +7426,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Stack>
               </Box>
             )}
-            {unlinkContactConfirm && (unlinkContactConfirm.activeTaskCount ?? 0) > 0 && (
+            {unlinkContactConfirm && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <Button variant="outlined" onClick={reviewUnlinkContactProject}>
                   {'Открыть проект'}
@@ -7434,12 +7434,14 @@ const OwnerWorkspacePage: React.FC = () => {
                 <Button variant="outlined" onClick={reviewUnlinkContactCard}>
                   {'Открыть контакт'}
                 </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => reviewUnlinkContactTasks(unlinkContactConfirm.projectId, unlinkContactConfirm.contactId)}
-                >
-                  {'Открыть активные задачи'}
-                </Button>
+                {(unlinkContactConfirm.activeTaskCount ?? 0) > 0 && (
+                  <Button
+                    variant="outlined"
+                    onClick={() => reviewUnlinkContactTasks(unlinkContactConfirm.projectId, unlinkContactConfirm.contactId)}
+                  >
+                    {'Открыть активные задачи'}
+                  </Button>
+                )}
                 {unlinkContactOverdueTaskCount > 0 && (
                   <Button
                     variant="outlined"

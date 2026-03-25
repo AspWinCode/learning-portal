@@ -2797,6 +2797,14 @@ const OwnerWorkspacePage: React.FC = () => {
     drillDownToAssigneeTasks(userId, { projectId, overdueOnly });
   };
 
+  const reviewRemoveParticipantProject = () => {
+    if (!removeParticipantConfirm) return;
+    const project = projects.find((row) => row.id === removeParticipantConfirm.projectId);
+    if (!project) return;
+    setRemoveParticipantConfirm(null);
+    void openProjectDialog(project);
+  };
+
   const reviewParticipantTask = async (task: OwnerWorkspaceTask) => {
     setRemoveParticipantConfirm(null);
     closeProjectDialog();
@@ -7510,8 +7518,12 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Stack>
               </Box>
             )}
-            {removeParticipantConfirm && removeParticipantActiveTaskCount > 0 && (
+            {removeParticipantConfirm && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button variant="outlined" onClick={reviewRemoveParticipantProject}>
+                  {'Открыть проект'}
+                </Button>
+                {removeParticipantActiveTaskCount > 0 && (
                 <Button
                   variant="outlined"
                   onClick={() =>
@@ -7520,6 +7532,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 >
                   {'Открыть активные задачи'}
                 </Button>
+                )}
                 {removeParticipantTaskPreview.some((task) => isTaskOverdue(task)) && (
                   <Button
                     variant="outlined"

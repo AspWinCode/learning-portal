@@ -2781,6 +2781,11 @@ const OwnerWorkspacePage: React.FC = () => {
   };
 
   /** РџРµСЂРµС…РѕРґ РЅР° РІРєР»Р°РґРєСѓ В«Р—Р°РґР°С‡РёВ» СЃ С„РёР»СЊС‚СЂРѕРј РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ (state + URL СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓСЋС‚СЃСЏ СЃ С‚Р°Р±РѕРј). */
+  const reviewArchiveSubproject = (project: OwnerWorkspaceProject) => {
+    setArchiveProjectConfirm(null);
+    void openProjectDialog(project);
+  };
+
   const reviewParticipantProjectTasks = (projectId: number, userId: number, overdueOnly = false) => {
     setRemoveParticipantConfirm(null);
     closeProjectDialog();
@@ -7200,9 +7205,19 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Typography>
                 <Stack spacing={0.75}>
                   {archiveProjectSubprojectsPreview.map((project) => (
-                    <Typography key={project.id} variant="body2" color="text.secondary">
-                      • {project.name}
-                    </Typography>
+                    <Stack
+                      key={project.id}
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1}
+                      alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    >
+                      <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                        {'•'} {project.name}
+                      </Typography>
+                      <Button size="small" variant="outlined" onClick={() => reviewArchiveSubproject(project)}>
+                        {'Открыть'}
+                      </Button>
+                    </Stack>
                   ))}
                   {(archiveProjectConfirm?.subprojects_count ?? 0) > archiveProjectSubprojectsPreview.length && (
                     <Typography variant="caption" color="text.secondary">

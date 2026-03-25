@@ -2167,6 +2167,8 @@ async def list_history(
     normalized_entity_type = (entity_type or "").strip().lower()
     if entity_id is not None and not normalized_entity_type:
         return []
+    if author_id is not None and author_id <= 0:
+        return []
     if created_from is not None and created_to is not None and created_from > created_to:
         return []
     normalized_action_type = (action_type or "").strip().lower()

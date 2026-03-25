@@ -188,6 +188,10 @@ function ownerWsHistoryPrimaryLabel(entry: OwnerWorkspaceAuditLog): string {
   return `${entity} #${entry.entity_id} — ${action}`;
 }
 
+function ownerWsHistoryPayloadText(value: Record<string, unknown> | null | undefined): string {
+  return JSON.stringify(value ?? {}, null, 2);
+}
+
 type OwnerWorkspaceSubprojectTreeNode = {
   project: OwnerWorkspaceProject;
   children: OwnerWorkspaceSubprojectTreeNode[];
@@ -656,6 +660,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [historyCreatedFrom, setHistoryCreatedFrom] = useState('');
   const [historyCreatedTo, setHistoryCreatedTo] = useState('');
   const [historyLimit, setHistoryLimit] = useState<number>(300);
+  const [historyExpandedIds, setHistoryExpandedIds] = useState<number[]>([]);
+  const [taskHistoryExpandedIds, setTaskHistoryExpandedIds] = useState<number[]>([]);
 
   const [projectName, setProjectName] = useState('');
   const [contactName, setContactName] = useState('');
@@ -2887,6 +2893,12 @@ const OwnerWorkspacePage: React.FC = () => {
     setHistoryCreatedFrom('');
     setHistoryCreatedTo('');
     setHistoryLimit(300);
+  }, []);
+  const toggleExpandedHistoryEntry = useCallback((id: number) => {
+    setHistoryExpandedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  }, []);
+  const toggleExpandedTaskHistoryEntry = useCallback((id: number) => {
+    setTaskHistoryExpandedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   }, []);
 
   const userName = useCallback(
@@ -6498,6 +6510,49 @@ const OwnerWorkspacePage: React.FC = () => {
                       )}
                     </Stack>
                   )}
+                  {(h.old_value || h.new_value) && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      sx={{ mt: 0.75, alignSelf: 'flex-start' }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleExpandedHistoryEntry(h.id);
+                      }}
+                    >
+                      {historyExpandedIds.includes(h.id) ? 'Скрыть детали' : 'Показать детали'}
+                    </Button>
+                  )}
+                  {historyExpandedIds.includes(h.id) && (
+                    <Stack spacing={1} sx={{ mt: 1 }}>
+                      {h.old_value && (
+                        <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            До
+                          </Typography>
+                          <Box
+                            component="pre"
+                            sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, fontFamily: 'monospace' }}
+                          >
+                            {ownerWsHistoryPayloadText(h.old_value)}
+                          </Box>
+                        </Box>
+                      )}
+                      {h.new_value && (
+                        <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            После
+                          </Typography>
+                          <Box
+                            component="pre"
+                            sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, fontFamily: 'monospace' }}
+                          >
+                            {ownerWsHistoryPayloadText(h.new_value)}
+                          </Box>
+                        </Box>
+                      )}
+                    </Stack>
+                  )}
                 </Box>
               ))}
             </Stack>
@@ -7513,6 +7568,46 @@ const OwnerWorkspacePage: React.FC = () => {
                         ))}
                       {ownerWsHistoryChangedFields(h).length > 4 && (
                         <Chip size="small" variant="outlined" label={`+${ownerWsHistoryChangedFields(h).length - 4}`} />
+                      )}
+                    </Stack>
+                  )}
+                  {(h.old_value || h.new_value) && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      sx={{ mt: 0.75, alignSelf: 'flex-start' }}
+                      onClick={() => toggleExpandedTaskHistoryEntry(h.id)}
+                    >
+                      {taskHistoryExpandedIds.includes(h.id) ? 'Скрыть детали' : 'Показать детали'}
+                    </Button>
+                  )}
+                  {taskHistoryExpandedIds.includes(h.id) && (
+                    <Stack spacing={1} sx={{ mt: 1 }}>
+                      {h.old_value && (
+                        <Box sx={{ p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            До
+                          </Typography>
+                          <Box
+                            component="pre"
+                            sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, fontFamily: 'monospace' }}
+                          >
+                            {ownerWsHistoryPayloadText(h.old_value)}
+                          </Box>
+                        </Box>
+                      )}
+                      {h.new_value && (
+                        <Box sx={{ p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            После
+                          </Typography>
+                          <Box
+                            component="pre"
+                            sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, fontFamily: 'monospace' }}
+                          >
+                            {ownerWsHistoryPayloadText(h.new_value)}
+                          </Box>
+                        </Box>
                       )}
                     </Stack>
                   )}

@@ -2801,14 +2801,6 @@ const OwnerWorkspacePage: React.FC = () => {
     drillDownToProjectTasks(projectId, { overdueOnly });
   };
 
-  const reviewArchiveProject = () => {
-    if (!archiveProjectConfirm) return;
-    const project = projects.find((row) => row.id === archiveProjectConfirm.id);
-    if (!project) return;
-    setArchiveProjectConfirm(null);
-    void openProjectDialog(project);
-  };
-
   /** РџРµСЂРµС…РѕРґ РЅР° РІРєР»Р°РґРєСѓ В«Р—Р°РґР°С‡РёВ» СЃ С„РёР»СЊС‚СЂРѕРј РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ (state + URL СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓСЋС‚СЃСЏ СЃ С‚Р°Р±РѕРј). */
   const reviewArchiveSubproject = (project: OwnerWorkspaceProject) => {
     setArchiveProjectConfirm(null);

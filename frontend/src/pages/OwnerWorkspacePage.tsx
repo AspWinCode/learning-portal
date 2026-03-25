@@ -192,6 +192,23 @@ function ownerWsHistoryPayloadText(value: Record<string, unknown> | null | undef
   return JSON.stringify(value ?? {}, null, 2);
 }
 
+function ownerWsCsvCell(value: unknown): string {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadTextFile(content: string, filename: string, type: string): void {
+  const blob = new Blob([content], { type });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
 type OwnerWorkspaceSubprojectTreeNode = {
   project: OwnerWorkspaceProject;
   children: OwnerWorkspaceSubprojectTreeNode[];
@@ -2909,6 +2926,52 @@ const OwnerWorkspacePage: React.FC = () => {
     },
     [users]
   );
+
+  const exportHistoryJson = useCallback(() => {
+    const payload = historyLogs.map((entry) => ({
+      ...entry,
+      author_name: userName(entry.author_id),
+      label: ownerWsHistoryPrimaryLabel(entry),
+      changed_fields: ownerWsHistoryChangedFields(entry),
+    }));
+    downloadTextFile(
+      `${JSON.stringify(payload, null, 2)}\n`,
+      `owner_workspace_history_${new Date().toISOString().slice(0, 10)}.json`,
+      'application/json;charset=utf-8'
+    );
+  }, [historyLogs, userName]);
+  const exportHistoryCsv = useCallback(() => {
+    const header = [
+      'created_at',
+      'author_id',
+      'author_name',
+      'entity_type',
+      'entity_id',
+      'action_type',
+      'label',
+      'changed_fields',
+      'old_value',
+      'new_value',
+    ];
+    const rows = historyLogs.map((entry) =>
+      [
+        entry.created_at || '',
+        entry.author_id ?? '',
+        userName(entry.author_id),
+        entry.entity_type,
+        entry.entity_id,
+        entry.action_type,
+        ownerWsHistoryPrimaryLabel(entry),
+        ownerWsHistoryChangedFields(entry).join(', '),
+        ownerWsHistoryPayloadText(entry.old_value),
+        ownerWsHistoryPayloadText(entry.new_value),
+      ]
+        .map(ownerWsCsvCell)
+        .join(',')
+    );
+    const csv = `\uFEFF${header.map(ownerWsCsvCell).join(',')}\n${rows.join('\n')}\n`;
+    downloadTextFile(csv, `owner_workspace_history_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+  }, [historyLogs, userName]);
 
   const openHistoryEntity = useCallback(
     async (entry: OwnerWorkspaceAuditLog) => {
@@ -6464,6 +6527,12 @@ const OwnerWorkspacePage: React.FC = () => {
               </Button>
               <Button size="small" color="secondary" onClick={resetHistoryFilters}>
                 Сбросить фильтры
+              </Button>
+              <Button size="small" variant="contained" disabled={historyLogs.length === 0} onClick={exportHistoryCsv}>
+                Экспорт CSV
+              </Button>
+              <Button size="small" variant="outlined" disabled={historyLogs.length === 0} onClick={exportHistoryJson}>
+                Экспорт JSON
               </Button>
             </Stack>
             <Stack spacing={1} sx={{ maxHeight: 560, overflow: 'auto' }}>

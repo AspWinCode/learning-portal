@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Dict, FrozenSet, Iterable, Optional, Set
+from typing import FrozenSet, Optional, Set
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -18,7 +18,6 @@ from app.models import (
     OwnerWorkspaceProjectContact,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
-    OwnerWorkspaceAuditLog,
     AppSetting,
     User,
     UserRole,
@@ -428,9 +427,13 @@ def audit_history_allowed(
 ) -> bool:
     if ctx.full:
         return True
-    if not entity_type or entity_id is None:
+    if not entity_type:
         return True
     et = entity_type.strip().lower()
+    if et not in {"project", "contact", "task"}:
+        return False
+    if entity_id is None:
+        return True
     if et == "project":
         return project_visible(ctx, entity_id)
     if et == "contact":
@@ -440,43 +443,3 @@ def audit_history_allowed(
         return bool(t and task_visible(ctx, t))
     return False
 
-
-def audit_log_visible(
-    db: Session, ctx: OwnerWorkspaceAccessContext, row: OwnerWorkspaceAuditLog, task_visibility_cache: Optional[Dict[int, bool]] = None
-) -> bool:
-    if ctx.full:
-        return True
-    et = (row.entity_type or "").strip().lower()
-    entity_id = row.entity_id
-    if et == "project":
-        return project_visible(ctx, entity_id)
-    if et == "contact":
-        return contact_visible(ctx, entity_id)
-    if et == "task":
-        if task_visibility_cache is not None and entity_id in task_visibility_cache:
-            return task_visibility_cache[entity_id]
-        task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == entity_id).first()
-        visible = bool(task and task_visible(ctx, task))
-        if task_visibility_cache is not None:
-            task_visibility_cache[entity_id] = visible
-        return visible
-    return False
-
-
-def prefill_audit_log_task_visibility_cache(
-    db: Session, ctx: OwnerWorkspaceAccessContext, rows: Iterable[OwnerWorkspaceAuditLog], task_visibility_cache: Dict[int, bool]
-) -> None:
-    task_ids = {
-        row.entity_id
-        for row in rows
-        if (row.entity_type or "").strip().lower() == "task" and row.entity_id not in task_visibility_cache
-    }
-    if not task_ids:
-        return
-    tasks = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id.in_(task_ids)).all()
-    found_ids = set()
-    for task in tasks:
-        task_visibility_cache[task.id] = task_visible(ctx, task)
-        found_ids.add(task.id)
-    for missing_id in task_ids - found_ids:
-        task_visibility_cache[missing_id] = False

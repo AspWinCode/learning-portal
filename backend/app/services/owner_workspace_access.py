@@ -18,6 +18,7 @@ from app.models import (
     OwnerWorkspaceProjectContact,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
+    OwnerWorkspaceAuditLog,
     AppSetting,
     User,
     UserRole,
@@ -428,7 +429,7 @@ def audit_history_allowed(
     if ctx.full:
         return True
     if not entity_type or entity_id is None:
-        return False
+        return True
     et = entity_type.strip().lower()
     if et == "project":
         return project_visible(ctx, entity_id)
@@ -437,4 +438,19 @@ def audit_history_allowed(
     if et == "task":
         t = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == entity_id).first()
         return bool(t and task_visible(ctx, t))
+    return False
+
+
+def audit_log_visible(db: Session, ctx: OwnerWorkspaceAccessContext, row: OwnerWorkspaceAuditLog) -> bool:
+    if ctx.full:
+        return True
+    et = (row.entity_type or "").strip().lower()
+    entity_id = row.entity_id
+    if et == "project":
+        return project_visible(ctx, entity_id)
+    if et == "contact":
+        return contact_visible(ctx, entity_id)
+    if et == "task":
+        task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == entity_id).first()
+        return bool(task and task_visible(ctx, task))
     return False

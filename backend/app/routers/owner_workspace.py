@@ -11,6 +11,7 @@ from app.services.owner_workspace_access import (
     OWNER_WORKSPACE_API_ROLES,
     OwnerWorkspaceAccessContext,
     audit_history_allowed,
+    audit_log_visible,
     assert_full_workspace,
     build_owner_workspace_access_context,
     can_archive_project,
@@ -2178,9 +2179,27 @@ async def list_history(
     if created_to is not None:
         q = q.filter(OwnerWorkspaceAuditLog.created_at <= created_to)
     if sort_order == "asc":
-        rows = q.order_by(OwnerWorkspaceAuditLog.created_at.asc(), OwnerWorkspaceAuditLog.id.asc()).limit(limit).all()
+        ordered_q = q.order_by(OwnerWorkspaceAuditLog.created_at.asc(), OwnerWorkspaceAuditLog.id.asc())
     else:
-        rows = q.order_by(OwnerWorkspaceAuditLog.created_at.desc(), OwnerWorkspaceAuditLog.id.desc()).limit(limit).all()
+        ordered_q = q.order_by(OwnerWorkspaceAuditLog.created_at.desc(), OwnerWorkspaceAuditLog.id.desc())
+    if ctx.full:
+        rows = ordered_q.limit(limit).all()
+    else:
+        rows = []
+        offset = 0
+        batch_size = min(max(limit * 2, 100), 500)
+        while len(rows) < limit:
+            batch = ordered_q.offset(offset).limit(batch_size).all()
+            if not batch:
+                break
+            for row in batch:
+                if audit_log_visible(db, ctx, row):
+                    rows.append(row)
+                    if len(rows) >= limit:
+                        break
+            offset += batch_size
+            if offset >= 5000:
+                break
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
 
 

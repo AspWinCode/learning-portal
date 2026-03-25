@@ -6437,9 +6437,19 @@ const OwnerWorkspacePage: React.FC = () => {
                   <Typography variant="caption" color="text.secondary" display="block">
                     {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} В· {userName(h.author_id)}
                   </Typography>
-                  <Typography variant="body2">
-                    <strong>{h.entity_type}</strong> #{h.entity_id} вЂ” {h.action_type}
-                  </Typography>
+                  <Typography variant="body2">{ownerWsHistoryPrimaryLabel(h)}</Typography>
+                  {ownerWsHistoryChangedFields(h).length > 0 && (
+                    <Stack direction="row" spacing={1} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
+                      {ownerWsHistoryChangedFields(h)
+                        .slice(0, 4)
+                        .map((key) => (
+                          <Chip key={key} size="small" variant="outlined" label={key} />
+                        ))}
+                      {ownerWsHistoryChangedFields(h).length > 4 && (
+                        <Chip size="small" variant="outlined" label={`+${ownerWsHistoryChangedFields(h).length - 4}`} />
+                      )}
+                    </Stack>
+                  )}
                 </Box>
               ))}
             </Stack>

@@ -2177,8 +2177,10 @@ async def list_history(
         q = q.filter(OwnerWorkspaceAuditLog.created_at >= created_from)
     if created_to is not None:
         q = q.filter(OwnerWorkspaceAuditLog.created_at <= created_to)
-    order_clause = OwnerWorkspaceAuditLog.created_at.asc() if sort_order == "asc" else OwnerWorkspaceAuditLog.created_at.desc()
-    rows = q.order_by(order_clause).limit(limit).all()
+    if sort_order == "asc":
+        rows = q.order_by(OwnerWorkspaceAuditLog.created_at.asc(), OwnerWorkspaceAuditLog.id.asc()).limit(limit).all()
+    else:
+        rows = q.order_by(OwnerWorkspaceAuditLog.created_at.desc(), OwnerWorkspaceAuditLog.id.desc()).limit(limit).all()
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
 
 

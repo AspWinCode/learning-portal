@@ -2972,6 +2972,18 @@ const OwnerWorkspacePage: React.FC = () => {
     const csv = `\uFEFF${header.map(ownerWsCsvCell).join(',')}\n${rows.join('\n')}\n`;
     downloadTextFile(csv, `owner_workspace_history_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
   }, [historyLogs, userName]);
+  const copyWorkspaceEntityLink = useCallback(
+    async (kind: 'project' | 'contact' | 'task', id: number) => {
+      try {
+        await navigator.clipboard.writeText(`${window.location.origin}/owner-workspace/${kind}s/${id}`);
+        setError(null);
+        setMaxSyncResult('Ссылка скопирована.');
+      } catch (e: unknown) {
+        setError(extractApiError(e, 'Не удалось скопировать ссылку'));
+      }
+    },
+    []
+  );
 
   const openHistoryEntity = useCallback(
     async (entry: OwnerWorkspaceAuditLog) => {
@@ -6646,6 +6658,16 @@ const OwnerWorkspacePage: React.FC = () => {
                 ? ` В· РћР±РЅРѕРІР»С‘РЅ: ${new Date(projectDialog.updated_at).toLocaleString('ru-RU')}`
                 : ''}
             </Typography>
+            {projectDialog && (
+              <Button
+                size="small"
+                variant="outlined"
+                sx={{ alignSelf: 'flex-start' }}
+                onClick={() => void copyWorkspaceEntityLink('project', projectDialog.id)}
+              >
+                Копировать ссылку
+              </Button>
+            )}
             {!canEditProjectDialogContent && !canEditProjectDialogMeta && (
               <Alert severity="info">
                 Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё РїСЂРѕРµРєС‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РР·РјРµРЅРµРЅРёРµ Р·Р°РґР°С‡ Рё РїСЂРёРІСЏР·РѕРє РєРѕРЅС‚Р°РєС‚РѕРІ РѕС‚РєР»СЋС‡РµРЅРѕ.
@@ -7147,6 +7169,16 @@ const OwnerWorkspacePage: React.FC = () => {
         <DialogTitle>{contactDialog?.full_name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
+            {contactDialog && (
+              <Button
+                size="small"
+                variant="outlined"
+                sx={{ alignSelf: 'flex-start' }}
+                onClick={() => void copyWorkspaceEntityLink('contact', contactDialog.id)}
+              >
+                Копировать ссылку
+              </Button>
+            )}
             {!canEditContactDialogContent && (
               <Alert severity="info">
                 Р­С‚РѕС‚ РєРѕРЅС‚Р°РєС‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РР·РјРµРЅРµРЅРёРµ РєР°СЂС‚РѕС‡РєРё, РїСЂРёРІСЏР·РѕРє, Р·Р°РґР°С‡ Рё СЃРѕРѕР±С‰РµРЅРёР№ РѕС‚РєР»СЋС‡РµРЅРѕ.
@@ -7425,6 +7457,16 @@ const OwnerWorkspacePage: React.FC = () => {
                 ? ` В· РћР±РЅРѕРІР»РµРЅР°: ${new Date(taskDialog.updated_at).toLocaleString('ru-RU')}`
                 : ''}
             </Typography>
+            {taskDialog && (
+              <Button
+                size="small"
+                variant="outlined"
+                sx={{ alignSelf: 'flex-start' }}
+                onClick={() => void copyWorkspaceEntityLink('task', taskDialog.id)}
+              >
+                Копировать ссылку
+              </Button>
+            )}
             {taskDialog?.previous_task_id != null && (
               <Button size="small" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => void openPreviousWorkspaceTask()}>
                 РћС‚РєСЂС‹С‚СЊ РїСЂРµРґС‹РґСѓС‰СѓСЋ Р·Р°РґР°С‡Сѓ #{taskDialog.previous_task_id}

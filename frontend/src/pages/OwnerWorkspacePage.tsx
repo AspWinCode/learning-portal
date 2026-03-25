@@ -2797,6 +2797,12 @@ const OwnerWorkspacePage: React.FC = () => {
     drillDownToAssigneeTasks(userId, { projectId, overdueOnly });
   };
 
+  const reviewParticipantTask = async (task: OwnerWorkspaceTask) => {
+    setRemoveParticipantConfirm(null);
+    closeProjectDialog();
+    await openTaskDialog(task);
+  };
+
   const reviewUnlinkContactTasks = (projectId: number, contactId: number, overdueOnly = false) => {
     setUnlinkContactConfirm(null);
     closeProjectDialog();
@@ -7464,10 +7470,20 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Typography>
                 <Stack spacing={0.75}>
                   {removeParticipantTaskPreview.map((task) => (
-                    <Typography key={task.id} variant="body2" color="text.secondary">
-                      {'•'} #{task.id} {task.title}
-                      {isTaskOverdue(task) ? ' · просрочена' : ''}
-                    </Typography>
+                    <Stack
+                      key={task.id}
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1}
+                      alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    >
+                      <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                        {'•'} #{task.id} {task.title}
+                        {isTaskOverdue(task) ? ' · просрочена' : ''}
+                      </Typography>
+                      <Button size="small" variant="outlined" onClick={() => void reviewParticipantTask(task)}>
+                        {'Открыть'}
+                      </Button>
+                    </Stack>
                   ))}
                   {removeParticipantActiveTaskCount > removeParticipantTaskPreview.length && (
                     <Typography variant="caption" color="text.secondary">

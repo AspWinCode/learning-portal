@@ -2809,6 +2809,24 @@ const OwnerWorkspacePage: React.FC = () => {
     handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
   };
 
+  const reviewUnlinkContactProject = () => {
+    if (!unlinkContactConfirm) return;
+    const project = projects.find((row) => row.id === unlinkContactConfirm.projectId);
+    if (!project) return;
+    setUnlinkContactConfirm(null);
+    closeContactDialog();
+    void openProjectDialog(project);
+  };
+
+  const reviewUnlinkContactCard = () => {
+    if (!unlinkContactConfirm) return;
+    const contact = contacts.find((row) => row.id === unlinkContactConfirm.contactId);
+    if (!contact) return;
+    setUnlinkContactConfirm(null);
+    closeProjectDialog();
+    void openContactDialog(contact);
+  };
+
   const openContactQuickTasks = (contactId: number) => {
     setTaskContactFilter(contactId);
     handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
@@ -7379,6 +7397,12 @@ const OwnerWorkspacePage: React.FC = () => {
             )}
             {unlinkContactConfirm && (unlinkContactConfirm.activeTaskCount ?? 0) > 0 && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button variant="outlined" onClick={reviewUnlinkContactProject}>
+                  {'Открыть проект'}
+                </Button>
+                <Button variant="outlined" onClick={reviewUnlinkContactCard}>
+                  {'Открыть контакт'}
+                </Button>
                 <Button
                   variant="outlined"
                   onClick={() => reviewUnlinkContactTasks(unlinkContactConfirm.projectId, unlinkContactConfirm.contactId)}

@@ -2168,15 +2168,17 @@ async def list_history(
         return []
     q = db.query(OwnerWorkspaceAuditLog)
     if not ctx.full:
-        limited_task_filters = [
-            OwnerWorkspaceTask.assignee_id == ctx.user.id,
-            OwnerWorkspaceTask.creator_id == ctx.user.id,
-        ]
-        if ctx.project_ids:
-            limited_task_filters.append(OwnerWorkspaceTask.project_id.in_(ctx.project_ids))
-        if ctx.contact_ids:
-            limited_task_filters.append(OwnerWorkspaceTask.contact_id.in_(ctx.contact_ids))
-        visible_task_ids_subquery = db.query(OwnerWorkspaceTask.id).filter(or_(*limited_task_filters))
+        visible_task_ids_subquery = None
+        if entity_type in (None, "task"):
+            limited_task_filters = [
+                OwnerWorkspaceTask.assignee_id == ctx.user.id,
+                OwnerWorkspaceTask.creator_id == ctx.user.id,
+            ]
+            if ctx.project_ids:
+                limited_task_filters.append(OwnerWorkspaceTask.project_id.in_(ctx.project_ids))
+            if ctx.contact_ids:
+                limited_task_filters.append(OwnerWorkspaceTask.contact_id.in_(ctx.contact_ids))
+            visible_task_ids_subquery = db.query(OwnerWorkspaceTask.id).filter(or_(*limited_task_filters))
         if entity_type == "project" and entity_id is None:
             if not ctx.project_ids:
                 return []

@@ -2164,9 +2164,10 @@ async def list_history(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     normalized_entity_type = (entity_type or "").strip().lower()
-    if normalized_entity_type and normalized_entity_type not in OWNER_WORKSPACE_HISTORY_ENTITY_TYPES:
+    history_entity_type = normalized_entity_type or None
+    if history_entity_type and history_entity_type not in OWNER_WORKSPACE_HISTORY_ENTITY_TYPES:
         return []
-    if entity_id is not None and not normalized_entity_type:
+    if entity_id is not None and not history_entity_type:
         return []
     if entity_id is not None and entity_id <= 0:
         return []
@@ -2174,25 +2175,25 @@ async def list_history(
         return []
     if created_from is not None and created_to is not None and created_from > created_to:
         return []
-    if not audit_history_allowed(db, ctx, normalized_entity_type or None, entity_id):
+    if not audit_history_allowed(db, ctx, history_entity_type, entity_id):
         return []
     normalized_action_type = (action_type or "").strip().lower()
     q = db.query(OwnerWorkspaceAuditLog)
     if not ctx.full:
         visible_task_ids_subquery = None
-        if normalized_entity_type in ("", "task"):
+        if history_entity_type in (None, "task"):
             visible_task_ids_subquery = filter_tasks_query(db.query(OwnerWorkspaceTask.id), ctx).subquery()
-        if normalized_entity_type == "project" and entity_id is None:
+        if history_entity_type == "project" and entity_id is None:
             if not ctx.project_ids:
                 return []
             q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids))
-        elif normalized_entity_type == "contact" and entity_id is None:
+        elif history_entity_type == "contact" and entity_id is None:
             if not ctx.contact_ids:
                 return []
             q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.contact_ids))
-        elif normalized_entity_type == "task" and entity_id is None:
+        elif history_entity_type == "task" and entity_id is None:
             q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery))
-        elif not normalized_entity_type:
+        elif history_entity_type is None:
             q = q.filter(
                 or_(
                     and_(OwnerWorkspaceAuditLog.entity_type == "project", OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids or [-1])),
@@ -2200,8 +2201,8 @@ async def list_history(
                     and_(OwnerWorkspaceAuditLog.entity_type == "task", OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery)),
                 )
             )
-    if normalized_entity_type:
-        q = q.filter(OwnerWorkspaceAuditLog.entity_type == normalized_entity_type)
+    if history_entity_type:
+        q = q.filter(OwnerWorkspaceAuditLog.entity_type == history_entity_type)
     if entity_id is not None:
         q = q.filter(OwnerWorkspaceAuditLog.entity_id == entity_id)
     if normalized_action_type:

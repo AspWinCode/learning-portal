@@ -3164,6 +3164,32 @@ const OwnerWorkspacePage: React.FC = () => {
     },
     [isWorkspaceFullAccess, permissionPolicy.manager_can_archive_project, projectDialog, projectsCatalog, user?.id]
   );
+  const archiveProjectSubprojectsPreview = useMemo(() => {
+    if (!archiveProjectConfirm) return [] as OwnerWorkspaceProject[];
+    return projectsCatalog
+      .filter((project) => project.parent_project_id === archiveProjectConfirm.id)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+      .slice(0, 5);
+  }, [archiveProjectConfirm, projectsCatalog]);
+  const archiveProjectActiveTasksPreview = useMemo(() => {
+    if (!archiveProjectConfirm) return [] as OwnerWorkspaceTask[];
+    return projectDialogTasks
+      .filter(
+        (task) =>
+          task.project_id === archiveProjectConfirm.id &&
+          task.status !== 'completed' &&
+          task.status !== 'cancelled'
+      )
+      .sort((a, b) => {
+        const overdueDiff = Number(isTaskOverdue(b)) - Number(isTaskOverdue(a));
+        if (overdueDiff !== 0) return overdueDiff;
+        const aDeadline = a.deadline_at ? new Date(a.deadline_at).getTime() : Number.POSITIVE_INFINITY;
+        const bDeadline = b.deadline_at ? new Date(b.deadline_at).getTime() : Number.POSITIVE_INFINITY;
+        if (aDeadline !== bDeadline) return aDeadline - bDeadline;
+        return a.title.localeCompare(b.title, 'ru');
+      })
+      .slice(0, 5);
+  }, [archiveProjectConfirm, projectDialogTasks]);
   const canCreateSubprojectUi = useMemo(() => {
     if (!projectDialog) return false;
     if (!canCreateProjectUi) return false;
@@ -7056,6 +7082,45 @@ const OwnerWorkspacePage: React.FC = () => {
             <Typography variant="body2">
               РџСЂРѕРµРєС‚ В«{archiveProjectConfirm?.name}В» Р±СѓРґРµС‚ РїРµСЂРµРІРµРґС‘РЅ РІ СЃС‚Р°С‚СѓСЃ В«archivedВ». РџСЂРѕРґРѕР»Р¶РёС‚СЊ?
             </Typography>
+            {archiveProjectSubprojectsPreview.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Подпроекты, которые останутся привязанными
+                </Typography>
+                <Stack spacing={0.75}>
+                  {archiveProjectSubprojectsPreview.map((project) => (
+                    <Typography key={project.id} variant="body2" color="text.secondary">
+                      • {project.name}
+                    </Typography>
+                  ))}
+                  {(archiveProjectConfirm?.subprojects_count ?? 0) > archiveProjectSubprojectsPreview.length && (
+                    <Typography variant="caption" color="text.secondary">
+                      И ещё {archiveProjectConfirm!.subprojects_count - archiveProjectSubprojectsPreview.length}
+                    </Typography>
+                  )}
+                </Stack>
+              </Box>
+            )}
+            {archiveProjectActiveTasksPreview.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Примеры активных задач перед архивированием
+                </Typography>
+                <Stack spacing={0.75}>
+                  {archiveProjectActiveTasksPreview.map((task) => (
+                    <Typography key={task.id} variant="body2" color="text.secondary">
+                      • #{task.id} {task.title}
+                      {isTaskOverdue(task) ? ' · просрочена' : ''}
+                    </Typography>
+                  ))}
+                  {(archiveProjectConfirm?.active_tasks_count ?? 0) > archiveProjectActiveTasksPreview.length && (
+                    <Typography variant="caption" color="text.secondary">
+                      И ещё {archiveProjectConfirm!.active_tasks_count - archiveProjectActiveTasksPreview.length}
+                    </Typography>
+                  )}
+                </Stack>
+              </Box>
+            )}
             {(archiveProjectConfirm?.active_tasks_count ?? 0) > 0 && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <Button variant="outlined" onClick={() => reviewArchiveProjectTasks(archiveProjectConfirm!.id)}>

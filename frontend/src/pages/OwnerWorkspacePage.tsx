@@ -653,6 +653,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [historyEntityFilter, setHistoryEntityFilter] = useState<string>('');
   const [historyActionFilter, setHistoryActionFilter] = useState<string>('');
   const [historyAuthorFilter, setHistoryAuthorFilter] = useState<number | ''>('');
+  const [historyCreatedFrom, setHistoryCreatedFrom] = useState('');
+  const [historyCreatedTo, setHistoryCreatedTo] = useState('');
   const [historyLimit, setHistoryLimit] = useState<number>(300);
 
   const [projectName, setProjectName] = useState('');
@@ -1731,6 +1733,8 @@ const OwnerWorkspacePage: React.FC = () => {
           entity_type: historyEntityFilter || undefined,
           action_type: historyActionFilter || undefined,
           author_id: historyAuthorFilter === '' ? undefined : historyAuthorFilter,
+          created_from: localInputToIso(historyCreatedFrom) || undefined,
+          created_to: localInputToIso(historyCreatedTo) || undefined,
           limit: historyLimit,
         });
         if (!cancelled) {
@@ -1744,7 +1748,7 @@ const OwnerWorkspacePage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tab, historyActionFilter, historyAuthorFilter, historyEntityFilter, historyLimit]);
+  }, [tab, historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit]);
 
   useEffect(() => {
     if (tab === OW_TAB_HISTORY && error) {
@@ -6392,6 +6396,22 @@ const OwnerWorkspacePage: React.FC = () => {
                   </MenuItem>
                 ))}
               </TextField>
+              <TextField
+                label="С"
+                type="datetime-local"
+                value={historyCreatedFrom}
+                onChange={(e) => setHistoryCreatedFrom(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 220 }}
+              />
+              <TextField
+                label="По"
+                type="datetime-local"
+                value={historyCreatedTo}
+                onChange={(e) => setHistoryCreatedTo(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 220 }}
+              />
               <TextField
                 select
                 label="Лимит"

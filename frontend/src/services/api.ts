@@ -2585,6 +2585,8 @@ export const ownerWorkspaceApi = {
     entity_id?: number;
     action_type?: string;
     author_id?: number;
+    created_from?: string;
+    created_to?: string;
     limit?: number;
   }): Promise<OwnerWorkspaceAuditLog[]> => {
     const response = await api.get('/api/owner-workspace/history', { params: params || {} });

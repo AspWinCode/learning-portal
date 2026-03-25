@@ -171,6 +171,23 @@ const OWNER_WS_HISTORY_ACTION_LABELS: Record<string, string> = {
   create_from_message: 'Из сообщения',
 };
 
+function ownerWsHistoryChangedFields(entry: OwnerWorkspaceAuditLog): string[] {
+  const keys = new Set<string>();
+  if (entry.old_value && typeof entry.old_value === 'object') {
+    Object.keys(entry.old_value).forEach((key) => keys.add(key));
+  }
+  if (entry.new_value && typeof entry.new_value === 'object') {
+    Object.keys(entry.new_value).forEach((key) => keys.add(key));
+  }
+  return [...keys];
+}
+
+function ownerWsHistoryPrimaryLabel(entry: OwnerWorkspaceAuditLog): string {
+  const entity = OWNER_WS_HISTORY_ENTITY_LABELS[entry.entity_type] || entry.entity_type;
+  const action = OWNER_WS_HISTORY_ACTION_LABELS[entry.action_type] || entry.action_type;
+  return `${entity} #${entry.entity_id} — ${action}`;
+}
+
 type OwnerWorkspaceSubprojectTreeNode = {
   project: OwnerWorkspaceProject;
   children: OwnerWorkspaceSubprojectTreeNode[];
@@ -7428,7 +7445,19 @@ const OwnerWorkspacePage: React.FC = () => {
                   <Typography variant="caption" color="text.secondary">
                     {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} В· {userName(h.author_id)}
                   </Typography>
-                  <Typography variant="body2">{h.action_type}</Typography>
+                  <Typography variant="body2">{ownerWsHistoryPrimaryLabel(h)}</Typography>
+                  {ownerWsHistoryChangedFields(h).length > 0 && (
+                    <Stack direction="row" spacing={1} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
+                      {ownerWsHistoryChangedFields(h)
+                        .slice(0, 4)
+                        .map((key) => (
+                          <Chip key={key} size="small" variant="outlined" label={key} />
+                        ))}
+                      {ownerWsHistoryChangedFields(h).length > 4 && (
+                        <Chip size="small" variant="outlined" label={`+${ownerWsHistoryChangedFields(h).length - 4}`} />
+                      )}
+                    </Stack>
+                  )}
                 </Box>
               ))}
             </Stack>

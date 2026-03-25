@@ -2166,10 +2166,11 @@ async def list_history(
 ):
     if not audit_history_allowed(db, ctx, entity_type, entity_id):
         return []
+    normalized_entity_type = (entity_type or "").strip().lower()
     q = db.query(OwnerWorkspaceAuditLog)
     if not ctx.full:
         visible_task_ids_subquery = None
-        if entity_type in (None, "task"):
+        if normalized_entity_type in ("", "task"):
             limited_task_filters = [
                 OwnerWorkspaceTask.assignee_id == ctx.user.id,
                 OwnerWorkspaceTask.creator_id == ctx.user.id,
@@ -2179,17 +2180,17 @@ async def list_history(
             if ctx.contact_ids:
                 limited_task_filters.append(OwnerWorkspaceTask.contact_id.in_(ctx.contact_ids))
             visible_task_ids_subquery = db.query(OwnerWorkspaceTask.id).filter(or_(*limited_task_filters))
-        if entity_type == "project" and entity_id is None:
+        if normalized_entity_type == "project" and entity_id is None:
             if not ctx.project_ids:
                 return []
             q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids))
-        elif entity_type == "contact" and entity_id is None:
+        elif normalized_entity_type == "contact" and entity_id is None:
             if not ctx.contact_ids:
                 return []
             q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.contact_ids))
-        elif entity_type == "task" and entity_id is None:
+        elif normalized_entity_type == "task" and entity_id is None:
             q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery))
-        elif not entity_type:
+        elif not normalized_entity_type:
             q = q.filter(
                 or_(
                     and_(OwnerWorkspaceAuditLog.entity_type == "project", OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids or [-1])),
@@ -2213,7 +2214,7 @@ async def list_history(
         ordered_q = q.order_by(OwnerWorkspaceAuditLog.created_at.asc(), OwnerWorkspaceAuditLog.id.asc())
     else:
         ordered_q = q.order_by(OwnerWorkspaceAuditLog.created_at.desc(), OwnerWorkspaceAuditLog.id.desc())
-    if ctx.full:
+    if ctx.full or normalized_entity_type in {"project", "contact", "task"}:
         rows = ordered_q.limit(limit).all()
     else:
         rows = []

@@ -2165,8 +2165,6 @@ async def list_history(
     normalized_entity_type = (entity_type or "").strip().lower()
     if normalized_entity_type and normalized_entity_type not in {"project", "contact", "task"}:
         return []
-    if not audit_history_allowed(db, ctx, normalized_entity_type or None, entity_id):
-        return []
     if entity_id is not None and not normalized_entity_type:
         return []
     if entity_id is not None and entity_id <= 0:
@@ -2174,6 +2172,8 @@ async def list_history(
     if author_id is not None and author_id <= 0:
         return []
     if created_from is not None and created_to is not None and created_from > created_to:
+        return []
+    if not audit_history_allowed(db, ctx, normalized_entity_type or None, entity_id):
         return []
     normalized_action_type = (action_type or "").strip().lower()
     q = db.query(OwnerWorkspaceAuditLog)

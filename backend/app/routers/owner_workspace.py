@@ -12,6 +12,7 @@ from app.services.owner_workspace_access import (
     OwnerWorkspaceAccessContext,
     audit_history_allowed,
     audit_log_visible,
+    prefill_audit_log_task_visibility_cache,
     assert_full_workspace,
     build_owner_workspace_access_context,
     can_archive_project,
@@ -2193,6 +2194,7 @@ async def list_history(
             batch = ordered_q.offset(offset).limit(batch_size).all()
             if not batch:
                 break
+            prefill_audit_log_task_visibility_cache(db, ctx, batch, task_visibility_cache)
             for row in batch:
                 if audit_log_visible(db, ctx, row, task_visibility_cache=task_visibility_cache):
                     rows.append(row)

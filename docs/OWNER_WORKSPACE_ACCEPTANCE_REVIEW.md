@@ -1,6 +1,6 @@
 # Owner Workspace Line-By-Line Acceptance Review
 
-Last updated: 2026-03-24
+Last updated: 2026-03-26
 
 Purpose:
 - fix one explicit acceptance checklist against the current implementation
@@ -119,7 +119,9 @@ Status legend:
 |---|---|---|
 | Audit/history tab | DONE | Present. |
 | Task-level history | DONE | Present in task card. |
-| Full compliance-style exhaustive audit across every possible entity change | PARTIAL | Practical history coverage exists, but not a formally exhaustive compliance-grade audit matrix. |
+| Global history filtering and export | DONE | History supports entity/action/author/date-range/sort/limit filters, CSV/JSON export, readable labels and deep-link navigation into entities. |
+| Hardened history API contract | DONE | Invalid entity types, invalid ids, invalid date ranges and ambiguous `entity_id`-only requests are explicitly rejected with empty results instead of relying on implicit DB behavior. |
+| Full compliance-style exhaustive audit across every possible entity change | PARTIAL | Practical history coverage exists, but not a formally exhaustive compliance-grade audit matrix or separate audit-admin console. |
 
 ## 11. UX hardening and destructive flows
 
@@ -173,3 +175,4 @@ Status legend:
 2. Decide whether the current dedicated reporting surface inside owner-workspace is sufficient, or whether reporting must move into a standalone module.
 3. Decide whether mobile push is required for sign-off, or whether email + web push is sufficient for the current release.
 4. Close infra follow-up on PostgreSQL reliability so acceptance is not blocked by operational risk.
+5. Decide whether the current owner-workspace history surface is sufficient for sign-off, or whether a broader compliance/audit console is still required.

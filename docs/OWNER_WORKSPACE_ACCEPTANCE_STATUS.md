@@ -1,6 +1,6 @@
 # Owner Workspace Acceptance Status
 
-Last updated: 2026-03-24
+Last updated: 2026-03-26
 
 Reference review:
 - Detailed line-by-line acceptance review: [OWNER_WORKSPACE_ACCEPTANCE_REVIEW.md](OWNER_WORKSPACE_ACCEPTANCE_REVIEW.md)
@@ -162,6 +162,29 @@ Owner Workspace is in a working production state.
   - project archive
 - Removed remaining `window.confirm` usage from owner-workspace destructive flows.
 
+### Audit and history
+
+- Global history tab with filters for:
+  - entity
+  - action
+  - author
+  - date range
+  - sort order
+  - limit
+- Task-level history inside task dialog.
+- Readable action labels and compact changed-field summaries in both task history and global history.
+- Deep-link opening from history rows into project/contact/task dialogs.
+- History export:
+  - CSV
+  - JSON
+- History API hardening for:
+  - normalized entity/action filters
+  - invalid date ranges
+  - invalid entity/author ids
+  - invalid entity types
+  - explicit entity-id contract
+- Shared history entity-type rule between router and access layer.
+
 ## Partial
 
 ### Acceptance alignment
@@ -177,6 +200,10 @@ Owner Workspace is in a working production state.
 
 - Email and web push delivery are present through an outbox/background dispatcher in a dedicated worker service.
 - Delivery diagnostics and manual retry/requeue for failed notifications are available in settings, but there is still no broader replay/audit console beyond the owner-workspace admin surface.
+
+### Audit and history
+
+- History UX and backend filtering are now materially hardened, but there is still no separate compliance-style audit console or retention/forensics administration surface outside owner-workspace.
 
 ### Analytics
 
@@ -213,5 +240,6 @@ Owner Workspace is in a working production state.
 1. Stabilize production DB operations and backup discipline.
 2. Finish the acceptance/status documentation so it exactly matches the current notification and policy surface.
 3. Decide whether reporting must remain inside owner-workspace or move into a standalone reporting module.
-4. Do a line-by-line final acceptance review against the original specification.
-5. Decide whether mobile push is needed beyond the current web push channel.
+4. Decide whether the current history/audit surface is sufficient for sign-off or whether a broader audit console is required.
+5. Do a final acceptance pass against the current production state.
+6. Decide whether mobile push is needed beyond the current web push channel.

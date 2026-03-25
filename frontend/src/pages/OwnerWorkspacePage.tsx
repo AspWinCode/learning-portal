@@ -3052,6 +3052,8 @@ const OwnerWorkspacePage: React.FC = () => {
     setHistoryCreatedFrom('');
     setHistoryCreatedTo('');
     setHistoryLimit(300);
+    setHistorySortOrder('desc');
+    setHistoryExpandedIds([]);
   }, []);
   const toggleExpandedHistoryEntry = useCallback((id: number) => {
     setHistoryExpandedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));

@@ -2229,8 +2229,6 @@ async def list_history(
                     if len(rows) >= limit:
                         break
             offset += batch_size
-            if offset >= 5000:
-                break
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
 
 

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -3038,8 +3038,6 @@ const OwnerWorkspacePage: React.FC = () => {
     () => canEditTaskDialogContent && canEditTaskFieldsUi,
     [canEditTaskDialogContent, canEditTaskFieldsUi]
   );
-
-  const taskDialogReadOnly = taskFormLocked || !canEditTaskDialogContent;
 
   const canCreateNewTaskInSelectedContext = useMemo(() => {
     if (!canCreateTaskUi) return false;

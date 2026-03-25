@@ -2815,6 +2815,13 @@ const OwnerWorkspacePage: React.FC = () => {
     handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
   };
 
+  const reviewUnlinkContactTask = async (task: OwnerWorkspaceTask) => {
+    setUnlinkContactConfirm(null);
+    closeProjectDialog();
+    closeContactDialog();
+    await openTaskDialog(task);
+  };
+
   const reviewUnlinkContactProject = () => {
     if (!unlinkContactConfirm) return;
     const project = projects.find((row) => row.id === unlinkContactConfirm.projectId);
@@ -7388,10 +7395,20 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Typography>
                 <Stack spacing={0.75}>
                   {unlinkContactTaskPreview.map((task) => (
-                    <Typography key={task.id} variant="body2" color="text.secondary">
-                      {'•'} #{task.id} {task.title}
-                      {isTaskOverdue(task) ? ' · просрочена' : ''}
-                    </Typography>
+                    <Stack
+                      key={task.id}
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1}
+                      alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    >
+                      <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                        {'•'} #{task.id} {task.title}
+                        {isTaskOverdue(task) ? ' · просрочена' : ''}
+                      </Typography>
+                      <Button size="small" variant="outlined" onClick={() => void reviewUnlinkContactTask(task)}>
+                        {'Открыть'}
+                      </Button>
+                    </Stack>
                   ))}
                   {(unlinkContactConfirm?.activeTaskCount ?? 0) > unlinkContactTaskPreview.length && (
                     <Typography variant="caption" color="text.secondary">

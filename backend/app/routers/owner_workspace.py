@@ -2217,20 +2217,44 @@ async def list_history(
         rows = ordered_q.limit(limit).all()
     else:
         rows = []
-        offset = 0
         batch_size = min(max(limit * 2, 100), 500)
         task_visibility_cache = {}
+        cursor_created_at = None
+        cursor_id = None
         while len(rows) < limit:
-            batch = ordered_q.offset(offset).limit(batch_size).all()
+            batch_q = ordered_q
+            if cursor_created_at is not None and cursor_id is not None:
+                if sort_order == "asc":
+                    batch_q = batch_q.filter(
+                        or_(
+                            OwnerWorkspaceAuditLog.created_at > cursor_created_at,
+                            and_(
+                                OwnerWorkspaceAuditLog.created_at == cursor_created_at,
+                                OwnerWorkspaceAuditLog.id > cursor_id,
+                            ),
+                        )
+                    )
+                else:
+                    batch_q = batch_q.filter(
+                        or_(
+                            OwnerWorkspaceAuditLog.created_at < cursor_created_at,
+                            and_(
+                                OwnerWorkspaceAuditLog.created_at == cursor_created_at,
+                                OwnerWorkspaceAuditLog.id < cursor_id,
+                            ),
+                        )
+                    )
+            batch = batch_q.limit(batch_size).all()
             if not batch:
                 break
+            cursor_created_at = batch[-1].created_at
+            cursor_id = batch[-1].id
             prefill_audit_log_task_visibility_cache(db, ctx, batch, task_visibility_cache)
             for row in batch:
                 if audit_log_visible(db, ctx, row, task_visibility_cache=task_visibility_cache):
                     rows.append(row)
                     if len(rows) >= limit:
                         break
-            offset += batch_size
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
 
 

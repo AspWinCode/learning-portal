@@ -3101,6 +3101,8 @@ const OwnerWorkspacePage: React.FC = () => {
       `owner_workspace_history_${historyExportContextSlug}_${historyExportStamp()}.json`,
       'application/json;charset=utf-8'
     );
+    setError(null);
+    setMaxSyncResult(`Экспортировано ${historyLogs.length} записей истории в JSON.`);
   }, [historyExportContextSlug, historyExportStamp, historyLogs, userName]);
   const exportHistoryCsv = useCallback(() => {
     const header = [
@@ -3133,6 +3135,8 @@ const OwnerWorkspacePage: React.FC = () => {
     );
     const csv = `\uFEFF${header.map(ownerWsCsvCell).join(',')}\n${rows.join('\n')}\n`;
     downloadTextFile(csv, `owner_workspace_history_${historyExportContextSlug}_${historyExportStamp()}.csv`, 'text/csv;charset=utf-8');
+    setError(null);
+    setMaxSyncResult(`Экспортировано ${historyLogs.length} записей истории в CSV.`);
   }, [historyExportContextSlug, historyExportStamp, historyLogs, userName]);
   const copyWorkspaceEntityLink = useCallback(
     async (kind: 'project' | 'contact' | 'task', id: number) => {

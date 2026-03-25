@@ -2162,10 +2162,10 @@ async def list_history(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    if not audit_history_allowed(db, ctx, entity_type, entity_id):
-        return []
     normalized_entity_type = (entity_type or "").strip().lower()
     if normalized_entity_type and normalized_entity_type not in {"project", "contact", "task"}:
+        return []
+    if not audit_history_allowed(db, ctx, normalized_entity_type or None, entity_id):
         return []
     if entity_id is not None and not normalized_entity_type:
         return []

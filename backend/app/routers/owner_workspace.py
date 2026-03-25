@@ -2180,7 +2180,7 @@ async def list_history(
     if not ctx.full:
         visible_task_ids_subquery = None
         if normalized_entity_type in ("", "task"):
-            visible_task_ids_subquery = filter_tasks_query(db.query(OwnerWorkspaceTask.id), ctx)
+            visible_task_ids_subquery = filter_tasks_query(db.query(OwnerWorkspaceTask.id), ctx).subquery()
         if normalized_entity_type == "project" and entity_id is None:
             if not ctx.project_ids:
                 return []

@@ -1928,6 +1928,30 @@ const OwnerWorkspacePage: React.FC = () => {
     }
     return summary;
   }, [deleteTaskConfirm, taskComments, taskDialog?.id]);
+  const deleteTaskProject = useMemo(
+    () =>
+      deleteTaskConfirm?.project_id != null ? projects.find((project) => project.id === deleteTaskConfirm.project_id) ?? null : null,
+    [deleteTaskConfirm?.project_id, projects]
+  );
+  const deleteTaskContact = useMemo(
+    () =>
+      deleteTaskConfirm?.contact_id != null ? contacts.find((contact) => contact.id === deleteTaskConfirm.contact_id) ?? null : null,
+    [contacts, deleteTaskConfirm?.contact_id]
+  );
+
+  const reviewDeleteTaskProject = () => {
+    if (!deleteTaskProject) return;
+    setDeleteTaskConfirm(null);
+    closeTaskDialog();
+    void openProjectDialog(deleteTaskProject);
+  };
+
+  const reviewDeleteTaskContact = () => {
+    if (!deleteTaskContact) return;
+    setDeleteTaskConfirm(null);
+    closeTaskDialog();
+    void openContactDialog(deleteTaskContact);
+  };
 
   const submitDeleteTask = async () => {
     if (!deleteTaskConfirm || !isWorkspaceFullAccess) return;
@@ -7223,28 +7247,43 @@ const OwnerWorkspacePage: React.FC = () => {
       </Dialog>
 
       <Dialog open={Boolean(deleteTaskConfirm)} onClose={() => setDeleteTaskConfirm(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>РЈРґР°Р»РёС‚СЊ Р·Р°РґР°С‡Сѓ?</DialogTitle>
+        <DialogTitle>{'Удалить задачу?'}</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             <Alert severity="error">
-              Р—Р°РґР°С‡Р° Р±СѓРґРµС‚ СѓРґР°Р»РµРЅР° Р±РµР· РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РёР· РёРЅС‚РµСЂС„РµР№СЃР°.
+              {'Задача будет удалена без восстановления из интерфейса.'}
             </Alert>
             <Typography variant="body2">
-              Р—Р°РґР°С‡Р°: <strong>{deleteTaskConfirm?.title || '—'}</strong>
+              {'Задача: '}
+              <strong>{deleteTaskConfirm?.title || '—'}</strong>
             </Typography>
             <Stack spacing={0.75}>
               {deleteTaskSummary.map((item) => (
                 <Typography key={item} variant="body2" color="text.secondary">
-                  • {item}
+                  {'•'} {item}
                 </Typography>
               ))}
             </Stack>
+            {(deleteTaskProject || deleteTaskContact) && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                {deleteTaskProject && (
+                  <Button variant="outlined" onClick={reviewDeleteTaskProject}>
+                    {'Открыть проект'}
+                  </Button>
+                )}
+                {deleteTaskContact && (
+                  <Button variant="outlined" onClick={reviewDeleteTaskContact}>
+                    {'Открыть контакт'}
+                  </Button>
+                )}
+              </Stack>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteTaskConfirm(null)}>РћС‚РјРµРЅР°</Button>
+          <Button onClick={() => setDeleteTaskConfirm(null)}>{'Отмена'}</Button>
           <Button color="error" variant="contained" onClick={() => void submitDeleteTask()} disabled={!isWorkspaceFullAccess}>
-            РЈРґР°Р»РёС‚СЊ РЅР°РІСЃРµРіРґР°
+            {'Удалить навсегда'}
           </Button>
         </DialogActions>
       </Dialog>

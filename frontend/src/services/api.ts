@@ -2588,6 +2588,7 @@ export const ownerWorkspaceApi = {
     created_from?: string;
     created_to?: string;
     limit?: number;
+    sort_order?: 'asc' | 'desc';
   }): Promise<OwnerWorkspaceAuditLog[]> => {
     const response = await api.get('/api/owner-workspace/history', { params: params || {} });
     return response.data;

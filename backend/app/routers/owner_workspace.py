@@ -2158,6 +2158,7 @@ async def list_history(
     created_from: Optional[datetime] = Query(None),
     created_to: Optional[datetime] = Query(None),
     limit: int = Query(300, ge=1, le=1000),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
@@ -2176,7 +2177,8 @@ async def list_history(
         q = q.filter(OwnerWorkspaceAuditLog.created_at >= created_from)
     if created_to is not None:
         q = q.filter(OwnerWorkspaceAuditLog.created_at <= created_to)
-    rows = q.order_by(OwnerWorkspaceAuditLog.created_at.desc()).limit(limit).all()
+    order_clause = OwnerWorkspaceAuditLog.created_at.asc() if sort_order == "asc" else OwnerWorkspaceAuditLog.created_at.desc()
+    rows = q.order_by(order_clause).limit(limit).all()
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
 
 

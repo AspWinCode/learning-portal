@@ -677,6 +677,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [historyCreatedFrom, setHistoryCreatedFrom] = useState('');
   const [historyCreatedTo, setHistoryCreatedTo] = useState('');
   const [historyLimit, setHistoryLimit] = useState<number>(300);
+  const [historySortOrder, setHistorySortOrder] = useState<'asc' | 'desc'>('desc');
   const [historyExpandedIds, setHistoryExpandedIds] = useState<number[]>([]);
   const [taskHistoryExpandedIds, setTaskHistoryExpandedIds] = useState<number[]>([]);
 
@@ -1759,6 +1760,7 @@ const OwnerWorkspacePage: React.FC = () => {
           created_from: localInputToIso(historyCreatedFrom) || undefined,
           created_to: localInputToIso(historyCreatedTo) || undefined,
           limit: historyLimit,
+          sort_order: historySortOrder,
         });
         if (!cancelled) {
           setHistoryLogs(rows);
@@ -1771,7 +1773,7 @@ const OwnerWorkspacePage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tab, historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit]);
+  }, [tab, historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historySortOrder]);
 
   useEffect(() => {
     if (tab === OW_TAB_HISTORY && error) {
@@ -6774,6 +6776,16 @@ const OwnerWorkspacePage: React.FC = () => {
                     {value}
                   </MenuItem>
                 ))}
+              </TextField>
+              <TextField
+                select
+                label="РџРѕСЂСЏРґРѕРє"
+                value={historySortOrder}
+                onChange={(e) => setHistorySortOrder(e.target.value as 'asc' | 'desc')}
+                sx={{ minWidth: 180 }}
+              >
+                <MenuItem value="desc">РЎРЅР°С‡Р°Р»Р° РЅРѕРІС‹Рµ</MenuItem>
+                <MenuItem value="asc">РЎРЅР°С‡Р°Р»Р° СЃС‚Р°СЂС‹Рµ</MenuItem>
               </TextField>
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>

@@ -2860,6 +2860,14 @@ const OwnerWorkspacePage: React.FC = () => {
     void openProjectDialog(project);
   };
 
+  const reviewUnlinkContactComms = async () => {
+    if (!unlinkContactConfirm) return;
+    setUnlinkContactConfirm(null);
+    closeProjectDialog();
+    closeContactDialog();
+    await openContactQuickComms(unlinkContactConfirm.contactId);
+  };
+
   const reviewUnlinkContactCard = () => {
     if (!unlinkContactConfirm) return;
     const contact = contacts.find((row) => row.id === unlinkContactConfirm.contactId);
@@ -7469,6 +7477,9 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Button>
                 <Button variant="outlined" onClick={reviewUnlinkContactCard}>
                   {'Открыть контакт'}
+                </Button>
+                <Button variant="outlined" onClick={() => void reviewUnlinkContactComms()}>
+                  {'Открыть переписку'}
                 </Button>
                 {(unlinkContactConfirm.activeTaskCount ?? 0) > 0 && (
                   <Button

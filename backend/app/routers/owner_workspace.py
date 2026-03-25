@@ -2165,19 +2165,12 @@ async def list_history(
     if not audit_history_allowed(db, ctx, entity_type, entity_id):
         return []
     normalized_entity_type = (entity_type or "").strip().lower()
+    normalized_action_type = (action_type or "").strip().lower()
     q = db.query(OwnerWorkspaceAuditLog)
     if not ctx.full:
         visible_task_ids_subquery = None
         if normalized_entity_type in ("", "task"):
-            limited_task_filters = [
-                OwnerWorkspaceTask.assignee_id == ctx.user.id,
-                OwnerWorkspaceTask.creator_id == ctx.user.id,
-            ]
-            if ctx.project_ids:
-                limited_task_filters.append(OwnerWorkspaceTask.project_id.in_(ctx.project_ids))
-            if ctx.contact_ids:
-                limited_task_filters.append(OwnerWorkspaceTask.contact_id.in_(ctx.contact_ids))
-            visible_task_ids_subquery = db.query(OwnerWorkspaceTask.id).filter(or_(*limited_task_filters))
+            visible_task_ids_subquery = filter_tasks_query(db.query(OwnerWorkspaceTask.id), ctx)
         if normalized_entity_type == "project" and entity_id is None:
             if not ctx.project_ids:
                 return []
@@ -2200,8 +2193,8 @@ async def list_history(
         q = q.filter(OwnerWorkspaceAuditLog.entity_type == normalized_entity_type)
     if entity_id is not None:
         q = q.filter(OwnerWorkspaceAuditLog.entity_id == entity_id)
-    if action_type:
-        q = q.filter(OwnerWorkspaceAuditLog.action_type == action_type)
+    if normalized_action_type:
+        q = q.filter(OwnerWorkspaceAuditLog.action_type == normalized_action_type)
     if author_id is not None:
         q = q.filter(OwnerWorkspaceAuditLog.author_id == author_id)
     if created_from is not None:

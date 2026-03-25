@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import String, asc, case, cast, desc, exists, func, nullslast, or_
+from sqlalchemy import String, and_, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
 
 from app import auth
@@ -2167,6 +2167,34 @@ async def list_history(
     if not audit_history_allowed(db, ctx, entity_type, entity_id):
         return []
     q = db.query(OwnerWorkspaceAuditLog)
+    if not ctx.full:
+        limited_task_filters = [
+            OwnerWorkspaceTask.assignee_id == ctx.user.id,
+            OwnerWorkspaceTask.creator_id == ctx.user.id,
+        ]
+        if ctx.project_ids:
+            limited_task_filters.append(OwnerWorkspaceTask.project_id.in_(ctx.project_ids))
+        if ctx.contact_ids:
+            limited_task_filters.append(OwnerWorkspaceTask.contact_id.in_(ctx.contact_ids))
+        visible_task_ids_subquery = db.query(OwnerWorkspaceTask.id).filter(or_(*limited_task_filters))
+        if entity_type == "project" and entity_id is None:
+            if not ctx.project_ids:
+                return []
+            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids))
+        elif entity_type == "contact" and entity_id is None:
+            if not ctx.contact_ids:
+                return []
+            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.contact_ids))
+        elif entity_type == "task" and entity_id is None:
+            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery))
+        elif not entity_type:
+            q = q.filter(
+                or_(
+                    and_(OwnerWorkspaceAuditLog.entity_type == "project", OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids or [-1])),
+                    and_(OwnerWorkspaceAuditLog.entity_type == "contact", OwnerWorkspaceAuditLog.entity_id.in_(ctx.contact_ids or [-1])),
+                    and_(OwnerWorkspaceAuditLog.entity_type == "task", OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery)),
+                )
+            )
     if entity_type:
         q = q.filter(OwnerWorkspaceAuditLog.entity_type == entity_type)
     if entity_id is not None:

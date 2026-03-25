@@ -2177,7 +2177,7 @@ async def list_history(
         return []
     if not audit_history_allowed(db, ctx, history_entity_type, entity_id):
         return []
-    normalized_action_type = (action_type or "").strip().lower()
+    history_action_type = (action_type or "").strip().lower()
     q = db.query(OwnerWorkspaceAuditLog)
     if not ctx.full:
         visible_task_ids_subquery = None
@@ -2205,8 +2205,8 @@ async def list_history(
         q = q.filter(OwnerWorkspaceAuditLog.entity_type == history_entity_type)
     if entity_id is not None:
         q = q.filter(OwnerWorkspaceAuditLog.entity_id == entity_id)
-    if normalized_action_type:
-        q = q.filter(OwnerWorkspaceAuditLog.action_type == normalized_action_type)
+    if history_action_type:
+        q = q.filter(OwnerWorkspaceAuditLog.action_type == history_action_type)
     if author_id is not None:
         q = q.filter(OwnerWorkspaceAuditLog.author_id == author_id)
     if created_from is not None:

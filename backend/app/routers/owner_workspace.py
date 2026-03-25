@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.services.owner_workspace_access import (
+    OWNER_WORKSPACE_HISTORY_ENTITY_TYPES,
     OWNER_WORKSPACE_API_ROLES,
     OwnerWorkspaceAccessContext,
     audit_history_allowed,
@@ -2163,7 +2164,7 @@ async def list_history(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     normalized_entity_type = (entity_type or "").strip().lower()
-    if normalized_entity_type and normalized_entity_type not in {"project", "contact", "task"}:
+    if normalized_entity_type and normalized_entity_type not in OWNER_WORKSPACE_HISTORY_ENTITY_TYPES:
         return []
     if entity_id is not None and not normalized_entity_type:
         return []

@@ -60,6 +60,9 @@ class OwnerWorkspaceAccessContext:
     contact_ids: FrozenSet[int]
 
 
+OWNER_WORKSPACE_HISTORY_ENTITY_TYPES: FrozenSet[str] = frozenset({"project", "contact", "task"})
+
+
 def get_owner_workspace_permission_policy(db: Session) -> dict:
     setting = db.query(AppSetting).filter(AppSetting.key == OWNER_WS_PERMISSION_POLICY_KEY).first()
     if not setting or not (setting.value or "").strip():
@@ -430,7 +433,7 @@ def audit_history_allowed(
     if not entity_type:
         return True
     et = entity_type.strip().lower()
-    if et not in {"project", "contact", "task"}:
+    if et not in OWNER_WORKSPACE_HISTORY_ENTITY_TYPES:
         return False
     if entity_id is None:
         return True
@@ -442,4 +445,3 @@ def audit_history_allowed(
         t = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == entity_id).first()
         return bool(t and task_visible(ctx, t))
     return False
-

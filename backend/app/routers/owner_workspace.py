@@ -2196,8 +2196,8 @@ async def list_history(
                     and_(OwnerWorkspaceAuditLog.entity_type == "task", OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery)),
                 )
             )
-    if entity_type:
-        q = q.filter(OwnerWorkspaceAuditLog.entity_type == entity_type)
+    if normalized_entity_type:
+        q = q.filter(OwnerWorkspaceAuditLog.entity_type == normalized_entity_type)
     if entity_id is not None:
         q = q.filter(OwnerWorkspaceAuditLog.entity_id == entity_id)
     if action_type:

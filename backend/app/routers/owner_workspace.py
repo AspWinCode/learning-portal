@@ -2164,9 +2164,11 @@ async def list_history(
 ):
     if not audit_history_allowed(db, ctx, entity_type, entity_id):
         return []
+    normalized_entity_type = (entity_type or "").strip().lower()
+    if entity_id is not None and not normalized_entity_type:
+        return []
     if created_from is not None and created_to is not None and created_from > created_to:
         return []
-    normalized_entity_type = (entity_type or "").strip().lower()
     normalized_action_type = (action_type or "").strip().lower()
     q = db.query(OwnerWorkspaceAuditLog)
     if not ctx.full:

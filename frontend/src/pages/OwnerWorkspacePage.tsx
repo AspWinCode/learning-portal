@@ -2751,6 +2751,18 @@ const OwnerWorkspacePage: React.FC = () => {
     drillDownToAssigneeTasks(userId, { projectId, overdueOnly });
   };
 
+  const reviewUnlinkContactTasks = (projectId: number, contactId: number, overdueOnly = false) => {
+    setUnlinkContactConfirm(null);
+    closeProjectDialog();
+    closeContactDialog();
+    setTaskProjectFilter(projectId);
+    setTaskContactFilter(contactId);
+    setTaskAssigneeFilter('');
+    setTaskActiveOnly(true);
+    setTaskOverdueOnly(Boolean(overdueOnly));
+    handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
+  };
+
   const openContactQuickTasks = (contactId: number) => {
     setTaskContactFilter(contactId);
     handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
@@ -3226,6 +3238,33 @@ const OwnerWorkspacePage: React.FC = () => {
         task.status !== 'cancelled'
     ).length;
   }, [projectDialogTasks, removeParticipantConfirm]);
+  const unlinkContactTaskCandidates = useMemo(() => {
+    if (!unlinkContactConfirm) return [] as OwnerWorkspaceTask[];
+    const byId = new Map<number, OwnerWorkspaceTask>();
+    [...projectDialogTasks, ...contactDialogTasks].forEach((task) => {
+      if (
+        task.project_id === unlinkContactConfirm.projectId &&
+        task.contact_id === unlinkContactConfirm.contactId &&
+        task.status !== 'completed' &&
+        task.status !== 'cancelled'
+      ) {
+        byId.set(task.id, task);
+      }
+    });
+    return Array.from(byId.values()).sort((a, b) => {
+      const overdueDiff = Number(isTaskOverdue(b)) - Number(isTaskOverdue(a));
+      if (overdueDiff !== 0) return overdueDiff;
+      const aDeadline = a.deadline_at ? new Date(a.deadline_at).getTime() : Number.POSITIVE_INFINITY;
+      const bDeadline = b.deadline_at ? new Date(b.deadline_at).getTime() : Number.POSITIVE_INFINITY;
+      if (aDeadline !== bDeadline) return aDeadline - bDeadline;
+      return a.title.localeCompare(b.title, 'ru');
+    });
+  }, [contactDialogTasks, projectDialogTasks, unlinkContactConfirm]);
+  const unlinkContactTaskPreview = useMemo(() => unlinkContactTaskCandidates.slice(0, 5), [unlinkContactTaskCandidates]);
+  const unlinkContactOverdueTaskCount = useMemo(
+    () => unlinkContactTaskCandidates.filter((task) => isTaskOverdue(task)).length,
+    [unlinkContactTaskCandidates]
+  );
   const canCreateSubprojectUi = useMemo(() => {
     if (!projectDialog) return false;
     if (!canCreateProjectUi) return false;
@@ -7211,27 +7250,72 @@ const OwnerWorkspacePage: React.FC = () => {
       </Dialog>
 
       <Dialog open={Boolean(unlinkContactConfirm)} onClose={() => setUnlinkContactConfirm(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>РЈР±СЂР°С‚СЊ РєРѕРЅС‚Р°РєС‚ РёР· РїСЂРѕРµРєС‚Р°?</DialogTitle>
+        <DialogTitle>{'Убрать контакт из проекта?'}</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             <Typography variant="body2">
-              РљРѕРЅС‚Р°РєС‚ <strong>{unlinkContactConfirm?.contactName || '—'}</strong> Р±СѓРґРµС‚ РѕС‚РІСЏР·Р°РЅ РѕС‚ РїСЂРѕРµРєС‚Р°{' '}
-              <strong>{unlinkContactConfirm?.projectName || '—'}</strong>.
+              {'Контакт '}
+              <strong>{unlinkContactConfirm?.contactName || '—'}</strong>
+              {' будет отвязан от проекта '}
+              <strong>{unlinkContactConfirm?.projectName || '—'}</strong>
+              {'.'}
             </Typography>
             <Alert severity="info">
-              РљР°СЂС‚РѕС‡РєР° РєРѕРЅС‚Р°РєС‚Р° РІ СЃРёСЃС‚РµРјРµ СЃРѕС…СЂР°РЅРёС‚СЃСЏ. РЈР±РµСЂС‘С‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРёРІСЏР·РєР° Рє СЌС‚РѕРјСѓ РїСЂРѕРµРєС‚Сѓ.
+              {'Карточка контакта в системе сохранится. Уберётся только привязка к этому проекту.'}
             </Alert>
             {(unlinkContactConfirm?.activeTaskCount ?? 0) > 0 && (
               <Alert severity="warning">
-                РЈ СЌС‚РѕР№ СЃРІСЏР·РєРё РµСЃС‚СЊ Р°РєС‚РёРІРЅС‹Рµ Р·Р°РґР°С‡Рё: {unlinkContactConfirm!.activeTaskCount}. РџСЂРѕРІРµСЂСЊС‚Рµ, РЅСѓР¶РЅРѕ Р»Рё СЃРЅР°С‡Р°Р»Р° РїРµСЂРµРЅРµСЃС‚Рё РёС… РІ РґСЂСѓРіРѕР№ РїСЂРѕРµРєС‚.
+                {'У этой связки есть активные задачи: '}
+                {unlinkContactConfirm!.activeTaskCount}
+                {'. '}
+                {'Проверьте, нужно ли сначала перенести их в другой проект.'}
               </Alert>
+            )}
+            {unlinkContactTaskPreview.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  {'Примеры активных задач по этой связке'}
+                </Typography>
+                <Stack spacing={0.75}>
+                  {unlinkContactTaskPreview.map((task) => (
+                    <Typography key={task.id} variant="body2" color="text.secondary">
+                      {'•'} #{task.id} {task.title}
+                      {isTaskOverdue(task) ? ' · просрочена' : ''}
+                    </Typography>
+                  ))}
+                  {(unlinkContactConfirm?.activeTaskCount ?? 0) > unlinkContactTaskPreview.length && (
+                    <Typography variant="caption" color="text.secondary">
+                      {'И ещё '} {(unlinkContactConfirm?.activeTaskCount ?? 0) - unlinkContactTaskPreview.length}
+                    </Typography>
+                  )}
+                </Stack>
+              </Box>
+            )}
+            {unlinkContactConfirm && (unlinkContactConfirm.activeTaskCount ?? 0) > 0 && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button
+                  variant="outlined"
+                  onClick={() => reviewUnlinkContactTasks(unlinkContactConfirm.projectId, unlinkContactConfirm.contactId)}
+                >
+                  {'Открыть активные задачи'}
+                </Button>
+                {unlinkContactOverdueTaskCount > 0 && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    onClick={() => reviewUnlinkContactTasks(unlinkContactConfirm.projectId, unlinkContactConfirm.contactId, true)}
+                  >
+                    {'Открыть только просрочку'}
+                  </Button>
+                )}
+              </Stack>
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUnlinkContactConfirm(null)}>РћС‚РјРµРЅР°</Button>
+          <Button onClick={() => setUnlinkContactConfirm(null)}>{'Отмена'}</Button>
           <Button color="warning" variant="contained" onClick={() => void submitUnlinkContactFromProject()}>
-            РЈР±СЂР°С‚СЊ РёР· РїСЂРѕРµРєС‚Р°
+            {'Убрать из проекта'}
           </Button>
         </DialogActions>
       </Dialog>

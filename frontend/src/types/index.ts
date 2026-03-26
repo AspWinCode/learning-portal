@@ -1288,6 +1288,16 @@ export interface OwnerWorkspaceTagDictionary {
   items: string[];
 }
 
+export interface OwnerWorkspaceSettingsBundle {
+  task_config: OwnerWorkspaceTaskConfig;
+  project_config: OwnerWorkspaceProjectConfig;
+  permission_policy: OwnerWorkspacePermissionPolicy;
+  notification_config: OwnerWorkspaceNotificationConfig;
+  task_tags: OwnerWorkspaceTagDictionary;
+  contact_tags: OwnerWorkspaceTagDictionary;
+  contact_sources: OwnerWorkspaceTagDictionary;
+}
+
 export interface OwnerWorkspaceTaskCompleteResult {
   completed_task: OwnerWorkspaceTask;
   next_task: OwnerWorkspaceTask | null;

@@ -64,6 +64,7 @@ import {
   OwnerWorkspaceTaskConfig,
   OwnerWorkspaceProjectConfig,
   OwnerWorkspaceNotificationConfig,
+  OwnerWorkspaceSettingsBundle,
   OwnerWorkspaceNotificationDeliveryStats,
   OwnerWorkspaceNotificationDeliveryRetryResult,
   OwnerWorkspaceTagDictionary,
@@ -1064,6 +1065,16 @@ export const settingsApi = {
     payload: OwnerWorkspaceTagDictionary
   ): Promise<OwnerWorkspaceTagDictionary> => {
     const response = await api.post('/api/settings/owner-workspace-contact-sources', payload);
+    return response.data;
+  },
+  getOwnerWorkspaceSettingsBundle: async (): Promise<OwnerWorkspaceSettingsBundle> => {
+    const response = await api.get('/api/settings/owner-workspace-settings-bundle');
+    return response.data;
+  },
+  setOwnerWorkspaceSettingsBundle: async (
+    payload: OwnerWorkspaceSettingsBundle
+  ): Promise<OwnerWorkspaceSettingsBundle> => {
+    const response = await api.post('/api/settings/owner-workspace-settings-bundle', payload);
     return response.data;
   },
 };

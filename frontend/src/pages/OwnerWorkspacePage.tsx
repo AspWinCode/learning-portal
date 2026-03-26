@@ -75,6 +75,7 @@ import type {
   OwnerWorkspaceMessage,
   OwnerWorkspaceNotificationConfig,
   OwnerWorkspaceNotificationDeliveryStats,
+  OwnerWorkspaceSettingsBundle,
   OwnerWorkspaceProjectConfig,
   OwnerWorkspaceProject,
   OwnerWorkspaceSearchResult,
@@ -788,6 +789,9 @@ const OwnerWorkspacePage: React.FC = () => {
   const [permissionPolicy, setPermissionPolicy] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicyDraft, setPermissionPolicyDraft] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicySaving, setPermissionPolicySaving] = useState(false);
+  const [settingsBundleDialogOpen, setSettingsBundleDialogOpen] = useState(false);
+  const [settingsBundleImportText, setSettingsBundleImportText] = useState('');
+  const [settingsBundleImporting, setSettingsBundleImporting] = useState(false);
   const currentWorkspaceAccessSummary = useMemo(() => {
     if (isWorkspaceFullAccess) {
       return [
@@ -875,6 +879,27 @@ const OwnerWorkspacePage: React.FC = () => {
     permissionPolicy.limited_can_link_messages,
     permissionPolicy.limited_can_send_messages,
     permissionPolicy.limited_can_comment_tasks,
+  ]);
+
+  const workspaceSettingsBundle = useMemo<OwnerWorkspaceSettingsBundle | null>(() => {
+    if (!taskConfig || !projectConfig || !notificationConfig) return null;
+    return {
+      task_config: taskConfig,
+      project_config: projectConfig,
+      permission_policy: permissionPolicy,
+      notification_config: notificationConfig,
+      task_tags: taskTagDictionary,
+      contact_tags: contactTagDictionary,
+      contact_sources: contactSourceDictionary,
+    };
+  }, [
+    contactSourceDictionary,
+    contactTagDictionary,
+    notificationConfig,
+    permissionPolicy,
+    projectConfig,
+    taskConfig,
+    taskTagDictionary,
   ]);
 
   const permissionMatrixRows = useMemo(
@@ -1412,6 +1437,23 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   }, []);
 
+  const applyWorkspaceSettingsBundle = useCallback((bundle: OwnerWorkspaceSettingsBundle) => {
+    setTaskConfig(bundle.task_config);
+    setTaskConfigDraft(bundle.task_config);
+    setProjectConfig(bundle.project_config);
+    setProjectConfigDraft(bundle.project_config);
+    setNotificationConfig(bundle.notification_config);
+    setNotificationConfigDraft(bundle.notification_config);
+    setTaskTagDictionary(bundle.task_tags);
+    setTaskTagDictionaryDraft(bundle.task_tags);
+    setContactTagDictionary(bundle.contact_tags);
+    setContactTagDictionaryDraft(bundle.contact_tags);
+    setContactSourceDictionary(bundle.contact_sources);
+    setContactSourceDictionaryDraft(bundle.contact_sources);
+    setPermissionPolicy(bundle.permission_policy);
+    setPermissionPolicyDraft(bundle.permission_policy);
+  }, []);
+
   const loadMeta = useCallback(async () => {
     try {
       const [conv, u, cfg, projectCfg, permissionCfg, notificationCfg, taskTagsCfg, contactTagsCfg, contactSourcesCfg] = await Promise.all([
@@ -1427,20 +1469,15 @@ const OwnerWorkspacePage: React.FC = () => {
       ]);
       setConversations(conv);
       setUsers(Array.isArray(u) ? u : []);
-      setTaskConfig(cfg);
-      setTaskConfigDraft(cfg);
-      setProjectConfig(projectCfg);
-      setProjectConfigDraft(projectCfg);
-      setNotificationConfig(notificationCfg);
-      setNotificationConfigDraft(notificationCfg);
-      setTaskTagDictionary(taskTagsCfg);
-      setTaskTagDictionaryDraft(taskTagsCfg);
-      setContactTagDictionary(contactTagsCfg);
-      setContactTagDictionaryDraft(contactTagsCfg);
-      setContactSourceDictionary(contactSourcesCfg);
-      setContactSourceDictionaryDraft(contactSourcesCfg);
-      setPermissionPolicy(permissionCfg);
-      setPermissionPolicyDraft(permissionCfg);
+      applyWorkspaceSettingsBundle({
+        task_config: cfg,
+        project_config: projectCfg,
+        permission_policy: permissionCfg,
+        notification_config: notificationCfg,
+        task_tags: taskTagsCfg,
+        contact_tags: contactTagsCfg,
+        contact_sources: contactSourcesCfg,
+      });
     } catch (e: unknown) {
       setError(extractApiError(e, 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ'));
     }
@@ -2886,6 +2923,58 @@ const OwnerWorkspacePage: React.FC = () => {
       setContactSourceDictionarySaving(false);
     }
   };
+
+  const exportWorkspaceSettingsBundle = useCallback(() => {
+    if (!workspaceSettingsBundle) {
+      setError('Системный bundle owner workspace пока не загружен.');
+      return;
+    }
+    const payload = JSON.stringify(workspaceSettingsBundle, null, 2);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(
+      payload,
+      `owner_workspace_settings_bundle_${stamp}.json`,
+      'application/json;charset=utf-8'
+    );
+    setMaxSyncResult('Экспортирован bundle системных настроек owner workspace.');
+  }, [workspaceSettingsBundle]);
+
+  const copyWorkspaceSettingsBundle = useCallback(async () => {
+    if (!workspaceSettingsBundle) {
+      setError('Системный bundle owner workspace пока не загружен.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(workspaceSettingsBundle, null, 2));
+      setMaxSyncResult('JSON bundle системных настроек owner workspace скопирован.');
+    } catch {
+      setError('Не удалось скопировать JSON bundle системных настроек owner workspace.');
+    }
+  }, [workspaceSettingsBundle]);
+
+  const importWorkspaceSettingsBundle = useCallback(async () => {
+    let parsed: OwnerWorkspaceSettingsBundle;
+    try {
+      parsed = JSON.parse(settingsBundleImportText);
+    } catch {
+      setError('Импорт bundle: укажите корректный JSON.');
+      return;
+    }
+    setSettingsBundleImporting(true);
+    try {
+      const saved = await settingsApi.setOwnerWorkspaceSettingsBundle(parsed);
+      applyWorkspaceSettingsBundle(saved);
+      setSettingsBundleDialogOpen(false);
+      setSettingsBundleImportText('');
+      setError(null);
+      setMaxSyncResult('Bundle системных настроек owner workspace импортирован.');
+      await loadNotificationDeliveryStats();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось импортировать bundle системных настроек owner workspace'));
+    } finally {
+      setSettingsBundleImporting(false);
+    }
+  }, [applyWorkspaceSettingsBundle, loadNotificationDeliveryStats, settingsBundleImportText]);
 
   const handleWorkspaceTabChange = (_: React.SyntheticEvent, v: number) => {
     if (v !== OW_TAB_TASKS) {
@@ -6873,6 +6962,50 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Stack>
               </>
             )}
+            {isWorkspaceFullAccess && workspaceSettingsBundle && (
+              <>
+                <Divider sx={{ my: 3 }} />
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="h6" gutterBottom>
+                      Bundle системных настроек
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Экспортируйте или импортируйте весь owner-workspace admin bundle одним JSON-файлом: словари,
+                      policy, статусы, приоритеты и конфигурацию уведомлений.
+                    </Typography>
+                  </Box>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        <Typography variant="subtitle2">Portable admin bundle</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Экспорт использует текущее сохранённое состояние на сервере. Импорт нормализует значения по тем же
+                          правилам, что и обычные admin-формы owner-workspace.
+                        </Typography>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                          <Button variant="contained" onClick={exportWorkspaceSettingsBundle}>
+                            Экспорт JSON
+                          </Button>
+                          <Button variant="outlined" onClick={() => void copyWorkspaceSettingsBundle()}>
+                            Копировать JSON
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            onClick={() => {
+                              setSettingsBundleImportText('');
+                              setSettingsBundleDialogOpen(true);
+                            }}
+                          >
+                            Импорт JSON
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Stack>
+              </>
+            )}
             {isWorkspaceFullAccess && permissionPolicyDraft && (
               <>
                 <Divider sx={{ my: 3 }} />
@@ -8981,6 +9114,39 @@ const OwnerWorkspacePage: React.FC = () => {
             onClick={submitLinkToTask}
           >
             РџСЂРёРІСЏР·Р°С‚СЊ
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={settingsBundleDialogOpen} onClose={() => !settingsBundleImporting && setSettingsBundleDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Импорт bundle системных настроек</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info">
+              Вставьте JSON bundle owner-workspace. Импорт перезапишет системные словари, policy, статусы, приоритеты и
+              конфигурацию уведомлений.
+            </Alert>
+            <TextField
+              fullWidth
+              multiline
+              minRows={16}
+              label="JSON bundle"
+              value={settingsBundleImportText}
+              onChange={(e) => setSettingsBundleImportText(e.target.value)}
+              placeholder='{"task_config": {...}, "project_config": {...}}'
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsBundleDialogOpen(false)} disabled={settingsBundleImporting}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void importWorkspaceSettingsBundle()}
+            disabled={settingsBundleImporting || !settingsBundleImportText.trim()}
+          >
+            {settingsBundleImporting ? 'Импорт...' : 'Импортировать'}
           </Button>
         </DialogActions>
       </Dialog>

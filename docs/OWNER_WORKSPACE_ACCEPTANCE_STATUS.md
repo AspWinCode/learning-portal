@@ -115,6 +115,10 @@ Owner Workspace is in a working production state.
   - task tags
   - contact tags
   - contact sources
+- Portable admin bundle for owner-workspace settings:
+  - full JSON export
+  - clipboard copy
+  - normalized JSON import
 - Configurable project-role policy for manager capabilities in admin settings.
 - Configurable limited-role policy for `sales` / `trainer` in admin settings:
   - project creation

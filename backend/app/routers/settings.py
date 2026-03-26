@@ -200,6 +200,26 @@ class OwnerWorkspaceTagDictionaryUpdate(BaseModel):
     items: List[str]
 
 
+class OwnerWorkspaceSettingsBundleResponse(BaseModel):
+    task_config: OwnerWorkspaceTaskConfigResponse
+    project_config: OwnerWorkspaceProjectConfigResponse
+    permission_policy: OwnerWorkspacePermissionPolicyResponse
+    notification_config: OwnerWorkspaceNotificationConfigResponse
+    task_tags: OwnerWorkspaceTagDictionaryResponse
+    contact_tags: OwnerWorkspaceTagDictionaryResponse
+    contact_sources: OwnerWorkspaceTagDictionaryResponse
+
+
+class OwnerWorkspaceSettingsBundleUpdate(BaseModel):
+    task_config: OwnerWorkspaceTaskConfigUpdate
+    project_config: OwnerWorkspaceProjectConfigUpdate
+    permission_policy: OwnerWorkspacePermissionPolicyUpdate
+    notification_config: OwnerWorkspaceNotificationConfigUpdate
+    task_tags: OwnerWorkspaceTagDictionaryUpdate
+    contact_tags: OwnerWorkspaceTagDictionaryUpdate
+    contact_sources: OwnerWorkspaceTagDictionaryUpdate
+
+
 class OwnerWorkspaceNotificationDeliveryChannelStats(BaseModel):
     pending: int
     failed: int
@@ -417,6 +437,82 @@ def _normalize_owner_ws_tag_items(items: List[str]) -> List[str]:
         seen.add(lowered)
         out.append(normalized)
     return out
+
+
+def _build_owner_ws_settings_bundle(db: Session) -> dict:
+    return {
+        "task_config": _get_owner_ws_task_config(db),
+        "project_config": _get_owner_ws_project_config(db),
+        "permission_policy": _get_owner_ws_permission_policy(db),
+        "notification_config": _get_owner_ws_notification_config(db),
+        "task_tags": {"items": _get_owner_ws_tag_dictionary(db, OWNER_WS_TASK_TAGS_KEY)},
+        "contact_tags": {"items": _get_owner_ws_tag_dictionary(db, OWNER_WS_CONTACT_TAGS_KEY)},
+        "contact_sources": {"items": _get_owner_ws_tag_dictionary(db, OWNER_WS_CONTACT_SOURCES_KEY)},
+    }
+
+
+def _normalize_owner_ws_settings_bundle(body: OwnerWorkspaceSettingsBundleUpdate) -> dict:
+    return {
+        "task_config": {
+            "statuses": _normalize_owner_ws_task_items(
+                body.task_config.statuses,
+                allowed_keys=OWNER_WS_STATUS_KEYS,
+                defaults=DEFAULT_OWNER_WS_TASK_CONFIG["statuses"],
+            ),
+            "priorities": _normalize_owner_ws_task_items(
+                body.task_config.priorities,
+                allowed_keys=OWNER_WS_PRIORITY_KEYS,
+                defaults=DEFAULT_OWNER_WS_TASK_CONFIG["priorities"],
+            ),
+        },
+        "project_config": {
+            "statuses": _normalize_owner_ws_task_items(
+                body.project_config.statuses,
+                allowed_keys=OWNER_WS_PROJECT_STATUS_KEYS,
+                defaults=DEFAULT_OWNER_WS_PROJECT_CONFIG["statuses"],
+            )
+        },
+        "permission_policy": {
+            "manager_can_manage_team": bool(body.permission_policy.manager_can_manage_team),
+            "manager_can_change_roles": bool(body.permission_policy.manager_can_change_roles),
+            "manager_can_assign_manager": bool(body.permission_policy.manager_can_assign_manager),
+            "manager_can_assign_observer": bool(body.permission_policy.manager_can_assign_observer),
+            "manager_can_remove_manager": bool(body.permission_policy.manager_can_remove_manager),
+            "manager_can_edit_project_meta": bool(body.permission_policy.manager_can_edit_project_meta),
+            "manager_can_archive_project": bool(body.permission_policy.manager_can_archive_project),
+            "limited_can_create_projects": bool(body.permission_policy.limited_can_create_projects),
+            "limited_can_create_contacts": bool(body.permission_policy.limited_can_create_contacts),
+            "limited_can_create_tasks": bool(body.permission_policy.limited_can_create_tasks),
+            "limited_can_edit_contacts": bool(body.permission_policy.limited_can_edit_contacts),
+            "limited_can_edit_tasks": bool(body.permission_policy.limited_can_edit_tasks),
+            "limited_can_manage_project_contacts": bool(body.permission_policy.limited_can_manage_project_contacts),
+            "limited_can_complete_tasks": bool(body.permission_policy.limited_can_complete_tasks),
+            "limited_can_bulk_update_tasks": bool(body.permission_policy.limited_can_bulk_update_tasks),
+            "limited_can_link_messages": bool(body.permission_policy.limited_can_link_messages),
+            "limited_can_send_messages": bool(body.permission_policy.limited_can_send_messages),
+            "limited_can_comment_tasks": bool(body.permission_policy.limited_can_comment_tasks),
+        },
+        "notification_config": {
+            "items": _normalize_owner_ws_task_items(
+                body.notification_config.items,
+                allowed_keys=OWNER_WS_NOTIFICATION_KEYS,
+                defaults=DEFAULT_OWNER_WS_NOTIFICATION_CONFIG["items"],
+            )
+        },
+        "task_tags": {"items": _normalize_owner_ws_tag_items(body.task_tags.items)},
+        "contact_tags": {"items": _normalize_owner_ws_tag_items(body.contact_tags.items)},
+        "contact_sources": {"items": _normalize_owner_ws_tag_items(body.contact_sources.items)},
+    }
+
+
+def _apply_owner_ws_settings_bundle(db: Session, bundle: dict) -> None:
+    _set_json_setting(db, OWNER_WS_TASK_CONFIG_KEY, bundle["task_config"])
+    _set_json_setting(db, OWNER_WS_PROJECT_CONFIG_KEY, bundle["project_config"])
+    _set_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY, bundle["permission_policy"])
+    _set_json_setting(db, OWNER_WS_NOTIFICATION_CONFIG_KEY, bundle["notification_config"])
+    _set_json_setting(db, OWNER_WS_TASK_TAGS_KEY, bundle["task_tags"]["items"])
+    _set_json_setting(db, OWNER_WS_CONTACT_TAGS_KEY, bundle["contact_tags"]["items"])
+    _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, bundle["contact_sources"]["items"])
 
 
 def _build_delivery_channel_stats(
@@ -776,6 +872,26 @@ async def set_owner_workspace_contact_sources(
     _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, items)
     db.commit()
     return OwnerWorkspaceTagDictionaryResponse(items=items)
+
+
+@router.get("/owner-workspace-settings-bundle", response_model=OwnerWorkspaceSettingsBundleResponse)
+async def get_owner_workspace_settings_bundle(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    return OwnerWorkspaceSettingsBundleResponse.model_validate(_build_owner_ws_settings_bundle(db))
+
+
+@router.post("/owner-workspace-settings-bundle", response_model=OwnerWorkspaceSettingsBundleResponse)
+async def set_owner_workspace_settings_bundle(
+    body: OwnerWorkspaceSettingsBundleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    bundle = _normalize_owner_ws_settings_bundle(body)
+    _apply_owner_ws_settings_bundle(db, bundle)
+    db.commit()
+    return OwnerWorkspaceSettingsBundleResponse.model_validate(bundle)
 
 
 @router.get(

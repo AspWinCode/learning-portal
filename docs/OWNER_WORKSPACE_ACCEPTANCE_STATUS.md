@@ -129,6 +129,8 @@ Owner Workspace is in a working production state.
   - inline diff visibility against current config
   - filtering and sorting of snapshots by current-state relevance
   - review-time comparison against another snapshot, not only current config
+  - JSON preview for snapshots directly in UI
+  - explicit delete confirm for snapshot cleanup
 - Configurable project-role policy for manager capabilities in admin settings.
 - Configurable limited-role policy for `sales` / `trainer` in admin settings:
   - project creation

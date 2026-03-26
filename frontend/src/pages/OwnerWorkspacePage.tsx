@@ -861,6 +861,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [settingsSnapshotCompareBaseId, setSettingsSnapshotCompareBaseId] = useState('__current__');
   const [settingsSnapshotCreateSafetyBeforeApply, setSettingsSnapshotCreateSafetyBeforeApply] = useState(true);
   const [settingsSnapshotEditOpen, setSettingsSnapshotEditOpen] = useState(false);
+  const [settingsSnapshotPreview, setSettingsSnapshotPreview] = useState<OwnerWorkspaceSettingsSnapshot | null>(null);
+  const [settingsSnapshotDeleteConfirm, setSettingsSnapshotDeleteConfirm] = useState<OwnerWorkspaceSettingsSnapshot | null>(null);
   const [settingsSnapshotEditingId, setSettingsSnapshotEditingId] = useState<string | null>(null);
   const [settingsSnapshotDuplicatingId, setSettingsSnapshotDuplicatingId] = useState<string | null>(null);
   const [settingsSnapshotApplyingId, setSettingsSnapshotApplyingId] = useState<string | null>(null);
@@ -7440,6 +7442,13 @@ const OwnerWorkspacePage: React.FC = () => {
                                       <Button
                                         size="small"
                                         variant="outlined"
+                                        onClick={() => setSettingsSnapshotPreview(snapshot)}
+                                      >
+                                        JSON
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
                                         onClick={() => void copySettingsSnapshot(snapshot)}
                                       >
                                         Копировать
@@ -7468,7 +7477,7 @@ const OwnerWorkspacePage: React.FC = () => {
                                         color="error"
                                         variant="outlined"
                                         disabled={settingsSnapshotDeletingId === snapshot.id}
-                                        onClick={() => void deleteSettingsSnapshot(snapshot)}
+                                        onClick={() => setSettingsSnapshotDeleteConfirm(snapshot)}
                                       >
                                         {settingsSnapshotDeletingId === snapshot.id ? 'Удаляем...' : 'Удалить'}
                                       </Button>
@@ -9760,6 +9769,100 @@ const OwnerWorkspacePage: React.FC = () => {
             disabled={settingsSnapshotCreating || !settingsSnapshotName.trim()}
           >
             {settingsSnapshotCreating ? 'Сохраняем...' : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={!!settingsSnapshotPreview}
+        onClose={() => setSettingsSnapshotPreview(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>JSON snapshot системных настроек</DialogTitle>
+        <DialogContent>
+          {settingsSnapshotPreview && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip size="small" label={settingsSnapshotPreview.name} />
+                <Chip size="small" variant="outlined" label={`Создан: ${new Date(settingsSnapshotPreview.created_at).toLocaleString('ru-RU')}`} />
+              </Stack>
+              <TextField
+                fullWidth
+                multiline
+                minRows={18}
+                value={JSON.stringify(settingsSnapshotPreview.bundle, null, 2)}
+                InputProps={{ readOnly: true }}
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsSnapshotPreview(null)}>Закрыть</Button>
+          <Button
+            variant="outlined"
+            onClick={() => settingsSnapshotPreview && void copySettingsSnapshot(settingsSnapshotPreview)}
+          >
+            Копировать JSON
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => settingsSnapshotPreview && exportSettingsSnapshot(settingsSnapshotPreview)}
+          >
+            Экспорт
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={!!settingsSnapshotDeleteConfirm}
+        onClose={() => !settingsSnapshotDeletingId && setSettingsSnapshotDeleteConfirm(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Удалить snapshot</DialogTitle>
+        <DialogContent>
+          {settingsSnapshotDeleteConfirm && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Alert severity="warning">
+                Snapshot будет удалён из списка rollback-точек. Bundle, уже применённый на сервере, это не изменит.
+              </Alert>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip size="small" label={settingsSnapshotDeleteConfirm.name} />
+                <Chip size="small" variant="outlined" label={`Создан: ${new Date(settingsSnapshotDeleteConfirm.created_at).toLocaleString('ru-RU')}`} />
+                {settingsSnapshotDeleteConfirm.created_by_name && (
+                  <Chip size="small" variant="outlined" label={`Автор: ${settingsSnapshotDeleteConfirm.created_by_name}`} />
+                )}
+              </Stack>
+              {settingsSnapshotDeleteConfirm.note && (
+                <Typography variant="body2" color="text.secondary">
+                  {settingsSnapshotDeleteConfirm.note}
+                </Typography>
+              )}
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                {Object.entries(settingsSnapshotDeleteConfirm.bundle.meta.summary).map(([key, value]) => (
+                  <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
+                ))}
+              </Stack>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsSnapshotDeleteConfirm(null)} disabled={!!settingsSnapshotDeletingId}>
+            Отмена
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={!settingsSnapshotDeleteConfirm || !!settingsSnapshotDeletingId}
+            onClick={() => {
+              if (settingsSnapshotDeleteConfirm) {
+                void deleteSettingsSnapshot(settingsSnapshotDeleteConfirm);
+                setSettingsSnapshotDeleteConfirm(null);
+              }
+            }}
+          >
+            {settingsSnapshotDeletingId === settingsSnapshotDeleteConfirm?.id ? 'Удаляем...' : 'Удалить snapshot'}
           </Button>
         </DialogActions>
       </Dialog>

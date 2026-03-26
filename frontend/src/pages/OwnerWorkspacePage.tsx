@@ -677,6 +677,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyStats, setHistoryStats] = useState<OwnerWorkspaceHistoryStats | null>(null);
   const [historyStatsLoading, setHistoryStatsLoading] = useState(false);
+  const [historyReloadTick, setHistoryReloadTick] = useState(0);
   const [historyEntityFilter, setHistoryEntityFilter] = useState<string>('');
   const [historyEntityIdFilter, setHistoryEntityIdFilter] = useState<number | ''>('');
   const [historyActionFilter, setHistoryActionFilter] = useState<string>('');
@@ -1862,6 +1863,7 @@ const OwnerWorkspacePage: React.FC = () => {
     historyEntityFilter,
     historyEntityIdFilter,
     historyLimit,
+    historyReloadTick,
     historySortOrder,
   ]);
 
@@ -1893,7 +1895,7 @@ const OwnerWorkspacePage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tab, historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyEntityIdFilter]);
+  }, [tab, historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyEntityIdFilter, historyReloadTick]);
 
   useEffect(() => {
     if (tab === OW_TAB_HISTORY && error) {
@@ -3339,10 +3341,78 @@ const OwnerWorkspacePage: React.FC = () => {
     if (authorId == null) return;
     setHistoryAuthorFilter(authorId);
   }, []);
+  const refreshHistoryView = useCallback(() => {
+    setHistoryReloadTick((prev) => prev + 1);
+  }, []);
+  const applyHistoryDayQuickFilter = useCallback((dayIso: string) => {
+    const day = new Date(dayIso);
+    if (Number.isNaN(day.getTime())) return;
+    const from = new Date(day);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(day);
+    to.setHours(23, 59, 59, 999);
+    setHistoryCreatedFrom(deadlineToLocalInput(from.toISOString()));
+    setHistoryCreatedTo(deadlineToLocalInput(to.toISOString()));
+  }, []);
   const historyDayMax = useMemo(
     () => Math.max(...(historyStats?.day_counts.map((item) => item.count) || [0]), 1),
     [historyStats?.day_counts]
   );
+  const copyHistoryStatsSummary = useCallback(async () => {
+    const summary = [
+      `Записей в выборке: ${historyStats?.total_rows ?? historyVisibleSummary.rows}`,
+      `Видимых строк: ${historyLogs.length}`,
+      `Авторов: ${historyStats?.unique_authors ?? historyVisibleSummary.authors}`,
+      `Действий: ${historyStats?.unique_actions ?? historyVisibleSummary.actions}`,
+      historyStats?.first_created_at && historyStats?.last_created_at
+        ? `Период: ${new Date(historyStats.first_created_at).toLocaleString('ru-RU')} — ${new Date(historyStats.last_created_at).toLocaleString('ru-RU')}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(summary);
+      setMaxSyncResult('Сводка истории скопирована.');
+    } catch {
+      setError('Не удалось скопировать сводку истории.');
+    }
+  }, [historyLogs.length, historyStats, historyVisibleSummary.actions, historyVisibleSummary.authors, historyVisibleSummary.rows]);
+  const exportHistoryStatsJson = useCallback(() => {
+    if (!historyStats) return;
+    const payload = {
+      filters: {
+        entity_type: historyEntityFilter || null,
+        entity_id: historyEntityIdFilter === '' ? null : historyEntityIdFilter,
+        action_type: historyActionFilter || null,
+        author_id: historyAuthorFilter === '' ? null : historyAuthorFilter,
+        created_from: localInputToIso(historyCreatedFrom),
+        created_to: localInputToIso(historyCreatedTo),
+        limit: historyLimit,
+        sort_order: historySortOrder,
+      },
+      stats: historyStats,
+      visible_rows: historyLogs.length,
+    };
+    downloadTextFile(
+      JSON.stringify(payload, null, 2),
+      `owner_workspace_history_stats_${historyExportContextSlug}_${historyExportStamp()}.json`,
+      'application/json;charset=utf-8'
+    );
+    setMaxSyncResult('Экспортирована сводка истории в JSON.');
+  }, [
+    historyActionFilter,
+    historyAuthorFilter,
+    historyCreatedFrom,
+    historyCreatedTo,
+    historyEntityFilter,
+    historyEntityIdFilter,
+    historyExportContextSlug,
+    historyExportStamp,
+    historyLimit,
+    historyLogs.length,
+    historySortOrder,
+    historyStats,
+  ]);
 
   const exportHistoryJson = useCallback(() => {
     const payload = historyLogs.map((entry) => ({
@@ -7084,17 +7154,26 @@ const OwnerWorkspacePage: React.FC = () => {
               <Button size="small" color="secondary" onClick={resetHistoryFilters}>
                 Сбросить фильтры
               </Button>
+              <Button size="small" variant="text" onClick={refreshHistoryView}>
+                Обновить
+              </Button>
               <Button size="small" variant="text" onClick={() => void copyHistoryLink()}>
                 Копировать ссылку
               </Button>
               <Button size="small" variant="text" onClick={openHistoryLinkInNewTab}>
                 Открыть в новой вкладке
               </Button>
+              <Button size="small" variant="text" onClick={() => void copyHistoryStatsSummary()}>
+                Копировать сводку
+              </Button>
               <Button size="small" variant="contained" disabled={historyLogs.length === 0} onClick={exportHistoryCsv}>
                 Экспорт CSV
               </Button>
               <Button size="small" variant="outlined" disabled={historyLogs.length === 0} onClick={exportHistoryJson}>
                 Экспорт JSON
+              </Button>
+              <Button size="small" variant="outlined" disabled={!historyStats} onClick={exportHistoryStatsJson}>
+                Экспорт stats JSON
               </Button>
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
@@ -7114,7 +7193,13 @@ const OwnerWorkspacePage: React.FC = () => {
                 variant="outlined"
                 label={`Действий: ${historyStats?.unique_actions ?? historyVisibleSummary.actions}`}
               />
+              <Chip size="small" variant="outlined" label={`Видимых строк: ${historyLogs.length}`} />
             </Stack>
+            {Boolean(historyStats && historyStats.total_rows > historyLogs.length) && (
+              <Alert severity="info" sx={{ mb: 1.5 }}>
+                Текущий лимит показывает {historyLogs.length} из {historyStats!.total_rows} записей. Увеличьте лимит или сузьте фильтры.
+              </Alert>
+            )}
             {historyStatsLoading && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
                 Обновляем сводку истории...
@@ -7173,7 +7258,11 @@ const OwnerWorkspacePage: React.FC = () => {
                   </Typography>
                   <Stack spacing={1}>
                     {historyStats!.day_counts.map((item) => (
-                      <Box key={item.day}>
+                      <Box
+                        key={item.day}
+                        sx={{ cursor: 'pointer' }}
+                        onClick={() => applyHistoryDayQuickFilter(item.day)}
+                      >
                         <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center">
                           <Typography variant="caption" color="text.secondary">
                             {new Date(item.day).toLocaleDateString('ru-RU')}
@@ -7190,6 +7279,9 @@ const OwnerWorkspacePage: React.FC = () => {
                       </Box>
                     ))}
                   </Stack>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    Нажмите на день, чтобы отфильтровать историю по этой дате.
+                  </Typography>
                 </CardContent>
               </Card>
             )}

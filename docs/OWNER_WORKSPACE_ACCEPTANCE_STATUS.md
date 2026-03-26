@@ -190,6 +190,12 @@ Owner Workspace is in a working production state.
   - top actions
   - entity-type distribution
   - daily activity
+- History summary supports:
+  - manual refresh
+  - copy summary to clipboard
+  - JSON export of the stats payload
+  - day-level click-to-filter drilldown
+  - explicit warning when current row limit truncates the filtered dataset
 - Individual history rows expose quick drilldown chips for:
   - exact entity history
   - same action type

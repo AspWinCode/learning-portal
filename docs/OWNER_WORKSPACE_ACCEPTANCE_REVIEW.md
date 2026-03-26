@@ -179,3 +179,5 @@ Status legend:
 4. Configure and verify production SMTP and web-push/VAPID environment variables so external notification channels are operational in practice.
 5. Close infra follow-up on PostgreSQL reliability so acceptance is not blocked by operational risk.
 6. Decide whether the current owner-workspace history surface is sufficient for sign-off, or whether a broader compliance/audit console is still required.
+
+At this point, the only direct technical blocker for a fully operational notification stack on production is missing SMTP / `FROM_EMAIL` configuration for email delivery. Web push is already configured and active.

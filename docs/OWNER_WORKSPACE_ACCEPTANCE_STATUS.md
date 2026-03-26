@@ -297,3 +297,7 @@ Owner Workspace is in a working production state.
 5. Configure and verify production SMTP / `FROM_EMAIL` environment variables so email delivery is operational alongside the already configured web-push channel.
 6. Do a final acceptance pass against the current production state.
 7. Decide whether mobile push is needed beyond the current web push channel.
+
+## Current Practical Blocker
+
+- The only remaining technical blocker inside the owner-workspace notification stack is missing production SMTP / `FROM_EMAIL` configuration for outbound email delivery.

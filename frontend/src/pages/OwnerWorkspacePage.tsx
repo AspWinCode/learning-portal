@@ -1577,7 +1577,7 @@ const OwnerWorkspacePage: React.FC = () => {
     } catch {
       setNotifEnvelope(null);
     }
-  }, []);
+  }, [applyWorkspaceSettingsBundle]);
 
   const applyWorkspaceSettingsBundle = useCallback((bundle: OwnerWorkspaceSettingsBundle) => {
     setTaskConfig(bundle.task_config);

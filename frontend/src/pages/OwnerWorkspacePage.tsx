@@ -253,6 +253,26 @@ function extractWorkspaceSettingsBundle(value: unknown): OwnerWorkspaceSettingsB
   return null;
 }
 
+function workspaceSettingsBundleSectionDiff(
+  current: OwnerWorkspaceSettingsBundle | null,
+  next: OwnerWorkspaceSettingsBundle
+): Array<{ key: string; label: string; changed: boolean }> {
+  const sections: Array<{ key: keyof OwnerWorkspaceSettingsBundle; label: string }> = [
+    { key: 'task_config', label: 'Статусы и приоритеты задач' },
+    { key: 'project_config', label: 'Статусы проектов' },
+    { key: 'permission_policy', label: 'Policy ролей и прав' },
+    { key: 'notification_config', label: 'Типы уведомлений' },
+    { key: 'task_tags', label: 'Теги задач' },
+    { key: 'contact_tags', label: 'Теги контактов' },
+    { key: 'contact_sources', label: 'Источники контактов' },
+  ];
+  return sections.map((section) => ({
+    key: section.key,
+    label: section.label,
+    changed: !current || JSON.stringify(current[section.key]) !== JSON.stringify(next[section.key]),
+  }));
+}
+
 type OwnerWorkspaceSubprojectTreeNode = {
   project: OwnerWorkspaceProject;
   children: OwnerWorkspaceSubprojectTreeNode[];
@@ -834,6 +854,9 @@ const OwnerWorkspacePage: React.FC = () => {
   const [settingsSnapshotName, setSettingsSnapshotName] = useState('');
   const [settingsSnapshotNote, setSettingsSnapshotNote] = useState('');
   const [settingsSnapshotCreating, setSettingsSnapshotCreating] = useState(false);
+  const [settingsSnapshotSearch, setSettingsSnapshotSearch] = useState('');
+  const [settingsSnapshotReview, setSettingsSnapshotReview] = useState<OwnerWorkspaceSettingsSnapshot | null>(null);
+  const [settingsSnapshotCreateSafetyBeforeApply, setSettingsSnapshotCreateSafetyBeforeApply] = useState(true);
   const [settingsSnapshotApplyingId, setSettingsSnapshotApplyingId] = useState<string | null>(null);
   const [settingsSnapshotDeletingId, setSettingsSnapshotDeletingId] = useState<string | null>(null);
   const currentWorkspaceAccessSummary = useMemo(() => {
@@ -949,6 +972,18 @@ const OwnerWorkspacePage: React.FC = () => {
   const workspaceSettingsBundleSummary = useMemo<OwnerWorkspaceSettingsBundleSummary | null>(
     () => (workspaceSettingsBundle ? summarizeWorkspaceSettingsBundle(workspaceSettingsBundle) : null),
     [workspaceSettingsBundle]
+  );
+  const filteredSettingsSnapshots = useMemo(() => {
+    const query = settingsSnapshotSearch.trim().toLowerCase();
+    if (!query) return settingsSnapshots;
+    return settingsSnapshots.filter((snapshot) => {
+      const haystack = [snapshot.name, snapshot.note || '', snapshot.created_by_name || ''].join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [settingsSnapshotSearch, settingsSnapshots]);
+  const reviewedSnapshotDiff = useMemo(
+    () => (settingsSnapshotReview ? workspaceSettingsBundleSectionDiff(workspaceSettingsBundle, settingsSnapshotReview.bundle.data) : []),
+    [settingsSnapshotReview, workspaceSettingsBundle]
   );
 
   const parsedSettingsBundleInput = useMemo(() => {
@@ -3100,19 +3135,26 @@ const OwnerWorkspacePage: React.FC = () => {
     async (snapshot: OwnerWorkspaceSettingsSnapshot) => {
       setSettingsSnapshotApplyingId(snapshot.id);
       try {
+        if (settingsSnapshotCreateSafetyBeforeApply && workspaceSettingsBundle) {
+          await settingsApi.createOwnerWorkspaceSettingsSnapshot({
+            name: `Safety before apply: ${snapshot.name}`.slice(0, 120),
+            note: `Автоматический safety snapshot перед применением ${snapshot.name}`.slice(0, 500),
+          });
+        }
         const saved = await settingsApi.applyOwnerWorkspaceSettingsSnapshot(snapshot.id);
         applyWorkspaceSettingsBundle(saved.data);
         setSettingsBundleLastExportMeta(saved.meta);
+        setSettingsSnapshotReview(null);
         setError(null);
         setMaxSyncResult(`Применён snapshot системных настроек: ${snapshot.name}.`);
-        await loadNotificationDeliveryStats();
+        await Promise.all([loadNotificationDeliveryStats(), loadSettingsSnapshots()]);
       } catch (e: unknown) {
         setError(extractApiError(e, 'Не удалось применить snapshot системных настроек owner workspace'));
       } finally {
         setSettingsSnapshotApplyingId(null);
       }
     },
-    [applyWorkspaceSettingsBundle, loadNotificationDeliveryStats]
+    [applyWorkspaceSettingsBundle, loadNotificationDeliveryStats, loadSettingsSnapshots, settingsSnapshotCreateSafetyBeforeApply, workspaceSettingsBundle]
   );
 
   const deleteSettingsSnapshot = useCallback(async (snapshot: OwnerWorkspaceSettingsSnapshot) => {
@@ -7213,6 +7255,13 @@ const OwnerWorkspacePage: React.FC = () => {
                             </Typography>
                           </Box>
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                            <TextField
+                              size="small"
+                              label="Поиск snapshot"
+                              value={settingsSnapshotSearch}
+                              onChange={(e) => setSettingsSnapshotSearch(e.target.value)}
+                              sx={{ minWidth: 220 }}
+                            />
                             <Button variant="outlined" onClick={() => void loadSettingsSnapshots()} disabled={settingsSnapshotsLoading}>
                               {settingsSnapshotsLoading ? 'Обновление...' : 'Обновить'}
                             </Button>
@@ -7234,7 +7283,11 @@ const OwnerWorkspacePage: React.FC = () => {
                           </Typography>
                         ) : (
                           <Stack spacing={1.25}>
-                            {settingsSnapshots.map((snapshot) => (
+                            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                              <Chip size="small" label={`Всего: ${settingsSnapshots.length}`} />
+                              <Chip size="small" label={`Видимо: ${filteredSettingsSnapshots.length}`} />
+                            </Stack>
+                            {filteredSettingsSnapshots.map((snapshot) => (
                               <Box
                                 key={snapshot.id}
                                 sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
@@ -7279,9 +7332,12 @@ const OwnerWorkspacePage: React.FC = () => {
                                         size="small"
                                         variant="contained"
                                         disabled={settingsSnapshotApplyingId === snapshot.id}
-                                        onClick={() => void applySettingsSnapshot(snapshot)}
+                                        onClick={() => {
+                                          setSettingsSnapshotCreateSafetyBeforeApply(true);
+                                          setSettingsSnapshotReview(snapshot);
+                                        }}
                                       >
-                                        {settingsSnapshotApplyingId === snapshot.id ? 'Применяем...' : 'Применить'}
+                                        {settingsSnapshotApplyingId === snapshot.id ? 'Применяем...' : 'Проверить и применить'}
                                       </Button>
                                       <Button
                                         size="small"
@@ -9520,6 +9576,99 @@ const OwnerWorkspacePage: React.FC = () => {
             disabled={settingsSnapshotCreating || !settingsSnapshotName.trim()}
           >
             {settingsSnapshotCreating ? 'Создаём...' : 'Создать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={!!settingsSnapshotReview}
+        onClose={() => !settingsSnapshotApplyingId && setSettingsSnapshotReview(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Проверить и применить snapshot</DialogTitle>
+        <DialogContent>
+          {settingsSnapshotReview && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Alert severity="warning">
+                Snapshot заменит текущие системные настройки owner workspace. Перед применением можно автоматически
+                сохранить safety snapshot.
+              </Alert>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip size="small" label={settingsSnapshotReview.name} />
+                <Chip size="small" variant="outlined" label={`Создан: ${new Date(settingsSnapshotReview.created_at).toLocaleString('ru-RU')}`} />
+                {settingsSnapshotReview.created_by_name && (
+                  <Chip size="small" variant="outlined" label={`Автор: ${settingsSnapshotReview.created_by_name}`} />
+                )}
+                <Chip size="small" variant="outlined" label={`v${settingsSnapshotReview.bundle.meta.version}`} />
+              </Stack>
+              {settingsSnapshotReview.note && (
+                <Typography variant="body2" color="text.secondary">
+                  {settingsSnapshotReview.note}
+                </Typography>
+              )}
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Текущее состояние
+                </Typography>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {workspaceSettingsBundleSummary ? (
+                    Object.entries(workspaceSettingsBundleSummary).map(([key, value]) => (
+                      <Chip key={key} size="small" label={`${key}: ${value}`} />
+                    ))
+                  ) : (
+                    <Chip size="small" label="Нет загруженного bundle" />
+                  )}
+                </Stack>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Snapshot
+                </Typography>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {Object.entries(settingsSnapshotReview.bundle.meta.summary).map(([key, value]) => (
+                    <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
+                  ))}
+                </Stack>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Изменятся разделы
+                </Typography>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {reviewedSnapshotDiff.filter((item) => item.changed).length > 0 ? (
+                    reviewedSnapshotDiff
+                      .filter((item) => item.changed)
+                      .map((item) => (
+                        <Chip key={item.key} color="warning" variant="outlined" size="small" label={item.label} />
+                      ))
+                  ) : (
+                    <Chip size="small" color="success" label="Отличий не найдено" />
+                  )}
+                </Stack>
+              </Box>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={settingsSnapshotCreateSafetyBeforeApply}
+                    onChange={(e) => setSettingsSnapshotCreateSafetyBeforeApply(e.target.checked)}
+                  />
+                }
+                label="Автоматически создать safety snapshot перед применением"
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsSnapshotReview(null)} disabled={!!settingsSnapshotApplyingId}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!settingsSnapshotReview || !!settingsSnapshotApplyingId}
+            onClick={() => settingsSnapshotReview && void applySettingsSnapshot(settingsSnapshotReview)}
+          >
+            {settingsSnapshotApplyingId === settingsSnapshotReview?.id ? 'Применяем...' : 'Применить snapshot'}
           </Button>
         </DialogActions>
       </Dialog>

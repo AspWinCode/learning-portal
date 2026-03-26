@@ -1111,6 +1111,33 @@ export interface OwnerWorkspaceAuditLog {
   created_at?: string | null;
 }
 
+export interface OwnerWorkspaceHistoryStatsCountItem {
+  key: string;
+  count: number;
+}
+
+export interface OwnerWorkspaceHistoryStatsAuthorItem {
+  author_id: number;
+  count: number;
+}
+
+export interface OwnerWorkspaceHistoryStatsDayItem {
+  day: string;
+  count: number;
+}
+
+export interface OwnerWorkspaceHistoryStats {
+  total_rows: number;
+  unique_authors: number;
+  unique_actions: number;
+  first_created_at?: string | null;
+  last_created_at?: string | null;
+  entity_type_counts: OwnerWorkspaceHistoryStatsCountItem[];
+  action_counts: OwnerWorkspaceHistoryStatsCountItem[];
+  author_counts: OwnerWorkspaceHistoryStatsAuthorItem[];
+  day_counts: OwnerWorkspaceHistoryStatsDayItem[];
+}
+
 export interface OwnerWorkspaceSearchResult {
   projects: Array<{ id: number; name: string; status: string }>;
   contacts: Array<{ id: number; full_name: string; phone: string }>;

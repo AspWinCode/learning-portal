@@ -2759,6 +2759,33 @@ class OwnerWorkspaceAuditLogResponse(BaseModel):
         from_attributes = True
 
 
+class OwnerWorkspaceHistoryStatsCountItem(BaseModel):
+    key: str
+    count: int
+
+
+class OwnerWorkspaceHistoryStatsAuthorItem(BaseModel):
+    author_id: int
+    count: int
+
+
+class OwnerWorkspaceHistoryStatsDayItem(BaseModel):
+    day: datetime
+    count: int
+
+
+class OwnerWorkspaceHistoryStatsResponse(BaseModel):
+    total_rows: int
+    unique_authors: int
+    unique_actions: int
+    first_created_at: Optional[datetime] = None
+    last_created_at: Optional[datetime] = None
+    entity_type_counts: List[OwnerWorkspaceHistoryStatsCountItem]
+    action_counts: List[OwnerWorkspaceHistoryStatsCountItem]
+    author_counts: List[OwnerWorkspaceHistoryStatsAuthorItem]
+    day_counts: List[OwnerWorkspaceHistoryStatsDayItem]
+
+
 class OwnerWorkspaceSearchProjectHit(BaseModel):
     id: int
     name: str

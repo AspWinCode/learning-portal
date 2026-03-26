@@ -181,6 +181,15 @@ Owner Workspace is in a working production state.
   - unique authors
   - unique actions
 - History surface also shows clickable distribution chips by entity type and top actions.
+- History surface shows backend-driven audit summary for the full filtered dataset:
+  - total rows
+  - unique authors
+  - unique actions
+  - coverage window
+  - top authors
+  - top actions
+  - entity-type distribution
+  - daily activity
 - Individual history rows expose quick drilldown chips for:
   - exact entity history
   - same action type

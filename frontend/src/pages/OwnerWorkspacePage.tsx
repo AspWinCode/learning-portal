@@ -37,6 +37,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   CircularProgress,
+  LinearProgress,
   TablePagination,
   Tooltip,
 } from '@mui/material';
@@ -69,6 +70,7 @@ import type {
   OwnerWorkspaceContact,
   OwnerWorkspaceConversation,
   OwnerWorkspaceDigest,
+  OwnerWorkspaceHistoryStats,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceMessage,
   OwnerWorkspaceNotificationConfig,
@@ -673,6 +675,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [historyLogs, setHistoryLogs] = useState<OwnerWorkspaceAuditLog[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyStats, setHistoryStats] = useState<OwnerWorkspaceHistoryStats | null>(null);
+  const [historyStatsLoading, setHistoryStatsLoading] = useState(false);
   const [historyEntityFilter, setHistoryEntityFilter] = useState<string>('');
   const [historyEntityIdFilter, setHistoryEntityIdFilter] = useState<number | ''>('');
   const [historyActionFilter, setHistoryActionFilter] = useState<string>('');
@@ -1862,8 +1866,39 @@ const OwnerWorkspacePage: React.FC = () => {
   ]);
 
   useEffect(() => {
+    if (tab !== OW_TAB_HISTORY) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!cancelled) setHistoryStatsLoading(true);
+        const stats = await ownerWorkspaceApi.getHistoryStats({
+          entity_type: historyEntityFilter || undefined,
+          entity_id: historyEntityIdFilter === '' ? undefined : historyEntityIdFilter,
+          action_type: historyActionFilter || undefined,
+          author_id: historyAuthorFilter === '' ? undefined : historyAuthorFilter,
+          created_from: localInputToIso(historyCreatedFrom) || undefined,
+          created_to: localInputToIso(historyCreatedTo) || undefined,
+        });
+        if (!cancelled) {
+          setHistoryStats(stats);
+          setHistoryStatsLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setHistoryStats(null);
+          setHistoryStatsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyEntityIdFilter]);
+
+  useEffect(() => {
     if (tab === OW_TAB_HISTORY && error) {
       setHistoryLoading(false);
+      setHistoryStatsLoading(false);
     }
   }, [error, tab]);
 
@@ -3204,25 +3239,17 @@ const OwnerWorkspacePage: React.FC = () => {
     historyLimit,
     historyLogs.length,
   ]);
-  const historySummary = useMemo(() => {
+  const historyVisibleSummary = useMemo(() => {
     const authors = new Set<number>();
     const actions = new Set<string>();
-    const entityCounts: Record<string, number> = {};
-    const actionCounts: Record<string, number> = {};
     historyLogs.forEach((entry) => {
       if (entry.author_id != null) authors.add(entry.author_id);
       if (entry.action_type) actions.add(entry.action_type);
-      if (entry.action_type) actionCounts[entry.action_type] = (actionCounts[entry.action_type] || 0) + 1;
-      if (entry.entity_type) entityCounts[entry.entity_type] = (entityCounts[entry.entity_type] || 0) + 1;
     });
     return {
       rows: historyLogs.length,
       authors: authors.size,
       actions: actions.size,
-      entityCounts,
-      topActions: Object.entries(actionCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4),
     };
   }, [historyLogs]);
   const historyActiveFilterChips = useMemo(() => {
@@ -3312,6 +3339,10 @@ const OwnerWorkspacePage: React.FC = () => {
     if (authorId == null) return;
     setHistoryAuthorFilter(authorId);
   }, []);
+  const historyDayMax = useMemo(
+    () => Math.max(...(historyStats?.day_counts.map((item) => item.count) || [0]), 1),
+    [historyStats?.day_counts]
+  );
 
   const exportHistoryJson = useCallback(() => {
     const payload = historyLogs.map((entry) => ({
@@ -7067,35 +7098,100 @@ const OwnerWorkspacePage: React.FC = () => {
               </Button>
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-              <Chip size="small" color="primary" variant="outlined" label={`Записей: ${historySummary.rows}`} />
-              <Chip size="small" variant="outlined" label={`Авторов: ${historySummary.authors}`} />
-              <Chip size="small" variant="outlined" label={`Действий: ${historySummary.actions}`} />
+              <Chip
+                size="small"
+                color="primary"
+                variant="outlined"
+                label={`Записей в выборке: ${historyStats?.total_rows ?? historyVisibleSummary.rows}`}
+              />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`Авторов: ${historyStats?.unique_authors ?? historyVisibleSummary.authors}`}
+              />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`Действий: ${historyStats?.unique_actions ?? historyVisibleSummary.actions}`}
+              />
             </Stack>
-            {Object.entries(historySummary.entityCounts).length > 0 && (
+            {historyStatsLoading && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                Обновляем сводку истории...
+              </Typography>
+            )}
+            {historyStats?.first_created_at && historyStats?.last_created_at && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                Период выборки: {new Date(historyStats.first_created_at).toLocaleString('ru-RU')} —{' '}
+                {new Date(historyStats.last_created_at).toLocaleString('ru-RU')}
+              </Typography>
+            )}
+            {Boolean(historyStats?.entity_type_counts.length) && (
               <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-                {Object.entries(historySummary.entityCounts).map(([entityType, count]) => (
+                {historyStats!.entity_type_counts.map(({ key, count }) => (
                   <Chip
-                    key={entityType}
+                    key={key}
                     size="small"
-                    variant={historyEntityFilter === entityType ? 'filled' : 'outlined'}
-                    label={`${OWNER_WS_HISTORY_ENTITY_LABELS[entityType] || entityType}: ${count}`}
-                    onClick={() => applyHistoryEntityQuickFilter(entityType)}
+                    variant={historyEntityFilter === key ? 'filled' : 'outlined'}
+                    label={`${OWNER_WS_HISTORY_ENTITY_LABELS[key] || key}: ${count}`}
+                    onClick={() => applyHistoryEntityQuickFilter(key)}
                   />
                 ))}
               </Stack>
             )}
-            {historySummary.topActions.length > 0 && (
+            {Boolean(historyStats?.action_counts.length) && (
               <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-                {historySummary.topActions.map(([actionType, count]) => (
+                {historyStats!.action_counts.map(({ key, count }) => (
                   <Chip
-                    key={actionType}
+                    key={key}
                     size="small"
-                    variant={historyActionFilter === actionType ? 'filled' : 'outlined'}
-                    label={`${OWNER_WS_HISTORY_ACTION_LABELS[actionType] || actionType}: ${count}`}
-                    onClick={() => applyHistoryActionQuickFilter(actionType)}
+                    variant={historyActionFilter === key ? 'filled' : 'outlined'}
+                    label={`${OWNER_WS_HISTORY_ACTION_LABELS[key] || key}: ${count}`}
+                    onClick={() => applyHistoryActionQuickFilter(key)}
                   />
                 ))}
               </Stack>
+            )}
+            {Boolean(historyStats?.author_counts.length) && (
+              <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+                {historyStats!.author_counts.map(({ author_id, count }) => (
+                  <Chip
+                    key={author_id}
+                    size="small"
+                    variant={historyAuthorFilter === author_id ? 'filled' : 'outlined'}
+                    label={`${userName(author_id)}: ${count}`}
+                    onClick={() => applyHistoryAuthorQuickFilter(author_id)}
+                  />
+                ))}
+              </Stack>
+            )}
+            {Boolean(historyStats?.day_counts.length) && (
+              <Card variant="outlined" sx={{ mb: 2 }}>
+                <CardContent sx={{ py: 1.5 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Активность по дням
+                  </Typography>
+                  <Stack spacing={1}>
+                    {historyStats!.day_counts.map((item) => (
+                      <Box key={item.day}>
+                        <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center">
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(item.day).toLocaleDateString('ru-RU')}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {item.count}
+                          </Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.max(4, Math.round((item.count / historyDayMax) * 100))}
+                          sx={{ height: 8, borderRadius: 999 }}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                </CardContent>
+              </Card>
             )}
             {historyActiveFilterChips.length > 0 && (
               <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>

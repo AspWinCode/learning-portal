@@ -58,6 +58,7 @@ import {
   OwnerWorkspaceConversation,
   OwnerWorkspaceTaskComment,
   OwnerWorkspaceAuditLog,
+  OwnerWorkspaceHistoryStats,
   OwnerWorkspaceDigest,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceTaskConfig,
@@ -2581,19 +2582,30 @@ export const ownerWorkspaceApi = {
     return response.data;
   },
   listHistory: async (params?: {
-    entity_type?: string;
-    entity_id?: number;
-    action_type?: string;
+      entity_type?: string;
+      entity_id?: number;
+      action_type?: string;
     author_id?: number;
     created_from?: string;
     created_to?: string;
     limit?: number;
     sort_order?: 'asc' | 'desc';
-  }): Promise<OwnerWorkspaceAuditLog[]> => {
-    const response = await api.get('/api/owner-workspace/history', { params: params || {} });
-    return response.data;
-  },
-  addProjectParticipant: async (
+    }): Promise<OwnerWorkspaceAuditLog[]> => {
+      const response = await api.get('/api/owner-workspace/history', { params: params || {} });
+      return response.data;
+    },
+    getHistoryStats: async (params?: {
+      entity_type?: string;
+      entity_id?: number;
+      action_type?: string;
+      author_id?: number;
+      created_from?: string;
+      created_to?: string;
+    }): Promise<OwnerWorkspaceHistoryStats> => {
+      const response = await api.get('/api/owner-workspace/history/stats', { params: params || {} });
+      return response.data;
+    },
+    addProjectParticipant: async (
     projectId: number,
     userId: number,
     role: 'member' | 'manager' | 'observer' = 'member'

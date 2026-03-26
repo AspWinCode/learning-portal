@@ -65,6 +65,10 @@ from app.models import (
 )
 from app.schemas import (
     OwnerWorkspaceAuditLogResponse,
+    OwnerWorkspaceHistoryStatsAuthorItem,
+    OwnerWorkspaceHistoryStatsCountItem,
+    OwnerWorkspaceHistoryStatsDayItem,
+    OwnerWorkspaceHistoryStatsResponse,
     OwnerWorkspaceContactCreate,
     OwnerWorkspaceDigestResponse,
     OwnerWorkspaceContactResponse,
@@ -2150,6 +2154,54 @@ async def owner_workspace_unified_search(
     return OwnerWorkspaceSearchResponse(projects=projects, contacts=contacts, tasks=tasks, messages=messages)
 
 
+def _build_history_query(
+    db: Session,
+    ctx: OwnerWorkspaceAccessContext,
+    history_entity_type: Optional[str],
+    entity_id: Optional[int],
+    history_action_type: str,
+    author_id: Optional[int],
+    created_from: Optional[datetime],
+    created_to: Optional[datetime],
+):
+    q = db.query(OwnerWorkspaceAuditLog)
+    if not ctx.full:
+        visible_task_ids_subquery = None
+        if history_entity_type in (None, "task"):
+            visible_task_ids_subquery = filter_tasks_query(db.query(OwnerWorkspaceTask.id), ctx).subquery()
+        if history_entity_type == "project" and entity_id is None:
+            if not ctx.project_ids:
+                return None
+            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids))
+        elif history_entity_type == "contact" and entity_id is None:
+            if not ctx.contact_ids:
+                return None
+            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.contact_ids))
+        elif history_entity_type == "task" and entity_id is None:
+            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery))
+        elif history_entity_type is None:
+            q = q.filter(
+                or_(
+                    and_(OwnerWorkspaceAuditLog.entity_type == "project", OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids or [-1])),
+                    and_(OwnerWorkspaceAuditLog.entity_type == "contact", OwnerWorkspaceAuditLog.entity_id.in_(ctx.contact_ids or [-1])),
+                    and_(OwnerWorkspaceAuditLog.entity_type == "task", OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery)),
+                )
+            )
+    if history_entity_type:
+        q = q.filter(OwnerWorkspaceAuditLog.entity_type == history_entity_type)
+    if entity_id is not None:
+        q = q.filter(OwnerWorkspaceAuditLog.entity_id == entity_id)
+    if history_action_type:
+        q = q.filter(OwnerWorkspaceAuditLog.action_type == history_action_type)
+    if author_id is not None:
+        q = q.filter(OwnerWorkspaceAuditLog.author_id == author_id)
+    if created_from is not None:
+        q = q.filter(OwnerWorkspaceAuditLog.created_at >= created_from)
+    if created_to is not None:
+        q = q.filter(OwnerWorkspaceAuditLog.created_at <= created_to)
+    return q
+
+
 @router.get("/history", response_model=List[OwnerWorkspaceAuditLogResponse])
 async def list_history(
     entity_type: Optional[str] = Query(None),
@@ -2178,46 +2230,153 @@ async def list_history(
     if not audit_history_allowed(db, ctx, history_entity_type, entity_id):
         return []
     history_action_type = (action_type or "").strip().lower()
-    q = db.query(OwnerWorkspaceAuditLog)
-    if not ctx.full:
-        visible_task_ids_subquery = None
-        if history_entity_type in (None, "task"):
-            visible_task_ids_subquery = filter_tasks_query(db.query(OwnerWorkspaceTask.id), ctx).subquery()
-        if history_entity_type == "project" and entity_id is None:
-            if not ctx.project_ids:
-                return []
-            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids))
-        elif history_entity_type == "contact" and entity_id is None:
-            if not ctx.contact_ids:
-                return []
-            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(ctx.contact_ids))
-        elif history_entity_type == "task" and entity_id is None:
-            q = q.filter(OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery))
-        elif history_entity_type is None:
-            q = q.filter(
-                or_(
-                    and_(OwnerWorkspaceAuditLog.entity_type == "project", OwnerWorkspaceAuditLog.entity_id.in_(ctx.project_ids or [-1])),
-                    and_(OwnerWorkspaceAuditLog.entity_type == "contact", OwnerWorkspaceAuditLog.entity_id.in_(ctx.contact_ids or [-1])),
-                    and_(OwnerWorkspaceAuditLog.entity_type == "task", OwnerWorkspaceAuditLog.entity_id.in_(visible_task_ids_subquery)),
-                )
-            )
-    if history_entity_type:
-        q = q.filter(OwnerWorkspaceAuditLog.entity_type == history_entity_type)
-    if entity_id is not None:
-        q = q.filter(OwnerWorkspaceAuditLog.entity_id == entity_id)
-    if history_action_type:
-        q = q.filter(OwnerWorkspaceAuditLog.action_type == history_action_type)
-    if author_id is not None:
-        q = q.filter(OwnerWorkspaceAuditLog.author_id == author_id)
-    if created_from is not None:
-        q = q.filter(OwnerWorkspaceAuditLog.created_at >= created_from)
-    if created_to is not None:
-        q = q.filter(OwnerWorkspaceAuditLog.created_at <= created_to)
+    q = _build_history_query(db, ctx, history_entity_type, entity_id, history_action_type, author_id, created_from, created_to)
+    if q is None:
+        return []
     if sort_order == "asc":
         ordered_q = q.order_by(OwnerWorkspaceAuditLog.created_at.asc(), OwnerWorkspaceAuditLog.id.asc())
     else:
         ordered_q = q.order_by(OwnerWorkspaceAuditLog.created_at.desc(), OwnerWorkspaceAuditLog.id.desc())
     rows = ordered_q.limit(limit).all()
     return [OwnerWorkspaceAuditLogResponse.model_validate(x) for x in rows]
+
+
+@router.get("/history/stats", response_model=OwnerWorkspaceHistoryStatsResponse)
+async def history_stats(
+    entity_type: Optional[str] = Query(None),
+    entity_id: Optional[int] = Query(None),
+    action_type: Optional[str] = Query(None),
+    author_id: Optional[int] = Query(None),
+    created_from: Optional[datetime] = Query(None),
+    created_to: Optional[datetime] = Query(None),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    normalized_entity_type = (entity_type or "").strip().lower()
+    history_entity_type = normalized_entity_type or None
+    if history_entity_type and history_entity_type not in OWNER_WORKSPACE_HISTORY_ENTITY_TYPES:
+        return OwnerWorkspaceHistoryStatsResponse(
+            total_rows=0,
+            unique_authors=0,
+            unique_actions=0,
+            entity_type_counts=[],
+            action_counts=[],
+            author_counts=[],
+            day_counts=[],
+        )
+    if entity_id is not None and (not history_entity_type or entity_id <= 0):
+        return OwnerWorkspaceHistoryStatsResponse(
+            total_rows=0,
+            unique_authors=0,
+            unique_actions=0,
+            entity_type_counts=[],
+            action_counts=[],
+            author_counts=[],
+            day_counts=[],
+        )
+    if author_id is not None and author_id <= 0:
+        return OwnerWorkspaceHistoryStatsResponse(
+            total_rows=0,
+            unique_authors=0,
+            unique_actions=0,
+            entity_type_counts=[],
+            action_counts=[],
+            author_counts=[],
+            day_counts=[],
+        )
+    if created_from is not None and created_to is not None and created_from > created_to:
+        return OwnerWorkspaceHistoryStatsResponse(
+            total_rows=0,
+            unique_authors=0,
+            unique_actions=0,
+            entity_type_counts=[],
+            action_counts=[],
+            author_counts=[],
+            day_counts=[],
+        )
+    if not audit_history_allowed(db, ctx, history_entity_type, entity_id):
+        return OwnerWorkspaceHistoryStatsResponse(
+            total_rows=0,
+            unique_authors=0,
+            unique_actions=0,
+            entity_type_counts=[],
+            action_counts=[],
+            author_counts=[],
+            day_counts=[],
+        )
+    history_action_type = (action_type or "").strip().lower()
+    q = _build_history_query(db, ctx, history_entity_type, entity_id, history_action_type, author_id, created_from, created_to)
+    if q is None:
+        return OwnerWorkspaceHistoryStatsResponse(
+            total_rows=0,
+            unique_authors=0,
+            unique_actions=0,
+            entity_type_counts=[],
+            action_counts=[],
+            author_counts=[],
+            day_counts=[],
+        )
+
+    history_subq = q.with_entities(
+        OwnerWorkspaceAuditLog.id.label("id"),
+        OwnerWorkspaceAuditLog.entity_type.label("entity_type"),
+        OwnerWorkspaceAuditLog.entity_id.label("entity_id"),
+        OwnerWorkspaceAuditLog.action_type.label("action_type"),
+        OwnerWorkspaceAuditLog.author_id.label("author_id"),
+        OwnerWorkspaceAuditLog.created_at.label("created_at"),
+    ).subquery()
+
+    totals = db.query(
+        func.count(history_subq.c.id),
+        func.count(func.distinct(history_subq.c.author_id)),
+        func.count(func.distinct(history_subq.c.action_type)),
+        func.min(history_subq.c.created_at),
+        func.max(history_subq.c.created_at),
+    ).one()
+
+    entity_rows = (
+        db.query(history_subq.c.entity_type, func.count(history_subq.c.id).label("count"))
+        .group_by(history_subq.c.entity_type)
+        .order_by(desc("count"), asc(history_subq.c.entity_type))
+        .all()
+    )
+    action_rows = (
+        db.query(history_subq.c.action_type, func.count(history_subq.c.id).label("count"))
+        .group_by(history_subq.c.action_type)
+        .order_by(desc("count"), asc(history_subq.c.action_type))
+        .limit(10)
+        .all()
+    )
+    author_rows = (
+        db.query(history_subq.c.author_id, func.count(history_subq.c.id).label("count"))
+        .filter(history_subq.c.author_id.isnot(None))
+        .group_by(history_subq.c.author_id)
+        .order_by(desc("count"), asc(history_subq.c.author_id))
+        .limit(10)
+        .all()
+    )
+    day_rows = (
+        db.query(func.date_trunc("day", history_subq.c.created_at).label("bucket_day"), func.count(history_subq.c.id).label("count"))
+        .group_by("bucket_day")
+        .order_by(desc("bucket_day"))
+        .limit(14)
+        .all()
+    )
+
+    return OwnerWorkspaceHistoryStatsResponse(
+        total_rows=int(totals[0] or 0),
+        unique_authors=int(totals[1] or 0),
+        unique_actions=int(totals[2] or 0),
+        first_created_at=totals[3],
+        last_created_at=totals[4],
+        entity_type_counts=[OwnerWorkspaceHistoryStatsCountItem(key=str(key), count=int(count)) for key, count in entity_rows],
+        action_counts=[OwnerWorkspaceHistoryStatsCountItem(key=str(key), count=int(count)) for key, count in action_rows],
+        author_counts=[OwnerWorkspaceHistoryStatsAuthorItem(author_id=int(author), count=int(count)) for author, count in author_rows],
+        day_counts=[
+            OwnerWorkspaceHistoryStatsDayItem(day=day, count=int(count))
+            for day, count in reversed(day_rows)
+            if day is not None
+        ],
+    )
 
 

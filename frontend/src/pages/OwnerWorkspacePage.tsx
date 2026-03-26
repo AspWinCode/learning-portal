@@ -1577,7 +1577,7 @@ const OwnerWorkspacePage: React.FC = () => {
     } catch {
       setNotifEnvelope(null);
     }
-  }, [applyWorkspaceSettingsBundle]);
+  }, []);
 
   const applyWorkspaceSettingsBundle = useCallback((bundle: OwnerWorkspaceSettingsBundle) => {
     setTaskConfig(bundle.task_config);
@@ -1594,7 +1594,7 @@ const OwnerWorkspacePage: React.FC = () => {
     setContactSourceDictionaryDraft(bundle.contact_sources);
     setPermissionPolicy(bundle.permission_policy);
     setPermissionPolicyDraft(bundle.permission_policy);
-  }, []);
+  }, [applyWorkspaceSettingsBundle]);
 
   const loadMeta = useCallback(async () => {
     try {

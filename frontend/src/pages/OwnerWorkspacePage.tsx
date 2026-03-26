@@ -77,6 +77,7 @@ import type {
   OwnerWorkspaceNotificationDeliveryStats,
   OwnerWorkspaceSettingsBundle,
   OwnerWorkspaceSettingsBundleEnvelope,
+  OwnerWorkspaceSettingsSnapshot,
   OwnerWorkspaceSettingsBundleSummary,
   OwnerWorkspaceProjectConfig,
   OwnerWorkspaceProject,
@@ -827,6 +828,14 @@ const OwnerWorkspacePage: React.FC = () => {
   const [settingsBundleImportText, setSettingsBundleImportText] = useState('');
   const [settingsBundleImporting, setSettingsBundleImporting] = useState(false);
   const [settingsBundleLastExportMeta, setSettingsBundleLastExportMeta] = useState<OwnerWorkspaceSettingsBundleEnvelope['meta'] | null>(null);
+  const [settingsSnapshots, setSettingsSnapshots] = useState<OwnerWorkspaceSettingsSnapshot[]>([]);
+  const [settingsSnapshotsLoading, setSettingsSnapshotsLoading] = useState(false);
+  const [settingsSnapshotCreateOpen, setSettingsSnapshotCreateOpen] = useState(false);
+  const [settingsSnapshotName, setSettingsSnapshotName] = useState('');
+  const [settingsSnapshotNote, setSettingsSnapshotNote] = useState('');
+  const [settingsSnapshotCreating, setSettingsSnapshotCreating] = useState(false);
+  const [settingsSnapshotApplyingId, setSettingsSnapshotApplyingId] = useState<string | null>(null);
+  const [settingsSnapshotDeletingId, setSettingsSnapshotDeletingId] = useState<string | null>(null);
   const currentWorkspaceAccessSummary = useMemo(() => {
     if (isWorkspaceFullAccess) {
       return [
@@ -1559,6 +1568,22 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   }, [isWorkspaceFullAccess]);
 
+  const loadSettingsSnapshots = useCallback(async () => {
+    if (!isWorkspaceFullAccess) {
+      setSettingsSnapshots([]);
+      return;
+    }
+    setSettingsSnapshotsLoading(true);
+    try {
+      const items = await settingsApi.getOwnerWorkspaceSettingsSnapshots();
+      setSettingsSnapshots(items);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось загрузить snapshots системных настроек owner workspace'));
+    } finally {
+      setSettingsSnapshotsLoading(false);
+    }
+  }, [isWorkspaceFullAccess]);
+
   const retryNotificationDelivery = useCallback(
     async (notificationIds: number[]) => {
       if (!notificationIds.length) return;
@@ -1616,8 +1641,9 @@ const OwnerWorkspacePage: React.FC = () => {
   useEffect(() => {
     if (tab === OW_TAB_SETTINGS && isWorkspaceFullAccess) {
       void loadNotificationDeliveryStats();
+      void loadSettingsSnapshots();
     }
-  }, [isWorkspaceFullAccess, loadNotificationDeliveryStats, tab]);
+  }, [isWorkspaceFullAccess, loadNotificationDeliveryStats, loadSettingsSnapshots, tab]);
 
   const refreshWebPushState = useCallback(async () => {
     const supported =
@@ -3044,6 +3070,83 @@ const OwnerWorkspacePage: React.FC = () => {
       setSettingsBundleImporting(false);
     }
   }, [applyWorkspaceSettingsBundle, loadNotificationDeliveryStats, parsedSettingsBundleInput]);
+
+  const createSettingsSnapshot = useCallback(async () => {
+    const name = settingsSnapshotName.trim();
+    if (!name) {
+      setError('Укажите название snapshot системных настроек.');
+      return;
+    }
+    setSettingsSnapshotCreating(true);
+    try {
+      const snapshot = await settingsApi.createOwnerWorkspaceSettingsSnapshot({
+        name,
+        note: settingsSnapshotNote.trim() || null,
+      });
+      setSettingsSnapshots((prev) => [snapshot, ...prev.filter((item) => item.id !== snapshot.id)]);
+      setSettingsSnapshotCreateOpen(false);
+      setSettingsSnapshotName('');
+      setSettingsSnapshotNote('');
+      setError(null);
+      setMaxSyncResult(`Создан snapshot системных настроек: ${snapshot.name}.`);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось создать snapshot системных настроек owner workspace'));
+    } finally {
+      setSettingsSnapshotCreating(false);
+    }
+  }, [settingsSnapshotName, settingsSnapshotNote]);
+
+  const applySettingsSnapshot = useCallback(
+    async (snapshot: OwnerWorkspaceSettingsSnapshot) => {
+      setSettingsSnapshotApplyingId(snapshot.id);
+      try {
+        const saved = await settingsApi.applyOwnerWorkspaceSettingsSnapshot(snapshot.id);
+        applyWorkspaceSettingsBundle(saved.data);
+        setSettingsBundleLastExportMeta(saved.meta);
+        setError(null);
+        setMaxSyncResult(`Применён snapshot системных настроек: ${snapshot.name}.`);
+        await loadNotificationDeliveryStats();
+      } catch (e: unknown) {
+        setError(extractApiError(e, 'Не удалось применить snapshot системных настроек owner workspace'));
+      } finally {
+        setSettingsSnapshotApplyingId(null);
+      }
+    },
+    [applyWorkspaceSettingsBundle, loadNotificationDeliveryStats]
+  );
+
+  const deleteSettingsSnapshot = useCallback(async (snapshot: OwnerWorkspaceSettingsSnapshot) => {
+    setSettingsSnapshotDeletingId(snapshot.id);
+    try {
+      const items = await settingsApi.deleteOwnerWorkspaceSettingsSnapshot(snapshot.id);
+      setSettingsSnapshots(items);
+      setError(null);
+      setMaxSyncResult(`Удалён snapshot системных настроек: ${snapshot.name}.`);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось удалить snapshot системных настроек owner workspace'));
+    } finally {
+      setSettingsSnapshotDeletingId(null);
+    }
+  }, []);
+
+  const exportSettingsSnapshot = useCallback((snapshot: OwnerWorkspaceSettingsSnapshot) => {
+    const stamp = snapshot.created_at.replace(/[:.]/g, '-');
+    downloadTextFile(
+      JSON.stringify(snapshot.bundle, null, 2),
+      `owner_workspace_settings_snapshot_${snapshot.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}_${stamp}.json`,
+      'application/json;charset=utf-8'
+    );
+    setMaxSyncResult(`Экспортирован snapshot системных настроек: ${snapshot.name}.`);
+  }, []);
+
+  const copySettingsSnapshot = useCallback(async (snapshot: OwnerWorkspaceSettingsSnapshot) => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(snapshot.bundle, null, 2));
+      setMaxSyncResult(`JSON snapshot системных настроек скопирован: ${snapshot.name}.`);
+    } catch {
+      setError('Не удалось скопировать JSON snapshot системных настроек.');
+    }
+  }, []);
 
   const handleWorkspaceTabChange = (_: React.SyntheticEvent, v: number) => {
     if (v !== OW_TAB_TASKS) {
@@ -7094,6 +7197,117 @@ const OwnerWorkspacePage: React.FC = () => {
                       </Stack>
                     </CardContent>
                   </Card>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={1}
+                          justifyContent="space-between"
+                          alignItems={{ xs: 'flex-start', sm: 'center' }}
+                        >
+                          <Box>
+                            <Typography variant="subtitle2">Snapshots системных настроек</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Именованные снимки для быстрого отката и повторного применения admin-конфигурации owner-workspace.
+                            </Typography>
+                          </Box>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                            <Button variant="outlined" onClick={() => void loadSettingsSnapshots()} disabled={settingsSnapshotsLoading}>
+                              {settingsSnapshotsLoading ? 'Обновление...' : 'Обновить'}
+                            </Button>
+                            <Button
+                              variant="contained"
+                              onClick={() => {
+                                setSettingsSnapshotName('');
+                                setSettingsSnapshotNote('');
+                                setSettingsSnapshotCreateOpen(true);
+                              }}
+                            >
+                              Создать snapshot
+                            </Button>
+                          </Stack>
+                        </Stack>
+                        {settingsSnapshots.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">
+                            Снимков пока нет.
+                          </Typography>
+                        ) : (
+                          <Stack spacing={1.25}>
+                            {settingsSnapshots.map((snapshot) => (
+                              <Box
+                                key={snapshot.id}
+                                sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
+                              >
+                                <Stack spacing={1}>
+                                  <Stack
+                                    direction={{ xs: 'column', md: 'row' }}
+                                    spacing={1}
+                                    justifyContent="space-between"
+                                    alignItems={{ xs: 'flex-start', md: 'center' }}
+                                  >
+                                    <Box>
+                                      <Typography variant="body2">
+                                        <strong>{snapshot.name}</strong>
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {new Date(snapshot.created_at).toLocaleString('ru-RU')}
+                                        {snapshot.created_by_name ? ` · ${snapshot.created_by_name}` : ''}
+                                      </Typography>
+                                      {snapshot.note && (
+                                        <Typography variant="body2" color="text.secondary">
+                                          {snapshot.note}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => void copySettingsSnapshot(snapshot)}
+                                      >
+                                        Копировать
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => exportSettingsSnapshot(snapshot)}
+                                      >
+                                        Экспорт
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="contained"
+                                        disabled={settingsSnapshotApplyingId === snapshot.id}
+                                        onClick={() => void applySettingsSnapshot(snapshot)}
+                                      >
+                                        {settingsSnapshotApplyingId === snapshot.id ? 'Применяем...' : 'Применить'}
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        color="error"
+                                        variant="outlined"
+                                        disabled={settingsSnapshotDeletingId === snapshot.id}
+                                        onClick={() => void deleteSettingsSnapshot(snapshot)}
+                                      >
+                                        {settingsSnapshotDeletingId === snapshot.id ? 'Удаляем...' : 'Удалить'}
+                                      </Button>
+                                    </Stack>
+                                  </Stack>
+                                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                                    <Chip size="small" label={`v${snapshot.bundle.meta.version}`} />
+                                    {Object.entries(snapshot.bundle.meta.summary).map(([key, value]) => (
+                                      <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
+                                    ))}
+                                  </Stack>
+                                </Stack>
+                              </Box>
+                            ))}
+                          </Stack>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
                 </Stack>
               </>
             )}
@@ -9267,6 +9481,45 @@ const OwnerWorkspacePage: React.FC = () => {
             disabled={settingsBundleImporting || !settingsBundleImportText.trim() || !!parsedSettingsBundleInput.error}
           >
             {settingsBundleImporting ? 'Импорт...' : 'Импортировать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={settingsSnapshotCreateOpen}
+        onClose={() => !settingsSnapshotCreating && setSettingsSnapshotCreateOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Создать snapshot системных настроек</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              fullWidth
+              label="Название snapshot"
+              value={settingsSnapshotName}
+              onChange={(e) => setSettingsSnapshotName(e.target.value)}
+            />
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              label="Комментарий"
+              value={settingsSnapshotNote}
+              onChange={(e) => setSettingsSnapshotNote(e.target.value)}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsSnapshotCreateOpen(false)} disabled={settingsSnapshotCreating}>
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void createSettingsSnapshot()}
+            disabled={settingsSnapshotCreating || !settingsSnapshotName.trim()}
+          >
+            {settingsSnapshotCreating ? 'Создаём...' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>

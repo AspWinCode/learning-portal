@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import json
 import os
+from uuid import uuid4
 
 from app.database import get_db
 from app import auth
@@ -43,6 +44,7 @@ OWNER_WS_TASK_TAGS_KEY = "owner_workspace_task_tag_dictionary"
 OWNER_WS_CONTACT_TAGS_KEY = "owner_workspace_contact_tag_dictionary"
 OWNER_WS_CONTACT_SOURCES_KEY = "owner_workspace_contact_source_dictionary"
 OWNER_WS_SETTINGS_BUNDLE_VERSION = 1
+OWNER_WS_SETTINGS_SNAPSHOTS_KEY = "owner_workspace_settings_snapshots"
 
 DEFAULT_OWNER_WS_TASK_CONFIG = {
     "statuses": [
@@ -243,6 +245,25 @@ class OwnerWorkspaceSettingsBundleMetaResponse(BaseModel):
 class OwnerWorkspaceSettingsBundleEnvelopeResponse(BaseModel):
     meta: OwnerWorkspaceSettingsBundleMetaResponse
     data: OwnerWorkspaceSettingsBundleResponse
+
+
+class OwnerWorkspaceSettingsSnapshotResponse(BaseModel):
+    id: str
+    name: str
+    note: str | None = None
+    created_at: datetime
+    created_by_id: int | None = None
+    created_by_name: str | None = None
+    bundle: OwnerWorkspaceSettingsBundleEnvelopeResponse
+
+
+class OwnerWorkspaceSettingsSnapshotsResponse(BaseModel):
+    items: List[OwnerWorkspaceSettingsSnapshotResponse]
+
+
+class OwnerWorkspaceSettingsSnapshotCreateRequest(BaseModel):
+    name: str
+    note: str | None = None
 
 
 class OwnerWorkspaceNotificationDeliveryChannelStats(BaseModel):
@@ -571,6 +592,57 @@ def _extract_owner_ws_settings_bundle_update(raw_body: Any) -> OwnerWorkspaceSet
     if isinstance(raw_body, dict) and isinstance(raw_body.get("data"), dict):
         payload = raw_body["data"]
     return OwnerWorkspaceSettingsBundleUpdate.model_validate(payload)
+
+
+def _get_owner_ws_settings_snapshots(db: Session) -> List[dict]:
+    raw = _get_json_setting(db, OWNER_WS_SETTINGS_SNAPSHOTS_KEY)
+    if not isinstance(raw, list):
+        return []
+    out: List[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        snapshot_id = str(item.get("id") or "").strip()
+        name = str(item.get("name") or "").strip()
+        created_at = str(item.get("created_at") or "").strip()
+        bundle = item.get("bundle")
+        if not snapshot_id or not name or not created_at or not isinstance(bundle, dict):
+            continue
+        try:
+            normalized_bundle_data = _normalize_owner_ws_settings_bundle(_extract_owner_ws_settings_bundle_update(bundle))
+            meta = bundle.get("meta") if isinstance(bundle, dict) else None
+            normalized_bundle = {
+                "meta": {
+                    "version": int(meta.get("version") or OWNER_WS_SETTINGS_BUNDLE_VERSION) if isinstance(meta, dict) else OWNER_WS_SETTINGS_BUNDLE_VERSION,
+                    "source": str(meta.get("source") or "owner_workspace_settings_bundle_snapshot")[:120]
+                    if isinstance(meta, dict)
+                    else "owner_workspace_settings_bundle_snapshot",
+                    "exported_at": meta.get("exported_at") if isinstance(meta, dict) and meta.get("exported_at") else created_at,
+                    "exported_by_id": int(meta["exported_by_id"]) if isinstance(meta, dict) and meta.get("exported_by_id") else None,
+                    "exported_by_name": (str(meta.get("exported_by_name") or "").strip()[:160] or None) if isinstance(meta, dict) else None,
+                    "summary": _build_owner_ws_settings_bundle_summary(normalized_bundle_data),
+                },
+                "data": normalized_bundle_data,
+            }
+        except Exception:
+            continue
+        out.append(
+            {
+                "id": snapshot_id[:64],
+                "name": name[:120],
+                "note": (str(item.get("note") or "").strip() or None),
+                "created_at": created_at,
+                "created_by_id": int(item["created_by_id"]) if item.get("created_by_id") else None,
+                "created_by_name": (str(item.get("created_by_name") or "").strip()[:160] or None),
+                "bundle": normalized_bundle,
+            }
+        )
+    out.sort(key=lambda row: (row["created_at"], row["id"]), reverse=True)
+    return out
+
+
+def _set_owner_ws_settings_snapshots(db: Session, snapshots: List[dict]) -> None:
+    _set_json_setting(db, OWNER_WS_SETTINGS_SNAPSHOTS_KEY, snapshots)
 
 
 def _build_delivery_channel_stats(
@@ -955,6 +1027,73 @@ async def set_owner_workspace_settings_bundle(
     return OwnerWorkspaceSettingsBundleEnvelopeResponse.model_validate(
         _build_owner_ws_settings_bundle_envelope(bundle, current_user)
     )
+
+
+@router.get("/owner-workspace-settings-snapshots", response_model=OwnerWorkspaceSettingsSnapshotsResponse)
+async def get_owner_workspace_settings_snapshots(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    return OwnerWorkspaceSettingsSnapshotsResponse(items=_get_owner_ws_settings_snapshots(db))
+
+
+@router.post("/owner-workspace-settings-snapshots", response_model=OwnerWorkspaceSettingsSnapshotResponse)
+async def create_owner_workspace_settings_snapshot(
+    body: OwnerWorkspaceSettingsSnapshotCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name must not be empty")
+    snapshots = _get_owner_ws_settings_snapshots(db)
+    bundle = _build_owner_ws_settings_bundle_envelope(_build_owner_ws_settings_bundle(db), current_user)
+    snapshot = {
+        "id": uuid4().hex,
+        "name": name[:120],
+        "note": ((body.note or "").strip()[:500] or None),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by_id": int(current_user.id),
+        "created_by_name": (current_user.full_name or current_user.email or f"#{current_user.id}")[:160],
+        "bundle": bundle,
+    }
+    snapshots.insert(0, snapshot)
+    _set_owner_ws_settings_snapshots(db, snapshots[:25])
+    db.commit()
+    return OwnerWorkspaceSettingsSnapshotResponse.model_validate(snapshot)
+
+
+@router.post("/owner-workspace-settings-snapshots/{snapshot_id}/apply", response_model=OwnerWorkspaceSettingsBundleEnvelopeResponse)
+async def apply_owner_workspace_settings_snapshot(
+    snapshot_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    snapshots = _get_owner_ws_settings_snapshots(db)
+    snapshot = next((item for item in snapshots if item["id"] == snapshot_id), None)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    bundle = _normalize_owner_ws_settings_bundle(_extract_owner_ws_settings_bundle_update(snapshot["bundle"]))
+    _apply_owner_ws_settings_bundle(db, bundle)
+    db.commit()
+    return OwnerWorkspaceSettingsBundleEnvelopeResponse.model_validate(
+        _build_owner_ws_settings_bundle_envelope(bundle, current_user)
+    )
+
+
+@router.delete("/owner-workspace-settings-snapshots/{snapshot_id}", response_model=OwnerWorkspaceSettingsSnapshotsResponse)
+async def delete_owner_workspace_settings_snapshot(
+    snapshot_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    snapshots = _get_owner_ws_settings_snapshots(db)
+    filtered = [item for item in snapshots if item["id"] != snapshot_id]
+    if len(filtered) == len(snapshots):
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    _set_owner_ws_settings_snapshots(db, filtered)
+    db.commit()
+    return OwnerWorkspaceSettingsSnapshotsResponse(items=filtered)
 
 
 @router.get(

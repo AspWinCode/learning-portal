@@ -66,6 +66,7 @@ import {
   OwnerWorkspaceNotificationConfig,
   OwnerWorkspaceSettingsBundle,
   OwnerWorkspaceSettingsBundleEnvelope,
+  OwnerWorkspaceSettingsSnapshot,
   OwnerWorkspaceNotificationDeliveryStats,
   OwnerWorkspaceNotificationDeliveryRetryResult,
   OwnerWorkspaceTagDictionary,
@@ -1077,6 +1078,25 @@ export const settingsApi = {
   ): Promise<OwnerWorkspaceSettingsBundleEnvelope> => {
     const response = await api.post('/api/settings/owner-workspace-settings-bundle', payload);
     return response.data;
+  },
+  getOwnerWorkspaceSettingsSnapshots: async (): Promise<OwnerWorkspaceSettingsSnapshot[]> => {
+    const response = await api.get('/api/settings/owner-workspace-settings-snapshots');
+    return response.data.items;
+  },
+  createOwnerWorkspaceSettingsSnapshot: async (payload: {
+    name: string;
+    note?: string | null;
+  }): Promise<OwnerWorkspaceSettingsSnapshot> => {
+    const response = await api.post('/api/settings/owner-workspace-settings-snapshots', payload);
+    return response.data;
+  },
+  applyOwnerWorkspaceSettingsSnapshot: async (snapshotId: string): Promise<OwnerWorkspaceSettingsBundleEnvelope> => {
+    const response = await api.post(`/api/settings/owner-workspace-settings-snapshots/${snapshotId}/apply`);
+    return response.data;
+  },
+  deleteOwnerWorkspaceSettingsSnapshot: async (snapshotId: string): Promise<OwnerWorkspaceSettingsSnapshot[]> => {
+    const response = await api.delete(`/api/settings/owner-workspace-settings-snapshots/${snapshotId}`);
+    return response.data.items;
   },
 };
 

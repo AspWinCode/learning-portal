@@ -1322,6 +1322,16 @@ export interface OwnerWorkspaceSettingsBundleEnvelope {
   data: OwnerWorkspaceSettingsBundle;
 }
 
+export interface OwnerWorkspaceSettingsSnapshot {
+  id: string;
+  name: string;
+  note: string | null;
+  created_at: string;
+  created_by_id: number | null;
+  created_by_name: string | null;
+  bundle: OwnerWorkspaceSettingsBundleEnvelope;
+}
+
 export interface OwnerWorkspaceTaskCompleteResult {
   completed_task: OwnerWorkspaceTask;
   next_task: OwnerWorkspaceTask | null;

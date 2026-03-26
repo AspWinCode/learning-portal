@@ -119,7 +119,7 @@ Status legend:
 |---|---|---|
 | Audit/history tab | DONE | Present. |
 | Task-level history | DONE | Present in task card. |
-| Global history filtering and export | DONE | History supports entity/action/author/date-range/sort/limit filters, CSV/JSON export, readable labels, removable filter chips, shareable deep-link URLs for filtered history, and deep-link navigation into entities. |
+| Global history filtering and export | DONE | History supports entity/entity-id/action/author/date-range/sort/limit filters, CSV/JSON export, readable labels, removable filter chips, shareable deep-link URLs for filtered history, quick row-level drilldown chips, clickable entity/action summary chips, opening the current filtered history in a new tab, and deep-link navigation into entities. |
 | Hardened history API contract | DONE | Invalid entity types, invalid ids, invalid date ranges and ambiguous `entity_id`-only requests are explicitly rejected with empty results instead of relying on implicit DB behavior. |
 | Full compliance-style exhaustive audit across every possible entity change | PARTIAL | Practical history coverage exists, but not a formally exhaustive compliance-grade audit matrix or separate audit-admin console. |
 

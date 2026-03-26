@@ -167,6 +167,7 @@ Owner Workspace is in a working production state.
 
 - Global history tab with filters for:
   - entity
+  - entity id
   - action
   - author
   - date range
@@ -179,6 +180,12 @@ Owner Workspace is in a working production state.
   - rows
   - unique authors
   - unique actions
+- History surface also shows clickable distribution chips by entity type and top actions.
+- Individual history rows expose quick drilldown chips for:
+  - exact entity history
+  - same action type
+  - same author
+- Current history selection can also be opened in a new browser tab.
 - Task-level history inside task dialog.
 - Readable action labels and compact changed-field summaries in both task history and global history.
 - Deep-link opening from history rows into project/contact/task dialogs.

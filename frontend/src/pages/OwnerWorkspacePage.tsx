@@ -512,7 +512,7 @@ const OW_TAB_NOTIFICATIONS = 5;
 const OW_TAB_SETTINGS = 6;
 const OW_TAB_HISTORY = 7;
 const OWNER_WS_HISTORY_LIMIT_OPTIONS = [100, 200, 300, 500, 1000] as const;
-const OWNER_WS_HISTORY_QUERY_KEYS = ['h_entity', 'h_action', 'h_author', 'h_from', 'h_to', 'h_limit', 'h_sort'] as const;
+const OWNER_WS_HISTORY_QUERY_KEYS = ['h_entity', 'h_entity_id', 'h_action', 'h_author', 'h_from', 'h_to', 'h_limit', 'h_sort'] as const;
 
 /** РЎР»Р°РіРё РґР»СЏ deep-link: `/owner-workspace?tab=<slug>&task=<id>` (СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚СЊ) Рё РїСѓС‚Рё `/owner-workspace/<slug>`. */
 const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'reports', 'comms', 'notifications', 'settings', 'history'] as const;
@@ -674,6 +674,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [historyLogs, setHistoryLogs] = useState<OwnerWorkspaceAuditLog[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyEntityFilter, setHistoryEntityFilter] = useState<string>('');
+  const [historyEntityIdFilter, setHistoryEntityIdFilter] = useState<number | ''>('');
   const [historyActionFilter, setHistoryActionFilter] = useState<string>('');
   const [historyAuthorFilter, setHistoryAuthorFilter] = useState<number | ''>('');
   const [historyCreatedFrom, setHistoryCreatedFrom] = useState('');
@@ -1702,6 +1703,7 @@ const OwnerWorkspacePage: React.FC = () => {
       const next = new URLSearchParams(base ? base.toString() : '');
       OWNER_WS_HISTORY_QUERY_KEYS.forEach((key) => next.delete(key));
       if (historyEntityFilter) next.set('h_entity', historyEntityFilter);
+      if (historyEntityIdFilter !== '') next.set('h_entity_id', String(historyEntityIdFilter));
       if (historyActionFilter) next.set('h_action', historyActionFilter);
       if (historyAuthorFilter !== '') next.set('h_author', String(historyAuthorFilter));
       if (historyCreatedFrom) next.set('h_from', historyCreatedFrom);
@@ -1710,7 +1712,16 @@ const OwnerWorkspacePage: React.FC = () => {
       if (historySortOrder !== 'desc') next.set('h_sort', historySortOrder);
       return next;
     },
-    [historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historySortOrder]
+    [
+      historyActionFilter,
+      historyAuthorFilter,
+      historyCreatedFrom,
+      historyCreatedTo,
+      historyEntityFilter,
+      historyEntityIdFilter,
+      historyLimit,
+      historySortOrder,
+    ]
   );
 
   useEffect(() => {
@@ -1762,6 +1773,10 @@ const OwnerWorkspacePage: React.FC = () => {
   useEffect(() => {
     if (tab !== OW_TAB_HISTORY) return;
     const nextEntity = searchParams.get('h_entity') || '';
+    const nextEntityIdRaw = searchParams.get('h_entity_id');
+    const nextEntityIdParsed = nextEntityIdRaw ? Number(nextEntityIdRaw) : '';
+    const nextEntityId =
+      typeof nextEntityIdParsed === 'number' && Number.isFinite(nextEntityIdParsed) && nextEntityIdParsed > 0 ? nextEntityIdParsed : '';
     const nextAction = searchParams.get('h_action') || '';
     const nextAuthorRaw = searchParams.get('h_author');
     const nextAuthorParsed = nextAuthorRaw ? Number(nextAuthorRaw) : '';
@@ -1774,6 +1789,7 @@ const OwnerWorkspacePage: React.FC = () => {
       : 300;
     const nextSort = searchParams.get('h_sort') === 'asc' ? 'asc' : 'desc';
     if (nextEntity !== historyEntityFilter) setHistoryEntityFilter(nextEntity);
+    if (nextEntityId !== historyEntityIdFilter) setHistoryEntityIdFilter(nextEntityId);
     if (nextAction !== historyActionFilter) setHistoryActionFilter(nextAction);
     if (nextAuthor !== historyAuthorFilter) setHistoryAuthorFilter(nextAuthor);
     if (nextCreatedFrom !== historyCreatedFrom) setHistoryCreatedFrom(nextCreatedFrom);
@@ -1786,6 +1802,7 @@ const OwnerWorkspacePage: React.FC = () => {
     historyCreatedFrom,
     historyCreatedTo,
     historyEntityFilter,
+    historyEntityIdFilter,
     historyLimit,
     historySortOrder,
     searchParams,
@@ -1813,6 +1830,7 @@ const OwnerWorkspacePage: React.FC = () => {
         if (!cancelled) setHistoryLoading(true);
         const rows = await ownerWorkspaceApi.listHistory({
           entity_type: historyEntityFilter || undefined,
+          entity_id: historyEntityIdFilter === '' ? undefined : historyEntityIdFilter,
           action_type: historyActionFilter || undefined,
           author_id: historyAuthorFilter === '' ? undefined : historyAuthorFilter,
           created_from: localInputToIso(historyCreatedFrom) || undefined,
@@ -1831,7 +1849,17 @@ const OwnerWorkspacePage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tab, historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historySortOrder]);
+  }, [
+    tab,
+    historyActionFilter,
+    historyAuthorFilter,
+    historyCreatedFrom,
+    historyCreatedTo,
+    historyEntityFilter,
+    historyEntityIdFilter,
+    historyLimit,
+    historySortOrder,
+  ]);
 
   useEffect(() => {
     if (tab === OW_TAB_HISTORY && error) {
@@ -3105,6 +3133,7 @@ const OwnerWorkspacePage: React.FC = () => {
   }, []);
   const resetHistoryFilters = useCallback(() => {
     setHistoryEntityFilter('');
+    setHistoryEntityIdFilter('');
     setHistoryActionFilter('');
     setHistoryAuthorFilter('');
     setHistoryCreatedFrom('');
@@ -3129,6 +3158,11 @@ const OwnerWorkspacePage: React.FC = () => {
       setError('Не удалось скопировать ссылку на историю.');
     }
   }, [buildHistorySearchParams]);
+  const openHistoryLinkInNewTab = useCallback(() => {
+    const params = buildHistorySearchParams();
+    const url = `${window.location.origin}/owner-workspace/history${params.toString() ? `?${params.toString()}` : ''}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [buildHistorySearchParams]);
 
   const userName = useCallback(
     (userId: number | null | undefined) => {
@@ -3152,6 +3186,7 @@ const OwnerWorkspacePage: React.FC = () => {
         .replace(/^-+|-+$/g, '');
     const parts: string[] = [];
     if (historyEntityFilter) parts.push(`entity-${normalize(historyEntityFilter)}`);
+    if (historyEntityIdFilter !== '') parts.push(`entityid-${historyEntityIdFilter}`);
     if (historyActionFilter) parts.push(`action-${normalize(historyActionFilter)}`);
     if (historyAuthorFilter !== '') parts.push(`author-${historyAuthorFilter}`);
     if (historyCreatedFrom) parts.push(`from-${normalize(historyCreatedFrom)}`);
@@ -3159,18 +3194,35 @@ const OwnerWorkspacePage: React.FC = () => {
     if (historyLimit !== 300) parts.push(`limit-${historyLimit}`);
     parts.push(`rows-${historyLogs.length}`);
     return parts.join('_') || 'all';
-  }, [historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historyLogs.length]);
+  }, [
+    historyActionFilter,
+    historyAuthorFilter,
+    historyCreatedFrom,
+    historyCreatedTo,
+    historyEntityFilter,
+    historyEntityIdFilter,
+    historyLimit,
+    historyLogs.length,
+  ]);
   const historySummary = useMemo(() => {
     const authors = new Set<number>();
     const actions = new Set<string>();
+    const entityCounts: Record<string, number> = {};
+    const actionCounts: Record<string, number> = {};
     historyLogs.forEach((entry) => {
       if (entry.author_id != null) authors.add(entry.author_id);
       if (entry.action_type) actions.add(entry.action_type);
+      if (entry.action_type) actionCounts[entry.action_type] = (actionCounts[entry.action_type] || 0) + 1;
+      if (entry.entity_type) entityCounts[entry.entity_type] = (entityCounts[entry.entity_type] || 0) + 1;
     });
     return {
       rows: historyLogs.length,
       authors: authors.size,
       actions: actions.size,
+      entityCounts,
+      topActions: Object.entries(actionCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4),
     };
   }, [historyLogs]);
   const historyActiveFilterChips = useMemo(() => {
@@ -3179,6 +3231,12 @@ const OwnerWorkspacePage: React.FC = () => {
       chips.push({
         key: 'entity',
         label: `Сущность: ${OWNER_WS_HISTORY_ENTITY_LABELS[historyEntityFilter] || historyEntityFilter}`,
+      });
+    }
+    if (historyEntityIdFilter !== '') {
+      chips.push({
+        key: 'entity_id',
+        label: `ID: ${historyEntityIdFilter}`,
       });
     }
     if (historyActionFilter) {
@@ -3198,11 +3256,24 @@ const OwnerWorkspacePage: React.FC = () => {
     if (historyLimit !== 300) chips.push({ key: 'limit', label: `Лимит: ${historyLimit}` });
     if (historySortOrder !== 'desc') chips.push({ key: 'sort', label: 'Порядок: сначала старые' });
     return chips;
-  }, [historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historySortOrder, userName]);
+  }, [
+    historyActionFilter,
+    historyAuthorFilter,
+    historyCreatedFrom,
+    historyCreatedTo,
+    historyEntityFilter,
+    historyEntityIdFilter,
+    historyLimit,
+    historySortOrder,
+    userName,
+  ]);
   const clearHistoryFilterChip = useCallback((key: string) => {
     switch (key) {
       case 'entity':
         setHistoryEntityFilter('');
+        break;
+      case 'entity_id':
+        setHistoryEntityIdFilter('');
         break;
       case 'action':
         setHistoryActionFilter('');
@@ -3225,6 +3296,21 @@ const OwnerWorkspacePage: React.FC = () => {
       default:
         break;
     }
+  }, []);
+  const applyHistoryEntityQuickFilter = useCallback((entityType: string) => {
+    setHistoryEntityFilter(entityType);
+    setHistoryEntityIdFilter('');
+  }, []);
+  const applyHistoryExactEntityQuickFilter = useCallback((entityType: string, entityId: number) => {
+    setHistoryEntityFilter(entityType);
+    setHistoryEntityIdFilter(entityId);
+  }, []);
+  const applyHistoryActionQuickFilter = useCallback((actionType: string) => {
+    setHistoryActionFilter(actionType);
+  }, []);
+  const applyHistoryAuthorQuickFilter = useCallback((authorId: number | null | undefined) => {
+    if (authorId == null) return;
+    setHistoryAuthorFilter(authorId);
   }, []);
 
   const exportHistoryJson = useCallback(() => {
@@ -6887,6 +6973,17 @@ const OwnerWorkspacePage: React.FC = () => {
                 ))}
               </TextField>
               <TextField
+                label="ID сущности"
+                type="number"
+                value={historyEntityIdFilter}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setHistoryEntityIdFilter(raw ? Number(raw) : '');
+                }}
+                inputProps={{ min: 1 }}
+                sx={{ minWidth: 160 }}
+              />
+              <TextField
                 select
                 label="Автор"
                 value={historyAuthorFilter}
@@ -6959,6 +7056,9 @@ const OwnerWorkspacePage: React.FC = () => {
               <Button size="small" variant="text" onClick={() => void copyHistoryLink()}>
                 Копировать ссылку
               </Button>
+              <Button size="small" variant="text" onClick={openHistoryLinkInNewTab}>
+                Открыть в новой вкладке
+              </Button>
               <Button size="small" variant="contained" disabled={historyLogs.length === 0} onClick={exportHistoryCsv}>
                 Экспорт CSV
               </Button>
@@ -6971,6 +7071,32 @@ const OwnerWorkspacePage: React.FC = () => {
               <Chip size="small" variant="outlined" label={`Авторов: ${historySummary.authors}`} />
               <Chip size="small" variant="outlined" label={`Действий: ${historySummary.actions}`} />
             </Stack>
+            {Object.entries(historySummary.entityCounts).length > 0 && (
+              <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+                {Object.entries(historySummary.entityCounts).map(([entityType, count]) => (
+                  <Chip
+                    key={entityType}
+                    size="small"
+                    variant={historyEntityFilter === entityType ? 'filled' : 'outlined'}
+                    label={`${OWNER_WS_HISTORY_ENTITY_LABELS[entityType] || entityType}: ${count}`}
+                    onClick={() => applyHistoryEntityQuickFilter(entityType)}
+                  />
+                ))}
+              </Stack>
+            )}
+            {historySummary.topActions.length > 0 && (
+              <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+                {historySummary.topActions.map(([actionType, count]) => (
+                  <Chip
+                    key={actionType}
+                    size="small"
+                    variant={historyActionFilter === actionType ? 'filled' : 'outlined'}
+                    label={`${OWNER_WS_HISTORY_ACTION_LABELS[actionType] || actionType}: ${count}`}
+                    onClick={() => applyHistoryActionQuickFilter(actionType)}
+                  />
+                ))}
+              </Stack>
+            )}
             {historyActiveFilterChips.length > 0 && (
               <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
                 {historyActiveFilterChips.map((chip) => (
@@ -7022,6 +7148,37 @@ const OwnerWorkspacePage: React.FC = () => {
                       )}
                     </Stack>
                   )}
+                  <Stack direction="row" spacing={1} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
+                    <Chip
+                      size="small"
+                      variant={historyEntityFilter === h.entity_type && historyEntityIdFilter === h.entity_id ? 'filled' : 'outlined'}
+                      label={`${OWNER_WS_HISTORY_ENTITY_LABELS[h.entity_type] || h.entity_type} #${h.entity_id}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        applyHistoryExactEntityQuickFilter(h.entity_type, h.entity_id);
+                      }}
+                    />
+                    <Chip
+                      size="small"
+                      variant={historyActionFilter === h.action_type ? 'filled' : 'outlined'}
+                      label={OWNER_WS_HISTORY_ACTION_LABELS[h.action_type] || h.action_type}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        applyHistoryActionQuickFilter(h.action_type);
+                      }}
+                    />
+                    {h.author_id != null && (
+                      <Chip
+                        size="small"
+                        variant={historyAuthorFilter === h.author_id ? 'filled' : 'outlined'}
+                        label={userName(h.author_id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          applyHistoryAuthorQuickFilter(h.author_id);
+                        }}
+                      />
+                    )}
+                  </Stack>
                   {(h.old_value || h.new_value) && (
                     <Button
                       size="small"

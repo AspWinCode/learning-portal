@@ -6210,6 +6210,11 @@ const OwnerWorkspacePage: React.FC = () => {
                                     <Typography variant="body2" color="text.secondary">
                                       Sent 24h: {notificationDeliveryStats.email.sent_last_24h} · Disabled: {notificationDeliveryStats.email.disabled}
                                     </Typography>
+                                    {!notificationDeliveryStats.email_configured && (
+                                      <Alert severity="warning">
+                                        SMTP для owner-workspace уведомлений не настроен на сервере. Email-канал останется недоступным, даже если он включён у пользователя.
+                                      </Alert>
+                                    )}
                                   </Stack>
                                 </CardContent>
                               </Card>
@@ -6236,6 +6241,11 @@ const OwnerWorkspacePage: React.FC = () => {
                                     <Typography variant="body2" color="text.secondary">
                                       Sent 24h: {notificationDeliveryStats.web_push.sent_last_24h} · Disabled: {notificationDeliveryStats.web_push.disabled}
                                     </Typography>
+                                    {!notificationDeliveryStats.web_push_configured && (
+                                      <Alert severity="warning">
+                                        Web push не сконфигурирован на сервере. Проверьте VAPID-переменные окружения, иначе браузерные push-уведомления работать не будут.
+                                      </Alert>
+                                    )}
                                   </Stack>
                                 </CardContent>
                               </Card>

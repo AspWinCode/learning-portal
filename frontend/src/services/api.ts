@@ -1090,6 +1090,26 @@ export const settingsApi = {
     const response = await api.post('/api/settings/owner-workspace-settings-snapshots', payload);
     return response.data;
   },
+  updateOwnerWorkspaceSettingsSnapshot: async (
+    snapshotId: string,
+    payload: {
+      name: string;
+      note?: string | null;
+    }
+  ): Promise<OwnerWorkspaceSettingsSnapshot> => {
+    const response = await api.patch(`/api/settings/owner-workspace-settings-snapshots/${snapshotId}`, payload);
+    return response.data;
+  },
+  duplicateOwnerWorkspaceSettingsSnapshot: async (
+    snapshotId: string,
+    payload?: {
+      name?: string | null;
+      note?: string | null;
+    }
+  ): Promise<OwnerWorkspaceSettingsSnapshot> => {
+    const response = await api.post(`/api/settings/owner-workspace-settings-snapshots/${snapshotId}/duplicate`, payload || {});
+    return response.data;
+  },
   applyOwnerWorkspaceSettingsSnapshot: async (snapshotId: string): Promise<OwnerWorkspaceSettingsBundleEnvelope> => {
     const response = await api.post(`/api/settings/owner-workspace-settings-snapshots/${snapshotId}/apply`);
     return response.data;

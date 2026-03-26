@@ -857,6 +857,9 @@ const OwnerWorkspacePage: React.FC = () => {
   const [settingsSnapshotSearch, setSettingsSnapshotSearch] = useState('');
   const [settingsSnapshotReview, setSettingsSnapshotReview] = useState<OwnerWorkspaceSettingsSnapshot | null>(null);
   const [settingsSnapshotCreateSafetyBeforeApply, setSettingsSnapshotCreateSafetyBeforeApply] = useState(true);
+  const [settingsSnapshotEditOpen, setSettingsSnapshotEditOpen] = useState(false);
+  const [settingsSnapshotEditingId, setSettingsSnapshotEditingId] = useState<string | null>(null);
+  const [settingsSnapshotDuplicatingId, setSettingsSnapshotDuplicatingId] = useState<string | null>(null);
   const [settingsSnapshotApplyingId, setSettingsSnapshotApplyingId] = useState<string | null>(null);
   const [settingsSnapshotDeletingId, setSettingsSnapshotDeletingId] = useState<string | null>(null);
   const currentWorkspaceAccessSummary = useMemo(() => {
@@ -3168,6 +3171,46 @@ const OwnerWorkspacePage: React.FC = () => {
       setError(extractApiError(e, 'Не удалось удалить snapshot системных настроек owner workspace'));
     } finally {
       setSettingsSnapshotDeletingId(null);
+    }
+  }, []);
+
+  const updateSettingsSnapshot = useCallback(async () => {
+    const name = settingsSnapshotName.trim();
+    if (!settingsSnapshotEditingId || !name) {
+      setError('Укажите название snapshot системных настроек.');
+      return;
+    }
+    setSettingsSnapshotCreating(true);
+    try {
+      const snapshot = await settingsApi.updateOwnerWorkspaceSettingsSnapshot(settingsSnapshotEditingId, {
+        name,
+        note: settingsSnapshotNote.trim() || null,
+      });
+      setSettingsSnapshots((prev) => prev.map((item) => (item.id === snapshot.id ? snapshot : item)));
+      setSettingsSnapshotEditOpen(false);
+      setSettingsSnapshotEditingId(null);
+      setSettingsSnapshotName('');
+      setSettingsSnapshotNote('');
+      setError(null);
+      setMaxSyncResult(`Обновлён snapshot системных настроек: ${snapshot.name}.`);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось обновить snapshot системных настроек owner workspace'));
+    } finally {
+      setSettingsSnapshotCreating(false);
+    }
+  }, [settingsSnapshotEditingId, settingsSnapshotName, settingsSnapshotNote]);
+
+  const duplicateSettingsSnapshot = useCallback(async (snapshot: OwnerWorkspaceSettingsSnapshot) => {
+    setSettingsSnapshotDuplicatingId(snapshot.id);
+    try {
+      const duplicated = await settingsApi.duplicateOwnerWorkspaceSettingsSnapshot(snapshot.id);
+      setSettingsSnapshots((prev) => [duplicated, ...prev.filter((item) => item.id !== duplicated.id)]);
+      setError(null);
+      setMaxSyncResult(`Создан дубликат snapshot: ${duplicated.name}.`);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось создать дубликат snapshot системных настроек owner workspace'));
+    } finally {
+      setSettingsSnapshotDuplicatingId(null);
     }
   }, []);
 
@@ -7317,6 +7360,26 @@ const OwnerWorkspacePage: React.FC = () => {
                                       <Button
                                         size="small"
                                         variant="outlined"
+                                        onClick={() => {
+                                          setSettingsSnapshotEditingId(snapshot.id);
+                                          setSettingsSnapshotName(snapshot.name);
+                                          setSettingsSnapshotNote(snapshot.note || '');
+                                          setSettingsSnapshotEditOpen(true);
+                                        }}
+                                      >
+                                        Редактировать
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        disabled={settingsSnapshotDuplicatingId === snapshot.id}
+                                        onClick={() => void duplicateSettingsSnapshot(snapshot)}
+                                      >
+                                        {settingsSnapshotDuplicatingId === snapshot.id ? 'Дублируем...' : 'Дублировать'}
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
                                         onClick={() => void copySettingsSnapshot(snapshot)}
                                       >
                                         Копировать
@@ -9576,6 +9639,51 @@ const OwnerWorkspacePage: React.FC = () => {
             disabled={settingsSnapshotCreating || !settingsSnapshotName.trim()}
           >
             {settingsSnapshotCreating ? 'Создаём...' : 'Создать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={settingsSnapshotEditOpen}
+        onClose={() => !settingsSnapshotCreating && setSettingsSnapshotEditOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Редактировать snapshot системных настроек</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              fullWidth
+              label="Название snapshot"
+              value={settingsSnapshotName}
+              onChange={(e) => setSettingsSnapshotName(e.target.value)}
+            />
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              label="Комментарий"
+              value={settingsSnapshotNote}
+              onChange={(e) => setSettingsSnapshotNote(e.target.value)}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setSettingsSnapshotEditOpen(false);
+              setSettingsSnapshotEditingId(null);
+            }}
+            disabled={settingsSnapshotCreating}
+          >
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void updateSettingsSnapshot()}
+            disabled={settingsSnapshotCreating || !settingsSnapshotName.trim()}
+          >
+            {settingsSnapshotCreating ? 'Сохраняем...' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>

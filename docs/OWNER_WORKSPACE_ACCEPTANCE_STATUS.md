@@ -124,6 +124,8 @@ Owner Workspace is in a working production state.
   - named snapshots with apply/delete/export
   - snapshot review with changed-section preview
   - optional automatic safety snapshot before apply
+  - snapshot metadata editing
+  - snapshot duplication for fast rollback branching
 - Configurable project-role policy for manager capabilities in admin settings.
 - Configurable limited-role policy for `sales` / `trainer` in admin settings:
   - project creation

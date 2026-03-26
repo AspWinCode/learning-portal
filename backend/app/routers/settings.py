@@ -266,6 +266,16 @@ class OwnerWorkspaceSettingsSnapshotCreateRequest(BaseModel):
     note: str | None = None
 
 
+class OwnerWorkspaceSettingsSnapshotUpdateRequest(BaseModel):
+    name: str
+    note: str | None = None
+
+
+class OwnerWorkspaceSettingsSnapshotDuplicateRequest(BaseModel):
+    name: str | None = None
+    note: str | None = None
+
+
 class OwnerWorkspaceNotificationDeliveryChannelStats(BaseModel):
     pending: int
     failed: int
@@ -1061,6 +1071,56 @@ async def create_owner_workspace_settings_snapshot(
     _set_owner_ws_settings_snapshots(db, snapshots[:25])
     db.commit()
     return OwnerWorkspaceSettingsSnapshotResponse.model_validate(snapshot)
+
+
+@router.patch("/owner-workspace-settings-snapshots/{snapshot_id}", response_model=OwnerWorkspaceSettingsSnapshotResponse)
+async def update_owner_workspace_settings_snapshot(
+    snapshot_id: str,
+    body: OwnerWorkspaceSettingsSnapshotUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name must not be empty")
+    snapshots = _get_owner_ws_settings_snapshots(db)
+    snapshot = next((item for item in snapshots if item["id"] == snapshot_id), None)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    snapshot["name"] = name[:120]
+    snapshot["note"] = ((body.note or "").strip()[:500] or None)
+    _set_owner_ws_settings_snapshots(db, snapshots)
+    db.commit()
+    return OwnerWorkspaceSettingsSnapshotResponse.model_validate(snapshot)
+
+
+@router.post("/owner-workspace-settings-snapshots/{snapshot_id}/duplicate", response_model=OwnerWorkspaceSettingsSnapshotResponse)
+async def duplicate_owner_workspace_settings_snapshot(
+    snapshot_id: str,
+    body: OwnerWorkspaceSettingsSnapshotDuplicateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+):
+    snapshots = _get_owner_ws_settings_snapshots(db)
+    snapshot = next((item for item in snapshots if item["id"] == snapshot_id), None)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    duplicate_name = (body.name or f"Copy: {snapshot['name']}" or "").strip()
+    if not duplicate_name:
+        raise HTTPException(status_code=400, detail="name must not be empty")
+    duplicate = {
+        "id": uuid4().hex,
+        "name": duplicate_name[:120],
+        "note": ((body.note if body.note is not None else snapshot.get("note") or "").strip()[:500] or None),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by_id": int(current_user.id),
+        "created_by_name": (current_user.full_name or current_user.email or f"#{current_user.id}")[:160],
+        "bundle": snapshot["bundle"],
+    }
+    snapshots.insert(0, duplicate)
+    _set_owner_ws_settings_snapshots(db, snapshots[:25])
+    db.commit()
+    return OwnerWorkspaceSettingsSnapshotResponse.model_validate(duplicate)
 
 
 @router.post("/owner-workspace-settings-snapshots/{snapshot_id}/apply", response_model=OwnerWorkspaceSettingsBundleEnvelopeResponse)

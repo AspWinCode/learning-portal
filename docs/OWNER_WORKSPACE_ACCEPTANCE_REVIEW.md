@@ -140,6 +140,7 @@ Status legend:
 |---|---|---|
 | Working production deployment | DONE | Backend and web are live. |
 | Alembic alignment | DONE | Current aligned revision is `0089_owner_workspace_web_push_outbox`. |
+| External notification channels operationally configured on production | PARTIAL | Email and web push are implemented in code and surfaced in settings, but current production runtime inspection did not show configured `SMTP_* / FROM_EMAIL / WEB_PUSH_* / VAPID_*` environment variables. |
 | Reliable infra state | PARTIAL | App is healthy, but PostgreSQL WAL/write instability was previously observed and still requires infra follow-up. |
 
 ## Acceptance Summary
@@ -174,5 +175,6 @@ Status legend:
 1. Decide whether the dialog-in-shell architecture is accepted as the final interpretation of the specification, or whether fully standalone entity pages are still required.
 2. Decide whether the current dedicated reporting surface inside owner-workspace is sufficient, or whether reporting must move into a standalone module.
 3. Decide whether mobile push is required for sign-off, or whether email + web push is sufficient for the current release.
-4. Close infra follow-up on PostgreSQL reliability so acceptance is not blocked by operational risk.
-5. Decide whether the current owner-workspace history surface is sufficient for sign-off, or whether a broader compliance/audit console is still required.
+4. Configure and verify production SMTP and web-push/VAPID environment variables so external notification channels are operational in practice.
+5. Close infra follow-up on PostgreSQL reliability so acceptance is not blocked by operational risk.
+6. Decide whether the current owner-workspace history surface is sufficient for sign-off, or whether a broader compliance/audit console is still required.

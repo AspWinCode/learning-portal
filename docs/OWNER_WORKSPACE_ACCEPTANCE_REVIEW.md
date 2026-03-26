@@ -74,7 +74,7 @@ Status legend:
 | User preference toggles by notification kind | DONE | Present in settings. |
 | Email delivery channel | DONE | Implemented through notification outbox/background dispatch. |
 | Web push delivery channel | DONE | Implemented through subscription management and outbox/background dispatch. |
-| Delivery diagnostics for admin/owner | DONE | Settings show outbox counters, web-push subscription count, recent delivery failures and manual retry/requeue actions. |
+| Delivery diagnostics for admin/owner | DONE | Settings show outbox counters, web-push subscription count, recent delivery failures, manual retry/requeue actions, and readiness warnings with missing server env keys. |
 | Mobile push channel | DEFERRED | Not implemented. |
 | Separate worker/service tier for delivery | DONE | Owner-workspace email and web-push delivery run in a dedicated worker service instead of the API process. |
 

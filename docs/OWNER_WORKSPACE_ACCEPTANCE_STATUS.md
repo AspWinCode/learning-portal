@@ -109,6 +109,7 @@ Owner Workspace is in a working production state.
   - email / web push outbox counters
   - recent delivery failures
   - web push subscription count
+  - readiness warnings with missing server env keys
   - retry/requeue for failed deliveries
 - System dictionaries for:
   - task tags

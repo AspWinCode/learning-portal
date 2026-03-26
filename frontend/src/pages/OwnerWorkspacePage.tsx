@@ -6213,6 +6213,9 @@ const OwnerWorkspacePage: React.FC = () => {
                                     {!notificationDeliveryStats.email_configured && (
                                       <Alert severity="warning">
                                         SMTP для owner-workspace уведомлений не настроен на сервере. Email-канал останется недоступным, даже если он включён у пользователя.
+                                        {notificationDeliveryStats.missing_email_env.length > 0
+                                          ? ` Не хватает: ${notificationDeliveryStats.missing_email_env.join(', ')}.`
+                                          : ''}
                                       </Alert>
                                     )}
                                   </Stack>
@@ -6244,6 +6247,9 @@ const OwnerWorkspacePage: React.FC = () => {
                                     {!notificationDeliveryStats.web_push_configured && (
                                       <Alert severity="warning">
                                         Web push не сконфигурирован на сервере. Проверьте VAPID-переменные окружения, иначе браузерные push-уведомления работать не будут.
+                                        {notificationDeliveryStats.missing_web_push_env.length > 0
+                                          ? ` Не хватает: ${notificationDeliveryStats.missing_web_push_env.join(', ')}.`
+                                          : ''}
                                       </Alert>
                                     )}
                                   </Stack>

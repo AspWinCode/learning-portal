@@ -1243,7 +1243,9 @@ export interface OwnerWorkspaceNotificationDeliveryFailureItem {
 
 export interface OwnerWorkspaceNotificationDeliveryStats {
   email_configured: boolean;
+  missing_email_env: string[];
   web_push_configured: boolean;
+  missing_web_push_env: string[];
   web_push_subscriptions_total: number;
   email: OwnerWorkspaceNotificationDeliveryChannelStats;
   web_push: OwnerWorkspaceNotificationDeliveryChannelStats;

@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import json
+import os
 
 from app.database import get_db
 from app import auth
@@ -224,7 +225,9 @@ class OwnerWorkspaceNotificationDeliveryFailureItem(BaseModel):
 
 class OwnerWorkspaceNotificationDeliveryStatsResponse(BaseModel):
     email_configured: bool
+    missing_email_env: List[str]
     web_push_configured: bool
+    missing_web_push_env: List[str]
     web_push_subscriptions_total: int
     email: OwnerWorkspaceNotificationDeliveryChannelStats
     web_push: OwnerWorkspaceNotificationDeliveryChannelStats
@@ -261,6 +264,20 @@ def _set_json_setting(db: Session, key: str, value) -> None:
     else:
         setting.value = raw
         db.add(setting)
+
+
+def _missing_email_env() -> List[str]:
+    required = ["SMTP_HOST", "SMTP_PORT", "FROM_EMAIL"]
+    return [key for key in required if not (os.getenv(key) or "").strip()]
+
+
+def _missing_web_push_env() -> List[str]:
+    required = [
+        "WEB_PUSH_VAPID_PUBLIC_KEY",
+        "WEB_PUSH_VAPID_PRIVATE_KEY",
+        "WEB_PUSH_VAPID_SUBJECT",
+    ]
+    return [key for key in required if not (os.getenv(key) or "").strip()]
 
 
 def _normalize_owner_ws_task_items(items: List[OwnerWorkspaceTaskConfigItem], *, allowed_keys: List[str], defaults: List[dict]) -> List[dict]:
@@ -769,6 +786,8 @@ async def get_owner_workspace_notification_delivery_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner", "admin"])),
 ):
+    missing_email_env = _missing_email_env()
+    missing_web_push_env = _missing_web_push_env()
     email_stats = _build_delivery_channel_stats(
         db,
         sent_field=OwnerWorkspaceNotification.email_sent_at,
@@ -807,7 +826,9 @@ async def get_owner_workspace_notification_delivery_stats(
     )
     return OwnerWorkspaceNotificationDeliveryStatsResponse(
         email_configured=is_email_configured(),
+        missing_email_env=missing_email_env,
         web_push_configured=is_web_push_configured(),
+        missing_web_push_env=missing_web_push_env,
         web_push_subscriptions_total=int(web_push_subscriptions_total),
         email=email_stats,
         web_push=web_push_stats,

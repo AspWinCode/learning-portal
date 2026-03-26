@@ -855,6 +855,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [settingsSnapshotNote, setSettingsSnapshotNote] = useState('');
   const [settingsSnapshotCreating, setSettingsSnapshotCreating] = useState(false);
   const [settingsSnapshotSearch, setSettingsSnapshotSearch] = useState('');
+  const [settingsSnapshotOnlyChanged, setSettingsSnapshotOnlyChanged] = useState(false);
+  const [settingsSnapshotSort, setSettingsSnapshotSort] = useState<'newest' | 'oldest' | 'name'>('newest');
   const [settingsSnapshotReview, setSettingsSnapshotReview] = useState<OwnerWorkspaceSettingsSnapshot | null>(null);
   const [settingsSnapshotCreateSafetyBeforeApply, setSettingsSnapshotCreateSafetyBeforeApply] = useState(true);
   const [settingsSnapshotEditOpen, setSettingsSnapshotEditOpen] = useState(false);
@@ -976,14 +978,32 @@ const OwnerWorkspacePage: React.FC = () => {
     () => (workspaceSettingsBundle ? summarizeWorkspaceSettingsBundle(workspaceSettingsBundle) : null),
     [workspaceSettingsBundle]
   );
+  const settingsSnapshotDiffMap = useMemo(() => {
+    const entries = settingsSnapshots.map((snapshot) => {
+      const diff = workspaceSettingsBundleSectionDiff(workspaceSettingsBundle, snapshot.bundle.data);
+      return [snapshot.id, diff] as const;
+    });
+    return new Map(entries);
+  }, [settingsSnapshots, workspaceSettingsBundle]);
   const filteredSettingsSnapshots = useMemo(() => {
     const query = settingsSnapshotSearch.trim().toLowerCase();
-    if (!query) return settingsSnapshots;
-    return settingsSnapshots.filter((snapshot) => {
+    const base = settingsSnapshots.filter((snapshot) => {
       const haystack = [snapshot.name, snapshot.note || '', snapshot.created_by_name || ''].join(' ').toLowerCase();
-      return haystack.includes(query);
+      const matchesQuery = !query || haystack.includes(query);
+      const changedCount = (settingsSnapshotDiffMap.get(snapshot.id) || []).filter((item) => item.changed).length;
+      const matchesChanged = !settingsSnapshotOnlyChanged || changedCount > 0;
+      return matchesQuery && matchesChanged;
     });
-  }, [settingsSnapshotSearch, settingsSnapshots]);
+    return [...base].sort((a, b) => {
+      if (settingsSnapshotSort === 'name') return a.name.localeCompare(b.name, 'ru');
+      const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return settingsSnapshotSort === 'oldest' ? diff : -diff;
+    });
+  }, [settingsSnapshotDiffMap, settingsSnapshotOnlyChanged, settingsSnapshotSearch, settingsSnapshotSort, settingsSnapshots]);
+  const settingsSnapshotsChangedCount = useMemo(
+    () => settingsSnapshots.filter((snapshot) => (settingsSnapshotDiffMap.get(snapshot.id) || []).some((item) => item.changed)).length,
+    [settingsSnapshotDiffMap, settingsSnapshots]
+  );
   const reviewedSnapshotDiff = useMemo(
     () => (settingsSnapshotReview ? workspaceSettingsBundleSectionDiff(workspaceSettingsBundle, settingsSnapshotReview.bundle.data) : []),
     [settingsSnapshotReview, workspaceSettingsBundle]
@@ -7305,6 +7325,27 @@ const OwnerWorkspacePage: React.FC = () => {
                               onChange={(e) => setSettingsSnapshotSearch(e.target.value)}
                               sx={{ minWidth: 220 }}
                             />
+                            <TextField
+                              size="small"
+                              select
+                              label="Сортировка"
+                              value={settingsSnapshotSort}
+                              onChange={(e) => setSettingsSnapshotSort(e.target.value as 'newest' | 'oldest' | 'name')}
+                              sx={{ minWidth: 180 }}
+                            >
+                              <MenuItem value="newest">Сначала новые</MenuItem>
+                              <MenuItem value="oldest">Сначала старые</MenuItem>
+                              <MenuItem value="name">По названию</MenuItem>
+                            </TextField>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={settingsSnapshotOnlyChanged}
+                                  onChange={(e) => setSettingsSnapshotOnlyChanged(e.target.checked)}
+                                />
+                              }
+                              label="Только отличающиеся"
+                            />
                             <Button variant="outlined" onClick={() => void loadSettingsSnapshots()} disabled={settingsSnapshotsLoading}>
                               {settingsSnapshotsLoading ? 'Обновление...' : 'Обновить'}
                             </Button>
@@ -7329,8 +7370,14 @@ const OwnerWorkspacePage: React.FC = () => {
                             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                               <Chip size="small" label={`Всего: ${settingsSnapshots.length}`} />
                               <Chip size="small" label={`Видимо: ${filteredSettingsSnapshots.length}`} />
+                              <Chip size="small" label={`Отличаются: ${settingsSnapshotsChangedCount}`} />
+                              <Chip size="small" label={`Совпадают: ${Math.max(settingsSnapshots.length - settingsSnapshotsChangedCount, 0)}`} />
                             </Stack>
                             {filteredSettingsSnapshots.map((snapshot) => (
+                              (() => {
+                                const snapshotDiff = settingsSnapshotDiffMap.get(snapshot.id) || [];
+                                const changedSections = snapshotDiff.filter((item) => item.changed);
+                                return (
                               <Box
                                 key={snapshot.id}
                                 sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
@@ -7414,6 +7461,19 @@ const OwnerWorkspacePage: React.FC = () => {
                                     </Stack>
                                   </Stack>
                                   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                                    {changedSections.length > 0 ? (
+                                      <>
+                                        <Chip size="small" color="warning" label={`Изменений: ${changedSections.length}`} />
+                                        {changedSections.slice(0, 3).map((item) => (
+                                          <Chip key={`${snapshot.id}-${item.key}`} size="small" color="warning" variant="outlined" label={item.label} />
+                                        ))}
+                                        {changedSections.length > 3 && (
+                                          <Chip size="small" variant="outlined" label={`+${changedSections.length - 3}`} />
+                                        )}
+                                      </>
+                                    ) : (
+                                      <Chip size="small" color="success" label="Совпадает с текущим" />
+                                    )}
                                     <Chip size="small" label={`v${snapshot.bundle.meta.version}`} />
                                     {Object.entries(snapshot.bundle.meta.summary).map(([key, value]) => (
                                       <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
@@ -7421,6 +7481,8 @@ const OwnerWorkspacePage: React.FC = () => {
                                   </Stack>
                                 </Stack>
                               </Box>
+                                );
+                              })()
                             ))}
                           </Stack>
                         )}

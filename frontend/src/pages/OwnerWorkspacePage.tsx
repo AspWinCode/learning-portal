@@ -2776,7 +2776,7 @@ const OwnerWorkspacePage: React.FC = () => {
     const fn = contactEditFullName.trim();
     const ph = contactEditPhone.trim();
     if (!fn || !ph) {
-      setError('РЈРєР°Р¶РёС‚Рµ Р¤РРћ Рё С‚РµР»РµС„РѕРЅ');
+      setError('Укажите ФИО и телефон');
       return;
     }
     try {
@@ -2910,14 +2910,14 @@ const OwnerWorkspacePage: React.FC = () => {
   const syncMaxIntoWorkspace = async () => {
     try {
       const r = await ownerWorkspaceApi.syncMessagesFromMax(800);
-      setMaxSyncResult(`РРјРїРѕСЂС‚ MAX: РґРѕР±Р°РІР»РµРЅРѕ ${r.imported}, РїСЂРѕРїСѓС‰РµРЅРѕ ${r.skipped} (РЅРµС‚ С‚РµР»РµС„РѕРЅР° / РєРѕРЅС‚Р°РєС‚Р° / РґСѓР±Р»РёРєР°С‚).`);
+      setMaxSyncResult(`Импорт MAX: добавлено ${r.imported}, пропущено ${r.skipped} (нет телефона / контакта / дубликат).`);
       await loadMeta();
       if (commsContactId) {
         const msgs = await ownerWorkspaceApi.getContactMessages(commsContactId);
         setCommsMessages(msgs.slice().reverse());
       }
     } catch (e: unknown) {
-      setError(extractApiError(e, 'РРјРїРѕСЂС‚ РёР· MAX РЅРµ СѓРґР°Р»СЃСЏ'));
+      setError(extractApiError(e, 'Импорт из MAX не удался'));
     }
   };
 
@@ -4935,7 +4935,7 @@ const OwnerWorkspacePage: React.FC = () => {
         <Tab label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
         <Tab label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
         <Tab label="Настройки" />
-        <Tab label="РСЃС‚РѕСЂРёСЏ" />
+        <Tab label="История" />
       </Tabs>
 
       {tab === OW_TAB_PROJECTS && (
@@ -5126,7 +5126,7 @@ const OwnerWorkspacePage: React.FC = () => {
               </Typography>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ md: 'center' }}>
                 <TextField
-                  label="РџРѕРёСЃРє (Р¤РРћ, С‚РµР»РµС„РѕРЅ, РєРѕРјРїР°РЅРёСЏ)"
+                  label="Поиск (ФИО, телефон, компания)"
                   size="small"
                   sx={{ minWidth: 240, flex: 1 }}
                   value={contactListSearchInput}
@@ -5181,7 +5181,7 @@ const OwnerWorkspacePage: React.FC = () => {
           <Card>
             <CardContent>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
-                <TextField fullWidth label="Р¤РРћ" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+                <TextField fullWidth label="ФИО" value={contactName} onChange={(e) => setContactName(e.target.value)} />
                 <TextField fullWidth label="Телефон" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
                 {!isWorkspaceFullAccess && (
                   <Autocomplete
@@ -5363,7 +5363,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     getOptionLabel={(o) => o.full_name}
                     value={userOptions.find((u) => u.id === newTaskAssigneeId) || null}
                     onChange={(_, v) => setNewTaskAssigneeId(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="РСЃРїРѕР»РЅРёС‚РµР»СЊ" />}
+                    renderInput={(params) => <TextField {...params} label="Исполнитель" />}
                     sx={{ flex: 1 }}
                   />
                 </Stack>
@@ -5495,7 +5495,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     getOptionLabel={(o) => o.full_name}
                     value={userOptions.find((u) => u.id === taskAssigneeFilter) || null}
                     onChange={(_, v) => setTaskAssigneeFilter(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="РСЃРїРѕР»РЅРёС‚РµР»СЊ" />}
+                    renderInput={(params) => <TextField {...params} label="Исполнитель" />}
                   />
                 </Grid>
                 <Grid item xs={6} md={2}>
@@ -5725,7 +5725,7 @@ const OwnerWorkspacePage: React.FC = () => {
               <TextField
                 select
                 size="small"
-                label="РСЃРїРѕР»РЅРёС‚РµР»СЊ"
+                label="Исполнитель"
                 sx={{ minWidth: 200 }}
                 value={bulkAssigneeMode}
                 onChange={(e) => setBulkAssigneeMode(e.target.value as 'skip' | 'set' | 'clear')}
@@ -6130,10 +6130,10 @@ const OwnerWorkspacePage: React.FC = () => {
         <Stack spacing={2}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
             <Button variant="outlined" onClick={() => void syncMaxIntoWorkspace()}>
-              РРјРїРѕСЂС‚ MAX РІ РїРµСЂРµРїРёСЃРєРё
+              Импорт MAX в переписки
             </Button>
             <Typography variant="caption" color="text.secondary">
-              РСЃС…РѕРґСЏС‰РёРµ РёР· max_messages в†’ СЃРѕРѕР±С‰РµРЅРёСЏ РєРѕРЅС‚Р°РєС‚Р° РїРѕ СЃРѕРІРїР°РґРµРЅРёСЋ РЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅРѕРіРѕ С‚РµР»РµС„РѕРЅР° (РґСѓР±Р»РёРєР°С‚С‹ РїРѕ id
+              Исходящие из max_messages → сообщения контакта по совпадению нормализованного телефона (дубликаты по id
               пропускаются).
             </Typography>
           </Stack>
@@ -6403,7 +6403,7 @@ const OwnerWorkspacePage: React.FC = () => {
               Настройки задачника
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              РџР°СЂР°РјРµС‚СЂС‹ РЅРёР¶Рµ СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ РІ РІР°С€РµРј РїСЂРѕС„РёР»Рµ Рё РїРѕРґСЃС‚Р°РІР»СЏСЋС‚СЃСЏ РїСЂРё СЃР»РµРґСѓСЋС‰РµРј РѕС‚РєСЂС‹С‚РёРё Owner workspace. РР·РјРµРЅРµРЅРёСЏ
+              Параметры ниже сохраняются в вашем профиле и подставляются при следующем открытии Owner workspace. Изменения
               на других вкладках (вид задач, сводка) сразу видны в интерфейсе; нажмите «Сохранить», чтобы зафиксировать их
               как умолчания.
             </Typography>
@@ -7762,7 +7762,7 @@ const OwnerWorkspacePage: React.FC = () => {
         <Card>
           <CardContent>
             <Typography variant="subtitle2" gutterBottom>
-              РСЃС‚РѕСЂРёСЏ РґРµР№СЃС‚РІРёР№ (Р°СѓРґРёС‚)
+              История действий (аудит)
             </Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
               <TextField
@@ -8194,7 +8194,7 @@ const OwnerWorkspacePage: React.FC = () => {
             )}
             {!canEditProjectDialogContent && !canEditProjectDialogMeta && (
               <Alert severity="info">
-                Р”Р»СЏ РІР°С€РµР№ СЂРѕР»Рё РїСЂРѕРµРєС‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РР·РјРµРЅРµРЅРёРµ Р·Р°РґР°С‡ Рё РїСЂРёРІСЏР·РѕРє РєРѕРЅС‚Р°РєС‚РѕРІ РѕС‚РєР»СЋС‡РµРЅРѕ.
+                Для вашей роли проект доступен только для просмотра. Изменение задач и привязок контактов отключено.
               </Alert>
             )}
             <Divider />
@@ -8937,7 +8937,7 @@ const OwnerWorkspacePage: React.FC = () => {
             )}
             {!canEditContactDialogContent && (
               <Alert severity="info">
-                Р­С‚РѕС‚ РєРѕРЅС‚Р°РєС‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°. РР·РјРµРЅРµРЅРёРµ РєР°СЂС‚РѕС‡РєРё, РїСЂРёРІСЏР·РѕРє, Р·Р°РґР°С‡ Рё СЃРѕРѕР±С‰РµРЅРёР№ РѕС‚РєР»СЋС‡РµРЅРѕ.
+                Этот контакт доступен только для просмотра. Изменение карточки, привязок, задач и сообщений отключено.
               </Alert>
             )}
             {canEditContactDialogContent && !canEditContactCardDialogContent && (
@@ -8948,7 +8948,7 @@ const OwnerWorkspacePage: React.FC = () => {
             <Typography variant="subtitle2">Карточка контакта</Typography>
             <TextField
               fullWidth
-              label="Р¤РРћ"
+              label="ФИО"
               value={contactEditFullName}
               onChange={(e) => setContactEditFullName(e.target.value)}
               disabled={!canEditContactCardDialogContent}
@@ -9334,7 +9334,7 @@ const OwnerWorkspacePage: React.FC = () => {
               value={userOptions.find((u) => u.id === taskEditAssigneeId) || null}
               onChange={(_, v) => setTaskEditAssigneeId(v ? v.id : '')}
               disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
-              renderInput={(params) => <TextField {...params} label="РСЃРїРѕР»РЅРёС‚РµР»СЊ" />}
+              renderInput={(params) => <TextField {...params} label="Исполнитель" />}
             />
             <Autocomplete
               multiple
@@ -9413,7 +9413,7 @@ const OwnerWorkspacePage: React.FC = () => {
               </Typography>
             )}
             <Divider />
-            <Typography variant="subtitle2">РСЃС‚РѕСЂРёСЏ РёР·РјРµРЅРµРЅРёР№ (СЌС‚Р° Р·Р°РґР°С‡Р°)</Typography>
+            <Typography variant="subtitle2">История изменений (эта задача)</Typography>
             <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}>
               {taskDialogHistory.length === 0 && (
                 <Typography variant="caption" color="text.secondary">

@@ -87,7 +87,7 @@ Status legend:
 | System project status settings | DONE | Labels and visibility are configurable. |
 | System notification-type settings | DONE | Labels and visibility are configurable. |
 | System dictionaries | DONE | Task tags, contact tags, contact sources are configurable. |
-| Portable admin bundle import/export | DONE | Full owner-workspace settings bundle can be exported as JSON, copied to clipboard, and imported back through normalized server-side application. |
+| Portable admin bundle import/export | DONE | Full owner-workspace settings bundle can be exported as a versioned metadata envelope, copied to clipboard, previewed before import, and imported back through normalized server-side application with backward-compatible raw-bundle support. |
 | System role/policy settings | DONE | Manager policy and main limited-role policies are configurable. |
 | Fully exhaustive module administration surface | PARTIAL | Main surfaces are configurable, but not every conceivable permission/dictionary is formalized yet. |
 

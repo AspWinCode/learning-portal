@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -42,6 +42,7 @@ OWNER_WS_NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
 OWNER_WS_TASK_TAGS_KEY = "owner_workspace_task_tag_dictionary"
 OWNER_WS_CONTACT_TAGS_KEY = "owner_workspace_contact_tag_dictionary"
 OWNER_WS_CONTACT_SOURCES_KEY = "owner_workspace_contact_source_dictionary"
+OWNER_WS_SETTINGS_BUNDLE_VERSION = 1
 
 DEFAULT_OWNER_WS_TASK_CONFIG = {
     "statuses": [
@@ -218,6 +219,30 @@ class OwnerWorkspaceSettingsBundleUpdate(BaseModel):
     task_tags: OwnerWorkspaceTagDictionaryUpdate
     contact_tags: OwnerWorkspaceTagDictionaryUpdate
     contact_sources: OwnerWorkspaceTagDictionaryUpdate
+
+
+class OwnerWorkspaceSettingsBundleSummaryResponse(BaseModel):
+    task_statuses: int
+    task_priorities: int
+    project_statuses: int
+    notification_types: int
+    task_tags: int
+    contact_tags: int
+    contact_sources: int
+
+
+class OwnerWorkspaceSettingsBundleMetaResponse(BaseModel):
+    version: int
+    source: str
+    exported_at: datetime
+    exported_by_id: int | None = None
+    exported_by_name: str | None = None
+    summary: OwnerWorkspaceSettingsBundleSummaryResponse
+
+
+class OwnerWorkspaceSettingsBundleEnvelopeResponse(BaseModel):
+    meta: OwnerWorkspaceSettingsBundleMetaResponse
+    data: OwnerWorkspaceSettingsBundleResponse
 
 
 class OwnerWorkspaceNotificationDeliveryChannelStats(BaseModel):
@@ -451,6 +476,32 @@ def _build_owner_ws_settings_bundle(db: Session) -> dict:
     }
 
 
+def _build_owner_ws_settings_bundle_summary(bundle: dict) -> dict:
+    return {
+        "task_statuses": len(bundle["task_config"]["statuses"]),
+        "task_priorities": len(bundle["task_config"]["priorities"]),
+        "project_statuses": len(bundle["project_config"]["statuses"]),
+        "notification_types": len(bundle["notification_config"]["items"]),
+        "task_tags": len(bundle["task_tags"]["items"]),
+        "contact_tags": len(bundle["contact_tags"]["items"]),
+        "contact_sources": len(bundle["contact_sources"]["items"]),
+    }
+
+
+def _build_owner_ws_settings_bundle_envelope(bundle: dict, current_user: User | None) -> dict:
+    return {
+        "meta": {
+            "version": OWNER_WS_SETTINGS_BUNDLE_VERSION,
+            "source": "owner_workspace_settings_bundle",
+            "exported_at": datetime.now(timezone.utc),
+            "exported_by_id": int(current_user.id) if current_user else None,
+            "exported_by_name": ((current_user.full_name or current_user.email)[:160] if current_user else None),
+            "summary": _build_owner_ws_settings_bundle_summary(bundle),
+        },
+        "data": bundle,
+    }
+
+
 def _normalize_owner_ws_settings_bundle(body: OwnerWorkspaceSettingsBundleUpdate) -> dict:
     return {
         "task_config": {
@@ -513,6 +564,13 @@ def _apply_owner_ws_settings_bundle(db: Session, bundle: dict) -> None:
     _set_json_setting(db, OWNER_WS_TASK_TAGS_KEY, bundle["task_tags"]["items"])
     _set_json_setting(db, OWNER_WS_CONTACT_TAGS_KEY, bundle["contact_tags"]["items"])
     _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, bundle["contact_sources"]["items"])
+
+
+def _extract_owner_ws_settings_bundle_update(raw_body: Any) -> OwnerWorkspaceSettingsBundleUpdate:
+    payload = raw_body
+    if isinstance(raw_body, dict) and isinstance(raw_body.get("data"), dict):
+        payload = raw_body["data"]
+    return OwnerWorkspaceSettingsBundleUpdate.model_validate(payload)
 
 
 def _build_delivery_channel_stats(
@@ -874,24 +932,29 @@ async def set_owner_workspace_contact_sources(
     return OwnerWorkspaceTagDictionaryResponse(items=items)
 
 
-@router.get("/owner-workspace-settings-bundle", response_model=OwnerWorkspaceSettingsBundleResponse)
+@router.get("/owner-workspace-settings-bundle", response_model=OwnerWorkspaceSettingsBundleEnvelopeResponse)
 async def get_owner_workspace_settings_bundle(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner", "admin"])),
 ):
-    return OwnerWorkspaceSettingsBundleResponse.model_validate(_build_owner_ws_settings_bundle(db))
+    bundle = _build_owner_ws_settings_bundle(db)
+    return OwnerWorkspaceSettingsBundleEnvelopeResponse.model_validate(
+        _build_owner_ws_settings_bundle_envelope(bundle, current_user)
+    )
 
 
-@router.post("/owner-workspace-settings-bundle", response_model=OwnerWorkspaceSettingsBundleResponse)
+@router.post("/owner-workspace-settings-bundle", response_model=OwnerWorkspaceSettingsBundleEnvelopeResponse)
 async def set_owner_workspace_settings_bundle(
-    body: OwnerWorkspaceSettingsBundleUpdate,
+    body: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_role(["owner", "admin"])),
 ):
-    bundle = _normalize_owner_ws_settings_bundle(body)
+    bundle = _normalize_owner_ws_settings_bundle(_extract_owner_ws_settings_bundle_update(body))
     _apply_owner_ws_settings_bundle(db, bundle)
     db.commit()
-    return OwnerWorkspaceSettingsBundleResponse.model_validate(bundle)
+    return OwnerWorkspaceSettingsBundleEnvelopeResponse.model_validate(
+        _build_owner_ws_settings_bundle_envelope(bundle, current_user)
+    )
 
 
 @router.get(

@@ -76,6 +76,8 @@ import type {
   OwnerWorkspaceNotificationConfig,
   OwnerWorkspaceNotificationDeliveryStats,
   OwnerWorkspaceSettingsBundle,
+  OwnerWorkspaceSettingsBundleEnvelope,
+  OwnerWorkspaceSettingsBundleSummary,
   OwnerWorkspaceProjectConfig,
   OwnerWorkspaceProject,
   OwnerWorkspaceSearchResult,
@@ -216,6 +218,38 @@ function downloadTextFile(content: string, filename: string, type: string): void
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(url);
+}
+
+function summarizeWorkspaceSettingsBundle(bundle: OwnerWorkspaceSettingsBundle): OwnerWorkspaceSettingsBundleSummary {
+  return {
+    task_statuses: bundle.task_config.statuses.length,
+    task_priorities: bundle.task_config.priorities.length,
+    project_statuses: bundle.project_config.statuses.length,
+    notification_types: bundle.notification_config.items.length,
+    task_tags: bundle.task_tags.items.length,
+    contact_tags: bundle.contact_tags.items.length,
+    contact_sources: bundle.contact_sources.items.length,
+  };
+}
+
+function extractWorkspaceSettingsBundle(value: unknown): OwnerWorkspaceSettingsBundle | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const candidate = raw.data && typeof raw.data === 'object' ? raw.data : raw;
+  if (
+    candidate &&
+    typeof candidate === 'object' &&
+    'task_config' in candidate &&
+    'project_config' in candidate &&
+    'permission_policy' in candidate &&
+    'notification_config' in candidate &&
+    'task_tags' in candidate &&
+    'contact_tags' in candidate &&
+    'contact_sources' in candidate
+  ) {
+    return candidate as OwnerWorkspaceSettingsBundle;
+  }
+  return null;
 }
 
 type OwnerWorkspaceSubprojectTreeNode = {
@@ -792,6 +826,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [settingsBundleDialogOpen, setSettingsBundleDialogOpen] = useState(false);
   const [settingsBundleImportText, setSettingsBundleImportText] = useState('');
   const [settingsBundleImporting, setSettingsBundleImporting] = useState(false);
+  const [settingsBundleLastExportMeta, setSettingsBundleLastExportMeta] = useState<OwnerWorkspaceSettingsBundleEnvelope['meta'] | null>(null);
   const currentWorkspaceAccessSummary = useMemo(() => {
     if (isWorkspaceFullAccess) {
       return [
@@ -901,6 +936,31 @@ const OwnerWorkspacePage: React.FC = () => {
     taskConfig,
     taskTagDictionary,
   ]);
+
+  const workspaceSettingsBundleSummary = useMemo<OwnerWorkspaceSettingsBundleSummary | null>(
+    () => (workspaceSettingsBundle ? summarizeWorkspaceSettingsBundle(workspaceSettingsBundle) : null),
+    [workspaceSettingsBundle]
+  );
+
+  const parsedSettingsBundleInput = useMemo(() => {
+    if (!settingsBundleImportText.trim()) {
+      return { raw: null as unknown, bundle: null as OwnerWorkspaceSettingsBundle | null, error: '' };
+    }
+    try {
+      const raw = JSON.parse(settingsBundleImportText);
+      const bundle = extractWorkspaceSettingsBundle(raw);
+      if (!bundle) {
+        return {
+          raw,
+          bundle: null,
+          error: 'JSON не похож на owner-workspace settings bundle.',
+        };
+      }
+      return { raw, bundle, error: '' };
+    } catch {
+      return { raw: null as unknown, bundle: null as OwnerWorkspaceSettingsBundle | null, error: 'Некорректный JSON.' };
+    }
+  }, [settingsBundleImportText]);
 
   const permissionMatrixRows = useMemo(
     () => [
@@ -2929,14 +2989,21 @@ const OwnerWorkspacePage: React.FC = () => {
       setError('Системный bundle owner workspace пока не загружен.');
       return;
     }
-    const payload = JSON.stringify(workspaceSettingsBundle, null, 2);
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadTextFile(
-      payload,
-      `owner_workspace_settings_bundle_${stamp}.json`,
-      'application/json;charset=utf-8'
-    );
-    setMaxSyncResult('Экспортирован bundle системных настроек owner workspace.');
+    void (async () => {
+      try {
+        const envelope = await settingsApi.getOwnerWorkspaceSettingsBundle();
+        setSettingsBundleLastExportMeta(envelope.meta);
+        const stamp = envelope.meta.exported_at.replace(/[:.]/g, '-');
+        downloadTextFile(
+          JSON.stringify(envelope, null, 2),
+          `owner_workspace_settings_bundle_v${envelope.meta.version}_${stamp}.json`,
+          'application/json;charset=utf-8'
+        );
+        setMaxSyncResult('Экспортирован versioned bundle системных настроек owner workspace.');
+      } catch (e: unknown) {
+        setError(extractApiError(e, 'Не удалось экспортировать bundle системных настроек owner workspace'));
+      }
+    })();
   }, [workspaceSettingsBundle]);
 
   const copyWorkspaceSettingsBundle = useCallback(async () => {
@@ -2945,36 +3012,38 @@ const OwnerWorkspacePage: React.FC = () => {
       return;
     }
     try {
-      await navigator.clipboard.writeText(JSON.stringify(workspaceSettingsBundle, null, 2));
-      setMaxSyncResult('JSON bundle системных настроек owner workspace скопирован.');
-    } catch {
-      setError('Не удалось скопировать JSON bundle системных настроек owner workspace.');
+      const envelope = await settingsApi.getOwnerWorkspaceSettingsBundle();
+      setSettingsBundleLastExportMeta(envelope.meta);
+      await navigator.clipboard.writeText(JSON.stringify(envelope, null, 2));
+      setMaxSyncResult('Versioned JSON bundle системных настроек owner workspace скопирован.');
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось скопировать JSON bundle системных настроек owner workspace'));
     }
   }, [workspaceSettingsBundle]);
 
   const importWorkspaceSettingsBundle = useCallback(async () => {
-    let parsed: OwnerWorkspaceSettingsBundle;
-    try {
-      parsed = JSON.parse(settingsBundleImportText);
-    } catch {
-      setError('Импорт bundle: укажите корректный JSON.');
+    if (parsedSettingsBundleInput.error || !parsedSettingsBundleInput.raw) {
+      setError(parsedSettingsBundleInput.error || 'Импорт bundle: укажите корректный JSON.');
       return;
     }
     setSettingsBundleImporting(true);
     try {
-      const saved = await settingsApi.setOwnerWorkspaceSettingsBundle(parsed);
-      applyWorkspaceSettingsBundle(saved);
+      const saved = await settingsApi.setOwnerWorkspaceSettingsBundle(
+        parsedSettingsBundleInput.raw as OwnerWorkspaceSettingsBundle | OwnerWorkspaceSettingsBundleEnvelope
+      );
+      applyWorkspaceSettingsBundle(saved.data);
+      setSettingsBundleLastExportMeta(saved.meta);
       setSettingsBundleDialogOpen(false);
       setSettingsBundleImportText('');
       setError(null);
-      setMaxSyncResult('Bundle системных настроек owner workspace импортирован.');
+      setMaxSyncResult(`Bundle системных настроек owner workspace импортирован (v${saved.meta.version}).`);
       await loadNotificationDeliveryStats();
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось импортировать bundle системных настроек owner workspace'));
     } finally {
       setSettingsBundleImporting(false);
     }
-  }, [applyWorkspaceSettingsBundle, loadNotificationDeliveryStats, settingsBundleImportText]);
+  }, [applyWorkspaceSettingsBundle, loadNotificationDeliveryStats, parsedSettingsBundleInput]);
 
   const handleWorkspaceTabChange = (_: React.SyntheticEvent, v: number) => {
     if (v !== OW_TAB_TASKS) {
@@ -6983,6 +7052,28 @@ const OwnerWorkspacePage: React.FC = () => {
                           Экспорт использует текущее сохранённое состояние на сервере. Импорт нормализует значения по тем же
                           правилам, что и обычные admin-формы owner-workspace.
                         </Typography>
+                        {workspaceSettingsBundleSummary && (
+                          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                            <Chip size="small" label={`Статусы задач: ${workspaceSettingsBundleSummary.task_statuses}`} />
+                            <Chip size="small" label={`Приоритеты: ${workspaceSettingsBundleSummary.task_priorities}`} />
+                            <Chip size="small" label={`Статусы проектов: ${workspaceSettingsBundleSummary.project_statuses}`} />
+                            <Chip size="small" label={`Типы уведомлений: ${workspaceSettingsBundleSummary.notification_types}`} />
+                            <Chip size="small" label={`Теги задач: ${workspaceSettingsBundleSummary.task_tags}`} />
+                            <Chip size="small" label={`Теги контактов: ${workspaceSettingsBundleSummary.contact_tags}`} />
+                            <Chip size="small" label={`Источники: ${workspaceSettingsBundleSummary.contact_sources}`} />
+                          </Stack>
+                        )}
+                        {settingsBundleLastExportMeta && (
+                          <Alert severity="info">
+                            Последний export/import bundle: v{settingsBundleLastExportMeta.version}
+                            {settingsBundleLastExportMeta.exported_by_name
+                              ? ` · ${settingsBundleLastExportMeta.exported_by_name}`
+                              : ''}
+                            {settingsBundleLastExportMeta.exported_at
+                              ? ` · ${new Date(settingsBundleLastExportMeta.exported_at).toLocaleString('ru-RU')}`
+                              : ''}
+                          </Alert>
+                        )}
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                           <Button variant="contained" onClick={exportWorkspaceSettingsBundle}>
                             Экспорт JSON
@@ -9126,6 +9217,35 @@ const OwnerWorkspacePage: React.FC = () => {
               Вставьте JSON bundle owner-workspace. Импорт перезапишет системные словари, policy, статусы, приоритеты и
               конфигурацию уведомлений.
             </Alert>
+            {!!settingsBundleImportText.trim() && parsedSettingsBundleInput.error && (
+              <Alert severity="warning">{parsedSettingsBundleInput.error}</Alert>
+            )}
+            {parsedSettingsBundleInput.bundle && (
+              <Card variant="outlined">
+                <CardContent>
+                  <Stack spacing={1.5}>
+                    <Typography variant="subtitle2">Предпросмотр bundle</Typography>
+                    {'meta' in ((parsedSettingsBundleInput.raw as Record<string, unknown>) || {}) && (
+                      <Typography variant="body2" color="text.secondary">
+                        Версия: {(parsedSettingsBundleInput.raw as { meta?: { version?: number } }).meta?.version ?? 'n/a'}
+                        {' · '}
+                        Exported at:{' '}
+                        {(parsedSettingsBundleInput.raw as { meta?: { exported_at?: string } }).meta?.exported_at
+                          ? new Date(
+                              (parsedSettingsBundleInput.raw as { meta?: { exported_at?: string } }).meta!.exported_at!
+                            ).toLocaleString('ru-RU')
+                          : 'n/a'}
+                      </Typography>
+                    )}
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                      {Object.entries(summarizeWorkspaceSettingsBundle(parsedSettingsBundleInput.bundle)).map(([key, value]) => (
+                        <Chip key={key} size="small" label={`${key}: ${value}`} />
+                      ))}
+                    </Stack>
+                  </Stack>
+                </CardContent>
+              </Card>
+            )}
             <TextField
               fullWidth
               multiline
@@ -9144,7 +9264,7 @@ const OwnerWorkspacePage: React.FC = () => {
           <Button
             variant="contained"
             onClick={() => void importWorkspaceSettingsBundle()}
-            disabled={settingsBundleImporting || !settingsBundleImportText.trim()}
+            disabled={settingsBundleImporting || !settingsBundleImportText.trim() || !!parsedSettingsBundleInput.error}
           >
             {settingsBundleImporting ? 'Импорт...' : 'Импортировать'}
           </Button>

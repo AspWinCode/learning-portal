@@ -1298,6 +1298,30 @@ export interface OwnerWorkspaceSettingsBundle {
   contact_sources: OwnerWorkspaceTagDictionary;
 }
 
+export interface OwnerWorkspaceSettingsBundleSummary {
+  task_statuses: number;
+  task_priorities: number;
+  project_statuses: number;
+  notification_types: number;
+  task_tags: number;
+  contact_tags: number;
+  contact_sources: number;
+}
+
+export interface OwnerWorkspaceSettingsBundleMeta {
+  version: number;
+  source: string;
+  exported_at: string;
+  exported_by_id: number | null;
+  exported_by_name: string | null;
+  summary: OwnerWorkspaceSettingsBundleSummary;
+}
+
+export interface OwnerWorkspaceSettingsBundleEnvelope {
+  meta: OwnerWorkspaceSettingsBundleMeta;
+  data: OwnerWorkspaceSettingsBundle;
+}
+
 export interface OwnerWorkspaceTaskCompleteResult {
   completed_task: OwnerWorkspaceTask;
   next_task: OwnerWorkspaceTask | null;

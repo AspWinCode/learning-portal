@@ -119,6 +119,8 @@ Owner Workspace is in a working production state.
   - full JSON export
   - clipboard copy
   - normalized JSON import
+  - versioned metadata envelope
+  - import preview before apply
 - Configurable project-role policy for manager capabilities in admin settings.
 - Configurable limited-role policy for `sales` / `trainer` in admin settings:
   - project creation

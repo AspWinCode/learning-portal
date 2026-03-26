@@ -141,7 +141,7 @@ Status legend:
 |---|---|---|
 | Working production deployment | DONE | Backend and web are live. |
 | Alembic alignment | DONE | Current aligned revision is `0089_owner_workspace_web_push_outbox`. |
-| External notification channels operationally configured on production | PARTIAL | Email and web push are implemented in code and surfaced in settings, but current production runtime inspection did not show configured `SMTP_* / FROM_EMAIL / WEB_PUSH_* / VAPID_*` environment variables. |
+| External notification channels operationally configured on production | PARTIAL | Web push is now configured in production runtime with VAPID keys and dispatch enabled. Email delivery remains implemented in code, but SMTP / `FROM_EMAIL` runtime configuration is still not present on production. |
 | Reliable infra state | PARTIAL | App is healthy, but PostgreSQL WAL/write instability was previously observed and still requires infra follow-up. |
 
 ## Acceptance Summary

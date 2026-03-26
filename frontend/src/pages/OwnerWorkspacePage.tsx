@@ -1594,7 +1594,7 @@ const OwnerWorkspacePage: React.FC = () => {
     setContactSourceDictionaryDraft(bundle.contact_sources);
     setPermissionPolicy(bundle.permission_policy);
     setPermissionPolicyDraft(bundle.permission_policy);
-  }, [applyWorkspaceSettingsBundle]);
+  }, []);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -3207,7 +3207,7 @@ const OwnerWorkspacePage: React.FC = () => {
     } finally {
       setSettingsSnapshotDeletingId(null);
     }
-  }, []);
+  }, [applyWorkspaceSettingsBundle]);
 
   const updateSettingsSnapshot = useCallback(async () => {
     const name = settingsSnapshotName.trim();

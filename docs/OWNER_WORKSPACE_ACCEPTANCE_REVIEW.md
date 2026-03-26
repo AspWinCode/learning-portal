@@ -141,7 +141,7 @@ Status legend:
 |---|---|---|
 | Working production deployment | DONE | Backend and web are live. |
 | Alembic alignment | DONE | Current aligned revision is `0089_owner_workspace_web_push_outbox`. |
-| External notification channels operationally configured on production | PARTIAL | Web push is now configured in production runtime with VAPID keys and dispatch enabled. Email delivery remains implemented in code, but SMTP / `FROM_EMAIL` runtime configuration is still not present on production. |
+| External notification channels operationally configured on production | PARTIAL | Web push is configured in production runtime with VAPID keys and dispatch enabled. Email runtime configuration is now also present on production, but the SMTP provider still rejects outbound mail until `academy-wincode.com` is verified in the provider panel. |
 | Reliable infra state | PARTIAL | App is healthy, but PostgreSQL WAL/write instability was previously observed and still requires infra follow-up. |
 
 ## Acceptance Summary
@@ -176,8 +176,8 @@ Status legend:
 1. Decide whether the dialog-in-shell architecture is accepted as the final interpretation of the specification, or whether fully standalone entity pages are still required.
 2. Decide whether the current dedicated reporting surface inside owner-workspace is sufficient, or whether reporting must move into a standalone module.
 3. Decide whether mobile push is required for sign-off, or whether email + web push is sufficient for the current release.
-4. Configure and verify production SMTP and web-push/VAPID environment variables so external notification channels are operational in practice.
+4. Complete SMTP provider domain verification for `academy-wincode.com` so the already configured production email channel becomes operational in practice.
 5. Close infra follow-up on PostgreSQL reliability so acceptance is not blocked by operational risk.
 6. Decide whether the current owner-workspace history surface is sufficient for sign-off, or whether a broader compliance/audit console is still required.
 
-At this point, the only direct technical blocker for a fully operational notification stack on production is missing SMTP / `FROM_EMAIL` configuration for email delivery. Web push is already configured and active.
+At this point, the only direct technical blocker for a fully operational notification stack on production is SMTP provider domain verification for `academy-wincode.com`. Web push is already configured and active, and SMTP runtime configuration is already present.

@@ -286,7 +286,8 @@ Owner Workspace is in a working production state.
 - Production PostgreSQL previously had WAL/write instability during migration recovery.
 - The schema is currently aligned and the app is healthy, but infrastructure reliability still needs separate follow-up.
 - There is an unrelated existing production integration issue with Tochka token retrieval; it does not block owner-workspace.
-- Production backend now exposes web-push VAPID environment variables in runtime, so browser push is operational. Email delivery still needs `SMTP_* / FROM_EMAIL` runtime configuration to be considered fully operational on production.
+- Production backend now exposes web-push VAPID environment variables in runtime, so browser push is operational.
+- Production backend also now exposes `SMTP_* / FROM_EMAIL` runtime configuration, but real outbound email is still blocked by SMTP provider domain verification for `academy-wincode.com`.
 
 ## Recommended Next Steps
 
@@ -294,10 +295,10 @@ Owner Workspace is in a working production state.
 2. Finish the acceptance/status documentation so it exactly matches the current notification and policy surface.
 3. Decide whether reporting must remain inside owner-workspace or move into a standalone reporting module.
 4. Decide whether the current history/audit surface is sufficient for sign-off or whether a broader audit console is required.
-5. Configure and verify production SMTP / `FROM_EMAIL` environment variables so email delivery is operational alongside the already configured web-push channel.
+5. Complete SMTP provider domain verification for `academy-wincode.com` so the already configured production email channel can send successfully.
 6. Do a final acceptance pass against the current production state.
 7. Decide whether mobile push is needed beyond the current web push channel.
 
 ## Current Practical Blocker
 
-- The only remaining technical blocker inside the owner-workspace notification stack is missing production SMTP / `FROM_EMAIL` configuration for outbound email delivery.
+- The only remaining technical blocker inside the owner-workspace notification stack is SMTP provider domain verification for `academy-wincode.com`.

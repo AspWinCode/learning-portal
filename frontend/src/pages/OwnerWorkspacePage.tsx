@@ -858,6 +858,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [settingsSnapshotOnlyChanged, setSettingsSnapshotOnlyChanged] = useState(false);
   const [settingsSnapshotSort, setSettingsSnapshotSort] = useState<'newest' | 'oldest' | 'name'>('newest');
   const [settingsSnapshotReview, setSettingsSnapshotReview] = useState<OwnerWorkspaceSettingsSnapshot | null>(null);
+  const [settingsSnapshotCompareBaseId, setSettingsSnapshotCompareBaseId] = useState('__current__');
   const [settingsSnapshotCreateSafetyBeforeApply, setSettingsSnapshotCreateSafetyBeforeApply] = useState(true);
   const [settingsSnapshotEditOpen, setSettingsSnapshotEditOpen] = useState(false);
   const [settingsSnapshotEditingId, setSettingsSnapshotEditingId] = useState<string | null>(null);
@@ -1004,9 +1005,21 @@ const OwnerWorkspacePage: React.FC = () => {
     () => settingsSnapshots.filter((snapshot) => (settingsSnapshotDiffMap.get(snapshot.id) || []).some((item) => item.changed)).length,
     [settingsSnapshotDiffMap, settingsSnapshots]
   );
+  const settingsSnapshotCompareBaseSnapshot = useMemo(
+    () =>
+      settingsSnapshotCompareBaseId === '__current__'
+        ? null
+        : settingsSnapshots.find((snapshot) => snapshot.id === settingsSnapshotCompareBaseId) || null,
+    [settingsSnapshotCompareBaseId, settingsSnapshots]
+  );
+  const settingsSnapshotCompareBaseBundle = settingsSnapshotCompareBaseSnapshot?.bundle.data || workspaceSettingsBundle;
+  const settingsSnapshotCompareBaseSummary = useMemo<OwnerWorkspaceSettingsBundleSummary | null>(
+    () => (settingsSnapshotCompareBaseBundle ? summarizeWorkspaceSettingsBundle(settingsSnapshotCompareBaseBundle) : null),
+    [settingsSnapshotCompareBaseBundle]
+  );
   const reviewedSnapshotDiff = useMemo(
-    () => (settingsSnapshotReview ? workspaceSettingsBundleSectionDiff(workspaceSettingsBundle, settingsSnapshotReview.bundle.data) : []),
-    [settingsSnapshotReview, workspaceSettingsBundle]
+    () => (settingsSnapshotReview ? workspaceSettingsBundleSectionDiff(settingsSnapshotCompareBaseBundle, settingsSnapshotReview.bundle.data) : []),
+    [settingsSnapshotCompareBaseBundle, settingsSnapshotReview]
   );
 
   const parsedSettingsBundleInput = useMemo(() => {
@@ -7444,6 +7457,7 @@ const OwnerWorkspacePage: React.FC = () => {
                                         disabled={settingsSnapshotApplyingId === snapshot.id}
                                         onClick={() => {
                                           setSettingsSnapshotCreateSafetyBeforeApply(true);
+                                          setSettingsSnapshotCompareBaseId('__current__');
                                           setSettingsSnapshotReview(snapshot);
                                         }}
                                       >
@@ -9777,13 +9791,36 @@ const OwnerWorkspacePage: React.FC = () => {
                   {settingsSnapshotReview.note}
                 </Typography>
               )}
+              <TextField
+                fullWidth
+                select
+                size="small"
+                label="Сравнить с"
+                value={settingsSnapshotCompareBaseId}
+                onChange={(e) => setSettingsSnapshotCompareBaseId(e.target.value)}
+              >
+                <MenuItem value="__current__">Текущее состояние</MenuItem>
+                {settingsSnapshots
+                  .filter((snapshot) => snapshot.id !== settingsSnapshotReview.id)
+                  .map((snapshot) => (
+                    <MenuItem key={snapshot.id} value={snapshot.id}>
+                      {snapshot.name} · {new Date(snapshot.created_at).toLocaleString('ru-RU')}
+                    </MenuItem>
+                  ))}
+              </TextField>
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  Текущее состояние
+                  {settingsSnapshotCompareBaseSnapshot ? 'Базовый snapshot' : 'Текущее состояние'}
                 </Typography>
+                {settingsSnapshotCompareBaseSnapshot && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {settingsSnapshotCompareBaseSnapshot.name}
+                    {settingsSnapshotCompareBaseSnapshot.created_by_name ? ` · ${settingsSnapshotCompareBaseSnapshot.created_by_name}` : ''}
+                  </Typography>
+                )}
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                  {workspaceSettingsBundleSummary ? (
-                    Object.entries(workspaceSettingsBundleSummary).map(([key, value]) => (
+                  {settingsSnapshotCompareBaseSummary ? (
+                    Object.entries(settingsSnapshotCompareBaseSummary).map(([key, value]) => (
                       <Chip key={key} size="small" label={`${key}: ${value}`} />
                     ))
                   ) : (

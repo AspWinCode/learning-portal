@@ -128,6 +128,7 @@ Owner Workspace is in a working production state.
   - snapshot duplication for fast rollback branching
   - inline diff visibility against current config
   - filtering and sorting of snapshots by current-state relevance
+  - review-time comparison against another snapshot, not only current config
 - Configurable project-role policy for manager capabilities in admin settings.
 - Configurable limited-role policy for `sales` / `trainer` in admin settings:
   - project creation

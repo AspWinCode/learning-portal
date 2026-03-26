@@ -172,6 +172,13 @@ Owner Workspace is in a working production state.
   - date range
   - sort order
   - limit
+- History filters are deep-linkable through URL query params inside `/owner-workspace/history`.
+- Current history selection can be copied as a shareable link.
+- Active history filters are shown as removable chips.
+- History surface shows compact summary chips for current result set:
+  - rows
+  - unique authors
+  - unique actions
 - Task-level history inside task dialog.
 - Readable action labels and compact changed-field summaries in both task history and global history.
 - Deep-link opening from history rows into project/contact/task dialogs.

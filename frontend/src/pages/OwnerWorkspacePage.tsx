@@ -511,6 +511,8 @@ const OW_TAB_COMMS = 4;
 const OW_TAB_NOTIFICATIONS = 5;
 const OW_TAB_SETTINGS = 6;
 const OW_TAB_HISTORY = 7;
+const OWNER_WS_HISTORY_LIMIT_OPTIONS = [100, 200, 300, 500, 1000] as const;
+const OWNER_WS_HISTORY_QUERY_KEYS = ['h_entity', 'h_action', 'h_author', 'h_from', 'h_to', 'h_limit', 'h_sort'] as const;
 
 /** РЎР»Р°РіРё РґР»СЏ deep-link: `/owner-workspace?tab=<slug>&task=<id>` (СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚СЊ) Рё РїСѓС‚Рё `/owner-workspace/<slug>`. */
 const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'reports', 'comms', 'notifications', 'settings', 'history'] as const;
@@ -1695,6 +1697,22 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   }, [tab, loadNotifications]);
 
+  const buildHistorySearchParams = useCallback(
+    (base?: URLSearchParams) => {
+      const next = new URLSearchParams(base ? base.toString() : '');
+      OWNER_WS_HISTORY_QUERY_KEYS.forEach((key) => next.delete(key));
+      if (historyEntityFilter) next.set('h_entity', historyEntityFilter);
+      if (historyActionFilter) next.set('h_action', historyActionFilter);
+      if (historyAuthorFilter !== '') next.set('h_author', String(historyAuthorFilter));
+      if (historyCreatedFrom) next.set('h_from', historyCreatedFrom);
+      if (historyCreatedTo) next.set('h_to', historyCreatedTo);
+      if (historyLimit !== 300) next.set('h_limit', String(historyLimit));
+      if (historySortOrder !== 'desc') next.set('h_sort', historySortOrder);
+      return next;
+    },
+    [historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historySortOrder]
+  );
+
   useEffect(() => {
     if (tab !== OW_TAB_TASKS) return;
     let cancelled = false;
@@ -1740,6 +1758,46 @@ const OwnerWorkspacePage: React.FC = () => {
       loadTasksFiltered();
     }
   }, [tab, loadTasksFiltered]);
+
+  useEffect(() => {
+    if (tab !== OW_TAB_HISTORY) return;
+    const nextEntity = searchParams.get('h_entity') || '';
+    const nextAction = searchParams.get('h_action') || '';
+    const nextAuthorRaw = searchParams.get('h_author');
+    const nextAuthorParsed = nextAuthorRaw ? Number(nextAuthorRaw) : '';
+    const nextAuthor = typeof nextAuthorParsed === 'number' && Number.isFinite(nextAuthorParsed) && nextAuthorParsed > 0 ? nextAuthorParsed : '';
+    const nextCreatedFrom = searchParams.get('h_from') || '';
+    const nextCreatedTo = searchParams.get('h_to') || '';
+    const nextLimitRaw = Number(searchParams.get('h_limit') || 300);
+    const nextLimit = OWNER_WS_HISTORY_LIMIT_OPTIONS.includes(nextLimitRaw as (typeof OWNER_WS_HISTORY_LIMIT_OPTIONS)[number])
+      ? nextLimitRaw
+      : 300;
+    const nextSort = searchParams.get('h_sort') === 'asc' ? 'asc' : 'desc';
+    if (nextEntity !== historyEntityFilter) setHistoryEntityFilter(nextEntity);
+    if (nextAction !== historyActionFilter) setHistoryActionFilter(nextAction);
+    if (nextAuthor !== historyAuthorFilter) setHistoryAuthorFilter(nextAuthor);
+    if (nextCreatedFrom !== historyCreatedFrom) setHistoryCreatedFrom(nextCreatedFrom);
+    if (nextCreatedTo !== historyCreatedTo) setHistoryCreatedTo(nextCreatedTo);
+    if (nextLimit !== historyLimit) setHistoryLimit(nextLimit);
+    if (nextSort !== historySortOrder) setHistorySortOrder(nextSort);
+  }, [
+    historyActionFilter,
+    historyAuthorFilter,
+    historyCreatedFrom,
+    historyCreatedTo,
+    historyEntityFilter,
+    historyLimit,
+    historySortOrder,
+    searchParams,
+    tab,
+  ]);
+
+  useEffect(() => {
+    if (tab !== OW_TAB_HISTORY) return;
+    const next = buildHistorySearchParams(searchParams);
+    if (next.toString() === searchParams.toString()) return;
+    setSearchParams(next, { replace: true });
+  }, [buildHistorySearchParams, searchParams, setSearchParams, tab]);
 
   useEffect(() => {
     if (taskViewMode !== 'list') {
@@ -3061,6 +3119,16 @@ const OwnerWorkspacePage: React.FC = () => {
   const toggleExpandedTaskHistoryEntry = useCallback((id: number) => {
     setTaskHistoryExpandedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   }, []);
+  const copyHistoryLink = useCallback(async () => {
+    const params = buildHistorySearchParams();
+    const url = `${window.location.origin}/owner-workspace/history${params.toString() ? `?${params.toString()}` : ''}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setMaxSyncResult('Ссылка на текущую историю скопирована.');
+    } catch {
+      setError('Не удалось скопировать ссылку на историю.');
+    }
+  }, [buildHistorySearchParams]);
 
   const userName = useCallback(
     (userId: number | null | undefined) => {
@@ -3092,6 +3160,72 @@ const OwnerWorkspacePage: React.FC = () => {
     parts.push(`rows-${historyLogs.length}`);
     return parts.join('_') || 'all';
   }, [historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historyLogs.length]);
+  const historySummary = useMemo(() => {
+    const authors = new Set<number>();
+    const actions = new Set<string>();
+    historyLogs.forEach((entry) => {
+      if (entry.author_id != null) authors.add(entry.author_id);
+      if (entry.action_type) actions.add(entry.action_type);
+    });
+    return {
+      rows: historyLogs.length,
+      authors: authors.size,
+      actions: actions.size,
+    };
+  }, [historyLogs]);
+  const historyActiveFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string }> = [];
+    if (historyEntityFilter) {
+      chips.push({
+        key: 'entity',
+        label: `Сущность: ${OWNER_WS_HISTORY_ENTITY_LABELS[historyEntityFilter] || historyEntityFilter}`,
+      });
+    }
+    if (historyActionFilter) {
+      chips.push({
+        key: 'action',
+        label: `Действие: ${OWNER_WS_HISTORY_ACTION_LABELS[historyActionFilter] || historyActionFilter}`,
+      });
+    }
+    if (historyAuthorFilter !== '') {
+      chips.push({
+        key: 'author',
+        label: `Автор: ${userName(historyAuthorFilter)}`,
+      });
+    }
+    if (historyCreatedFrom) chips.push({ key: 'from', label: `С: ${historyCreatedFrom.replace('T', ' ')}` });
+    if (historyCreatedTo) chips.push({ key: 'to', label: `По: ${historyCreatedTo.replace('T', ' ')}` });
+    if (historyLimit !== 300) chips.push({ key: 'limit', label: `Лимит: ${historyLimit}` });
+    if (historySortOrder !== 'desc') chips.push({ key: 'sort', label: 'Порядок: сначала старые' });
+    return chips;
+  }, [historyActionFilter, historyAuthorFilter, historyCreatedFrom, historyCreatedTo, historyEntityFilter, historyLimit, historySortOrder, userName]);
+  const clearHistoryFilterChip = useCallback((key: string) => {
+    switch (key) {
+      case 'entity':
+        setHistoryEntityFilter('');
+        break;
+      case 'action':
+        setHistoryActionFilter('');
+        break;
+      case 'author':
+        setHistoryAuthorFilter('');
+        break;
+      case 'from':
+        setHistoryCreatedFrom('');
+        break;
+      case 'to':
+        setHistoryCreatedTo('');
+        break;
+      case 'limit':
+        setHistoryLimit(300);
+        break;
+      case 'sort':
+        setHistorySortOrder('desc');
+        break;
+      default:
+        break;
+    }
+  }, []);
 
   const exportHistoryJson = useCallback(() => {
     const payload = historyLogs.map((entry) => ({
@@ -6822,6 +6956,9 @@ const OwnerWorkspacePage: React.FC = () => {
               <Button size="small" color="secondary" onClick={resetHistoryFilters}>
                 Сбросить фильтры
               </Button>
+              <Button size="small" variant="text" onClick={() => void copyHistoryLink()}>
+                Копировать ссылку
+              </Button>
               <Button size="small" variant="contained" disabled={historyLogs.length === 0} onClick={exportHistoryCsv}>
                 Экспорт CSV
               </Button>
@@ -6829,6 +6966,18 @@ const OwnerWorkspacePage: React.FC = () => {
                 Экспорт JSON
               </Button>
             </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+              <Chip size="small" color="primary" variant="outlined" label={`Записей: ${historySummary.rows}`} />
+              <Chip size="small" variant="outlined" label={`Авторов: ${historySummary.authors}`} />
+              <Chip size="small" variant="outlined" label={`Действий: ${historySummary.actions}`} />
+            </Stack>
+            {historyActiveFilterChips.length > 0 && (
+              <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+                {historyActiveFilterChips.map((chip) => (
+                  <Chip key={chip.key} size="small" label={chip.label} onDelete={() => clearHistoryFilterChip(chip.key)} />
+                ))}
+              </Stack>
+            )}
             <Stack spacing={1} sx={{ maxHeight: 560, overflow: 'auto' }}>
               {historyLoading && (
                 <Stack direction="row" spacing={1} alignItems="center">

@@ -193,9 +193,15 @@ Owner Workspace is in a working production state.
 - History summary supports:
   - manual refresh
   - copy summary to clipboard
+  - copy stats JSON to clipboard
   - JSON export of the stats payload
+  - CSV export of the stats payload
   - day-level click-to-filter drilldown
   - explicit warning when current row limit truncates the filtered dataset
+  - quick limit escalation actions from the truncation warning
+  - bulk expand/collapse of visible history details
+  - visible timestamp of the last stats refresh
+  - percentage labels for top entities, actions, authors, and daily activity
 - Individual history rows expose quick drilldown chips for:
   - exact entity history
   - same action type

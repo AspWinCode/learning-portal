@@ -135,6 +135,12 @@ function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
   return window.btoa(binary);
 }
 
+function csvEscape(value: unknown): string {
+  const text = value == null ? '' : String(value);
+  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
 const DEFAULT_STATUS_LABELS: Record<string, string> = {
   new: 'РќРѕРІР°СЏ',
   in_progress: 'Р’ СЂР°Р±РѕС‚Рµ',
@@ -677,6 +683,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyStats, setHistoryStats] = useState<OwnerWorkspaceHistoryStats | null>(null);
   const [historyStatsLoading, setHistoryStatsLoading] = useState(false);
+  const [historyStatsLoadedAt, setHistoryStatsLoadedAt] = useState<string | null>(null);
   const [historyReloadTick, setHistoryReloadTick] = useState(0);
   const [historyEntityFilter, setHistoryEntityFilter] = useState<string>('');
   const [historyEntityIdFilter, setHistoryEntityIdFilter] = useState<number | ''>('');
@@ -1883,11 +1890,13 @@ const OwnerWorkspacePage: React.FC = () => {
         });
         if (!cancelled) {
           setHistoryStats(stats);
+          setHistoryStatsLoadedAt(new Date().toISOString());
           setHistoryStatsLoading(false);
         }
       } catch {
         if (!cancelled) {
           setHistoryStats(null);
+          setHistoryStatsLoadedAt(null);
           setHistoryStatsLoading(false);
         }
       }
@@ -3358,6 +3367,11 @@ const OwnerWorkspacePage: React.FC = () => {
     () => Math.max(...(historyStats?.day_counts.map((item) => item.count) || [0]), 1),
     [historyStats?.day_counts]
   );
+  const historyTotalRows = historyStats?.total_rows ?? historyVisibleSummary.rows;
+  const historyStatsPercentLabel = useCallback(
+    (count: number) => `${count} (${historyTotalRows > 0 ? Math.round((count / historyTotalRows) * 100) : 0}%)`,
+    [historyTotalRows]
+  );
   const copyHistoryStatsSummary = useCallback(async () => {
     const summary = [
       `Записей в выборке: ${historyStats?.total_rows ?? historyVisibleSummary.rows}`,
@@ -3377,6 +3391,42 @@ const OwnerWorkspacePage: React.FC = () => {
       setError('Не удалось скопировать сводку истории.');
     }
   }, [historyLogs.length, historyStats, historyVisibleSummary.actions, historyVisibleSummary.authors, historyVisibleSummary.rows]);
+  const copyHistoryStatsJson = useCallback(async () => {
+    if (!historyStats) return;
+    const payload = {
+      filters: {
+        entity_type: historyEntityFilter || null,
+        entity_id: historyEntityIdFilter === '' ? null : historyEntityIdFilter,
+        action_type: historyActionFilter || null,
+        author_id: historyAuthorFilter === '' ? null : historyAuthorFilter,
+        created_from: localInputToIso(historyCreatedFrom),
+        created_to: localInputToIso(historyCreatedTo),
+        limit: historyLimit,
+        sort_order: historySortOrder,
+      },
+      stats: historyStats,
+      visible_rows: historyLogs.length,
+      loaded_at: historyStatsLoadedAt,
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setMaxSyncResult('JSON сводки истории скопирован.');
+    } catch {
+      setError('Не удалось скопировать JSON сводки истории.');
+    }
+  }, [
+    historyActionFilter,
+    historyAuthorFilter,
+    historyCreatedFrom,
+    historyCreatedTo,
+    historyEntityFilter,
+    historyEntityIdFilter,
+    historyLimit,
+    historyLogs.length,
+    historySortOrder,
+    historyStats,
+    historyStatsLoadedAt,
+  ]);
   const exportHistoryStatsJson = useCallback(() => {
     if (!historyStats) return;
     const payload = {
@@ -3392,6 +3442,7 @@ const OwnerWorkspacePage: React.FC = () => {
       },
       stats: historyStats,
       visible_rows: historyLogs.length,
+      loaded_at: historyStatsLoadedAt,
     };
     downloadTextFile(
       JSON.stringify(payload, null, 2),
@@ -3412,7 +3463,34 @@ const OwnerWorkspacePage: React.FC = () => {
     historyLogs.length,
     historySortOrder,
     historyStats,
+    historyStatsLoadedAt,
   ]);
+  const exportHistoryStatsCsv = useCallback(() => {
+    if (!historyStats) return;
+    const rows = [
+      ['metric', 'key', 'count'],
+      ['total_rows', '', String(historyStats.total_rows)],
+      ['unique_authors', '', String(historyStats.unique_authors)],
+      ['unique_actions', '', String(historyStats.unique_actions)],
+      ...historyStats.entity_type_counts.map((item) => ['entity_type', item.key, String(item.count)]),
+      ...historyStats.action_counts.map((item) => ['action_type', item.key, String(item.count)]),
+      ...historyStats.author_counts.map((item) => ['author', String(item.author_id), String(item.count)]),
+      ...historyStats.day_counts.map((item) => ['day', item.day, String(item.count)]),
+    ];
+    const csv = rows.map((row) => row.map(csvEscape).join(',')).join('\n');
+    downloadTextFile(
+      csv,
+      `owner_workspace_history_stats_${historyExportContextSlug}_${historyExportStamp()}.csv`,
+      'text/csv;charset=utf-8'
+    );
+    setMaxSyncResult('Экспортирована сводка истории в CSV.');
+  }, [historyExportContextSlug, historyExportStamp, historyStats]);
+  const expandAllVisibleHistoryEntries = useCallback(() => {
+    setHistoryExpandedIds(historyLogs.filter((item) => item.old_value || item.new_value).map((item) => item.id));
+  }, [historyLogs]);
+  const collapseAllVisibleHistoryEntries = useCallback(() => {
+    setHistoryExpandedIds([]);
+  }, []);
 
   const exportHistoryJson = useCallback(() => {
     const payload = historyLogs.map((entry) => ({
@@ -7157,6 +7235,12 @@ const OwnerWorkspacePage: React.FC = () => {
               <Button size="small" variant="text" onClick={refreshHistoryView}>
                 Обновить
               </Button>
+              <Button size="small" variant="text" onClick={expandAllVisibleHistoryEntries} disabled={historyLogs.length === 0}>
+                Раскрыть детали
+              </Button>
+              <Button size="small" variant="text" onClick={collapseAllVisibleHistoryEntries} disabled={historyExpandedIds.length === 0}>
+                Свернуть детали
+              </Button>
               <Button size="small" variant="text" onClick={() => void copyHistoryLink()}>
                 Копировать ссылку
               </Button>
@@ -7166,6 +7250,9 @@ const OwnerWorkspacePage: React.FC = () => {
               <Button size="small" variant="text" onClick={() => void copyHistoryStatsSummary()}>
                 Копировать сводку
               </Button>
+              <Button size="small" variant="text" onClick={() => void copyHistoryStatsJson()} disabled={!historyStats}>
+                Копировать stats JSON
+              </Button>
               <Button size="small" variant="contained" disabled={historyLogs.length === 0} onClick={exportHistoryCsv}>
                 Экспорт CSV
               </Button>
@@ -7174,6 +7261,9 @@ const OwnerWorkspacePage: React.FC = () => {
               </Button>
               <Button size="small" variant="outlined" disabled={!historyStats} onClick={exportHistoryStatsJson}>
                 Экспорт stats JSON
+              </Button>
+              <Button size="small" variant="outlined" disabled={!historyStats} onClick={exportHistoryStatsCsv}>
+                Экспорт stats CSV
               </Button>
             </Stack>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
@@ -7198,6 +7288,14 @@ const OwnerWorkspacePage: React.FC = () => {
             {Boolean(historyStats && historyStats.total_rows > historyLogs.length) && (
               <Alert severity="info" sx={{ mb: 1.5 }}>
                 Текущий лимит показывает {historyLogs.length} из {historyStats!.total_rows} записей. Увеличьте лимит или сузьте фильтры.
+                <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                  <Button size="small" variant="outlined" onClick={() => setHistoryLimit(500)}>
+                    Лимит 500
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => setHistoryLimit(1000)}>
+                    Лимит 1000
+                  </Button>
+                </Stack>
               </Alert>
             )}
             {historyStatsLoading && (
@@ -7211,6 +7309,11 @@ const OwnerWorkspacePage: React.FC = () => {
                 {new Date(historyStats.last_created_at).toLocaleString('ru-RU')}
               </Typography>
             )}
+            {historyStatsLoadedAt && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                Сводка обновлена: {new Date(historyStatsLoadedAt).toLocaleString('ru-RU')}
+              </Typography>
+            )}
             {Boolean(historyStats?.entity_type_counts.length) && (
               <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
                 {historyStats!.entity_type_counts.map(({ key, count }) => (
@@ -7218,7 +7321,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     key={key}
                     size="small"
                     variant={historyEntityFilter === key ? 'filled' : 'outlined'}
-                    label={`${OWNER_WS_HISTORY_ENTITY_LABELS[key] || key}: ${count}`}
+                    label={`${OWNER_WS_HISTORY_ENTITY_LABELS[key] || key}: ${historyStatsPercentLabel(count)}`}
                     onClick={() => applyHistoryEntityQuickFilter(key)}
                   />
                 ))}
@@ -7231,7 +7334,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     key={key}
                     size="small"
                     variant={historyActionFilter === key ? 'filled' : 'outlined'}
-                    label={`${OWNER_WS_HISTORY_ACTION_LABELS[key] || key}: ${count}`}
+                    label={`${OWNER_WS_HISTORY_ACTION_LABELS[key] || key}: ${historyStatsPercentLabel(count)}`}
                     onClick={() => applyHistoryActionQuickFilter(key)}
                   />
                 ))}
@@ -7244,7 +7347,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     key={author_id}
                     size="small"
                     variant={historyAuthorFilter === author_id ? 'filled' : 'outlined'}
-                    label={`${userName(author_id)}: ${count}`}
+                    label={`${userName(author_id)}: ${historyStatsPercentLabel(count)}`}
                     onClick={() => applyHistoryAuthorQuickFilter(author_id)}
                   />
                 ))}
@@ -7269,6 +7372,9 @@ const OwnerWorkspacePage: React.FC = () => {
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
                             {item.count}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {historyStatsPercentLabel(item.count)}
                           </Typography>
                         </Stack>
                         <LinearProgress

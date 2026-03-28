@@ -247,6 +247,56 @@ def _add_audit(
 
 
 # ──────────────────────────────────────────────────────────────
+# GET /api/lessons/manual-list  (список ручных уроков за период)
+# ──────────────────────────────────────────────────────────────
+
+MANUAL_LESSON_TYPES = {"manual", "makeup", "paid_extra", "free_trial"}
+
+@router.get("/manual-list", response_model=list[LessonOut])
+def get_manual_lessons_list(
+    date_from: str = Query(...),
+    date_to: str = Query(...),
+    lesson_type: Optional[str] = Query(None),
+    trainer_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Список ручных занятий (не групповых) за период. Для страницы /sales/manual-lessons."""
+    _require_roles(current_user, ["admin", "owner", "sales"])
+
+    from_date = _parse_date(date_from)
+    to_date = _parse_date(date_to)
+
+    allowed_types = list(MANUAL_LESSON_TYPES)
+    if lesson_type and lesson_type in MANUAL_LESSON_TYPES:
+        allowed_types = [lesson_type]
+
+    query = (
+        db.query(LessonInstance)
+        .options(
+            joinedload(LessonInstance.group),
+            joinedload(LessonInstance.trainer),
+            joinedload(LessonInstance.program),
+            subqueryload(LessonInstance.lesson_students).joinedload(
+                LessonInstanceStudent.student
+            ),
+        )
+        .filter(
+            LessonInstance.lesson_type.in_(allowed_types),
+            LessonInstance.lesson_date >= from_date,
+            LessonInstance.lesson_date <= to_date,
+        )
+        .order_by(LessonInstance.lesson_date, LessonInstance.start_time)
+    )
+
+    if trainer_id:
+        query = query.filter(LessonInstance.trainer_id == trainer_id)
+
+    lessons = query.all()
+    return [_serialize_lesson(li, {}) for li in lessons]
+
+
+# ──────────────────────────────────────────────────────────────
 # GET /api/lessons?date=YYYY-MM-DD
 # ──────────────────────────────────────────────────────────────
 

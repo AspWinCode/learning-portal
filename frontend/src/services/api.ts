@@ -2772,6 +2772,17 @@ export const lessonsApi = {
     return response.data;
   },
 
+  /** Ручные уроки за период (для страницы /sales/manual-lessons) */
+  getManualList: async (params: {
+    date_from: string;
+    date_to: string;
+    lesson_type?: string;
+    trainer_id?: number;
+  }): Promise<LessonInstance[]> => {
+    const response = await api.get('/api/lessons/manual-list', { params });
+    return response.data;
+  },
+
   /** Занятие по id */
   getById: async (id: number): Promise<LessonInstance> => {
     const response = await api.get(`/api/lessons/${id}`);

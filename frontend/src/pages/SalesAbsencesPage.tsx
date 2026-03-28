@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -19,6 +20,7 @@ import {
   MenuItem,
   Select,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import { format, parseISO } from 'date-fns';
@@ -53,6 +55,8 @@ const SalesAbsencesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestAbsence, setSuggestAbsence] = useState<AbsenceFollowUp | null>(null);
   const [suggestions, setSuggestions] = useState<MakeupSuggestionItem[]>([]);
@@ -63,7 +67,11 @@ const SalesAbsencesPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await salesApi.getAbsences(stageFilter ? { stage: stageFilter } : {});
+      const data = await salesApi.getAbsences({
+        ...(stageFilter ? { stage: stageFilter } : {}),
+        ...(dateFrom ? { date_from: dateFrom } : {}),
+        ...(dateTo ? { date_to: dateTo } : {}),
+      });
       setItems(data);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить пропуски'));
@@ -74,7 +82,7 @@ const SalesAbsencesPage: React.FC = () => {
 
   useEffect(() => {
     loadAbsences();
-  }, [stageFilter]);
+  }, [stageFilter, dateFrom, dateTo]);
 
   const handleStageChange = async (absenceId: number, newStage: string) => {
     try {
@@ -152,7 +160,7 @@ const SalesAbsencesPage: React.FC = () => {
           Пропуски
         </Typography>
 
-        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Stack direction="row" flexWrap="wrap" gap={2} alignItems="flex-end" sx={{ mb: 2 }}>
           <FormControl size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Этап</InputLabel>
             <Select
@@ -168,7 +176,30 @@ const SalesAbsencesPage: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-        </Box>
+          <TextField
+            label="Дата пропуска от"
+            type="date"
+            size="small"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 160 }}
+          />
+          <TextField
+            label="Дата пропуска по"
+            type="date"
+            size="small"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 160 }}
+          />
+          {(dateFrom || dateTo) && (
+            <Button size="small" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+              Сбросить даты
+            </Button>
+          )}
+        </Stack>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -215,9 +246,23 @@ const SalesAbsencesPage: React.FC = () => {
                             </Typography>
                           )}
                           {a.stage === 'assigned' && a.makeup_group_name && a.makeup_lesson_date && (
-                            <Typography variant="caption" color="primary" display="block">
-                              Отработка: {a.makeup_group_name} · {formatDate(a.makeup_lesson_date)}
-                            </Typography>
+                            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
+                              <Typography variant="caption" color="primary">
+                                Отработка: {a.makeup_group_name} · {formatDate(a.makeup_lesson_date)}
+                              </Typography>
+                              {a.lesson_instance_id && (
+                                <Chip
+                                  label={`Урок #${a.lesson_instance_id}`}
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                  component="a"
+                                  href={`/lessons?date=${a.makeup_lesson_date}`}
+                                  clickable
+                                  sx={{ fontSize: 10, height: 18 }}
+                                />
+                              )}
+                            </Stack>
                           )}
                           <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
                             {(a.stage === 'missed' || a.stage === 'missed_makeup') && (

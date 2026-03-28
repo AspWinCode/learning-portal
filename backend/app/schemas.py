@@ -561,6 +561,7 @@ class AbsenceFollowUpResponse(BaseModel):
     makeup_group_id: Optional[int] = None
     makeup_lesson_date: Optional[date] = None
     makeup_custom_lesson_id: Optional[int] = None
+    lesson_instance_id: Optional[int] = None   # LessonInstance назначенной отработки
     created_at: datetime
     updated_at: Optional[datetime] = None
     student_name: Optional[str] = None

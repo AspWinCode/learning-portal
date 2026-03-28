@@ -1910,6 +1910,7 @@ def _absence_to_response(db: Session, a: AbsenceFollowUp) -> AbsenceFollowUpResp
         makeup_lesson_date=getattr(a, "makeup_lesson_date", None),
         makeup_custom_lesson_id=getattr(a, "makeup_custom_lesson_id", None),
         makeup_custom_lesson_title=makeup_custom_lesson.title if makeup_custom_lesson else None,
+        lesson_instance_id=getattr(a, "lesson_instance_id", None),
         created_at=a.created_at,
         updated_at=a.updated_at,
         student_name=get_student_display_name(db, student) if student else None,
@@ -1923,6 +1924,8 @@ def _absence_to_response(db: Session, a: AbsenceFollowUp) -> AbsenceFollowUpResp
 async def list_absences(
     stage: Optional[str] = Query(None, description="Фильтр по этапу: missed, assigned, made_up, missed_makeup"),
     student_id: Optional[int] = Query(None, description="Фильтр по ученику"),
+    date_from: Optional[str] = Query(None, description="Дата пропуска от (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата пропуска по (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -1932,6 +1935,12 @@ async def list_absences(
         query = query.filter(AbsenceFollowUp.stage == stage)
     if student_id is not None:
         query = query.filter(AbsenceFollowUp.student_id == student_id)
+    if date_from:
+        from datetime import date as date_type
+        query = query.filter(AbsenceFollowUp.lesson_date >= date_type.fromisoformat(date_from))
+    if date_to:
+        from datetime import date as date_type
+        query = query.filter(AbsenceFollowUp.lesson_date <= date_type.fromisoformat(date_to))
     items = query.all()
     return [_absence_to_response(db, a) for a in items]
 

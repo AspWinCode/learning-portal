@@ -1521,7 +1521,7 @@ export const salesApi = {
     const response = await api.get('/api/sales/students-for-cards');
     return response.data;
   },
-  getAbsences: async (params?: { stage?: string; student_id?: number }): Promise<AbsenceFollowUp[]> => {
+  getAbsences: async (params?: { stage?: string; student_id?: number; date_from?: string; date_to?: string }): Promise<AbsenceFollowUp[]> => {
     const response = await api.get('/api/sales/absences', { params: params || {} });
     return response.data;
   },

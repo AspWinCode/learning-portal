@@ -134,6 +134,7 @@ export interface AbsenceFollowUp {
   makeup_lesson_date?: string | null;
   makeup_custom_lesson_id?: number | null;
   makeup_custom_lesson_title?: string | null;
+  lesson_instance_id?: number | null;
   created_at: string;
   updated_at?: string | null;
   student_name?: string | null;

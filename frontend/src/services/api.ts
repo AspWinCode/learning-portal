@@ -48,6 +48,8 @@ import {
   FinanceLedgerTransactionRow,
   FinanceAccountBalance,
   FinancePnlRow,
+  LessonInstance,
+  LessonAuditEntry,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -2428,6 +2430,118 @@ export const maxApi = {
     scheduled_at?: string | null;
   }): Promise<MaxSendResponse> => {
     const response = await api.post('/api/max/send', payload);
+    return response.data;
+  },
+};
+
+// ──────────────────────────────────────────────────────────────
+// Новый API уроков: /api/lessons
+// ──────────────────────────────────────────────────────────────
+
+export const lessonsApi = {
+  /** Все занятия на дату */
+  getForDate: async (params: {
+    date: string;
+    lesson_type?: string;
+    status?: string;
+  }): Promise<LessonInstance[]> => {
+    const response = await api.get('/api/lessons/', { params });
+    return response.data;
+  },
+
+  /** Занятие по id */
+  getById: async (id: number): Promise<LessonInstance> => {
+    const response = await api.get(`/api/lessons/${id}`);
+    return response.data;
+  },
+
+  /** Сохранить посещаемость */
+  saveAttendance: async (
+    id: number,
+    items: Array<{
+      lesson_student_id: number;
+      attended: boolean;
+      late: boolean;
+      absence_reason?: string | null;
+      absence_comment?: string | null;
+    }>
+  ): Promise<LessonInstance> => {
+    const response = await api.post(`/api/lessons/${id}/attendance`, { items });
+    return response.data;
+  },
+
+  /** Сменить тренера */
+  setTrainer: async (id: number, trainer_id: number): Promise<LessonInstance> => {
+    const response = await api.post(`/api/lessons/${id}/trainer`, { trainer_id });
+    return response.data;
+  },
+
+  /** Добавить ученика */
+  addStudent: async (
+    id: number,
+    payload: { student_id: number; planned_absence_id?: number | null }
+  ): Promise<LessonInstance> => {
+    const response = await api.post(`/api/lessons/${id}/students`, payload);
+    return response.data;
+  },
+
+  /** Удалить ученика */
+  removeStudent: async (id: number, student_id: number): Promise<LessonInstance> => {
+    const response = await api.delete(`/api/lessons/${id}/students/${student_id}`);
+    return response.data;
+  },
+
+  /** Перенести занятие */
+  move: async (
+    id: number,
+    payload: { to_date: string; to_start_time?: string; to_end_time?: string }
+  ): Promise<LessonInstance> => {
+    const response = await api.post(`/api/lessons/${id}/move`, payload);
+    return response.data;
+  },
+
+  /** Отменить занятие */
+  cancel: async (id: number, cancel_reason?: string): Promise<LessonInstance> => {
+    const response = await api.post(`/api/lessons/${id}/cancel`, { cancel_reason });
+    return response.data;
+  },
+
+  /** Создать ручное занятие */
+  createManual: async (payload: {
+    title: string;
+    lesson_date: string;
+    start_time: string;
+    end_time?: string;
+    trainer_id: number;
+    lesson_type?: string;
+    comment?: string;
+    students?: Array<{ student_id: number; planned_absence_id?: number | null }>;
+  }): Promise<LessonInstance> => {
+    const response = await api.post('/api/lessons/manual', payload);
+    return response.data;
+  },
+
+  /** Создать групповое занятие вне шаблона */
+  createGroup: async (payload: {
+    group_id: number;
+    lesson_date: string;
+    start_time: string;
+    end_time?: string;
+    comment?: string;
+  }): Promise<LessonInstance> => {
+    const response = await api.post('/api/lessons/group', payload);
+    return response.data;
+  },
+
+  /** Журнал изменений занятия */
+  getAudit: async (id: number): Promise<LessonAuditEntry[]> => {
+    const response = await api.get(`/api/lessons/${id}/audit`);
+    return response.data;
+  },
+
+  /** Ручной запуск генерации экземпляров (admin/owner) */
+  generate: async (payload: { group_id?: number; horizon_days?: number }) => {
+    const response = await api.post('/api/lessons/generate', payload);
     return response.data;
   },
 };

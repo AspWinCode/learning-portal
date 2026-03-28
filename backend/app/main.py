@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.database import SessionLocal
-from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, admin_tools, sms, max_messenger
+from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, admin_tools, sms, max_messenger, lessons
 
 app = FastAPI(
     title="Learning Portal API",
@@ -151,6 +151,28 @@ def _validate_production_env() -> None:
         minute=0,
         id="absence_link_tasks",
     )
+
+    def _run_lesson_instance_generator() -> None:
+        """Ежедневно генерирует LessonInstance на горизонт 60 дней."""
+        try:
+            from app.services.lesson_generator import ensure_horizon
+            db = SessionLocal()
+            try:
+                result = ensure_horizon(db)
+                print(f"[lesson_generator] {result}")
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
+    scheduler.add_job(
+        _run_lesson_instance_generator,
+        "cron",
+        hour=2,
+        minute=30,
+        id="lesson_instance_generator",
+    )
+
     scheduler.start()
 
 # CORS origins from env (comma-separated). Defaults to local dev.
@@ -225,6 +247,7 @@ app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
 app.include_router(admin_tools.router, prefix="/api/admin-tools", tags=["admin_tools"])
 app.include_router(sms.router, prefix="/api", tags=["sms"])
 app.include_router(max_messenger.router, prefix="/api", tags=["max"])
+app.include_router(lessons.router, prefix="/api/lessons", tags=["lessons"])
 
 
 @app.exception_handler(Exception)

@@ -10,6 +10,7 @@ import DashboardPage from './pages/DashboardPage';
 import StudentsPage from './pages/StudentsPage';
 import GroupsPage from './pages/GroupsPage';
 import TrainerLessonsPage from './pages/TrainerLessonsPage';
+import LessonsPageContainer from './pages/lessons/LessonsPageContainer';
 import ProgramsPage from './pages/ProgramsPage';
 import GuestProgramsPage from './pages/GuestProgramsPage';
 import GradesPage from './pages/GradesPage';
@@ -121,6 +122,15 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['admin', 'trainer', 'owner', 'sales']}>
                   <TrainerLessonsPage />
+                </PrivateRoute>
+              }
+            />
+            {/* Новая страница уроков (новая архитектура) */}
+            <Route
+              path="/lessons-v2"
+              element={
+                <PrivateRoute allowedRoles={['admin', 'trainer', 'owner', 'sales']}>
+                  <LessonsPageContainer />
                 </PrivateRoute>
               }
             />

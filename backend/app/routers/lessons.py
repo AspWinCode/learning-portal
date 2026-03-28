@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, subqueryload
 
 from app.auth import get_current_user
 from app.database import get_db
@@ -265,6 +265,14 @@ def get_lessons_for_date(
 
     query = (
         db.query(LessonInstance)
+        .options(
+            joinedload(LessonInstance.group),
+            joinedload(LessonInstance.trainer),
+            joinedload(LessonInstance.program),
+            subqueryload(LessonInstance.lesson_students).joinedload(
+                LessonInstanceStudent.student
+            ),
+        )
         .filter(LessonInstance.lesson_date == target_date)
     )
 
@@ -313,7 +321,19 @@ def get_lesson(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, ["admin", "owner", "trainer", "sales"])
-    li = db.query(LessonInstance).filter(LessonInstance.id == lesson_id).first()
+    li = (
+        db.query(LessonInstance)
+        .options(
+            joinedload(LessonInstance.group),
+            joinedload(LessonInstance.trainer),
+            joinedload(LessonInstance.program),
+            subqueryload(LessonInstance.lesson_students).joinedload(
+                LessonInstanceStudent.student
+            ),
+        )
+        .filter(LessonInstance.id == lesson_id)
+        .first()
+    )
     if not li:
         raise HTTPException(status_code=404, detail="Занятие не найдено")
     if current_user.role == UserRole.TRAINER and li.trainer_id != current_user.id:

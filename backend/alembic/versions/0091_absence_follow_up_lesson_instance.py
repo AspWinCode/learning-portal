@@ -16,7 +16,7 @@ depends_on = None
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # Добавляем lesson_instance_id
+    # 1. Добавляем lesson_instance_id если его ещё нет
     has_col = conn.execute(sa.text(
         "SELECT 1 FROM information_schema.columns "
         "WHERE table_name='absence_follow_ups' AND column_name='lesson_instance_id'"
@@ -37,34 +37,27 @@ def upgrade() -> None:
             ["lesson_instance_id"],
         )
 
-    # Делаем lesson_attendance_id nullable
-    try:
-        op.drop_constraint(
-            "absence_follow_ups_lesson_attendance_id_key",
-            "absence_follow_ups",
-            type_="unique",
-        )
-    except Exception:
-        pass
+    # 2. Удаляем unique constraint на lesson_attendance_id (через IF EXISTS — не абортирует транзакцию)
+    conn.execute(sa.text(
+        "ALTER TABLE absence_follow_ups "
+        "DROP CONSTRAINT IF EXISTS absence_follow_ups_lesson_attendance_id_key"
+    ))
 
-    try:
-        op.alter_column(
-            "absence_follow_ups",
-            "lesson_attendance_id",
-            nullable=True,
-        )
-    except Exception:
-        pass
+    # 3. Делаем lesson_attendance_id nullable — только если сейчас NOT NULL
+    row = conn.execute(sa.text(
+        "SELECT is_nullable FROM information_schema.columns "
+        "WHERE table_name='absence_follow_ups' AND column_name='lesson_attendance_id'"
+    )).fetchone()
+    if row and row[0] == 'NO':
+        op.alter_column("absence_follow_ups", "lesson_attendance_id", nullable=True)
 
-    # Делаем group_id nullable
-    try:
-        op.alter_column(
-            "absence_follow_ups",
-            "group_id",
-            nullable=True,
-        )
-    except Exception:
-        pass
+    # 4. Делаем group_id nullable — только если сейчас NOT NULL
+    row2 = conn.execute(sa.text(
+        "SELECT is_nullable FROM information_schema.columns "
+        "WHERE table_name='absence_follow_ups' AND column_name='group_id'"
+    )).fetchone()
+    if row2 and row2[0] == 'NO':
+        op.alter_column("absence_follow_ups", "group_id", nullable=True)
 
 
 def downgrade() -> None:

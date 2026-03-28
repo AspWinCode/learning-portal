@@ -41,6 +41,13 @@ export default function LessonsPageContainer() {
 
   const initialDate = searchParams.get('date') || format(new Date(), 'yyyy-MM-dd');
 
+  // Параметры потока "Ручной урок" из SalesAbsencesPage
+  const createMakeup = searchParams.get('create_makeup') === '1';
+  const absenceIdParam = searchParams.get('absence_id');
+  const studentIdParam = searchParams.get('student_id');
+  const initialAbsenceId = absenceIdParam ? parseInt(absenceIdParam, 10) : null;
+  const initialStudentId = studentIdParam ? parseInt(studentIdParam, 10) : null;
+
   const {
     viewDate,
     setViewDate,
@@ -79,6 +86,21 @@ export default function LessonsPageContainer() {
   const [moveLesson, setMoveLesson] = useState<LessonInstance | null>(null);
   const [cancelLesson, setCancelLesson] = useState<LessonInstance | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Автооткрытие диалога создания если пришли из SalesAbsencesPage
+  useEffect(() => {
+    if (createMakeup) {
+      setCreateOpen(true);
+      // Убираем параметры из URL чтобы при закрытии/обновлении не открывался снова
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('create_makeup');
+        next.delete('absence_id');
+        next.delete('student_id');
+        return next;
+      });
+    }
+  }, [createMakeup, setSearchParams]);
 
   // Права
   const role = user?.role ?? '';
@@ -210,6 +232,9 @@ export default function LessonsPageContainer() {
         trainers={trainers}
         groups={(groups as GroupMin[]).filter(g => g.status === 'active')}
         allStudents={allStudents}
+        initialAbsenceId={initialAbsenceId}
+        initialStudentId={initialStudentId}
+        initialType={initialAbsenceId ? 'makeup' : undefined}
       />
     </Layout>
   );

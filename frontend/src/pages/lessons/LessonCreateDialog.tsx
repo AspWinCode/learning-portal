@@ -28,6 +28,10 @@ interface Props {
   trainers: User[];
   groups: Group[];
   allStudents: Student[];
+  // Предзаполнение из URL (поток "Ручной урок" из SalesAbsencesPage)
+  initialAbsenceId?: number | null;
+  initialStudentId?: number | null;
+  initialType?: string;
 }
 
 export function LessonCreateDialog({
@@ -38,6 +42,9 @@ export function LessonCreateDialog({
   trainers,
   groups,
   allStudents,
+  initialAbsenceId,
+  initialStudentId,
+  initialType,
 }: Props) {
   const [lessonKind, setLessonKind] = useState<'group' | 'manual'>('group');
 
@@ -74,13 +81,22 @@ export function LessonCreateDialog({
       setManualStart('');
       setManualEnd('');
       setManualTrainerId('');
-      setManualType('manual');
       setManualComment('');
-      setManualStudentIds([]);
       setStudentSearch('');
       setError(null);
+
+      // Если открыт из потока "Ручной урок" (SalesAbsencesPage) — предзаполняем
+      if (initialAbsenceId || initialStudentId || initialType) {
+        setLessonKind('manual');
+        setManualType(initialType || 'makeup');
+        setManualStudentIds(initialStudentId ? [initialStudentId] : []);
+      } else {
+        setLessonKind('group');
+        setManualType('manual');
+        setManualStudentIds([]);
+      }
     }
-  }, [open, defaultDate]);
+  }, [open, defaultDate, initialAbsenceId, initialStudentId, initialType]);
 
   const handleCreate = async () => {
     setSaving(true);
@@ -112,7 +128,13 @@ export function LessonCreateDialog({
           trainer_id: manualTrainerId as number,
           lesson_type: manualType,
           comment: manualComment || undefined,
-          students: manualStudentIds.map(id => ({ student_id: id })),
+          students: manualStudentIds.map(id => ({
+            student_id: id,
+            // Если урок создаётся из потока отработки — привязываем пропуск
+            planned_absence_id: (initialAbsenceId && id === initialStudentId)
+              ? initialAbsenceId
+              : undefined,
+          })),
         });
       }
       onCreated(created);

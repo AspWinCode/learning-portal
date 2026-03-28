@@ -124,7 +124,7 @@ const SalesAbsencesPage: React.FC = () => {
     setSuggestOpen(false);
     setSuggestAbsence(null);
     navigate(
-      `/sales/manual-lessons?create=1&absence_id=${suggestAbsence.id}&student_id=${suggestAbsence.student_id}`
+      `/lessons?create_makeup=1&absence_id=${suggestAbsence.id}&student_id=${suggestAbsence.student_id}`
     );
   };
 

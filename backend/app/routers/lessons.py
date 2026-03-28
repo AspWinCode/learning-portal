@@ -402,53 +402,58 @@ def save_attendance(
             new_value=str(item.attended),
         )
 
-        # Если отработка и отметили как присутствовал — закрываем пропуск
-        if lis.planned_absence_id and item.attended:
+        # ── Отработка (есть ссылка на AbsenceFollowUp) ──────────────────
+        if lis.planned_absence_id:
             follow_up = db.query(AbsenceFollowUp).filter(
                 AbsenceFollowUp.id == lis.planned_absence_id
             ).first()
-            if follow_up and follow_up.stage in ("assigned", "link_sent"):
-                follow_up.stage = "made_up"
-            elif follow_up and follow_up.stage == "assigned":
-                follow_up.stage = "made_up"
+            if follow_up:
+                if item.attended:
+                    # Пришёл на отработку → закрываем
+                    if follow_up.stage in ("assigned", "link_sent", "missed_makeup"):
+                        follow_up.stage = "made_up"
+                elif old_attended is not False:
+                    # Не пришёл на отработку (первый раз отмечаем как отсутствие) → missed_makeup
+                    if follow_up.stage in ("assigned", "link_sent", "made_up"):
+                        follow_up.stage = "missed_makeup"
 
-        # Если ученик отсутствует — создаём/обновляем AbsenceFollowUp
-        if not item.attended and old_attended is not False:
-            # Проверяем заморозку: замороженные не попадают в воронку пропусков
-            in_freeze = db.query(StudentFreeze).filter(
-                StudentFreeze.student_id == lis.student_id,
-                StudentFreeze.freeze_start <= li.lesson_date,
-                StudentFreeze.freeze_end >= li.lesson_date,
-            ).first()
-            if not in_freeze:
-                # Для групповых уроков — ищем AbsenceFollowUp по lesson_instance_id
-                existing_absence = db.query(AbsenceFollowUp).filter(
+        # ── Обычный урок (нет ссылки на отработку) ──────────────────────
+        else:
+            if not item.attended and old_attended is not False:
+                # Проверяем заморозку
+                in_freeze = db.query(StudentFreeze).filter(
+                    StudentFreeze.student_id == lis.student_id,
+                    StudentFreeze.freeze_start <= li.lesson_date,
+                    StudentFreeze.freeze_end >= li.lesson_date,
+                ).first()
+                if not in_freeze:
+                    existing_absence = db.query(AbsenceFollowUp).filter(
+                        AbsenceFollowUp.lesson_instance_id == lesson_id,
+                        AbsenceFollowUp.student_id == lis.student_id,
+                    ).first()
+                    if not existing_absence:
+                        db.add(AbsenceFollowUp(
+                            lesson_instance_id=lesson_id,
+                            student_id=lis.student_id,
+                            group_id=li.group_id,
+                            lesson_date=li.lesson_date,
+                            stage="missed",
+                            absence_reason=item.absence_reason,
+                            absence_comment=item.absence_comment,
+                        ))
+                    else:
+                        existing_absence.absence_reason = item.absence_reason
+                        existing_absence.absence_comment = item.absence_comment
+
+            # Если пришёл после того как был отмечен как отсутствующий — отзываем пропуск
+            if item.attended and old_attended is False:
+                absent_follow_up = db.query(AbsenceFollowUp).filter(
                     AbsenceFollowUp.lesson_instance_id == lesson_id,
                     AbsenceFollowUp.student_id == lis.student_id,
+                    AbsenceFollowUp.stage == "missed",
                 ).first()
-                if not existing_absence:
-                    db.add(AbsenceFollowUp(
-                        lesson_instance_id=lesson_id,
-                        student_id=lis.student_id,
-                        group_id=li.group_id,
-                        lesson_date=li.lesson_date,
-                        stage="missed",
-                        absence_reason=item.absence_reason,
-                        absence_comment=item.absence_comment,
-                    ))
-                else:
-                    existing_absence.absence_reason = item.absence_reason
-                    existing_absence.absence_comment = item.absence_comment
-
-        # Если ученик пришёл (был отмечен ранее как отсутствующий) — отзываем пропуск
-        if item.attended and old_attended is False:
-            absent_follow_up = db.query(AbsenceFollowUp).filter(
-                AbsenceFollowUp.lesson_instance_id == lesson_id,
-                AbsenceFollowUp.student_id == lis.student_id,
-                AbsenceFollowUp.stage == "missed",
-            ).first()
-            if absent_follow_up:
-                db.delete(absent_follow_up)
+                if absent_follow_up:
+                    db.delete(absent_follow_up)
 
     # После отметки посещаемости — статус занятия completed
     li.status = "completed"

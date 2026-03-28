@@ -39,7 +39,6 @@ import SalesDebtsPage from './pages/SalesDebtsPage';
 import SalesProgramMakeupPage from './pages/SalesProgramMakeupPage';
 import SalesTaxDeductionPage from './pages/SalesTaxDeductionPage';
 import LeadCardPage from './pages/LeadCardPage';
-import ManualLessonsPage from './pages/ManualLessonsPage';
 import SpecialistQuestionnairePage from './pages/SpecialistQuestionnairePage';
 import TildaLeadPage from './pages/TildaLeadPage';
 import StartLeadPage from './pages/StartLeadPage';
@@ -279,11 +278,7 @@ function App() {
             />
             <Route
               path="/sales/manual-lessons"
-              element={
-                <PrivateRoute allowedRoles={['admin', 'owner']}>
-                  <ManualLessonsPage />
-                </PrivateRoute>
-              }
+              element={<Navigate to="/lessons" replace />}
             />
             <Route
               path="/grades"

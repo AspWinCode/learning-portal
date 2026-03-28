@@ -1659,7 +1659,7 @@ export const salesApi = {
   },
   assignMakeup: async (
     absenceId: number,
-    data: { makeup_group_id: number; makeup_lesson_date: string }
+    data: { makeup_group_id: number; makeup_lesson_date: string; lesson_instance_id?: number }
   ): Promise<AbsenceFollowUp> => {
     const response = await api.post(`/api/sales/absences/${absenceId}/assign-makeup`, data);
     return response.data;

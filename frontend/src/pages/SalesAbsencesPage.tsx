@@ -108,6 +108,7 @@ const SalesAbsencesPage: React.FC = () => {
       const updated = await salesApi.assignMakeup(suggestAbsence.id, {
         makeup_group_id: option.group_id,
         makeup_lesson_date: option.lesson_date,
+        lesson_instance_id: option.lesson_instance_id,
       });
       setItems((prev) => prev.map((a) => (a.id === suggestAbsence.id ? updated : a)));
       setSuggestOpen(false);

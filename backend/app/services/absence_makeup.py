@@ -8,6 +8,7 @@ Use case: назначение отработки по пропуску (assign_
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,7 @@ def assign_makeup_for_absence(
     absence_id: int,
     makeup_group_id: int,
     makeup_lesson_date: date,
+    lesson_instance_id: Optional[int] = None,
 ) -> AssignMakeupResult:
     """
     Назначает отработку на группу и дату занятия. Обновляет stage в "assigned"
@@ -42,6 +44,8 @@ def assign_makeup_for_absence(
 
     absence.makeup_group_id = makeup_group_id
     absence.makeup_lesson_date = makeup_lesson_date
+    if lesson_instance_id is not None:
+        absence.lesson_instance_id = lesson_instance_id
     absence.stage = "assigned"
 
     try:

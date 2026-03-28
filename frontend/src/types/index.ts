@@ -143,6 +143,7 @@ export interface AbsenceFollowUp {
 }
 
 export interface MakeupSuggestionItem {
+  lesson_instance_id: number;
   group_id: number;
   group_name: string;
   program_name?: string | null;

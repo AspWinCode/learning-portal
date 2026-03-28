@@ -582,10 +582,12 @@ class AbsenceMakeupAssign(BaseModel):
     """Назначить отработку на группу и дату."""
     makeup_group_id: int
     makeup_lesson_date: date
+    lesson_instance_id: Optional[int] = None
 
 
 class MakeupSuggestionItem(BaseModel):
     """Вариант для отработки: группа + дата занятия."""
+    lesson_instance_id: int
     group_id: int
     group_name: str
     program_name: Optional[str] = None

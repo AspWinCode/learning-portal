@@ -78,6 +78,7 @@ from app.models import (
     Task,
     TaskStatus,
     LeadActivity,
+    LessonInstance,
 )
 from app.utils.phone import normalize_phone, validate_phone_for_lead
 from app.schemas import (
@@ -1973,6 +1974,7 @@ async def assign_makeup(
             absence_id,
             makeup_group_id=payload.makeup_group_id,
             makeup_lesson_date=payload.makeup_lesson_date,
+            lesson_instance_id=payload.lesson_instance_id,
         )
     except ValueError as e:
         msg = str(e)
@@ -2024,29 +2026,45 @@ async def suggest_makeups(
     # Исключаем индивидуальные группы из вариантов отработки (ТЗ)
     groups_active = [g for g in groups_active if "индивид" not in (g.name or "").lower()]
     group_ids = [g.id for g in groups_active]
-    slots = []
-    for sched in db.query(GroupSchedule).filter(GroupSchedule.group_id.in_(group_ids)).all():
-        for d in range((end_date - today).days + 1):
-            lesson_date = today + timedelta(days=d)
-            if lesson_date.weekday() == sched.day_of_week:
-                slots.append((sched.group_id, lesson_date, sched.start_time))
+    if not group_ids:
+        return []
+
+    # Запрашиваем материализованные LessonInstance вместо вычисления из GroupSchedule
+    instances = (
+        db.query(LessonInstance)
+        .options(joinedload(LessonInstance.group), joinedload(LessonInstance.program))
+        .filter(
+            LessonInstance.group_id.in_(group_ids),
+            LessonInstance.lesson_date > today,
+            LessonInstance.lesson_date <= end_date,
+            LessonInstance.status == "planned",
+        )
+        .order_by(LessonInstance.lesson_date, LessonInstance.start_time)
+        .all()
+    )
+
+    groups_map = {g.id: g for g in groups_active}
+    # Кэш программ по группе
+    gp_cache: dict = {}
+
     result = []
-    seen = set()
-    for group_id, lesson_date, start_time in sorted(slots, key=lambda x: (x[1], x[2] or dt_time(0, 0))):
-        if (group_id, lesson_date) in seen:
-            continue
-        seen.add((group_id, lesson_date))
-        group = next((g for g in groups_active if g.id == group_id), None) or db.query(Group).filter(Group.id == group_id).first()
+    for inst in instances:
+        group = groups_map.get(inst.group_id)
         if not group:
             continue
-        gp = db.query(GroupProgram).filter(GroupProgram.group_id == group_id).first()
-        program_name = gp.program.name if gp and gp.program else None
+        gid = inst.group_id
+        if gid not in gp_cache:
+            gp = db.query(GroupProgram).filter(GroupProgram.group_id == gid).options(joinedload(GroupProgram.program)).first()
+            gp_cache[gid] = gp.program.name if gp and gp.program else None
+        program_name = gp_cache[gid]
+        start_time = inst.start_time
         result.append(MakeupSuggestionItem(
-            group_id=group_id,
+            lesson_instance_id=inst.id,
+            group_id=gid,
             group_name=group.name,
             program_name=program_name,
-            lesson_date=lesson_date,
-            day_of_week=lesson_date.weekday(),
+            lesson_date=inst.lesson_date,
+            day_of_week=inst.lesson_date.weekday(),
             start_time=start_time.strftime("%H:%M") if start_time else None,
         ))
     return result[:50]

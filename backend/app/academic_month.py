@@ -4,9 +4,10 @@
 С 01.09: календарный месяц (1 → последнее число).
 """
 from datetime import date, timedelta
+from typing import Tuple
 
 
-def get_academic_window(lesson_date: date) -> tuple[date, date]:
+def get_academic_window(lesson_date: date) -> Tuple[date, date]:
     """Вернуть (start_date, end_date) учебного месяца для даты занятия."""
     if lesson_date.month >= 9:
         # Сентябрь — декабрь: календарный месяц (1 — последнее число)

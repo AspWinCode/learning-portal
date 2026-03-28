@@ -48,6 +48,7 @@ import ProLeadPage from './pages/ProLeadPage';
 import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
+import OwnerWorkspacePage from './pages/OwnerWorkspacePage';
 import PersonalFinancePage from './pages/PersonalFinancePage';
 import FinanceOverviewPage from './pages/FinanceOverviewPage';
 import FinanceProjectsPage from './pages/FinanceProjectsPage';
@@ -387,7 +388,7 @@ function App() {
             <Route
               path="/tasks"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']}>
                   <TasksPage />
                 </PrivateRoute>
               }
@@ -395,7 +396,7 @@ function App() {
             <Route
               path="/projects"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']}>
                   <ProjectsPage />
                 </PrivateRoute>
               }
@@ -403,8 +404,104 @@ function App() {
             <Route
               path="/projects/:projectId"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']}>
                   <ProjectKanbanPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/notifications"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/settings"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/projects"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/projects/:projectId"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/contacts"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/contacts/:contactId"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/tasks"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/tasks/:taskId"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/reports"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/comms"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/history"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace"
+              element={
+                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']}>
+                  <OwnerWorkspacePage />
                 </PrivateRoute>
               }
             />

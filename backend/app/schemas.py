@@ -2453,6 +2453,455 @@ class TaskResponse(BaseModel):
         from_attributes = True
 
 
+# --- Owner workspace (owner task manager) ---
+class OwnerWorkspaceProjectParticipantAdd(BaseModel):
+    user_id: int
+    role: Literal["member", "manager", "observer"] = "member"
+
+
+class OwnerWorkspaceProjectParticipantRolePatch(BaseModel):
+    role: Literal["member", "manager", "observer"]
+
+
+class OwnerWorkspaceProjectContactAdd(BaseModel):
+    contact_id: int
+
+
+class OwnerWorkspaceProjectBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    status: Optional[Literal["active", "completed", "archived"]] = "active"
+    owner_id: Optional[int] = None
+    parent_project_id: Optional[int] = None
+
+
+class OwnerWorkspaceProjectCreate(OwnerWorkspaceProjectBase):
+    pass
+
+
+class OwnerWorkspaceProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[Literal["active", "completed", "archived"]] = None
+    owner_id: Optional[int] = None
+    parent_project_id: Optional[int] = None
+
+
+class OwnerWorkspaceProjectResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    status: str
+    owner_id: Optional[int] = None
+    parent_project_id: Optional[int] = None
+    participants: List[int] = []
+    participant_roles: Dict[int, str] = Field(default_factory=dict)  # user_id -> member|manager
+    active_tasks_count: int = 0
+    total_tasks_count: int = 0
+    completed_tasks_count: int = 0
+    overdue_tasks_count: int = 0
+    contacts_count: int = 0
+    subprojects_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceContactBase(BaseModel):
+    full_name: str
+    phone: str
+    email: Optional[str] = None
+    company: Optional[str] = None
+    position: Optional[str] = None
+    tags: Optional[List[str]] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
+
+
+class OwnerWorkspaceContactCreate(OwnerWorkspaceContactBase):
+    project_ids: Optional[List[int]] = None
+
+
+class OwnerWorkspaceContactUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    company: Optional[str] = None
+    position: Optional[str] = None
+    tags: Optional[List[str]] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
+
+
+class OwnerWorkspaceContactResponse(BaseModel):
+    id: int
+    full_name: str
+    phone: str
+    email: Optional[str] = None
+    company: Optional[str] = None
+    position: Optional[str] = None
+    tags: Optional[List[str]] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
+    linked_project_ids: List[int] = []
+    active_tasks_count: int = 0
+    last_interaction_at: Optional[datetime] = Field(
+        None,
+        description="Макс. из: последнее сообщение, последняя активность задачи, updated_at карточки.",
+    )
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceTaskBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    status: Optional[Literal["new", "in_progress", "waiting", "completed", "cancelled"]] = "new"
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = "medium"
+    deadline_at: Optional[datetime] = None
+    start_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    project_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    linked_message_ids: Optional[List[int]] = None
+    previous_task_id: Optional[int] = None
+
+
+class OwnerWorkspaceTaskCreate(OwnerWorkspaceTaskBase):
+    pass
+
+
+class OwnerWorkspaceTaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[Literal["new", "in_progress", "waiting", "completed", "cancelled"]] = None
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = None
+    deadline_at: Optional[datetime] = None
+    start_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    project_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    linked_message_ids: Optional[List[int]] = None
+    previous_task_id: Optional[int] = None
+
+
+class OwnerWorkspaceTaskCompleteRequest(BaseModel):
+    action: Literal["close", "close_and_create_next"] = "close"
+    next_task: Optional[OwnerWorkspaceTaskCreate] = None
+
+
+class OwnerWorkspaceTaskBulkUpdate(BaseModel):
+    """Массовое обновление задач (owner workspace). Пустые поля не меняют значение."""
+
+    task_ids: List[int] = Field(..., min_length=1, max_length=500)
+    status: Optional[Literal["new", "in_progress", "waiting", "completed", "cancelled"]] = None
+    assignee_id: Optional[int] = None  # null в JSON — снять исполнителя
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = None
+
+
+class OwnerWorkspaceTaskCommentCreate(BaseModel):
+    text: str
+
+
+class OwnerWorkspaceTaskCommentResponse(BaseModel):
+    id: int
+    task_id: int
+    author_id: Optional[int] = None
+    text: str
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceTaskMessageLink(BaseModel):
+    message_id: int
+
+
+class OwnerWorkspaceTaskResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    status: str
+    priority: str
+    deadline_at: Optional[datetime] = None
+    start_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    creator_id: Optional[int] = None
+    project_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    linked_message_ids: List[int] = []
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    previous_task_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceTaskListResponse(BaseModel):
+    """Пагинированный список задач (GET /tasks)."""
+
+    items: List[OwnerWorkspaceTaskResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class OwnerWorkspaceTaskStatusCountsResponse(BaseModel):
+    """Агрегация задач по статусу (GET /tasks/status-counts): те же фильтры, что у списка, кроме status_filter."""
+
+    total: int
+    by_status: Dict[str, int]
+
+
+class OwnerWorkspaceTasksAnalyticsOverview(BaseModel):
+    """GET /analytics/tasks-overview — краткая сводка по видимым задачам."""
+
+    completed_last_7_days: int
+    completed_last_30_days: int
+    avg_days_to_complete_last_30: Optional[float] = None
+
+
+class OwnerWorkspaceTaskCompleteResponse(BaseModel):
+    """Ответ POST /tasks/{id}/complete: завершённая задача и опционально созданная следующая."""
+
+    completed_task: OwnerWorkspaceTaskResponse
+    next_task: Optional[OwnerWorkspaceTaskResponse] = None
+
+
+class OwnerWorkspaceMessageBase(BaseModel):
+    contact_id: int
+    external_chat_id: Optional[str] = None
+    external_message_id: Optional[str] = None
+    direction: Literal["incoming", "outgoing"] = "incoming"
+    text: str
+    attachments: Optional[List[Dict[str, Any]]] = None
+    sent_at: Optional[datetime] = None
+    received_at: Optional[datetime] = None
+
+
+class OwnerWorkspaceMessageCreate(OwnerWorkspaceMessageBase):
+    pass
+
+
+class OwnerWorkspaceMessageResponse(BaseModel):
+    id: int
+    contact_id: int
+    external_chat_id: Optional[str] = None
+    external_message_id: Optional[str] = None
+    direction: str
+    text: str
+    attachments: Optional[List[Dict[str, Any]]] = None
+    sent_at: Optional[datetime] = None
+    received_at: Optional[datetime] = None
+    linked_task_ids: List[int] = []
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceMessageCreateTaskRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = "medium"
+    deadline_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    project_id: Optional[int] = None
+
+
+class OwnerWorkspaceMessageLinkTaskRequest(BaseModel):
+    task_id: int
+
+
+class OwnerWorkspaceConversationItem(BaseModel):
+    contact_id: int
+    contact_name: str
+    last_message_at: Optional[datetime] = None
+    last_message_text: Optional[str] = None
+    unread_count: int = Field(
+        0,
+        description=(
+            "Входящие с created_at после last_read_at пользователя; "
+            "если курсора нет — сравнение с max(created_at) по контакту (старт без «всё непрочитано»)."
+        ),
+    )
+
+
+class OwnerWorkspaceAuditLogResponse(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    action_type: str
+    old_value: Optional[Dict[str, Any]] = None
+    new_value: Optional[Dict[str, Any]] = None
+    author_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceHistoryStatsCountItem(BaseModel):
+    key: str
+    count: int
+
+
+class OwnerWorkspaceHistoryStatsAuthorItem(BaseModel):
+    author_id: int
+    count: int
+
+
+class OwnerWorkspaceHistoryStatsDayItem(BaseModel):
+    day: datetime
+    count: int
+
+
+class OwnerWorkspaceHistoryStatsResponse(BaseModel):
+    total_rows: int
+    unique_authors: int
+    unique_actions: int
+    first_created_at: Optional[datetime] = None
+    last_created_at: Optional[datetime] = None
+    entity_type_counts: List[OwnerWorkspaceHistoryStatsCountItem]
+    action_counts: List[OwnerWorkspaceHistoryStatsCountItem]
+    author_counts: List[OwnerWorkspaceHistoryStatsAuthorItem]
+    day_counts: List[OwnerWorkspaceHistoryStatsDayItem]
+
+
+class OwnerWorkspaceSearchProjectHit(BaseModel):
+    id: int
+    name: str
+    status: str
+
+
+class OwnerWorkspaceSearchContactHit(BaseModel):
+    id: int
+    full_name: str
+    phone: str
+
+
+class OwnerWorkspaceSearchTaskHit(BaseModel):
+    id: int
+    title: str
+    status: str
+    deadline_at: Optional[datetime] = None
+    project_id: Optional[int] = None
+    contact_id: Optional[int] = None
+
+
+class OwnerWorkspaceSearchMessageHit(BaseModel):
+    id: int
+    contact_id: int
+    contact_name: Optional[str] = None
+    direction: str
+    text_preview: str
+    created_at: Optional[datetime] = None
+
+
+class OwnerWorkspaceSearchResponse(BaseModel):
+    projects: List[OwnerWorkspaceSearchProjectHit]
+    contacts: List[OwnerWorkspaceSearchContactHit]
+    tasks: List[OwnerWorkspaceSearchTaskHit]
+    messages: List[OwnerWorkspaceSearchMessageHit] = Field(default_factory=list)
+
+
+class OwnerWorkspaceDigestResponse(BaseModel):
+    overdue_count: int
+    overdue_tasks: List[OwnerWorkspaceTaskResponse]
+    due_soon_tasks: List[OwnerWorkspaceTaskResponse]
+
+
+class OwnerWorkspaceNotificationResponse(BaseModel):
+    id: int
+    user_id: int
+    kind: str
+    title: str
+    body: Optional[str] = None
+    task_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    read_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OwnerWorkspaceNotificationsEnvelope(BaseModel):
+    """Список уведомлений + счётчик непрочитанных (после синхронизации по дедлайнам)."""
+
+    items: List[OwnerWorkspaceNotificationResponse]
+    unread_count: int
+
+
+class OwnerWorkspaceUserPreferencesResponse(BaseModel):
+    """Персональные настройки UI задачника (хранятся на пользователя)."""
+
+    default_task_view: Literal["list", "kanban", "calendar"] = "list"
+    task_list_rows_per_page: int = 25
+    digest_due_within_hours: int = 48
+    digest_scope: Literal["all", "mine"] = "all"
+    notify_email_enabled: bool = False
+    notify_web_push_enabled: bool = False
+    notify_task_overdue: bool = True
+    notify_task_due_soon: bool = True
+    notify_task_assigned: bool = True
+    notify_task_comment: bool = True
+    notify_task_updated: bool = True
+    notify_contact_incoming_message: bool = True
+    notify_task_mention: bool = True
+
+
+class OwnerWorkspaceUserPreferencesPatch(BaseModel):
+    default_task_view: Optional[Literal["list", "kanban", "calendar"]] = None
+    task_list_rows_per_page: Optional[int] = Field(None, ge=5, le=100)
+    digest_due_within_hours: Optional[int] = Field(None, ge=8, le=336)
+    digest_scope: Optional[Literal["all", "mine"]] = None
+    notify_email_enabled: Optional[bool] = None
+    notify_web_push_enabled: Optional[bool] = None
+    notify_task_overdue: Optional[bool] = None
+    notify_task_due_soon: Optional[bool] = None
+    notify_task_assigned: Optional[bool] = None
+    notify_task_comment: Optional[bool] = None
+    notify_task_updated: Optional[bool] = None
+    notify_contact_incoming_message: Optional[bool] = None
+    notify_task_mention: Optional[bool] = None
+
+
+class OwnerWorkspaceWebPushSubscriptionUpsert(BaseModel):
+    endpoint: str = Field(..., min_length=1, max_length=4000)
+    p256dh: str = Field(..., min_length=1, max_length=512)
+    auth: str = Field(..., min_length=1, max_length=512)
+    user_agent: Optional[str] = Field(None, max_length=255)
+
+
+class OwnerWorkspaceWebPushSubscriptionDelete(BaseModel):
+    endpoint: str = Field(..., min_length=1, max_length=4000)
+
+
+class OwnerWorkspaceWebPushStatusResponse(BaseModel):
+    configured: bool
+    public_key: Optional[str] = None
+    subscription_count: int = 0
+
+
 # Owner funnels (support letters, thank you letters, events)
 class OwnerFunnelTypeInfo(BaseModel):
     """Тип воронки: id и этапы для выбора в UI."""

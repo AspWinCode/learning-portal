@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.database import SessionLocal
-from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, admin_tools, sms, max_messenger, lessons
+from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, admin_tools, sms, max_messenger, lessons, owner_workspace
 
 app = FastAPI(
     title="Learning Portal API",
@@ -16,6 +16,10 @@ app = FastAPI(
 
 # Если при старте не прошла проверка production (SECRET_KEY/DATABASE_URL), не падаем с 502, а отдаём 503 на запросах
 _startup_config_error: str | None = None
+
+
+def _env_enabled(name: str, default: str = "1") -> bool:
+    return (os.getenv(name, default).strip().lower() in ("1", "true", "yes"))
 
 def _run_tochka_auto_import() -> None:
     """Периодическая задача: импорт выписки Точка Банк, матч по телефону (и ФИО как fallback), за последние 14 дней. Каждые 10 мин."""
@@ -42,7 +46,7 @@ def _run_tochka_auto_import() -> None:
 @app.on_event("startup")
 def _run_migrations_on_startup() -> None:
     """При старте приложения применить миграции (чтобы не было 502 из-за отсутствующих колонок)."""
-    run_migrate = os.getenv("RUN_MIGRATIONS_ON_STARTUP", "1").strip().lower() in ("1", "true", "yes")
+    run_migrate = _env_enabled("RUN_MIGRATIONS_ON_STARTUP", "1")
     if not run_migrate:
         return
     try:
@@ -131,10 +135,74 @@ def _validate_production_env() -> None:
         except Exception:
             traceback.print_exc()
 
+    def _run_owner_workspace_max_sync() -> None:
+        """Импорт max_messages → owner_workspace_messages по телефону. Включить: OWNER_WORKSPACE_AUTO_SYNC_MAX=1."""
+        try:
+            flag = (os.getenv("OWNER_WORKSPACE_AUTO_SYNC_MAX") or "0").strip().lower()
+            if flag not in ("1", "true", "yes"):
+                return
+            from app.services.owner_workspace_max_sync import sync_max_messages_into_owner_workspace
+
+            db = SessionLocal()
+            try:
+                sync_max_messages_into_owner_workspace(db, limit=400)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
+    def _run_owner_workspace_notification_email_dispatch() -> None:
+        """Dispatch queued owner workspace notification emails."""
+        try:
+            if not _env_enabled("OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED", "1"):
+                return
+            from app.services.owner_workspace_notifications import (
+                dispatch_pending_owner_workspace_notification_emails,
+            )
+
+            db = SessionLocal()
+            try:
+                dispatch_pending_owner_workspace_notification_emails(db, limit=100)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
+    def _run_owner_workspace_notification_web_push_dispatch() -> None:
+        """Dispatch queued owner workspace web push notifications."""
+        try:
+            if not _env_enabled("OWNER_WORKSPACE_WEB_PUSH_DISPATCH_ENABLED", "1"):
+                return
+            from app.services.owner_workspace_notifications import (
+                dispatch_pending_owner_workspace_notification_web_push,
+            )
+
+            db = SessionLocal()
+            try:
+                dispatch_pending_owner_workspace_notification_web_push(db, limit=100)
+            finally:
+                db.close()
+        except Exception:
+            traceback.print_exc()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
     scheduler.add_job(_run_payment_overdue_tasks, "interval", days=1, id="payment_overdue_tasks")
     scheduler.add_job(_run_scheduled_messages, "interval", minutes=1, id="scheduled_messages")
+    scheduler.add_job(_run_owner_workspace_max_sync, "interval", minutes=30, id="owner_workspace_max_sync")
+    if _env_enabled("OWNER_WORKSPACE_DELIVERY_IN_APP", "1"):
+        scheduler.add_job(
+            _run_owner_workspace_notification_email_dispatch,
+            "interval",
+            minutes=1,
+            id="owner_workspace_notification_email_dispatch",
+        )
+        scheduler.add_job(
+            _run_owner_workspace_notification_web_push_dispatch,
+            "interval",
+            minutes=1,
+            id="owner_workspace_notification_web_push_dispatch",
+        )
     # Автоповышение класса учеников 1 сентября (cron-задача раз в год).
     scheduler.add_job(
         _run_student_class_autopromo,
@@ -248,6 +316,7 @@ app.include_router(admin_tools.router, prefix="/api/admin-tools", tags=["admin_t
 app.include_router(sms.router, prefix="/api", tags=["sms"])
 app.include_router(max_messenger.router, prefix="/api", tags=["max"])
 app.include_router(lessons.router, prefix="/api/lessons", tags=["lessons"])
+app.include_router(owner_workspace.router, prefix="/api/owner-workspace", tags=["owner_workspace"])
 
 
 @app.exception_handler(Exception)
@@ -282,4 +351,5 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
 

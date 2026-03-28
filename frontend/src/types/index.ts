@@ -1067,3 +1067,354 @@ export interface LessonAuditEntry {
   changed_at: string | null;
 }
 
+// Owner workspace task manager
+export interface OwnerWorkspaceProject {
+  id: number;
+  name: string;
+  description?: string | null;
+  status: 'active' | 'completed' | 'archived' | string;
+  owner_id?: number | null;
+  parent_project_id?: number | null;
+  participants: number[];
+  /** user id (строка в JSON) → member | manager */
+  participant_roles?: Record<string, 'member' | 'manager' | string>;
+  active_tasks_count: number;
+  /** всего задач с project_id = этот проект */
+  total_tasks_count?: number;
+  completed_tasks_count?: number;
+  overdue_tasks_count?: number;
+  contacts_count: number;
+  subprojects_count: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  archived_at?: string | null;
+}
+
+export interface OwnerWorkspaceContact {
+  id: number;
+  full_name: string;
+  phone: string;
+  email?: string | null;
+  company?: string | null;
+  position?: string | null;
+  tags?: string[] | null;
+  comment?: string | null;
+  source?: string | null;
+  linked_project_ids: number[];
+  active_tasks_count: number;
+  /** ISO datetime: max(сообщение, задача, updated_at карточки) */
+  last_interaction_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface OwnerWorkspaceTask {
+  id: number;
+  title: string;
+  description?: string | null;
+  status: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled' | string;
+  priority: 'low' | 'medium' | 'high' | 'critical' | string;
+  deadline_at?: string | null;
+  start_at?: string | null;
+  completed_at?: string | null;
+  assignee_id?: number | null;
+  creator_id?: number | null;
+  project_id?: number | null;
+  contact_id?: number | null;
+  linked_message_ids: number[];
+  tags?: string[] | null;
+  checklist?: Array<Record<string, unknown>> | null;
+  attachments?: Array<Record<string, unknown>> | null;
+  previous_task_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+/** Ответ GET /api/owner-workspace/tasks (пагинация). */
+export interface OwnerWorkspaceTaskListPage {
+  items: OwnerWorkspaceTask[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** Ответ GET /api/owner-workspace/tasks/status-counts */
+export interface OwnerWorkspaceTaskStatusCounts {
+  total: number;
+  by_status: Record<string, number>;
+}
+
+/** GET /api/owner-workspace/analytics/tasks-overview */
+export interface OwnerWorkspaceTasksAnalyticsOverview {
+  completed_last_7_days: number;
+  completed_last_30_days: number;
+  avg_days_to_complete_last_30?: number | null;
+}
+
+export interface OwnerWorkspaceMessage {
+  id: number;
+  contact_id: number;
+  external_chat_id?: string | null;
+  external_message_id?: string | null;
+  direction: 'incoming' | 'outgoing' | string;
+  text: string;
+  attachments?: Array<Record<string, unknown>> | null;
+  sent_at?: string | null;
+  received_at?: string | null;
+  linked_task_ids: number[];
+  created_at?: string | null;
+}
+
+export interface OwnerWorkspaceConversation {
+  contact_id: number;
+  contact_name: string;
+  last_message_at?: string | null;
+  last_message_text?: string | null;
+  unread_count: number;
+}
+
+export interface OwnerWorkspaceTaskComment {
+  id: number;
+  task_id: number;
+  author_id?: number | null;
+  text: string;
+  created_at?: string | null;
+}
+
+export interface OwnerWorkspaceAuditLog {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  action_type: string;
+  old_value?: Record<string, unknown> | null;
+  new_value?: Record<string, unknown> | null;
+  author_id?: number | null;
+  created_at?: string | null;
+}
+
+export interface OwnerWorkspaceHistoryStatsCountItem {
+  key: string;
+  count: number;
+}
+
+export interface OwnerWorkspaceHistoryStatsAuthorItem {
+  author_id: number;
+  count: number;
+}
+
+export interface OwnerWorkspaceHistoryStatsDayItem {
+  day: string;
+  count: number;
+}
+
+export interface OwnerWorkspaceHistoryStats {
+  total_rows: number;
+  unique_authors: number;
+  unique_actions: number;
+  first_created_at?: string | null;
+  last_created_at?: string | null;
+  entity_type_counts: OwnerWorkspaceHistoryStatsCountItem[];
+  action_counts: OwnerWorkspaceHistoryStatsCountItem[];
+  author_counts: OwnerWorkspaceHistoryStatsAuthorItem[];
+  day_counts: OwnerWorkspaceHistoryStatsDayItem[];
+}
+
+export interface OwnerWorkspaceSearchResult {
+  projects: Array<{ id: number; name: string; status: string }>;
+  contacts: Array<{ id: number; full_name: string; phone: string }>;
+  tasks: Array<{
+    id: number;
+    title: string;
+    status: string;
+    deadline_at?: string | null;
+    project_id?: number | null;
+    contact_id?: number | null;
+  }>;
+  messages: Array<{
+    id: number;
+    contact_id: number;
+    contact_name?: string | null;
+    direction: string;
+    text_preview: string;
+    created_at?: string | null;
+  }>;
+}
+
+export interface OwnerWorkspaceDigest {
+  overdue_count: number;
+  overdue_tasks: OwnerWorkspaceTask[];
+  due_soon_tasks: OwnerWorkspaceTask[];
+}
+
+export interface OwnerWorkspaceNotification {
+  id: number;
+  user_id: number;
+  kind: string;
+  title: string;
+  body?: string | null;
+  task_id?: number | null;
+  contact_id?: number | null;
+  read_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface OwnerWorkspaceNotificationsEnvelope {
+  items: OwnerWorkspaceNotification[];
+  unread_count: number;
+}
+
+/** Персональные настройки UI задачника (GET/PATCH /owner-workspace/me/preferences) */
+export interface OwnerWorkspaceUserPreferences {
+  default_task_view: 'list' | 'kanban' | 'calendar';
+  task_list_rows_per_page: number;
+  digest_due_within_hours: number;
+  digest_scope: 'all' | 'mine';
+  notify_email_enabled: boolean;
+  notify_web_push_enabled: boolean;
+  notify_task_overdue: boolean;
+  notify_task_due_soon: boolean;
+  notify_task_assigned: boolean;
+  notify_task_comment: boolean;
+  notify_task_updated: boolean;
+  notify_contact_incoming_message: boolean;
+  notify_task_mention: boolean;
+}
+
+export interface OwnerWorkspaceWebPushStatus {
+  configured: boolean;
+  public_key?: string | null;
+  subscription_count: number;
+}
+
+export interface OwnerWorkspaceTaskConfigItem {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+
+export interface OwnerWorkspaceTaskConfig {
+  statuses: OwnerWorkspaceTaskConfigItem[];
+  priorities: OwnerWorkspaceTaskConfigItem[];
+}
+
+export interface OwnerWorkspaceProjectConfig {
+  statuses: OwnerWorkspaceTaskConfigItem[];
+}
+
+export interface OwnerWorkspacePermissionPolicy {
+  manager_can_manage_team: boolean;
+  manager_can_change_roles: boolean;
+  manager_can_assign_manager: boolean;
+  manager_can_assign_observer: boolean;
+  manager_can_remove_manager: boolean;
+  manager_can_edit_project_meta: boolean;
+  manager_can_archive_project: boolean;
+  limited_can_create_projects: boolean;
+  limited_can_create_contacts: boolean;
+  limited_can_create_tasks: boolean;
+  limited_can_edit_contacts: boolean;
+  limited_can_edit_tasks: boolean;
+  limited_can_manage_project_contacts: boolean;
+  limited_can_complete_tasks: boolean;
+  limited_can_bulk_update_tasks: boolean;
+  limited_can_link_messages: boolean;
+  limited_can_send_messages: boolean;
+  limited_can_comment_tasks: boolean;
+}
+
+export interface OwnerWorkspaceNotificationConfig {
+  items: OwnerWorkspaceTaskConfigItem[];
+}
+
+export interface OwnerWorkspaceNotificationDeliveryChannelStats {
+  pending: number;
+  failed: number;
+  terminal_failed: number;
+  sent_last_24h: number;
+  disabled: number;
+}
+
+export interface OwnerWorkspaceNotificationDeliveryFailureItem {
+  id: number;
+  user_id: number;
+  user_name: string;
+  kind: string;
+  title: string;
+  created_at: string | null;
+  email_delivery_status: string;
+  email_attempts: number;
+  email_last_error: string | null;
+  web_push_delivery_status: string;
+  web_push_attempts: number;
+  web_push_last_error: string | null;
+}
+
+export interface OwnerWorkspaceNotificationDeliveryStats {
+  email_configured: boolean;
+  missing_email_env: string[];
+  web_push_configured: boolean;
+  missing_web_push_env: string[];
+  web_push_subscriptions_total: number;
+  email: OwnerWorkspaceNotificationDeliveryChannelStats;
+  web_push: OwnerWorkspaceNotificationDeliveryChannelStats;
+  recent_failures: OwnerWorkspaceNotificationDeliveryFailureItem[];
+}
+
+export interface OwnerWorkspaceNotificationDeliveryRetryResult {
+  retried_email: number;
+  retried_web_push: number;
+}
+
+export interface OwnerWorkspaceTagDictionary {
+  items: string[];
+}
+
+export interface OwnerWorkspaceSettingsBundle {
+  task_config: OwnerWorkspaceTaskConfig;
+  project_config: OwnerWorkspaceProjectConfig;
+  permission_policy: OwnerWorkspacePermissionPolicy;
+  notification_config: OwnerWorkspaceNotificationConfig;
+  task_tags: OwnerWorkspaceTagDictionary;
+  contact_tags: OwnerWorkspaceTagDictionary;
+  contact_sources: OwnerWorkspaceTagDictionary;
+}
+
+export interface OwnerWorkspaceSettingsBundleSummary {
+  task_statuses: number;
+  task_priorities: number;
+  project_statuses: number;
+  notification_types: number;
+  task_tags: number;
+  contact_tags: number;
+  contact_sources: number;
+}
+
+export interface OwnerWorkspaceSettingsBundleMeta {
+  version: number;
+  source: string;
+  exported_at: string;
+  exported_by_id: number | null;
+  exported_by_name: string | null;
+  summary: OwnerWorkspaceSettingsBundleSummary;
+}
+
+export interface OwnerWorkspaceSettingsBundleEnvelope {
+  meta: OwnerWorkspaceSettingsBundleMeta;
+  data: OwnerWorkspaceSettingsBundle;
+}
+
+export interface OwnerWorkspaceSettingsSnapshot {
+  id: string;
+  name: string;
+  note: string | null;
+  created_at: string;
+  created_by_id: number | null;
+  created_by_name: string | null;
+  bundle: OwnerWorkspaceSettingsBundleEnvelope;
+}
+
+export interface OwnerWorkspaceTaskCompleteResult {
+  completed_task: OwnerWorkspaceTask;
+  next_task: OwnerWorkspaceTask | null;
+}
+

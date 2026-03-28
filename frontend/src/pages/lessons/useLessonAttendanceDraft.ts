@@ -15,6 +15,7 @@ export interface AttendanceDraftItem {
   absence_comment: string | null;
   planned_absence_id: number | null;
   participation_status: string;
+  freeze_badge?: string | null;
 }
 
 function buildDraft(students: LessonStudentItem[]): Record<number, AttendanceDraftItem> {
@@ -30,6 +31,7 @@ function buildDraft(students: LessonStudentItem[]): Record<number, AttendanceDra
       absence_comment: s.absence_comment,
       planned_absence_id: s.planned_absence_id,
       participation_status: s.participation_status,
+      freeze_badge: s.freeze_badge,
     };
   }
   return draft;

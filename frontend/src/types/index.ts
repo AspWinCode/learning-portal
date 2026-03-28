@@ -1027,6 +1027,7 @@ export interface LessonStudentItem {
   absence_reason: string | null;
   absence_comment: string | null;
   planned_absence_id: number | null;
+  freeze_badge?: string | null;        // текст заморозки если активна на дату урока
 }
 
 export interface LessonInstance {

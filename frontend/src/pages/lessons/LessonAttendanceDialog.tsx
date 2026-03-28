@@ -295,12 +295,15 @@ export function LessonAttendanceDialog({
               >
                 <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
                   <Stack spacing={0.5} flex={1}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
+                    <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
                       <Typography variant="body2" fontWeight={500}>
                         {item.student_name}
                       </Typography>
                       {item.participation_status === 'added_manual' && (
                         <Chip label="доб. вручную" size="small" color="info" variant="outlined" />
+                      )}
+                      {item.freeze_badge && (
+                        <Chip label={item.freeze_badge} size="small" color="warning" variant="outlined" />
                       )}
                     </Stack>
 

@@ -9,7 +9,7 @@ import SetPasswordPage from './pages/SetPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import StudentsPage from './pages/StudentsPage';
 import GroupsPage from './pages/GroupsPage';
-import TrainerLessonsPage from './pages/TrainerLessonsPage';
+import LessonsPageContainer from './pages/lessons/LessonsPageContainer';
 import ProgramsPage from './pages/ProgramsPage';
 import GuestProgramsPage from './pages/GuestProgramsPage';
 import GradesPage from './pages/GradesPage';
@@ -120,7 +120,7 @@ function App() {
               path="/lessons"
               element={
                 <PrivateRoute allowedRoles={['admin', 'trainer', 'owner', 'sales']}>
-                  <TrainerLessonsPage />
+                  <LessonsPageContainer />
                 </PrivateRoute>
               }
             />

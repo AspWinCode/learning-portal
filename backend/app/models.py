@@ -1262,9 +1262,10 @@ class AbsenceFollowUp(Base):
     __tablename__ = "absence_follow_ups"
 
     id = Column(Integer, primary_key=True, index=True)
-    lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=False, unique=True, index=True)
+    lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=True, unique=False, index=True)
+    lesson_instance_id = Column(Integer, ForeignKey("lesson_instances.id"), nullable=True, index=True)  # новая архитектура
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
     lesson_date = Column(Date, nullable=False, index=True)
     stage = Column(String, nullable=False, index=True, server_default="missed")  # missed / assigned / made_up / missed_makeup
     makeup_group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
@@ -1895,4 +1896,170 @@ class OwnerFunnelItem(Base):
     card_data = Column(JSON, nullable=True)  # ╨┤╨╗╤П╨║╨╛╨╜╤В╨░╨║╤В╨┤╨░╤В╤Л╤Н╤В╨░╨┐╨╛╨▓╨╕╤В╨┤╤Г╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# ============================================================
+# Новая архитектура уроков: LessonInstance (экземпляр занятия)
+# ============================================================
+
+class LessonType(str, enum.Enum):
+    GROUP = "group"            # Регулярное групповое занятие
+    MANUAL = "manual"          # Ручное занятие без группы
+    MAKEUP = "makeup"          # Отработка
+    PAID_EXTRA = "paid_extra"  # Дополнительное платное
+    FREE_TRIAL = "free_trial"  # Пробное / бесплатное
+
+
+class LessonStatus(str, enum.Enum):
+    PLANNED = "planned"        # Запланировано (в будущем)
+    COMPLETED = "completed"    # Проведено (посещаемость отмечена)
+    CANCELLED = "cancelled"    # Отменено
+    MOVED = "moved"            # Перенесено (исходный слот)
+
+
+class LessonParticipationStatus(str, enum.Enum):
+    PLANNED = "planned"          # В составе по шаблону
+    ADDED_MANUAL = "added_manual"  # Добавлен вручную только в этот урок
+    REMOVED = "removed"          # Удалён только из этого урока
+
+
+class LessonInstance(Base):
+    """Материализованный экземпляр конкретного занятия на конкретную дату.
+    Является источником правды — не пересчитывается из текущего состояния группы."""
+    __tablename__ = "lesson_instances"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Связь с группой и шаблоном расписания (nullable для ручных уроков)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
+    schedule_id = Column(Integer, ForeignKey("group_schedules.id"), nullable=True, index=True)
+
+    # Дата и время конкретного занятия
+    lesson_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=True)
+
+    # Тренер фактический на этот урок (зафиксирован при генерации/создании)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    # Мета-информация
+    title = Column(String(256), nullable=True)       # Для ручных уроков
+    program_id = Column(Integer, ForeignKey("programs.id"), nullable=True, index=True)
+
+    # Тип и статус
+    lesson_type = Column(
+        String(32), nullable=False, default="group", server_default="group", index=True
+    )  # group | manual | makeup | paid_extra | free_trial
+    status = Column(
+        String(32), nullable=False, default="planned", server_default="planned", index=True
+    )  # planned | completed | cancelled | moved
+    comment = Column(Text, nullable=True)
+
+    # Источник создания
+    source_type = Column(
+        String(32), nullable=True, index=True
+    )  # schedule (из шаблона) | manual (создан вручную)
+
+    # Связи переноса
+    moved_from_id = Column(
+        Integer, ForeignKey("lesson_instances.id"), nullable=True, index=True
+    )  # если это новое занятие после переноса — ссылка на исходное
+    moved_to_id = Column(
+        Integer, ForeignKey("lesson_instances.id"), nullable=True
+    )  # если это исходное занятие — ссылка на новое
+
+    cancel_reason = Column(String(256), nullable=True)
+
+    # Аудит
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    group = relationship("Group", foreign_keys=[group_id])
+    schedule = relationship("GroupSchedule", foreign_keys=[schedule_id])
+    trainer = relationship("User", foreign_keys=[trainer_id])
+    program = relationship("Program", foreign_keys=[program_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_id])
+    lesson_students = relationship(
+        "LessonInstanceStudent",
+        back_populates="lesson_instance",
+        cascade="all, delete-orphan",
+    )
+    moved_from = relationship(
+        "LessonInstance", foreign_keys=[moved_from_id], remote_side="LessonInstance.id",
+        back_populates="moved_to_instance",
+    )
+    moved_to_instance = relationship(
+        "LessonInstance", foreign_keys=[moved_from_id],
+        back_populates="moved_from",
+        uselist=False,
+    )
+
+
+class LessonInstanceStudent(Base):
+    """Состав участников конкретного экземпляра занятия.
+    Не зависит от текущего состава группы — зафиксирован при генерации."""
+    __tablename__ = "lesson_instance_students"
+    __table_args__ = (
+        UniqueConstraint(
+            "lesson_instance_id", "student_id",
+            name="uq_lesson_instance_student"
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_instance_id = Column(
+        Integer, ForeignKey("lesson_instances.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+
+    # Статус участия
+    participation_status = Column(
+        String(32), nullable=False, default="planned", server_default="planned"
+    )  # planned | added_manual | removed
+
+    # Посещаемость
+    attended = Column(Boolean, nullable=True)       # None = ещё не отмечено
+    late = Column(Boolean, default=False, nullable=False)
+    absence_reason = Column(String(64), nullable=True)  # sick | olympiad | event | other
+    absence_comment = Column(Text, nullable=True)
+
+    # Ссылка на пропуск (для отработок)
+    planned_absence_id = Column(
+        Integer, ForeignKey("absence_follow_ups.id"), nullable=True, index=True
+    )
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    lesson_instance = relationship("LessonInstance", back_populates="lesson_students")
+    student = relationship("Student")
+    planned_absence = relationship("AbsenceFollowUp", foreign_keys=[planned_absence_id])
+
+
+class LessonAuditLog(Base):
+    """Журнал изменений занятия: кто, когда и что изменил."""
+    __tablename__ = "lesson_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_instance_id = Column(
+        Integer, ForeignKey("lesson_instances.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    entity_type = Column(String(64), nullable=False)  # lesson | student
+    entity_id = Column(Integer, nullable=True)         # id студента если entity_type=student
+    field_name = Column(String(128), nullable=True)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    action = Column(String(64), nullable=False, index=True)  # create | update | cancel | move | add_student | remove_student | set_trainer | save_attendance
+    changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    changed_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    lesson_instance = relationship("LessonInstance")
+    changed_by = relationship("User", foreign_keys=[changed_by_id])
 

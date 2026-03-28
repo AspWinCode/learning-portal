@@ -13,9 +13,10 @@ from app.schemas import (
     LessonSlotExtraPolicyPayload,
     LessonSlotExtraPolicyResponse,
 )
-from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy
+from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, LessonInstance
 from app.routers.action_log import log_action
 from app.student_display import get_students_display_names
+from app.services import lesson_generator
 
 router = APIRouter()
 
@@ -246,8 +247,25 @@ async def update_group(
     db.commit()
     db.refresh(db_group)
 
+    # При изменении расписания — удаляем незафиксированные будущие LessonInstance
+    # и перегенерируем их по новому шаблону
+    if group_update.schedules is not None:
+        _reschedule_future_instances(db, group_id, current_user.id)
+
     log_action(db, current_user.id, "update", "group", group_id, {**update_data, "schedules_updated": group_update.schedules is not None})
     return _group_to_response(db, db_group)
+
+
+def _reschedule_future_instances(db: Session, group_id: int, actor_user_id: int) -> None:
+    """Delete future planned instances and regenerate them based on the new schedule."""
+    today = date.today()
+    db.query(LessonInstance).filter(
+        LessonInstance.group_id == group_id,
+        LessonInstance.lesson_date > today,
+        LessonInstance.status == "planned",
+    ).delete(synchronize_session=False)
+    db.commit()
+    lesson_generator.generate_lesson_instances(db, group_id=group_id, actor_user_id=actor_user_id)
 
 
 def _parse_time_str(s: str) -> dt_time:

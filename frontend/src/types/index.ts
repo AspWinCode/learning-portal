@@ -986,3 +986,84 @@ export interface TaskResponse {
   payment_balance?: number | null;
 }
 
+// ──────────────────────────────────────────────────────────────
+// Новая архитектура уроков: LessonInstance
+// ──────────────────────────────────────────────────────────────
+
+export type LessonType = 'group' | 'manual' | 'makeup' | 'paid_extra' | 'free_trial';
+export type LessonStatus = 'planned' | 'completed' | 'cancelled' | 'moved';
+export type LessonParticipationStatus = 'planned' | 'added_manual' | 'removed';
+
+export const LESSON_TYPE_LABELS: Record<LessonType, string> = {
+  group: 'Групповое',
+  manual: 'Ручное',
+  makeup: 'Отработка',
+  paid_extra: 'Доп. платное',
+  free_trial: 'Пробное',
+};
+
+export const LESSON_STATUS_LABELS: Record<LessonStatus, string> = {
+  planned: 'Запланировано',
+  completed: 'Проведено',
+  cancelled: 'Отменено',
+  moved: 'Перенесено',
+};
+
+export const LESSON_TYPE_COLORS: Record<LessonType, string> = {
+  group: '#1976d2',
+  manual: '#7b1fa2',
+  makeup: '#f57c00',
+  paid_extra: '#388e3c',
+  free_trial: '#0097a7',
+};
+
+export interface LessonStudentItem {
+  id: number;                          // id LessonInstanceStudent
+  student_id: number;
+  student_name: string;
+  participation_status: LessonParticipationStatus;
+  attended: boolean | null;
+  late: boolean;
+  absence_reason: string | null;
+  absence_comment: string | null;
+  planned_absence_id: number | null;
+  freeze_badge?: string | null;        // текст заморозки если активна на дату урока
+}
+
+export interface LessonInstance {
+  id: number;
+  group_id: number | null;
+  group_name: string | null;
+  schedule_id: number | null;
+  lesson_date: string;                 // YYYY-MM-DD
+  start_time: string;                  // HH:MM
+  end_time: string | null;
+  trainer_id: number | null;
+  trainer_name: string | null;
+  title: string | null;
+  program_id: number | null;
+  program_name: string | null;
+  lesson_type: LessonType;
+  status: LessonStatus;
+  comment: string | null;
+  source_type: string | null;
+  moved_from_id: number | null;
+  moved_to_id: number | null;
+  cancel_reason: string | null;
+  students: LessonStudentItem[];
+  students_count: number;
+  attended_count: number;
+}
+
+export interface LessonAuditEntry {
+  id: number;
+  action: string;
+  entity_type: string;
+  entity_id: number | null;
+  field_name: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  changed_by: string | null;
+  changed_at: string | null;
+}
+

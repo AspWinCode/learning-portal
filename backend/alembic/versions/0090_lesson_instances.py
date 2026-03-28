@@ -1,14 +1,14 @@
-"""0082: add lesson_instances, lesson_instance_students, lesson_audit_logs
+"""0090: add lesson_instances, lesson_instance_students, lesson_audit_logs
 
-Revision ID: 0082_lesson_instances
-Revises: 0081_lead_last_contact_at
-Create Date: 2026-03-21
+Revision ID: 0090_lesson_instances
+Revises: 0089_owner_workspace_web_push_outbox
+Create Date: 2026-03-28
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0082_lesson_instances"
-down_revision = "0081_lead_last_contact_at"
+revision = "0090_lesson_instances"
+down_revision = "0089_owner_workspace_web_push_outbox"
 branch_labels = None
 depends_on = None
 

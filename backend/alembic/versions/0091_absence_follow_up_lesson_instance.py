@@ -1,14 +1,14 @@
-"""0083: add lesson_instance_id to absence_follow_ups, make lesson_attendance_id nullable
+"""0091: add lesson_instance_id to absence_follow_ups, make lesson_attendance_id nullable
 
-Revision ID: 0083_absence_follow_up_lesson_instance
-Revises: 0082_lesson_instances
+Revision ID: 0091_absence_follow_up_lesson_instance
+Revises: 0090_lesson_instances
 Create Date: 2026-03-28
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0083_absence_follow_up_lesson_instance"
-down_revision = "0082_lesson_instances"
+revision = "0091_absence_follow_up_lesson_instance"
+down_revision = "0090_lesson_instances"
 branch_labels = None
 depends_on = None
 
@@ -37,16 +37,15 @@ def upgrade() -> None:
             ["lesson_instance_id"],
         )
 
-    # Делаем lesson_attendance_id nullable (старые записи остаются, новые создаются без него)
+    # Делаем lesson_attendance_id nullable
     try:
-        # Удаляем unique constraint если есть
         op.drop_constraint(
             "absence_follow_ups_lesson_attendance_id_key",
             "absence_follow_ups",
             type_="unique",
         )
     except Exception:
-        pass  # уже не существует
+        pass
 
     try:
         op.alter_column(
@@ -55,9 +54,9 @@ def upgrade() -> None:
             nullable=True,
         )
     except Exception:
-        pass  # уже nullable
+        pass
 
-    # Делаем group_id nullable (для ручных уроков без группы)
+    # Делаем group_id nullable
     try:
         op.alter_column(
             "absence_follow_ups",

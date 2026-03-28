@@ -27,6 +27,7 @@ from app.models import (
     LessonInstanceStudent,
     Student,
     StudentStatus,
+    StudentFreeze,
     User,
     UserRole,
 )
@@ -51,6 +52,7 @@ class LessonStudentOut(BaseModel):
     absence_reason: Optional[str]
     absence_comment: Optional[str]
     planned_absence_id: Optional[int]
+    freeze_badge: Optional[str]    # текст заморозки если активна на дату урока
 
     class Config:
         from_attributes = True
@@ -165,7 +167,10 @@ def _parse_time(s: Optional[str]) -> Optional[time]:
         raise HTTPException(status_code=422, detail=f"Неверный формат времени: {s}")
 
 
-def _serialize_lesson(li: LessonInstance) -> LessonOut:
+def _serialize_lesson(
+    li: LessonInstance,
+    freeze_badges: Optional[dict[int, str]] = None,
+) -> LessonOut:
     students_out: list[LessonStudentOut] = []
     for lis in li.lesson_students:
         if lis.participation_status == "removed":
@@ -180,6 +185,7 @@ def _serialize_lesson(li: LessonInstance) -> LessonOut:
             absence_reason=lis.absence_reason,
             absence_comment=lis.absence_comment,
             planned_absence_id=lis.planned_absence_id,
+            freeze_badge=(freeze_badges or {}).get(lis.student_id),
         ))
 
     attended_count = sum(1 for s in students_out if s.attended is True)
@@ -273,7 +279,27 @@ def get_lessons_for_date(
         query = query.filter(LessonInstance.status == status)
 
     lessons = query.order_by(LessonInstance.start_time).all()
-    return [_serialize_lesson(li) for li in lessons]
+
+    # Собираем все student_id на эту дату и грузим заморозки одним запросом
+    all_student_ids: set[int] = set()
+    for li in lessons:
+        for lis in li.lesson_students:
+            if lis.participation_status != "removed":
+                all_student_ids.add(lis.student_id)
+
+    freeze_badges: dict[int, str] = {}
+    if all_student_ids:
+        freezes = db.query(StudentFreeze).filter(
+            StudentFreeze.student_id.in_(list(all_student_ids)),
+            StudentFreeze.freeze_start <= target_date,
+            StudentFreeze.freeze_end >= target_date,
+        ).all()
+        freeze_badges = {
+            f.student_id: f"Заморожен с {f.freeze_start.strftime('%d.%m')} по {f.freeze_end.strftime('%d.%m')}"
+            for f in freezes
+        }
+
+    return [_serialize_lesson(li, freeze_badges) for li in lessons]
 
 
 # ──────────────────────────────────────────────────────────────
@@ -292,7 +318,20 @@ def get_lesson(
         raise HTTPException(status_code=404, detail="Занятие не найдено")
     if current_user.role == UserRole.TRAINER and li.trainer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Нет доступа к этому занятию")
-    return _serialize_lesson(li)
+
+    student_ids = [lis.student_id for lis in li.lesson_students if lis.participation_status != "removed"]
+    freeze_badges: dict[int, str] = {}
+    if student_ids:
+        freezes = db.query(StudentFreeze).filter(
+            StudentFreeze.student_id.in_(student_ids),
+            StudentFreeze.freeze_start <= li.lesson_date,
+            StudentFreeze.freeze_end >= li.lesson_date,
+        ).all()
+        freeze_badges = {
+            f.student_id: f"Заморожен с {f.freeze_start.strftime('%d.%m')} по {f.freeze_end.strftime('%d.%m')}"
+            for f in freezes
+        }
+    return _serialize_lesson(li, freeze_badges)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -343,13 +382,53 @@ def save_attendance(
             new_value=str(item.attended),
         )
 
-        # Если отработка — обновляем AbsenceFollowUp
+        # Если отработка и отметили как присутствовал — закрываем пропуск
         if lis.planned_absence_id and item.attended:
             follow_up = db.query(AbsenceFollowUp).filter(
                 AbsenceFollowUp.id == lis.planned_absence_id
             ).first()
             if follow_up and follow_up.stage in ("assigned", "link_sent"):
                 follow_up.stage = "made_up"
+            elif follow_up and follow_up.stage == "assigned":
+                follow_up.stage = "made_up"
+
+        # Если ученик отсутствует — создаём/обновляем AbsenceFollowUp
+        if not item.attended and old_attended is not False:
+            # Проверяем заморозку: замороженные не попадают в воронку пропусков
+            in_freeze = db.query(StudentFreeze).filter(
+                StudentFreeze.student_id == lis.student_id,
+                StudentFreeze.freeze_start <= li.lesson_date,
+                StudentFreeze.freeze_end >= li.lesson_date,
+            ).first()
+            if not in_freeze:
+                # Для групповых уроков — ищем AbsenceFollowUp по lesson_instance_id
+                existing_absence = db.query(AbsenceFollowUp).filter(
+                    AbsenceFollowUp.lesson_instance_id == lesson_id,
+                    AbsenceFollowUp.student_id == lis.student_id,
+                ).first()
+                if not existing_absence:
+                    db.add(AbsenceFollowUp(
+                        lesson_instance_id=lesson_id,
+                        student_id=lis.student_id,
+                        group_id=li.group_id,
+                        lesson_date=li.lesson_date,
+                        stage="missed",
+                        absence_reason=item.absence_reason,
+                        absence_comment=item.absence_comment,
+                    ))
+                else:
+                    existing_absence.absence_reason = item.absence_reason
+                    existing_absence.absence_comment = item.absence_comment
+
+        # Если ученик пришёл (был отмечен ранее как отсутствующий) — отзываем пропуск
+        if item.attended and old_attended is False:
+            absent_follow_up = db.query(AbsenceFollowUp).filter(
+                AbsenceFollowUp.lesson_instance_id == lesson_id,
+                AbsenceFollowUp.student_id == lis.student_id,
+                AbsenceFollowUp.stage == "missed",
+            ).first()
+            if absent_follow_up:
+                db.delete(absent_follow_up)
 
     # После отметки посещаемости — статус занятия completed
     li.status = "completed"

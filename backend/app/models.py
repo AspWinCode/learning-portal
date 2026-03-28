@@ -1262,9 +1262,10 @@ class AbsenceFollowUp(Base):
     __tablename__ = "absence_follow_ups"
 
     id = Column(Integer, primary_key=True, index=True)
-    lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=False, unique=True, index=True)
+    lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=True, unique=False, index=True)
+    lesson_instance_id = Column(Integer, ForeignKey("lesson_instances.id"), nullable=True, index=True)  # новая архитектура
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
     lesson_date = Column(Date, nullable=False, index=True)
     stage = Column(String, nullable=False, index=True, server_default="missed")  # missed / assigned / made_up / missed_makeup
     makeup_group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)

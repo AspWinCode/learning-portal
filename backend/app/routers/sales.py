@@ -1959,10 +1959,27 @@ async def update_absence_stage(
     absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
     if not absence:
         raise HTTPException(status_code=404, detail="Пропуск не найден")
+
+    # Валидация переходов этапов
+    ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+        "missed": {"assigned", "made_up"},
+        "assigned": {"made_up", "missed_makeup"},
+        "link_sent": {"made_up", "missed_makeup"},
+        "made_up": set(),
+        "missed_makeup": {"assigned", "made_up"},
+    }
+    allowed = ALLOWED_TRANSITIONS.get(absence.stage, set())
+    if payload.stage != absence.stage and payload.stage not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Нельзя перейти из «{absence.stage}» в «{payload.stage}»",
+        )
+
     absence.stage = payload.stage
     if payload.stage == "missed_makeup":
         absence.makeup_group_id = None
         absence.makeup_lesson_date = None
+        absence.lesson_instance_id = None
     db.commit()
     db.refresh(absence)
     return _absence_to_response(db, absence)

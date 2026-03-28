@@ -45,8 +45,11 @@ def _can_access_student(db: Session, user: User, student_id: int) -> bool:
     return False
 
 
-def _get_account_and_check(db: Session, account_id: int, current_user: User) -> StudentAccount:
-    account = db.query(StudentAccount).filter(StudentAccount.id == account_id).first()
+def _get_account_and_check(db: Session, account_id: int, current_user: User, *, for_update: bool = False) -> StudentAccount:
+    q = db.query(StudentAccount).filter(StudentAccount.id == account_id)
+    if for_update:
+        q = q.with_for_update()
+    account = q.first()
     if not account:
         raise HTTPException(status_code=404, detail="Счет не найден")
     if not _can_access_student(db, current_user, account.student_id):
@@ -96,7 +99,7 @@ async def add_payment(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Пополнение счета (оплата)."""
-    account = _get_account_and_check(db, account_id, current_user)
+    account = _get_account_and_check(db, account_id, current_user, for_update=True)
     if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES, UserRole.PARENT):
         raise HTTPException(status_code=403, detail="Только admin, owner, sales или родитель могут пополнять счёт (тренер по ТЗ не видит финансы)")
     amount = float(payload.amount)
@@ -126,7 +129,7 @@ async def deduct_lesson(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Списание за занятие."""
-    account = _get_account_and_check(db, account_id, current_user)
+    account = _get_account_and_check(db, account_id, current_user, for_update=True)
     if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         raise HTTPException(status_code=403, detail="Списание доступно только admin, owner или sales (тренер по ТЗ не видит финансы)")
     amount = float(payload.amount)
@@ -173,7 +176,7 @@ async def delete_account_transaction(
     Баланс счёта пересчитывается путём вычитания суммы операции.
     Для пополнений дополнительно пересчитываются даты оплат по карте ученика.
     """
-    account = _get_account_and_check(db, account_id, current_user)
+    account = _get_account_and_check(db, account_id, current_user, for_update=True)
     tx = (
         db.query(StudentAccountTransaction)
         .filter(

@@ -729,6 +729,15 @@ def move_lesson(
     # Связываем исходный с новым
     li.moved_to_id = new_li.id
 
+    # Переносим AbsenceFollowUp: отработки, назначенные на перенесённое занятие → на новое
+    linked_absences = db.query(AbsenceFollowUp).filter(
+        AbsenceFollowUp.lesson_instance_id == li.id,
+        AbsenceFollowUp.stage == "assigned",
+    ).all()
+    for absence in linked_absences:
+        absence.lesson_instance_id = new_li.id
+        absence.makeup_lesson_date = new_date
+
     _add_audit(
         db, lesson_id, "move", current_user.id,
         old_value=f"date={li.lesson_date} status={old_status}",
@@ -739,7 +748,11 @@ def move_lesson(
         new_value=f"moved_from_id={lesson_id} date={new_date}",
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ошибка при переносе занятия")
     db.refresh(new_li)
     return _serialize_lesson(new_li)
 
@@ -769,6 +782,17 @@ def cancel_lesson(
     li.cancel_reason = payload.cancel_reason
     li.updated_by_id = current_user.id
 
+    # Откатываем AbsenceFollowUp назначенные на это занятие → обратно в "missed"
+    linked_absences = db.query(AbsenceFollowUp).filter(
+        AbsenceFollowUp.lesson_instance_id == li.id,
+        AbsenceFollowUp.stage == "assigned",
+    ).all()
+    for absence in linked_absences:
+        absence.stage = "missed"
+        absence.lesson_instance_id = None
+        absence.makeup_group_id = None
+        absence.makeup_lesson_date = None
+
     _add_audit(
         db, lesson_id, "cancel", current_user.id,
         field_name="status",
@@ -776,7 +800,11 @@ def cancel_lesson(
         new_value="cancelled",
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ошибка при отмене занятия")
     db.refresh(li)
     return _serialize_lesson(li)
 

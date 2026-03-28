@@ -596,7 +596,7 @@ async def save_attendance(
             account = None
             accounts = db.query(StudentAccount).filter(
                 StudentAccount.student_id == att.student_id
-            ).order_by(StudentAccount.id).all()
+            ).with_for_update().order_by(StudentAccount.id).all()
             if accounts:
                 direction_hint = None
                 gr = att.group

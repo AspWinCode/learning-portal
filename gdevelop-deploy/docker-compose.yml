@@ -1,0 +1,40 @@
+services:
+  gdevelop-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - PUBLIC_URL=/
+    container_name: gdevelop-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./gdevelop-archive.js:/usr/share/nginx/html/gdevelop-archive.js:ro
+    environment:
+      - NODE_ENV=production
+    networks:
+      - gdevelop-network
+      - learning-portal_default
+
+  gdevelop-resources:
+    build:
+      context: ./resource-upload-server
+    container_name: gdevelop-resources
+    restart: unless-stopped
+    volumes:
+      - gdevelop-resources-data:/usr/src/app/uploads
+      - ./resource-upload-server/server.js:/usr/src/app/server.js:ro
+    networks:
+      - learning-portal_default
+
+networks:
+  gdevelop-network:
+    driver: bridge
+  learning-portal_default:
+    external: true
+
+volumes:
+  gdevelop-resources-data:
+    driver: local

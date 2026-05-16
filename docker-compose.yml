@@ -121,6 +121,10 @@ services:
       - caddy_config:/config
     depends_on:
       - backend
+    networks:
+      - default
+      - proxy
+      - gdevelop_gdevelop-network
     restart: unless-stopped
 
 volumes:
@@ -130,4 +134,8 @@ volumes:
   caddy_data:
   caddy_config:
 
-
+networks:
+  proxy:
+    external: true
+  gdevelop_gdevelop-network:
+    external: true

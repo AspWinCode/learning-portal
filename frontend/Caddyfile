@@ -1,13 +1,11 @@
 https://{$DOMAIN} {
     encode gzip zstd
 
-    # Backend API: все /api/* на backend без обрезки пути (path сохраняется)
     @api path /api/*
     handle @api {
         reverse_proxy backend:8000
     }
 
-    # Frontend (static SPA)
     handle {
         root * /srv
         try_files {path} /index.html
@@ -18,13 +16,35 @@ https://{$DOMAIN} {
 gdevelop.tirskix.space {
     encode gzip zstd
 
-    # Наш сервер загрузки ресурсов
     handle_path /gdevelop-resources/* {
         reverse_proxy gdevelop-resources:3000
     }
 
-    # Сам редактор GDevelop (как и раньше по пути /gdevelop)
-    handle_path /gdevelop/* {
+    handle {
         reverse_proxy gdevelop-web:80
+    }
+}
+
+arenabattle.tirskix.space {
+    encode gzip zstd
+    reverse_proxy arena_battle-frontend-1:80
+}
+
+djam.tirskix.space {
+    encode gzip zstd
+
+    @api {
+        path /api/* /socket.io/*
+    }
+    handle @api {
+        reverse_proxy game-game-api:4000
+    }
+
+    handle /uploads/* {
+        reverse_proxy game-game-api:4000
+    }
+
+    handle {
+        reverse_proxy game-game-web:3000
     }
 }

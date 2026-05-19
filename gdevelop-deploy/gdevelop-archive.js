@@ -1,4 +1,12 @@
 (function(){
+
+// Register cache-fix service worker (bypasses cached 403 errors for zip.js etc.)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/fix-cache-sw.js', {scope: '/'})
+    .then(r => console.log('[Archive] Fix-SW registered:', r.scope))
+    .catch(e => console.warn('[Archive] Fix-SW failed:', e.message));
+}
+
 'use strict';
 
 function getReactFiber(el){

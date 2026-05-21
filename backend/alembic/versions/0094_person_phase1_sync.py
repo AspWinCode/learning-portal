@@ -104,24 +104,11 @@ def upgrade() -> None:
     if _table_exists(conn, "student_cards") and not _column_exists(conn, "student_cards", "phone_normalized"):
         op.add_column("student_cards", sa.Column("phone_normalized", sa.String(length=32), nullable=True))
 
-    if _table_exists(conn, "users"):
-        _backfill_normalized_phones(conn, "users", "id", ["phone"])
-    if _table_exists(conn, "student_cards"):
-        _backfill_normalized_phones(conn, "student_cards", "id", ["parent_phone", "student_phone"])
-    if _table_exists(conn, "leads"):
-        _backfill_normalized_phones(conn, "leads", "id", ["parent_phone", "phone", "child_phone"])
-        conn.execute(
-            sa.text(
-                """
-                UPDATE leads
-                SET student_card_id = sc.id
-                FROM student_cards sc
-                WHERE leads.student_card_id IS NULL
-                  AND leads.converted_to_student_id IS NOT NULL
-                  AND sc.student_id = leads.converted_to_student_id
-                """
-            )
-        )
+    # Legacy production environments may contain broken orphan FK triggers on
+    # users/leads from old manual schema changes. Mass UPDATE backfills inside
+    # Alembic can fail there even though the additive schema changes are valid.
+    # Keep this migration schema-only and let application-level sync/backfill
+    # populate these fields later.
 
     if _table_exists(conn, "users") and not _index_exists(conn, "uq_users_phone_normalized"):
         conn.execute(sa.text("CREATE UNIQUE INDEX uq_users_phone_normalized ON users (phone_normalized) WHERE phone_normalized IS NOT NULL"))

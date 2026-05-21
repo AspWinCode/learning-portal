@@ -7,6 +7,7 @@ Create Date: 2026-05-16
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = "0093_personal_finance_db"
@@ -15,7 +16,12 @@ branch_labels = None
 depends_on = None
 
 
-personalfinancedirection = sa.Enum("income", "expense", name="personalfinancedirection")
+personalfinancedirection = postgresql.ENUM(
+    "income",
+    "expense",
+    name="personalfinancedirection",
+    create_type=False,
+)
 
 
 def _table_exists(conn, table_name: str) -> bool:

@@ -5,7 +5,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -32,7 +32,7 @@ router = APIRouter()
 
 @router.get("/max/configured")
 def api_max_configured(
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """Проверка: настроен ли MAX (бот и/или личный аккаунт)."""
     return {
@@ -44,7 +44,7 @@ def api_max_configured(
 
 @router.get("/max/personal/qr")
 def api_max_personal_qr(
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """QR-код для привязки личного MAX в api-messenger.com (сканируй в приложении сервиса)."""
     if not is_personal_configured():
@@ -58,7 +58,7 @@ def api_max_personal_qr(
 def _prepare_max_message(
     payload: MaxSendRequest,
     db: Session,
-) -> tuple[str, Optional[Lead], Optional[int], Optional[str], bool, Optional[str]]:
+) -> Tuple[str, Optional[Lead], Optional[int], Optional[str], bool, Optional[str]]:
     """Подготовить параметры отправки: текст, лид, max_user_id, phone, use_phone, chat_id_for_personal."""
     message = (payload.message or "").strip()
     if not message:
@@ -140,7 +140,7 @@ def _send_max_immediately(
 def api_max_send(
     payload: MaxSendRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """Отправить сообщение в MAX. Можно сразу или отложенно по времени send_at (UTC)."""
     if not is_configured():
@@ -182,7 +182,7 @@ def api_max_send(
 def api_max_process_scheduled(
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("communications.manage")),
 ):
     """Отправить отложенные сообщения MAX, у которых наступило время отправки."""
     if not is_configured():

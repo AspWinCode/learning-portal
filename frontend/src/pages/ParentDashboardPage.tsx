@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import {
+  Alert,
   Typography,
   Box,
+  Button,
   Paper,
   LinearProgress,
   Grid,
@@ -22,6 +24,8 @@ import {
   Select,
   MenuItem,
   Chip,
+  Stack,
+  TextField,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import {
@@ -35,8 +39,23 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
-import { gradesApi, studentsApi, programsApi, characteristicsApi, reportsApi } from '../services/api';
-import { Student, Program, Characteristic, CharacteristicTemplate } from '../types';
+import {
+  gradesApi,
+  studentsApi,
+  programsApi,
+  characteristicsApi,
+  reportsApi,
+  parentDashboardApi,
+} from '../services/api';
+import {
+  Student,
+  Program,
+  Characteristic,
+  CharacteristicTemplate,
+  ParentDashboardSummary,
+  OwnerWorkspaceWebPushStatus,
+} from '../types';
+import { extractApiError } from '../utils/extractApiError';
 
 type ComparisonResponse = {
   current: any | null;
@@ -49,6 +68,17 @@ type GradeDynamicsResponse = {
   dynamics: Array<{ month: string; average_grade: number }>;
 };
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const normalized = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(normalized);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 const ParentDashboardPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [progress, setProgress] = useState<any>({});
@@ -60,6 +90,13 @@ const ParentDashboardPage: React.FC = () => {
   const [rangeSelection, setRangeSelection] = useState<
     Record<number, { startId?: number; endId?: number }>
   >({});
+  const [summary, setSummary] = useState<ParentDashboardSummary>({ students: [] });
+  const [error, setError] = useState('');
+  const [questionByStudent, setQuestionByStudent] = useState<Record<number, { topic: string; message: string }>>({});
+  const [sendingQuestionFor, setSendingQuestionFor] = useState<number | null>(null);
+  const [webPushStatus, setWebPushStatus] = useState<OwnerWorkspaceWebPushStatus | null>(null);
+  const [webPushPermission, setWebPushPermission] = useState<'default' | 'denied' | 'granted'>('default');
+  const [webPushBusy, setWebPushBusy] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -67,16 +104,20 @@ const ParentDashboardPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const programs = await programsApi.getAll();
+      const [programs, studentsData, dashboardSummary] = await Promise.all([
+        programsApi.getAll(),
+        studentsApi.getAll(),
+        parentDashboardApi.getSummary().catch(() => ({ students: [] })),
+      ]);
       setProgramsById(
         programs.reduce((acc: any, p: Program) => {
           acc[p.id] = p;
           return acc;
         }, {})
       );
-
-      const studentsData = await studentsApi.getAll();
       setStudents(studentsData);
+      setSummary(dashboardSummary);
+      setError('');
 
       try {
         const tpls = await characteristicsApi.getTemplates();
@@ -128,6 +169,103 @@ const ParentDashboardPage: React.FC = () => {
       );
     } catch (err) {
       console.error('Ошибка загрузки данных', err);
+    }
+  };
+
+  useEffect(() => {
+    setWebPushPermission(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+    parentDashboardApi
+      .getWebPushStatus()
+      .then(setWebPushStatus)
+      .catch(() => setWebPushStatus(null));
+  }, []);
+
+  const handleQuestionChange = (studentId: number, patch: Partial<{ topic: string; message: string }>) => {
+    setQuestionByStudent((prev) => ({
+      ...prev,
+      [studentId]: {
+        topic: prev[studentId]?.topic || '',
+        message: prev[studentId]?.message || '',
+        ...patch,
+      },
+    }));
+  };
+
+  const handleSendQuestion = async (studentId: number) => {
+    const draft = questionByStudent[studentId];
+    if (!draft?.message?.trim()) return;
+    setSendingQuestionFor(studentId);
+    try {
+      await parentDashboardApi.createQuestion({
+        student_id: studentId,
+        topic: draft.topic.trim() || undefined,
+        message: draft.message.trim(),
+      });
+      handleQuestionChange(studentId, { topic: '', message: '' });
+      setError('');
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось отправить вопрос.'));
+    } finally {
+      setSendingQuestionFor(null);
+    }
+  };
+
+  const handleEnableWebPush = async () => {
+    if (!webPushStatus?.configured || !webPushStatus.public_key) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setError('Этот браузер не поддерживает web push.');
+      return;
+    }
+    setWebPushBusy(true);
+    try {
+      let permission = Notification.permission;
+      if (permission !== 'granted') {
+        permission = await Notification.requestPermission();
+      }
+      setWebPushPermission(permission);
+      if (permission !== 'granted') {
+        throw new Error('Разрешение на web push не выдано.');
+      }
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(webPushStatus.public_key),
+        });
+      }
+      const json = subscription.toJSON();
+      await parentDashboardApi.upsertWebPushSubscription({
+        endpoint: json.endpoint || '',
+        p256dh: json.keys?.p256dh || '',
+        auth: json.keys?.auth || '',
+        user_agent: navigator.userAgent,
+      });
+      setWebPushStatus(await parentDashboardApi.getWebPushStatus());
+      setError('');
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось подключить web push.'));
+    } finally {
+      setWebPushBusy(false);
+    }
+  };
+
+  const handleDisableWebPush = async () => {
+    if (!('serviceWorker' in navigator)) return;
+    setWebPushBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await parentDashboardApi.removeWebPushSubscription(subscription.endpoint);
+        await subscription.unsubscribe();
+      }
+      setWebPushStatus(await parentDashboardApi.getWebPushStatus());
+      setError('');
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось отключить web push.'));
+    } finally {
+      setWebPushBusy(false);
     }
   };
 
@@ -202,11 +340,49 @@ const ParentDashboardPage: React.FC = () => {
     return list.find((c) => c.id === id);
   };
 
+  const summaryByStudentId = summary.students.reduce<Record<number, ParentDashboardSummary['students'][number]>>((acc, item) => {
+    acc[item.student_id] = item;
+    return acc;
+  }, {});
+
   return (
     <Layout>
       <Typography variant="h4" gutterBottom>
         Дашборд родителя
       </Typography>
+      <Stack spacing={2} sx={{ mb: 3 }}>
+        {error ? (
+          <Alert severity="error" onClose={() => setError('')}>
+            {error}
+          </Alert>
+        ) : null}
+        <Paper sx={{ p: 2 }}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={2}
+            alignItems={{ md: 'center' }}
+            justifyContent="space-between"
+          >
+            <Box>
+              <Typography variant="h6">Web push по характеристикам</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Уведомление придёт в браузер, когда будет опубликована новая характеристика.
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Статус: {webPushStatus?.subscription_count ? 'подключено' : 'не подключено'} • permission: {webPushPermission}
+              </Typography>
+            </Box>
+            <Box display="flex" gap={1} flexWrap="wrap">
+              <Button variant="contained" onClick={handleEnableWebPush} disabled={!webPushStatus?.configured || webPushBusy}>
+                Включить web push
+              </Button>
+              <Button variant="outlined" onClick={handleDisableWebPush} disabled={!webPushStatus?.subscription_count || webPushBusy}>
+                Отключить
+              </Button>
+            </Box>
+          </Stack>
+        </Paper>
+      </Stack>
       <Grid container spacing={3}>
         {students.map((student) => (
           <Grid item xs={12} md={6} key={student.id}>
@@ -214,6 +390,76 @@ const ParentDashboardPage: React.FC = () => {
               <Typography variant="h6" gutterBottom>
                 {student.full_name}
               </Typography>
+              {summaryByStudentId[student.id] ? (
+                <Grid container spacing={1.5} sx={{ mb: 1 }}>
+                  <Grid item xs={12} sm={6}>
+                    <Paper variant="outlined" sx={{ p: 1.5 }}>
+                      <Typography variant="subtitle2">Ближайшее занятие</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {summaryByStudentId[student.id].nearest_lesson
+                          ? `${new Date(summaryByStudentId[student.id].nearest_lesson!.lesson_date).toLocaleDateString('ru-RU')} ${summaryByStudentId[student.id].nearest_lesson!.start_time.slice(0, 5)}`
+                          : 'Пока нет данных'}
+                      </Typography>
+                      <Typography variant="body2">
+                        {summaryByStudentId[student.id].nearest_lesson?.group_name || '—'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Тренер: {summaryByStudentId[student.id].nearest_lesson?.trainer_name || '—'}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Paper variant="outlined" sx={{ p: 1.5 }}>
+                      <Typography variant="subtitle2">Баланс</Typography>
+                      <Typography variant="h6">{summaryByStudentId[student.id].current_balance.toLocaleString('ru-RU')} ₽</Typography>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Следующая оплата: {summaryByStudentId[student.id].next_payment_date ? new Date(summaryByStudentId[student.id].next_payment_date!).toLocaleDateString('ru-RU') : '—'}
+                      </Typography>
+                      {summaryByStudentId[student.id].payment_link ? (
+                        <Button
+                          component="a"
+                          size="small"
+                          href={summaryByStudentId[student.id].payment_link as string}
+                          target="_blank"
+                          rel="noreferrer"
+                          sx={{ mt: 1, px: 0 }}
+                        >
+                          Перейти к оплате
+                        </Button>
+                      ) : null}
+                    </Paper>
+                  </Grid>
+                </Grid>
+                {summaryByStudentId[student.id].ai_insight ? (
+                  <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.75 }}>
+                      <Chip
+                        size="small"
+                        label={`Риск: ${summaryByStudentId[student.id].ai_insight!.dropout_risk.level}`}
+                        color={
+                          summaryByStudentId[student.id].ai_insight!.dropout_risk.level === 'high'
+                            ? 'error'
+                            : summaryByStudentId[student.id].ai_insight!.dropout_risk.level === 'medium'
+                            ? 'warning'
+                            : 'success'
+                        }
+                        variant="outlined"
+                      />
+                      {summaryByStudentId[student.id].ai_insight!.weak_zone ? (
+                        <Chip
+                          size="small"
+                          label={`Слабая зона: ${summaryByStudentId[student.id].ai_insight!.weak_zone!.topic_name}`}
+                          color="warning"
+                          variant="outlined"
+                        />
+                      ) : null}
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {summaryByStudentId[student.id].ai_insight!.dropout_risk.recommended_action}
+                    </Typography>
+                  </Paper>
+                ) : null}
+              ) : null}
               {progress[student.id]?.program_id && (
                 <Typography variant="body2" color="text.secondary">
                   Программа: {programsById[progress[student.id].program_id]?.name || '—'} (v
@@ -469,6 +715,36 @@ const ParentDashboardPage: React.FC = () => {
                   })()}
                 </AccordionDetails>
               </Accordion>
+              <Paper variant="outlined" sx={{ mt: 2, p: 1.5 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Вопрос тренеру или администратору
+                </Typography>
+                <Stack spacing={1.5}>
+                  <TextField
+                    size="small"
+                    label="Тема"
+                    value={questionByStudent[student.id]?.topic || ''}
+                    onChange={(event) => handleQuestionChange(student.id, { topic: event.target.value })}
+                  />
+                  <TextField
+                    size="small"
+                    label="Сообщение"
+                    multiline
+                    minRows={3}
+                    value={questionByStudent[student.id]?.message || ''}
+                    onChange={(event) => handleQuestionChange(student.id, { message: event.target.value })}
+                  />
+                  <Box display="flex" justifyContent="flex-end">
+                    <Button
+                      variant="contained"
+                      onClick={() => handleSendQuestion(student.id)}
+                      disabled={sendingQuestionFor === student.id || !(questionByStudent[student.id]?.message || '').trim()}
+                    >
+                      Отправить вопрос
+                    </Button>
+                  </Box>
+                </Stack>
+              </Paper>
             </Paper>
           </Grid>
         ))}

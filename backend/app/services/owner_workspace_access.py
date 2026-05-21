@@ -49,7 +49,7 @@ DEFAULT_OWNER_WS_PERMISSION_POLICY = {
 
 
 def is_full_workspace_user(user: User) -> bool:
-    return user.role in (UserRole.ADMIN, UserRole.OWNER)
+    return auth.resolve_effective_role(user) in (UserRole.ADMIN, UserRole.OWNER)
 
 
 @dataclass(frozen=True)
@@ -217,7 +217,8 @@ def user_can_see_owner_workspace_task(db: Session, user_id: int, task: OwnerWork
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return False
-    role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+    effective_role = auth.resolve_effective_role(user)
+    role_val = effective_role.value if hasattr(effective_role, "value") else str(effective_role)
     if role_val not in OWNER_WORKSPACE_API_ROLES:
         return False
     ctx = build_owner_workspace_access_context(db, user)

@@ -33,6 +33,7 @@ import { characteristicsApi } from '../services/api';
 import { Characteristic, CharacteristicTemplate, CharacteristicField, Student } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { studentsApi, programsApi } from '../services/api';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 const CharacteristicsPage: React.FC = () => {
   const [characteristics, setCharacteristics] = useState<Characteristic[]>([]);
@@ -71,12 +72,14 @@ const CharacteristicsPage: React.FC = () => {
   const [formData, setFormData] = useState<Record<string, any>>({});
 
   const { user } = useAuth();
-  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
+  const effectiveRole = getEffectiveRole(user);
+  const isAdminLike = effectiveRole === 'admin' || effectiveRole === 'owner';
+  const canManageCharacteristics = hasPermission(user, 'characteristics.manage');
 
   useEffect(() => {
     loadCharacteristics();
     loadTemplates();
-    if (user?.role === 'trainer') {
+    if (effectiveRole === 'trainer') {
       loadStudents();
     }
   }, []);
@@ -84,7 +87,7 @@ const CharacteristicsPage: React.FC = () => {
   useEffect(() => {
     // При смене ученика в форме тренера подтягиваем доступные программы (direct + group)
     if (!createOpen) return;
-    if (user?.role !== 'trainer') return;
+    if (effectiveRole !== 'trainer') return;
     const sid = parseInt(newCharacteristic.student_id || '');
     if (!sid || Number.isNaN(sid)) return;
 
@@ -146,7 +149,7 @@ const CharacteristicsPage: React.FC = () => {
         setSelectedTopicId('');
       }
     })();
-  }, [createOpen, newCharacteristic.student_id, user?.role, editingId, formData.course_name, formData.module_topic]);
+  }, [createOpen, newCharacteristic.student_id, effectiveRole, editingId, formData.course_name, formData.module_topic]);
 
   const loadCharacteristics = async () => {
     try {
@@ -330,7 +333,7 @@ const CharacteristicsPage: React.FC = () => {
     }
 
     // Спец-поля: курс/программа и модуль — выбираем из списка (для тренера)
-    if (user?.role === 'trainer' && field.name === 'course_name') {
+    if (effectiveRole === 'trainer' && field.name === 'course_name') {
       const sid = parseInt(newCharacteristic.student_id || '');
       const opts = (!Number.isNaN(sid) && sid) ? (programOptions[sid] || []) : [];
       return (
@@ -375,7 +378,7 @@ const CharacteristicsPage: React.FC = () => {
       );
     }
 
-    if (user?.role === 'trainer' && field.name === 'module_topic') {
+    if (effectiveRole === 'trainer' && field.name === 'module_topic') {
       const modules = selectedProgramModules.filter((m) => m.status !== 'archived');
       const selectedModule = modules.find((m) => m.id === selectedModuleId);
       const topics = (selectedModule?.topics || []).filter((t) => t.status !== 'archived');
@@ -505,7 +508,7 @@ const CharacteristicsPage: React.FC = () => {
               Создать форму
             </Button>
           )}
-          {user?.role === 'trainer' && (
+          {effectiveRole === 'trainer' && canManageCharacteristics && (
             <Button
               variant="contained"
               onClick={() => {
@@ -600,7 +603,7 @@ const CharacteristicsPage: React.FC = () => {
                     Просмотр
                   </Button>
 
-                  {user?.role === 'trainer' && (char.status === 'draft' || char.status === 'rejected') && (
+                  {effectiveRole === 'trainer' && canManageCharacteristics && (char.status === 'draft' || char.status === 'rejected') && (
                     <Button
                       size="small"
                       variant="outlined"
@@ -624,7 +627,7 @@ const CharacteristicsPage: React.FC = () => {
                     </Button>
                   )}
 
-                  {user?.role === 'trainer' && (char.status === 'draft' || char.status === 'rejected') && (
+                  {effectiveRole === 'trainer' && canManageCharacteristics && (char.status === 'draft' || char.status === 'rejected') && (
                     <Button
                       size="small"
                       variant="contained"

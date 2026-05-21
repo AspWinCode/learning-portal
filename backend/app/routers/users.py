@@ -4,9 +4,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
 from app.schemas import UserCreate, UserResponse, UserUpdate, ParentInviteRequest, ParentInviteResponse
-from app.models import User, UserRole
+from app.models import User, UserRole, Role
 from app.routers.action_log import log_action
 from app.services.parent_invite import create_parent_with_invite
+from app.services.person_sync import sync_user_person
+from app.utils.phone import normalize_phone
 
 router = APIRouter()
 
@@ -20,32 +22,56 @@ def _apply_trainer_profile(db_user: User, data: dict) -> None:
     ):
         if key in data and data[key] is not None:
             setattr(db_user, key, data[key])
+    if "phone" in data:
+        db_user.phone_normalized = normalize_phone(data.get("phone")) or None
+
+
+def _resolve_custom_role(
+    db: Session,
+    custom_role_id: Optional[int],
+    expected_role: Optional[UserRole] = None,
+) -> Optional[Role]:
+    if custom_role_id is None:
+        return None
+    custom_role = db.query(Role).filter(Role.id == custom_role_id).first()
+    if custom_role is None or not custom_role.is_active:
+        raise HTTPException(status_code=400, detail="Custom role not found or inactive")
+    if expected_role is not None and custom_role.base_role != expected_role:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Custom role base_role must match selected role '{expected_role.value}'",
+        )
+    return custom_role
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"]))
+    current_user: User = Depends(auth.require_permission("users.manage"))
 ):
     """Создание пользователя (admin, owner). Для тренера можно сразу заполнить профиль."""
     db_user = auth.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    custom_role = _resolve_custom_role(db, user.custom_role_id, UserRole(user.role))
     hashed_password = auth.get_password_hash(user.password)
     db_user = User(
         email=user.email,
         hashed_password=hashed_password,
         full_name=user.full_name,
         role=UserRole(user.role),
+        custom_role_id=custom_role.id if custom_role else None,
     )
     db.add(db_user)
+    db.flush()
+    sync_user_person(db, db_user)
     db.commit()
     db.refresh(db_user)
     if user.role == UserRole.TRAINER:
         payload = user.model_dump(exclude_unset=True)
-        for k in ("email", "full_name", "role", "password"):
+        for k in ("email", "full_name", "role", "password", "custom_role_id"):
             payload.pop(k, None)
         _apply_trainer_profile(db_user, payload)
         db.commit()
@@ -58,7 +84,7 @@ async def create_user(
 async def invite_parent(
     payload: ParentInviteRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"]))
+    current_user: User = Depends(auth.require_permission("users.manage"))
 ):
     """
     Приглашение нового родителя: создаётся пользователь с ролью parent без пароля,
@@ -90,10 +116,11 @@ async def read_users(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Список пользователей. Admin, owner — любые; sales — только тренеры (role=trainer)."""
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    if current_user.role == UserRole.SALES:
+    effective_role = auth.resolve_effective_role(current_user)
+    if effective_role == UserRole.SALES:
         role = "trainer"
+    elif not auth.has_permission(current_user, "users.access"):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
     query = db.query(User)
     if role:
         query = query.filter(User.role == UserRole(role))
@@ -113,9 +140,9 @@ async def read_user(
         raise HTTPException(status_code=404, detail="User not found")
     if current_user.id == user_id:
         return user
-    if current_user.role in (UserRole.ADMIN, UserRole.OWNER):
+    if auth.has_permission(current_user, "users.access"):
         return user
-    if current_user.role == UserRole.SALES and user.role == UserRole.TRAINER:
+    if auth.resolve_effective_role(current_user) == UserRole.SALES and auth.resolve_effective_role(user) == UserRole.TRAINER:
         return user
     raise HTTPException(status_code=403, detail="Not enough permissions")
 
@@ -131,15 +158,36 @@ async def update_user(
     db_user = db.query(User).filter(User.id == user_id).first()
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    if current_user.role == UserRole.SALES:
-        if db_user.role != UserRole.TRAINER:
+    effective_role = auth.resolve_effective_role(current_user)
+    if effective_role == UserRole.SALES:
+        if auth.resolve_effective_role(db_user) != UserRole.TRAINER:
             raise HTTPException(status_code=403, detail="Sales can only update trainers")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER):
+    elif not auth.has_permission(current_user, "users.manage"):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     update_data = user_update.model_dump(exclude_unset=True)
+    if effective_role == UserRole.SALES and any(key in update_data for key in ("role", "custom_role_id", "is_active")):
+        raise HTTPException(status_code=403, detail="Sales cannot change role assignments")
+
+    if "custom_role_id" in update_data:
+        requested_role = update_data.get("role", db_user.role)
+        custom_role = _resolve_custom_role(db, update_data["custom_role_id"], UserRole(requested_role))
+        db_user.custom_role_id = custom_role.id if custom_role else None
+        if custom_role is not None:
+            db_user.role = custom_role.base_role
+        update_data["custom_role_id"] = db_user.custom_role_id
+        update_data["role"] = db_user.role
+
+    if "role" in update_data and "custom_role_id" not in update_data:
+        db_user.role = UserRole(update_data["role"])
+        update_data["role"] = db_user.role
+        if db_user.custom_role_id is not None and db_user.custom_role and db_user.custom_role.base_role != db_user.role:
+            db_user.custom_role_id = None
+            update_data["custom_role_id"] = None
+
     for field, value in update_data.items():
         setattr(db_user, field, value)
+    sync_user_person(db, db_user)
     db.commit()
     db.refresh(db_user)
     log_action(db, current_user.id, "update", "user", user_id, update_data)
@@ -150,7 +198,7 @@ async def update_user(
 async def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("users.manage"))
 ):
     """Деактивация пользователя (удаление запрещено)"""
     db_user = db.query(User).filter(User.id == user_id).first()
@@ -176,4 +224,3 @@ async def delete_user(
     db.commit()
     log_action(db, current_user.id, "delete", "user", user_id)
     return {"message": "User deleted"}
-

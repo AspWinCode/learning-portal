@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Student, StudentCard, StudentStatus, User, UserRole
 from app.services.parent_invite import create_parent_user_no_invite
+from app.services.student_activity import log_student_activity
+from app.services.person_sync import sync_student_card_person, sync_user_person
 
 
 class StudentCardConvertConflict(Exception):
@@ -61,6 +63,7 @@ def convert_student_card_to_student(
             raise ValueError("Ученик не найден")
         card.student_id = student.id
         card.anketa_status = "converted"
+        sync_student_card_person(db, card)
         db.commit()
         db.refresh(card)
         return ConvertStudentCardResult(student_id=student.id, card=card)
@@ -72,6 +75,7 @@ def convert_student_card_to_student(
         ).first()
         if not parent_user:
             raise ValueError("Родитель не найден")
+        sync_user_person(db, parent_user)
         same_name = db.query(Student).filter(
             Student.parent_id == parent_user.id,
             Student.full_name == student_full_name,
@@ -93,6 +97,16 @@ def convert_student_card_to_student(
         db.flush()
         card.student_id = student.id
         card.anketa_status = "converted"
+        sync_student_card_person(db, card)
+        log_student_activity(
+            db,
+            student_id=student.id,
+            activity_type="enrolled",
+            title="Конвертирован из анкеты",
+            description=f"Анкета #{card.id}",
+            created_by=None,
+            payload_json={"student_card_id": card.id},
+        )
         db.commit()
         db.refresh(card)
         return ConvertStudentCardResult(student_id=student.id, card=card)
@@ -105,6 +119,7 @@ def convert_student_card_to_student(
         User.email == parent_email, User.role == UserRole.PARENT
     ).first()
     if existing_parent:
+        sync_user_person(db, existing_parent)
         same_name = db.query(Student).filter(
             Student.parent_id == existing_parent.id,
             Student.full_name == student_full_name,
@@ -133,6 +148,7 @@ def convert_student_card_to_student(
     # Создаём нового родителя и ученика
     parent_user = create_parent_user_no_invite(db, parent_email, parent_full_name)
     db.flush()
+    sync_user_person(db, parent_user)
     student = Student(
         full_name=student_full_name,
         parent_id=parent_user.id,
@@ -142,6 +158,16 @@ def convert_student_card_to_student(
     db.flush()
     card.student_id = student.id
     card.anketa_status = "converted"
+    sync_student_card_person(db, card)
+    log_student_activity(
+        db,
+        student_id=student.id,
+        activity_type="enrolled",
+        title="Конвертирован из анкеты",
+        description=f"Анкета #{card.id}",
+        created_by=None,
+        payload_json={"student_card_id": card.id},
+    )
     db.commit()
     db.refresh(card)
     return ConvertStudentCardResult(student_id=student.id, card=card)

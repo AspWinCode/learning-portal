@@ -15,6 +15,7 @@ from app.schemas import (
 )
 from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy
 from app.routers.action_log import log_action
+from app.services.student_activity import log_student_activity
 from app.student_display import get_students_display_names
 
 router = APIRouter()
@@ -59,7 +60,7 @@ def _group_to_response(db: Session, g: Group) -> GroupResponse:
 async def create_group(
     group: GroupCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("groups.manage"))
 ):
     """Создание группы (только администратор)"""
     trainer = db.query(User).filter(
@@ -105,14 +106,16 @@ async def read_groups(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение списка групп"""
+    auth.ensure_permission(current_user, "groups.access")
+    effective_role = auth.resolve_effective_role(current_user)
     query = db.query(Group)
     
     # Тренер видит только свои группы
-    if current_user.role == UserRole.TRAINER:
+    if effective_role == UserRole.TRAINER:
         query = query.filter(Group.trainer_id == current_user.id)
 
     # Родитель видит только группы, где есть его активные ученики (текущий состав)
-    elif current_user.role == UserRole.PARENT:
+    elif effective_role == UserRole.PARENT:
         query = (
             query.join(GroupStudent)
             .join(Student)
@@ -133,7 +136,7 @@ async def read_groups(
         g.students = [gs.student for gs in (getattr(g, "group_students", None) or []) if gs.student is not None and getattr(gs, "left_at", None) is None]
 
     # Не раскрываем состав группы родителю (только его ученики)
-    if current_user.role == UserRole.PARENT:
+    if effective_role == UserRole.PARENT:
         for g in groups:
             try:
                 g.students = [s for s in (g.students or []) if s.parent_id == current_user.id and s.status == StudentStatus.ACTIVE]
@@ -164,6 +167,8 @@ async def read_group(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение группы по ID"""
+    auth.ensure_permission(current_user, "groups.access")
+    effective_role = auth.resolve_effective_role(current_user)
     group = (
         db.query(Group)
         .options(joinedload(Group.group_students).joinedload(GroupStudent.student))
@@ -174,10 +179,10 @@ async def read_group(
         raise HTTPException(status_code=404, detail="Group not found")
     
     # Проверка прав доступа
-    if current_user.role == UserRole.TRAINER and group.trainer_id != current_user.id:
+    if effective_role == UserRole.TRAINER and group.trainer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    if current_user.role == UserRole.PARENT:
+    if effective_role == UserRole.PARENT:
         # Родитель может видеть только группу, где есть его активный ученик (текущий состав)
         has_access = db.query(GroupStudent).join(Student).filter(
             GroupStudent.group_id == group_id,
@@ -203,7 +208,7 @@ async def update_group(
     group_id: int,
     group_update: GroupUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("groups.manage")),
 ):
     """Обновление группы (admin/owner/sales). В т.ч. units_per_session, extra_rate_per_unit для лимита 8."""
     db_group = db.query(Group).filter(Group.id == group_id).first()
@@ -264,7 +269,7 @@ async def get_lesson_slot_extra_policy(
     start_time: str = Query(..., description="HH:MM"),
     end_time: str = Query(..., description="HH:MM"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("groups.manage")),
 ):
     """Получить режим доп. занятий (сверх 8) для слота. По умолчанию free."""
     group = db.query(Group).filter(Group.id == group_id).first()
@@ -310,7 +315,7 @@ async def set_lesson_slot_extra_policy(
     group_id: int,
     payload: LessonSlotExtraPolicyPayload,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("groups.manage")),
 ):
     """Установить режим доп. занятий (сверх 8) для слота: free или paid. Owner/admin/sales."""
     group = db.query(Group).filter(Group.id == group_id).first()
@@ -365,7 +370,7 @@ async def add_student_to_group(
     group_id: int,
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("groups.manage"))
 ):
     """Добавление ученика в группу"""
     group = db.query(Group).filter(Group.id == group_id).first()
@@ -386,6 +391,15 @@ async def add_student_to_group(
     
     group_student = GroupStudent(group_id=group_id, student_id=student_id)
     db.add(group_student)
+    log_student_activity(
+        db,
+        student_id=student_id,
+        activity_type="group_joined",
+        title="Добавлен в группу",
+        description=f"Группа: {group.name}",
+        created_by=current_user.id,
+        payload_json={"group_id": group.id, "group_name": group.name},
+    )
     db.commit()
     
     log_action(db, current_user.id, "add_student", "group", group_id, {"student_id": student_id})
@@ -397,7 +411,7 @@ async def remove_student_from_group(
     group_id: int,
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("groups.manage"))
 ):
     """Удаление ученика из группы (мягкое: проставляем left_at для истории и отчёта характеристик)."""
     group_student = db.query(GroupStudent).filter(
@@ -411,6 +425,16 @@ async def remove_student_from_group(
 
     from datetime import datetime, timezone
     group_student.left_at = datetime.now(timezone.utc)
+    group = db.query(Group).filter(Group.id == group_id).first()
+    log_student_activity(
+        db,
+        student_id=student_id,
+        activity_type="group_left",
+        title="Выбыл из группы",
+        description=f"Группа: {group.name if group else group_id}",
+        created_by=current_user.id,
+        payload_json={"group_id": group_id, "group_name": group.name if group else None},
+    )
     db.commit()
     
     log_action(db, current_user.id, "remove_student", "group", group_id, {"student_id": student_id})
@@ -421,7 +445,7 @@ async def remove_student_from_group(
 async def delete_group(
     group_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("groups.manage"))
 ):
     """Архивация группы (удаление запрещено)"""
     db_group = db.query(Group).filter(Group.id == group_id).first()

@@ -1,56 +1,54 @@
-"""Проекты: канбан-воронки для admin/owner/sales. Родители или ученики по этапам."""
-from datetime import date
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+"""Projects kanban for project-access roles."""
 
-from app.database import get_db
+from datetime import date
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from app import auth
-from app.models import User, UserRole, Project, ProjectStage, ProjectCard, Student, StudentStatus
+from app.database import get_db
+from app.models import Project, ProjectCard, ProjectStage, Student, StudentStatus, User, UserRole
 from app.schemas import (
-    ProjectCreate,
-    ProjectUpdate,
-    ProjectResponse,
-    ProjectStageResponse,
-    ProjectStageCreate,
-    ProjectCardResponse,
     ProjectCardMove,
-    UserResponse,
+    ProjectCardResponse,
+    ProjectCreate,
+    ProjectResponse,
+    ProjectStageCreate,
+    ProjectStageResponse,
+    ProjectUpdate,
 )
 
 router = APIRouter()
 
 
 def _require_projects_access(user: User) -> None:
-    if user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Доступ только для admin, owner или sales")
+    auth.ensure_permission(user, "projects.access")
 
 
 def _require_can_create_project(user: User) -> None:
-    if user.role not in (UserRole.ADMIN, UserRole.OWNER):
-        raise HTTPException(status_code=403, detail="Создавать проекты могут только admin или owner")
+    auth.ensure_permission(user, "projects.manage")
 
 
 @router.get("/", response_model=List[ProjectResponse])
 async def list_projects(
-    archived: bool | None = None,
+    archived: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Список проектов. Доступ: admin, owner, sales."""
     _require_projects_access(current_user)
-    q = db.query(Project)
+    query = db.query(Project)
     if archived is not None:
-        q = q.filter(Project.archived == archived)
-    projects = q.order_by(Project.created_at.desc()).all()
-    out = []
-    for p in projects:
-        data = ProjectResponse.model_validate(p).model_dump(exclude={"stages", "card_count"})
-        data["card_count"] = db.query(ProjectCard).filter(ProjectCard.project_id == p.id).count()
-        data["stages"] = [ProjectStageResponse.model_validate(s) for s in p.stages]
-        out.append(ProjectResponse(**data))
-    return out
+        query = query.filter(Project.archived == archived)
+    projects = query.order_by(Project.created_at.desc()).all()
+    output = []
+    for project in projects:
+        data = ProjectResponse.model_validate(project).model_dump(exclude={"stages", "card_count"})
+        data["card_count"] = db.query(ProjectCard).filter(ProjectCard.project_id == project.id).count()
+        data["stages"] = [ProjectStageResponse.model_validate(stage) for stage in project.stages]
+        output.append(ProjectResponse(**data))
+    return output
 
 
 @router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -59,7 +57,6 @@ async def create_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Создать проект. Только admin/owner. Создаётся этап «Новые» и в него добавляются все родители или все ученики."""
     _require_can_create_project(current_user)
     project = Project(
         name=body.name,
@@ -75,34 +72,36 @@ async def create_project(
     first_stage = ProjectStage(project_id=project.id, name="Новые", position=0)
     db.add(first_stage)
     db.flush()
+
     if body.entity_type == "parent":
-        parents = db.query(User).filter(User.role == UserRole.PARENT, User.is_active == True).all()
-        for pos, u in enumerate(parents):
+        parents = db.query(User).filter(User.role == UserRole.PARENT, User.is_active.is_(True)).all()
+        for position, parent in enumerate(parents):
             db.add(
                 ProjectCard(
                     project_id=project.id,
                     stage_id=first_stage.id,
                     entity_type="parent",
-                    entity_id=u.id,
-                    position=pos,
+                    entity_id=parent.id,
+                    position=position,
                 )
             )
     else:
         students = db.query(Student).filter(Student.status == StudentStatus.ACTIVE).all()
-        for pos, s in enumerate(students):
+        for position, student in enumerate(students):
             db.add(
                 ProjectCard(
                     project_id=project.id,
                     stage_id=first_stage.id,
                     entity_type="student",
-                    entity_id=s.id,
-                    position=pos,
+                    entity_id=student.id,
+                    position=position,
                 )
             )
+
     db.commit()
     db.refresh(project)
     data = ProjectResponse.model_validate(project).model_dump(exclude={"stages", "card_count"})
-    data["stages"] = [ProjectStageResponse.model_validate(s) for s in project.stages]
+    data["stages"] = [ProjectStageResponse.model_validate(stage) for stage in project.stages]
     data["card_count"] = db.query(ProjectCard).filter(ProjectCard.project_id == project.id).count()
     return ProjectResponse(**data)
 
@@ -113,13 +112,12 @@ async def get_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Проект по ID с этапами и счётчиком карточек."""
     _require_projects_access(current_user)
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     data = ProjectResponse.model_validate(project).model_dump(exclude={"stages", "card_count"})
-    data["stages"] = [ProjectStageResponse.model_validate(s) for s in project.stages]
+    data["stages"] = [ProjectStageResponse.model_validate(stage) for stage in project.stages]
     data["card_count"] = db.query(ProjectCard).filter(ProjectCard.project_id == project.id).count()
     return ProjectResponse(**data)
 
@@ -131,17 +129,16 @@ async def update_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Обновить проект (название, даты, описание, архив)."""
     _require_projects_access(current_user)
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    for k, v in body.model_dump(exclude_unset=True).items():
-        setattr(project, k, v)
+    for key, value in body.model_dump(exclude_unset=True).items():
+        setattr(project, key, value)
     db.commit()
     db.refresh(project)
     data = ProjectResponse.model_validate(project).model_dump(exclude={"stages", "card_count"})
-    data["stages"] = [ProjectStageResponse.model_validate(s) for s in project.stages]
+    data["stages"] = [ProjectStageResponse.model_validate(stage) for stage in project.stages]
     data["card_count"] = db.query(ProjectCard).filter(ProjectCard.project_id == project.id).count()
     return ProjectResponse(**data)
 
@@ -153,18 +150,15 @@ async def create_stage(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Добавить этап в проект."""
     _require_projects_access(current_user)
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    max_pos = db.query(func.max(ProjectStage.position)).filter(
-        ProjectStage.project_id == project_id
-    ).scalar() or 0
+    max_position = db.query(func.max(ProjectStage.position)).filter(ProjectStage.project_id == project_id).scalar() or 0
     stage = ProjectStage(
         project_id=project_id,
         name=body.name,
-        position=(body.position if body.position is not None else max_pos + 1),
+        position=body.position if body.position is not None else max_position + 1,
     )
     db.add(stage)
     db.commit()
@@ -180,7 +174,6 @@ async def update_stage(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Переименовать этап или изменить порядок."""
     _require_projects_access(current_user)
     stage = db.query(ProjectStage).filter(
         ProjectStage.id == stage_id,
@@ -204,7 +197,6 @@ async def delete_stage(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Удалить этап. Карточки из этого этапа нужно предварительно переместить."""
     _require_projects_access(current_user)
     stage = db.query(ProjectStage).filter(
         ProjectStage.id == stage_id,
@@ -213,20 +205,17 @@ async def delete_stage(
     if not stage:
         raise HTTPException(status_code=404, detail="Stage not found")
     if stage.cards:
-        raise HTTPException(
-            status_code=400,
-            detail="Переместите карточки в другие этапы перед удалением",
-        )
+        raise HTTPException(status_code=400, detail="Move cards to another stage before deleting")
     db.delete(stage)
     db.commit()
 
 
-def _safe_iso(val):
-    if val is None:
+def _safe_iso(value):
+    if value is None:
         return None
-    if hasattr(val, "isoformat"):
-        return val.isoformat()
-    return str(val)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
 
 
 @router.get("/{project_id}/board")
@@ -235,46 +224,50 @@ async def get_project_board(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Канбан: этапы с карточками и display_name для каждой карточки."""
     _require_projects_access(current_user)
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    stages_out = []
-    stages_list = sorted(getattr(project, "stages", None) or [], key=lambda x: x.position)
-    for s in stages_list:
-        cards = db.query(ProjectCard).filter(ProjectCard.stage_id == s.id).order_by(ProjectCard.position).all()
-        cards_out = []
-        for c in cards:
+
+    stages_output = []
+    for stage in sorted(getattr(project, "stages", None) or [], key=lambda item: item.position):
+        cards = db.query(ProjectCard).filter(ProjectCard.stage_id == stage.id).order_by(ProjectCard.position).all()
+        cards_output = []
+        for card in cards:
             try:
-                if c.entity_type == "parent":
-                    u = db.query(User).filter(User.id == c.entity_id).first()
-                    name = u.full_name if u else f"User #{c.entity_id}"
+                if card.entity_type == "parent":
+                    user = db.query(User).filter(User.id == card.entity_id).first()
+                    display_name = user.full_name if user else f"User #{card.entity_id}"
                 else:
-                    st = db.query(Student).filter(Student.id == c.entity_id).first()
-                    name = st.full_name if st else f"Student #{c.entity_id}"
+                    student = db.query(Student).filter(Student.id == card.entity_id).first()
+                    display_name = student.full_name if student else f"Student #{card.entity_id}"
             except Exception:
-                name = f"#{c.entity_id}"
-            cards_out.append({
-                "id": c.id,
-                "project_id": c.project_id,
-                "stage_id": c.stage_id,
-                "entity_type": c.entity_type,
-                "entity_id": c.entity_id,
-                "position": c.position,
-                "created_at": _safe_iso(c.created_at),
-                "display_name": name,
-            })
-        stages_out.append({
-            "id": s.id,
-            "project_id": s.project_id,
-            "name": s.name,
-            "position": s.position,
-            "cards": cards_out,
-        })
+                display_name = f"#{card.entity_id}"
+            cards_output.append(
+                {
+                    "id": card.id,
+                    "project_id": card.project_id,
+                    "stage_id": card.stage_id,
+                    "entity_type": card.entity_type,
+                    "entity_id": card.entity_id,
+                    "position": card.position,
+                    "created_at": _safe_iso(card.created_at),
+                    "display_name": display_name,
+                }
+            )
+        stages_output.append(
+            {
+                "id": stage.id,
+                "project_id": stage.project_id,
+                "name": stage.name,
+                "position": stage.position,
+                "cards": cards_output,
+            }
+        )
+
+    created_by_data = None
     try:
         created_by = getattr(project, "created_by", None)
-        created_by_data = None
         if created_by:
             created_by_data = {
                 "id": created_by.id,
@@ -288,6 +281,7 @@ async def get_project_board(
             }
     except Exception:
         created_by_data = None
+
     card_count = db.query(ProjectCard).filter(ProjectCard.project_id == project.id).count()
     project_payload = {
         "id": project.id,
@@ -303,8 +297,8 @@ async def get_project_board(
         "created_by": created_by_data,
         "stages": [],
         "card_count": card_count,
-        }
-    return {"project": project_payload, "stages": stages_out}
+    }
+    return {"project": project_payload, "stages": stages_output}
 
 
 @router.patch("/{project_id}/cards/{card_id}/move")
@@ -315,7 +309,6 @@ async def move_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Переместить карточку в другой этап (и опционально позицию)."""
     _require_projects_access(current_user)
     card = db.query(ProjectCard).filter(
         ProjectCard.id == card_id,
@@ -335,4 +328,3 @@ async def move_card(
     db.commit()
     db.refresh(card)
     return ProjectCardResponse.model_validate(card)
-

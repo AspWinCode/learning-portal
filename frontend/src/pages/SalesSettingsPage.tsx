@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { abonementsApi, maxApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+import { hasPermission } from '../utils/permissions';
 import {
   Abonement,
   ABONEMENT_FORMAT_LABELS,
@@ -59,6 +60,7 @@ const leadStatusLabels: Record<LeadStatus, string> = {
 const SalesSettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canManageUsers = hasPermission(user, 'users.manage');
   const [error, setError] = useState('');
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [templates, setTemplates] = useState<LeadTaskTemplate[]>([]);
@@ -164,7 +166,7 @@ const SalesSettingsPage: React.FC = () => {
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
         <Typography variant="h4">Настройки Sales</Typography>
-        {(user?.role === 'admin' || user?.role === 'owner') && (
+        {canManageUsers && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}

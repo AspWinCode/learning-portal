@@ -24,10 +24,13 @@ import {
 import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
 import { abonementsApi } from '../services/api';
 import { Abonement, ABONEMENT_FORMAT_LABELS, AbonementFormat } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermission } from '../utils/permissions';
 
 const emptyForm = { name: '', price: 0, discount_type: 'none', discount_value: 0, abonement_format: '' as '' | AbonementFormat };
 
 const AbonementsPage: React.FC = () => {
+  const { user } = useAuth();
   const [abonements, setAbonements] = useState<Abonement[]>([]);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
@@ -40,6 +43,7 @@ const AbonementsPage: React.FC = () => {
     discount_value: 0,
     abonement_format: '' as '' | AbonementFormat,
   });
+  const canManageAbonements = hasPermission(user, 'abonements.manage');
 
   const loadAbonements = async () => {
     try {
@@ -108,7 +112,7 @@ const AbonementsPage: React.FC = () => {
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Абонементы</Typography>
-        <Button
+        {canManageAbonements && <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => {
@@ -117,7 +121,7 @@ const AbonementsPage: React.FC = () => {
           }}
         >
           Создать абонемент
-        </Button>
+        </Button>}
       </Box>
 
       {error && (

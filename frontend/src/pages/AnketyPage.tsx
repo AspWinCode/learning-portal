@@ -30,6 +30,7 @@ import {
 import { studentCardsApi, abonementsApi, salesApi } from '../services/api';
 import { StudentCard as StudentCardType, Abonement, AnketaConvertConflict } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getEffectiveRole } from '../utils/permissions';
 
 const ANKETA_STATUS_LABELS: Record<string, string> = {
   draft: 'Новая / В работе',
@@ -46,7 +47,7 @@ const AnketyPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const addStudentMode = searchParams.get('addStudent') === '1';
   const cardIdFromUrl = searchParams.get('cardId');
-  const isOwner = user?.role === 'owner';
+  const isOwner = getEffectiveRole(user) === 'owner';
 
   const [items, setItems] = useState<StudentCardType[]>([]);
   const [abonements, setAbonements] = useState<Abonement[]>([]);

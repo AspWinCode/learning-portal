@@ -22,6 +22,7 @@ import { ExpandMore, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon } fr
 import { programsApi } from '../services/api';
 import { Program } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { hasPermission } from '../utils/permissions';
 
 interface TopicForm {
   name: string;
@@ -69,7 +70,7 @@ const ProgramsPage: React.FC = () => {
     { name: 'Основной модуль', topics: [{ name: '', description: '', final_result: '' }] },
   ]);
   const { user } = useAuth();
-  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
+  const canManagePrograms = hasPermission(user, 'programs.manage');
 
   useEffect(() => {
     loadPrograms();
@@ -321,7 +322,7 @@ const ProgramsPage: React.FC = () => {
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Программы обучения</Typography>
-        {isAdminLike && (
+        {canManagePrograms && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -360,7 +361,7 @@ const ProgramsPage: React.FC = () => {
                   <Typography>
                     {family.latest.name} (последняя v{family.latest.version})
                   </Typography>
-                  {isAdminLike && (
+                  {canManagePrograms && (
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -390,7 +391,7 @@ const ProgramsPage: React.FC = () => {
                       </Typography>
                     </AccordionSummary>
                     <AccordionDetails>
-                      {isAdminLike && (
+                      {canManagePrograms && (
                         <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                           <Button variant="outlined" onClick={() => openNewVersionDialog(program)}>
                             Создать новую версию от v{program.version}
@@ -404,7 +405,7 @@ const ProgramsPage: React.FC = () => {
                               <Typography variant="h6">{module.name}</Typography>
                               {module.status === 'archived' && <Chip size="small" label="Модуль в архиве" />}
                             </Box>
-                            {isAdminLike && module.status !== 'archived' && (
+                            {canManagePrograms && module.status !== 'archived' && (
                               <Button
                                 size="small"
                                 color="warning"
@@ -421,7 +422,7 @@ const ProgramsPage: React.FC = () => {
                                 Архивировать модуль
                               </Button>
                             )}
-                            {isAdminLike && module.status === 'archived' && (
+                            {canManagePrograms && module.status === 'archived' && (
                               <Button
                                 size="small"
                                 color="success"
@@ -444,7 +445,7 @@ const ProgramsPage: React.FC = () => {
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
                                 <Typography variant="body2">{topic.name}</Typography>
                                 {topic.status === 'archived' && <Chip size="small" label="Архив" />}
-                                {isAdminLike && topic.status !== 'archived' && (
+                                {canManagePrograms && topic.status !== 'archived' && (
                                   <Button
                                     size="small"
                                     color="warning"
@@ -461,7 +462,7 @@ const ProgramsPage: React.FC = () => {
                                     Архивировать
                                   </Button>
                                 )}
-                                {isAdminLike && topic.status === 'archived' && (
+                                {canManagePrograms && topic.status === 'archived' && (
                                   <Button
                                     size="small"
                                     color="success"
@@ -502,7 +503,7 @@ const ProgramsPage: React.FC = () => {
       </Box>
 
       {/* Диалог создания программы */}
-      {isAdminLike && (
+      {canManagePrograms && (
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>Создать программу</DialogTitle>
           <DialogContent>
@@ -624,7 +625,7 @@ const ProgramsPage: React.FC = () => {
       )}
 
       {/* Диалог создания новой версии */}
-      {isAdminLike && (
+      {canManagePrograms && (
         <Dialog open={versionOpen} onClose={() => setVersionOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>
             Новая версия: {baseProgram?.name} (текущая v{baseProgram?.version})

@@ -1,159 +1,148 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Box, Tab, Tabs, Button, Alert, FormControlLabel, Switch } from '@mui/material';
+import { Box, Tab, Tabs, Button, Alert } from '@mui/material';
 import Layout from '../components/Layout';
-import { PersonalFinanceProvider } from '../contexts/PersonalFinanceContext';
+import { PersonalFinanceProvider, usePersonalFinance } from '../contexts/PersonalFinanceContext';
 import { FinanceDashboardTab } from './personalFinance/FinanceDashboardTab';
 import { FinanceOperationsTab } from './personalFinance/FinanceOperationsTab';
 import { FinanceArticlesTab } from './personalFinance/FinanceArticlesTab';
 import { FinanceRecognitionTab } from './personalFinance/FinanceRecognitionTab';
-import { financeApi } from '../services/api';
+import { personalFinanceApi } from '../services/api';
 import {
   STORAGE_ARTICLES,
   STORAGE_OPERATIONS,
   STORAGE_RECOGNITION,
+  FinanceArticle,
+  FinanceOperation,
+  RecognitionRule,
 } from '../types/personalFinance';
-import type { FinanceOperation, FinanceArticle, OperationTarget } from '../types/personalFinance';
-import type { FinanceLedgerTransactionRow } from '../types';
 
 const TAB_DASHBOARD = 'dashboard';
 const TAB_OPERATIONS = 'operations';
 const TAB_ARTICLES = 'articles';
 const TAB_RECOGNITION = 'recognition';
 
-const PERSONAL_TARGETS: OperationTarget[] = ['personal', 'leninets', 'gogol_mogol', 'academy'];
-
-function mapLedgerToOperations(txs: FinanceLedgerTransactionRow[]): FinanceOperation[] {
-  return txs.map((tx) => {
-    const occurred = tx.occurred_at ? String(tx.occurred_at).slice(0, 10) : '';
-    const amount =
-      tx.direction === 'income' ? Math.abs(tx.amount) : tx.direction === 'expense' ? -Math.abs(tx.amount) : tx.amount;
-    const target: OperationTarget = PERSONAL_TARGETS.includes((tx.target_code as OperationTarget))
-      ? (tx.target_code as OperationTarget)
-      : 'personal';
-    return {
-      id: `ledger_${tx.id}`,
-      date: occurred,
-      amount,
-      description: tx.counterparty_name || tx.description_raw || '',
-      target,
-      articleId: tx.article_id != null ? String(tx.article_id) : null,
-      createdAt: tx.occurred_at || new Date().toISOString(),
-    };
-  });
-}
-
-function mapLedgerArticlesToContext(
-  articles: Array<{ id: number; name: string; direction: string; scope: string }>
-): { income: FinanceArticle[]; expense: FinanceArticle[] } {
-  const income: FinanceArticle[] = [];
-  const expense: FinanceArticle[] = [];
-  articles.forEach((a, i) => {
-    const art: FinanceArticle = { id: String(a.id), name: a.name, type: a.direction as 'income' | 'expense', order: i };
-    if (a.direction === 'income') income.push(art);
-    else expense.push(art);
-  });
-  return { income, expense };
+function loadLegacyJson<T>(key: string): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 const PersonalFinancePageContent: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { refreshAll } = usePersonalFinance();
   const tab = searchParams.get('tab') || TAB_DASHBOARD;
   const effectiveTab = [TAB_DASHBOARD, TAB_OPERATIONS, TAB_ARTICLES, TAB_RECOGNITION].includes(tab) ? tab : TAB_DASHBOARD;
-  const [migrateResult, setMigrateResult] = useState<null | { ok: boolean; message: string }>(null);
+  const [migrateResult, setMigrateResult] = useState<string | null>(null);
   const [migrateError, setMigrateError] = useState<string | null>(null);
   const [migrateLoading, setMigrateLoading] = useState(false);
-
-  // Личные финансы работают как витрина над единым журналом
-  const [useLedgerSource] = useState(true);
-  const [ledgerTransactions, setLedgerTransactions] = useState<FinanceLedgerTransactionRow[]>([]);
-  const [ledgerArticles, setLedgerArticles] = useState<Array<{ id: number; name: string; direction: string; scope: string }>>([]);
-  const [ledgerLoading, setLedgerLoading] = useState(false);
-  const [ledgerError, setLedgerError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLedgerLoading(true);
-    setLedgerError(null);
-    Promise.all([financeApi.listLedgerTransactions({ limit: 10000 }), financeApi.listArticles({ scope: 'personal' })])
-      .then(([txs, arts]) => {
-        setLedgerTransactions(txs);
-        setLedgerArticles(arts);
-      })
-      .catch((err: any) => {
-        setLedgerError(err?.response?.data?.detail || err?.message || 'Ошибка загрузки журнала');
-      })
-      .finally(() => setLedgerLoading(false));
-  }, [useLedgerSource]);
-
-  const ledgerOperations = useMemo(
-    () => (useLedgerSource ? mapLedgerToOperations(ledgerTransactions) : []),
-    [useLedgerSource, ledgerTransactions]
-  );
-  const { income: ledgerIncomeArticles, expense: ledgerExpenseArticles } = useMemo(
-    () => mapLedgerArticlesToContext(ledgerArticles),
-    [ledgerArticles]
-  );
-
-  const handleDeleteLedgerTransactions = async (transactionIds: number[]) => {
-    if (!transactionIds.length) return;
-    if (
-      !window.confirm(
-        `Удалить выбранные операции из единого финансового журнала (${transactionIds.length})? Это действие нельзя отменить.`
-      )
-    ) {
-      return;
-    }
-    setLedgerLoading(true);
-    setLedgerError(null);
-    try {
-      await Promise.all(transactionIds.map((id) => financeApi.deleteTransaction(id)));
-      const [txs, arts] = await Promise.all([
-        financeApi.listLedgerTransactions({ limit: 10000 }),
-        financeApi.listArticles({ scope: 'personal' }),
-      ]);
-      setLedgerTransactions(txs);
-      setLedgerArticles(arts);
-    } catch (err: any) {
-      setLedgerError(
-        err?.response?.data?.detail ||
-          err?.message ||
-          'Не удалось удалить операции из единого финансового журнала'
-      );
-    } finally {
-      setLedgerLoading(false);
-    }
-  };
 
   const handleTabChange = (_: React.SyntheticEvent, value: string) => {
     setSearchParams(value === TAB_DASHBOARD ? {} : { tab: value });
   };
 
-  const handleMigrateToLedger = async () => {
-    if (!window.confirm('Перенести текущие «Личные финансы» в единый финансовый журнал? Операции будут добавлены в общий журнал, но localStorage не будет очищен автоматически.')) {
+  const handleImportLegacy = async () => {
+    if (
+      !window.confirm(
+        'Перенести текущие данные личных финансов из localStorage в базу данных? Старые данные в браузере автоматически не очищаются.'
+      )
+    ) {
       return;
     }
     setMigrateLoading(true);
     setMigrateError(null);
     setMigrateResult(null);
     try {
-      const rawArticles = localStorage.getItem(STORAGE_ARTICLES);
-      const rawOps = localStorage.getItem(STORAGE_OPERATIONS);
-      const rawRules = localStorage.getItem(STORAGE_RECOGNITION);
-      const articles = rawArticles ? JSON.parse(rawArticles) : [];
-      const operations = rawOps ? JSON.parse(rawOps) : [];
-      const recognitionRules = rawRules ? JSON.parse(rawRules) : [];
+      const accounts = await personalFinanceApi.listAccounts();
+      const categories = await personalFinanceApi.listCategories();
+      let createdCategoriesCount = 0;
 
-      const res = await financeApi.migratePersonalFinance({
-        articles,
-        operations,
-        recognitionRules,
+      const accountByName = new Map(accounts.map((item) => [item.name.trim().toLowerCase(), item.id]));
+      const categoryById = new Map(categories.map((item) => [String(item.id), item]));
+      const categoryByNameDirection = new Map(
+        categories.map((item) => [`${item.direction}:${item.name.trim().toLowerCase()}`, item.id])
+      );
+
+      const legacyArticles = loadLegacyJson<FinanceArticle>(STORAGE_ARTICLES);
+      const legacyOperations = loadLegacyJson<FinanceOperation>(STORAGE_OPERATIONS);
+      const legacyRules = loadLegacyJson<RecognitionRule>(STORAGE_RECOGNITION);
+
+      const payloadCategories = legacyArticles.map((item) => ({
+        name: item.name,
+        direction: item.type,
+      }));
+
+      for (const item of payloadCategories) {
+        const key = `${item.direction}:${item.name.trim().toLowerCase()}`;
+        if (!categoryByNameDirection.has(key)) {
+          const created = await personalFinanceApi.createCategory(item);
+          categoryByNameDirection.set(key, created.id);
+          createdCategoriesCount += 1;
+        }
+      }
+
+      const refreshedCategories = await personalFinanceApi.listCategories();
+      const refreshedCategoryById = new Map(refreshedCategories.map((item) => [String(item.id), item]));
+
+      const transactions = legacyOperations
+        .map((item) => {
+          const accountId = accountByName.get(item.target);
+          if (!accountId) return null;
+          let categoryId: number | null = null;
+          if (item.articleId) {
+            const existing = refreshedCategoryById.get(String(item.articleId)) || categoryById.get(String(item.articleId));
+            if (existing) {
+              categoryId = existing.id;
+            } else {
+              const article = legacyArticles.find((candidate) => candidate.id === item.articleId);
+              if (article) {
+                categoryId = categoryByNameDirection.get(`${article.type}:${article.name.trim().toLowerCase()}`) ?? null;
+              }
+            }
+          }
+          return {
+            account_id: accountId,
+            amount: Math.abs(item.amount),
+            direction: item.amount >= 0 ? 'income' as const : 'expense' as const,
+            description: item.description,
+            occurred_at: `${item.date}T12:00:00`,
+            category_id: categoryId,
+          };
+        })
+        .filter(Boolean) as Array<{
+          account_id: number;
+          amount: number;
+          direction: 'income' | 'expense';
+          description?: string | null;
+          occurred_at: string;
+          category_id?: number | null;
+        }>;
+
+      const rules = legacyRules.map((item) => ({
+        pattern: item.pattern,
+        display_name: item.displayName,
+        category_id:
+          refreshedCategories.find((candidate) => candidate.name.trim().toLowerCase() === item.displayName.trim().toLowerCase())?.id ??
+          null,
+      }));
+
+      const result = await personalFinanceApi.importLegacy({
+        accounts: [],
+        categories: [],
+        transactions,
+        rules,
       });
-      setMigrateResult({
-        ok: true,
-        message: `Перенесено: статей ${res.articles_created}, операций ${res.operations_created}, правил ${res.recognition_rules_created}.`,
-      });
+      await refreshAll();
+      setMigrateResult(
+        `Перенесено: счетов ${result.accounts_created}, статей ${createdCategoriesCount}, операций ${result.transactions_created}, правил ${result.rules_created}.`
+      );
     } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Ошибка миграции «Личных финансов»';
+      const msg = err?.response?.data?.detail || err?.message || 'Ошибка переноса личных финансов в БД';
       setMigrateError(String(msg));
     } finally {
       setMigrateLoading(false);
@@ -169,12 +158,7 @@ const PersonalFinancePageContent: React.FC = () => {
       )}
       {migrateResult && (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setMigrateResult(null)}>
-          {migrateResult.message}
-        </Alert>
-      )}
-      {ledgerError && (
-        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setLedgerError(null)}>
-          {ledgerError}
+          {migrateResult}
         </Alert>
       )}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
@@ -184,37 +168,13 @@ const PersonalFinancePageContent: React.FC = () => {
           <Tab label="Настройки статей" value={TAB_ARTICLES} />
           <Tab label="Опознавание" value={TAB_RECOGNITION} />
         </Tabs>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={handleMigrateToLedger}
-            disabled={migrateLoading}
-          >
-            {migrateLoading ? 'Перенос…' : 'Перенести в единый журнал'}
-          </Button>
-        </Box>
+        <Button variant="outlined" size="small" onClick={handleImportLegacy} disabled={migrateLoading}>
+          {migrateLoading ? 'Перенос...' : 'Импорт из localStorage'}
+        </Button>
       </Box>
-      {effectiveTab === TAB_DASHBOARD && (
-        <FinanceDashboardTab
-          useLedgerSource={useLedgerSource}
-          ledgerLoading={ledgerLoading}
-          ledgerOperations={ledgerOperations}
-          ledgerIncomeArticles={ledgerIncomeArticles}
-          ledgerExpenseArticles={ledgerExpenseArticles}
-        />
-      )}
-      {effectiveTab === TAB_OPERATIONS && (
-        <FinanceOperationsTab
-          useLedgerSource={useLedgerSource}
-          ledgerLoading={ledgerLoading}
-          ledgerOperations={ledgerOperations}
-          ledgerIncomeArticles={ledgerIncomeArticles}
-          ledgerExpenseArticles={ledgerExpenseArticles}
-          onDeleteLedgerOperations={handleDeleteLedgerTransactions}
-        />
-      )}
-      {effectiveTab === TAB_ARTICLES && <FinanceArticlesTab useLedgerSource={useLedgerSource} />}
+      {effectiveTab === TAB_DASHBOARD && <FinanceDashboardTab />}
+      {effectiveTab === TAB_OPERATIONS && <FinanceOperationsTab />}
+      {effectiveTab === TAB_ARTICLES && <FinanceArticlesTab />}
       {effectiveTab === TAB_RECOGNITION && <FinanceRecognitionTab />}
     </Box>
   );

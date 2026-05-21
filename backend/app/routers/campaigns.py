@@ -80,7 +80,7 @@ async def list_campaigns(
     city: Optional[str] = Query(None),
     type_: Optional[str] = Query(None, alias="type"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     q = db.query(Campaign).options(joinedload(Campaign.responsible)).order_by(Campaign.created_at.desc())
     if status:
@@ -96,7 +96,7 @@ async def list_campaigns(
 async def create_campaign(
     payload: CampaignCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     c = Campaign(
         name=payload.name,
@@ -121,7 +121,7 @@ async def create_campaign(
 async def get_campaign(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     c = db.query(Campaign).options(joinedload(Campaign.responsible)).filter(Campaign.id == campaign_id).first()
     if not c:
@@ -134,7 +134,7 @@ async def update_campaign(
     campaign_id: int,
     payload: CampaignUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     c = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not c:
@@ -152,7 +152,7 @@ async def update_campaign(
 async def delete_campaign(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     c = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not c:
@@ -165,7 +165,7 @@ async def delete_campaign(
 async def list_campaign_schools(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -185,7 +185,7 @@ async def add_schools_to_campaign(
     campaign_id: int,
     body: AddSchoolsBody,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -231,7 +231,7 @@ async def list_schools_available_for_campaign(
     city: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -256,7 +256,7 @@ async def update_school_campaign(
     sc_id: int,
     payload: SchoolCampaignUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     sc = (
         db.query(SchoolCampaign)
@@ -279,7 +279,7 @@ async def remove_school_from_campaign(
     campaign_id: int,
     sc_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     sc = db.query(SchoolCampaign).filter(
         SchoolCampaign.id == sc_id, SchoolCampaign.campaign_id == campaign_id
@@ -312,7 +312,7 @@ def _campaign_event_to_response(e: CampaignEvent) -> CampaignEventResponse:
 async def list_campaign_events(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -331,7 +331,7 @@ async def create_campaign_event(
     campaign_id: int,
     payload: CampaignEventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -359,7 +359,7 @@ async def update_campaign_event(
     event_id: int,
     payload: CampaignEventUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -383,7 +383,7 @@ async def patch_campaign_event(
     event_id: int,
     payload: CampaignEventUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     return await update_campaign_event(campaign_id, event_id, payload, db, current_user)
 
@@ -414,7 +414,7 @@ class SchoolsEventsMatrixResponse(BaseModel):
 async def get_schools_events_matrix(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -461,7 +461,7 @@ async def get_schools_events_matrix(
 async def get_campaign_school_event_counts(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     """Сводка по каждой школе: сколько раз приглашали, участвовали, были площадкой (для канбана)."""
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
@@ -522,7 +522,7 @@ async def list_event_schools(
     campaign_id: int,
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -581,7 +581,7 @@ async def upsert_school_campaign_event(
     create_host_task: bool = Query(False, description="Создать задачу «Согласовать детали площадки» при host_status=host_confirmed"),
     create_participated_task: bool = Query(False, description="Создать задачу «Собрать лиды/итоги» при participation_status=participated"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -667,7 +667,7 @@ async def bulk_update_event_schools(
     event_id: int,
     payload: SchoolCampaignEventBulkUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
 ):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
@@ -776,7 +776,7 @@ async def get_school_campaign_events_history(
     campaign_id: int,
     sc_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
     """История джемов по одной школе в кампании."""
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()

@@ -21,7 +21,7 @@ class TelegramLinkCodeResponse(BaseModel):
 @router.post("/link-code", response_model=TelegramLinkCodeResponse)
 async def get_link_code(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "trainer", "parent"])),
+    current_user: User = Depends(auth.require_permission("telegram.link")),
 ):
     """Выдать одноразовый код для привязки Telegram через /start <code>"""
     code, expires_at = issue_link_code(db, current_user, ttl_minutes=10)
@@ -35,7 +35,7 @@ async def get_link_code(
 @router.post("/unlink")
 async def unlink(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "trainer", "parent"])),
+    current_user: User = Depends(auth.require_permission("telegram.link")),
 ):
     """Отвязать Telegram от текущего пользователя"""
     current_user.telegram_chat_id = None

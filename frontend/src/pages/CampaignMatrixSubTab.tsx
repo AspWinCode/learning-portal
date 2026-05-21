@@ -39,9 +39,10 @@ import type { SchoolsEventsMatrix } from '../types';
 interface CampaignMatrixSubTabProps {
   campaignId: number;
   onError: (msg: string | null) => void;
+  canManage: boolean;
 }
 
-export const CampaignMatrixSubTab: React.FC<CampaignMatrixSubTabProps> = ({ campaignId, onError }) => {
+export const CampaignMatrixSubTab: React.FC<CampaignMatrixSubTabProps> = ({ campaignId, onError, canManage }) => {
   const [matrix, setMatrix] = useState<SchoolsEventsMatrix | null>(null);
   const [loading, setLoading] = useState(false);
   const [cellEditOpen, setCellEditOpen] = useState(false);
@@ -196,9 +197,11 @@ export const CampaignMatrixSubTab: React.FC<CampaignMatrixSubTabProps> = ({ camp
                       <TableCell
                         key={ev.id}
                         align="center"
-                        onClick={() => openCellEdit(school.id, ev.id, school.school_name ?? '', ev.title)}
+                        onClick={() => {
+                          if (canManage) openCellEdit(school.id, ev.id, school.school_name ?? '', ev.title);
+                        }}
                         sx={{
-                          cursor: 'pointer',
+                          cursor: canManage ? 'pointer' : 'default',
                           verticalAlign: 'top',
                           minWidth: 140,
                           borderLeft: '1px solid',

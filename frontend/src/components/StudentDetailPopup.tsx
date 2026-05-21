@@ -25,13 +25,23 @@ import {
   Stack,
   TextField,
   Button,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import HistoryIcon from '@mui/icons-material/History';
+import SchoolIcon from '@mui/icons-material/School';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
+import PaymentsIcon from '@mui/icons-material/Payments';
+import StarIcon from '@mui/icons-material/Star';
+import DescriptionIcon from '@mui/icons-material/Description';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { studentsApi, salesApi, studentCardsApi } from '../services/api';
-import { Student, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentCard } from '../types';
+import { Student, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentCard, StudentTimelineEvent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 const ABSENCE_STAGES: { value: AbsenceFollowUpStage | 'link_sent'; label: string }[] = [
   { value: 'missed', label: 'Пропустил' },
@@ -40,6 +50,43 @@ const ABSENCE_STAGES: { value: AbsenceFollowUpStage | 'link_sent'; label: string
   { value: 'made_up', label: 'Отработал' },
   { value: 'missed_makeup', label: 'Пропустил отработку' },
 ];
+
+const STUDENT_TIMELINE_TYPE_LABELS: Record<string, string> = {
+  enrolled: 'Зачисление',
+  group_joined: 'Добавление в группу',
+  group_left: 'Выход из группы',
+  lesson_attended: 'Посещение',
+  lesson_missed: 'Пропуск',
+  grade_added: 'Оценка',
+  characteristic_published: 'Характеристика',
+  payment_received: 'Оплата',
+  payment_overdue: 'Просрочка оплаты',
+  freeze_set: 'Заморозка',
+  makeup_scheduled: 'Отработка назначена',
+  makeup_done: 'Отработка проведена',
+};
+
+const getTimelineIcon = (type: string) => {
+  switch (type) {
+    case 'enrolled':
+    case 'group_joined':
+      return <SchoolIcon fontSize="small" color="primary" />;
+    case 'lesson_attended':
+    case 'makeup_done':
+      return <EventAvailableIcon fontSize="small" color="success" />;
+    case 'lesson_missed':
+    case 'payment_overdue':
+      return <EventBusyIcon fontSize="small" color="error" />;
+    case 'payment_received':
+      return <PaymentsIcon fontSize="small" color="success" />;
+    case 'grade_added':
+      return <StarIcon fontSize="small" color="warning" />;
+    case 'characteristic_published':
+      return <DescriptionIcon fontSize="small" color="info" />;
+    default:
+      return <HistoryIcon fontSize="small" color="action" />;
+  }
+};
 
 interface StudentDetailPopupProps {
   open: boolean;
@@ -64,11 +111,18 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
+  const [tab, setTab] = useState<'overview' | 'history'>('overview');
+  const [timelineEvents, setTimelineEvents] = useState<StudentTimelineEvent[]>([]);
+  const [timelineType, setTimelineType] = useState<string>('all');
+  const [timelineDateFrom, setTimelineDateFrom] = useState('');
+  const [timelineDateTo, setTimelineDateTo] = useState('');
 
-  const canSeeAbsences = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
-  const canManageAccounts = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'parent' || user?.role === 'sales';
-  const canInviteParent = (user?.role === 'admin' || user?.role === 'owner') && !!student?.parent_id;
-  const isOwner = user?.role === 'owner';
+  const effectiveRole = getEffectiveRole(user);
+  const canSeeAbsences = hasPermission(user, 'sales.access');
+  const canAccessAccounts = hasPermission(user, 'student_accounts.access');
+  const canManageAccounts = hasPermission(user, 'student_accounts.manage');
+  const canInviteParent = hasPermission(user, 'students.manage') && !!student?.parent_id;
+  const isOwner = effectiveRole === 'owner';
   const [freezes, setFreezes] = useState<Array<{ id: number; freeze_start: string; freeze_end: string }>>([]);
   const [freezeStart, setFreezeStart] = useState('');
   const [freezeEnd, setFreezeEnd] = useState('');
@@ -89,11 +143,14 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setNewAccountName('');
     setFreezes([]);
     setCloseByFactPreview(null);
+    setTimelineEvents([]);
+    setTab('overview');
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),
+      studentsApi.getTimeline(studentId, { limit: 50 }),
       canSeeAbsences ? salesApi.getAbsences({ student_id: studentId }) : Promise.resolve([]),
-      canManageAccounts ? studentsApi.getAccounts(studentId) : Promise.resolve([]),
+      canAccessAccounts ? studentsApi.getAccounts(studentId) : Promise.resolve([]),
       canSeeAbsences ? studentCardsApi.list({ student_id: studentId }).then((cards) => (cards && cards[0]) || null) : Promise.resolve(null),
     ];
     if (isOwner) promises.push(salesApi.getStudentFreezes(studentId));
@@ -101,12 +158,14 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       .then((results) => {
         const s = results[0];
         const att = results[1];
-        const abs = results[2];
-        const acc = results[3];
-        const card = results[4] as StudentCard | null;
-        const frz = results[5];
+        const timeline = results[2];
+        const abs = results[3];
+        const acc = results[4];
+        const card = results[5] as StudentCard | null;
+        const frz = results[6];
         setStudent(s);
         setAttendances(att);
+        setTimelineEvents((timeline || []) as StudentTimelineEvent[]);
         setAbsences(abs as AbsenceFollowUp[]);
         setAccounts((acc || []) as StudentAccount[]);
         setStudentCard(card ?? null);
@@ -114,7 +173,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Ошибка загрузки'))
       .finally(() => setLoading(false));
-  }, [open, studentId, canSeeAbsences, canManageAccounts, isOwner]);
+  }, [open, studentId, canSeeAbsences, canAccessAccounts, isOwner]);
 
   const loadAccounts = async () => {
     if (!studentId) return;
@@ -129,6 +188,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setAccountsLoading(false);
     }
   };
+  void loadAccounts;
 
   const handleCreateAccount = async () => {
     if (!studentId || !newAccountName.trim()) return;
@@ -158,6 +218,17 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     } catch {
       return d;
     }
+  };
+
+  const loadTimeline = async () => {
+    if (!studentId) return;
+    const data = await studentsApi.getTimeline(studentId, {
+      limit: 100,
+      event_type: timelineType === 'all' ? undefined : timelineType,
+      date_from: timelineDateFrom || undefined,
+      date_to: timelineDateTo || undefined,
+    });
+    setTimelineEvents(data);
   };
 
   if (!studentId) return null;
@@ -190,6 +261,12 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
         )}
         {!loading && student && (
           <Stack spacing={3}>
+            <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tab value="overview" label="Обзор" />
+              <Tab value="history" label="История" />
+            </Tabs>
+            {tab === 'overview' && (
+              <>
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                 Данные ученика
@@ -543,7 +620,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
               </Paper>
             )}
 
-            {canManageAccounts && (
+            {canAccessAccounts && (
               <Paper variant="outlined" sx={{ p: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                   Счета
@@ -553,30 +630,32 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                     {accountsError}
                   </Alert>
                 )}
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap">
-                  <TextField
-                    size="small"
-                    label="Название счета"
-                    value={newAccountName}
-                    onChange={(e) => setNewAccountName(e.target.value)}
-                    placeholder="Например: Основной"
-                    sx={{ minWidth: 180 }}
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={handleCreateAccount}
-                    disabled={!newAccountName.trim() || accountsLoading}
-                  >
-                    Создать счет
-                  </Button>
-                </Stack>
+                {canManageAccounts && (
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap">
+                    <TextField
+                      size="small"
+                      label="Название счета"
+                      value={newAccountName}
+                      onChange={(e) => setNewAccountName(e.target.value)}
+                      placeholder="Например: Основной"
+                      sx={{ minWidth: 180 }}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleCreateAccount}
+                      disabled={!newAccountName.trim() || accountsLoading}
+                    >
+                      Создать счет
+                    </Button>
+                  </Stack>
+                )}
                 {accountsLoading && !accounts.length ? (
                   <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
                     <CircularProgress size={24} />
                   </Box>
                 ) : accounts.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
-                    Нет счетов. Создайте счёт выше.
+                    {canManageAccounts ? 'Нет счетов. Создайте счёт выше.' : 'Нет счетов.'}
                   </Typography>
                 ) : (
                   <Table size="small">
@@ -595,6 +674,51 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                       ))}
                     </TableBody>
                   </Table>
+                )}
+              </Paper>
+            )}
+              </>
+            )}
+            {tab === 'history' && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mb: 2 }}>
+                  <FormControl size="small" sx={{ minWidth: 220 }}>
+                    <InputLabel>Тип события</InputLabel>
+                    <Select value={timelineType} label="Тип события" onChange={(e) => setTimelineType(e.target.value)}>
+                      <MenuItem value="all">Все события</MenuItem>
+                      {Object.entries(STUDENT_TIMELINE_TYPE_LABELS).map(([key, label]) => (
+                        <MenuItem key={key} value={key}>{label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField size="small" type="date" label="С" value={timelineDateFrom} onChange={(e) => setTimelineDateFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
+                  <TextField size="small" type="date" label="По" value={timelineDateTo} onChange={(e) => setTimelineDateTo(e.target.value)} InputLabelProps={{ shrink: true }} />
+                  <Button variant="outlined" onClick={loadTimeline}>Применить</Button>
+                </Stack>
+                {timelineEvents.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">Событий пока нет.</Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {timelineEvents.map((event) => (
+                      <Box key={event.id} sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                        <Box sx={{ mt: 0.25 }}>{getTimelineIcon(event.type)}</Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Typography variant="body2" fontWeight={600}>{event.title}</Typography>
+                            <Chip size="small" label={STUDENT_TIMELINE_TYPE_LABELS[event.type] || event.type} />
+                          </Stack>
+                          {event.description && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                              {event.description}
+                            </Typography>
+                          )}
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                            {formatDate(event.created_at)}{event.creator_name ? ` · ${event.creator_name}` : ''}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Stack>
                 )}
               </Paper>
             )}

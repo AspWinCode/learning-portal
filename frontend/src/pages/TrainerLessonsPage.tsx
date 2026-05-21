@@ -28,6 +28,7 @@ import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { trainerLessonsApi, studentsApi, usersApi, groupsApi, salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import type { TrainerLessonSlot, AbsenceReason, Group, Student } from '../types';
 import type { AbsenceFollowUp } from '../types';
 
@@ -59,9 +60,12 @@ const REASON_LABELS: Record<string, string> = {
 
 const TrainerLessonsPage: React.FC = () => {
   const { user } = useAuth();
-  const canMoveLessons = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
-  const canAddStudentToLesson = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales' || user?.role === 'trainer';
-  const canRemoveStudentFromLesson = user?.role === 'admin' || user?.role === 'owner';
+  const effectiveRole = getEffectiveRole(user);
+  const canAccessLessons = hasPermission(user, 'lessons.access');
+  const canManageLessons = hasPermission(user, 'lessons.manage');
+  const canMoveLessons = hasPermission(user, 'lessons.schedule_manage');
+  const canAddStudentToLesson = canManageLessons;
+  const canRemoveStudentFromLesson = hasPermission(user, 'lessons.override');
   const [searchParams] = useSearchParams();
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
   const [slots, setSlots] = useState<TrainerLessonSlot[]>([]);
@@ -109,7 +113,7 @@ const TrainerLessonsPage: React.FC = () => {
     end_time: string;
   } | null>(null);
 
-  const canCreateManualLesson = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'sales';
+  const canCreateManualLesson = canMoveLessons && hasPermission(user, 'sales.access');
   const [addLessonChoiceOpen, setAddLessonChoiceOpen] = useState(false);
   const [manualLessonDialogOpen, setManualLessonDialogOpen] = useState(false);
   const [manualTitle, setManualTitle] = useState('');
@@ -157,16 +161,16 @@ const TrainerLessonsPage: React.FC = () => {
 
   useEffect(() => {
     if (!user) return;
-    if (!(canMoveLessons || user.role === 'trainer')) return;
+    if (!canManageLessons) return;
     groupsApi
       .getAll()
       .then((data) => setGroups((data || []).filter((g: Group) => g.status === 'active')))
       .catch(() => {});
-  }, [user, canMoveLessons]);
+  }, [user, canManageLessons]);
 
   useEffect(() => {
     if (!user) return;
-    if (!['trainer', 'admin', 'owner', 'sales'].includes(user.role)) return;
+    if (!canAccessLessons) return;
     const from = format(subDays(new Date(viewDate), 3), 'yyyy-MM-dd');
     const to = format(addDays(new Date(viewDate), 3), 'yyyy-MM-dd');
     setCustomLessonsLoading(true);
@@ -175,7 +179,7 @@ const TrainerLessonsPage: React.FC = () => {
       .then((data) => setCustomLessons(data))
       .catch(() => setCustomLessons([]))
       .finally(() => setCustomLessonsLoading(false));
-  }, [viewDate, user?.role]);
+  }, [viewDate, user, canAccessLessons]);
 
   const handlePrevDay = () => setViewDate((d) => format(subDays(new Date(d), 1), 'yyyy-MM-dd'));
   const handleNextDay = () => setViewDate((d) => format(addDays(new Date(d), 1), 'yyyy-MM-dd'));
@@ -286,7 +290,7 @@ const TrainerLessonsPage: React.FC = () => {
         students: manualSelectedStudents.map((s) => ({ student_id: s.id, planned_absence_id: manualPlannedAbsenceByStudentId[s.id] ?? null })),
       });
       setManualLessonDialogOpen(false);
-      if (user?.role === 'trainer') {
+      if (effectiveRole === 'trainer') {
         const from = format(subDays(new Date(viewDate), 3), 'yyyy-MM-dd');
         const to = format(addDays(new Date(viewDate), 3), 'yyyy-MM-dd');
         const data = await trainerLessonsApi.getCustomLessons({ date_from: from, date_to: to });
@@ -625,7 +629,7 @@ const TrainerLessonsPage: React.FC = () => {
           <Button size="small" onClick={handleToday}>Сегодня</Button>
           <Button size="small" onClick={handleNextDay}>{'>'}</Button>
           <Typography variant="h6">{displayDate} ({displayWeekday})</Typography>
-          {(canMoveLessons || user?.role === 'trainer') && (
+          {canManageLessons && (
             <Button size="small" variant="outlined" onClick={openAddLessonChoice}>
               Добавить урок
             </Button>
@@ -1226,7 +1230,7 @@ const TrainerLessonsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {user?.role === 'trainer' && (
+      {effectiveRole === 'trainer' && (
         <>
           <Card variant="outlined" sx={{ mt: 2 }}>
             <CardContent>

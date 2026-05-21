@@ -22,7 +22,7 @@ router = APIRouter()
 async def reset_trainer_password(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"])),
+    current_user: User = Depends(auth.require_permission("admin_tools.manage")),
 ) -> Dict[str, str]:
     """
     Админский сброс пароля тренера:
@@ -34,7 +34,7 @@ async def reset_trainer_password(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.role != UserRole.TRAINER:
+    if auth.resolve_effective_role(user) != UserRole.TRAINER:
         raise HTTPException(status_code=400, detail="Можно сбрасывать пароль только тренерам")
 
     # Генерация временного пароля: буквы + цифры, 10 символов

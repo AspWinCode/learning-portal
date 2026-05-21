@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -12,7 +12,17 @@ from uuid import uuid4
 from app.database import get_db
 from app import auth
 from app.models import AppSetting, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, User
-from app.schemas import LogoResponse, LogoUpdate
+from app.schemas import (
+    LogoResponse,
+    LogoUpdate,
+    ParentWeeklyDigestSettingsResponse,
+    ParentWeeklyDigestSettingsUpdate,
+)
+from app.services.parent_weekly_digest import (
+    DEFAULT_PARENT_WEEKLY_DIGEST_SETTINGS,
+    get_parent_weekly_digest_settings,
+    set_parent_weekly_digest_settings as save_parent_weekly_digest_settings,
+)
 from app.services.email_sender import is_email_configured
 from app.services.owner_workspace_notifications import (
     EMAIL_STATUS_DISABLED,
@@ -43,6 +53,7 @@ OWNER_WS_NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
 OWNER_WS_TASK_TAGS_KEY = "owner_workspace_task_tag_dictionary"
 OWNER_WS_CONTACT_TAGS_KEY = "owner_workspace_contact_tag_dictionary"
 OWNER_WS_CONTACT_SOURCES_KEY = "owner_workspace_contact_source_dictionary"
+PARENT_WEEKLY_DIGEST_SETTINGS_KEY = "parent_weekly_digest_settings"
 OWNER_WS_SETTINGS_BUNDLE_VERSION = 1
 OWNER_WS_SETTINGS_SNAPSHOTS_KEY = "owner_workspace_settings_snapshots"
 
@@ -237,8 +248,8 @@ class OwnerWorkspaceSettingsBundleMetaResponse(BaseModel):
     version: int
     source: str
     exported_at: datetime
-    exported_by_id: int | None = None
-    exported_by_name: str | None = None
+    exported_by_id: Optional[int] = None
+    exported_by_name: Optional[str] = None
     summary: OwnerWorkspaceSettingsBundleSummaryResponse
 
 
@@ -250,10 +261,10 @@ class OwnerWorkspaceSettingsBundleEnvelopeResponse(BaseModel):
 class OwnerWorkspaceSettingsSnapshotResponse(BaseModel):
     id: str
     name: str
-    note: str | None = None
+    note: Optional[str] = None
     created_at: datetime
-    created_by_id: int | None = None
-    created_by_name: str | None = None
+    created_by_id: Optional[int] = None
+    created_by_name: Optional[str] = None
     bundle: OwnerWorkspaceSettingsBundleEnvelopeResponse
 
 
@@ -263,17 +274,17 @@ class OwnerWorkspaceSettingsSnapshotsResponse(BaseModel):
 
 class OwnerWorkspaceSettingsSnapshotCreateRequest(BaseModel):
     name: str
-    note: str | None = None
+    note: Optional[str] = None
 
 
 class OwnerWorkspaceSettingsSnapshotUpdateRequest(BaseModel):
     name: str
-    note: str | None = None
+    note: Optional[str] = None
 
 
 class OwnerWorkspaceSettingsSnapshotDuplicateRequest(BaseModel):
-    name: str | None = None
-    note: str | None = None
+    name: Optional[str] = None
+    note: Optional[str] = None
 
 
 class OwnerWorkspaceNotificationDeliveryChannelStats(BaseModel):
@@ -290,13 +301,13 @@ class OwnerWorkspaceNotificationDeliveryFailureItem(BaseModel):
     user_name: str
     kind: str
     title: str
-    created_at: datetime | None = None
+    created_at: Optional[datetime] = None
     email_delivery_status: str
     email_attempts: int
-    email_last_error: str | None = None
+    email_last_error: Optional[str] = None
     web_push_delivery_status: str
     web_push_attempts: int
-    web_push_last_error: str | None = None
+    web_push_last_error: Optional[str] = None
 
 
 class OwnerWorkspaceNotificationDeliveryStatsResponse(BaseModel):
@@ -519,7 +530,7 @@ def _build_owner_ws_settings_bundle_summary(bundle: dict) -> dict:
     }
 
 
-def _build_owner_ws_settings_bundle_envelope(bundle: dict, current_user: User | None) -> dict:
+def _build_owner_ws_settings_bundle_envelope(bundle: dict, current_user: Optional[User]) -> dict:
     return {
         "meta": {
             "version": OWNER_WS_SETTINGS_BUNDLE_VERSION,
@@ -727,7 +738,7 @@ async def get_logo(
 async def set_logo(
     body: LogoUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     data_url = (body.data_url or "").strip()
     if not data_url.startswith("data:image/"):
@@ -753,7 +764,7 @@ async def set_logo(
 @router.get("/b2b-districts", response_model=B2BDistrictsResponse)
 async def get_b2b_districts(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("settings.access")),
 ):
     setting = db.query(AppSetting).filter(AppSetting.key == DISTRICTS_KEY).first()
     if not setting or not (setting.value or "").strip():
@@ -773,7 +784,7 @@ async def get_b2b_districts(
 async def set_b2b_districts(
     body: B2BDistrictsUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     items = [s.strip() for s in body.items if s and s.strip()]
     raw = json.dumps(items, ensure_ascii=False)
@@ -812,7 +823,7 @@ async def get_refused_reasons(
 async def set_refused_reasons(
     body: RefusedReasonsUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     items = [s.strip() for s in body.items if s and s.strip()]
     raw = json.dumps(items, ensure_ascii=False)
@@ -828,6 +839,42 @@ async def set_refused_reasons(
     return RefusedReasonsResponse(items=items)
 
 
+@router.get("/parent-weekly-digest", response_model=ParentWeeklyDigestSettingsResponse)
+async def get_parent_weekly_digest(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.access")),
+):
+    data = get_parent_weekly_digest_settings(db)
+    return ParentWeeklyDigestSettingsResponse(
+        enabled=bool(data.get("enabled", DEFAULT_PARENT_WEEKLY_DIGEST_SETTINGS["enabled"])),
+        weekday=int(data.get("weekday", DEFAULT_PARENT_WEEKLY_DIGEST_SETTINGS["weekday"])),
+        send_time=str(data.get("send_time", DEFAULT_PARENT_WEEKLY_DIGEST_SETTINGS["send_time"])),
+    )
+
+
+@router.post("/parent-weekly-digest", response_model=ParentWeeklyDigestSettingsResponse)
+async def set_parent_weekly_digest_settings_route(
+    body: ParentWeeklyDigestSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    current = get_parent_weekly_digest_settings(db)
+    saved = save_parent_weekly_digest_settings(
+        db,
+        {
+            **current,
+            "enabled": bool(body.enabled),
+            "weekday": int(body.weekday),
+            "send_time": body.send_time,
+        },
+    )
+    return ParentWeeklyDigestSettingsResponse(
+        enabled=bool(saved.get("enabled", True)),
+        weekday=int(saved.get("weekday", 4)),
+        send_time=str(saved.get("send_time", "09:00")),
+    )
+
+
 @router.get("/owner-workspace-task-config", response_model=OwnerWorkspaceTaskConfigResponse)
 async def get_owner_workspace_task_config(
     db: Session = Depends(get_db),
@@ -841,7 +888,7 @@ async def get_owner_workspace_task_config(
 async def set_owner_workspace_task_config(
     body: OwnerWorkspaceTaskConfigUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     data = {
         "statuses": _normalize_owner_ws_task_items(
@@ -873,7 +920,7 @@ async def get_owner_workspace_project_config(
 async def set_owner_workspace_project_config(
     body: OwnerWorkspaceProjectConfigUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     data = {
         "statuses": _normalize_owner_ws_task_items(
@@ -900,7 +947,7 @@ async def get_owner_workspace_permission_policy(
 async def set_owner_workspace_permission_policy(
     body: OwnerWorkspacePermissionPolicyUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     data = {
         "manager_can_manage_team": bool(body.manager_can_manage_team),
@@ -940,7 +987,7 @@ async def get_owner_workspace_notification_config(
 async def set_owner_workspace_notification_config(
     body: OwnerWorkspaceNotificationConfigUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     data = {
         "items": _normalize_owner_ws_task_items(
@@ -966,7 +1013,7 @@ async def get_owner_workspace_task_tags(
 async def set_owner_workspace_task_tags(
     body: OwnerWorkspaceTagDictionaryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_TASK_TAGS_KEY, items)
@@ -986,7 +1033,7 @@ async def get_owner_workspace_contact_tags(
 async def set_owner_workspace_contact_tags(
     body: OwnerWorkspaceTagDictionaryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_CONTACT_TAGS_KEY, items)
@@ -1006,7 +1053,7 @@ async def get_owner_workspace_contact_sources(
 async def set_owner_workspace_contact_sources(
     body: OwnerWorkspaceTagDictionaryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, items)
@@ -1017,7 +1064,7 @@ async def set_owner_workspace_contact_sources(
 @router.get("/owner-workspace-settings-bundle", response_model=OwnerWorkspaceSettingsBundleEnvelopeResponse)
 async def get_owner_workspace_settings_bundle(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.access")),
 ):
     bundle = _build_owner_ws_settings_bundle(db)
     return OwnerWorkspaceSettingsBundleEnvelopeResponse.model_validate(
@@ -1029,7 +1076,7 @@ async def get_owner_workspace_settings_bundle(
 async def set_owner_workspace_settings_bundle(
     body: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     bundle = _normalize_owner_ws_settings_bundle(_extract_owner_ws_settings_bundle_update(body))
     _apply_owner_ws_settings_bundle(db, bundle)
@@ -1042,7 +1089,7 @@ async def set_owner_workspace_settings_bundle(
 @router.get("/owner-workspace-settings-snapshots", response_model=OwnerWorkspaceSettingsSnapshotsResponse)
 async def get_owner_workspace_settings_snapshots(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.access")),
 ):
     return OwnerWorkspaceSettingsSnapshotsResponse(items=_get_owner_ws_settings_snapshots(db))
 
@@ -1051,7 +1098,7 @@ async def get_owner_workspace_settings_snapshots(
 async def create_owner_workspace_settings_snapshot(
     body: OwnerWorkspaceSettingsSnapshotCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = (body.name or "").strip()
     if not name:
@@ -1078,7 +1125,7 @@ async def update_owner_workspace_settings_snapshot(
     snapshot_id: str,
     body: OwnerWorkspaceSettingsSnapshotUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = (body.name or "").strip()
     if not name:
@@ -1099,7 +1146,7 @@ async def duplicate_owner_workspace_settings_snapshot(
     snapshot_id: str,
     body: OwnerWorkspaceSettingsSnapshotDuplicateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     snapshots = _get_owner_ws_settings_snapshots(db)
     snapshot = next((item for item in snapshots if item["id"] == snapshot_id), None)
@@ -1127,7 +1174,7 @@ async def duplicate_owner_workspace_settings_snapshot(
 async def apply_owner_workspace_settings_snapshot(
     snapshot_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     snapshots = _get_owner_ws_settings_snapshots(db)
     snapshot = next((item for item in snapshots if item["id"] == snapshot_id), None)
@@ -1145,7 +1192,7 @@ async def apply_owner_workspace_settings_snapshot(
 async def delete_owner_workspace_settings_snapshot(
     snapshot_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     snapshots = _get_owner_ws_settings_snapshots(db)
     filtered = [item for item in snapshots if item["id"] != snapshot_id]
@@ -1162,7 +1209,7 @@ async def delete_owner_workspace_settings_snapshot(
 )
 async def get_owner_workspace_notification_delivery_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.access")),
 ):
     missing_email_env = _missing_email_env()
     missing_web_push_env = _missing_web_push_env()
@@ -1237,7 +1284,7 @@ async def get_owner_workspace_notification_delivery_stats(
 async def retry_owner_workspace_notification_delivery(
     body: OwnerWorkspaceNotificationDeliveryRetryRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner", "admin"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     notification_ids = sorted({int(item) for item in body.notification_ids if int(item) > 0})
     if not notification_ids:

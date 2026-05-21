@@ -44,6 +44,10 @@ from app.schemas import (
     FinanceArticleUpdate,
     FinanceAccountBalance,
     FinancePnlRow,
+    FinanceAnalyticsSummaryResponse,
+    FinanceAnalyticsKpiBlock,
+    FinanceAnalyticsTargetBreakdownRow,
+    FinanceAnalyticsExpenseBreakdownRow,
     FinanceTransactionApplyStudentRequest,
     BankTransactionResponse,
     BankTransactionApplyRequest,
@@ -52,6 +56,7 @@ from app.schemas import (
 from app.services.finance_ledger import apply_recognition_rules
 from app.services.student_account_finance import create_student_account as finance_create_student_account
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
+from app.services.payment_status import get_payment_status_summary
 from app.dependencies import require_finance_access as dep_require_finance_access
 
 
@@ -60,7 +65,7 @@ router = APIRouter()
 
 def _require_finance_access(user: User) -> None:
     """Права доступа к финансовому журналу: admin / owner / sales."""
-    if user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+    if not auth.has_permission(user, "finance.access"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для работы с финансовым журналом")
 
 
@@ -468,6 +473,257 @@ async def get_finance_pnl(
             )
         )
     return rows
+
+
+@router.get("/analytics/summary", response_model=FinanceAnalyticsSummaryResponse)
+async def get_finance_analytics_summary(
+    date_from: Optional[date] = Query(None, description="Начало периода (включительно)"),
+    date_to: Optional[date] = Query(None, description="Конец периода (включительно)"),
+    group_by: str = Query("month", description="Группировка P&L: month | date"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(dep_require_finance_access),
+) -> FinanceAnalyticsSummaryResponse:
+    if date_to is None:
+        date_to = date.today()
+    if date_from is None:
+        date_from = date(date_to.year, 1, 1)
+    if date_from > date_to:
+        raise HTTPException(status_code=400, detail="date_from must be <= date_to")
+
+    period_start = datetime.combine(date_from, datetime.min.time())
+    period_end = datetime.combine(date_to, datetime.max.time())
+    days_span = max(1, (date_to - date_from).days + 1)
+    prev_date_to = date_from - timedelta(days=1)
+    prev_date_from = prev_date_to - timedelta(days=days_span - 1)
+    prev_start = datetime.combine(prev_date_from, datetime.min.time())
+    prev_end = datetime.combine(prev_date_to, datetime.max.time())
+
+    def _sum_period(start_dt: datetime, end_dt: datetime) -> Dict[str, float]:
+        rows = (
+            db.query(FinanceTransaction.amount, FinanceTransaction.direction)
+            .filter(
+                FinanceTransaction.occurred_at >= start_dt,
+                FinanceTransaction.occurred_at <= end_dt,
+                FinanceTransaction.direction.in_(
+                    [FinanceTransactionDirection.INCOME, FinanceTransactionDirection.EXPENSE]
+                ),
+            )
+            .all()
+        )
+        income_total = 0.0
+        expense_total = 0.0
+        for amount, direction in rows:
+            amt = float(amount or 0.0)
+            if direction == FinanceTransactionDirection.INCOME:
+                income_total += amt
+            elif direction == FinanceTransactionDirection.EXPENSE:
+                expense_total += abs(amt)
+        return {
+            "income": round(income_total, 2),
+            "expense": round(expense_total, 2),
+            "profit": round(income_total - expense_total, 2),
+        }
+
+    current_totals = _sum_period(period_start, period_end)
+    previous_totals = _sum_period(prev_start, prev_end)
+
+    payment_summary = get_payment_status_summary(db, today=date_to)
+
+    unclassified_rows = (
+        db.query(FinanceTransaction.amount, FinanceTransaction.direction)
+        .filter(
+            FinanceTransaction.occurred_at >= period_start,
+            FinanceTransaction.occurred_at <= period_end,
+            (FinanceTransaction.target_id.is_(None)) | (FinanceTransaction.article_id.is_(None)),
+        )
+        .all()
+    )
+    unclassified_amount = 0.0
+    for amount, direction in unclassified_rows:
+        amt = float(amount or 0.0)
+        if direction == FinanceTransactionDirection.EXPENSE:
+            unclassified_amount += abs(amt)
+        else:
+            unclassified_amount += amt
+
+    pnl_query = (
+        db.query(FinanceTransaction)
+        .filter(
+            FinanceTransaction.occurred_at >= period_start,
+            FinanceTransaction.occurred_at <= period_end,
+            FinanceTransaction.direction.in_(
+                [FinanceTransactionDirection.INCOME, FinanceTransactionDirection.EXPENSE]
+            ),
+        )
+        .all()
+    )
+    pnl_buckets: Dict[str, Dict[str, float]] = {}
+    for tx in pnl_query:
+        if not tx.occurred_at:
+            continue
+        key = tx.occurred_at.date().isoformat() if group_by == "date" else f"{tx.occurred_at.year:04d}-{tx.occurred_at.month:02d}"
+        if key not in pnl_buckets:
+            pnl_buckets[key] = {"income": 0.0, "expense": 0.0}
+        amt = float(tx.amount or 0.0)
+        if tx.direction == FinanceTransactionDirection.INCOME:
+            pnl_buckets[key]["income"] += amt
+        elif tx.direction == FinanceTransactionDirection.EXPENSE:
+            pnl_buckets[key]["expense"] += abs(amt)
+    pnl_rows = [
+        FinancePnlRow(
+            period=key,
+            income=round(values["income"], 2),
+            expense=round(values["expense"], 2),
+            profit=round(values["income"] - values["expense"], 2),
+        )
+        for key, values in sorted(pnl_buckets.items())
+    ]
+
+    target_rows = (
+        db.query(
+            FinanceTarget.id,
+            FinanceTarget.code,
+            FinanceTarget.name,
+            FinanceTransaction.amount,
+            FinanceTransaction.direction,
+        )
+        .join(FinanceTarget, FinanceTarget.id == FinanceTransaction.target_id, isouter=True)
+        .filter(
+            FinanceTransaction.occurred_at >= period_start,
+            FinanceTransaction.occurred_at <= period_end,
+            FinanceTransaction.direction.in_(
+                [FinanceTransactionDirection.INCOME, FinanceTransactionDirection.EXPENSE]
+            ),
+        )
+        .all()
+    )
+    target_buckets: Dict[str, Dict[str, object]] = {}
+    for target_id, code, name, amount, direction in target_rows:
+        bucket_key = str(code or "__unassigned__")
+        if bucket_key not in target_buckets:
+            target_buckets[bucket_key] = {
+                "target_id": target_id,
+                "target_code": code or "unassigned",
+                "target_name": name or "Не распределено",
+                "income": 0.0,
+                "expense": 0.0,
+            }
+        amt = float(amount or 0.0)
+        if direction == FinanceTransactionDirection.INCOME:
+            target_buckets[bucket_key]["income"] = float(target_buckets[bucket_key]["income"]) + amt
+        elif direction == FinanceTransactionDirection.EXPENSE:
+            target_buckets[bucket_key]["expense"] = float(target_buckets[bucket_key]["expense"]) + abs(amt)
+    target_breakdown = sorted(
+        [
+            FinanceAnalyticsTargetBreakdownRow(
+                target_id=data["target_id"],
+                target_code=str(data["target_code"]),
+                target_name=str(data["target_name"]),
+                income=round(float(data["income"]), 2),
+                expense=round(float(data["expense"]), 2),
+                profit=round(float(data["income"]) - float(data["expense"]), 2),
+            )
+            for data in target_buckets.values()
+        ],
+        key=lambda row: abs(row.profit),
+        reverse=True,
+    )
+
+    expense_rows = (
+        db.query(
+            FinanceArticle.id,
+            FinanceArticle.name,
+            FinanceArticle.cost_kind,
+            FinanceTransaction.amount,
+        )
+        .join(FinanceArticle, FinanceArticle.id == FinanceTransaction.article_id, isouter=True)
+        .filter(
+            FinanceTransaction.occurred_at >= period_start,
+            FinanceTransaction.occurred_at <= period_end,
+            FinanceTransaction.direction == FinanceTransactionDirection.EXPENSE,
+        )
+        .all()
+    )
+    expense_buckets: Dict[str, Dict[str, object]] = {}
+    for article_id, name, cost_kind, amount in expense_rows:
+        bucket_key = str(article_id or "__unassigned__")
+        if bucket_key not in expense_buckets:
+            expense_buckets[bucket_key] = {
+                "article_id": article_id,
+                "article_name": name or "Без статьи",
+                "cost_kind": str(getattr(cost_kind, "value", cost_kind)) if cost_kind is not None else None,
+                "amount": 0.0,
+            }
+        expense_buckets[bucket_key]["amount"] = float(expense_buckets[bucket_key]["amount"]) + abs(float(amount or 0.0))
+    expense_breakdown = sorted(
+        [
+            FinanceAnalyticsExpenseBreakdownRow(
+                article_id=data["article_id"],
+                article_name=str(data["article_name"]),
+                cost_kind=data["cost_kind"],
+                amount=round(float(data["amount"]), 2),
+            )
+            for data in expense_buckets.values()
+        ],
+        key=lambda row: row.amount,
+        reverse=True,
+    )[:12]
+
+    accounts = db.query(FinanceAccount).filter(FinanceAccount.is_active.is_(True)).all()
+    balance_map: Dict[int, Dict[str, float]] = {
+        acc.id: {"income": 0.0, "expense": 0.0, "balance": 0.0} for acc in accounts
+    }
+    balance_rows = db.query(FinanceTransaction).filter(FinanceTransaction.occurred_at <= period_end).all()
+    for tx in balance_rows:
+        if tx.direction == FinanceTransactionDirection.INCOME and tx.account_id in balance_map:
+            amt = float(tx.amount or 0.0)
+            balance_map[tx.account_id]["income"] += amt
+            balance_map[tx.account_id]["balance"] += amt
+        elif tx.direction == FinanceTransactionDirection.EXPENSE and tx.account_id in balance_map:
+            amt = float(tx.amount or 0.0)
+            balance_map[tx.account_id]["expense"] += abs(amt)
+            balance_map[tx.account_id]["balance"] += amt
+        elif tx.direction == FinanceTransactionDirection.TRANSFER:
+            amt = abs(float(tx.amount or 0.0))
+            if tx.account_id in balance_map:
+                balance_map[tx.account_id]["balance"] -= amt
+            if tx.to_account_id in balance_map:
+                balance_map[tx.to_account_id]["balance"] += amt
+    account_balances = [
+        FinanceAccountBalance(
+            account_id=acc.id,
+            account_code=acc.code,
+            account_name=acc.name,
+            income_total=round(balance_map[acc.id]["income"], 2),
+            expense_total=round(balance_map[acc.id]["expense"], 2),
+            balance=round(balance_map[acc.id]["balance"], 2),
+        )
+        for acc in sorted(accounts, key=lambda item: item.code)
+    ]
+
+    return FinanceAnalyticsSummaryResponse(
+        date_from=date_from,
+        date_to=date_to,
+        kpi=FinanceAnalyticsKpiBlock(
+            income_total=current_totals["income"],
+            expense_total=current_totals["expense"],
+            profit_total=current_totals["profit"],
+            prev_income_total=previous_totals["income"],
+            prev_expense_total=previous_totals["expense"],
+            prev_profit_total=previous_totals["profit"],
+            income_delta=round(current_totals["income"] - previous_totals["income"], 2),
+            expense_delta=round(current_totals["expense"] - previous_totals["expense"], 2),
+            profit_delta=round(current_totals["profit"] - previous_totals["profit"], 2),
+            overdue_payments_3_count=int(payment_summary["overdue_3_count"]),
+            overdue_payments_10_count=int(payment_summary["overdue_10_count"]),
+            unclassified_transactions_count=len(unclassified_rows),
+            unclassified_transactions_amount=round(unclassified_amount, 2),
+        ),
+        pnl=pnl_rows,
+        target_breakdown=target_breakdown,
+        expense_breakdown=expense_breakdown,
+        account_balances=account_balances,
+    )
 
 
 @router.post("/import")

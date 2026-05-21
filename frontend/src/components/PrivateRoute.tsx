@@ -2,13 +2,15 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { CircularProgress, Box } from '@mui/material';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
   allowedRoles?: string[];
+  requiredPermission?: string;
 }
 
-const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, allowedRoles }) => {
+const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, allowedRoles, requiredPermission }) => {
   const { isAuthenticated, user, loading } = useAuth();
 
   if (loading) {
@@ -28,7 +30,8 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, allowedRoles }) =
     if (effectiveRoles.has('admin')) {
       effectiveRoles.add('owner');
     }
-    if (!effectiveRoles.has(user.role)) {
+    const effectiveRole = getEffectiveRole(user);
+    if (!effectiveRole || !effectiveRoles.has(effectiveRole)) {
       return (
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
           <Box textAlign="center">
@@ -42,6 +45,35 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, allowedRoles }) =
         </Box>
       );
     }
+    if (effectiveRole === 'sales' && effectiveRoles.has('sales') && !hasPermission(user, 'sales.access')) {
+      return (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+          <Box textAlign="center">
+            <Box component="h1" sx={{ fontSize: 48, m: 0 }}>
+              403
+            </Box>
+            <Box component="p" sx={{ mt: 1, color: 'text.secondary' }}>
+              РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕР№ СЃС‚СЂР°РЅРёС†Рµ.
+            </Box>
+          </Box>
+        </Box>
+      );
+    }
+  }
+
+  if (requiredPermission && !hasPermission(user, requiredPermission)) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <Box textAlign="center">
+          <Box component="h1" sx={{ fontSize: 48, m: 0 }}>
+            403
+          </Box>
+          <Box component="p" sx={{ mt: 1, color: 'text.secondary' }}>
+            РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕР№ СЃС‚СЂР°РЅРёС†Рµ.
+          </Box>
+        </Box>
+      </Box>
+    );
   }
 
   return <>{children}</>;

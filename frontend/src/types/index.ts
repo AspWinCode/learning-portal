@@ -13,9 +13,14 @@ export const TRAINER_BANK_LABELS: Record<TrainerBankKey, string> = {
 
 export interface User {
   id: number;
+  person_id?: number | null;
   email: string;
   full_name: string;
   role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales';
+  custom_role_id?: number | null;
+  custom_role_name?: string | null;
+  effective_role?: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | null;
+  role_permissions?: string[];
   is_active: boolean;
   created_at: string;
   trainer_rate?: number | null;
@@ -35,6 +40,166 @@ export interface User {
   trainer_comment?: string | null;
 }
 
+export interface Role {
+  id: number;
+  key: string;
+  name: string;
+  description?: string | null;
+  base_role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales';
+  permissions: string[];
+  is_system: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface PermissionCatalogItem {
+  key: string;
+  module: string;
+  label: string;
+  description: string;
+}
+
+export interface CommunicationTemplate {
+  id: number;
+  name: string;
+  category?: string | null;
+  event_key?: string | null;
+  channel: 'sms' | 'email' | 'max' | 'telegram' | 'web_push';
+  subject?: string | null;
+  text: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface CommunicationQueueItem {
+  id: string;
+  recipient_type: string;
+  recipient_id: number;
+  channel: string;
+  template_id?: number | null;
+  template_name?: string | null;
+  status: string;
+  attempt_count: number;
+  last_attempt_at?: string | null;
+  sent_at?: string | null;
+  error?: string | null;
+  payload?: Record<string, unknown> | null;
+  dedupe_key?: string | null;
+  created_at: string;
+}
+
+export interface TrainerCockpitTodoGradeItem {
+  student_id: number;
+  student_name: string;
+  group_name?: string | null;
+  last_lesson_date: string;
+  lessons_without_grade_count: number;
+}
+
+export interface TrainerCockpitDraftCharacteristicItem {
+  characteristic_id: number;
+  student_id: number;
+  student_name: string;
+  month: number;
+  year: number;
+  created_at: string;
+}
+
+export interface TrainerCockpitStudentProgressItem {
+  student_id: number;
+  student_name: string;
+  group_name?: string | null;
+  program_name?: string | null;
+  progress_percent: number;
+  graded_topics: number;
+  total_topics: number;
+}
+
+export interface TrainerCockpitNotificationItem {
+  notification_type: 'characteristic_status' | 'substitution' | string;
+  status: string;
+  title: string;
+  description: string;
+  created_at: string;
+}
+
+export interface LeadAIInsight {
+  score: number;
+  stage: 'hot' | 'warm' | 'cooling' | 'cold' | string;
+  best_next_action: string;
+  reasons: string[];
+}
+
+export interface StudentWeakZoneAIInsight {
+  topic_name: string;
+  module_name?: string | null;
+  average_grade: number;
+  grade_count: number;
+  recommendation: string;
+}
+
+export interface StudentDropoutRiskAIInsight {
+  score: number;
+  level: 'low' | 'medium' | 'high' | string;
+  reasons: string[];
+  recommended_action: string;
+}
+
+export interface StudentLearningAIInsight {
+  weak_zone?: StudentWeakZoneAIInsight | null;
+  dropout_risk: StudentDropoutRiskAIInsight;
+}
+
+export interface TrainerCockpitSummary {
+  todo_grade_items: TrainerCockpitTodoGradeItem[];
+  draft_characteristics: TrainerCockpitDraftCharacteristicItem[];
+  my_students: Array<TrainerCockpitStudentProgressItem & { ai_insight?: StudentLearningAIInsight | null }>;
+  characteristic_notifications: TrainerCockpitNotificationItem[];
+  substitution_notifications: TrainerCockpitNotificationItem[];
+}
+
+export interface OwnerDashboardMetricPoint {
+  label: string;
+  value: number;
+}
+
+export interface OwnerAIInsight {
+  kind: string;
+  severity: 'info' | 'warning' | 'critical' | string;
+  title: string;
+  summary: string;
+}
+
+export interface OwnerDashboardSummary {
+  generated_at: string;
+  month_label: string;
+  active_students: number;
+  active_groups: number;
+  active_trainers: number;
+  active_sales_managers: number;
+  new_leads_today: number;
+  new_leads_month: number;
+  won_leads_month: number;
+  active_pipeline_count: number;
+  registered_events_month: number;
+  payments_received_month: number;
+  payments_transactions_month: number;
+  overdue_payments_3_count: number;
+  overdue_payments_10_count: number;
+  owner_workspace_overdue_tasks: number;
+  owner_workspace_waiting_tasks: number;
+  owner_workspace_completed_7_days: number;
+  owner_workspace_completed_30_days: number;
+  owner_workspace_avg_days_to_complete_30?: number | null;
+  makeups_pending_total: number;
+  makeups_waiting_parent: number;
+  makeups_assigned: number;
+  leads_last_14_days: OwnerDashboardMetricPoint[];
+  payments_last_14_days: OwnerDashboardMetricPoint[];
+  ai_insights: OwnerAIInsight[];
+}
+
 export interface Student {
   id: number;
   full_name: string;
@@ -49,6 +214,18 @@ export interface Student {
   programs?: ProgramSummary[];
   /** true если ученик привязан хотя бы к одной группе */
   in_group?: boolean;
+}
+
+export interface StudentTimelineEvent {
+  id: number;
+  student_id: number;
+  type: string;
+  title: string;
+  description?: string | null;
+  created_by?: number | null;
+  creator_name?: string | null;
+  created_at: string;
+  payload_json?: Record<string, unknown> | null;
 }
 
 export interface StudentAccountTransaction {
@@ -119,7 +296,7 @@ export interface LessonSlotExtraPolicy {
   extra_rate_per_unit?: number | null;
 }
 
-export type AbsenceFollowUpStage = 'missed' | 'assigned' | 'made_up' | 'missed_makeup';
+export type AbsenceFollowUpStage = 'missed' | 'assigned' | 'link_sent' | 'made_up' | 'missed_makeup';
 
 export interface AbsenceFollowUp {
   id: number;
@@ -149,6 +326,15 @@ export interface MakeupSuggestionItem {
   lesson_date: string;
   day_of_week: number;
   start_time?: string | null;
+}
+
+export interface PublicMakeupSlotsResponse {
+  absence_id: number;
+  student_id: number;
+  student_name?: string | null;
+  original_group_name?: string | null;
+  missed_lesson_date: string;
+  available_slots: MakeupSuggestionItem[];
 }
 
 export interface GroupSchedule {
@@ -333,6 +519,7 @@ export interface LeadStatusOption {
 export interface Lead {
   id: number;
   owner_id: number;
+  person_id?: number | null;
   contact_name: string;
   phone: string;
   parent_full_name?: string | null;
@@ -374,6 +561,7 @@ export interface Lead {
   max_user_id?: number | null;
   /** Дата последнего контакта (звонок / недозвон / инфо) */
   last_contact_at?: string | null;
+  ai_insight?: LeadAIInsight | null;
 }
 
 export type LeadTaskStatus = 'open' | 'done';
@@ -507,6 +695,48 @@ export interface FinancePnlRow {
   profit: number;
 }
 
+export interface FinanceAnalyticsKpiBlock {
+  income_total: number;
+  expense_total: number;
+  profit_total: number;
+  prev_income_total: number;
+  prev_expense_total: number;
+  prev_profit_total: number;
+  income_delta: number;
+  expense_delta: number;
+  profit_delta: number;
+  overdue_payments_3_count: number;
+  overdue_payments_10_count: number;
+  unclassified_transactions_count: number;
+  unclassified_transactions_amount: number;
+}
+
+export interface FinanceAnalyticsTargetBreakdownRow {
+  target_id?: number | null;
+  target_code: string;
+  target_name: string;
+  income: number;
+  expense: number;
+  profit: number;
+}
+
+export interface FinanceAnalyticsExpenseBreakdownRow {
+  article_id?: number | null;
+  article_name: string;
+  cost_kind?: string | null;
+  amount: number;
+}
+
+export interface FinanceAnalyticsSummary {
+  date_from: string;
+  date_to: string;
+  kpi: FinanceAnalyticsKpiBlock;
+  pnl: FinancePnlRow[];
+  target_breakdown: FinanceAnalyticsTargetBreakdownRow[];
+  expense_breakdown: FinanceAnalyticsExpenseBreakdownRow[];
+  account_balances: FinanceAccountBalance[];
+}
+
 export interface SalesInstruction {
   id: number;
   title: string;
@@ -518,6 +748,7 @@ export interface SalesInstruction {
 
 export interface StudentCard {
   id: number;
+  person_id?: number | null;
   student_id?: number | null;
   student_full_name: string;
   parent_cabinet_open?: boolean;
@@ -544,11 +775,60 @@ export interface StudentCard {
   abonement_id?: number | null;
   discount_type: 'none' | 'amount' | 'percent';
   discount_value: number;
+  learning_period_start?: string | null;
+  next_payment_date?: string | null;
   archived: boolean;
   anketa_status?: string; // draft | filled | converted | cancelled
   created_at: string;
   updated_at?: string | null;
   abonement?: Abonement | null;
+}
+
+export interface ParentDashboardNearestLesson {
+  group_id: number;
+  group_name: string;
+  lesson_date: string;
+  start_time: string;
+  end_time: string;
+  trainer_id?: number | null;
+  trainer_name?: string | null;
+}
+
+export interface ParentDashboardStudentSummary {
+  student_id: number;
+  student_name: string;
+  current_balance: number;
+  next_payment_date?: string | null;
+  payment_link?: string | null;
+  nearest_lesson?: ParentDashboardNearestLesson | null;
+  ai_insight?: StudentLearningAIInsight | null;
+}
+
+export interface ParentDashboardSummary {
+  students: ParentDashboardStudentSummary[];
+}
+
+export interface ParentQuestionCreate {
+  student_id: number;
+  topic?: string;
+  message: string;
+}
+
+export interface ParentQuestion {
+  id: number;
+  parent_user_id: number;
+  student_id: number;
+  target_trainer_id?: number | null;
+  topic?: string | null;
+  message: string;
+  status: string;
+  created_at: string;
+}
+
+export interface ParentWeeklyDigestSettings {
+  enabled: boolean;
+  weekday: number;
+  send_time: string;
 }
 
 export interface AnketaConvertRequest {
@@ -1335,5 +1615,139 @@ export interface OwnerWorkspaceSettingsSnapshot {
 export interface OwnerWorkspaceTaskCompleteResult {
   completed_task: OwnerWorkspaceTask;
   next_task: OwnerWorkspaceTask | null;
+}
+
+export interface PersonalFinanceAccount {
+  id: number;
+  owner_id: number;
+  name: string;
+  currency: string;
+  balance: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface PersonalFinanceCategory {
+  id: number;
+  owner_id: number;
+  name: string;
+  direction: 'income' | 'expense';
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface PersonalFinanceRule {
+  id: number;
+  owner_id: number;
+  pattern: string;
+  category_id?: number | null;
+  display_name?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string | null;
+  category?: PersonalFinanceCategory | null;
+}
+
+export interface PersonalFinanceTransaction {
+  id: number;
+  owner_id: number;
+  account_id: number;
+  category_id?: number | null;
+  amount: number;
+  direction: 'income' | 'expense';
+  article?: string | null;
+  description?: string | null;
+  occurred_at: string;
+  created_at: string;
+  updated_at?: string | null;
+  account?: PersonalFinanceAccount | null;
+  category?: PersonalFinanceCategory | null;
+}
+
+export interface PersonalFinanceSummaryAccountItem {
+  account_id: number;
+  account_name: string;
+  currency: string;
+  balance: number;
+  income_total: number;
+  expense_total: number;
+}
+
+export interface PersonalFinanceSummary {
+  accounts: PersonalFinanceSummaryAccountItem[];
+  total_balance: number;
+  total_income: number;
+  total_expense: number;
+  transactions_count: number;
+}
+
+export interface PhoneSearchUserItem {
+  id: number;
+  person_id?: number | null;
+  full_name: string;
+  email: string;
+  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales';
+  phone?: string | null;
+}
+
+export interface PhoneSearchLeadItem {
+  id: number;
+  person_id?: number | null;
+  contact_name: string;
+  phone: string;
+  parent_full_name?: string | null;
+  child_full_name?: string | null;
+  student_card_id?: number | null;
+  converted_to_student_id?: number | null;
+}
+
+export interface PhoneSearchStudentCardItem {
+  id: number;
+  person_id?: number | null;
+  student_full_name: string;
+  parent_full_name?: string | null;
+  parent_phone?: string | null;
+  student_phone?: string | null;
+  student_id?: number | null;
+}
+
+export interface PhoneSearchResponse {
+  normalized_phone: string;
+  users: PhoneSearchUserItem[];
+  leads: PhoneSearchLeadItem[];
+  student_cards: PhoneSearchStudentCardItem[];
+}
+
+export interface PersonLinkedRecord {
+  entity_type: 'user' | 'lead' | 'student_card';
+  entity_id: number;
+  label: string;
+}
+
+export interface PersonSearchItem {
+  id: number;
+  full_name: string;
+  email?: string | null;
+  phone_normalized?: string | null;
+  role_hint?: string | null;
+  linked_records: PersonLinkedRecord[];
+}
+
+export interface PersonSearchResponse {
+  query: string;
+  items: PersonSearchItem[];
+}
+
+export interface PersonMergeRequest {
+  source_person_id: number;
+  target_person_id: number;
+}
+
+export interface PersonAttachRecordRequest {
+  person_id: number;
+  entity_type: 'user' | 'lead' | 'student_card';
+  entity_id: number;
 }
 

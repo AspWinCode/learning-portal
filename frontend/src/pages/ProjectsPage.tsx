@@ -31,6 +31,7 @@ import { Add as AddIcon, Edit as EditIcon, ViewKanban as KanbanIcon, Archive as 
 import { projectsApi } from '../services/api';
 import { Project } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { hasPermission } from '../utils/permissions';
 
 const ENTITY_LABELS: Record<string, string> = {
   parent: 'Родители',
@@ -56,7 +57,7 @@ const ProjectsPage: React.FC = () => {
   });
   const [createTask, setCreateTask] = useState<boolean>(false);
 
-  const canCreate = user?.role === 'admin' || user?.role === 'owner';
+  const canCreate = hasPermission(user, 'projects.manage');
 
   useEffect(() => {
     load();

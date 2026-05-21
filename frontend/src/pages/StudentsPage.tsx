@@ -36,13 +36,14 @@ import {
   Grid,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon, MoreVert as MoreVertIcon } from '@mui/icons-material';
-import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
-import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType } from '../types';
+import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi, rolesApi } from '../services/api';
+import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType, Role } from '../types';
 import type { AnketaConvertConflict } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
 import AnketaFormDrawer from '../components/AnketaFormDrawer';
 import { applyPhoneMask, isValidPhone, isValidGeorgianPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -109,9 +110,11 @@ const StudentsPage: React.FC = () => {
     full_name: '',
     email: '',
     password: '',
+    custom_role_id: '',
   });
   const [parents, setParents] = useState<User[]>([]);
   const [trainers, setTrainers] = useState<User[]>([]);
+  const [trainerRoles, setTrainerRoles] = useState<Role[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [abonements, setAbonements] = useState<Abonement[]>([]);
@@ -145,19 +148,21 @@ const StudentsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const effectiveRole = getEffectiveRole(user);
   useEffect(() => {
     const detailId = searchParams.get('detail');
     if (detailId && /^\d+$/.test(detailId)) {
       setStudentDetailId(Number(detailId));
     }
   }, [searchParams]);
-  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
-  const isOwner = user?.role === 'owner';
-  const hasFullStudentsView = isAdminLike || user?.role === 'sales';
-  const canAssignAbonement = isAdminLike || user?.role === 'sales';
-  const canManageAccounts = isAdminLike || user?.role === 'parent' || user?.role === 'sales';
-  const canCreateCard = isAdminLike || user?.role === 'sales';
-  const canSeeAnkety = isAdminLike || user?.role === 'sales';
+  const isAdminLike = effectiveRole === 'admin' || effectiveRole === 'owner';
+  const isOwner = effectiveRole === 'owner';
+  const canManageStudents = hasPermission(user, 'students.manage');
+  const hasFullStudentsView = canManageStudents;
+  const canAssignAbonement = canManageStudents;
+  const canManageAccounts = isAdminLike || effectiveRole === 'parent' || effectiveRole === 'sales';
+  const canCreateCard = canManageStudents;
+  const canSeeAnkety = canManageStudents;
   const [citiesList, setCitiesList] = useState<string[]>([]);
   const [schoolsList, setSchoolsList] = useState<string[]>([]);
   const [classesList, setClassesList] = useState<string[]>([]);
@@ -305,7 +310,7 @@ const StudentsPage: React.FC = () => {
     loadGroups();
     loadPrograms();
     studentCardsApi.list({}).then(setStudentCards).catch(() => setStudentCards([]));
-    if (!isOwner || user?.role === 'sales') {
+    if (!isOwner) {
       loadTrainers().then(() => setTrainersLoaded(true));
     }
   }, [user, hasFullStudentsView, isOwner]);
@@ -321,11 +326,11 @@ const StudentsPage: React.FC = () => {
 
   // Тренеры загружаются в первом эффекте (нужны для фильтра на вкладке «Ученики»). Если вкладка «Тренеры» открыта до завершения загрузки — дозагружаем.
   useEffect(() => {
-    if (!hasFullStudentsView || trainersLoaded || (isOwner && user?.role !== 'sales')) return;
+    if (!hasFullStudentsView || trainersLoaded || isOwner) return;
     if (studentsTab === 'trainers') {
       loadTrainers().then(() => setTrainersLoaded(true));
     }
-  }, [hasFullStudentsView, studentsTab, trainersLoaded, isOwner, user?.role]);
+  }, [hasFullStudentsView, studentsTab, trainersLoaded, isOwner]);
 
   // Справочники для диалогов (города, школы, классы) и абонементы — по требованию при открытии добавления/редактирования
   useEffect(() => {
@@ -559,8 +564,9 @@ const StudentsPage: React.FC = () => {
 
   const loadTrainers = async () => {
     try {
-      const data = await usersApi.getAll('trainer');
+      const [data, allRoles] = await Promise.all([usersApi.getAll('trainer'), rolesApi.getAll()]);
       setTrainers(data);
+      setTrainerRoles(allRoles.filter((role) => role.base_role === 'trainer' && role.is_active));
     } catch (err) {
       console.error('Ошибка загрузки тренеров', err);
     }
@@ -1158,7 +1164,7 @@ const StudentsPage: React.FC = () => {
           <Tab label="Ученики" value="students" />
           {canSeeAnkety && <Tab label="Анкеты" value="ankety" />}
           {hasFullStudentsView && <Tab label="Родители" value="parents" />}
-          {hasFullStudentsView && (!isOwner || user?.role === 'sales') && <Tab label="Тренеры" value="trainers" />}
+          {hasFullStudentsView && !isOwner && <Tab label="Тренеры" value="trainers" />}
         </Tabs>
       </Box>
 
@@ -1447,11 +1453,11 @@ const StudentsPage: React.FC = () => {
         </>
       )}
 
-      {studentsTab === 'trainers' && hasFullStudentsView && (!isOwner || user?.role === 'sales') && (
+      {studentsTab === 'trainers' && hasFullStudentsView && !isOwner && (
         <>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h5">Тренеры</Typography>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setTrainerOpen(true); setNewTrainer({ full_name: '', email: '', password: '' }); }}>Создать тренера</Button>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setTrainerOpen(true); setNewTrainer({ full_name: '', email: '', password: '', custom_role_id: '' }); }}>Создать тренера</Button>
           </Box>
           <Box sx={{ mb: 2 }}>
             <TextField size="small" placeholder="Поиск по ФИО / email..." value={trainerSearch} onChange={(e) => setTrainerSearch(e.target.value)} sx={{ minWidth: 280 }} />
@@ -2263,7 +2269,7 @@ const StudentsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {(!isOwner || user?.role === 'sales') && (
+      {!isOwner && (
         <Dialog open={trainerOpen} onClose={() => setTrainerOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Создать тренера</DialogTitle>
           <DialogContent>
@@ -2294,6 +2300,21 @@ const StudentsPage: React.FC = () => {
               required
               helperText="Минимум 6 символов"
             />
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Кастомная роль</InputLabel>
+              <Select
+                label="Кастомная роль"
+                value={newTrainer.custom_role_id}
+                onChange={(e) => setNewTrainer({ ...newTrainer, custom_role_id: String(e.target.value) })}
+              >
+                <MenuItem value="">Без кастомной роли</MenuItem>
+                {trainerRoles.map((role) => (
+                  <MenuItem key={role.id} value={String(role.id)}>
+                    {role.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setTrainerOpen(false)}>Отмена</Button>
@@ -2313,9 +2334,10 @@ const StudentsPage: React.FC = () => {
                     email: newTrainer.email.trim(),
                     password: newTrainer.password,
                     role: 'trainer',
+                    custom_role_id: newTrainer.custom_role_id ? Number(newTrainer.custom_role_id) : undefined,
                   });
                   setTrainerOpen(false);
-                  setNewTrainer({ full_name: '', email: '', password: '' });
+                  setNewTrainer({ full_name: '', email: '', password: '', custom_role_id: '' });
                   setError('');
                   loadTrainers(); // Обновляем список тренеров
                   loadGroups(); // Обновляем группы, так как там может быть новый тренер
@@ -2343,7 +2365,7 @@ const StudentsPage: React.FC = () => {
             <Typography color="textSecondary">Загрузка...</Typography>
           ) : (
             <>
-              {(isAdminLike || user?.role === 'sales') && (
+              {canManageStudents && (
                 <>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
                     <TextField
@@ -2408,7 +2430,7 @@ const StudentsPage: React.FC = () => {
                 </>
               )}
               {accounts.length === 0 ? (
-                <Typography color="textSecondary">Нет счетов. {(isAdminLike || user?.role === 'sales') ? 'Создайте первый счет.' : ''}</Typography>
+                <Typography color="textSecondary">Нет счетов. {canManageStudents ? 'Создайте первый счет.' : ''}</Typography>
               ) : (
                 <Table size="small">
                   <TableHead>
@@ -2434,7 +2456,7 @@ const StudentsPage: React.FC = () => {
                           >
                             Пополнить
                           </Button>
-                          {(isAdminLike || user?.role === 'sales') && (
+                          {canManageStudents && (
                             <>
                               <Button
                                 size="small"
@@ -2512,7 +2534,7 @@ const StudentsPage: React.FC = () => {
                   <TableCell align="right">Сумма (₽)</TableCell>
                   <TableCell>Тип</TableCell>
                   <TableCell>Комментарий</TableCell>
-                  {(isAdminLike || user?.role === 'sales') && (
+                  {canManageStudents && (
                     <TableCell align="right">Действия</TableCell>
                   )}
                 </TableRow>
@@ -2530,7 +2552,7 @@ const StudentsPage: React.FC = () => {
                         : 'Списание (доп. занятие)'}
                     </TableCell>
                     <TableCell>{tx.note || '—'}</TableCell>
-                    {(isAdminLike || user?.role === 'sales') && (
+                    {canManageStudents && (
                       <TableCell align="right">
                         {tx.kind === 'payment' && (
                           <Button

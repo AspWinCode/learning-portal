@@ -70,11 +70,9 @@ class TrainerPayPayload(BaseModel):
 async def get_calculations_trainers(
     month: str = Query(..., description="Период YYYY-MM"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(auth.require_permission("owner_calculations.access")),
 ):
     """Список тренеров для расчётов за месяц: ставки, уроки/часы, оплата, премия, итог. Только owner."""
-    if current_user.role != UserRole.OWNER:
-        raise HTTPException(status_code=403, detail="Only owner")
     try:
         year, month_num = int(month[:4]), int(month[5:7])
         period_start = date(year, month_num, 1)
@@ -151,11 +149,9 @@ async def update_trainer_rate(
     trainer_id: int,
     payload: TrainerRateUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(auth.require_permission("owner_calculations.manage")),
 ):
     """Обновить ставку за урок и/или за час у тренера. Только owner."""
-    if current_user.role != UserRole.OWNER:
-        raise HTTPException(status_code=403, detail="Only owner")
     user = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
     if not user:
         raise HTTPException(status_code=404, detail="Trainer not found")
@@ -172,11 +168,9 @@ async def add_trainer_bonus(
     trainer_id: int,
     payload: TrainerBonusPayload,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(auth.require_permission("owner_calculations.manage")),
 ):
     """Добавить премию тренеру за период. Только owner."""
-    if current_user.role != UserRole.OWNER:
-        raise HTTPException(status_code=403, detail="Only owner")
     user = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
     if not user:
         raise HTTPException(status_code=404, detail="Trainer not found")
@@ -262,11 +256,9 @@ async def pay_trainer(
     trainer_id: int,
     payload: TrainerPayPayload,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(auth.require_permission("owner_calculations.manage")),
 ):
     """Выплатить тренеру за период: создать табель (TrainerPayout). Только owner."""
-    if current_user.role != UserRole.OWNER:
-        raise HTTPException(status_code=403, detail="Only owner")
     user = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
     if not user:
         raise HTTPException(status_code=404, detail="Trainer not found")

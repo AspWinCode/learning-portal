@@ -1,7 +1,10 @@
+import re
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, date, time
 from enum import Enum
+
+from app.permissions import VALID_PERMISSION_KEYS
 
 
 class UserRole(str, Enum):
@@ -122,6 +125,78 @@ class SetPasswordByInvite(BaseModel):
 TRAINER_BANK_KEYS = ["alfa", "tinkoff", "sberbank", "vtb", "ozon"]
 # Формат ведения занятий
 TrainerLessonFormat = Literal["group", "individual", "both"]
+ROLE_KEY_RE = re.compile(r"^[a-z0-9]+(?:[_-][a-z0-9]+)*$")
+
+
+class RoleBase(BaseModel):
+    key: str = Field(..., min_length=2, max_length=64)
+    name: str = Field(..., min_length=1, max_length=128)
+    description: Optional[str] = None
+    base_role: UserRole
+    permissions: List[str] = Field(default_factory=list)
+
+    @field_validator("key")
+    @classmethod
+    def validate_key(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not ROLE_KEY_RE.match(normalized):
+            raise ValueError("Role key must contain lowercase latin letters, numbers, '_' or '-'")
+        return normalized
+
+    @field_validator("permissions")
+    @classmethod
+    def validate_permissions(cls, value: List[str]) -> List[str]:
+        seen: set[str] = set()
+        normalized: List[str] = []
+        for item in value:
+            candidate = item.strip()
+            if not candidate or candidate in seen:
+                continue
+            if candidate not in VALID_PERMISSION_KEYS:
+                raise ValueError(f"Unknown permission: {candidate}")
+            seen.add(candidate)
+            normalized.append(candidate)
+        return normalized
+
+
+class RoleCreate(RoleBase):
+    pass
+
+
+class RoleUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=128)
+    description: Optional[str] = None
+    base_role: Optional[UserRole] = None
+    permissions: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("permissions")
+    @classmethod
+    def validate_permissions(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        seen: set[str] = set()
+        normalized: List[str] = []
+        for item in value:
+            candidate = item.strip()
+            if not candidate or candidate in seen:
+                continue
+            if candidate not in VALID_PERMISSION_KEYS:
+                raise ValueError(f"Unknown permission: {candidate}")
+            seen.add(candidate)
+            normalized.append(candidate)
+        return normalized
+
+
+class RoleResponse(RoleBase):
+    id: int
+    is_system: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 class UserBase(BaseModel):
@@ -132,6 +207,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    custom_role_id: Optional[int] = None
     # Профиль тренера (опционально при создании)
     phone: Optional[str] = None
     phone_extra: Optional[str] = None
@@ -149,6 +225,8 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
+    role: Optional[UserRole] = None
+    custom_role_id: Optional[int] = None
     is_active: Optional[bool] = None
     trainer_rate: Optional[float] = None
     trainer_rate_per_hour: Optional[float] = None
@@ -168,8 +246,13 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
+    person_id: Optional[int] = None
     is_active: bool
     created_at: datetime
+    custom_role_id: Optional[int] = None
+    custom_role_name: Optional[str] = None
+    effective_role: Optional[UserRole] = None
+    role_permissions: List[str] = Field(default_factory=list)
     trainer_rate: Optional[float] = None
     trainer_rate_per_hour: Optional[float] = None
     trainer_lessons: Optional[int] = None
@@ -512,6 +595,48 @@ class FinancePnlRow(BaseModel):
     profit: float
 
 
+class FinanceAnalyticsKpiBlock(BaseModel):
+    income_total: float
+    expense_total: float
+    profit_total: float
+    prev_income_total: float
+    prev_expense_total: float
+    prev_profit_total: float
+    income_delta: float
+    expense_delta: float
+    profit_delta: float
+    overdue_payments_3_count: int
+    overdue_payments_10_count: int
+    unclassified_transactions_count: int
+    unclassified_transactions_amount: float
+
+
+class FinanceAnalyticsTargetBreakdownRow(BaseModel):
+    target_id: Optional[int] = None
+    target_code: str
+    target_name: str
+    income: float
+    expense: float
+    profit: float
+
+
+class FinanceAnalyticsExpenseBreakdownRow(BaseModel):
+    article_id: Optional[int] = None
+    article_name: str
+    cost_kind: Optional[str] = None
+    amount: float
+
+
+class FinanceAnalyticsSummaryResponse(BaseModel):
+    date_from: date
+    date_to: date
+    kpi: FinanceAnalyticsKpiBlock
+    pnl: List[FinancePnlRow]
+    target_breakdown: List[FinanceAnalyticsTargetBreakdownRow]
+    expense_breakdown: List[FinanceAnalyticsExpenseBreakdownRow]
+    account_balances: List[FinanceAccountBalance]
+
+
 class FinanceLedgerTransactionRow(BaseModel):
     """Строка транзакции журнала для дашборда личных финансов (по target)."""
 
@@ -592,6 +717,21 @@ class MakeupSuggestionItem(BaseModel):
     lesson_date: date
     day_of_week: int
     start_time: Optional[str] = None
+
+
+class PublicMakeupSlotsResponse(BaseModel):
+    absence_id: int
+    student_id: int
+    student_name: Optional[str] = None
+    original_group_name: Optional[str] = None
+    missed_lesson_date: date
+    available_slots: List[MakeupSuggestionItem] = []
+
+
+class PublicMakeupSelectionRequest(BaseModel):
+    token: str
+    makeup_group_id: int
+    makeup_lesson_date: date
 
 
 # --- Custom (manual) lessons ---
@@ -815,6 +955,7 @@ class LeadResponse(BaseModel):
     """Схема ответа по лиду: все поля контакта допускают None для старых записей в БД."""
     id: int
     owner_id: int
+    person_id: Optional[int] = None
     contact_name: str
     phone: str
     parent_full_name: Optional[str] = None
@@ -850,9 +991,11 @@ class LeadResponse(BaseModel):
     post_visit_review: Optional[str] = None
     post_visit_project_date: Optional[datetime] = None
     converted_to_student_id: Optional[int] = None
+    student_card_id: Optional[int] = None
     questionnaire_data: Optional[Dict[str, Any]] = None  # данные из формы анкеты (свои поля для лидов из формы)
     max_user_id: Optional[int] = None  # MAX мессенджер: user_id в платформе MAX
     last_contact_at: Optional[datetime] = None
+    ai_insight: Optional["LeadAIInsightResponse"] = None
 
     class Config:
         from_attributes = True
@@ -1117,6 +1260,8 @@ class StudentCardBase(BaseModel):
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
+    learning_period_start: Optional[date] = None
+    next_payment_date: Optional[date] = None
     anketa_status: Optional[str] = None  # draft | filled | converted | cancelled
     primary_for_bank_payments: bool = False  # при автозачислении из банка: платёж пойдёт на этого ученика, если у родителя несколько детей
 
@@ -1150,12 +1295,15 @@ class StudentCardUpdate(BaseModel):
     abonement_id: Optional[int] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
+    learning_period_start: Optional[date] = None
+    next_payment_date: Optional[date] = None
     anketa_status: Optional[str] = None
     primary_for_bank_payments: Optional[bool] = None
 
 
 class StudentCardResponse(StudentCardBase):
     id: int
+    person_id: Optional[int] = None
     archived: bool
     anketa_status: str = "converted"
     parent_cabinet_open: bool = False
@@ -1884,6 +2032,74 @@ class SearchResponse(BaseModel):
     students: List[StudentResponse] = []
     groups: List[GroupResponse] = []
     trainers: List[UserResponse] = []
+
+
+class PhoneSearchUserItem(BaseModel):
+    id: int
+    person_id: Optional[int] = None
+    full_name: str
+    email: str
+    role: UserRole
+    phone: Optional[str] = None
+
+
+class PhoneSearchLeadItem(BaseModel):
+    id: int
+    person_id: Optional[int] = None
+    contact_name: str
+    phone: str
+    parent_full_name: Optional[str] = None
+    child_full_name: Optional[str] = None
+    student_card_id: Optional[int] = None
+    converted_to_student_id: Optional[int] = None
+
+
+class PhoneSearchStudentCardItem(BaseModel):
+    id: int
+    person_id: Optional[int] = None
+    student_full_name: str
+    parent_full_name: Optional[str] = None
+    parent_phone: Optional[str] = None
+    student_phone: Optional[str] = None
+    student_id: Optional[int] = None
+
+
+class PhoneSearchResponse(BaseModel):
+    normalized_phone: str
+    users: List[PhoneSearchUserItem] = []
+    leads: List[PhoneSearchLeadItem] = []
+    student_cards: List[PhoneSearchStudentCardItem] = []
+
+
+class PersonLinkedRecordResponse(BaseModel):
+    entity_type: Literal["user", "lead", "student_card"]
+    entity_id: int
+    label: str
+
+
+class PersonSearchItemResponse(BaseModel):
+    id: int
+    full_name: str
+    email: Optional[str] = None
+    phone_normalized: Optional[str] = None
+    role_hint: Optional[str] = None
+    linked_records: List[PersonLinkedRecordResponse] = Field(default_factory=list)
+
+
+class PersonSearchResponse(BaseModel):
+    query: str
+    items: List[PersonSearchItemResponse] = Field(default_factory=list)
+
+
+class PersonMergeRequest(BaseModel):
+    source_person_id: int
+    target_person_id: int
+
+
+class PersonAttachRecordRequest(BaseModel):
+    person_id: int
+    entity_type: Literal["user", "lead", "student_card"]
+    entity_id: int
 
 
 # Settings schemas
@@ -2759,6 +2975,118 @@ class OwnerWorkspaceAuditLogResponse(BaseModel):
         from_attributes = True
 
 
+class TrainerCockpitTodoGradeItem(BaseModel):
+    student_id: int
+    student_name: str
+    group_name: Optional[str] = None
+    last_lesson_date: date
+    lessons_without_grade_count: int
+
+
+class TrainerCockpitDraftCharacteristicItem(BaseModel):
+    characteristic_id: int
+    student_id: int
+    student_name: str
+    month: int
+    year: int
+    created_at: datetime
+
+
+class TrainerCockpitStudentProgressItem(BaseModel):
+    student_id: int
+    student_name: str
+    group_name: Optional[str] = None
+    program_name: Optional[str] = None
+    progress_percent: float
+    graded_topics: int
+    total_topics: int
+    ai_insight: Optional["StudentLearningAIInsightResponse"] = None
+
+
+class TrainerCockpitNotificationItem(BaseModel):
+    notification_type: str
+    status: str
+    title: str
+    description: str
+    created_at: datetime
+
+
+class TrainerCockpitSummaryResponse(BaseModel):
+    todo_grade_items: List[TrainerCockpitTodoGradeItem]
+    draft_characteristics: List[TrainerCockpitDraftCharacteristicItem]
+    my_students: List[TrainerCockpitStudentProgressItem]
+    characteristic_notifications: List[TrainerCockpitNotificationItem]
+    substitution_notifications: List[TrainerCockpitNotificationItem]
+
+
+class OwnerDashboardMetricPoint(BaseModel):
+    label: str
+    value: float
+
+
+class LeadAIInsightResponse(BaseModel):
+    score: int
+    stage: str
+    best_next_action: str
+    reasons: List[str] = Field(default_factory=list)
+
+
+class StudentWeakZoneAIResponse(BaseModel):
+    topic_name: str
+    module_name: Optional[str] = None
+    average_grade: float
+    grade_count: int
+    recommendation: str
+
+
+class StudentDropoutRiskAIResponse(BaseModel):
+    score: int
+    level: str
+    reasons: List[str] = Field(default_factory=list)
+    recommended_action: str
+
+
+class StudentLearningAIInsightResponse(BaseModel):
+    weak_zone: Optional[StudentWeakZoneAIResponse] = None
+    dropout_risk: StudentDropoutRiskAIResponse
+
+
+class OwnerAIInsightResponse(BaseModel):
+    kind: str
+    severity: str
+    title: str
+    summary: str
+
+
+class OwnerDashboardSummaryResponse(BaseModel):
+    generated_at: datetime
+    month_label: str
+    active_students: int
+    active_groups: int
+    active_trainers: int
+    active_sales_managers: int
+    new_leads_today: int
+    new_leads_month: int
+    won_leads_month: int
+    active_pipeline_count: int
+    registered_events_month: int
+    payments_received_month: float
+    payments_transactions_month: int
+    overdue_payments_3_count: int
+    overdue_payments_10_count: int
+    owner_workspace_overdue_tasks: int
+    owner_workspace_waiting_tasks: int
+    owner_workspace_completed_7_days: int
+    owner_workspace_completed_30_days: int
+    owner_workspace_avg_days_to_complete_30: Optional[float] = None
+    makeups_pending_total: int
+    makeups_waiting_parent: int
+    makeups_assigned: int
+    leads_last_14_days: List[OwnerDashboardMetricPoint]
+    payments_last_14_days: List[OwnerDashboardMetricPoint]
+    ai_insights: List[OwnerAIInsightResponse] = Field(default_factory=list)
+
+
 class OwnerWorkspaceHistoryStatsCountItem(BaseModel):
     key: str
     count: int
@@ -2902,6 +3230,74 @@ class OwnerWorkspaceWebPushStatusResponse(BaseModel):
     subscription_count: int = 0
 
 
+class ParentDashboardNearestLessonResponse(BaseModel):
+    group_id: int
+    group_name: str
+    lesson_date: date
+    start_time: time
+    end_time: time
+    trainer_id: Optional[int] = None
+    trainer_name: Optional[str] = None
+
+
+class ParentDashboardStudentSummaryResponse(BaseModel):
+    student_id: int
+    student_name: str
+    current_balance: float = 0.0
+    next_payment_date: Optional[date] = None
+    payment_link: Optional[str] = None
+    nearest_lesson: Optional[ParentDashboardNearestLessonResponse] = None
+    ai_insight: Optional[StudentLearningAIInsightResponse] = None
+
+
+class ParentDashboardSummaryResponse(BaseModel):
+    students: List[ParentDashboardStudentSummaryResponse]
+
+
+class ParentQuestionCreate(BaseModel):
+    student_id: int
+    topic: Optional[str] = Field(None, max_length=255)
+    message: str = Field(..., min_length=3, max_length=4000)
+
+
+class ParentQuestionResponse(BaseModel):
+    id: int
+    parent_user_id: int
+    student_id: int
+    target_trainer_id: Optional[int] = None
+    topic: Optional[str] = None
+    message: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ParentWeeklyDigestSettingsResponse(BaseModel):
+    enabled: bool = True
+    weekday: int = 4
+    send_time: str = "09:00"
+
+
+class ParentWeeklyDigestSettingsUpdate(BaseModel):
+    enabled: bool = True
+    weekday: int = Field(4, ge=0, le=6)
+    send_time: str = Field("09:00", min_length=4, max_length=5)
+
+    @field_validator("send_time")
+    @classmethod
+    def validate_send_time(cls, value: str) -> str:
+        text = (value or "").strip()
+        if not re.fullmatch(r"\d{2}:\d{2}", text):
+            raise ValueError("send_time must be HH:MM")
+        hour = int(text[:2])
+        minute = int(text[3:5])
+        if hour > 23 or minute > 59:
+            raise ValueError("send_time must be HH:MM")
+        return text
+
+
 # Owner funnels (support letters, thank you letters, events)
 class OwnerFunnelTypeInfo(BaseModel):
     """Тип воронки: id и этапы для выбора в UI."""
@@ -3000,8 +3396,55 @@ class SmsTemplateResponse(BaseModel):
     id: int
     name: str
     category: Optional[str] = None
+    event_key: Optional[str] = None
+    channel: str
+    subject: Optional[str] = None
     text: str
     active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CommunicationTemplateBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+    category: Optional[str] = Field(None, max_length=64)
+    event_key: Optional[str] = Field(None, max_length=128)
+    channel: Literal["sms", "email", "max", "telegram", "web_push"]
+    subject: Optional[str] = Field(None, max_length=255)
+    text: str = Field(..., min_length=1)
+    active: bool = True
+
+
+class CommunicationTemplateCreate(CommunicationTemplateBase):
+    pass
+
+
+class CommunicationTemplateUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=256)
+    category: Optional[str] = Field(None, max_length=64)
+    event_key: Optional[str] = Field(None, max_length=128)
+    channel: Optional[Literal["sms", "email", "max", "telegram", "web_push"]] = None
+    subject: Optional[str] = Field(None, max_length=255)
+    text: Optional[str] = Field(None, min_length=1)
+    active: Optional[bool] = None
+
+
+class CommunicationQueueResponse(BaseModel):
+    id: str
+    recipient_type: str
+    recipient_id: int
+    channel: str
+    template_id: Optional[int] = None
+    template_name: Optional[str] = None
+    status: str
+    attempt_count: int
+    last_attempt_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    error: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+    dedupe_key: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -3086,3 +3529,169 @@ class LeadCardResponse(BaseModel):
     pinned_comment: Optional[str] = None
     sidebar: LeadSidebarSummary
     timeline_preview: list = []
+
+
+class PersonalFinanceAccountResponse(BaseModel):
+    id: int
+    owner_id: int
+    name: str
+    currency: str
+    balance: float
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StudentActivityLogResponse(BaseModel):
+    id: int
+    student_id: int
+    type: str
+    title: str
+    description: Optional[str] = None
+    created_by: Optional[int] = None
+    creator_name: Optional[str] = None
+    created_at: datetime
+    payload_json: Optional[dict] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PersonalFinanceAccountCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    currency: str = Field(default="RUB", min_length=3, max_length=8)
+
+
+class PersonalFinanceAccountUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=128)
+    currency: Optional[str] = Field(None, min_length=3, max_length=8)
+    is_active: Optional[bool] = None
+
+
+class PersonalFinanceCategoryResponse(BaseModel):
+    id: int
+    owner_id: int
+    name: str
+    direction: str
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PersonalFinanceCategoryCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    direction: Literal["income", "expense"]
+
+
+class PersonalFinanceCategoryUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    direction: Optional[Literal["income", "expense"]] = None
+    is_active: Optional[bool] = None
+
+
+class PersonalFinanceRuleResponse(BaseModel):
+    id: int
+    owner_id: int
+    pattern: str
+    category_id: Optional[int] = None
+    display_name: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    category: Optional[PersonalFinanceCategoryResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PersonalFinanceRuleCreate(BaseModel):
+    pattern: str = Field(..., min_length=1, max_length=512)
+    category_id: Optional[int] = None
+    display_name: Optional[str] = Field(None, max_length=255)
+
+
+class PersonalFinanceRuleUpdate(BaseModel):
+    pattern: Optional[str] = Field(None, min_length=1, max_length=512)
+    category_id: Optional[int] = None
+    display_name: Optional[str] = Field(None, max_length=255)
+    is_active: Optional[bool] = None
+
+
+class PersonalFinanceTransactionResponse(BaseModel):
+    id: int
+    owner_id: int
+    account_id: int
+    category_id: Optional[int] = None
+    amount: float
+    direction: str
+    article: Optional[str] = None
+    description: Optional[str] = None
+    occurred_at: datetime
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    account: Optional[PersonalFinanceAccountResponse] = None
+    category: Optional[PersonalFinanceCategoryResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PersonalFinanceTransactionCreate(BaseModel):
+    account_id: int
+    amount: float
+    direction: Literal["income", "expense"]
+    article: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    occurred_at: datetime
+    category_id: Optional[int] = None
+
+
+class PersonalFinanceTransactionUpdate(BaseModel):
+    account_id: Optional[int] = None
+    amount: Optional[float] = None
+    direction: Optional[Literal["income", "expense"]] = None
+    article: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    occurred_at: Optional[datetime] = None
+    category_id: Optional[int] = None
+
+
+class PersonalFinanceSummaryAccountItem(BaseModel):
+    account_id: int
+    account_name: str
+    currency: str
+    balance: float
+    income_total: float
+    expense_total: float
+
+
+class PersonalFinanceSummaryResponse(BaseModel):
+    accounts: List[PersonalFinanceSummaryAccountItem]
+    total_balance: float
+    total_income: float
+    total_expense: float
+    transactions_count: int
+
+
+class PersonalFinanceLegacyImportPayload(BaseModel):
+    accounts: List[PersonalFinanceAccountCreate] = Field(default_factory=list)
+    categories: List[PersonalFinanceCategoryCreate] = Field(default_factory=list)
+    transactions: List[PersonalFinanceTransactionCreate] = Field(default_factory=list)
+    rules: List[PersonalFinanceRuleCreate] = Field(default_factory=list)
+
+
+class PersonalFinanceLegacyImportResponse(BaseModel):
+    accounts_created: int
+    categories_created: int
+    transactions_created: int
+    rules_created: int
+
+
+LeadResponse.model_rebuild()
+TrainerCockpitStudentProgressItem.model_rebuild()

@@ -26,7 +26,7 @@ def _validate_price(price: float) -> None:
 async def read_abonements(
     status_filter: Optional[AbonementStatus] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("abonements.access")),
 ):
     query = db.query(Abonement)
     if status_filter:
@@ -38,7 +38,7 @@ async def read_abonements(
 async def create_abonement(
     abonement: AbonementCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("abonements.manage")),
 ):
     _validate_discount(abonement.discount_type, abonement.discount_value)
     _validate_price(float(abonement.price))
@@ -62,7 +62,7 @@ async def update_abonement(
     abonement_id: int,
     abonement_update: AbonementUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("abonements.manage")),
 ):
     db_abonement = db.query(Abonement).filter(Abonement.id == abonement_id).first()
     if not db_abonement:
@@ -88,7 +88,7 @@ async def update_abonement(
 async def archive_abonement(
     abonement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("abonements.manage"))
 ):
     db_abonement = db.query(Abonement).filter(Abonement.id == abonement_id).first()
     if not db_abonement:
@@ -103,7 +103,7 @@ async def archive_abonement(
 async def unarchive_abonement(
     abonement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("abonements.manage"))
 ):
     db_abonement = db.query(Abonement).filter(Abonement.id == abonement_id).first()
     if not db_abonement:
@@ -118,7 +118,7 @@ async def unarchive_abonement(
 async def delete_abonement(
     abonement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("abonements.manage"))
 ):
     db_abonement = db.query(Abonement).filter(Abonement.id == abonement_id).first()
     if not db_abonement:

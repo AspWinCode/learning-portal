@@ -34,7 +34,6 @@ import {
   Grade,
   Description,
   Assessment,
-  AccountBalance,
   AccountBalanceWallet,
   LocalOffer,
   Home,
@@ -50,11 +49,12 @@ import {
   NotificationsNone,
   Notifications,
   Search,
-  FilterList,
   School,
+  Bolt,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 const drawerWidth = 240;
 
@@ -93,7 +93,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, []);
 
   React.useEffect(() => {
-    if (user?.role !== 'sales') return;
+    if (!hasPermission(user, 'sales.access')) return;
     (async () => {
       try {
         const d = await salesApi.getSalesDashboard();
@@ -102,7 +102,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         // ignore topbar alerts errors
       }
     })();
-  }, [user?.role]);
+  }, [user]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -182,8 +182,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     navigate('/login');
   };
 
-  const role = user?.role;
+  const role = getEffectiveRole(user);
   const isAdminLike = role === 'admin' || role === 'owner';
+  const canAccessGroups = hasPermission(user, 'groups.access');
+  const canAccessPrograms = hasPermission(user, 'programs.access');
+  const canAccessAbonements = hasPermission(user, 'abonements.access');
+  const canAccessSalesModule = hasPermission(user, 'sales.access');
+  const canAccessOwnerWorkspace = hasPermission(user, 'owner_workspace.access');
+  const canAccessSettings = hasPermission(user, 'settings.access');
+  const canAccessCommunications = hasPermission(user, 'communications.access');
+  const canAccessReports = hasPermission(user, 'reports.access');
+  const canAccessB2B = hasPermission(user, 'b2b.access');
+  const canAccessOwnerCalculations = hasPermission(user, 'owner_calculations.access');
+  const canAccessLessons = hasPermission(user, 'lessons.access');
+  const canAccessUsers = hasPermission(user, 'users.access');
 
   const effectiveMenuItems = (() => {
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
@@ -194,7 +206,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Оценки', icon: <Grade />, path: '/grades' },
         { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
       ];
-    if (role === 'sales')
+    if (role === 'sales' && canAccessSalesModule)
       return [
         { text: 'Ученики', icon: <People />, path: '/students' },
         { text: 'Тренеры', icon: <People />, path: '/trainers' },
@@ -206,6 +218,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' },
         { text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' },
         { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' },
+        { text: 'Реестр Person', icon: <Search />, path: '/persons' },
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' },
@@ -215,7 +228,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       ];
 
     const items = [
-      { text: 'Главная', icon: <Dashboard />, path: '/dashboard' },
+      { text: role === 'trainer' ? 'Кокпит тренера' : 'Главная', icon: role === 'trainer' ? <Bolt /> : <Dashboard />, path: role === 'trainer' ? '/trainer-cockpit' : '/dashboard' },
       { text: 'Ученики', icon: <People />, path: '/students' },
       { text: 'Группы', icon: <Group />, path: '/groups' },
       { text: 'Уроки', icon: <EventAvailable />, path: '/lessons' },
@@ -225,6 +238,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     ];
 
     if (role === 'trainer') {
+      items.push({ text: 'Оценки тренера', icon: <Grade />, path: '/trainer-grades' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
@@ -233,7 +247,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
 
-    if (isAdminLike && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
+    if (canAccessReports && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') {
       // Для владельца отчёты и финансовая модель доступны с главной страницы как вкладки.
       items.push({ text: 'Финансы (журнал)', icon: <AccountBalanceWallet />, path: '/finance/overview' });
@@ -251,18 +265,50 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
-    if (isAdminLike) items.push({ text: 'Настройки', icon: <Settings />, path: '/sales/settings' });
-    if (role === 'owner') {
+    if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/sales/settings' });
+    if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
+    if (isAdminLike) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });
+    if (role === 'owner' || role === 'admin' || role === 'sales') items.push({ text: 'Реестр Person', icon: <Search />, path: '/persons' });
+    if (canAccessB2B) {
       items.push({ text: 'План на сегодня', icon: <Assignment />, path: '/b2b-schools/plan' });
       items.push({ text: 'Работа со школами', icon: <School />, path: '/b2b-schools' });
+    }
+    if (role === 'owner') {
       items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
-      items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
+      if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
       items.push({ text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' });
     }
     // У админа отдельная страница "Тренеры" убрана — доступ через объединённый раздел Ученики/группы при необходимости
     return items;
   })();
+  const permissionFilteredMenuItems = effectiveMenuItems.filter((item) => {
+    if (item.path === '/groups') return canAccessGroups;
+    if (item.path === '/programs') return canAccessPrograms;
+    if (item.path === '/abonements') return canAccessAbonements;
+    if (item.path === '/lessons') return canAccessLessons;
+    if (item.path === '/trainers') return canAccessUsers;
+    return true;
+  });
+  const permissionExpandedMenuItems = [...permissionFilteredMenuItems];
+  if (canAccessGroups && !permissionExpandedMenuItems.some((item) => item.path === '/groups')) {
+    permissionExpandedMenuItems.push({ text: 'Р“СЂСѓРїРїС‹', icon: <Group />, path: '/groups' });
+  }
+  if (canAccessPrograms && !permissionExpandedMenuItems.some((item) => item.path === '/programs')) {
+    permissionExpandedMenuItems.push({ text: 'РџСЂРѕРіСЂР°РјРјС‹', icon: <Book />, path: '/programs' });
+  }
+  if (canAccessAbonements && !permissionExpandedMenuItems.some((item) => item.path === '/abonements')) {
+    permissionExpandedMenuItems.push({ text: 'РђР±РѕРЅРµРјРµРЅС‚С‹', icon: <LocalOffer />, path: '/abonements' });
+  }
+  if (canAccessLessons && !permissionExpandedMenuItems.some((item) => item.path === '/lessons')) {
+    permissionExpandedMenuItems.push({ text: 'РЈСЂРѕРєРё', icon: <EventAvailable />, path: '/lessons' });
+  }
+  if (canAccessUsers && !permissionExpandedMenuItems.some((item) => item.path === '/trainers')) {
+    permissionExpandedMenuItems.push({ text: 'РўСЂРµРЅРµСЂС‹', icon: <People />, path: '/trainers' });
+  }
+  const visibleMenuItems = canAccessOwnerWorkspace
+    ? permissionExpandedMenuItems
+    : permissionExpandedMenuItems.filter((item) => !item.path.startsWith('/owner-workspace'));
 
   /** Подсветка «Owner задачник» для любого `/owner-workspace/*`, кроме отдельных пунктов уведомлений и настроек. */
   const isOwnerWorkspaceMainSection = (pathname: string) =>
@@ -325,7 +371,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </Box>
       </Toolbar>
       <List sx={{ flex: 1, overflow: 'auto', py: 0 }}>
-        {effectiveMenuItems.map((item) => (
+        {visibleMenuItems.map((item) => (
           <ListItemButton
             key={item.text}
             selected={isDrawerItemSelected(item.path)}
@@ -377,7 +423,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 800 }}>
             {appBarPageTitle}
           </Typography>
-          {role === 'sales' && (
+          {role === 'sales' && canAccessSalesModule && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
               <Box
                 sx={{
@@ -441,7 +487,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <ListItemText>Логотип школы</ListItemText>
                 </MenuItem>
               )}
-              {user?.role !== 'guest' && (
+              {role !== 'guest' && (
                 <MenuItem onClick={handleTelegramLink}>
                   <ListItemIcon>
                     <TelegramIcon fontSize="small" />

@@ -25,8 +25,12 @@ import {
 import { reportsApi, studentsApi, usersApi } from '../services/api';
 import { Student, User } from '../types';
 import Layout from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermission } from '../utils/permissions';
 
 export const ReportsPageContent: React.FC = () => {
+  const { user } = useAuth();
+  const canExportReports = hasPermission(user, 'reports.export');
   const [tab, setTab] = useState<'students' | 'trainers' | 'logs' | 'export' | 'characteristics'>('trainers');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -64,13 +68,13 @@ export const ReportsPageContent: React.FC = () => {
     // lazy-load per tab
     if (tab === 'students' && !studentsReport) loadStudentsReport(true);
     if (tab === 'logs' && !actionLogs) loadActionLogs(true);
-    if (tab === 'export' && allStudents.length === 0) {
+    if (tab === 'export' && canExportReports && allStudents.length === 0) {
       loadExportLookups();
     }
     if (tab === 'characteristics' && !ccData) {
       loadCharacteristicsCompliance(true);
     }
-  }, [tab]);
+  }, [allStudents.length, canExportReports, ccData, tab]);
 
   const loadStudentsReport = async (reset = false) => {
     try {
@@ -208,7 +212,13 @@ export const ReportsPageContent: React.FC = () => {
       <Paper sx={{ mt: 2 }}>
         <Tabs
           value={tab}
-          onChange={(_, v) => setTab(v)}
+          onChange={(_, v) => {
+            if (v === 'export' && !canExportReports) {
+              setError('Недостаточно прав для экспорта отчетов.');
+              return;
+            }
+            setTab(v);
+          }}
           variant="scrollable"
           scrollButtons="auto"
         >
@@ -216,7 +226,7 @@ export const ReportsPageContent: React.FC = () => {
           <Tab value="trainers" label="Тренеры" />
           <Tab value="characteristics" label="Контроль характеристик" />
           <Tab value="logs" label="Журнал действий" />
-          <Tab value="export" label="Экспорт" />
+          <Tab value="export" label="Экспорт" disabled={!canExportReports} />
         </Tabs>
       </Paper>
 

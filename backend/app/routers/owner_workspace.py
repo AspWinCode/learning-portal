@@ -115,7 +115,7 @@ router = APIRouter()
 
 async def get_owner_workspace_access(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(OWNER_WORKSPACE_API_ROLES)),
+    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
 ) -> OwnerWorkspaceAccessContext:
     return build_owner_workspace_access_context(db, current_user)
 

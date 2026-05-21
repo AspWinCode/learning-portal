@@ -17,6 +17,7 @@ from app.models import (
     GroupStudent,
 )
 from app.student_display import get_student_display_name
+from app.services.student_activity import log_student_activity
 
 
 def _get_student_parent_name(db: Session, student_id: int) -> Optional[str]:
@@ -179,6 +180,15 @@ def create_payment_overdue_tasks(db: Session) -> int:
                     created_by_id=created_by_id,
                     assigned_to_id=assigned_to_id,
                 )
+                log_student_activity(
+                    db,
+                    student_id=student_id,
+                    activity_type="payment_overdue",
+                    title="Просрочка оплаты",
+                    description=f"Повторное напоминание, дата оплаты: {next_pay}",
+                    created_by=created_by_id,
+                    payload_json={"stage": 2, "next_payment_date": next_pay.isoformat()},
+                )
                 created += 1
                 continue
 
@@ -193,6 +203,15 @@ def create_payment_overdue_tasks(db: Session) -> int:
                     stage=1,
                     created_by_id=created_by_id,
                     assigned_to_id=assigned_to_id,
+                )
+                log_student_activity(
+                    db,
+                    student_id=student_id,
+                    activity_type="payment_overdue",
+                    title="Просрочка оплаты",
+                    description=f"Первое напоминание, дата оплаты: {next_pay}",
+                    created_by=created_by_id,
+                    payload_json={"stage": 1, "next_payment_date": next_pay.isoformat()},
                 )
                 created += 1
 

@@ -20,15 +20,22 @@ from app.services.characteristic_review import (
     approve_characteristic as approve_characteristic_svc,
     reject_characteristic as reject_characteristic_svc,
 )
+from app.services.communication_hub import CommunicationService
+from app.services.parent_dashboard import send_characteristic_published_web_push
+from app.services.student_activity import log_student_activity
 
 router = APIRouter()
+
+
+def _characteristics_effective_role(current_user: User) -> UserRole:
+    return auth.resolve_effective_role(current_user)
 
 
 @router.post("/templates", response_model=CharacteristicTemplateResponse, status_code=status.HTTP_201_CREATED)
 async def create_template(
     template: CharacteristicTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("characteristics.manage"))
 ):
     """Создание шаблона характеристики (только администратор)"""
     db_template = CharacteristicTemplate(
@@ -62,7 +69,8 @@ async def create_characteristic(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Создание характеристики (тренер)"""
-    if current_user.role != UserRole.TRAINER:
+    auth.ensure_permission(current_user, "characteristics.manage")
+    if _characteristics_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can create characteristics")
     
     # Проверка доступа к ученику
@@ -129,7 +137,8 @@ async def submit_characteristic(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Отправка характеристики на согласование"""
-    if current_user.role != UserRole.TRAINER:
+    auth.ensure_permission(current_user, "characteristics.manage")
+    if _characteristics_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can submit characteristics")
     try:
         db_characteristic = submit_characteristic_for_review(db, characteristic_id, current_user.id)
@@ -147,6 +156,25 @@ async def submit_characteristic(
             f"Период: {db_characteristic.month}/{db_characteristic.year}\n"
             f"Тренер: {current_user.full_name}"
         )
+        if db_characteristic.student:
+            CommunicationService.send(
+                db,
+                channel="email",
+                recipient_type="student",
+                recipient_id=db_characteristic.student.id,
+                event_key="characteristic_approved",
+                created_by=current_user.id,
+                context={
+                    "student_name": db_characteristic.student.full_name,
+                    "period": f"{db_characteristic.month}/{db_characteristic.year}",
+                },
+            )
+            send_characteristic_published_web_push(
+                db,
+                user_id=db_characteristic.student.parent_id,
+                student_name=db_characteristic.student.full_name,
+                period=f"{db_characteristic.month}/{db_characteristic.year}",
+            )
     except Exception:
         pass
     return {"message": "Characteristic submitted for approval"}
@@ -160,7 +188,8 @@ async def update_characteristic(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Редактирование характеристики (тренер) — разрешено для draft/rejected"""
-    if current_user.role != UserRole.TRAINER:
+    auth.ensure_permission(current_user, "characteristics.manage")
+    if _characteristics_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can update characteristics")
 
     db_characteristic = db.query(Characteristic).filter(
@@ -207,7 +236,7 @@ async def approve_characteristic(
     characteristic_id: int,
     approval: CharacteristicApprove,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("characteristics.manage"))
 ):
     """Опубликовать характеристику (администратор)"""
     try:
@@ -217,6 +246,15 @@ async def approve_characteristic(
         if "not found" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
+    log_student_activity(
+        db,
+        student_id=db_characteristic.student_id,
+        activity_type="characteristic_published",
+        title="Опубликована характеристика",
+        description=f"Период: {db_characteristic.month}/{db_characteristic.year}",
+        created_by=current_user.id,
+        payload_json={"characteristic_id": db_characteristic.id, "month": db_characteristic.month, "year": db_characteristic.year},
+    )
     log_action(db, current_user.id, "approve", "characteristic", characteristic_id)
     try:
         if db_characteristic.trainer_id:
@@ -246,7 +284,7 @@ async def reject_characteristic(
     characteristic_id: int,
     rejection: CharacteristicReject,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("characteristics.manage"))
 ):
     """Вернуть характеристику на доработку (администратор)"""
     try:
@@ -285,7 +323,9 @@ async def read_characteristics(
     query = db.query(Characteristic)
     
     # Родитель видит только опубликованные характеристики своих активных учеников
-    if current_user.role == UserRole.PARENT:
+    auth.ensure_permission(current_user, "characteristics.access")
+    effective_role = _characteristics_effective_role(current_user)
+    if effective_role == UserRole.PARENT:
         student_ids = db.query(Student.id).filter(
             Student.parent_id == current_user.id,
             Student.status == StudentStatus.ACTIVE
@@ -296,7 +336,7 @@ async def read_characteristics(
         )
     
     # Тренер видит только свои характеристики
-    elif current_user.role == UserRole.TRAINER:
+    elif effective_role == UserRole.TRAINER:
         query = query.filter(Characteristic.trainer_id == current_user.id)
     
     if student_id:
@@ -320,12 +360,14 @@ async def read_characteristic(
         raise HTTPException(status_code=404, detail="Characteristic not found")
     
     # Проверка прав доступа
-    if current_user.role == UserRole.PARENT:
+    auth.ensure_permission(current_user, "characteristics.access")
+    effective_role = _characteristics_effective_role(current_user)
+    if effective_role == UserRole.PARENT:
         if characteristic.student.parent_id != current_user.id or characteristic.student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")
         if characteristic.status != CharacteristicStatus.APPROVED:
             raise HTTPException(status_code=403, detail="Characteristic not published")
-    elif current_user.role == UserRole.TRAINER:
+    elif effective_role == UserRole.TRAINER:
         if characteristic.trainer_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not enough permissions")
     
@@ -344,10 +386,12 @@ async def get_characteristics_comparison(
         raise HTTPException(status_code=404, detail="Student not found")
     
     # Проверка прав доступа
-    if current_user.role == UserRole.PARENT:
+    auth.ensure_permission(current_user, "characteristics.access")
+    effective_role = _characteristics_effective_role(current_user)
+    if effective_role == UserRole.PARENT:
         if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
+    elif effective_role == UserRole.TRAINER:
         if student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")
         has_access = db.query(GroupStudent).join(Group).filter(
@@ -386,10 +430,12 @@ async def get_published_characteristics(
         raise HTTPException(status_code=404, detail="Student not found")
 
     # RBAC
-    if current_user.role == UserRole.PARENT:
+    auth.ensure_permission(current_user, "characteristics.access")
+    effective_role = _characteristics_effective_role(current_user)
+    if effective_role == UserRole.PARENT:
         if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
+    elif effective_role == UserRole.TRAINER:
         if student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")
         has_access = db.query(GroupStudent).join(Group).filter(

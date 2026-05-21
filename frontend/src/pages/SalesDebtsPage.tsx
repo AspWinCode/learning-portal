@@ -35,6 +35,7 @@ import { salesApi } from '../services/api';
 import { financeApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { BankTransaction, FinanceLedgerBankRow, Student } from '../types';
+import { getEffectiveRole } from '../utils/permissions';
 
 interface PaymentStatusRow {
   student_id: number;
@@ -55,8 +56,9 @@ const STATUS_LABELS: Record<string, { label: string; color: 'default' | 'warning
 const SalesDebtsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const isSales = user?.role === 'sales';
+  const effectiveRole = getEffectiveRole(user);
+  const isAdmin = effectiveRole === 'admin';
+  const isSales = effectiveRole === 'sales';
   const showBankTab = !isAdmin && !isSales;
   const [items, setItems] = useState<PaymentStatusRow[]>([]);
   const [bankItems, setBankItems] = useState<BankTransaction[]>([]);

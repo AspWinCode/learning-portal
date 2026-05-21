@@ -32,6 +32,7 @@ import {
 import { studentCardsApi, abonementsApi, salesApi } from '../services/api';
 import { StudentCard as StudentCardType, Abonement } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getEffectiveRole } from '../utils/permissions';
 
 type TabFilter = 'all' | 'active' | 'archived';
 
@@ -45,8 +46,9 @@ const ANKETA_STATUS_LABELS: Record<string, string> = {
 const StudentCardsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const isOwner = user?.role === 'owner';
-  const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
+  const effectiveRole = getEffectiveRole(user);
+  const isOwner = effectiveRole === 'owner';
+  const isOwnerOrAdmin = effectiveRole === 'owner' || effectiveRole === 'admin';
 
   const [items, setItems] = useState<StudentCardType[]>([]);
   const [abonements, setAbonements] = useState<Abonement[]>([]);

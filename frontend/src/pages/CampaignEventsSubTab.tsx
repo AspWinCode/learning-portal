@@ -42,9 +42,10 @@ import {
 interface CampaignEventsSubTabProps {
   campaignId: number;
   onError: (msg: string | null) => void;
+  canManage: boolean;
 }
 
-export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ campaignId, onError }) => {
+export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ campaignId, onError, canManage }) => {
   const [events, setEvents] = useState<CampaignEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -260,9 +261,9 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
         <Typography variant="h6">Джемы кампании</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+        {canManage && <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
           Создать джем
-        </Button>
+        </Button>}
       </Stack>
       {loading ? (
         <Typography color="text.secondary">Загрузка…</Typography>
@@ -295,7 +296,7 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
                     <TableCell>
                       <Stack direction="row" spacing={0.5}>
                         <Button size="small" onClick={() => openEventDetail(ev)}>Открыть</Button>
-                        <Button size="small" variant="outlined" onClick={() => openEditEvent(ev)}>Редактировать</Button>
+                        {canManage && <Button size="small" variant="outlined" onClick={() => openEditEvent(ev)}>Редактировать</Button>}
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -414,7 +415,7 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
           <span>
             {selectedEvent?.title} {selectedEvent?.event_date ? `(${format(parseISO(selectedEvent.event_date), 'dd.MM.yyyy')})` : ''}
           </span>
-          {selectedEvent && (
+          {selectedEvent && canManage && (
             <Button size="small" variant="outlined" onClick={() => openEditEvent(selectedEvent)}>Редактировать джем</Button>
           )}
         </DialogTitle>
@@ -431,7 +432,7 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
           ) : (
             <>
               <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1.5 }} flexWrap="wrap">
-                <FormControlLabel
+                {canManage && <FormControlLabel
                   control={
                     <Checkbox
                       size="small"
@@ -441,26 +442,26 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
                     />
                   }
                   label="Выбрать все"
-                />
-                <FormControlLabel
+                />}
+                {canManage && <FormControlLabel
                   control={<Checkbox size="small" checked={bulkCreateTasks} onChange={(e) => setBulkCreateTasks(e.target.checked)} />}
                   label="Создать задачи для выбранных"
-                />
-                <Typography variant="body2" color="text.secondary">Выбрано: {selectedSchoolIds.length}</Typography>
-                <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                />}
+                {canManage && <Typography variant="body2" color="text.secondary">Выбрано: {selectedSchoolIds.length}</Typography>}
+                {canManage && <Stack direction="row" spacing={0.5} flexWrap="wrap">
                   <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ invite_status: 'invited' }, { invite: bulkCreateTasks })}>Приглашённые</Button>
                   <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ invite_status: 'awaiting_reply' })}>Ждём ответ</Button>
                   <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ participation_status: 'confirmed' })}>Подтвердили участие</Button>
                   <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ participation_status: 'participated' }, { participated: bulkCreateTasks })}>Участвовали</Button>
                   <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ host_status: 'host_confirmed' }, { host: bulkCreateTasks })}>Площадка подтверждена</Button>
                   <Button size="small" variant="outlined" disabled={selectedSchoolIds.length === 0 || bulkBusy} onClick={() => runBulkAction({ host_status: 'hosted' })}>Площадка проведена</Button>
-                </Stack>
+                </Stack>}
               </Stack>
               <TableContainer component={Paper} variant="outlined">
                 <Table size="small" sx={{ minWidth: 800 }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell padding="checkbox">
+                      {canManage && <TableCell padding="checkbox">
                         <Checkbox
                           size="small"
                           checked={eventSchools.length > 0 && selectedSchoolIds.length >= eventSchools.length}
@@ -468,7 +469,7 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
                           onChange={toggleSelectAllSchools}
                           inputProps={{ 'aria-label': 'Выбрать все школы' }}
                         />
-                      </TableCell>
+                      </TableCell>}
                       <TableCell>Школа</TableCell>
                       <TableCell>Город</TableCell>
                       <TableCell>Общая стадия</TableCell>
@@ -483,14 +484,14 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
                   <TableBody>
                     {eventSchools.map((row) => (
                       <TableRow key={row.school_campaign_id} hover>
-                        <TableCell padding="checkbox">
+                        {canManage && <TableCell padding="checkbox">
                           <Checkbox
                             size="small"
                             checked={selectedSchoolIds.includes(row.school_campaign_id)}
                             onChange={() => toggleSchoolSelection(row.school_campaign_id)}
                             inputProps={{ 'aria-label': `Выбрать ${row.school_name}` }}
                           />
-                        </TableCell>
+                        </TableCell>}
                         <TableCell>{row.school_name ?? '—'}</TableCell>
                         <TableCell>{row.school_city ?? '—'}</TableCell>
                         <TableCell>{row.stage}</TableCell>
@@ -500,7 +501,7 @@ export const CampaignEventsSubTab: React.FC<CampaignEventsSubTabProps> = ({ camp
                         <TableCell align="right">{row.participant_count ?? '—'}</TableCell>
                         <TableCell sx={{ maxWidth: 150 }}>{row.notes ?? '—'}</TableCell>
                         <TableCell>
-                          <Button size="small" onClick={() => openCellEdit(row)}>Изменить</Button>
+                          {canManage && <Button size="small" onClick={() => openCellEdit(row)}>Изменить</Button>}
                         </TableCell>
                       </TableRow>
                     ))}

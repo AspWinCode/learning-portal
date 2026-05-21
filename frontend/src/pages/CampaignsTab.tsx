@@ -32,8 +32,10 @@ import Add from '@mui/icons-material/Add';
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import Edit from '@mui/icons-material/Edit';
 import History from '@mui/icons-material/History';
+import { useAuth } from '../contexts/AuthContext';
 import { campaignsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+import { hasPermission } from '../utils/permissions';
 import type { Campaign, SchoolCampaign } from '../types';
 import {
   getStagesForCampaignType,
@@ -47,6 +49,8 @@ import { CampaignEventsSubTab } from './CampaignEventsSubTab';
 import { CampaignMatrixSubTab } from './CampaignMatrixSubTab';
 
 export const CampaignsTab: React.FC = () => {
+  const { user } = useAuth();
+  const canManageCampaigns = hasPermission(user, 'campaigns.manage');
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -260,9 +264,11 @@ export const CampaignsTab: React.FC = () => {
               </Typography>
               {campaignDetailSubTab === 'work' && (
                 <>
-                  <Button variant="contained" startIcon={<Add />} onClick={openAddSchools} sx={{ mb: 2 }}>
-                    Добавить школы
-                  </Button>
+                  {canManageCampaigns && (
+                    <Button variant="contained" startIcon={<Add />} onClick={openAddSchools} sx={{ mb: 2 }}>
+                      Добавить школы
+                    </Button>
+                  )}
                   <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap' }}>
                     {byStage.map((col) => (
                       <Card key={col.value} variant="outlined" sx={{ minWidth: 260, flex: '0 0 auto' }}>
@@ -293,6 +299,7 @@ export const CampaignsTab: React.FC = () => {
                                         <Select
                                           value={sc.stage}
                                           onChange={(e) => handleStageChange(sc.id, e.target.value)}
+                                          disabled={!canManageCampaigns}
                                           displayEmpty
                                         >
                                           {stages.map((s) => (
@@ -318,10 +325,10 @@ export const CampaignsTab: React.FC = () => {
                 </>
               )}
               {campaignDetailSubTab === 'events' && selectedCampaignId && (
-                <CampaignEventsSubTab campaignId={selectedCampaignId} onError={setError} />
+                <CampaignEventsSubTab campaignId={selectedCampaignId} onError={setError} canManage={canManageCampaigns} />
               )}
               {campaignDetailSubTab === 'matrix' && selectedCampaignId && (
-                <CampaignMatrixSubTab campaignId={selectedCampaignId} onError={setError} />
+                <CampaignMatrixSubTab campaignId={selectedCampaignId} onError={setError} canManage={canManageCampaigns} />
               )}
             </>
           ) : (
@@ -348,9 +355,11 @@ export const CampaignsTab: React.FC = () => {
                 }
                 label="Показывать архив"
               />
-              <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-                Создать кампанию
-              </Button>
+              {canManageCampaigns && (
+                <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+                  Создать кампанию
+                </Button>
+              )}
             </Stack>
           </Stack>
           {error && (
@@ -395,13 +404,15 @@ export const CampaignsTab: React.FC = () => {
                             <Button size="small" startIcon={<Edit />} onClick={() => setSelectedCampaignId(c.id)}>
                               Открыть
                             </Button>
-                            <Button
-                              size="small"
-                              color="warning"
-                              onClick={() => void handleArchiveCampaign(c)}
-                            >
-                              В архив
-                            </Button>
+                            {canManageCampaigns && (
+                              <Button
+                                size="small"
+                                color="warning"
+                                onClick={() => void handleArchiveCampaign(c)}
+                              >
+                                В архив
+                              </Button>
+                            )}
                           </Stack>
                         </TableCell>
                       </TableRow>

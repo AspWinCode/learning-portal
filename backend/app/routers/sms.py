@@ -78,7 +78,7 @@ def _sms_message_to_response(m: SmsMessage) -> SmsMessageResponse:
 def api_sms_send(
     payload: SmsSendRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """Отправить одно SMS. entity_type: lead | event | task, entity_id — id сущности."""
     if not is_configured():
@@ -155,7 +155,7 @@ def api_sms_send(
 def api_sms_send_bulk(
     payload: SmsSendBulkRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """Массовая отправка SMS. Между отправками пауза 61 сек на номер (лимит gateway)."""
     if not is_configured():
@@ -209,7 +209,7 @@ def api_sms_send_bulk(
 def api_sms_process_scheduled(
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("communications.manage")),
 ):
     """Обработать отложенные SMS, у которых уже наступило время отправки."""
     if not is_configured():

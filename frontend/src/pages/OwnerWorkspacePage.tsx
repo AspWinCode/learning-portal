@@ -93,6 +93,7 @@ import type {
   User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
+import { getEffectiveRole } from '../utils/permissions';
 
 /** Макс. задач за один запрос для канбана/календаря и вспомогательных списков (лимит API). */
 const OWNER_WS_TASKS_FETCH_CAP = 500;
@@ -721,9 +722,11 @@ const OwnerWorkspacePage: React.FC = () => {
     (task: OwnerWorkspaceTask, options?: { syncUrl?: boolean }) => Promise<void>
   >(async () => {});
   const loadTasksFilteredRef = useRef<() => Promise<void>>(async () => {});
-  const isWorkspaceFullAccess = user?.role === 'admin' || user?.role === 'owner';
-  const isLimitedWorkspaceUser = user?.role === 'sales' || user?.role === 'trainer';
-  const currentWorkspaceRoleLabel = OWNER_WS_GLOBAL_ROLE_LABELS[user?.role || ''] || (user?.role ?? 'unknown');
+  const effectiveRole = getEffectiveRole(user);
+  const isWorkspaceFullAccess = effectiveRole === 'admin' || effectiveRole === 'owner';
+  const isLimitedWorkspaceUser = effectiveRole === 'sales' || effectiveRole === 'trainer';
+  const currentWorkspaceRoleLabel =
+    OWNER_WS_GLOBAL_ROLE_LABELS[effectiveRole || ''] || (effectiveRole ?? 'unknown');
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -29,6 +29,7 @@ import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon } from '@mui/ico
 import { groupsApi, usersApi, studentsApi } from '../services/api';
 import { Group, User, Student, GroupSchedule } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 const GroupsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -54,6 +55,9 @@ const GroupsPage: React.FC = () => {
   const [formSchedules, setFormSchedules] = useState<Array<{ day_of_week: number; start_time: string; end_time: string }>>([]);
   const [groupsTab, setGroupsTab] = useState<'active' | 'archive'>('active');
   const { user } = useAuth();
+  const effectiveRole = getEffectiveRole(user);
+  const canManageGroups = hasPermission(user, 'groups.manage');
+  const canViewMembers = canManageGroups || effectiveRole === 'trainer';
 
   const displayedGroups = groups.filter((g) => (groupsTab === 'active' ? g.status === 'active' : g.status === 'archived'));
   const WEEKDAY_OPTIONS = [
@@ -76,21 +80,19 @@ const GroupsPage: React.FC = () => {
     { value: 'oge', label: 'ОГЭ' },
     { value: 'ege', label: 'ЕГЭ' },
   ];
-  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
-
   useEffect(() => {
     loadGroups();
-    if (isAdminLike) {
+    if (canManageGroups) {
       loadTrainers();
       loadStudents();
     }
-  }, [user]);
+  }, [user, canManageGroups]);
 
   const loadGroups = async () => {
     try {
       const data = await groupsApi.getAll();
       // Для тренера подтягиваем полные данные группы (включая учеников), чтобы показать счётчик и состав
-      if (user?.role === 'trainer') {
+      if (effectiveRole === 'trainer') {
         const fullGroups = await Promise.all(
           data.map(async (g) => {
             try {
@@ -283,7 +285,7 @@ const GroupsPage: React.FC = () => {
       </Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Группы</Typography>
-        {isAdminLike && groupsTab === 'active' && (
+        {canManageGroups && groupsTab === 'active' && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -314,7 +316,7 @@ const GroupsPage: React.FC = () => {
               <TableCell>Юниты</TableCell>
               <TableCell>Ученики</TableCell>
               <TableCell>Статус</TableCell>
-              {(isAdminLike || user?.role === 'trainer') && <TableCell>Действия</TableCell>}
+              {canViewMembers && <TableCell>Действия</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -326,7 +328,7 @@ const GroupsPage: React.FC = () => {
                 <TableCell>{(group.lesson_format === 'individual') ? '—' : (group.units_per_session ?? 1) + (group.extra_rate_per_unit != null ? ` · ${group.extra_rate_per_unit} ₽/доп` : '')}</TableCell>
                 <TableCell>{group.students?.length ?? '-'}</TableCell>
                 <TableCell>{group.status === 'active' ? 'Активна' : 'В архиве'}</TableCell>
-                {(isAdminLike || user?.role === 'trainer') && (
+                {canViewMembers && (
                   <TableCell>
                     <Button
                       size="small"
@@ -336,7 +338,7 @@ const GroupsPage: React.FC = () => {
                     >
                       Состав
                     </Button>
-                    {isAdminLike && (
+                    {canManageGroups && (
                       <>
                         <Button
                           size="small"
@@ -364,7 +366,7 @@ const GroupsPage: React.FC = () => {
       </TableContainer>
 
       {/* Диалог создания группы */}
-      {isAdminLike && (
+      {canManageGroups && (
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Создать группу</DialogTitle>
           <DialogContent>
@@ -549,7 +551,7 @@ const GroupsPage: React.FC = () => {
       )}
 
       {/* Диалог редактирования группы */}
-      {isAdminLike && (
+      {canManageGroups && (
         <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Редактировать группу</DialogTitle>
           <DialogContent>
@@ -734,11 +736,11 @@ const GroupsPage: React.FC = () => {
       )}
 
       {/* Диалог состава группы */}
-      {(isAdminLike || user?.role === 'trainer') && (
+      {canViewMembers && (
         <Dialog open={membersOpen} onClose={() => setMembersOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Состав группы: {groupDetails?.name || selectedGroup?.name}</DialogTitle>
           <DialogContent>
-            {isAdminLike && (
+            {canManageGroups && (
               <>
                 <FormControl fullWidth sx={{ mt: 2 }}>
                   <InputLabel>Добавить ученика</InputLabel>
@@ -798,7 +800,7 @@ const GroupsPage: React.FC = () => {
                         {s.status === 'active' ? 'Активен' : 'В архиве'}
                       </Typography>
                     </Box>
-                    {isAdminLike && (
+                    {canManageGroups && (
                       <Button
                         size="small"
                         color="error"
@@ -823,4 +825,3 @@ const GroupsPage: React.FC = () => {
 };
 
 export default GroupsPage;
-

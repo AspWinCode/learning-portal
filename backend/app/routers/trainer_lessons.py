@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.academic_month import get_academic_window
 from app.database import get_db
 from app import auth
+from app.services.communication_hub import CommunicationService
+from app.services.makeup_selection import queue_makeup_selection_request
+from app.services.student_activity import log_student_activity
 from app.models import (
     User,
     Group,
@@ -45,6 +48,66 @@ from app.schemas import (
 from app.student_display import get_student_display_name, get_students_display_names
 
 router = APIRouter()
+
+
+def _lessons_effective_role(current_user: User) -> UserRole:
+    return auth.resolve_effective_role(current_user)
+
+
+def _ensure_lessons_access(current_user: User) -> UserRole:
+    auth.ensure_permission(current_user, "lessons.access")
+    return _lessons_effective_role(current_user)
+
+
+def _ensure_lessons_manage(current_user: User) -> UserRole:
+    auth.ensure_permission(current_user, "lessons.manage")
+    return _lessons_effective_role(current_user)
+
+
+def _ensure_lessons_schedule_manage(current_user: User) -> None:
+    auth.ensure_permission(current_user, "lessons.schedule_manage")
+
+
+def _ensure_lessons_override(current_user: User) -> None:
+    auth.ensure_permission(current_user, "lessons.override")
+
+
+def _ensure_trainer_owns_group(current_user: User, group: Group) -> None:
+    if _lessons_effective_role(current_user) == UserRole.TRAINER and group.trainer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your group")
+
+
+def _enqueue_lesson_change_notifications(
+    db: Session,
+    *,
+    student_ids: List[int],
+    group: Group,
+    event_key: str,
+    lesson_date: date,
+    lesson_time_value: Optional[time],
+    current_user: User,
+) -> None:
+    trainer = db.query(User).filter(User.id == group.trainer_id).first() if group.trainer_id else None
+    for student_id in sorted(set(student_ids)):
+        student = db.query(Student).filter(Student.id == student_id).first()
+        if not student:
+            continue
+        CommunicationService.send(
+            db,
+            channel="email",
+            recipient_type="student",
+            recipient_id=student.id,
+            event_key=event_key,
+            created_by=current_user.id,
+            context={
+                "student_name": get_student_display_name(db, student),
+                "group_name": group.name,
+                "lesson_date": lesson_date.isoformat(),
+                "lesson_time": lesson_time_value.strftime("%H:%M") if lesson_time_value else "",
+                "trainer_name": trainer.full_name if trainer else "",
+            },
+            dedupe_key=f"{event_key}:{student.id}:{group.id}:{lesson_date.isoformat()}:{lesson_time_value.isoformat() if lesson_time_value else ''}",
+        )
 
 LESSONS_PER_MONTH = 8
 
@@ -104,24 +167,21 @@ async def get_lessons_for_date(
 ):
     """Занятия тренера на указанную дату (по расписанию групп). Только для тренера."""
     weekday = lesson_date.weekday()  # 0=Monday, 6=Sunday
-    if current_user.role == UserRole.TRAINER:
+    effective_role = _ensure_lessons_access(current_user)
+    if effective_role == UserRole.TRAINER:
         groups = db.query(Group).options(selectinload(Group.trainer)).filter(
             Group.trainer_id == current_user.id,
             Group.status == GroupStatus.ACTIVE,
         ).all()
         cancellation_group_ids: Optional[List[int]] = [g.id for g in groups]
-    elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        # Для owner/admin/sales показываем занятия по активным группам,
-        # но переносы/отмены хотим видеть и по архивным группам.
+    else:
         groups = (
             db.query(Group)
             .options(selectinload(Group.trainer))
             .filter(Group.status == GroupStatus.ACTIVE)
             .all()
         )
-        cancellation_group_ids = None  # не ограничиваемся только активными группами
-    else:
-        raise HTTPException(status_code=403, detail="Только для тренера или администратора/владельца/менеджера")
+        cancellation_group_ids = None
     # Не показывать слоты раньше начала группы
     groups_for_day = [
         g for g in groups
@@ -415,6 +475,46 @@ def _close_absence_for_custom_lesson(
 
     absence.stage = "made_up"
     absence.makeup_custom_lesson_id = lesson.id
+    log_student_activity(
+        db,
+        student_id=student_id,
+        activity_type="makeup_done",
+        title="Отработка проведена",
+        description=f"Ручной урок: {lesson.title}",
+        created_by=None,
+        payload_json={"absence_id": absence.id, "lesson_id": lesson.id},
+    )
+
+
+def _close_absence_for_group_makeup(
+    db: Session,
+    *,
+    attendance: LessonAttendance,
+    group: Group,
+) -> None:
+    absence = (
+        db.query(AbsenceFollowUp)
+        .filter(
+            AbsenceFollowUp.student_id == attendance.student_id,
+            AbsenceFollowUp.makeup_group_id == attendance.group_id,
+            AbsenceFollowUp.makeup_lesson_date == attendance.lesson_date,
+            AbsenceFollowUp.stage.in_(("assigned", "link_sent")),
+        )
+        .order_by(AbsenceFollowUp.lesson_date.asc(), AbsenceFollowUp.id.asc())
+        .first()
+    )
+    if not absence:
+        return
+    absence.stage = "made_up"
+    log_student_activity(
+        db,
+        student_id=attendance.student_id,
+        activity_type="makeup_done",
+        title="Отработка проведена",
+        description=f"Группа: {group.name}. Дата: {attendance.lesson_date}",
+        created_by=None,
+        payload_json={"absence_id": absence.id, "group_id": attendance.group_id, "lesson_date": attendance.lesson_date.isoformat()},
+    )
 
 
 @router.post("/attendance")
@@ -427,11 +527,8 @@ async def save_attendance(
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    if current_user.role == UserRole.TRAINER:
-        if group.trainer_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not your group")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Only trainer (own group) or admin/owner/sales")
+    _ensure_lessons_manage(current_user)
+    _ensure_trainer_owns_group(current_user, group)
 
     if getattr(group, "start_date", None) and payload.lesson_date < group.start_date:
         raise HTTPException(
@@ -469,6 +566,7 @@ async def save_attendance(
         start_t = time(0, 0)
     if end_t is None:
         end_t = time(0, 0)
+    new_absence_notifications: List[AbsenceFollowUp] = []
 
     # Фактический тренер для этого слота на момент сохранения посещаемости.
     slot_trainer_override = (
@@ -489,6 +587,7 @@ async def save_attendance(
             LessonAttendance.lesson_date == payload.lesson_date,
             LessonAttendance.student_id == item.student_id,
         ).first()
+        previous_attended = att.attended if att else None
         late = getattr(item, "late", False) or False
         reason = getattr(item, "absence_reason", None) or None
         comment = getattr(item, "absence_comment", None) or None
@@ -517,6 +616,16 @@ async def save_attendance(
                 trainer_id=effective_trainer_id,
             )
             db.add(att)
+        if previous_attended is None or previous_attended != item.attended:
+            log_student_activity(
+                db,
+                student_id=item.student_id,
+                activity_type="lesson_attended" if item.attended else "lesson_missed",
+                title="Посетил занятие" if item.attended else "Пропустил занятие",
+                description=f"Группа: {group.name}. Дата: {payload.lesson_date}",
+                created_by=current_user.id,
+                payload_json={"group_id": group.id, "group_name": group.name, "lesson_date": payload.lesson_date.isoformat()},
+            )
     db.commit()
 
     attendances_saved = db.query(LessonAttendance).filter(
@@ -527,10 +636,14 @@ async def save_attendance(
     BASE_UNITS = 8
     U = max(1, getattr(group, "units_per_session", None) or 1)
     window_start, window_end = get_academic_window(payload.lesson_date)
+    effective_trainer = db.query(User).filter(User.id == effective_trainer_id).first() if effective_trainer_id else None
 
     for att in attendances_saved:
         is_present = att.attended and (not att.absence_reason or att.absence_reason == "was")
         is_absence = not att.attended or (att.absence_reason and att.absence_reason != "was")
+
+        if is_present:
+            _close_absence_for_group_makeup(db, attendance=att, group=group)
 
         existing_txs = list(
             db.query(StudentAccountTransaction).filter(
@@ -549,7 +662,7 @@ async def save_attendance(
                         AbsenceFollowUp.lesson_attendance_id == att.id,
                     ).first()
                     if not absence:
-                        db.add(AbsenceFollowUp(
+                        absence = AbsenceFollowUp(
                             lesson_attendance_id=att.id,
                             student_id=att.student_id,
                             group_id=att.group_id,
@@ -557,7 +670,9 @@ async def save_attendance(
                             stage="missed",
                             absence_reason=att.absence_reason,
                             absence_comment=att.absence_comment,
-                        ))
+                        )
+                        db.add(absence)
+                        new_absence_notifications.append(absence)
             continue
 
         student = db.query(Student).filter(Student.id == att.student_id).first()
@@ -678,7 +793,7 @@ async def save_attendance(
                     AbsenceFollowUp.lesson_attendance_id == att.id,
                 ).first()
                 if not absence:
-                    db.add(AbsenceFollowUp(
+                    absence = AbsenceFollowUp(
                         lesson_attendance_id=att.id,
                         student_id=att.student_id,
                         group_id=att.group_id,
@@ -686,8 +801,32 @@ async def save_attendance(
                         stage="missed",
                         absence_reason=att.absence_reason,
                         absence_comment=att.absence_comment,
-                    ))
+                    )
+                    db.add(absence)
+                    new_absence_notifications.append(absence)
+                student_for_notification = student or db.query(Student).filter(Student.id == att.student_id).first()
+                if student_for_notification:
+                    CommunicationService.send(
+                        db,
+                        channel="email",
+                        recipient_type="student",
+                        recipient_id=student_for_notification.id,
+                        event_key="student_absent",
+                        created_by=current_user.id,
+                        context={
+                            "student_name": student_for_notification.full_name,
+                            "group_name": group.name,
+                            "lesson_date": att.lesson_date.isoformat(),
+                            "lesson_time": start_t.strftime("%H:%M") if start_t else "",
+                            "trainer_name": effective_trainer.full_name if effective_trainer else "",
+                        },
+                    )
     db.commit()
+    for absence in new_absence_notifications:
+        try:
+            queue_makeup_selection_request(db, absence, created_by=current_user.id)
+        except Exception:
+            pass
     return {"ok": True}
 
 
@@ -744,13 +883,12 @@ async def list_trainer_custom_lessons(
     - Для admin/owner/sales: все уроки или по указанному trainer_id.
     """
     query = db.query(CustomLesson)
-    if current_user.role == UserRole.TRAINER:
+    effective_role = _ensure_lessons_access(current_user)
+    if effective_role == UserRole.TRAINER:
         query = query.filter(CustomLesson.trainer_id == current_user.id)
-    elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+    else:
         if trainer_id is not None:
             query = query.filter(CustomLesson.trainer_id == trainer_id)
-    else:
-        raise HTTPException(status_code=403, detail="Только для тренеров или admin/owner/sales")
     if date_from:
         query = query.filter(CustomLesson.lesson_date >= date_from)
     if date_to:
@@ -766,7 +904,7 @@ async def save_custom_lesson_attendance(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Посещаемость по ручному уроку (без группы). Только для тренера этого урока."""
-    if current_user.role != UserRole.TRAINER:
+    if _ensure_lessons_manage(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Только для тренеров")
 
     lesson = db.query(CustomLesson).filter(CustomLesson.id == payload.lesson_id).first()
@@ -810,11 +948,8 @@ async def add_student_to_lesson(
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    if current_user.role == UserRole.TRAINER:
-        if group.trainer_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not your group")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Only trainer (own group) or admin/owner/sales")
+    _ensure_lessons_manage(current_user)
+    _ensure_trainer_owns_group(current_user, group)
 
     student = db.query(Student).filter(Student.id == payload.student_id).first()
     if not student:
@@ -875,8 +1010,7 @@ async def remove_student_from_lesson(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Удалить ученика из урока. Только owner и admin."""
-    if current_user.role not in (UserRole.OWNER, UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Only owner or admin can remove a student from a lesson")
+    _ensure_lessons_override(current_user)
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -928,11 +1062,8 @@ async def create_lesson_slot(
             status_code=400,
             detail="Дата урока не может быть раньше начала группы",
         )
-    if current_user.role == UserRole.TRAINER:
-        if group.trainer_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not your group")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Only trainer (own group) or admin/owner/sales")
+    _ensure_lessons_manage(current_user)
+    _ensure_trainer_owns_group(current_user, group)
 
     try:
         start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
@@ -1008,8 +1139,7 @@ async def move_lesson(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Перенос занятия группы с from_date на to_date. Только admin/owner/sales."""
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Only admin, owner or sales can move lessons")
+    _ensure_lessons_schedule_manage(current_user)
     if payload.from_date == payload.to_date:
         raise HTTPException(status_code=400, detail="from_date and to_date must differ")
     group = db.query(Group).filter(Group.id == payload.group_id).first()
@@ -1088,6 +1218,7 @@ async def move_lesson(
     existing_cancel.moved_to_date = payload.to_date
     existing_cancel.moved_to_start_time = to_start
     existing_cancel.moved_to_end_time = to_end
+    moved_student_ids = [a.student_id for a in attendances if getattr(a, "student_id", None)]
 
     if attendances:
         att_ids = [a.id for a in attendances]
@@ -1106,6 +1237,7 @@ async def move_lesson(
             GroupStudent.group_id == payload.group_id,
             GroupStudent.left_at.is_(None),
         ).all()
+        moved_student_ids = [gs.student_id for gs in students_in_group if getattr(gs, "student_id", None)]
         created = 0
         # Фактический тренер для нового слота (учитываем подмены на дату переноса, если они уже заданы).
         slot_trainer_override = None
@@ -1135,8 +1267,26 @@ async def move_lesson(
                 trainer_id=effective_trainer_id,
             ))
             created += 1
+        _enqueue_lesson_change_notifications(
+            db,
+            student_ids=moved_student_ids,
+            group=group,
+            event_key="lesson_cancelled",
+            lesson_date=payload.to_date,
+            lesson_time_value=to_start,
+            current_user=current_user,
+        )
         db.commit()
         return {"ok": True, "moved_count": created}
+    _enqueue_lesson_change_notifications(
+        db,
+        student_ids=moved_student_ids,
+        group=group,
+        event_key="lesson_cancelled",
+        lesson_date=payload.to_date,
+        lesson_time_value=to_start,
+        current_user=current_user,
+    )
     db.commit()
     return {"ok": True, "moved_count": len(attendances)}
 
@@ -1148,8 +1298,7 @@ async def cancel_lesson(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Отменить занятие: слот не показывается на странице Уроки. Только admin/owner/sales."""
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Only admin, owner or sales can cancel lessons")
+    _ensure_lessons_schedule_manage(current_user)
     try:
         start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
         end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
@@ -1177,10 +1326,29 @@ async def cancel_lesson(
         LessonAttendance.lesson_start_time == start_t,
         LessonAttendance.lesson_end_time == end_t,
     ).all()
+    cancelled_student_ids = [a.student_id for a in attendances_to_delete if getattr(a, "student_id", None)]
+    if not cancelled_student_ids:
+        cancelled_student_ids = [
+            gs.student_id
+            for gs in db.query(GroupStudent).filter(
+                GroupStudent.group_id == payload.group_id,
+                GroupStudent.left_at.is_(None),
+            ).all()
+            if getattr(gs, "student_id", None)
+        ]
     att_ids = [a.id for a in attendances_to_delete]
     db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id.in_(att_ids)).delete(synchronize_session=False)
     for a in attendances_to_delete:
         db.delete(a)
+    _enqueue_lesson_change_notifications(
+        db,
+        student_ids=cancelled_student_ids,
+        group=group,
+        event_key="lesson_cancelled",
+        lesson_date=payload.lesson_date,
+        lesson_time_value=start_t,
+        current_user=current_user,
+    )
     db.commit()
     return {"ok": True}
 
@@ -1192,12 +1360,7 @@ async def set_lesson_trainer(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Подменить преподавателя на конкретный урок. Тренер — своя группа; admin/owner/sales — любая."""
-    if current_user.role == UserRole.TRAINER:
-        group = db.query(Group).filter(Group.id == payload.group_id).first()
-        if not group or group.trainer_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not your group")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Only trainer (own group) or admin/owner/sales")
+    _ensure_lessons_manage(current_user)
     try:
         start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
         end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
@@ -1206,6 +1369,7 @@ async def set_lesson_trainer(
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
+    _ensure_trainer_owns_group(current_user, group)
     trainer = db.query(User).filter(User.id == payload.trainer_id, User.role == UserRole.TRAINER).first()
     if not trainer:
         raise HTTPException(status_code=404, detail="Trainer not found")
@@ -1235,3 +1399,5 @@ async def set_lesson_trainer(
     ).update({LessonAttendance.trainer_id: payload.trainer_id}, synchronize_session=False)
     db.commit()
     return {"ok": True}
+
+

@@ -49,6 +49,7 @@ import { tasksApi, studentsApi, salesApi } from '../services/api';
 import type { LessonTaskItem, LessonTaskStudent } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { extractApiError } from '../utils/extractApiError';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import type {
   TaskTemplateResponse,
   TaskResponse,
@@ -87,9 +88,11 @@ const formatShortDate = (d: string | null | undefined): string => {
 
 const TasksPage: React.FC = () => {
   const { user } = useAuth();
-  const isAdminOrOwner = user?.role === 'admin' || user?.role === 'owner';
-  const isSales = user?.role === 'sales';
-  const isTrainer = user?.role === 'trainer';
+  const effectiveRole = getEffectiveRole(user);
+  const isAdminOrOwner = effectiveRole === 'admin' || effectiveRole === 'owner';
+  const isSales = effectiveRole === 'sales';
+  const isTrainer = effectiveRole === 'trainer';
+  const canManageTasks = hasPermission(user, 'tasks.manage');
   const canSeeLessonTasks = isAdminOrOwner || isSales;
 
   const [templates, setTemplates] = useState<TaskTemplateResponse[]>([]);
@@ -187,14 +190,14 @@ const TasksPage: React.FC = () => {
   const [taskIsParentResponses, setTaskIsParentResponses] = useState(false);
 
   const loadTemplates = useCallback(async () => {
-    if (!isAdminOrOwner) return;
+    if (!canManageTasks) return;
     try {
       const data = await tasksApi.listTemplates();
       setTemplates(data);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось загрузить шаблоны'));
     }
-  }, [isAdminOrOwner]);
+  }, [canManageTasks]);
 
   const loadTasks = useCallback(async () => {
     try {
@@ -206,14 +209,14 @@ const TasksPage: React.FC = () => {
   }, [statusFilter, categoryFilter]);
 
   const loadStudents = useCallback(async () => {
-    if (!isAdminOrOwner) return;
+    if (!canManageTasks) return;
     try {
       const data = await studentsApi.getAll();
       setStudents(Array.isArray(data) ? data : []);
     } catch {
       setStudents([]);
     }
-  }, [isAdminOrOwner]);
+  }, [canManageTasks]);
 
   const loadLessonTasks = useCallback(async () => {
     if (!canSeeLessonTasks) return;
@@ -557,7 +560,7 @@ const TasksPage: React.FC = () => {
 
   // Загрузить выбранных учеников для шаблона при открытии диалога
   useEffect(() => {
-    if (!templateDialogOpen || !isAdminOrOwner) return;
+    if (!templateDialogOpen || !canManageTasks) return;
     if (templateStudentIds.length === 0) {
       setTemplateSelectedStudents([]);
       return;
@@ -589,13 +592,13 @@ const TasksPage: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               sx={{ maxWidth: 260 }}
             />
-            {isAdminOrOwner && (
+            {canManageTasks && (
               <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40 } }}>
                 <Tab label="Задачи" />
                 <Tab label="Шаблоны задач" />
               </Tabs>
             )}
-            {(isAdminOrOwner || user?.role === 'trainer') && (
+            {(canManageTasks || isTrainer) && (
               <FormControlLabel
                 control={
                   <Switch
@@ -2444,7 +2447,7 @@ const TasksPage: React.FC = () => {
                                           size="small"
                                           checked={st.completed}
                                           onChange={() => handleSubtaskToggle(task, st)}
-                                          disabled={!isAdminOrOwner && !isSales}
+                                          disabled={!canManageTasks && !isSales}
                                         />
                                       }
                                       label={<Typography variant="caption" sx={{ textDecoration: st.completed ? 'line-through' : 'none' }}>{st.text.length > 30 ? st.text.slice(0, 30) + '…' : st.text}</Typography>}
@@ -2763,7 +2766,7 @@ const TasksPage: React.FC = () => {
                     Лиды
                   </Button>
                 </Stack>
-                {isAdminOrOwner && (
+                {canManageTasks && (
                   <Stack direction="row" alignItems="center" spacing={0.5}>
                     <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>Статус:</Typography>
                     <Button size="small" variant={statusFilter === 'active' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('active')}>
@@ -2774,7 +2777,7 @@ const TasksPage: React.FC = () => {
                     </Button>
                   </Stack>
                 )}
-                {isAdminOrOwner && (
+                {canManageTasks && (
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <Button startIcon={<AddIcon />} variant="contained" size="medium" onClick={() => openTaskDialog(undefined)}>
                       Создать задачу
@@ -2812,9 +2815,9 @@ const TasksPage: React.FC = () => {
                               <LinearProgress variant="determinate" value={task.progress} sx={{ width: 80, height: 6, borderRadius: 1 }} />
                             </Stack>
                           </Box>
-                          {(isAdminOrOwner || isSales) && (
+                          {(canManageTasks || isSales) && (
                             <Stack direction="row" spacing={0.5} onClick={(e) => e.stopPropagation()}>
-                              {isAdminOrOwner && (
+                              {canManageTasks && (
                                 <IconButton size="small" onClick={() => openTaskDialog(task)} title="Редактировать">
                                   <EditIcon />
                                 </IconButton>
@@ -2863,7 +2866,7 @@ const TasksPage: React.FC = () => {
                                   )}
                                 </>
                               )}
-                              {isAdminOrOwner && (
+                              {canManageTasks && (
                                 <IconButton size="small" onClick={() => deleteTask(task.id)} color="error" title="Удалить">
                                   <DeleteIcon />
                                 </IconButton>
@@ -2890,7 +2893,7 @@ const TasksPage: React.FC = () => {
                                     <Checkbox
                                       checked={st.completed}
                                       onChange={() => handleSubtaskToggle(task, st)}
-                                      disabled={!isAdminOrOwner && !isSales}
+                                      disabled={!canManageTasks && !isSales}
                                     />
                                   }
                                   label={<ListItemText primary={st.text} sx={{ textDecoration: st.completed ? 'line-through' : 'none' }} />}
@@ -2916,7 +2919,7 @@ const TasksPage: React.FC = () => {
               )}
             </Paper>
           </Stack>
-        ) : tab === 1 && isAdminOrOwner ? (
+        ) : tab === 1 && canManageTasks ? (
           <Box>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6">Шаблоны</Typography>
@@ -2960,7 +2963,7 @@ const TasksPage: React.FC = () => {
           </Box>
         ) : (
           <Box>
-            {isAdminOrOwner && (
+            {canManageTasks && (
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
                 <Button size="small" variant={statusFilter === 'active' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('active')}>
                   Активные
@@ -2999,7 +3002,7 @@ const TasksPage: React.FC = () => {
                             <LinearProgress variant="determinate" value={task.progress} sx={{ width: 80, height: 6, borderRadius: 1 }} />
                           </Stack>
                         </Box>
-                        {isAdminOrOwner && (
+                        {canManageTasks && (
                           <Stack direction="row" spacing={0.5} onClick={(e) => e.stopPropagation()}>
                             <IconButton size="small" onClick={() => openTaskDialog(task)} title="Редактировать">
                               <EditIcon />
@@ -3029,7 +3032,7 @@ const TasksPage: React.FC = () => {
                                   <Checkbox
                                     checked={st.completed}
                                     onChange={() => handleSubtaskToggle(task, st)}
-                                    disabled={!isAdminOrOwner && !isSales}
+                                    disabled={!canManageTasks && !isSales}
                                   />
                                 }
                                 label={<ListItemText primary={st.text} sx={{ textDecoration: st.completed ? 'line-through' : 'none' }} />}
@@ -3474,7 +3477,7 @@ const TasksPage: React.FC = () => {
             label="Повторять"
             sx={{ mt: 2, display: 'block' }}
           />
-          {isAdminOrOwner && (
+          {canManageTasks && (
             <FormControlLabel
               control={
                 <Checkbox

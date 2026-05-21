@@ -23,8 +23,11 @@ from app.services.student_card_conversion import (
 from app.services.absence_makeup import assign_makeup_for_absence as absence_makeup_assign
 from app.services.manual_lesson import create_manual_lesson as manual_lesson_create
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
+from app.services.ai_insights import build_lead_ai_insight
 from app.services.payment_status import get_payment_status_list as payment_status_list_svc, get_payment_status_summary as payment_status_summary_svc
 from app.services.lead_post_visit import update_lead_post_visit_stage as lead_post_visit_update_stage
+from app.services.student_activity import log_student_activity
+from app.services.person_sync import sync_lead_person, sync_student_card_person
 from app.models import (
     Lead,
     LeadStatus,
@@ -155,6 +158,8 @@ from app.schemas import (
     BankTransactionExpenseCategoryUpdate,
     AbsenceMakeupAssign,
     MakeupSuggestionItem,
+    PublicMakeupSlotsResponse,
+    PublicMakeupSelectionRequest,
     ProgramMakeupCompatibilityResponse,
     ProgramMakeupCompatibilityCreate,
     PaymentStatusItem,
@@ -179,6 +184,12 @@ from app.schemas import (
 )
 from app.routers.action_log import log_action
 from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
+from app.services.makeup_selection import (
+    close_send_link_tasks_for_absence,
+    create_sales_confirmation_task,
+    list_makeup_suggestions_for_absence,
+    resolve_absence_by_token,
+)
 from app.dependencies import require_sales_admin_owner
 
 router = APIRouter()
@@ -361,7 +372,7 @@ def _lesson_tasks_for_date(
 @router.get("/lesson-tasks/today")
 async def list_lesson_tasks_today(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """Уроки на сегодня для раздела «Позвать детей на занятие»."""
     today = date.today()
@@ -375,7 +386,7 @@ async def list_lesson_tasks_today(
 @router.get("/lesson-tasks/tomorrow")
 async def list_lesson_tasks_tomorrow(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """Уроки на завтра."""
     tomorrow = date.today() + timedelta(days=1)
@@ -386,7 +397,7 @@ async def list_lesson_tasks_tomorrow(
 @router.get("/lesson-tasks/week")
 async def list_lesson_tasks_week(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """Уроки на неделю (сегодня + 6 дней)."""
     today = date.today()
@@ -404,7 +415,7 @@ VALID_CALL_RESULTS = {"contacted", "no_answer", "cancelled", "technical", "messe
 async def set_lesson_call_result(
     payload: LessonCallResultUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     """Установить результат дозвона по ученику (менеджер): contacted | no_answer | cancelled | technical | messenger."""
     if payload.call_result not in VALID_CALL_RESULTS:
@@ -440,8 +451,7 @@ async def list_sales_instructions(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    auth.ensure_permission(current_user, "sales.access")
     items = db.query(SalesInstruction).order_by(SalesInstruction.created_at.asc()).all()
     return items
 
@@ -450,7 +460,7 @@ async def list_sales_instructions(
 async def create_sales_instruction(
     payload: SalesInstructionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     title = (payload.title or "").strip()
     body = (payload.body or "").strip()
@@ -475,7 +485,7 @@ async def update_sales_instruction(
     instruction_id: int,
     payload: SalesInstructionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(SalesInstruction).filter(SalesInstruction.id == instruction_id).first()
     if not item:
@@ -501,7 +511,7 @@ async def update_sales_instruction(
 async def delete_sales_instruction(
     instruction_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(SalesInstruction).filter(SalesInstruction.id == instruction_id).first()
     if not item:
@@ -516,7 +526,7 @@ async def delete_sales_instruction(
 async def upload_sales_instruction_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     filename = file.filename or ""
     content_type = file.content_type or "application/octet-stream"
@@ -577,13 +587,16 @@ def _student_card_response(card: StudentCard, user: User, db: Session) -> Studen
         "comment": getattr(card, "comment", None),
         "source": getattr(card, "source", None),
         "payment_link": getattr(card, "payment_link", None),
+        "learning_period_start": getattr(card, "learning_period_start", None),
+        "next_payment_date": getattr(card, "next_payment_date", None),
         "archived": card.archived,
         "anketa_status": getattr(card, "anketa_status", "converted"),
         "primary_for_bank_payments": getattr(card, "primary_for_bank_payments", False),
         "created_at": card.created_at,
         "updated_at": card.updated_at,
     }
-    if user.role == UserRole.OWNER:
+    effective_role = auth.resolve_effective_role(user)
+    if effective_role == UserRole.OWNER:
         data["abonement_id"] = card.abonement_id
         data["discount_type"] = card.discount_type
         data["discount_value"] = card.discount_value
@@ -597,8 +610,7 @@ def _student_card_response(card: StudentCard, user: User, db: Session) -> Studen
 
 
 def _require_sales_admin_owner(user: User) -> None:
-    if user.role not in (UserRole.SALES, UserRole.ADMIN, UserRole.OWNER):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    auth.ensure_permission(user, "sales.access")
 
 
 def _normalize_name(s: str) -> str:
@@ -901,9 +913,8 @@ def do_tochka_import_and_apply(
 
 
 @router.get("/tochka/status")
-async def tochka_bank_status(current_user: User = Depends(auth.get_current_active_user)):
+async def tochka_bank_status(current_user: User = Depends(require_sales_admin_owner)):
     """Проверка: заданы ли учётные данные Точка Банк и включено ли автозачисление."""
-    _require_sales_admin_owner(current_user)
     from app.services.tochka_client import is_configured, is_auto_import_configured
     return {
         "configured": is_configured(),
@@ -925,13 +936,12 @@ async def tochka_bank_status_public():
 async def tochka_import_and_apply(
     payload: TochkaImportRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """
     Загрузить выписку из Точка Банк за период. Матчинг по телефону плательщика (привязки или карточка).
     Дедупликация по operation_id. Уже обработанные операции пропускаются.
     """
-    _require_sales_admin_owner(current_user)
     from app.services.tochka_client import is_configured
 
     if not is_configured():
@@ -963,10 +973,9 @@ async def tochka_import_and_apply(
 async def list_bank_transactions(
     status: Optional[List[str]] = Query(None, description="Фильтр: new, no_match, ambiguous, applied, expense; без параметра — все операции"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Очередь операций из банка для ручного разбора (no_match, ambiguous)."""
-    _require_sales_admin_owner(current_user)
     q = db.query(BankTransaction).order_by(BankTransaction.created_at.desc())
     if status:
         q = q.filter(BankTransaction.status.in_(status))
@@ -978,10 +987,9 @@ async def list_bank_transactions(
 async def create_phone_payment_binding(
     payload: PhonePaymentBindingCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Привязать телефон плательщика к родителю: следующие платежи с этого номера зачислятся автоматически."""
-    _require_sales_admin_owner(current_user)
     normalized = normalize_phone(payload.payer_phone)
     if not normalized:
         raise HTTPException(status_code=400, detail="Некорректный номер телефона")
@@ -1021,10 +1029,9 @@ async def update_bank_transaction_expense_category(
     transaction_id: int,
     payload: BankTransactionExpenseCategoryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Установить категорию расхода (комиссия, типография, аренда и т.д.). Только для операций со статусом expense."""
-    _require_sales_admin_owner(current_user)
     bt = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
     if not bt:
         raise HTTPException(status_code=404, detail="Операция не найдена")
@@ -1041,14 +1048,13 @@ async def update_bank_transaction_expense_category(
 async def delete_bank_transaction(
     transaction_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
+    current_user: User = Depends(require_sales_admin_owner),
 ) -> Dict[str, bool]:
     """Удалить операцию банка (BankTransaction).
 
     Используется для ручной очистки очереди операций в интерфейсе «Долги и оплаты» → «Операции банка».
     Предполагается, что перед удалением администрация при необходимости откатила связанные действия по счетам учеников.
     """
-    _require_sales_admin_owner(current_user)
     bt = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
     if not bt:
         raise HTTPException(status_code=404, detail="Операция не найдена")
@@ -1090,13 +1096,14 @@ async def create_student_card(
     data = payload.model_dump()
     if data.get("student_id") is None and not data.get("anketa_status"):
         data["anketa_status"] = "draft"
+    data["phone_normalized"] = normalize_phone(data.get("parent_phone") or data.get("student_phone") or "") or None
     # Абонемент и скидка может менять только owner
-    if current_user.role != UserRole.OWNER:
+    if auth.resolve_effective_role(current_user) != UserRole.OWNER:
         data["abonement_id"] = None
         data["discount_type"] = DiscountType.NONE
         data["discount_value"] = 0.0
     # Ссылку оплаты могут задавать owner и admin; для остальных (sales) очищаем
-    if current_user.role not in (UserRole.OWNER, UserRole.ADMIN):
+    if auth.resolve_effective_role(current_user) not in (UserRole.OWNER, UserRole.ADMIN):
         data["payment_link"] = None
     if data.get("abonement_id"):
         ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
@@ -1108,6 +1115,8 @@ async def create_student_card(
             raise HTTPException(status_code=404, detail="Ученик не найден")
     card = StudentCard(**data)
     db.add(card)
+    db.flush()
+    sync_student_card_person(db, card)
     db.commit()
     db.refresh(card)
     return _student_card_response(card, current_user, db)
@@ -1284,7 +1293,7 @@ async def import_student_cards_from_excel(
         abonement_id = None
         discount_type = DiscountType.NONE
         discount_value = 0.0
-        if current_user.role == UserRole.OWNER:
+        if auth.resolve_effective_role(current_user) == UserRole.OWNER:
             ab_id_raw = val(row, ["абонемент", "abonement_id"])
             if ab_id_raw:
                 try:
@@ -1295,6 +1304,7 @@ async def import_student_cards_from_excel(
             student_full_name=student_full_name,
             birth_date=birth_date,
             student_phone=student_phone or None,
+            phone_normalized=normalize_phone(parent_phone or student_phone or "") or None,
             telegram=telegram or None,
             gender=gender,
             on_grant=on_grant,
@@ -1317,6 +1327,8 @@ async def import_student_cards_from_excel(
             archived=False,
         )
         db.add(card)
+        db.flush()
+        sync_student_card_person(db, card)
         created += 1
     db.commit()
     log_action(db, current_user.id, "import", "student_card", None, {"created": created, "skipped": skipped})
@@ -1693,12 +1705,12 @@ async def update_student_card(
         raise HTTPException(status_code=404, detail="Карточка не найдена")
     data = payload.model_dump(exclude_unset=True)
     # Абонемент и скидку может менять только owner
-    if current_user.role != UserRole.OWNER:
+    if auth.resolve_effective_role(current_user) != UserRole.OWNER:
         data.pop("abonement_id", None)
         data.pop("discount_type", None)
         data.pop("discount_value", None)
     # payment_link может менять только owner и admin (sales не может)
-    if current_user.role not in (UserRole.OWNER, UserRole.ADMIN):
+    if auth.resolve_effective_role(current_user) not in (UserRole.OWNER, UserRole.ADMIN):
         data.pop("payment_link", None)
     if data.get("abonement_id"):
         ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
@@ -1708,8 +1720,13 @@ async def update_student_card(
         st = db.query(Student).filter(Student.id == data["student_id"]).first()
         if not st:
             raise HTTPException(status_code=404, detail="Ученик не найден")
+    if any(field in data for field in ("parent_phone", "student_phone")):
+        data["phone_normalized"] = normalize_phone(
+            data.get("parent_phone", card.parent_phone) or data.get("student_phone", card.student_phone) or ""
+        ) or None
     for k, v in data.items():
         setattr(card, k, v)
+    sync_student_card_person(db, card)
     db.commit()
     db.refresh(card)
     return _student_card_response(card, current_user, db)
@@ -1979,7 +1996,19 @@ async def assign_makeup(
         if "не найден" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
-    return _absence_to_response(db, result.absence)
+    absence = result.absence
+    log_student_activity(
+        db,
+        student_id=absence.student_id,
+        activity_type="makeup_scheduled",
+        title="Назначена отработка",
+        description=f"Дата: {absence.makeup_lesson_date}" if getattr(absence, "makeup_lesson_date", None) else "Назначена отработка",
+        created_by=current_user.id,
+        payload_json={"absence_id": absence.id, "makeup_group_id": absence.makeup_group_id, "makeup_lesson_date": str(getattr(absence, "makeup_lesson_date", None) or "")},
+    )
+    db.commit()
+    db.refresh(absence)
+    return _absence_to_response(db, absence)
 
 
 @router.get("/absences/{absence_id}/suggest-makeups", response_model=List[MakeupSuggestionItem])
@@ -2052,15 +2081,81 @@ async def suggest_makeups(
     return result[:50]
 
 
+@router.get("/public/makeup-selection", response_model=PublicMakeupSlotsResponse)
+async def get_public_makeup_selection(
+    token: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    try:
+        absence = resolve_absence_by_token(db, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    student = db.query(Student).filter(Student.id == absence.student_id).first()
+    group = db.query(Group).filter(Group.id == absence.group_id).first()
+    return PublicMakeupSlotsResponse(
+        absence_id=absence.id,
+        student_id=absence.student_id,
+        student_name=get_student_display_name(db, student) if student else None,
+        original_group_name=group.name if group else None,
+        missed_lesson_date=absence.lesson_date,
+        available_slots=list_makeup_suggestions_for_absence(db, absence),
+    )
+
+
+@router.post("/public/makeup-selection/confirm", response_model=AbsenceFollowUpResponse)
+async def confirm_public_makeup_selection(
+    payload: PublicMakeupSelectionRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        absence = resolve_absence_by_token(db, payload.token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    try:
+        result = absence_makeup_assign(
+            db,
+            absence.id,
+            makeup_group_id=payload.makeup_group_id,
+            makeup_lesson_date=payload.makeup_lesson_date,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if "не найден" in message.lower():
+            raise HTTPException(status_code=404, detail=message)
+        raise HTTPException(status_code=400, detail=message)
+
+    absence = result.absence
+    log_student_activity(
+        db,
+        student_id=absence.student_id,
+        activity_type="makeup_scheduled",
+        title="Назначена отработка",
+        description=f"Дата: {absence.makeup_lesson_date}" if getattr(absence, "makeup_lesson_date", None) else "Назначена отработка",
+        created_by=None,
+        payload_json={"absence_id": absence.id, "makeup_group_id": absence.makeup_group_id, "makeup_lesson_date": str(getattr(absence, "makeup_lesson_date", None) or "")},
+    )
+    selected_group = db.query(Group).filter(Group.id == absence.makeup_group_id).first()
+    create_sales_confirmation_task(
+        db,
+        absence=absence,
+        selected_group_name=selected_group.name if selected_group else f"#{absence.makeup_group_id}",
+        created_by_id=None,
+    )
+    close_send_link_tasks_for_absence(db, absence_id=absence.id)
+    db.commit()
+    db.refresh(absence)
+    return _absence_to_response(db, absence)
+
+
 def _require_owner(user: User) -> None:
     """Только owner (ТЗ: заморозка, закрытие по факту)."""
-    if user.role != UserRole.OWNER:
+    if auth.resolve_effective_role(user) != UserRole.OWNER:
         raise HTTPException(status_code=403, detail="Только owner")
 
 
 def _require_owner_or_admin_settings(user: User) -> None:
     """Owner или admin (настройки отработок, без lead)."""
-    if user.role not in (UserRole.OWNER, UserRole.ADMIN):
+    if auth.resolve_effective_role(user) not in (UserRole.OWNER, UserRole.ADMIN):
         raise HTTPException(status_code=403, detail="Только owner или admin")
 
 
@@ -2127,11 +2222,9 @@ def _custom_lesson_to_response(db: Session, lesson: CustomLesson) -> CustomLesso
 async def create_custom_lesson(
     payload: CustomLessonCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("lessons.manage")),
 ):
     """Создать ручной урок без группы (отработка / доп.урок / пробное). Только admin/owner/sales."""
-    _require_sales_admin_owner(current_user)
-
     try:
         start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
         end_t = None
@@ -2177,10 +2270,9 @@ async def list_custom_lessons(
     student_id: Optional[int] = Query(None),
     lesson_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("lessons.access")),
 ):
     """Список ручных уроков для менеджера (admin/owner/sales)."""
-    _require_sales_admin_owner(current_user)
     query = db.query(CustomLesson)
     if date_from:
         query = query.filter(CustomLesson.lesson_date >= date_from)
@@ -2207,9 +2299,8 @@ async def list_custom_lessons(
 async def get_custom_lesson(
     lesson_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("lessons.access")),
 ):
-    _require_sales_admin_owner(current_user)
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:
         raise HTTPException(status_code=404, detail="Ручной урок не найден")
@@ -2221,10 +2312,9 @@ async def update_custom_lesson(
     lesson_id: int,
     payload: CustomLessonUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("lessons.manage")),
 ):
     """Редактирование ручного урока. Только admin/owner/sales."""
-    _require_sales_admin_owner(current_user)
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:
         raise HTTPException(status_code=404, detail="Ручной урок не найден")
@@ -2291,10 +2381,9 @@ async def update_custom_lesson(
 async def delete_custom_lesson(
     lesson_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("lessons.manage")),
 ):
     """Удалить ручной урок. Только admin/owner/sales."""
-    _require_sales_admin_owner(current_user)
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:
         raise HTTPException(status_code=404, detail="Ручной урок не найден")
@@ -2408,6 +2497,15 @@ async def create_student_freeze(
     if card and getattr(card, "next_payment_date", None):
         delta = (payload.freeze_end - payload.freeze_start).days
         card.next_payment_date = card.next_payment_date + timedelta(days=delta)
+    log_student_activity(
+        db,
+        student_id=student_id,
+        activity_type="freeze_set",
+        title="Поставлена заморозка",
+        description=f"{payload.freeze_start} — {payload.freeze_end}",
+        created_by=current_user.id,
+        payload_json={"freeze_start": payload.freeze_start.isoformat(), "freeze_end": payload.freeze_end.isoformat()},
+    )
     db.commit()
     db.refresh(freeze)
     return StudentFreezeResponse(id=freeze.id, student_id=freeze.student_id, freeze_start=freeze.freeze_start, freeze_end=freeze.freeze_end, created_at=freeze.created_at)
@@ -2517,7 +2615,7 @@ async def close_by_fact_confirm(
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:
-    if user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+    if auth.resolve_effective_role(user) in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
@@ -2528,13 +2626,13 @@ def _add_activity(
     actor_id: int,
     type: str,
     title: str,
-    description: str | None = None,
-    channel: str | None = None,
-    status_effect_from: str | None = None,
-    status_effect_to: str | None = None,
-    related_task_id: int | None = None,
-    related_invoice_id: int | None = None,
-    payload_json: dict | None = None,
+    description: Optional[str] = None,
+    channel: Optional[str] = None,
+    status_effect_from: Optional[str] = None,
+    status_effect_to: Optional[str] = None,
+    related_task_id: Optional[int] = None,
+    related_invoice_id: Optional[int] = None,
+    payload_json: Optional[dict] = None,
 ) -> LeadActivity:
     """Create a LeadActivity record without committing."""
     activity = LeadActivity(
@@ -2555,7 +2653,7 @@ def _add_activity(
 
 
 def _filter_query_by_role(query, user: User):
-    if user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+    if auth.resolve_effective_role(user) in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         return query
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
@@ -2701,7 +2799,7 @@ ALLOWED_PAUSE_REASONS = {"ждём ответ", "подумать", "нет вр
 @router.get("/dashboard", response_model=SalesDashboardResponse)
 async def get_sales_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     now = datetime.utcnow()
     start_month = datetime(now.year, now.month, 1)
@@ -2901,7 +2999,7 @@ async def list_follow_ups(
     event_id: Optional[int] = None,
     reason: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     now = datetime.utcnow()
     start_today = datetime(now.year, now.month, now.day)
@@ -2953,7 +3051,7 @@ async def list_follow_ups(
 async def get_leads_push_stats(
     lead_ids: List[int] = Query(default=[]),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead_query = _filter_query_by_role(db.query(Lead), current_user)
     if lead_ids:
@@ -3001,7 +3099,7 @@ async def get_leads_push_stats(
 async def list_lead_sources(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(LeadSource).order_by(LeadSource.name.asc())
     if active_only:
@@ -3013,7 +3111,7 @@ async def list_lead_sources(
 async def create_lead_source(
     payload: LeadSourceCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = _normalize_source_name(payload.name)
     if not name:
@@ -3034,7 +3132,7 @@ async def update_lead_source(
     source_id: int,
     payload: LeadSourceUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     source = db.query(LeadSource).filter(LeadSource.id == source_id).first()
     if not source:
@@ -3057,7 +3155,7 @@ async def update_lead_source(
 async def list_lead_task_templates(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(LeadTaskTemplate).order_by(LeadTaskTemplate.name.asc())
     if active_only:
@@ -3069,7 +3167,7 @@ async def list_lead_task_templates(
 async def create_lead_task_template(
     payload: LeadTaskTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = _normalize_source_name(payload.name)
     if not name:
@@ -3090,7 +3188,7 @@ async def update_lead_task_template(
     template_id: int,
     payload: LeadTaskTemplateUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(LeadTaskTemplate).filter(LeadTaskTemplate.id == template_id).first()
     if not item:
@@ -3113,7 +3211,7 @@ async def update_lead_task_template(
 async def list_lead_task_statuses(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(LeadTaskStatusOptionModel).order_by(LeadTaskStatusOptionModel.id.asc())
     if active_only:
@@ -3125,7 +3223,7 @@ async def list_lead_task_statuses(
 async def create_lead_task_status(
     payload: LeadTaskStatusOptionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = _normalize_source_name(payload.name)
     if not name:
@@ -3146,7 +3244,7 @@ async def update_lead_task_status(
     status_id: int,
     payload: LeadTaskStatusOptionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(LeadTaskStatusOptionModel).filter(LeadTaskStatusOptionModel.id == status_id).first()
     if not item:
@@ -3171,7 +3269,7 @@ async def update_lead_task_status(
 async def list_lead_info_templates(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(LeadInfoTemplate).order_by(LeadInfoTemplate.name.asc())
     if active_only:
@@ -3183,7 +3281,7 @@ async def list_lead_info_templates(
 async def create_lead_info_template(
     payload: LeadInfoTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = _normalize_source_name(payload.name)
     if not name:
@@ -3206,7 +3304,7 @@ async def update_lead_info_template(
     template_id: int,
     payload: LeadInfoTemplateUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(LeadInfoTemplate).filter(LeadInfoTemplate.id == template_id).first()
     if not item:
@@ -3235,7 +3333,7 @@ async def update_lead_info_template(
 async def list_sales_cities(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(SalesCity).order_by(SalesCity.name.asc())
     if active_only:
@@ -3247,7 +3345,7 @@ async def list_sales_cities(
 async def create_sales_city(
     payload: SalesCityCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = _normalize_source_name(payload.name)
     if not name:
@@ -3268,7 +3366,7 @@ async def update_sales_city(
     city_id: int,
     payload: SalesCityUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(SalesCity).filter(SalesCity.id == city_id).first()
     if not item:
@@ -3292,7 +3390,7 @@ async def update_sales_city(
 async def list_sales_schools(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(SalesSchool).order_by(SalesSchool.name.asc())
     if active_only:
@@ -3304,7 +3402,7 @@ async def list_sales_schools(
 async def create_sales_school(
     payload: SalesSchoolCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = _normalize_source_name(payload.name)
     if not name:
@@ -3325,7 +3423,7 @@ async def update_sales_school(
     school_id: int,
     payload: SalesSchoolUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(SalesSchool).filter(SalesSchool.id == school_id).first()
     if not item:
@@ -3349,7 +3447,7 @@ async def update_sales_school(
 async def list_sales_classes(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(SalesClass).order_by(SalesClass.name.asc())
     if active_only:
@@ -3361,7 +3459,7 @@ async def list_sales_classes(
 async def create_sales_class(
     payload: SalesClassCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = (payload.name or "").strip()
     if not name:
@@ -3382,7 +3480,7 @@ async def update_sales_class(
     class_id: int,
     payload: SalesClassUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(SalesClass).filter(SalesClass.id == class_id).first()
     if not item:
@@ -3405,7 +3503,7 @@ async def update_sales_class(
 @router.get("/account-templates", response_model=List[AccountTemplateResponse])
 async def list_account_templates(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     return db.query(AccountTemplate).order_by(AccountTemplate.id.asc()).all()
 
@@ -3414,7 +3512,7 @@ async def list_account_templates(
 async def create_account_template(
     payload: AccountTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     name = (payload.name or "").strip()
     if not name:
@@ -3433,7 +3531,7 @@ async def create_account_template(
 async def delete_account_template(
     template_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     item = db.query(AccountTemplate).filter(AccountTemplate.id == template_id).first()
     if not item:
@@ -3449,7 +3547,7 @@ async def delete_account_template(
 async def list_lead_statuses(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(LeadStatusOption).order_by(LeadStatusOption.id.asc())
     if active_only:
@@ -3461,7 +3559,7 @@ async def list_lead_statuses(
 async def create_lead_status(
     payload: LeadStatusOptionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = _normalize_source_name(payload.name)
     if not name:
@@ -3483,7 +3581,7 @@ async def update_lead_status(
     status_id: int,
     payload: LeadStatusOptionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(LeadStatusOption).filter(LeadStatusOption.id == status_id).first()
     if not item:
@@ -3523,8 +3621,7 @@ async def list_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    auth.ensure_permission(current_user, "sales.access")
 
     query = _filter_query_by_role(db.query(Lead).order_by(Lead.created_at.desc()), current_user)
     if status_filter:
@@ -3595,14 +3692,19 @@ async def list_leads(
                 }
                 leads = [refreshed.get(l.id, l) for l in leads]
 
-    return [_fix_lead_strings(l) for l in leads]
+    result: List[Lead] = []
+    for lead in leads:
+        fixed = _fix_lead_strings(lead)
+        fixed.ai_insight = build_lead_ai_insight(fixed)
+        result.append(fixed)
+    return result
 
 
 @router.get("/leads/{lead_id}/communications", response_model=List[LeadCommunicationResponse])
 async def list_lead_communications(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -3621,7 +3723,7 @@ async def create_lead_communication(
     lead_id: int,
     payload: LeadQuickCommunicationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -3669,7 +3771,7 @@ async def send_info_for_lead(
     lead_id: int,
     payload: LeadSendInfoRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -3737,7 +3839,7 @@ async def save_lead_contact_result(
     lead_id: int,
     payload: LeadContactResultRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -3808,7 +3910,7 @@ async def save_lead_contact_result(
 async def import_leads_from_excel(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     filename = (file.filename or "").lower()
     if not filename.endswith(".xlsx"):
@@ -3903,6 +4005,7 @@ async def import_leads_from_excel(
             owner_id=current_user.id,
             contact_name=contact_name,
             phone=phone,
+            phone_normalized=normalize_phone(parent_phone or child_phone or phone) or None,
             parent_full_name=parent_name,
             child_full_name=child_name,
             parent_phone=parent_phone,
@@ -3918,6 +4021,8 @@ async def import_leads_from_excel(
             status=LeadStatus.NEW,
         )
         db.add(lead)
+        db.flush()
+        sync_lead_person(db, lead)
         created += 1
 
     db.commit()
@@ -3927,7 +4032,7 @@ async def import_leads_from_excel(
 
 @router.get("/leads/import-template")
 async def download_leads_import_template(
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     wb = Workbook()
     ws = wb.active
@@ -4002,6 +4107,7 @@ async def submit_specialist_questionnaire(
         student_full_name=payload.child_full_name,
         birth_date=payload.birth_date,
         student_phone=payload.child_phone,
+        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
         telegram=payload.child_telegram,
         gender=payload.gender,
         on_grant=False,
@@ -4052,6 +4158,7 @@ async def submit_specialist_questionnaire(
         owner_id=owner.id,
         contact_name=payload.parent_full_name,
         phone=payload.parent_phone,
+        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
         parent_full_name=payload.parent_full_name,
         child_full_name=payload.child_full_name,
         parent_phone=payload.parent_phone,
@@ -4069,6 +4176,10 @@ async def submit_specialist_questionnaire(
     )
     db.add(card)
     db.add(lead)
+    db.flush()
+    sync_student_card_person(db, card)
+    lead.student_card_id = card.id
+    sync_lead_person(db, lead)
     db.commit()
     db.refresh(lead)
     return SpecialistQuestionnaireResponse(lead_id=lead.id)
@@ -4133,6 +4244,7 @@ async def submit_tilda_lead(
         owner_id=owner.id,
         contact_name=parent_name,
         phone=normalized_phone,
+        phone_normalized=normalized_phone,
         parent_full_name=parent_name,
         parent_phone=normalized_phone,
         child_full_name=child_name,
@@ -4143,6 +4255,8 @@ async def submit_tilda_lead(
         tags=[tag],
     )
     db.add(lead)
+    db.flush()
+    sync_lead_person(db, lead)
     db.commit()
     db.refresh(lead)
     return TildaLeadResponse(lead_id=lead.id)
@@ -4152,9 +4266,10 @@ async def submit_tilda_lead(
 async def create_lead(
     payload: LeadCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
-    owner_id = payload.owner_id if (current_user.role in (UserRole.ADMIN, UserRole.OWNER) and payload.owner_id) else current_user.id
+    effective_role = auth.resolve_effective_role(current_user)
+    owner_id = payload.owner_id if (effective_role in (UserRole.ADMIN, UserRole.OWNER) and payload.owner_id) else current_user.id
     source_id, source_name = _resolve_source(db, payload.source_id, payload.source)
     if _is_referral_source(source_name) and not (payload.referral_name or "").strip():
         raise HTTPException(status_code=400, detail="Для источника 'рекомендация' укажите, кто пригласил")
@@ -4169,6 +4284,7 @@ async def create_lead(
         owner_id=owner_id,
         contact_name=payload.contact_name,
         phone=payload.phone,
+        phone_normalized=normalize_phone(payload.parent_phone or payload.phone or payload.child_phone or "") or None,
         parent_full_name=payload.parent_full_name,
         child_full_name=payload.child_full_name,
         parent_phone=payload.parent_phone,
@@ -4191,6 +4307,7 @@ async def create_lead(
     )
     db.add(lead)
     db.flush()
+    sync_lead_person(db, lead)
     _add_activity(
         db, lead.id, current_user.id,
         type="lead_created",
@@ -4211,7 +4328,7 @@ _SEND_INFO_TASK_MARKER = "отправить информацию"
 async def get_leads_send_info_status(
     lead_ids: str = Query(..., description="Comma-separated lead IDs"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Возвращает для каждого lead_id статус задачи «Отправить информацию»: open, done, none."""
     if not lead_ids.strip():
@@ -4286,7 +4403,7 @@ async def get_leads_send_info_status(
 async def get_leads_badges(
     lead_ids: str = Query(..., description="Comma-separated lead IDs"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Returns badge flags (has_invoice, has_task_today, is_overdue) for kanban cards."""
     if not lead_ids.strip():
@@ -4341,7 +4458,7 @@ async def get_leads_badges(
 @router.get("/leads/no-show-ids", response_model=List[int])
 async def list_no_show_lead_ids(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Return IDs of leads that have a no-show registration. Single query, replaces N+1 on frontend."""
     rows = (
@@ -4369,7 +4486,9 @@ async def get_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
-    return _fix_lead_strings(lead)
+    lead = _fix_lead_strings(lead)
+    lead.ai_insight = build_lead_ai_insight(lead)
+    return lead
 
 
 @router.put("/leads/{lead_id}", response_model=LeadResponse)
@@ -4377,7 +4496,7 @@ async def update_lead(
     lead_id: int,
     payload: LeadUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4425,6 +4544,14 @@ async def update_lead(
     ]:
         if field in update_data:
             setattr(lead, field, update_data[field])
+    if any(field in update_data for field in ("phone", "parent_phone", "child_phone")):
+        lead.phone_normalized = normalize_phone(
+            update_data.get("parent_phone", lead.parent_phone)
+            or update_data.get("phone", lead.phone)
+            or update_data.get("child_phone", lead.child_phone)
+            or ""
+        ) or None
+    sync_lead_person(db, lead)
 
     new_status = lead.status.value
     if "status" in update_data and old_status != new_status:
@@ -4446,7 +4573,7 @@ async def update_lead(
 async def delete_lead(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """
     Полное удаление лида и связанных сущностей (задачи, коммуникации, счета и т.д.).
@@ -4493,7 +4620,7 @@ async def create_lead_task(
     lead_id: int,
     payload: LeadTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4582,7 +4709,7 @@ async def create_lead_task(
 async def list_lead_tasks(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4602,7 +4729,7 @@ async def close_lead_task(
     lead_id: int,
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4683,7 +4810,7 @@ async def update_lead_task(
     task_id: int,
     payload: LeadTaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4715,7 +4842,7 @@ async def create_invoice_for_lead(
     lead_id: int,
     payload: InvoiceCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4759,7 +4886,7 @@ async def create_invoice_for_lead(
 async def list_invoices_for_lead(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4777,7 +4904,7 @@ async def list_invoices_for_lead(
 async def get_lead_card(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Aggregated endpoint for lead card first render."""
     lead = db.query(Lead).options(joinedload(Lead.owner)).filter(Lead.id == lead_id).first()
@@ -4896,6 +5023,8 @@ async def get_lead_card(
         for a in activities
     ]
 
+    lead = _fix_lead_strings(lead)
+    lead.ai_insight = build_lead_ai_insight(lead)
     return {
         "lead": lead,
         "next_action": next_action,
@@ -4911,7 +5040,7 @@ async def get_lead_timeline(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Full timeline with pagination."""
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
@@ -4954,7 +5083,7 @@ async def create_lead_activity(
     lead_id: int,
     payload: LeadActivityCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Create a new activity entry for a lead."""
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
@@ -5011,7 +5140,7 @@ async def mark_invoice_paid(
     lead_id: int,
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Mark invoice as paid and create invoice_paid activity."""
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
@@ -5042,7 +5171,7 @@ async def mark_invoice_paid(
 async def send_invoice_email(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
@@ -5074,7 +5203,7 @@ async def list_invoices(
     created_from: Optional[datetime] = Query(default=None),
     created_to: Optional[datetime] = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = (
         db.query(Invoice)
@@ -5099,7 +5228,7 @@ async def list_invoices(
 async def list_events(
     status_filter: Optional[EventStatus] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     query = db.query(Event).order_by(Event.starts_at.asc())
     if status_filter:
@@ -5111,7 +5240,7 @@ async def list_events(
 async def create_event(
     payload: EventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     event = Event(
         title=payload.title,
@@ -5135,7 +5264,7 @@ async def update_event(
     event_id: int,
     payload: EventUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
@@ -5154,7 +5283,7 @@ async def update_event(
 async def list_event_registrations(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
@@ -5169,7 +5298,7 @@ async def create_event_registration(
     event_id: int,
     payload: EventRegistrationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     event = db.query(Event).filter(Event.id == event_id, Event.status == EventStatus.ACTIVE).first()
     if not event:
@@ -5226,7 +5355,7 @@ async def cancel_event_registration(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     reg = db.query(EventRegistration).filter(
         EventRegistration.id == registration_id,
@@ -5252,7 +5381,7 @@ async def confirm_event_registration(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     reg = db.query(EventRegistration).filter(
         EventRegistration.id == registration_id,
@@ -5276,7 +5405,7 @@ async def mark_event_registration_came(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     reg = db.query(EventRegistration).filter(
         EventRegistration.id == registration_id,
@@ -5334,7 +5463,7 @@ async def mark_event_registration_no_show(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     reg = db.query(EventRegistration).filter(
         EventRegistration.id == registration_id,
@@ -5381,7 +5510,7 @@ async def mark_event_registration_no_show(
 async def list_lead_event_registrations(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -5400,7 +5529,7 @@ async def update_lead_post_visit_stage(
     lead_id: int,
     payload: LeadPostVisitStageUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Обновление стадии воронки «Дожать на обучение» после мероприятия."""
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
@@ -5462,7 +5591,7 @@ async def update_lead_post_visit_stage(
 @router.get("/post-visit/leads", response_model=List[LeadResponse])
 async def list_post_visit_leads(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """
     Лиды для страницы «Дожать на обучение».
@@ -5935,7 +6064,7 @@ def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
 
 @router.get("/tax-deduction-certificate/status")
 async def tax_deduction_certificate_status(
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """Проверка: путь к шаблону PDF и доступен ли он (для отладки деплоя)."""
     template_path = _knd_template_path()
@@ -5950,7 +6079,7 @@ async def tax_deduction_certificate_status(
 @router.post("/tax-deduction-certificate")
 async def generate_tax_deduction_certificate(
     body: Dict,
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(require_sales_admin_owner),
 ):
     """
     Формирует PDF справки по форме КНД 1151158 (2 страницы).

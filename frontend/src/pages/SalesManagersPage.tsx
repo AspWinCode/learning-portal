@@ -7,7 +7,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -18,31 +22,34 @@ import {
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { usersApi } from '../services/api';
-import { User } from '../types';
+import { rolesApi, usersApi } from '../services/api';
+import { Role, User } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 
 const SalesManagersPage: React.FC = () => {
   const [salesManagers, setSalesManagers] = useState<User[]>([]);
+  const [salesRoles, setSalesRoles] = useState<Role[]>([]);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [newSales, setNewSales] = useState({
     full_name: '',
     email: '',
     password: '',
+    custom_role_id: '',
   });
 
   const loadSalesManagers = async () => {
     try {
-      const data = await usersApi.getAll('sales');
-      setSalesManagers(data);
+      const [users, allRoles] = await Promise.all([usersApi.getAll('sales'), rolesApi.getAll()]);
+      setSalesManagers(users);
+      setSalesRoles(allRoles.filter((role) => role.base_role === 'sales' && role.is_active));
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка загрузки sales-менеджеров'));
     }
   };
 
   useEffect(() => {
-    loadSalesManagers();
+    void loadSalesManagers();
   }, []);
 
   const handleCreate = async () => {
@@ -60,9 +67,10 @@ const SalesManagersPage: React.FC = () => {
         email: newSales.email.trim(),
         password: newSales.password,
         role: 'sales',
+        custom_role_id: newSales.custom_role_id ? Number(newSales.custom_role_id) : undefined,
       });
       setOpen(false);
-      setNewSales({ full_name: '', email: '', password: '' });
+      setNewSales({ full_name: '', email: '', password: '', custom_role_id: '' });
       setError('');
       await loadSalesManagers();
     } catch (err: any) {
@@ -79,7 +87,7 @@ const SalesManagersPage: React.FC = () => {
           startIcon={<AddIcon />}
           onClick={() => {
             setOpen(true);
-            setNewSales({ full_name: '', email: '', password: '' });
+            setNewSales({ full_name: '', email: '', password: '', custom_role_id: '' });
           }}
         >
           Создать менеджера
@@ -98,6 +106,7 @@ const SalesManagersPage: React.FC = () => {
             <TableRow>
               <TableCell>ФИО</TableCell>
               <TableCell>Email</TableCell>
+              <TableCell>Кастомная роль</TableCell>
               <TableCell>Статус</TableCell>
             </TableRow>
           </TableHead>
@@ -106,12 +115,13 @@ const SalesManagersPage: React.FC = () => {
               <TableRow key={manager.id}>
                 <TableCell>{manager.full_name}</TableCell>
                 <TableCell>{manager.email}</TableCell>
+                <TableCell>{manager.custom_role_name || 'Без кастомной роли'}</TableCell>
                 <TableCell>{manager.is_active ? 'Активен' : 'Неактивен'}</TableCell>
               </TableRow>
             ))}
             {salesManagers.length === 0 && (
               <TableRow>
-                <TableCell colSpan={3}>
+                <TableCell colSpan={4}>
                   <Typography color="text.secondary">Список пуст</Typography>
                 </TableCell>
               </TableRow>
@@ -150,6 +160,21 @@ const SalesManagersPage: React.FC = () => {
             required
             helperText="Минимум 6 символов"
           />
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Кастомная роль</InputLabel>
+            <Select
+              label="Кастомная роль"
+              value={newSales.custom_role_id}
+              onChange={(e) => setNewSales({ ...newSales, custom_role_id: String(e.target.value) })}
+            >
+              <MenuItem value="">Без кастомной роли</MenuItem>
+              {salesRoles.map((role) => (
+                <MenuItem key={role.id} value={String(role.id)}>
+                  {role.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Отмена</Button>

@@ -111,7 +111,7 @@ def _validate_funnel_and_stage(funnel_type: str, stage: str) -> None:
 
 @router.get("/owner-funnels/types", response_model=List[OwnerFunnelTypeInfo])
 async def list_owner_funnel_types(
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.access")),
 ):
     """╨б╨┐╨╕╤Б╨╛╨║╤В╨╕╨┐╨╛╨▓╨▓╨╛╤А╨╛╨╜╨╛╨║╤Б╤Н╤В╨░╨┐╨░╨╝╨╕╨┤╨╗╤П╨▓╤Л╨▒╨╛╤А╨░╨▓╨╛╤А╨╛╨╜╨║╨╕"""
     return [
@@ -127,7 +127,7 @@ async def list_owner_funnel_types(
 @router.get("/owner-funnels/events", response_model=List[OwnerFunnelEventResponse])
 async def list_owner_funnel_events(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.access")),
 ):
     """╨б╨┐╨╕╤Б╨╛╨║╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╣╨▓╨╛╤А╨╛╨╜╨╛╨║╨Ъ╨░╨╢╨┤╨╛╨╡╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡╨┤╨╛╤Б╨║╨░╤Б╤Н╤В╨░╨┐╨░╨╝╨╕"""
     events = db.query(OwnerFunnelEvent).order_by(OwnerFunnelEvent.created_at.desc()).all()
@@ -151,7 +151,7 @@ async def add_schools_by_city_to_event(
     event_id: int,
     payload: AddSchoolsByCityPayload = Body(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.manage")),
 ):
     """╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М╨▓╨▓╨╛╤А╨╛╨╜╨║╤Г╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П╨▓╤Б╨╡╤И╨║╨╛╨╗╤Л╨╕╨╖╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨│╨╛╨│╨╛╤А╨╛╨┤╨░╨и╨║╨╛╨╗╤Л╤Г╨╢╨╡╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╜╤Л╨╡╨▓╨▓╨╛╤А╨╛╨╜╨║╤Г╨┐╨╛╨▓╨┐╤А╨╛╨┐╤Г╤Б╨║╨░╤О╤В╤Б╤П"""
     event = db.query(OwnerFunnelEvent).filter(OwnerFunnelEvent.id == event_id).first()
@@ -195,7 +195,7 @@ async def add_schools_by_city_to_event(
 async def create_owner_funnel_event(
     payload: OwnerFunnelEventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.manage")),
 ):
     """╨б╨╛╨╖╨┤╨░╤В╤М╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡╨▓╨╛╤А╨╛╨╜╨║╤Г╤Б╨╜╨░╨╖╨▓╨░╨╜╨╕╨╡╨╝╨╕╨┤╨░╤В╨░╨╝╨╕╨Ъ╨░╤А╤В╨╛╤З╨║╨╕╨▓╨║╨╛╨╗╨╛╨╜╨║╨░╤Е╨┤╨╛╨▒╨░╨▓╨╗╤П╤О╤В╤Б╤П╨╛╤В╨┤╨╡╨╗╤М╨╜╨╛"""
     event = OwnerFunnelEvent(
@@ -219,7 +219,7 @@ async def list_owner_funnel_items(
     event_id: Optional[int] = Query(default=None, description="╨Ф╨╗╤П╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╤М╨╜╨╛"),
     stage: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.access")),
 ):
     """╨б╨┐╨╕╤Б╨╛╨║╤Н╨╗╨╡╨╝╨╡╨╜╤В╨╛╨▓╨▓╨╛╤А╨╛╨╜╨║╨╕╨Ф╨╗╤П╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜╨║╨░╤А╤В╨╛╤З╨║╨╕╨▓╨╜╤Г╤В╤А╨╕╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨│╨╛╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П"""
     if funnel_type not in OWNER_FUNNEL_STAGES:
@@ -253,7 +253,7 @@ async def list_owner_funnel_items(
 async def create_owner_funnel_item(
     payload: OwnerFunnelItemCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.manage")),
 ):
     """╨б╨╛╨╖╨┤╨░╤В╤М╤Н╨╗╨╡╨╝╨╡╨╜╤В╨▓╨╛╤А╨╛╨╜╨║╨╕╨║╨░╤А╤В╨╛╤З╨║╤Г╨Ф╨╗╤П╨╛╨▒╤П╨╖╨░╤В╨╡╨╗╨╡╨╜╨║╨░╤А╤В╨╛╤З╨║╨░╨▓╨╜╤Г╤В╤А╨╕╨▓╨╛╤А╨╛╨╜╨║╨╕╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╤П"""
     _validate_funnel_and_stage(payload.funnel_type, payload.stage)
@@ -293,7 +293,7 @@ async def create_owner_funnel_item(
 async def get_owner_funnel_item(
     item_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.access")),
 ):
     """╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╤Н╨╗╨╡╨╝╨╡╨╜╤В╨┐╨╛"""
     item = db.query(OwnerFunnelItem).filter(OwnerFunnelItem.id == item_id).first()
@@ -351,7 +351,7 @@ async def update_owner_funnel_item(
     item_id: int,
     payload: OwnerFunnelItemUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.manage")),
 ):
     """╨Ю╨▒╨╜╨╛╨▓╨╕╤В╤М╤Н╨╗╨╡╨╝╨╡╨╜╤В╨▓╤В╤З╨┐╨╡╤А╨╡╨╜╨╛╤Б╨┐╨╛╤Н╤В╨░╨┐╨░╨╝╨Ф╨╗╤П╨┐╨╛╨╗╤П╤Б╨╛╤Е╤А╨░╨╜╤П╤О╤В╤Б╤П╨▓"""
     item = db.query(OwnerFunnelItem).filter(OwnerFunnelItem.id == item_id).first()
@@ -386,7 +386,7 @@ async def update_owner_funnel_item(
 async def delete_owner_funnel_item(
     item_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("owner_funnels.manage")),
 ):
     """╨г╨┤╨░╨╗╨╕╤В╤М╤Н╨╗╨╡╨╝╨╡╨╜╤В"""
     item = db.query(OwnerFunnelItem).filter(OwnerFunnelItem.id == item_id).first()

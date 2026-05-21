@@ -43,7 +43,10 @@ def create_link_task_on_assign(
     description=f"Отправить ссылку на отработку ученику {getattr(student, 'full_name', '')} в группе {getattr(group, 'name', '')}",
     created_by_id=assignee_id,
     assigned_to_id=assignee_id,
+    category="parents",
     status=TaskStatus.ACTIVE.value,
+    tags=["makeup", "send_link", f"absence:{absence.id}"],
+    due_at=due_at,
   )
   db.add(task)
   db.flush()

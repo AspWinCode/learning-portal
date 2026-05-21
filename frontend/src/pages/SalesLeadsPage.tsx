@@ -90,6 +90,13 @@ const statusLabels: Record<LeadStatus, string> = {
   decided_immediately: '\u0420\u0435\u0448\u0438\u043b \u0437\u0430\u043d\u0438\u043c\u0430\u0442\u044c\u0441\u044f \u0441\u0440\u0430\u0437\u0443',
 };
 
+const leadAiStageMeta: Record<string, { label: string; color: 'success' | 'warning' | 'error' | 'default' }> = {
+  hot: { label: 'Горячий', color: 'success' },
+  warm: { label: 'Тёплый', color: 'warning' },
+  cooling: { label: 'Остывает', color: 'default' },
+  cold: { label: 'Холодный', color: 'error' },
+};
+
 /** h1dh�dddd h�h[dh[h\hQhU hdh[h$h�hb B$ hah$hUh\dhc dhhUdh[hQ h$hWd hWhUh$h[h� hU h�h[dh[h\hQhU */
 /** Тег лида: пригласить на следующее мероприятие (воронка → колонка «Следующее мероприятие») */
 const TAG_REINVITE_NEXT_EVENT = 'reinvite_next_event';
@@ -2291,10 +2298,23 @@ const SalesLeadsPage: React.FC = () => {
               <TableCell>
                 <Stack spacing={0.5} direction="row" alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
                   <Typography variant="subtitle2">{lead.contact_name}</Typography>
+                  {lead.ai_insight ? (
+                    <Chip
+                      size="small"
+                      label={leadAiStageMeta[lead.ai_insight.stage]?.label ?? lead.ai_insight.stage}
+                      color={leadAiStageMeta[lead.ai_insight.stage]?.color ?? 'default'}
+                      variant="outlined"
+                    />
+                  ) : null}
                   {lead.questionnaire_filled && (
                     <Chip size="small" label="Из анкеты" color="info" variant="outlined" />
                   )}
                 </Stack>
+                {lead.ai_insight ? (
+                  <Typography variant="caption" color="text.secondary">
+                    AI: {lead.ai_insight.best_next_action}
+                  </Typography>
+                ) : null}
               </TableCell>
               <TableCell>{lead.phone || '—'}</TableCell>
               <TableCell>
@@ -2466,6 +2486,15 @@ const SalesLeadsPage: React.FC = () => {
                             </Typography>
                           )}
                           <Chip size="small" label={statusLabels[lead.status] ?? lead.status} color={badgeColor(lead.status)} sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }} />
+                          {lead.ai_insight ? (
+                            <Chip
+                              size="small"
+                              label={leadAiStageMeta[lead.ai_insight.stage]?.label ?? lead.ai_insight.stage}
+                              color={leadAiStageMeta[lead.ai_insight.stage]?.color ?? 'default'}
+                              variant="outlined"
+                              sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
+                            />
+                          ) : null}
                           {lead.next_contact_at && (() => {
                             const d = parseISO(lead.next_contact_at);
                             if (!isValid(d)) return null;
@@ -2488,6 +2517,11 @@ const SalesLeadsPage: React.FC = () => {
                               Нет следующего шага
                             </Typography>
                           )}
+                          {lead.ai_insight ? (
+                            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                              AI: {lead.ai_insight.best_next_action}
+                            </Typography>
+                          ) : null}
                           <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
                             {invoicesBadgeMap[lead.id] && (
                               <Chip size="small" label="Счёт" color="info" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />

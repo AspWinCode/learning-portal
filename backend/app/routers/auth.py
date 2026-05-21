@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
-from app.schemas import Token, UserLogin, PasswordReset, PasswordResetConfirm, SetPasswordByInvite
+from app.schemas import Token, UserLogin, PasswordReset, PasswordResetConfirm, SetPasswordByInvite, UserResponse
 from app.models import User
 from app.services.telegram import notify_user
 
@@ -182,13 +182,7 @@ async def set_password_by_invite(
     return {"message": "Пароль установлен. Можно войти в кабинет."}
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(auth.get_current_active_user)):
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "role": current_user.role.value,
-        "is_active": current_user.is_active
-    }
+    return UserResponse.model_validate(current_user)
 

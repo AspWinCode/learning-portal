@@ -14,6 +14,18 @@ services:
       retries: 20
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -22,7 +34,9 @@ services:
       - "127.0.0.1:8000:8000"  # для проверки с сервера: curl http://localhost:8000/api/auth/me
     environment:
       APP_ENV: production
+      IN_PROCESS_SCHEDULER_ENABLED: "0"
       OWNER_WORKSPACE_DELIVERY_IN_APP: "0"
+      REDIS_URL: redis://redis:6379/0
       # Импорт max_messages → owner workspace раз в 30 мин (телефон контакта). По умолчанию выкл.
       # OWNER_WORKSPACE_AUTO_SYNC_MAX: "1"
       SECRET_KEY: ${SECRET_KEY:-change_me_min_32_chars_change_me_min_32_chars}
@@ -65,17 +79,37 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
-  owner_workspace_worker:
+  app_worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
       APP_ENV: production
       RUN_MIGRATIONS_ON_STARTUP: "0"
+      IN_PROCESS_SCHEDULER_ENABLED: "0"
+      REDIS_URL: redis://redis:6379/0
       DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
       SECRET_KEY: ${SECRET_KEY:-change_me_min_32_chars_change_me_min_32_chars}
+      TOCHKA_CLIENT_ID: ${TOCHKA_CLIENT_ID:-}
+      TOCHKA_CLIENT_SECRET: ${TOCHKA_CLIENT_SECRET:-}
+      TOCHKA_ACCOUNT_ID: ${TOCHKA_ACCOUNT_ID:-}
+      SMS_GATEWAY_BASE_URL: ${SMS_GATEWAY_BASE_URL:-}
+      SMS_GATEWAY_TOKEN: ${SMS_GATEWAY_TOKEN:-}
+      SMS_GATEWAY_PROVIDER: ${SMS_GATEWAY_PROVIDER:-}
+      SMS_GATEWAY_FROM: ${SMS_GATEWAY_FROM:-}
+      SMS_GATEWAY_DEVICE_ID: ${SMS_GATEWAY_DEVICE_ID:-}
+      SMS_GATEWAY_SEND_PATH: ${SMS_GATEWAY_SEND_PATH:-3rdparty/v1/messages}
+      MAX_API_BASE_URL: ${MAX_API_BASE_URL:-https://platform-api.max.ru}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_PERSONAL_BASE_URL: ${MAX_PERSONAL_BASE_URL:-https://app.api-messenger.com/max-v1}
+      MAX_PERSONAL_TOKEN: ${MAX_PERSONAL_TOKEN:-}
+      GREEN_API_BASE_URL: ${GREEN_API_BASE_URL:-}
+      GREEN_API_ID_INSTANCE: ${GREEN_API_ID_INSTANCE:-}
+      GREEN_API_TOKEN: ${GREEN_API_TOKEN:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
@@ -90,7 +124,34 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ["python", "-m", "app.owner_workspace_delivery_worker"]
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "dramatiq", "app.background_tasks", "--processes", "1", "--threads", "8"]
+    restart: unless-stopped
+
+  app_scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: production
+      RUN_MIGRATIONS_ON_STARTUP: "0"
+      IN_PROCESS_SCHEDULER_ENABLED: "0"
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
+      SECRET_KEY: ${SECRET_KEY:-change_me_min_32_chars_change_me_min_32_chars}
+      TOCHKA_CLIENT_ID: ${TOCHKA_CLIENT_ID:-}
+      TOCHKA_CLIENT_SECRET: ${TOCHKA_CLIENT_SECRET:-}
+      TOCHKA_ACCOUNT_ID: ${TOCHKA_ACCOUNT_ID:-}
+      OWNER_WORKSPACE_AUTO_SYNC_MAX: ${OWNER_WORKSPACE_AUTO_SYNC_MAX:-0}
+      OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED: ${OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED:-1}
+      OWNER_WORKSPACE_WEB_PUSH_DISPATCH_ENABLED: ${OWNER_WORKSPACE_WEB_PUSH_DISPATCH_ENABLED:-1}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "app.background_scheduler"]
     restart: unless-stopped
 
   telegram_bot:
@@ -127,6 +188,7 @@ volumes:
   db_data:
     external: true
     name: learning-portal_db_data
+  redis_data:
   caddy_data:
   caddy_config:
 

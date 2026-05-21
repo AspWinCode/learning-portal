@@ -6,6 +6,7 @@ from datetime import datetime
 import os
 import enum
 import uuid
+from typing import List, Optional
 from app.database import Base
 
 # При записи в PostgreSQL всегда отправляем lowercase (value), т.к. миграции создают enum с 'active', 'archived'.
@@ -120,6 +121,22 @@ _CharacteristicStatusType = _lowercase_enum_type(CharacteristicStatus, use_upper
 _StudentProgramLinkStatusType = _lowercase_enum_type(StudentProgramLinkStatus, use_uppercase_for_pg=False)
 
 
+class Person(Base):
+    __tablename__ = "persons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String, nullable=False, index=True)
+    email = Column(String, nullable=True, index=True)
+    phone_normalized = Column(String(32), nullable=True, index=True)
+    role_hint = Column(String(32), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    users = relationship("User", back_populates="person")
+    leads = relationship("Lead", back_populates="person")
+    student_cards = relationship("StudentCard", back_populates="person")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -128,6 +145,8 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     role = Column(SQLEnum(UserRole, name="userrole", values_callable=_enum_values), nullable=False)
+    person_id = Column(Integer, ForeignKey("persons.id"), nullable=True, index=True)
+    custom_role_id = Column(Integer, ForeignKey("roles.id"), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     telegram_chat_id = Column(BigInteger, nullable=True, index=True)
     telegram_link_code = Column(String, nullable=True, index=True)
@@ -143,6 +162,7 @@ class User(Base):
     trainer_lessons = Column(Integer, nullable=True)
     # Профиль тренера (виден owner, admin, sales)
     phone = Column(String(32), nullable=True)
+    phone_normalized = Column(String(32), nullable=True, index=True)
     phone_extra = Column(String(32), nullable=True)
     trainer_lesson_formats = Column(String(32), nullable=True)  # group | individual | both
     trainer_banks = Column(JSON, nullable=True)  # ["alfa","tinkoff","sberbank","vtb","ozon"]
@@ -155,11 +175,48 @@ class User(Base):
     trainer_comment = Column(Text, nullable=True)
 
     # Relationships
+    person = relationship("Person", back_populates="users", foreign_keys=[person_id])
+    custom_role = relationship("Role", back_populates="users", foreign_keys=[custom_role_id])
     students = relationship("Student", back_populates="parent", foreign_keys="Student.parent_id")
     trainer_groups = relationship("Group", back_populates="trainer", foreign_keys="Group.trainer_id")
     program_trainers = relationship("ProgramTrainer", back_populates="trainer")
     grades = relationship("Grade", back_populates="trainer")
     characteristics = relationship("Characteristic", back_populates="trainer")
+
+    @property
+    def effective_role(self) -> UserRole:
+        if self.custom_role and self.custom_role.is_active:
+            return self.custom_role.base_role
+        return self.role
+
+    @property
+    def custom_role_name(self) -> Optional[str]:
+        if self.custom_role and self.custom_role.is_active:
+            return self.custom_role.name
+        return None
+
+    @property
+    def role_permissions(self) -> List[str]:
+        if self.custom_role and self.custom_role.is_active and isinstance(self.custom_role.permissions, list):
+            return [str(item) for item in self.custom_role.permissions]
+        return []
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(64), unique=True, index=True, nullable=False)
+    name = Column(String(128), nullable=False)
+    description = Column(Text, nullable=True)
+    base_role = Column(SQLEnum(UserRole, name="userrole", values_callable=_enum_values), nullable=False)
+    permissions = Column(JSON, nullable=False, default=list)
+    is_system = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    users = relationship("User", back_populates="custom_role")
 
 
 class Student(Base):
@@ -292,8 +349,10 @@ class Lead(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    person_id = Column(Integer, ForeignKey("persons.id"), nullable=True, index=True)
     contact_name = Column(String, nullable=False)
     phone = Column(String, nullable=False)
+    phone_normalized = Column(String(32), nullable=True, index=True)
     parent_full_name = Column(String, nullable=True)
     child_full_name = Column(String, nullable=True)
     parent_phone = Column(String, nullable=True)
@@ -326,6 +385,7 @@ class Lead(Base):
     questionnaire_filled = Column(Boolean, default=False, nullable=False, index=True)
     questionnaire_data = Column(JSON, nullable=True)  # полные данные из формы анкеты (свои поля для лидов из формы)
     converted_to_student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
+    student_card_id = Column(Integer, ForeignKey("student_cards.id"), nullable=True, index=True)
     b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=True, index=True)
     b2b_event_id = Column(Integer, ForeignKey("b2b_school_events.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -338,8 +398,10 @@ class Lead(Base):
     last_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)  # дата последнего контакта (звонок/недозвон/инфо)
 
     # Relationships
+    person = relationship("Person", back_populates="leads", foreign_keys=[person_id])
     owner = relationship("User")
     converted_to_student = relationship("Student", foreign_keys=[converted_to_student_id])
+    student_card = relationship("StudentCard", foreign_keys=[student_card_id])
     abonement = relationship("Abonement")
     source_ref = relationship("LeadSource")
     status_option = relationship("LeadStatusOption")
@@ -440,9 +502,34 @@ class SmsTemplate(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(256), nullable=False, index=True)
     category = Column(String(64), nullable=True, index=True)
+    event_key = Column(String(128), nullable=True, index=True)
+    channel = Column(String(32), nullable=False, server_default="sms", index=True)
+    subject = Column(String(255), nullable=True)
     text = Column(Text, nullable=False)
     active = Column(Boolean, default=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CommunicationQueue(Base):
+    __tablename__ = "communication_queue"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    recipient_type = Column(String(32), nullable=False, index=True)
+    recipient_id = Column(Integer, nullable=False, index=True)
+    channel = Column(String(32), nullable=False, index=True)
+    template_id = Column(Integer, ForeignKey("sms_templates.id"), nullable=True, index=True)
+    payload = Column(JSON, nullable=True)
+    status = Column(String(16), nullable=False, server_default="pending", index=True)
+    attempt_count = Column(Integer, nullable=False, server_default="0")
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    error = Column(Text, nullable=True)
+    dedupe_key = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    template = relationship("SmsTemplate")
+    creator = relationship("User", foreign_keys=[created_by])
 
 
 class SalesCity(Base):
@@ -511,10 +598,12 @@ class StudentCard(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True, unique=True)
+    person_id = Column(Integer, ForeignKey("persons.id"), nullable=True, index=True)
     # Обучающийся (ФИО из карточки — используется для отображения везде, если карточка привязана)
     student_full_name = Column(String, nullable=False, index=True)
     birth_date = Column(Date, nullable=True)
     student_phone = Column(String, nullable=True)
+    phone_normalized = Column(String(32), nullable=True, index=True)
     telegram = Column(String, nullable=True)
     gender = Column(String, nullable=True)  # м/ж или male/female
     on_grant = Column(Boolean, default=False, nullable=False)
@@ -553,6 +642,7 @@ class StudentCard(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     abonement = relationship("Abonement")
+    person = relationship("Person", back_populates="student_cards", foreign_keys=[person_id])
     student = relationship("Student", backref="student_card")
 
 
@@ -800,6 +890,82 @@ class FinanceRecognitionRule(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class PersonalFinanceDirection(str, enum.Enum):
+    INCOME = "income"
+    EXPENSE = "expense"
+
+
+class PersonalFinanceAccount(Base):
+    __tablename__ = "personal_finance_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(128), nullable=False, index=True)
+    currency = Column(String(8), nullable=False, default="RUB")
+    balance = Column(Float, nullable=False, default=0.0)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User")
+
+
+class PersonalFinanceCategory(Base):
+    __tablename__ = "personal_finance_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    direction = Column(
+        SQLEnum(PersonalFinanceDirection, name="personalfinancedirection", values_callable=_enum_values),
+        nullable=False,
+    )
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User")
+
+
+class PersonalFinanceTransaction(Base):
+    __tablename__ = "personal_finance_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    account_id = Column(Integer, ForeignKey("personal_finance_accounts.id"), nullable=False, index=True)
+    category_id = Column(Integer, ForeignKey("personal_finance_categories.id"), nullable=True, index=True)
+    amount = Column(Float, nullable=False)
+    direction = Column(
+        SQLEnum(PersonalFinanceDirection, name="personalfinancedirection", values_callable=_enum_values),
+        nullable=False,
+    )
+    article = Column(String(255), nullable=True, index=True)
+    description = Column(Text, nullable=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User")
+    account = relationship("PersonalFinanceAccount", foreign_keys=[account_id])
+    category = relationship("PersonalFinanceCategory", foreign_keys=[category_id])
+
+
+class PersonalFinanceRule(Base):
+    __tablename__ = "personal_finance_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    pattern = Column(String(512), nullable=False, index=True)
+    category_id = Column(Integer, ForeignKey("personal_finance_categories.id"), nullable=True, index=True)
+    display_name = Column(String(255), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User")
+    category = relationship("PersonalFinanceCategory", foreign_keys=[category_id])
+
+
 class LeadTaskTemplate(Base):
     __tablename__ = "lead_task_templates"
 
@@ -876,6 +1042,22 @@ class LeadActivity(Base):
     related_invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
 
     lead = relationship("Lead")
+    creator = relationship("User")
+
+
+class StudentActivityLog(Base):
+    __tablename__ = "student_activity_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+    type = Column(String(64), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    payload_json = Column(JSON, nullable=True)
+
+    student = relationship("Student")
     creator = relationship("User")
 
 
@@ -1473,6 +1655,23 @@ class AppSetting(Base):
     key = Column(String, unique=True, index=True, nullable=False)
     value = Column(Text, nullable=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class ParentQuestion(Base):
+    __tablename__ = "parent_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    parent_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+    target_trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    topic = Column(String(255), nullable=True)
+    message = Column(Text, nullable=False)
+    status = Column(String(32), nullable=False, default="new", server_default="new", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    parent_user = relationship("User", foreign_keys=[parent_user_id])
+    student = relationship("Student", foreign_keys=[student_id])
+    target_trainer = relationship("User", foreign_keys=[target_trainer_id])
 
 
 # B2B Schools pipeline (conveyor stages for owner)

@@ -11,8 +11,13 @@ from app.models import (
 )
 from app.routers.action_log import log_action
 from app.services.telegram import notify_user
+from app.services.student_activity import log_student_activity
 
 router = APIRouter()
+
+
+def _grades_effective_role(current_user: User) -> UserRole:
+    return auth.resolve_effective_role(current_user)
 
 
 def ensure_program_trainer(db: Session, program_id: int, trainer_id: int) -> None:
@@ -37,7 +42,8 @@ async def create_grade(
 ):
     """Проставление оценки (тренер)"""
     # Проверка прав доступа
-    if current_user.role != UserRole.TRAINER:
+    auth.ensure_permission(current_user, "grades.manage")
+    if _grades_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can create grades")
     
     # Проверка, что тренер имеет доступ к ученику
@@ -125,6 +131,15 @@ async def create_grade(
         date=grade.date
     )
     db.add(db_grade)
+    log_student_activity(
+        db,
+        student_id=grade.student_id,
+        activity_type="grade_added",
+        title="Добавлена оценка",
+        description=f"Тема: {topic.name}. Оценка: {grade.grade}",
+        created_by=current_user.id,
+        payload_json={"topic_id": topic.id, "topic_name": topic.name, "grade": grade.grade},
+    )
     db.commit()
     db.refresh(db_grade)
     
@@ -161,7 +176,9 @@ async def read_grades(
     query = db.query(Grade)
     
     # Родитель видит только оценки своих активных учеников
-    if current_user.role == UserRole.PARENT:
+    auth.ensure_permission(current_user, "grades.access")
+    effective_role = _grades_effective_role(current_user)
+    if effective_role == UserRole.PARENT:
         student_ids = db.query(Student.id).filter(
             Student.parent_id == current_user.id,
             Student.status == StudentStatus.ACTIVE
@@ -169,7 +186,7 @@ async def read_grades(
         query = query.filter(Grade.student_id.in_(student_ids))
     
     # Тренер видит только оценки учеников из своих групп
-    elif current_user.role == UserRole.TRAINER:
+    elif effective_role == UserRole.TRAINER:
         query = query.filter(Grade.trainer_id == current_user.id)
     
     if student_id:
@@ -193,10 +210,12 @@ async def read_grade(
         raise HTTPException(status_code=404, detail="Grade not found")
     
     # Проверка прав доступа
-    if current_user.role == UserRole.PARENT:
+    auth.ensure_permission(current_user, "grades.access")
+    effective_role = _grades_effective_role(current_user)
+    if effective_role == UserRole.PARENT:
         if grade.student.parent_id != current_user.id or grade.student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
+    elif effective_role == UserRole.TRAINER:
         if grade.trainer_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not enough permissions")
     
@@ -215,7 +234,8 @@ async def update_grade(
     if db_grade is None:
         raise HTTPException(status_code=404, detail="Grade not found")
     
-    if db_grade.trainer_id != current_user.id:
+    auth.ensure_permission(current_user, "grades.manage")
+    if _grades_effective_role(current_user) != UserRole.TRAINER or db_grade.trainer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     
     update_data = grade_update.dict(exclude_unset=True)
@@ -260,10 +280,12 @@ async def get_student_progress(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    if current_user.role == UserRole.PARENT:
+    auth.ensure_permission(current_user, "grades.access")
+    effective_role = _grades_effective_role(current_user)
+    if effective_role == UserRole.PARENT:
         if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
+    elif effective_role == UserRole.TRAINER:
         if student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")
         has_access = db.query(GroupStudent).join(Group).filter(
@@ -319,9 +341,10 @@ async def get_student_progress(
     if program.status != ProgramStatus.ACTIVE:
         # Для тренеров и родителей разрешаем доступ к архивированным программам
         # если они назначены их группам/ученикам
-        if current_user.role == UserRole.TRAINER or current_user.role == UserRole.PARENT:
+        effective_role = _grades_effective_role(current_user)
+        if effective_role == UserRole.TRAINER or effective_role == UserRole.PARENT:
             # Проверяем, что программа назначена группе/ученику тренера/родителя
-            if current_user.role == UserRole.TRAINER:
+            if effective_role == UserRole.TRAINER:
                 has_access = db.query(GroupProgram).join(Group).filter(
                     GroupProgram.program_id == program.id,
                     Group.trainer_id == current_user.id

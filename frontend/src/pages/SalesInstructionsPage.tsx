@@ -5,10 +5,11 @@ import { salesInstructionsApi, salesInstructionImagesApi } from '../services/api
 import { SalesInstruction } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { RichTextEditor } from '../components/RichTextEditor';
+import { hasPermission } from '../utils/permissions';
 
 const SalesInstructionsPage: React.FC = () => {
   const { user } = useAuth();
-  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
+  const canManageInstructions = hasPermission(user, 'settings.manage');
 
   const [items, setItems] = useState<SalesInstruction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -150,7 +151,7 @@ const SalesInstructionsPage: React.FC = () => {
                   sx={{ '& img': { maxWidth: '100%', height: 'auto' } }}
                   dangerouslySetInnerHTML={{ __html: it.body?.includes('<') ? it.body : (it.body || '').replace(/\n/g, '<br/>') }}
                 />
-                {isAdminLike && (
+                {canManageInstructions && (
                   <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                     <Button size="small" onClick={() => handleEdit(it)}>
                       Редактировать
@@ -164,7 +165,7 @@ const SalesInstructionsPage: React.FC = () => {
             </Card>
           ))}
 
-          {isAdminLike && (
+          {canManageInstructions && (
             <Card variant="outlined" sx={{ mt: 2 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>

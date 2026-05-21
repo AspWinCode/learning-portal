@@ -63,7 +63,7 @@ def ensure_program_trainer(db: Session, program_id: int, trainer_id: int) -> Non
 async def create_program(
     program: ProgramCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("programs.manage"))
 ):
     """Создание программы обучения"""
     db_program = Program(
@@ -121,10 +121,12 @@ async def read_programs(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение списка программ"""
+    auth.ensure_permission(current_user, "programs.access")
+    effective_role = auth.resolve_effective_role(current_user)
     query = db.query(Program)
 
     # Гость видит только активные программы
-    if current_user.role == UserRole.GUEST:
+    if effective_role == UserRole.GUEST:
         query = query.filter(Program.status == ProgramStatus.ACTIVE)
         programs = query.offset(skip).limit(limit).all()
         return programs
@@ -132,7 +134,7 @@ async def read_programs(
     # Тренер видит:
     # - программы, к которым привязан (ProgramTrainer)
     # - программы, назначенные его активным группам (GroupProgram)
-    if current_user.role == UserRole.TRAINER:
+    if effective_role == UserRole.TRAINER:
         program_ids_from_groups = (
             db.query(GroupProgram.program_id)
             .join(Group, Group.id == GroupProgram.group_id)
@@ -147,7 +149,7 @@ async def read_programs(
         query = query.filter(or_(Program.id.in_(program_ids_from_groups), Program.id.in_(program_ids_from_links))).distinct()
 
     # Родитель видит только программы, назначенные его активным ученикам (напрямую или через группу)
-    elif current_user.role == UserRole.PARENT:
+    elif effective_role == UserRole.PARENT:
         direct_program_ids = (
             db.query(StudentProgram.program_id)
             .join(Student, Student.id == StudentProgram.student_id)
@@ -174,11 +176,13 @@ async def read_program(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение программы по ID"""
+    auth.ensure_permission(current_user, "programs.access")
+    effective_role = auth.resolve_effective_role(current_user)
     program_query = db.query(Program).options(
         joinedload(Program.modules).joinedload(Module.topics)
     ).filter(Program.id == program_id)
     # Гости видят только активные программы
-    if current_user.role == UserRole.GUEST:
+    if effective_role == UserRole.GUEST:
         program_query = program_query.filter(Program.status == ProgramStatus.ACTIVE)
     program = program_query.first()
     if program is None:
@@ -188,7 +192,7 @@ async def read_program(
     # если они назначены их группам/ученикам
 
     # RBAC: тренер может читать только программы, к которым привязан
-    if current_user.role == UserRole.TRAINER:
+    if effective_role == UserRole.TRAINER:
         has_access = db.query(ProgramTrainer).filter(
             ProgramTrainer.program_id == program_id,
             ProgramTrainer.trainer_id == current_user.id
@@ -214,7 +218,7 @@ async def read_program(
             db.commit()
 
     # RBAC: родитель может читать только программы, назначенные его активным ученикам
-    if current_user.role == UserRole.PARENT:
+    if effective_role == UserRole.PARENT:
         has_direct = db.query(StudentProgram).join(Student).filter(
             StudentProgram.program_id == program_id,
             StudentProgram.status == StudentProgramLinkStatus.ACTIVE,
@@ -237,7 +241,7 @@ async def update_program(
     program_id: int,
     program_update: ProgramUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("programs.manage"))
 ):
     """Обновление программы (с версионированием при существенных изменениях)"""
     db_program = db.query(Program).filter(Program.id == program_id).first()
@@ -359,7 +363,7 @@ async def archive_topic(
     program_id: int,
     topic_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("programs.manage"))
 ):
     """Архивация темы (удаление запрещено)"""
     topic = db.query(Topic).filter(
@@ -390,7 +394,7 @@ async def unarchive_topic(
     program_id: int,
     topic_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("programs.manage"))
 ):
     """Разархивация темы"""
     topic = db.query(Topic).filter(
@@ -412,7 +416,7 @@ async def archive_module(
     program_id: int,
     module_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("programs.manage"))
 ):
     """Архивация модуля и его тем (удаление запрещено)"""
     module = db.query(Module).filter(
@@ -445,7 +449,7 @@ async def unarchive_module(
     program_id: int,
     module_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("programs.manage"))
 ):
     """Разархивация модуля и его тем"""
     module = db.query(Module).filter(
@@ -470,7 +474,7 @@ async def assign_program_to_group(
     program_id: int,
     group_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("programs.manage"))
 ):
     """Назначение программы группе"""
     program = db.query(Program).filter(Program.id == program_id).first()
@@ -499,7 +503,7 @@ async def assign_program_to_student(
     program_id: int,
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("programs.manage"))
 ):
     """Добавление программы ученику (у одного ученика может быть несколько программ)"""
     program = db.query(Program).filter(Program.id == program_id).first()

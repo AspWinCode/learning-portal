@@ -24,19 +24,25 @@ from app.schemas import (
     StudentAccountDeductRequest,
 )
 from app.routers.action_log import log_action
+from app.services.student_activity import log_student_activity
 
 router = APIRouter()
 
 
+def _student_accounts_effective_role(user: User) -> UserRole:
+    return auth.resolve_effective_role(user)
+
+
 def _can_access_student(db: Session, user: User, student_id: int) -> bool:
-    if user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+    effective_role = _student_accounts_effective_role(user)
+    if effective_role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         return True
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         return False
-    if user.role == UserRole.PARENT:
+    if effective_role == UserRole.PARENT:
         return student.parent_id == user.id and student.status == StudentStatus.ACTIVE
-    if user.role == UserRole.TRAINER:
+    if effective_role == UserRole.TRAINER:
         return db.query(GroupStudent).join(Group).filter(
             GroupStudent.student_id == student_id,
             GroupStudent.left_at.is_(None),
@@ -60,8 +66,7 @@ async def get_student_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    if current_user.role == UserRole.TRAINER:
-        raise HTTPException(status_code=403, detail="Тренер по ТЗ не видит счета и оплаты")
+    auth.ensure_permission(current_user, "student_accounts.access")
     account = db.query(StudentAccount).options(selectinload(StudentAccount.transactions)).filter(StudentAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Счет не найден")
@@ -75,7 +80,7 @@ async def update_student_account(
     account_id: int,
     payload: StudentAccountUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("student_accounts.manage")),
 ):
     account = _get_account_and_check(db, account_id, current_user)
     if payload.name is not None:
@@ -97,8 +102,7 @@ async def add_payment(
 ):
     """Пополнение счета (оплата)."""
     account = _get_account_and_check(db, account_id, current_user)
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES, UserRole.PARENT):
-        raise HTTPException(status_code=403, detail="Только admin, owner, sales или родитель могут пополнять счёт (тренер по ТЗ не видит финансы)")
+    auth.ensure_permission(current_user, "student_accounts.payment")
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма пополнения должна быть больше 0")
@@ -112,6 +116,15 @@ async def add_payment(
     account.balance += amount
     from app.services.student_card_period import update_card_payment_dates
     update_card_payment_dates(db, account.student_id, date.today())
+    log_student_activity(
+        db,
+        student_id=account.student_id,
+        activity_type="payment_received",
+        title="Получена оплата",
+        description=f"Сумма: {amount} ₽",
+        created_by=current_user.id,
+        payload_json={"account_id": account.id, "amount": amount, "note": payload.note},
+    )
     db.commit()
     db.refresh(account)
     log_action(db, current_user.id, "student_account_payment", "student_account", account_id, {"amount": amount})
@@ -127,8 +140,8 @@ async def deduct_lesson(
 ):
     """Списание за занятие."""
     account = _get_account_and_check(db, account_id, current_user)
-    if current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Списание доступно только admin, owner или sales (тренер по ТЗ не видит финансы)")
+    auth.ensure_permission(current_user, "student_accounts.manage")
+
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма списания должна быть больше 0")
@@ -153,8 +166,8 @@ async def list_account_transactions(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    if current_user.role == UserRole.TRAINER:
-        raise HTTPException(status_code=403, detail="Тренер по ТЗ не видит счета и оплаты")
+    auth.ensure_permission(current_user, "student_accounts.access")
+
     account = _get_account_and_check(db, account_id, current_user)
     return account.transactions
 
@@ -164,7 +177,7 @@ async def delete_account_transaction(
     account_id: int,
     transaction_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("student_accounts.manage")),
 ):
     """
     Удалить операцию по счёту ученика.
@@ -214,7 +227,7 @@ async def delete_account_transaction(
 async def delete_student_account(
     account_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("student_accounts.manage")),
 ):
     """Удалить счёт ученика, если по нему нет операций."""
     account = db.query(StudentAccount).filter(StudentAccount.id == account_id).first()

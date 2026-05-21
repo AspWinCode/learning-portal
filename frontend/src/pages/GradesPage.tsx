@@ -26,6 +26,7 @@ import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { gradesApi, studentsApi, programsApi } from '../services/api';
 import { Grade, Student, Program } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 type TopicOption = {
   id: number;
@@ -93,11 +94,13 @@ const GradesPage: React.FC = () => {
   const [groupedHistory, setGroupedHistory] = useState<GroupedGrades>([]);
   const [historyProgress, setHistoryProgress] = useState<any>(null);
   const { user } = useAuth();
-  const isAdminLike = user?.role === 'admin' || user?.role === 'owner';
+  const effectiveRole = getEffectiveRole(user);
+  const isAdminLike = effectiveRole === 'admin' || effectiveRole === 'owner';
+  const canManageGrades = hasPermission(user, 'grades.manage');
 
   useEffect(() => {
     loadGrades();
-    if (user?.role === 'trainer' || user?.role === 'parent' || isAdminLike) {
+    if (effectiveRole === 'trainer' || effectiveRole === 'parent' || isAdminLike) {
       loadStudents();
     }
   }, []);
@@ -380,7 +383,7 @@ const GradesPage: React.FC = () => {
         </Box>
       )}
 
-      {user?.role === 'trainer' && (
+      {effectiveRole === 'trainer' && canManageGrades && (
         <Paper sx={{ p: 2, mb: 2 }}>
           <Typography variant="h6" sx={{ mb: 2 }}>
             Поставить оценку
@@ -468,7 +471,7 @@ const GradesPage: React.FC = () => {
           История оценок
         </Typography>
 
-        {(isAdminLike || user?.role === 'trainer' || user?.role === 'parent') && (
+        {(isAdminLike || effectiveRole === 'trainer' || effectiveRole === 'parent') && (
           <FormControl size="small" sx={{ minWidth: 320, mb: 2 }}>
             <InputLabel>Ученик</InputLabel>
             <Select

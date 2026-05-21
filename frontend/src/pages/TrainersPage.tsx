@@ -25,10 +25,11 @@ import {
   Checkbox,
 } from '@mui/material';
 import { Add as AddIcon, Person as PersonIcon } from '@mui/icons-material';
-import { usersApi, groupsApi, salesApi, adminToolsApi } from '../services/api';
+import { usersApi, groupsApi, salesApi, adminToolsApi, rolesApi } from '../services/api';
 import {
   User,
   Group,
+  Role,
   TrainerLessonFormat,
   TRAINER_BANK_KEYS,
   TRAINER_BANK_LABELS,
@@ -36,6 +37,7 @@ import {
 } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { applyPhoneMask, isValidPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
+import { hasPermission } from '../utils/permissions';
 
 /** Дни недели для графика работы */
 const WORK_SCHEDULE_DAYS = [
@@ -184,6 +186,7 @@ function profileFromUser(u: User): TrainerProfileForm {
 
 const TrainersPage: React.FC = () => {
   const [trainers, setTrainers] = useState<User[]>([]);
+  const [trainerRoles, setTrainerRoles] = useState<Role[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
@@ -191,20 +194,24 @@ const TrainersPage: React.FC = () => {
     full_name: '',
     email: '',
     password: '',
+    custom_role_id: '',
     ...emptyProfileForm,
   });
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileTrainer, setProfileTrainer] = useState<User | null>(null);
   const [profileForm, setProfileForm] = useState<TrainerProfileForm>(emptyProfileForm);
   const { user } = useAuth();
+  const canManageUsers = hasPermission(user, 'users.manage');
+  const canViewTrainerFinancials = hasPermission(user, 'owner_calculations.access');
   const [citiesList, setCitiesList] = useState<string[]>([]);
   const [resetPasswordInfo, setResetPasswordInfo] = useState<{ trainer?: User | null; password: string } | null>(null);
 
   const loadTrainers = async () => {
     try {
-      const data = await usersApi.getAll('trainer');
+      const [data, allRoles] = await Promise.all([usersApi.getAll('trainer'), rolesApi.getAll()]);
       // Скрываем архивных тренеров из основного списка
       setTrainers(data.filter((t) => t.is_active));
+      setTrainerRoles(allRoles.filter((role) => role.base_role === 'trainer' && role.is_active));
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка загрузки тренеров');
     }
@@ -255,6 +262,7 @@ const TrainersPage: React.FC = () => {
         email: newTrainer.email.trim(),
         password: newTrainer.password,
         role: 'trainer',
+        custom_role_id: newTrainer.custom_role_id ? Number(newTrainer.custom_role_id) : undefined,
         phone: phoneToApiValue(newTrainer.phone) || undefined,
         phone_extra: newTrainer.phone_extra.trim() ? phoneToApiValue(newTrainer.phone_extra) : undefined,
         trainer_lesson_formats: newTrainer.trainer_lesson_formats || undefined,
@@ -268,7 +276,7 @@ const TrainersPage: React.FC = () => {
         trainer_comment: newTrainer.trainer_comment || undefined,
       });
       setOpen(false);
-      setNewTrainer({ full_name: '', email: '', password: '', ...emptyProfileForm });
+      setNewTrainer({ full_name: '', email: '', password: '', custom_role_id: '', ...emptyProfileForm });
       setError('');
       loadTrainers();
       loadGroups();
@@ -660,13 +668,13 @@ const TrainersPage: React.FC = () => {
     <Layout>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Тренеры</Typography>
-        {(user?.role === 'admin' || user?.role === 'owner') && (
+        {canManageUsers && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => {
               setOpen(true);
-              setNewTrainer({ full_name: '', email: '', password: '', ...emptyProfileForm });
+              setNewTrainer({ full_name: '', email: '', password: '', custom_role_id: '', ...emptyProfileForm });
             }}
           >
             Создать тренера
@@ -689,7 +697,7 @@ const TrainersPage: React.FC = () => {
               <TableCell>Email</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Количество групп</TableCell>
-              {user?.role === 'owner' && (
+              {canViewTrainerFinancials && (
                 <>
                   <TableCell>Ставка</TableCell>
                   <TableCell>Занятий в месяц</TableCell>
@@ -712,7 +720,7 @@ const TrainersPage: React.FC = () => {
                   <TableCell>{trainer.email}</TableCell>
                   <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
                   <TableCell>{groupsCount}</TableCell>
-                  {user?.role === 'owner' && (
+                  {canViewTrainerFinancials && (
                     <>
                       <TableCell>{rate ? `${rate.toLocaleString('ru-RU')} ₽` : '—'}</TableCell>
                       <TableCell>{lessons || '—'}</TableCell>
@@ -731,7 +739,7 @@ const TrainersPage: React.FC = () => {
                     >
                       Профиль
                     </Button>
-                    {(user?.role === 'admin' || user?.role === 'owner') && (
+                    {canManageUsers && (
                       <Button
                         size="small"
                         sx={{ mr: 1 }}
@@ -817,6 +825,21 @@ const TrainersPage: React.FC = () => {
             required
             helperText="Минимум 6 символов"
           />
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Кастомная роль</InputLabel>
+            <Select
+              label="Кастомная роль"
+              value={newTrainer.custom_role_id}
+              onChange={(e) => setNewTrainer({ ...newTrainer, custom_role_id: String(e.target.value) })}
+            >
+              <MenuItem value="">Без кастомной роли</MenuItem>
+              {trainerRoles.map((role) => (
+                <MenuItem key={role.id} value={String(role.id)}>
+                  {role.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           {renderProfileFields(newTrainer, setNewTrainer, true)}
         </DialogContent>
         <DialogActions>

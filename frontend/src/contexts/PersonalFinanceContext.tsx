@@ -1,65 +1,18 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FinanceArticle,
   FinanceOperation,
   RecognitionRule,
-  STORAGE_ARTICLES,
-  STORAGE_RECOGNITION,
   OperationTarget,
 } from '../types/personalFinance';
-import type { FinanceLedgerTransactionRow } from '../types';
-import { financeApi } from '../services/api';
-import { addAcademyOperation } from '../utils/academyOperationsStorage';
-
-function loadArticles(): FinanceArticle[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_ARTICLES);
-    if (!raw) return [];
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveArticles(articles: FinanceArticle[]) {
-  localStorage.setItem(STORAGE_ARTICLES, JSON.stringify(articles));
-}
-
-function mapLedgerToOperation(tx: FinanceLedgerTransactionRow): FinanceOperation {
-  const occurred = tx.occurred_at ? String(tx.occurred_at).slice(0, 10) : '';
-  const amount =
-    tx.direction === 'income' ? Math.abs(tx.amount) : tx.direction === 'expense' ? -Math.abs(tx.amount) : tx.amount;
-  const rawTarget = (tx.target_code || 'personal') as OperationTarget;
-  const target: OperationTarget =
-    rawTarget === 'academy' || rawTarget === 'personal' || rawTarget === 'gogol_mogol' || rawTarget === 'leninets'
-      ? rawTarget
-      : 'personal';
-  return {
-    id: `ledger_${tx.id}`,
-    date: occurred,
-    amount,
-    description: tx.counterparty_name || tx.description_raw || '',
-    target,
-    articleId: tx.article_id != null ? String(tx.article_id) : null,
-    createdAt: tx.occurred_at || new Date().toISOString(),
-  };
-}
-
-function loadRecognition(): RecognitionRule[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_RECOGNITION);
-    if (!raw) return [];
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveRecognition(rules: RecognitionRule[]) {
-  localStorage.setItem(STORAGE_RECOGNITION, JSON.stringify(rules));
-}
+import {
+  PersonalFinanceAccount,
+  PersonalFinanceCategory,
+  PersonalFinanceRule as PersonalFinanceRuleRow,
+  PersonalFinanceTransaction,
+} from '../types';
+import { personalFinanceApi } from '../services/api';
 
 interface PersonalFinanceContextValue {
   articles: FinanceArticle[];
@@ -80,259 +33,309 @@ interface PersonalFinanceContextValue {
   updateRecognitionRule: (id: string, patch: Partial<Pick<RecognitionRule, 'pattern' | 'displayName'>>) => void;
   deleteRecognitionRule: (id: string) => void;
   getDisplayDescription: (description: string) => string;
+  refreshAll: () => Promise<void>;
 }
 
 const PersonalFinanceContext = createContext<PersonalFinanceContextValue | null>(null);
 
+const PERSONAL_FINANCE_QUERY_KEY = ['personal-finance'] as const;
+
+function getOperationTarget(account?: PersonalFinanceAccount | null): OperationTarget {
+  const raw = String(account?.name || '').trim().toLowerCase();
+  if (raw === 'academy' || raw === 'personal' || raw === 'gogol_mogol' || raw === 'leninets') {
+    return raw;
+  }
+  return 'personal';
+}
+
+function mapCategoryToArticle(category: PersonalFinanceCategory, index: number): FinanceArticle {
+  return {
+    id: String(category.id),
+    name: category.name,
+    type: category.direction,
+    order: index,
+  };
+}
+
+function mapTransactionToOperation(tx: PersonalFinanceTransaction): FinanceOperation {
+  const occurred = String(tx.occurred_at || '').slice(0, 10);
+  const amount = tx.direction === 'income' ? Math.abs(tx.amount) : -Math.abs(tx.amount);
+  return {
+    id: String(tx.id),
+    date: occurred,
+    amount,
+    description: tx.description || tx.article || '',
+    target: getOperationTarget(tx.account),
+    articleId: tx.category_id != null ? String(tx.category_id) : null,
+    createdAt: tx.created_at || tx.occurred_at,
+  };
+}
+
+function mapRuleToRecognition(rule: PersonalFinanceRuleRow): RecognitionRule {
+  return {
+    id: String(rule.id),
+    pattern: rule.pattern,
+    displayName: rule.display_name || rule.category?.name || rule.pattern,
+  };
+}
+
+function occurredAtFromDate(dateValue: string): string {
+  return `${dateValue}T12:00:00`;
+}
+
 export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [articles, setArticles] = useState<FinanceArticle[]>(loadArticles);
-  const [operations, setOperations] = useState<FinanceOperation[]>([]);
-  const [recognitionRules, setRecognitionRules] = useState<RecognitionRule[]>(loadRecognition);
+  const queryClient = useQueryClient();
 
-  const persistArticles = useCallback((next: FinanceArticle[]) => {
-    setArticles(next);
-    saveArticles(next);
-  }, []);
+  const accountsQuery = useQuery({
+    queryKey: [...PERSONAL_FINANCE_QUERY_KEY, 'accounts'],
+    queryFn: () => personalFinanceApi.listAccounts(),
+  });
+  const categoriesQuery = useQuery({
+    queryKey: [...PERSONAL_FINANCE_QUERY_KEY, 'categories'],
+    queryFn: () => personalFinanceApi.listCategories(),
+  });
+  const rulesQuery = useQuery({
+    queryKey: [...PERSONAL_FINANCE_QUERY_KEY, 'rules'],
+    queryFn: () => personalFinanceApi.listRules(),
+  });
+  const transactionsQuery = useQuery({
+    queryKey: [...PERSONAL_FINANCE_QUERY_KEY, 'transactions'],
+    queryFn: () => personalFinanceApi.listTransactions({ limit: 10000 }),
+  });
 
-  const persistOperations = useCallback((next: FinanceOperation[]) => {
-    setOperations(next);
-  }, []);
+  const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
+  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
+  const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
+  const transactions = useMemo(() => transactionsQuery.data ?? [], [transactionsQuery.data]);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const txs = await financeApi.listLedgerTransactions({
-          target_codes: ['personal', 'leninets', 'gogol_mogol', 'academy'],
-          limit: 10000,
-        });
-        const mapped = txs.map(mapLedgerToOperation);
-        setOperations(mapped);
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to load personal finance operations from ledger', err);
+  const refreshAll = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: PERSONAL_FINANCE_QUERY_KEY });
+  }, [queryClient]);
+
+  const resolveAccountId = useCallback(
+    (target: OperationTarget): number => {
+      const account = accounts.find((item) => getOperationTarget(item) === target) || accounts[0];
+      if (!account) {
+        throw new Error('Personal finance accounts are not loaded yet');
       }
-    };
-    void load();
-  }, []);
+      return account.id;
+    },
+    [accounts]
+  );
+
+  const articles = useMemo(
+    () => categories.map((category, index) => mapCategoryToArticle(category, index)),
+    [categories]
+  );
+  const operations = useMemo(
+    () => transactions.map(mapTransactionToOperation),
+    [transactions]
+  );
+  const incomeArticles = useMemo(
+    () => articles.filter((item) => item.type === 'income').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [articles]
+  );
+  const expenseArticles = useMemo(
+    () => articles.filter((item) => item.type === 'expense').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [articles]
+  );
+  const recognitionRules = useMemo(
+    () => rules.map(mapRuleToRecognition),
+    [rules]
+  );
 
   const addArticle = useCallback(
     (article: Omit<FinanceArticle, 'id'>) => {
-      const id = `art_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      const newArt: FinanceArticle = { ...article, id, order: articles.length };
-      persistArticles([...articles, newArt]);
-      return id;
+      const tempId = `temp_${Date.now()}`;
+      void (async () => {
+        await personalFinanceApi.createCategory({
+          name: article.name,
+          direction: article.type,
+        });
+        await refreshAll();
+      })();
+      return tempId;
     },
-    [articles, persistArticles]
+    [refreshAll]
   );
 
   const updateArticle = useCallback(
     (id: string, patch: Partial<FinanceArticle>) => {
-      persistArticles(
-        articles.map((a) => (a.id === id ? { ...a, ...patch } : a))
-      );
+      void (async () => {
+        await personalFinanceApi.updateCategory(Number(id), {
+          name: patch.name,
+          direction: patch.type,
+        });
+        await refreshAll();
+      })();
     },
-    [articles, persistArticles]
+    [refreshAll]
   );
 
   const deleteArticle = useCallback(
     (id: string) => {
-      persistArticles(articles.filter((a) => a.id !== id));
+      void (async () => {
+        await personalFinanceApi.updateCategory(Number(id), { is_active: false });
+        await refreshAll();
+      })();
     },
-    [articles, persistArticles]
+    [refreshAll]
   );
 
   const deleteArticles = useCallback(
     (ids: string[]) => {
-      const set = new Set(ids);
-      persistArticles(articles.filter((a) => !set.has(a.id)));
+      void (async () => {
+        await Promise.all(ids.map((id) => personalFinanceApi.updateCategory(Number(id), { is_active: false })));
+        await refreshAll();
+      })();
     },
-    [articles, persistArticles]
+    [refreshAll]
   );
 
   const addOperation = useCallback(
     (op: Omit<FinanceOperation, 'id' | 'createdAt'>) => {
-      financeApi
-        .createPersonalOperation({
-          date: op.date,
-          amount: op.amount,
+      void (async () => {
+        await personalFinanceApi.createTransaction({
+          account_id: resolveAccountId(op.target),
+          amount: Math.abs(op.amount),
+          direction: op.amount >= 0 ? 'income' : 'expense',
           description: op.description,
-          target_code: op.target,
-        })
-        .then((tx) => {
-          setOperations((prev) => [...prev, mapLedgerToOperation(tx)]);
-        })
-        .catch((err) => {
-          // eslint-disable-next-line no-console
-          console.error('Failed to create personal operation in ledger', err);
-          const id = `op_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-          const createdAt = new Date().toISOString();
-          setOperations((prev) => [...prev, { ...op, id, createdAt }]);
+          occurred_at: occurredAtFromDate(op.date),
+          category_id: op.articleId && !String(op.articleId).startsWith('temp_') ? Number(op.articleId) : null,
         });
+        await refreshAll();
+      })();
     },
-    []
+    [refreshAll, resolveAccountId]
   );
 
-  const addOperations = useCallback((ops: Omit<FinanceOperation, 'id' | 'createdAt'>[]) => {
-    ops.forEach((op, index) => {
-      financeApi
-        .createPersonalOperation({
-          date: op.date,
-          amount: op.amount,
-          description: op.description,
-          target_code: op.target,
-        })
-        .then((tx) => {
-          setOperations((prev) => [...prev, mapLedgerToOperation(tx)]);
-        })
-        .catch((err) => {
-          // eslint-disable-next-line no-console
-          console.error('Failed to create personal operation in ledger (bulk)', err);
-          const id = `op_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 9)}`;
-          const createdAt = new Date().toISOString();
-          setOperations((prev) => [...prev, { ...op, id, createdAt }]);
-        });
-    });
-  }, []);
+  const addOperations = useCallback(
+    (ops: Omit<FinanceOperation, 'id' | 'createdAt'>[]) => {
+      void (async () => {
+        for (const op of ops) {
+          await personalFinanceApi.createTransaction({
+            account_id: resolveAccountId(op.target),
+            amount: Math.abs(op.amount),
+            direction: op.amount >= 0 ? 'income' : 'expense',
+            description: op.description,
+            occurred_at: occurredAtFromDate(op.date),
+            category_id: op.articleId && !String(op.articleId).startsWith('temp_') ? Number(op.articleId) : null,
+          });
+        }
+        await refreshAll();
+      })();
+    },
+    [refreshAll, resolveAccountId]
+  );
 
   const updateOperation = useCallback(
     (id: string, patch: Partial<FinanceOperation>) => {
-      if (patch.target === 'academy') {
-        const op = operations.find((o) => o.id === id);
-        if (op) {
-          addAcademyOperation({ ...op, target: 'academy' });
-          persistOperations(operations.filter((o) => o.id !== id));
-        }
-        return;
-      }
-      const isLedger = id.startsWith('ledger_');
-      const txId = isLedger ? Number(id.replace('ledger_', '')) : null;
-      if (isLedger && txId) {
-        const payload: { target_id?: number | null; article_id?: number | null } = {};
+      void (async () => {
+        const payload: {
+          account_id?: number;
+          amount?: number;
+          direction?: 'income' | 'expense';
+          description?: string | null;
+          occurred_at?: string;
+          category_id?: number | null;
+        } = {};
         if (patch.target !== undefined) {
-          // target_id подставляем по коду через API listTargets только при создании; здесь ограничимся локальным обновлением
+          payload.account_id = resolveAccountId(patch.target);
+        }
+        if (patch.amount !== undefined) {
+          payload.amount = Math.abs(patch.amount);
+          payload.direction = patch.amount >= 0 ? 'income' : 'expense';
+        }
+        if (patch.description !== undefined) {
+          payload.description = patch.description;
+        }
+        if (patch.date !== undefined) {
+          payload.occurred_at = occurredAtFromDate(patch.date);
         }
         if (patch.articleId !== undefined) {
-          payload.article_id = patch.articleId ? Number(patch.articleId) : null;
+          payload.category_id = patch.articleId ? Number(patch.articleId) : null;
         }
-        if (Object.keys(payload).length > 0) {
-          financeApi
-            .updateTransaction(txId, payload)
-            .then((updated) => {
-              setOperations((prev) =>
-                prev.map((o) => (o.id === id ? mapLedgerToOperation(updated as any) : o))
-              );
-            })
-            .catch((err) => {
-              // eslint-disable-next-line no-console
-              console.error('Failed to update personal operation in ledger', err);
-            });
-          return;
-        }
-      }
-      persistOperations(operations.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+        await personalFinanceApi.updateTransaction(Number(id), payload);
+        await refreshAll();
+      })();
     },
-    [operations, persistOperations]
+    [refreshAll, resolveAccountId]
   );
 
   const deleteOperation = useCallback(
     (id: string) => {
-      const isLedger = id.startsWith('ledger_');
-      const txId = isLedger ? Number(id.replace('ledger_', '')) : null;
-      if (isLedger && txId) {
-        financeApi
-          .deleteTransaction(txId)
-          .catch((err) => {
-            // eslint-disable-next-line no-console
-            console.error('Failed to delete personal operation in ledger', err);
-          })
-          .finally(() => {
-            setOperations((prev) => prev.filter((o) => o.id !== id));
-          });
-      } else {
-        persistOperations(operations.filter((o) => o.id !== id));
-      }
+      void (async () => {
+        await personalFinanceApi.deleteTransaction(Number(id));
+        await refreshAll();
+      })();
     },
-    [operations, persistOperations]
+    [refreshAll]
   );
 
   const deleteOperations = useCallback(
     (ids: string[]) => {
-      const set = new Set(ids);
-      const ledgerIds: number[] = [];
-      ids.forEach((id) => {
-        if (id.startsWith('ledger_')) {
-          const txId = Number(id.replace('ledger_', ''));
-          if (txId) ledgerIds.push(txId);
-        }
-      });
-      if (ledgerIds.length > 0) {
-        Promise.all(
-          ledgerIds.map((txId) =>
-            financeApi.deleteTransaction(txId).catch((err) => {
-              // eslint-disable-next-line no-console
-              console.error('Failed to delete personal operation in ledger (bulk)', err);
-            })
-          )
-        ).finally(() => {
-          setOperations((prev) => prev.filter((o) => !set.has(o.id)));
-        });
-      } else {
-        persistOperations(operations.filter((o) => !set.has(o.id)));
-      }
+      void (async () => {
+        await Promise.all(ids.map((id) => personalFinanceApi.deleteTransaction(Number(id))));
+        await refreshAll();
+      })();
     },
-    [operations, persistOperations]
+    [refreshAll]
   );
-
-  const incomeArticles = useMemo(
-    () => articles.filter((a) => a.type === 'income').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-    [articles]
-  );
-  const expenseArticles = useMemo(
-    () => articles.filter((a) => a.type === 'expense').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-    [articles]
-  );
-
-  const persistRecognition = useCallback((next: RecognitionRule[]) => {
-    setRecognitionRules(next);
-    saveRecognition(next);
-  }, []);
 
   const addRecognitionRule = useCallback(
     (rule: Omit<RecognitionRule, 'id'>) => {
-      const id = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      persistRecognition([...recognitionRules, { ...rule, id }]);
+      void (async () => {
+        const matchedCategory = categories.find((item) => item.name.trim().toLowerCase() === rule.displayName.trim().toLowerCase());
+        await personalFinanceApi.createRule({
+          pattern: rule.pattern,
+          category_id: matchedCategory?.id ?? null,
+          display_name: rule.displayName,
+        });
+        await refreshAll();
+      })();
     },
-    [recognitionRules, persistRecognition]
+    [categories, refreshAll]
   );
 
   const updateRecognitionRule = useCallback(
     (id: string, patch: Partial<Pick<RecognitionRule, 'pattern' | 'displayName'>>) => {
-      persistRecognition(
-        recognitionRules.map((r) => (r.id === id ? { ...r, ...patch } : r))
-      );
+      void (async () => {
+        const displayName = patch.displayName;
+        const matchedCategory =
+          displayName != null
+            ? categories.find((item) => item.name.trim().toLowerCase() === displayName.trim().toLowerCase())
+            : undefined;
+        await personalFinanceApi.updateRule(Number(id), {
+          pattern: patch.pattern,
+          category_id: matchedCategory ? matchedCategory.id : undefined,
+          display_name: patch.displayName,
+        });
+        await refreshAll();
+      })();
     },
-    [recognitionRules, persistRecognition]
+    [categories, refreshAll]
   );
 
   const deleteRecognitionRule = useCallback(
     (id: string) => {
-      persistRecognition(recognitionRules.filter((r) => r.id !== id));
+      void (async () => {
+        await personalFinanceApi.deleteRule(Number(id));
+        await refreshAll();
+      })();
     },
-    [recognitionRules, persistRecognition]
+    [refreshAll]
   );
 
   const getDisplayDescription = useCallback(
     (description: string) => {
       const trimmed = description.trim();
       if (!trimmed) return description;
-      const matching = recognitionRules.filter(
-        (r) => {
-          const p = r.pattern.trim();
-          return p && (trimmed === p || trimmed.includes(p));
-        }
-      );
+      const matching = recognitionRules.filter((rule) => {
+        const pattern = rule.pattern.trim();
+        return pattern && (trimmed === pattern || trimmed.includes(pattern));
+      });
       if (matching.length === 0) return description;
-      const best = matching.reduce((a, b) => (a.pattern.length >= b.pattern.length ? a : b));
+      const best = matching.reduce((left, right) => (left.pattern.length >= right.pattern.length ? left : right));
       return best.displayName;
     },
     [recognitionRules]
@@ -358,6 +361,7 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
       updateRecognitionRule,
       deleteRecognitionRule,
       getDisplayDescription,
+      refreshAll,
     }),
     [
       articles,
@@ -378,18 +382,17 @@ export const PersonalFinanceProvider: React.FC<{ children: React.ReactNode }> = 
       updateRecognitionRule,
       deleteRecognitionRule,
       getDisplayDescription,
+      refreshAll,
     ]
   );
 
-  return (
-    <PersonalFinanceContext.Provider value={value}>
-      {children}
-    </PersonalFinanceContext.Provider>
-  );
+  return <PersonalFinanceContext.Provider value={value}>{children}</PersonalFinanceContext.Provider>;
 };
 
 export function usePersonalFinance() {
   const ctx = useContext(PersonalFinanceContext);
-  if (!ctx) throw new Error('usePersonalFinance must be used within PersonalFinanceProvider');
+  if (!ctx) {
+    throw new Error('usePersonalFinance must be used within PersonalFinanceProvider');
+  }
   return ctx;
 }

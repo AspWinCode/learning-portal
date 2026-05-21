@@ -24,6 +24,9 @@ from app.models import (
 )
 from app.services.parent_invite import create_parent_user_no_invite
 from app.routers.action_log import log_action
+from app.utils.phone import normalize_phone
+from app.services.student_activity import log_student_activity
+from app.services.person_sync import sync_lead_person, sync_student_card_person, sync_user_person
 
 
 @dataclass
@@ -50,13 +53,28 @@ def _get_default_lead_status_option_id(db: Session, base_status: LeadStatus) -> 
 
 def _find_or_create_student_card_for_lead(
     db: Session, lead: Lead, student: Student, student_full_name: str
-) -> None:
+) -> StudentCard:
     """
     При конвертации лида: ищем анкету (StudentCard) по email и ФИО ребёнка и привязываем к ученику;
     если не нашли — создаём карточку из данных лида и questionnaire_data.
     """
-    if db.query(StudentCard).filter(StudentCard.student_id == student.id).first():
-        return
+    existing_student_card = db.query(StudentCard).filter(StudentCard.student_id == student.id).first()
+    if existing_student_card:
+        lead.student_card_id = existing_student_card.id
+        sync_student_card_person(db, existing_student_card)
+        return existing_student_card
+    q = getattr(lead, "questionnaire_data", None) or {}
+    if not isinstance(q, dict):
+        q = {}
+    parent_full_name = (
+        (getattr(lead, "parent_full_name", None) or getattr(lead, "contact_name", None) or "").strip()
+        or (q.get("parent_full_name") or "")
+    )
+    parent_phone = (
+        (getattr(lead, "parent_phone", None) or getattr(lead, "phone", None) or "").strip()
+        or (q.get("parent_phone") or "")
+    )
+    student_phone = (getattr(lead, "child_phone", None) or "").strip() or (q.get("child_phone") or "")
     parent_email = (getattr(lead, "email", None) or "").strip().lower()
     card = (
         db.query(StudentCard)
@@ -71,20 +89,16 @@ def _find_or_create_student_card_for_lead(
     if card:
         card.student_id = student.id
         card.anketa_status = "converted"
-        return
-    q = getattr(lead, "questionnaire_data", None) or {}
-    if not isinstance(q, dict):
-        q = {}
-    parent_full_name = (
-        (getattr(lead, "parent_full_name", None) or getattr(lead, "contact_name", None) or "").strip()
-        or (q.get("parent_full_name") or "")
-    )
-    parent_phone = (
-        (getattr(lead, "parent_phone", None) or getattr(lead, "phone", None) or "").strip()
-        or (q.get("parent_phone") or "")
-    )
+        if not (card.parent_full_name or "").strip():
+            card.parent_full_name = parent_full_name or None
+        if not (card.parent_phone or "").strip():
+            card.parent_phone = parent_phone or None
+        if not card.phone_normalized:
+            card.phone_normalized = normalize_phone(parent_phone or student_phone or "")
+        lead.student_card_id = card.id
+        sync_student_card_person(db, card)
+        return card
     parent_email_val = (getattr(lead, "email", None) or "").strip() or (q.get("parent_email") or "")
-    student_phone = (getattr(lead, "child_phone", None) or "").strip() or (q.get("child_phone") or "")
     city = (getattr(lead, "city", None) or "").strip() or (q.get("city") or "")
     school = (getattr(lead, "school_name", None) or "").strip() or (q.get("school_name") or "")
     grade = (getattr(lead, "school_class", None) or "").strip() or (q.get("school_class") or "")
@@ -108,6 +122,7 @@ def _find_or_create_student_card_for_lead(
         parent_telegram=(q.get("parent_telegram") or "").strip() or None,
         parent_email=parent_email_val or None,
         student_phone=student_phone or None,
+        phone_normalized=normalize_phone(parent_phone or student_phone or "") or None,
         telegram=(q.get("child_telegram") or "").strip() or None,
         student_email=(q.get("student_email") or "").strip() or None,
         birth_date=birth_date_val,
@@ -123,6 +138,10 @@ def _find_or_create_student_card_for_lead(
         discount_value=0.0,
     )
     db.add(card)
+    db.flush()
+    lead.student_card_id = card.id
+    sync_student_card_person(db, card)
+    return card
 
 
 def convert_lead_to_student(
@@ -176,6 +195,7 @@ def convert_lead_to_student(
             if not getattr(same_name, "from_lead_id", None):
                 same_name.from_lead_id = lead.id
             _find_or_create_student_card_for_lead(db, lead, same_name, student_full_name)
+            sync_lead_person(db, lead)
             db.commit()
             db.refresh(lead)
             db.refresh(same_name)
@@ -185,6 +205,7 @@ def convert_lead_to_student(
     else:
         parent_user = create_parent_user_no_invite(db, parent_email, parent_full_name)
         db.flush()
+    sync_user_person(db, parent_user)
 
     student = Student(
         full_name=student_full_name,
@@ -198,6 +219,16 @@ def convert_lead_to_student(
     lead.status = LeadStatus.WON
     lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
     _find_or_create_student_card_for_lead(db, lead, student, student_full_name)
+    sync_lead_person(db, lead)
+    log_student_activity(
+        db,
+        student_id=student.id,
+        activity_type="enrolled",
+        title="Конвертирован из лида",
+        description=f"Лид #{lead.id}",
+        created_by=actor_user_id,
+        payload_json={"lead_id": lead.id},
+    )
     db.commit()
     db.refresh(lead)
     db.refresh(student)

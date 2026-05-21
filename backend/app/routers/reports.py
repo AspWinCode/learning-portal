@@ -27,7 +27,7 @@ async def characteristics_compliance_report(
     month: int,
     year: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("reports.access"))
 ):
     """
     Контроль сдачи характеристик по месяцам для админа.
@@ -181,7 +181,7 @@ async def get_students_report(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("reports.access"))
 ):
     """Отчет по ученикам"""
     students = db.query(Student).offset(skip).limit(limit).all()
@@ -195,7 +195,7 @@ async def get_students_report(
 async def get_trainers_report(
     include_archived: bool = False,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("reports.access"))
 ):
     """Расширенная отчетность по тренерам. По умолчанию архивные (is_active=False) исключены."""
     from app.models import User as UserModel, UserRole, Group, Grade
@@ -234,7 +234,7 @@ async def get_action_logs(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("reports.access"))
 ):
     """Журнал действий"""
     logs = db.query(ActionLog).order_by(ActionLog.created_at.desc()).offset(skip).limit(limit).all()
@@ -248,7 +248,7 @@ async def get_action_logs(
 async def export_report(
     report_request: ReportRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("reports.export"))
 ):
     """Экспорт отчетов (XLSX/CSV)"""
     # Получаем данные
@@ -337,7 +337,7 @@ async def get_grade_dynamics(
         raise HTTPException(status_code=404, detail="Student not found")
     
     # Проверка прав доступа
-    if current_user.role == UserRole.PARENT:
+    if auth.resolve_effective_role(current_user) == UserRole.PARENT:
         if student.parent_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not enough permissions")
     

@@ -107,7 +107,7 @@ def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
 @router.get("/b2b-schools/cities", response_model=List[str])
 async def list_b2b_school_cities(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """╨б╨┐╨╕╤Б╨╛╨║╨│╨╛╤А╨╛╨┤╨╛╨▓╨▓╨║╨╛╤В╨╛╤А╤Л╤Е╨╡╤Б╤В╤М╤И╨║╨╛╨╗╤Л╨┤╨╗╤П╨▓╤Л╨▒╨╛╤А╨░╨┐╤А╨╕╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╨╕╤И╨║╨╛╨╗╨▓╨▓╨╛╤А╨╛╨╜╨║╤Г"""
     rows = db.query(distinct(B2BSchool.city)).filter(B2BSchool.city.isnot(None)).filter(B2BSchool.city != "").order_by(B2BSchool.city).all()
@@ -117,7 +117,7 @@ async def list_b2b_school_cities(
 @router.get("/b2b-schools/managers", response_model=List[Dict[str, Any]])
 async def list_b2b_managers(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """List sales users for assigning as school manager."""
     users = db.query(User).filter(User.role == UserRole.SALES, User.is_active == True).order_by(User.full_name).all()
@@ -128,7 +128,7 @@ async def list_b2b_managers(
 async def plan_for_today(
     city: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """Schools for owner's daily plan: overdue, no next step, find_contacts > 3 days, today, tomorrow, week, risks."""
     today = date.today()
@@ -259,7 +259,7 @@ class CitySummaryItem(BaseModel):
 @router.get("/b2b-schools/plan-city-summary", response_model=List[CitySummaryItem])
 async def plan_city_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """Сводка по городам для плана: в работе, просрочки, мероприятия на неделе, лиды за 7 дн, партнёры."""
     today = date.today()
@@ -343,7 +343,7 @@ async def list_b2b_schools(
     overdue: Optional[bool] = Query(default=None, description="Только с просроченным next_step_date"),
     search: Optional[str] = Query(default=None, description="Поиск по названию/городу"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     from sqlalchemy import or_
     query = db.query(B2BSchool).options(
@@ -497,7 +497,7 @@ async def import_b2b_schools(
     manager_id: Optional[int] = Query(default=None, description="Assign manager to all imported schools"),
     launch_in_work: bool = Query(default=False, description="Set pipeline find_contacts and next step for created schools"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     """Import B2B schools from Excel (.xlsx) or CSV. Columns: name (required), director, city, address, student_count."""
     filename = (file.filename or "").lower().strip()
@@ -742,7 +742,7 @@ def _load_school_with_contacts(db: Session, school_id: int) -> B2BSchool:
 async def get_b2b_school(
     school_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     school = _load_school_with_contacts(db, school_id)
     return _school_to_response(db, school)
@@ -771,7 +771,7 @@ def _event_label(event: Optional[Any]) -> Optional[str]:
 async def list_school_leads(
     school_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """Список лидов по B2B-школе для карточки."""
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
@@ -802,7 +802,7 @@ async def list_school_leads(
 async def transfer_school_leads(
     school_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     """Передать лиды школы в обработку: статус NEW → CONTACTED."""
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
@@ -821,7 +821,7 @@ async def transfer_school_leads(
 async def list_school_interactions(
     school_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """Журнал взаимодействий по B2B-школе (по убыванию даты)."""
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
@@ -853,7 +853,7 @@ async def create_school_interaction(
     school_id: int,
     payload: B2BSchoolInteractionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     """Добавить взаимодействие; опционально обновить next_step/next_step_date школы."""
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
@@ -914,7 +914,7 @@ def _on_b2b_online_event_created(
 async def list_school_events(
     school_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """Список мероприятий B2B-школы."""
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
@@ -944,7 +944,7 @@ async def create_school_event(
     school_id: int,
     payload: B2BSchoolEventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     """Добавить мероприятие; при format=online создать авто-задачи."""
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
@@ -980,7 +980,7 @@ async def create_school_event(
 async def create_b2b_school(
     payload: B2BSchoolCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     school = B2BSchool(
         name=payload.name,
@@ -1017,7 +1017,7 @@ async def update_b2b_school(
     school_id: int,
     payload: B2BSchoolUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     school = _load_school_with_contacts(db, school_id)
     old_stage = school.pipeline_stage
@@ -1056,7 +1056,7 @@ async def update_b2b_school(
 async def delete_b2b_school(
     school_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
     if not school:
@@ -1070,7 +1070,7 @@ async def delete_b2b_school(
 async def list_school_contacts(
     school_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     school = _load_school_with_contacts(db, school_id)
     return [
@@ -1092,7 +1092,7 @@ async def create_school_contact(
     school_id: int,
     payload: B2BSchoolContactCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
     if not school:
@@ -1124,7 +1124,7 @@ async def update_school_contact(
     contact_id: int,
     payload: B2BSchoolContactUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     contact = db.query(B2BSchoolContact).filter(
         B2BSchoolContact.id == contact_id,
@@ -1153,7 +1153,7 @@ async def delete_school_contact(
     school_id: int,
     contact_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     contact = db.query(B2BSchoolContact).filter(
         B2BSchoolContact.id == contact_id,
@@ -1170,7 +1170,7 @@ async def delete_school_contact(
 async def list_b2b_projects(
     archived: Optional[bool] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     q = db.query(B2BProject)
     # По умолчанию показываем только неархивные проекты
@@ -1198,7 +1198,7 @@ async def list_b2b_projects(
 async def create_b2b_project(
     payload: B2BProjectCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     project = B2BProject(
         name=payload.name,
@@ -1224,7 +1224,7 @@ async def create_b2b_project(
 async def get_b2b_project(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     project = db.query(B2BProject).filter(B2BProject.id == project_id).first()
     if not project:
@@ -1246,7 +1246,7 @@ async def update_b2b_project(
     project_id: int,
     payload: B2BProjectUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     project = db.query(B2BProject).filter(B2BProject.id == project_id).first()
     if not project:
@@ -1272,7 +1272,7 @@ async def update_b2b_project(
 async def delete_b2b_project(
     project_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["owner"])),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     project = db.query(B2BProject).filter(B2BProject.id == project_id).first()
     if not project:

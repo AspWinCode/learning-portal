@@ -43,6 +43,25 @@ router = APIRouter()
 MSK = timezone(timedelta(hours=8))
 
 
+def _effective_role_value(user: User) -> str:
+    return auth.resolve_effective_role(user).value
+
+
+def _is_sales_user(user: User) -> bool:
+    return _effective_role_value(user) == "sales"
+
+
+def _is_trainer_user(user: User) -> bool:
+    return _effective_role_value(user) == "trainer"
+
+
+def _ensure_task_visible_for_user(task: Task, user: User) -> None:
+    if _is_sales_user(user) and task.assigned_to_id not in (None, user.id):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if _is_trainer_user(user) and task.assigned_to_id != user.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+
 def _today_msk() -> Tuple[date, datetime, datetime]:
     """Сегодня по Москве и границы суток в UTC для сравнения с due_at (в БД в UTC)."""
     now_utc = datetime.now(timezone.utc)
@@ -206,7 +225,7 @@ def _task_to_response(task: Task, db: Optional[Session] = None) -> TaskResponse:
 @router.get("/task-templates", response_model=List[TaskTemplateResponse])
 async def list_task_templates(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ):
     try:
         rows = (
@@ -224,7 +243,7 @@ async def list_task_templates(
 async def create_task_template(
     payload: TaskTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ):
     try:
         t = TaskTemplate(
@@ -269,7 +288,7 @@ async def create_task_template(
 async def get_task_template(
     template_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ):
     t = (
         db.query(TaskTemplate)
@@ -287,7 +306,7 @@ async def update_task_template(
     template_id: int,
     payload: TaskTemplateUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ):
     t = (
         db.query(TaskTemplate)
@@ -343,7 +362,7 @@ async def update_task_template(
 async def delete_task_template(
     template_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ):
     t = db.query(TaskTemplate).filter(TaskTemplate.id == template_id).first()
     if not t:
@@ -360,16 +379,16 @@ async def list_tasks(
     status_filter: Optional[str] = None,
     category: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     q = (
         db.query(Task)
         .options(joinedload(Task.subtasks), joinedload(Task.students), joinedload(Task.counters))
         .order_by(Task.created_at.desc())
     )
-    if current_user.role == "sales":
+    if _is_sales_user(current_user):
         q = q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
-    elif current_user.role == "trainer":
+    elif _is_trainer_user(current_user):
         q = q.filter(Task.assigned_to_id == current_user.id)
     if status_filter and status_filter in ("active", "archived"):
         q = q.filter(Task.status == status_filter)
@@ -385,7 +404,7 @@ async def list_today_tasks(
     category: Optional[str] = Query(None),
     assignee_id: Optional[int] = Query(None, description="По умолчанию для sales — текущий пользователь"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     """Задачи для «Плана на сегодня»: today — на сегодня (с сортировкой), overdue — просроченные, active — все активные.
     Границы «сегодня» и «просрочено» — по МСК (UTC+3)."""
@@ -397,9 +416,9 @@ async def list_today_tasks(
     )
     if assignee_id is not None:
         q = q.filter(Task.assigned_to_id == assignee_id)
-    elif current_user.role == "sales":
+    elif _is_sales_user(current_user):
         q = q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
-    elif current_user.role == "trainer":
+    elif _is_trainer_user(current_user):
         q = q.filter(Task.assigned_to_id == current_user.id)
     if category and category in ("schools", "parents", "leads"):
         q = q.filter(Task.category == category)
@@ -505,7 +524,7 @@ class ParentResponsesStat(BaseModel):
 async def get_tasks_day_stats(
     day: Optional[str] = Query(None, description="YYYY-MM-DD по МСК, по умолчанию сегодня"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     """Количество задач, завершённых (archived) в указанный день по МСК. Для счётчика «Сегодня: N задач, выполнено M»."""
     if day:
@@ -524,9 +543,9 @@ async def get_tasks_day_stats(
         .filter(Task.status == TaskStatus.ARCHIVED.value)
         .filter(Task.updated_at >= day_start_utc, Task.updated_at <= day_end_utc)
     )
-    if current_user.role == "sales":
+    if _is_sales_user(current_user):
         q = q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
-    elif current_user.role == "trainer":
+    elif _is_trainer_user(current_user):
         q = q.filter(Task.assigned_to_id == current_user.id)
     completed_count = q.count()
     return TaskDayStatsResponse(date=day_date, completed_count=completed_count)
@@ -535,7 +554,7 @@ async def get_tasks_day_stats(
 @router.get("/tasks/day-desk-summary", response_model=TaskDayDeskResponse)
 async def get_tasks_day_desk(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     """Day Desk: сгруппированные задачи для рабочего стола менеджера.
 
@@ -558,9 +577,9 @@ async def get_tasks_day_desk(
         .filter(Task.status == TaskStatus.ACTIVE.value)
     )
     # Ограничения по видимости
-    if current_user.role == "sales":
+    if _is_sales_user(current_user):
         base_q = base_q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
-    elif current_user.role == "trainer":
+    elif _is_trainer_user(current_user):
         base_q = base_q.filter(Task.assigned_to_id == current_user.id)
 
     tasks = base_q.all()
@@ -594,9 +613,9 @@ async def get_tasks_day_desk(
         .filter(Task.status == TaskStatus.ARCHIVED.value)
         .filter(Task.updated_at >= stats_start, Task.updated_at <= stats_end)
     )
-    if current_user.role == "sales":
+    if _is_sales_user(current_user):
         completed_q = completed_q.filter(or_(Task.assigned_to_id == current_user.id, Task.assigned_to_id.is_(None)))
-    elif current_user.role == "trainer":
+    elif _is_trainer_user(current_user):
         completed_q = completed_q.filter(Task.assigned_to_id == current_user.id)
     completed_today = completed_q.count()
 
@@ -715,7 +734,7 @@ async def get_tasks_day_desk(
 @router.get("/tasks/day-desk", response_model=TaskDayDeskResponse)
 async def get_tasks_day_desk_legacy(
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ) -> TaskDayDeskResponse:
     """Совместимость со старым frontend: алиас для /tasks/day-desk-summary."""
     return await get_tasks_day_desk(db=db, current_user=current_user)
@@ -725,7 +744,7 @@ async def get_tasks_day_desk_legacy(
 async def create_task(
     payload: TaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ):
     template = None
     if payload.template_id:
@@ -808,7 +827,7 @@ async def create_task(
 async def get_task(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     task = (
         db.query(Task)
@@ -818,6 +837,7 @@ async def get_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    _ensure_task_visible_for_user(task, current_user)
     return _task_to_response(task, db)
 
 
@@ -826,7 +846,7 @@ async def update_task(
     task_id: int,
     payload: TaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ):
     task = (
         db.query(Task)
@@ -888,7 +908,7 @@ async def update_task(
 async def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -904,7 +924,7 @@ async def update_task_subtask(
     subtask_id: int,
     payload: TaskSubtaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     task = (
         db.query(Task)
@@ -914,6 +934,7 @@ async def update_task_subtask(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    _ensure_task_visible_for_user(task, current_user)
     st = next((s for s in task.subtasks if s.id == subtask_id), None)
     if not st:
         raise HTTPException(status_code=404, detail="Subtask not found")
@@ -972,7 +993,7 @@ async def update_task_subtask(
 async def complete_task(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     """Ручное завершение задачи менеджером: отправить в архив и при необходимости создать повтор."""
     task = (
@@ -983,6 +1004,7 @@ async def complete_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    _ensure_task_visible_for_user(task, current_user)
 
     if task.status != TaskStatus.ACTIVE.value:
         return _task_to_response(task, db)
@@ -1036,7 +1058,7 @@ async def complete_task(
 async def postpone_task(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     """5) Отложить: если scheduled_for — +1 день; иначе если due_at — на завтра то же время; иначе scheduled_for = tomorrow. pin сбрасывается."""
     task = (
@@ -1047,6 +1069,7 @@ async def postpone_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    _ensure_task_visible_for_user(task, current_user)
     if task.status != TaskStatus.ACTIVE.value:
         return _task_to_response(task, db)
     today_msk, _, _ = _today_msk()
@@ -1068,7 +1091,7 @@ async def pin_task_today(
     task_id: int,
     pinned: bool = Query(True),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
     """Добавить задачу в план на сегодня (pinned_today=True) или убрать."""
     task = (
@@ -1079,6 +1102,7 @@ async def pin_task_today(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    _ensure_task_visible_for_user(task, current_user)
     task.pinned_today = pinned
     db.commit()
     db.refresh(task)
@@ -1090,7 +1114,7 @@ async def increment_task_counter(
     task_id: int,
     payload: TaskCounterIncrement,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales", "trainer"])),
+    current_user: User = Depends(auth.require_permission("tasks.access")),
 ) -> TaskResponse:
     """Инкремент специальных счётчиков задачи (например, parent_replies / parent_escalations)."""
     task = (
@@ -1102,9 +1126,7 @@ async def increment_task_counter(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     # Проверка прав: sales/trainer могут трогать только свои задачи
-    if current_user.role in ("sales", "trainer"):
-        if task.assigned_to_id not in (None, current_user.id):
-            raise HTTPException(status_code=403, detail="Not allowed")
+    _ensure_task_visible_for_user(task, current_user)
     key = (payload.key or "").strip()
     if key not in ("parent_replies", "parent_escalations", "parent_to_management"):
         raise HTTPException(status_code=400, detail="Unsupported counter key")
@@ -1129,7 +1151,7 @@ async def get_parent_responses_stats(
     from_date: date,
     to_date: date,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
 ) -> List[ParentResponsesStat]:
     """Агрегация по ответам родителям (по дням и менеджерам) для операционных отчётов."""
     rows = (

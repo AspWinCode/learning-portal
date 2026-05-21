@@ -48,6 +48,7 @@ import {
   FinanceLedgerTransactionRow,
   FinanceAccountBalance,
   FinancePnlRow,
+  FinanceAnalyticsSummary,
   OwnerWorkspaceProject,
   OwnerWorkspaceContact,
   OwnerWorkspaceTask,
@@ -75,6 +76,27 @@ import {
   OwnerWorkspaceWebPushStatus,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTaskCompleteResult,
+  Role,
+  PermissionCatalogItem,
+  CommunicationTemplate,
+  CommunicationQueueItem,
+  TrainerCockpitSummary,
+  OwnerDashboardSummary,
+  ParentDashboardSummary,
+  ParentQuestion,
+  ParentQuestionCreate,
+  ParentWeeklyDigestSettings,
+  StudentTimelineEvent,
+  PublicMakeupSlotsResponse,
+  PhoneSearchResponse,
+  PersonSearchResponse,
+  PersonalFinanceAccount,
+  PersonalFinanceCategory,
+  PersonalFinanceRule,
+  PersonalFinanceSummary,
+  PersonalFinanceTransaction,
+  PersonAttachRecordRequest,
+  PersonMergeRequest,
 } from '../types';
 
 // In production we usually serve frontend + backend behind the same domain.
@@ -165,6 +187,7 @@ export const usersApi = {
     email: string;
     password: string;
     role: string;
+    custom_role_id?: number | null;
     phone?: string | null;
     phone_extra?: string | null;
     trainer_lesson_formats?: string | null;
@@ -186,6 +209,139 @@ export const usersApi = {
   },
   update: async (id: number, data: Partial<User>): Promise<User> => {
     const response = await api.put(`/api/users/${id}`, data);
+    return response.data;
+  },
+};
+
+export const rolesApi = {
+  getAll: async (): Promise<Role[]> => {
+    const response = await api.get('/api/roles/');
+    return response.data;
+  },
+  getById: async (id: number): Promise<Role> => {
+    const response = await api.get(`/api/roles/${id}`);
+    return response.data;
+  },
+  getPermissionsCatalog: async (): Promise<PermissionCatalogItem[]> => {
+    const response = await api.get('/api/roles/permissions-catalog');
+    return response.data.items;
+  },
+  create: async (data: {
+    key: string;
+    name: string;
+    description?: string | null;
+    base_role: Role['base_role'];
+    permissions: string[];
+  }): Promise<Role> => {
+    const response = await api.post('/api/roles/', data);
+    return response.data;
+  },
+  update: async (
+    id: number,
+    data: Partial<{
+      name: string;
+      description: string | null;
+      base_role: Role['base_role'];
+      permissions: string[];
+      is_active: boolean;
+    }>
+  ): Promise<Role> => {
+    const response = await api.put(`/api/roles/${id}`, data);
+    return response.data;
+  },
+  archive: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/api/roles/${id}`);
+    return response.data;
+  },
+};
+
+export const communicationsApi = {
+  getTemplates: async (params?: {
+    channel?: string;
+    event_key?: string;
+  }): Promise<CommunicationTemplate[]> => {
+    const response = await api.get('/api/communications/templates', { params });
+    return response.data;
+  },
+  createTemplate: async (data: {
+    name: string;
+    category?: string | null;
+    event_key?: string | null;
+    channel: CommunicationTemplate['channel'];
+    subject?: string | null;
+    text: string;
+    active: boolean;
+  }): Promise<CommunicationTemplate> => {
+    const response = await api.post('/api/communications/templates', data);
+    return response.data;
+  },
+  updateTemplate: async (
+    templateId: number,
+    data: Partial<{
+      name: string;
+      category: string | null;
+      event_key: string | null;
+      channel: CommunicationTemplate['channel'];
+      subject: string | null;
+      text: string;
+      active: boolean;
+    }>
+  ): Promise<CommunicationTemplate> => {
+    const response = await api.put(`/api/communications/templates/${templateId}`, data);
+    return response.data;
+  },
+  getQueue: async (params?: {
+    channel?: string;
+    recipient_type?: string;
+    recipient_id?: number;
+    status?: string;
+    limit?: number;
+  }): Promise<CommunicationQueueItem[]> => {
+    const response = await api.get('/api/communications/queue', { params });
+    return response.data;
+  },
+};
+
+export const trainerCockpitApi = {
+  getSummary: async (summaryDate?: string): Promise<TrainerCockpitSummary> => {
+    const response = await api.get('/api/trainer-cockpit/summary', {
+      params: summaryDate ? { summary_date: summaryDate } : {},
+    });
+    return response.data;
+  },
+};
+
+export const parentDashboardApi = {
+  getSummary: async (): Promise<ParentDashboardSummary> => {
+    const response = await api.get('/api/parent-dashboard/summary');
+    return response.data;
+  },
+  createQuestion: async (data: ParentQuestionCreate): Promise<ParentQuestion> => {
+    const response = await api.post('/api/parent-dashboard/questions', data);
+    return response.data;
+  },
+  getWebPushStatus: async (): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.get('/api/parent-dashboard/me/web-push');
+    return response.data;
+  },
+  upsertWebPushSubscription: async (payload: {
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    user_agent?: string | null;
+  }): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.post('/api/parent-dashboard/me/web-push/subscriptions', payload);
+    return response.data;
+  },
+  removeWebPushSubscription: async (endpoint: string): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.post('/api/parent-dashboard/me/web-push/subscriptions/remove', { endpoint });
+    return response.data;
+  },
+};
+
+export const ownerDashboardApi = {
+  getSummary: async (): Promise<OwnerDashboardSummary> => {
+    const response = await api.get('/api/owner-dashboard/summary');
     return response.data;
   },
 };
@@ -252,6 +408,13 @@ export const studentsApi = {
   },
   getAttendances: async (studentId: number, limit?: number): Promise<Array<{ lesson_date: string; group_name: string; attended: boolean }>> => {
     const response = await api.get(`/api/students/${studentId}/attendances`, { params: limit ? { limit } : {} });
+    return response.data;
+  },
+  getTimeline: async (
+    studentId: number,
+    params?: { offset?: number; limit?: number; event_type?: string; date_from?: string; date_to?: string }
+  ): Promise<StudentTimelineEvent[]> => {
+    const response = await api.get(`/api/students/${studentId}/timeline`, { params });
     return response.data;
   },
 };
@@ -422,6 +585,20 @@ export const financeApi = {
     });
     return response.data;
   },
+  getAnalyticsSummary: async (params?: {
+    date_from?: string;
+    date_to?: string;
+    group_by?: 'month' | 'date';
+  }): Promise<FinanceAnalyticsSummary> => {
+    const response = await api.get('/api/finance/analytics/summary', {
+      params: {
+        date_from: params?.date_from,
+        date_to: params?.date_to,
+        group_by: params?.group_by,
+      },
+    });
+    return response.data;
+  },
   listJournalTransactions: async (params?: {
     account_ids?: number[];
     target_ids?: number[];
@@ -480,6 +657,136 @@ export const financeApi = {
     recognitionRules: Array<{ pattern: string; displayName: string }>;
   }): Promise<{ articles_created: number; operations_created: number; recognition_rules_created: number }> => {
     const response = await api.post('/api/finance/migrate-personal-finance', payload);
+    return response.data;
+  },
+};
+
+export const personalFinanceApi = {
+  listAccounts: async (): Promise<PersonalFinanceAccount[]> => {
+    const response = await api.get('/api/personal-finance/accounts');
+    return response.data;
+  },
+  createAccount: async (payload: {
+    name: string;
+    currency?: string;
+  }): Promise<PersonalFinanceAccount> => {
+    const response = await api.post('/api/personal-finance/accounts', payload);
+    return response.data;
+  },
+  updateAccount: async (
+    accountId: number,
+    payload: Partial<{ name: string; currency: string; is_active: boolean }>
+  ): Promise<PersonalFinanceAccount> => {
+    const response = await api.patch(`/api/personal-finance/accounts/${accountId}`, payload);
+    return response.data;
+  },
+  listCategories: async (params?: {
+    direction?: 'income' | 'expense';
+  }): Promise<PersonalFinanceCategory[]> => {
+    const response = await api.get('/api/personal-finance/categories', { params });
+    return response.data;
+  },
+  createCategory: async (payload: {
+    name: string;
+    direction: 'income' | 'expense';
+  }): Promise<PersonalFinanceCategory> => {
+    const response = await api.post('/api/personal-finance/categories', payload);
+    return response.data;
+  },
+  updateCategory: async (
+    categoryId: number,
+    payload: Partial<{ name: string; direction: 'income' | 'expense'; is_active: boolean }>
+  ): Promise<PersonalFinanceCategory> => {
+    const response = await api.patch(`/api/personal-finance/categories/${categoryId}`, payload);
+    return response.data;
+  },
+  listRules: async (): Promise<PersonalFinanceRule[]> => {
+    const response = await api.get('/api/personal-finance/rules');
+    return response.data;
+  },
+  createRule: async (payload: {
+    pattern: string;
+    category_id?: number | null;
+    display_name?: string | null;
+  }): Promise<PersonalFinanceRule> => {
+    const response = await api.post('/api/personal-finance/rules', payload);
+    return response.data;
+  },
+  updateRule: async (
+    ruleId: number,
+    payload: Partial<{ pattern: string; category_id: number | null; display_name: string | null; is_active: boolean }>
+  ): Promise<PersonalFinanceRule> => {
+    const response = await api.patch(`/api/personal-finance/rules/${ruleId}`, payload);
+    return response.data;
+  },
+  deleteRule: async (ruleId: number): Promise<void> => {
+    await api.delete(`/api/personal-finance/rules/${ruleId}`);
+  },
+  listTransactions: async (params?: {
+    account_ids?: number[];
+    category_ids?: number[];
+    direction?: 'income' | 'expense';
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+  }): Promise<PersonalFinanceTransaction[]> => {
+    const response = await api.get('/api/personal-finance/transactions', { params });
+    return response.data;
+  },
+  createTransaction: async (payload: {
+    account_id: number;
+    amount: number;
+    direction: 'income' | 'expense';
+    article?: string | null;
+    description?: string | null;
+    occurred_at: string;
+    category_id?: number | null;
+  }): Promise<PersonalFinanceTransaction> => {
+    const response = await api.post('/api/personal-finance/transactions', payload);
+    return response.data;
+  },
+  updateTransaction: async (
+    transactionId: number,
+    payload: Partial<{
+      account_id: number;
+      amount: number;
+      direction: 'income' | 'expense';
+      article: string | null;
+      description: string | null;
+      occurred_at: string;
+      category_id: number | null;
+    }>
+  ): Promise<PersonalFinanceTransaction> => {
+    const response = await api.patch(`/api/personal-finance/transactions/${transactionId}`, payload);
+    return response.data;
+  },
+  deleteTransaction: async (transactionId: number): Promise<void> => {
+    await api.delete(`/api/personal-finance/transactions/${transactionId}`);
+  },
+  getSummary: async (): Promise<PersonalFinanceSummary> => {
+    const response = await api.get('/api/personal-finance/summary');
+    return response.data;
+  },
+  importLegacy: async (payload: {
+    accounts: Array<{ name: string; currency?: string }>;
+    categories: Array<{ name: string; direction: 'income' | 'expense' }>;
+    transactions: Array<{
+      account_id: number;
+      amount: number;
+      direction: 'income' | 'expense';
+      article?: string | null;
+      description?: string | null;
+      occurred_at: string;
+      category_id?: number | null;
+    }>;
+    rules: Array<{ pattern: string; category_id?: number | null; display_name?: string | null }>;
+  }): Promise<{
+    accounts_created: number;
+    categories_created: number;
+    transactions_created: number;
+    rules_created: number;
+  }> => {
+    const response = await api.post('/api/personal-finance/import', payload);
     return response.data;
   },
 };
@@ -954,6 +1261,22 @@ export const searchApi = {
     const response = await api.get('/api/search', { params: { q: query } });
     return response.data;
   },
+  searchByPhone: async (query: string): Promise<PhoneSearchResponse> => {
+    const response = await api.get('/api/search/phone', { params: { q: query } });
+    return response.data;
+  },
+  searchPersons: async (query: string): Promise<PersonSearchResponse> => {
+    const response = await api.get('/api/search/persons', { params: { q: query } });
+    return response.data;
+  },
+  mergePersons: async (payload: PersonMergeRequest): Promise<import('../types').PersonSearchItem> => {
+    const response = await api.post('/api/search/persons/merge', payload);
+    return response.data;
+  },
+  attachRecordToPerson: async (payload: PersonAttachRecordRequest): Promise<import('../types').PersonSearchItem> => {
+    const response = await api.post('/api/search/persons/attach-record', payload);
+    return response.data;
+  },
 };
 
 export const telegramApi = {
@@ -989,6 +1312,14 @@ export const settingsApi = {
   },
   setRefusedReasons: async (items: string[]): Promise<{ items: string[] }> => {
     const response = await api.post('/api/settings/refused-reasons', { items });
+    return response.data;
+  },
+  getParentWeeklyDigest: async (): Promise<ParentWeeklyDigestSettings> => {
+    const response = await api.get('/api/settings/parent-weekly-digest');
+    return response.data;
+  },
+  setParentWeeklyDigest: async (payload: ParentWeeklyDigestSettings): Promise<ParentWeeklyDigestSettings> => {
+    const response = await api.post('/api/settings/parent-weekly-digest', payload);
     return response.data;
   },
   getOwnerWorkspaceTaskConfig: async (): Promise<OwnerWorkspaceTaskConfig> => {
@@ -1653,6 +1984,16 @@ export const salesApi = {
     const response = await api.get(`/api/sales/absences/${absenceId}/suggest-makeups`, {
       params: daysAhead ? { days_ahead: daysAhead } : {},
     });
+    return response.data;
+  },
+  getPublicMakeupSelection: async (token: string): Promise<PublicMakeupSlotsResponse> => {
+    const response = await api.get('/api/sales/public/makeup-selection', { params: { token } });
+    return response.data;
+  },
+  confirmPublicMakeupSelection: async (
+    data: { token: string; makeup_group_id: number; makeup_lesson_date: string }
+  ): Promise<AbsenceFollowUp> => {
+    const response = await api.post('/api/sales/public/makeup-selection/confirm', data);
     return response.data;
   },
   assignMakeup: async (

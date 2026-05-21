@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, selectinload, joinedload
@@ -14,20 +15,59 @@ from app.schemas import (
     StudentWithParentCreate,
     StudentWithParentResponse,
     InviteParentResponse,
+    StudentActivityLogResponse,
 )
-from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group
+from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group, StudentActivityLog
 from app.routers.action_log import log_action
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
+from app.services.student_activity import log_student_activity
 
 router = APIRouter()
+
+
+def _student_effective_role(current_user: User) -> UserRole:
+    return auth.resolve_effective_role(current_user)
+
+
+def _ensure_student_read_access(db: Session, current_user: User, student: Student) -> UserRole:
+    effective_role = _student_effective_role(current_user)
+    if effective_role == UserRole.PARENT:
+        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif effective_role == UserRole.TRAINER:
+        from app.models import GroupStudent, Group
+        has_access = db.query(GroupStudent).join(Group).filter(
+            GroupStudent.student_id == student.id,
+            GroupStudent.left_at.is_(None),
+            Group.trainer_id == current_user.id,
+        ).first()
+        if not has_access:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif not auth.has_permission(current_user, "students.access"):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return effective_role
+
+
+def _student_timeline_item(activity: StudentActivityLog) -> StudentActivityLogResponse:
+    return StudentActivityLogResponse(
+        id=activity.id,
+        student_id=activity.student_id,
+        type=activity.type,
+        title=activity.title,
+        description=activity.description,
+        created_by=activity.created_by,
+        creator_name=activity.creator.full_name if activity.creator else None,
+        created_at=activity.created_at,
+        payload_json=activity.payload_json,
+    )
 
 
 @router.post("/with-parent", response_model=StudentWithParentResponse, status_code=status.HTTP_201_CREATED)
 async def create_student_with_parent(
     payload: StudentWithParentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("students.manage")),
 ):
     """
     Композитное создание: ученик + родитель (найти по id/email или создать нового).
@@ -90,6 +130,17 @@ async def create_student_with_parent(
     db.commit()
     db.refresh(db_student)
     db.refresh(parent_user)
+    log_student_activity(
+        db,
+        student_id=db_student.id,
+        activity_type="enrolled",
+        title="Ученик создан",
+        description=f"Создан вместе с родителем {parent_user.full_name}",
+        created_by=current_user.id,
+        payload_json={"source": "students.with_parent"},
+    )
+    db.commit()
+    db.refresh(db_student)
 
     log_action(db, current_user.id, "create", "student", db_student.id)
 
@@ -117,7 +168,7 @@ async def search_parents(
     q: str = Query(..., min_length=1),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("students.manage")),
 ):
     """Поиск родителей по email или ФИО для выбора при создании ученика."""
     term = f"%{q.strip()}%"
@@ -138,7 +189,7 @@ async def search_parents(
 async def create_student(
     student: StudentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("students.manage")),
 ):
     """Создание ученика (admin, owner, sales)."""
     # Проверка существования родителя (если указан)
@@ -168,6 +219,17 @@ async def create_student(
     db.add(db_student)
     db.commit()
     db.refresh(db_student)
+    log_student_activity(
+        db,
+        student_id=db_student.id,
+        activity_type="enrolled",
+        title="Ученик создан",
+        description="Ученик добавлен в систему",
+        created_by=current_user.id,
+        payload_json={"source": "students.create"},
+    )
+    db.commit()
+    db.refresh(db_student)
     
     log_action(db, current_user.id, "create", "student", db_student.id)
     return db_student
@@ -184,16 +246,18 @@ async def read_students(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение списка учеников. q — поиск по имени/фамилии/отчеству, ids — выбор по ID."""
+    auth.ensure_permission(current_user, "students.access")
+    effective_role = _student_effective_role(current_user)
     query = db.query(Student)
     
     # Родитель видит только своих активных учеников
-    if current_user.role == UserRole.PARENT:
+    if effective_role == UserRole.PARENT:
         query = query.filter(
             Student.parent_id == current_user.id,
             Student.status == StudentStatus.ACTIVE
         )
     # Тренер видит только учеников из своих групп (подзапрос, чтобы не дублировать ученика в нескольких группах)
-    elif current_user.role == UserRole.TRAINER:
+    elif effective_role == UserRole.TRAINER:
         from app.models import GroupStudent, Group
         subq = (
             db.query(Student.id)
@@ -207,7 +271,7 @@ async def read_students(
         )
         query = query.filter(Student.id.in_(subq))
     # Администратор, владелец и sales видят всех
-    elif current_user.role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+    elif effective_role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         if status_filter:
             query = query.filter(Student.status == status_filter)
     
@@ -268,18 +332,7 @@ async def read_student(
         raise HTTPException(status_code=404, detail="Student not found")
     
     # Проверка прав доступа
-    if current_user.role == UserRole.PARENT:
-        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
-        from app.models import GroupStudent, Group
-        has_access = db.query(GroupStudent).join(Group).filter(
-            GroupStudent.student_id == student_id,
-            GroupStudent.left_at.is_(None),
-            Group.trainer_id == current_user.id,
-        ).first()
-        if not has_access:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+    _ensure_student_read_access(db, current_user, student)
     display_name = get_student_display_name(db, student)
     in_group = any(getattr(gs, "left_at", None) is None for gs in (student.group_students or []))
     return StudentResponse(
@@ -291,7 +344,7 @@ async def read_student(
 async def invite_parent_for_student(
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner"])),
+    current_user: User = Depends(auth.require_permission("students.manage")),
 ):
     """Сгенерировать ссылку-приглашение для родителя ученика (установка пароля / вход в кабинет)."""
     student = db.query(Student).filter(Student.id == student_id).first()
@@ -300,7 +353,7 @@ async def invite_parent_for_student(
     if not student.parent_id:
         raise HTTPException(status_code=400, detail="У ученика не указан родитель")
     parent_user = db.query(User).filter(User.id == student.parent_id).first()
-    if not parent_user or parent_user.role != UserRole.PARENT:
+    if not parent_user or auth.resolve_effective_role(parent_user) != UserRole.PARENT:
         raise HTTPException(status_code=404, detail="Родитель не найден")
     invite_link = create_invite_for_existing_parent(db, parent_user)
     db.commit()
@@ -319,18 +372,7 @@ async def get_student_attendances(
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-    if current_user.role == UserRole.PARENT:
-        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
-        from app.models import GroupStudent
-        has_access = db.query(GroupStudent).join(Group, GroupStudent.group_id == Group.id).filter(
-            GroupStudent.student_id == student_id,
-            GroupStudent.left_at.is_(None),
-            Group.trainer_id == current_user.id,
-        ).first()
-        if not has_access:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+    _ensure_student_read_access(db, current_user, student)
     rows = (
         db.query(LessonAttendance, Group.name)
         .join(Group, LessonAttendance.group_id == Group.id)
@@ -349,6 +391,52 @@ async def get_student_attendances(
     ]
 
 
+@router.get("/{student_id}/timeline", response_model=List[StudentActivityLogResponse])
+async def get_student_timeline(
+    student_id: int,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
+    event_type: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    if effective_role == UserRole.PARENT:
+        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif effective_role == UserRole.TRAINER:
+        from app.models import GroupStudent, Group
+        has_access = db.query(GroupStudent).join(Group).filter(
+            GroupStudent.student_id == student_id,
+            GroupStudent.left_at.is_(None),
+            Group.trainer_id == current_user.id,
+        ).first()
+        if not has_access:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+    elif not auth.has_permission(current_user, "students.access"):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    query = (
+        db.query(StudentActivityLog)
+        .options(joinedload(StudentActivityLog.creator))
+        .filter(StudentActivityLog.student_id == student_id)
+    )
+    if event_type:
+        query = query.filter(StudentActivityLog.type == event_type)
+    if date_from:
+        query = query.filter(StudentActivityLog.created_at >= datetime.fromisoformat(date_from))
+    if date_to:
+        query = query.filter(StudentActivityLog.created_at < datetime.fromisoformat(date_to) + timedelta(days=1))
+
+    items = query.order_by(StudentActivityLog.created_at.desc(), StudentActivityLog.id.desc()).offset(offset).limit(limit).all()
+    return [_student_timeline_item(item) for item in items]
+
+
 @router.get("/{student_id}/program-options", response_model=List[ProgramSummaryResponse])
 async def get_student_program_options(
     student_id: int,
@@ -361,18 +449,7 @@ async def get_student_program_options(
         raise HTTPException(status_code=404, detail="Student not found")
 
     # RBAC
-    if current_user.role == UserRole.PARENT:
-        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
-        from app.models import GroupStudent, Group
-        has_access = db.query(GroupStudent).join(Group).filter(
-            GroupStudent.student_id == student_id,
-            GroupStudent.left_at.is_(None),
-            Group.trainer_id == current_user.id,
-        ).first()
-        if not has_access:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+    _ensure_student_read_access(db, current_user, student)
 
     from app.models import StudentProgram, GroupProgram, GroupStudent, Program
 
@@ -406,7 +483,7 @@ async def unassign_program_from_student(
     student_id: int,
     program_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("students.manage"))
 ):
     """Архивировать назначение программы ученику (логика данных сохраняется)."""
     link = db.query(StudentProgram).filter(
@@ -428,7 +505,7 @@ async def update_student(
     student_id: int,
     student_update: StudentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("students.manage")),
 ):
     """Обновление ученика (admin, owner, sales)."""
     db_student = db.query(Student).filter(Student.id == student_id).first()
@@ -502,7 +579,7 @@ async def update_student(
 async def delete_student(
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin"]))
+    current_user: User = Depends(auth.require_permission("students.manage"))
 ):
     """Архивация ученика (удаление запрещено)"""
     db_student = db.query(Student).filter(Student.id == student_id).first()
@@ -529,30 +606,19 @@ async def delete_student(
     return {"message": "Student archived"}
 
 
+
 @router.get("/{student_id}/accounts", response_model=List[StudentAccountResponse])
 async def list_student_accounts(
     student_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Список счетов ученика. Доступ: admin, owner, sales, trainer (свои ученики), parent (свои)."""
+    """Student account list."""
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-    if current_user.role == UserRole.PARENT:
-        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
-        from app.models import GroupStudent, Group
-        has_access = db.query(GroupStudent).join(Group).filter(
-            GroupStudent.student_id == student_id,
-            GroupStudent.left_at.is_(None),
-            Group.trainer_id == current_user.id,
-        ).first()
-        if not has_access:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    auth.ensure_permission(current_user, "student_accounts.access")
+    _ensure_student_read_access(db, current_user, student)
     accounts = db.query(StudentAccount).filter(StudentAccount.student_id == student_id).order_by(StudentAccount.created_at).all()
     return accounts
 
@@ -564,24 +630,12 @@ async def create_student_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Создать счет ученику. Доступ: admin, owner, sales, trainer (свои ученики), parent (свои)."""
+    """Create student account."""
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-    if current_user.role == UserRole.PARENT:
-        if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role == UserRole.TRAINER:
-        from app.models import GroupStudent, Group
-        has_access = db.query(GroupStudent).join(Group).filter(
-            GroupStudent.student_id == student_id,
-            GroupStudent.left_at.is_(None),
-            Group.trainer_id == current_user.id,
-        ).first()
-        if not has_access:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
-    elif current_user.role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    auth.ensure_permission(current_user, "student_accounts.manage")
+    _ensure_student_read_access(db, current_user, student)
     from app.services.student_account_finance import create_student_account as finance_create_student_account
     try:
         account = finance_create_student_account(db, student_id, payload.name or "")
@@ -601,7 +655,7 @@ async def delete_student_account(
     student_id: int,
     account_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_role(["admin", "owner", "sales"])),
+    current_user: User = Depends(auth.require_permission("student_accounts.manage")),
 ):
     """Удалить счёт ученика. Только счёт без операций."""
     student = db.query(Student).filter(Student.id == student_id).first()

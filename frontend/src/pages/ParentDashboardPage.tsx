@@ -391,6 +391,7 @@ const ParentDashboardPage: React.FC = () => {
                 {student.full_name}
               </Typography>
               {summaryByStudentId[student.id] ? (
+                <>
                 <Grid container spacing={1.5} sx={{ mb: 1 }}>
                   <Grid item xs={12} sm={6}>
                     <Paper variant="outlined" sx={{ p: 1.5 }}>
@@ -459,6 +460,7 @@ const ParentDashboardPage: React.FC = () => {
                     </Typography>
                   </Paper>
                 ) : null}
+                </>
               ) : null}
               {progress[student.id]?.program_id && (
                 <Typography variant="body2" color="text.secondary">

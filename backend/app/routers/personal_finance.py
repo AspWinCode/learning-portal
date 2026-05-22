@@ -13,7 +13,6 @@ from app.models import (
     PersonalFinanceRule,
     PersonalFinanceTransaction,
     User,
-    UserRole,
 )
 from app.schemas import (
     PersonalFinanceAccountCreate,
@@ -40,9 +39,7 @@ DEFAULT_ACCOUNT_NAMES = ["personal", "academy", "leninets", "gogol_mogol"]
 
 
 def _require_owner(current_user: User) -> None:
-    effective_role = auth.resolve_effective_role(current_user)
-    if effective_role not in (UserRole.OWNER, UserRole.ADMIN):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner can access personal finance")
+    auth.ensure_permission(current_user, "personal_finance.access")
 
 
 def _signed_amount(direction: PersonalFinanceDirection, amount: float) -> float:

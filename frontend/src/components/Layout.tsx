@@ -196,6 +196,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessOwnerCalculations = hasPermission(user, 'owner_calculations.access');
   const canAccessLessons = hasPermission(user, 'lessons.access');
   const canAccessUsers = hasPermission(user, 'users.access');
+  const canAccessRoles = hasPermission(user, 'roles.access');
+  const canAccessPersons = hasPermission(user, 'persons.access');
 
   const effectiveMenuItems = (() => {
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
@@ -218,7 +220,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' },
         { text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' },
         { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' },
-        { text: 'Реестр Person', icon: <Search />, path: '/persons' },
+        ...(canAccessPersons ? [{ text: 'Реестр Person', icon: <Search />, path: '/persons' }] : []),
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' },
@@ -267,8 +269,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/sales/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
-    if (isAdminLike) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });
-    if (role === 'owner' || role === 'admin' || role === 'sales') items.push({ text: 'Реестр Person', icon: <Search />, path: '/persons' });
+    if (canAccessRoles) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });
+    if (canAccessPersons) items.push({ text: 'Реестр Person', icon: <Search />, path: '/persons' });
     if (canAccessB2B) {
       items.push({ text: 'План на сегодня', icon: <Assignment />, path: '/b2b-schools/plan' });
       items.push({ text: 'Работа со школами', icon: <School />, path: '/b2b-schools' });
@@ -292,19 +294,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   });
   const permissionExpandedMenuItems = [...permissionFilteredMenuItems];
   if (canAccessGroups && !permissionExpandedMenuItems.some((item) => item.path === '/groups')) {
-    permissionExpandedMenuItems.push({ text: 'Р“СЂСѓРїРїС‹', icon: <Group />, path: '/groups' });
+    permissionExpandedMenuItems.push({ text: 'Группы', icon: <Group />, path: '/groups' });
   }
   if (canAccessPrograms && !permissionExpandedMenuItems.some((item) => item.path === '/programs')) {
-    permissionExpandedMenuItems.push({ text: 'РџСЂРѕРіСЂР°РјРјС‹', icon: <Book />, path: '/programs' });
+    permissionExpandedMenuItems.push({ text: 'Программы', icon: <Book />, path: '/programs' });
   }
   if (canAccessAbonements && !permissionExpandedMenuItems.some((item) => item.path === '/abonements')) {
-    permissionExpandedMenuItems.push({ text: 'РђР±РѕРЅРµРјРµРЅС‚С‹', icon: <LocalOffer />, path: '/abonements' });
+    permissionExpandedMenuItems.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
   }
   if (canAccessLessons && !permissionExpandedMenuItems.some((item) => item.path === '/lessons')) {
-    permissionExpandedMenuItems.push({ text: 'РЈСЂРѕРєРё', icon: <EventAvailable />, path: '/lessons' });
+    permissionExpandedMenuItems.push({ text: 'Уроки', icon: <EventAvailable />, path: '/lessons' });
   }
   if (canAccessUsers && !permissionExpandedMenuItems.some((item) => item.path === '/trainers')) {
-    permissionExpandedMenuItems.push({ text: 'РўСЂРµРЅРµСЂС‹', icon: <People />, path: '/trainers' });
+    permissionExpandedMenuItems.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
   }
   const visibleMenuItems = canAccessOwnerWorkspace
     ? permissionExpandedMenuItems

@@ -6,6 +6,7 @@ from app.database import get_db
 from app import auth
 from app.schemas import (
     GroupCreate,
+    GroupListResponse,
     GroupResponse,
     GroupUpdate,
     StudentResponse,
@@ -54,6 +55,55 @@ def _group_to_response(db: Session, g: Group) -> GroupResponse:
     base["start_date"] = getattr(g, "start_date", None)
     base["lesson_format"] = getattr(g, "lesson_format", None) or "group"
     return GroupResponse(**base)
+
+
+def _build_groups_query(db: Session, current_user: User):
+    effective_role = auth.resolve_effective_role(current_user)
+    query = db.query(Group)
+
+    if effective_role == UserRole.TRAINER:
+        query = query.filter(Group.trainer_id == current_user.id)
+    elif effective_role == UserRole.PARENT:
+        query = (
+            query.join(GroupStudent)
+            .join(Student)
+            .filter(
+                GroupStudent.left_at.is_(None),
+                Student.parent_id == current_user.id,
+                Student.status == StudentStatus.ACTIVE,
+                Group.status == GroupStatus.ACTIVE,
+            )
+            .distinct()
+        )
+
+    return query, effective_role
+
+
+def _serialize_groups(db: Session, groups: List[Group], effective_role: UserRole, current_user: User) -> List[GroupResponse]:
+    for g in groups:
+        g.students = [gs.student for gs in (getattr(g, "group_students", None) or []) if gs.student is not None and getattr(gs, "left_at", None) is None]
+
+    if effective_role == UserRole.PARENT:
+        for g in groups:
+            try:
+                g.students = [s for s in (g.students or []) if s.parent_id == current_user.id and s.status == StudentStatus.ACTIVE]
+            except Exception:
+                g.students = []
+
+    all_student_ids = [s.id for g in groups for s in (g.students or [])]
+    display_names = get_students_display_names(db, all_student_ids)
+    result = []
+    for g in groups:
+        students_out = [
+            StudentResponse(**{**StudentResponse.model_validate(s).model_dump(), "full_name": display_names.get(s.id, s.full_name)})
+            for s in (g.students or [])
+        ]
+        base = GroupResponse.model_validate(g).model_dump(exclude={"students", "schedules", "programs"})
+        base["students"] = students_out
+        base["schedules"] = [GroupScheduleResponse.model_validate(s) for s in (getattr(g, "group_schedules", None) or [])]
+        base["programs"] = getattr(g, "programs", None) or []
+        result.append(GroupResponse(**base))
+    return result
 
 
 @router.post("/", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
@@ -158,6 +208,30 @@ async def read_groups(
         base["programs"] = getattr(g, "programs", None) or []
         result.append(GroupResponse(**base))
     return result
+
+
+@router.get("/paginated", response_model=GroupListResponse)
+async def read_groups_paginated(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    auth.ensure_permission(current_user, "groups.access")
+    query, effective_role = _build_groups_query(db, current_user)
+    total = query.order_by(None).count()
+    groups = (
+        query.options(joinedload(Group.group_students).joinedload(GroupStudent.student))
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "total": total,
+        "items": _serialize_groups(db, groups, effective_role, current_user),
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.get("/{group_id}", response_model=GroupResponse)

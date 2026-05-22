@@ -4,7 +4,7 @@
 
 ## 🚀 Быстрый старт
 
-**Для подробной инструкции по запуску см. [QUICK_START.md](QUICK_START.md)**
+**Для подробной инструкции по запуску см. [docs/runbooks/QUICK_START.md](docs/runbooks/QUICK_START.md)**
 
 ### Краткая инструкция:
 
@@ -20,7 +20,7 @@
    # Windows: venv\Scripts\activate
    # Linux/macOS: source venv/bin/activate
    pip install -r requirements.txt
-   # Создайте .env файл (см. QUICK_START.md)
+   # Создайте .env файл (см. docs/runbooks/QUICK_START.md)
    uvicorn app.main:app --reload
    ```
 
@@ -31,14 +31,15 @@
    npm start
    ```
 
-4. **Создайте первого администратора** (см. QUICK_START.md)
+4. **Создайте первого администратора** (см. docs/runbooks/QUICK_START.md)
 
 5. **Откройте http://localhost:3000** и войдите в систему
 
 ## 📚 Документация
 
-- **[QUICK_START.md](QUICK_START.md)** - Подробная инструкция по установке и запуску
-- **[SETUP.md](SETUP.md)** - Общая информация о проекте
+- **[docs/runbooks/QUICK_START.md](docs/runbooks/QUICK_START.md)** - Подробная инструкция по установке и запуску
+- **[docs/runbooks/SETUP.md](docs/runbooks/SETUP.md)** - Общая информация о проекте
+- **[docs/runbooks/README.md](docs/runbooks/README.md)** - Индекс operational docs и runbooks
 - **[backend/README.md](backend/README.md)** - Документация Backend API
 - **[frontend/README.md](frontend/README.md)** - Документация Frontend
 
@@ -82,7 +83,7 @@
 ## Поддержка
 
 При возникновении проблем:
-1. Проверьте [QUICK_START.md](QUICK_START.md) раздел "Решение проблем"
+1. Проверьте [docs/runbooks/QUICK_START.md](docs/runbooks/QUICK_START.md) раздел "Решение проблем"
 2. Проверьте логи в терминалах backend и frontend
 3. Убедитесь, что все сервисы запущены (PostgreSQL, Backend, Frontend)
 

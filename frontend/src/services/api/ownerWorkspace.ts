@@ -1,0 +1,374 @@
+import type {
+  OwnerWorkspaceAuditLog,
+  OwnerWorkspaceContact,
+  OwnerWorkspaceConversation,
+  OwnerWorkspaceDigest,
+  OwnerWorkspaceHistoryStats,
+  OwnerWorkspaceMessage,
+  OwnerWorkspaceNotificationsEnvelope,
+  OwnerWorkspaceProject,
+  OwnerWorkspaceSearchResult,
+  OwnerWorkspaceTask,
+  OwnerWorkspaceTaskComment,
+  OwnerWorkspaceTaskCompleteResult,
+  OwnerWorkspaceTaskListPage,
+  OwnerWorkspaceTaskStatusCounts,
+  OwnerWorkspaceTasksAnalyticsOverview,
+  OwnerWorkspaceUserPreferences,
+  OwnerWorkspaceWebPushStatus,
+} from '../../types';
+import { api } from './client';
+
+export const ownerWorkspaceApi = {
+  listProjects: async (params?: {
+    status_filter?: string;
+    parent_project_id?: number;
+    search?: string;
+    owner_id?: number;
+    has_overdue_tasks?: boolean;
+  }): Promise<OwnerWorkspaceProject[]> => {
+    const response = await api.get('/api/owner-workspace/projects', { params: params || {} });
+    return response.data;
+  },
+  getProject: async (projectId: number): Promise<OwnerWorkspaceProject> => {
+    const response = await api.get(`/api/owner-workspace/projects/${projectId}`);
+    return response.data;
+  },
+  updateProject: async (
+    projectId: number,
+    payload: {
+      name?: string;
+      description?: string | null;
+      status?: 'active' | 'completed' | 'archived';
+      owner_id?: number | null;
+      parent_project_id?: number | null;
+    }
+  ): Promise<OwnerWorkspaceProject> => {
+    const response = await api.patch(`/api/owner-workspace/projects/${projectId}`, payload);
+    return response.data;
+  },
+  archiveProject: async (projectId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/projects/${projectId}`);
+  },
+  getContact: async (contactId: number): Promise<OwnerWorkspaceContact> => {
+    const response = await api.get(`/api/owner-workspace/contacts/${contactId}`);
+    return response.data;
+  },
+  updateContact: async (
+    contactId: number,
+    payload: {
+      full_name?: string;
+      phone?: string;
+      email?: string | null;
+      company?: string | null;
+      position?: string | null;
+      tags?: string[];
+      comment?: string | null;
+      source?: string | null;
+    }
+  ): Promise<OwnerWorkspaceContact> => {
+    const response = await api.patch(`/api/owner-workspace/contacts/${contactId}`, payload);
+    return response.data;
+  },
+  getContactTasks: async (contactId: number): Promise<OwnerWorkspaceTask[]> => {
+    const response = await api.get(`/api/owner-workspace/contacts/${contactId}/tasks`);
+    return response.data;
+  },
+  getDigest: async (params?: {
+    due_within_hours?: number;
+    assignee_id?: number;
+    project_id?: number;
+  }): Promise<OwnerWorkspaceDigest> => {
+    const response = await api.get('/api/owner-workspace/digest', { params: params || {} });
+    return response.data;
+  },
+  unifiedSearch: async (q: string, limit?: number): Promise<OwnerWorkspaceSearchResult> => {
+    const response = await api.get('/api/owner-workspace/search', {
+      params: { q, ...(limit != null ? { limit } : {}) },
+    });
+    return response.data;
+  },
+  createProject: async (payload: {
+    name: string;
+    description?: string | null;
+    status?: 'active' | 'completed' | 'archived';
+    owner_id?: number | null;
+    parent_project_id?: number | null;
+  }): Promise<OwnerWorkspaceProject> => {
+    const response = await api.post('/api/owner-workspace/projects', payload);
+    return response.data;
+  },
+  listContacts: async (params?: {
+    search?: string;
+    project_id?: number;
+    active_tasks_only?: boolean;
+    tag?: string;
+  }): Promise<OwnerWorkspaceContact[]> => {
+    const response = await api.get('/api/owner-workspace/contacts', { params: params || {} });
+    return response.data;
+  },
+  createContact: async (payload: {
+    full_name: string;
+    phone: string;
+    email?: string | null;
+    company?: string | null;
+    position?: string | null;
+    tags?: string[];
+    comment?: string | null;
+    source?: string | null;
+    project_ids?: number[];
+  }): Promise<OwnerWorkspaceContact> => {
+    const response = await api.post('/api/owner-workspace/contacts', payload);
+    return response.data;
+  },
+  listTasks: async (params?: {
+    project_id?: number;
+    contact_id?: number;
+    status_filter?: string;
+    priority?: string;
+    assignee_id?: number;
+    overdue_only?: boolean;
+    active_only?: boolean;
+    search?: string;
+    sort_by?: 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority';
+    sort_dir?: 'asc' | 'desc';
+    limit?: number;
+    offset?: number;
+  }): Promise<OwnerWorkspaceTaskListPage> => {
+    const response = await api.get('/api/owner-workspace/tasks', { params: params || {} });
+    return response.data;
+  },
+  getTaskStatusCounts: async (params?: {
+    project_id?: number;
+    contact_id?: number;
+    priority?: string;
+    assignee_id?: number;
+    overdue_only?: boolean;
+    active_only?: boolean;
+    search?: string;
+  }): Promise<OwnerWorkspaceTaskStatusCounts> => {
+    const response = await api.get('/api/owner-workspace/tasks/status-counts', { params: params || {} });
+    return response.data;
+  },
+  getTasksAnalyticsOverview: async (): Promise<OwnerWorkspaceTasksAnalyticsOverview> => {
+    const response = await api.get('/api/owner-workspace/analytics/tasks-overview');
+    return response.data;
+  },
+  createTask: async (payload: {
+    title: string;
+    description?: string | null;
+    status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+    priority?: 'low' | 'medium' | 'high' | 'critical';
+    deadline_at?: string | null;
+    start_at?: string | null;
+    assignee_id?: number | null;
+    project_id?: number | null;
+    contact_id?: number | null;
+    tags?: string[];
+    checklist?: Array<Record<string, unknown>>;
+    attachments?: Array<Record<string, unknown>>;
+    linked_message_ids?: number[];
+    previous_task_id?: number | null;
+  }): Promise<OwnerWorkspaceTask> => {
+    const response = await api.post('/api/owner-workspace/tasks', payload);
+    return response.data;
+  },
+  completeTask: async (
+    taskId: number,
+    payload?: {
+      action?: 'close' | 'close_and_create_next';
+      next_task?: {
+        title: string;
+        description?: string | null;
+        status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+        priority?: 'low' | 'medium' | 'high' | 'critical';
+        deadline_at?: string | null;
+        assignee_id?: number | null;
+        project_id?: number | null;
+        contact_id?: number | null;
+      };
+    }
+  ): Promise<OwnerWorkspaceTaskCompleteResult> => {
+    const response = await api.post(`/api/owner-workspace/tasks/${taskId}/complete`, payload || { action: 'close' });
+    return response.data;
+  },
+  listNotifications: async (params?: {
+    unread_only?: boolean;
+    limit?: number;
+    due_soon_hours?: number;
+  }): Promise<OwnerWorkspaceNotificationsEnvelope> => {
+    const response = await api.get('/api/owner-workspace/notifications', { params: params || {} });
+    return response.data;
+  },
+  markNotificationRead: async (notificationId: number): Promise<void> => {
+    await api.patch(`/api/owner-workspace/notifications/${notificationId}/read`);
+  },
+  getMyPreferences: async (): Promise<OwnerWorkspaceUserPreferences> => {
+    const response = await api.get('/api/owner-workspace/me/preferences');
+    return response.data;
+  },
+  patchMyPreferences: async (
+    payload: Partial<OwnerWorkspaceUserPreferences>
+  ): Promise<OwnerWorkspaceUserPreferences> => {
+    const response = await api.patch('/api/owner-workspace/me/preferences', payload);
+    return response.data;
+  },
+  getMyWebPushStatus: async (): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.get('/api/owner-workspace/me/web-push');
+    return response.data;
+  },
+  upsertMyWebPushSubscription: async (payload: {
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    user_agent?: string | null;
+  }): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.post('/api/owner-workspace/me/web-push/subscriptions', payload);
+    return response.data;
+  },
+  removeMyWebPushSubscription: async (endpoint: string): Promise<OwnerWorkspaceWebPushStatus> => {
+    const response = await api.post('/api/owner-workspace/me/web-push/subscriptions/remove', { endpoint });
+    return response.data;
+  },
+  listMessages: async (params?: { contact_id?: number }): Promise<OwnerWorkspaceMessage[]> => {
+    const response = await api.get('/api/owner-workspace/messages', { params: params || {} });
+    return response.data;
+  },
+  listConversations: async (): Promise<OwnerWorkspaceConversation[]> => {
+    const response = await api.get('/api/owner-workspace/messages/conversations');
+    return response.data;
+  },
+  createTaskFromMessage: async (
+    messageId: number,
+    payload: {
+      title: string;
+      description?: string | null;
+      priority?: 'low' | 'medium' | 'high' | 'critical';
+      deadline_at?: string | null;
+      assignee_id?: number | null;
+      project_id?: number | null;
+    }
+  ): Promise<OwnerWorkspaceTask> => {
+    const response = await api.post(`/api/owner-workspace/messages/${messageId}/create-task`, payload);
+    return response.data;
+  },
+  getTask: async (taskId: number): Promise<OwnerWorkspaceTask> => {
+    const response = await api.get(`/api/owner-workspace/tasks/${taskId}`);
+    return response.data;
+  },
+  deleteTask: async (taskId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/tasks/${taskId}`);
+  },
+  updateTask: async (
+    taskId: number,
+    payload: {
+      title?: string;
+      description?: string | null;
+      status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+      priority?: 'low' | 'medium' | 'high' | 'critical';
+      deadline_at?: string | null;
+      start_at?: string | null;
+      assignee_id?: number | null;
+      project_id?: number | null;
+      contact_id?: number | null;
+      tags?: string[];
+      checklist?: Array<Record<string, unknown>>;
+      attachments?: Array<Record<string, unknown>>;
+      linked_message_ids?: number[];
+    }
+  ): Promise<OwnerWorkspaceTask> => {
+    const response = await api.patch(`/api/owner-workspace/tasks/${taskId}`, payload);
+    return response.data;
+  },
+  getTaskComments: async (taskId: number): Promise<OwnerWorkspaceTaskComment[]> => {
+    const response = await api.get(`/api/owner-workspace/tasks/${taskId}/comments`);
+    return response.data;
+  },
+  addTaskComment: async (taskId: number, text: string): Promise<OwnerWorkspaceTaskComment> => {
+    const response = await api.post(`/api/owner-workspace/tasks/${taskId}/comments`, { text });
+    return response.data;
+  },
+  addProjectContact: async (projectId: number, contactId: number): Promise<void> => {
+    await api.post(`/api/owner-workspace/projects/${projectId}/contacts`, { contact_id: contactId });
+  },
+  removeProjectContact: async (projectId: number, contactId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/projects/${projectId}/contacts/${contactId}`);
+  },
+  getContactMessages: async (contactId: number): Promise<OwnerWorkspaceMessage[]> => {
+    const response = await api.get(`/api/owner-workspace/contacts/${contactId}/messages`);
+    return response.data;
+  },
+  createMessage: async (payload: {
+    contact_id: number;
+    text: string;
+    direction?: 'incoming' | 'outgoing';
+    external_chat_id?: string | null;
+    external_message_id?: string | null;
+  }): Promise<OwnerWorkspaceMessage> => {
+    const response = await api.post('/api/owner-workspace/messages', payload);
+    return response.data;
+  },
+  listHistory: async (params?: {
+    entity_type?: string;
+    entity_id?: number;
+    action_type?: string;
+    author_id?: number;
+    created_from?: string;
+    created_to?: string;
+    limit?: number;
+    sort_order?: 'asc' | 'desc';
+  }): Promise<OwnerWorkspaceAuditLog[]> => {
+    const response = await api.get('/api/owner-workspace/history', { params: params || {} });
+    return response.data;
+  },
+  getHistoryStats: async (params?: {
+    entity_type?: string;
+    entity_id?: number;
+    action_type?: string;
+    author_id?: number;
+    created_from?: string;
+    created_to?: string;
+  }): Promise<OwnerWorkspaceHistoryStats> => {
+    const response = await api.get('/api/owner-workspace/history/stats', { params: params || {} });
+    return response.data;
+  },
+  addProjectParticipant: async (
+    projectId: number,
+    userId: number,
+    role: 'member' | 'manager' | 'observer' = 'member'
+  ): Promise<void> => {
+    await api.post(`/api/owner-workspace/projects/${projectId}/participants`, { user_id: userId, role });
+  },
+  patchProjectParticipantRole: async (
+    projectId: number,
+    userId: number,
+    role: 'member' | 'manager' | 'observer'
+  ): Promise<void> => {
+    await api.patch(`/api/owner-workspace/projects/${projectId}/participants/${userId}`, { role });
+  },
+  removeProjectParticipant: async (projectId: number, userId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/projects/${projectId}/participants/${userId}`);
+  },
+  linkMessageToTask: async (messageId: number, taskId: number): Promise<void> => {
+    await api.post(`/api/owner-workspace/messages/${messageId}/link-task`, { task_id: taskId });
+  },
+  bulkUpdateTasks: async (payload: {
+    task_ids: number[];
+    status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
+    assignee_id?: number | null;
+    priority?: 'low' | 'medium' | 'high' | 'critical';
+  }): Promise<{ updated: number }> => {
+    const response = await api.post('/api/owner-workspace/tasks/bulk-update', payload);
+    return response.data;
+  },
+  syncMessagesFromMax: async (limit?: number): Promise<{ imported: number; skipped: number }> => {
+    const response = await api.post(
+      '/api/owner-workspace/messages/sync-from-max',
+      {},
+      {
+        params: limit != null ? { limit } : {},
+      }
+    );
+    return response.data;
+  },
+};

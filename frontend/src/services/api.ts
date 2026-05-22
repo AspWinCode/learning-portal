@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { api as apiClient } from './api/client';
 import {
   User,
   Student,
@@ -98,19 +98,14 @@ import {
   PersonAttachRecordRequest,
   PersonMergeRequest,
 } from '../types';
+export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
-// In production we usually serve frontend + backend behind the same domain.
-// If REACT_APP_API_URL is not set, fall back to same-origin (so you can change domain without rebuilding).
-// For local dev, create frontend/.env with: REACT_APP_API_URL=http://localhost:8000
-const API_URL = process.env.REACT_APP_API_URL || '';
+const api = apiClient;
 
-const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+/*
+
+
   timeout: 45000, // 45s — для тяжёлых запросов и холодного старта бэкенда
-});
 
 // Interceptor ╨┤╨╗╤П ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╤П ╤В╨╛╨║╨╡╨╜╨░
 api.interceptors.request.use((config) => {
@@ -133,6 +128,7 @@ api.interceptors.response.use(
   }
 );
 
+*/
 export const authApi = {
   login: async (email: string, password: string) => {
     // OAuth2 / FastAPI OAuth2PasswordRequestForm ╨╛╨╢╨╕╨┤╨░╨╡╤В ╤А╨╛╨▓╨╜╨╛ application/x-www-form-urlencoded
@@ -1267,6 +1263,10 @@ export const searchApi = {
   },
   searchPersons: async (query: string): Promise<PersonSearchResponse> => {
     const response = await api.get('/api/search/persons', { params: { q: query } });
+    return response.data;
+  },
+  getPersonById: async (personId: number): Promise<import('../types').PersonSearchItem> => {
+    const response = await api.get(`/api/search/persons/${personId}`);
     return response.data;
   },
   mergePersons: async (payload: PersonMergeRequest): Promise<import('../types').PersonSearchItem> => {
@@ -2684,7 +2684,7 @@ export const ownerCalculationsApi = {
   },
 };
 
-export const ownerWorkspaceApi = {
+export const legacyOwnerWorkspaceApi = {
   listProjects: async (params?: {
     status_filter?: string;
     parent_project_id?: number;

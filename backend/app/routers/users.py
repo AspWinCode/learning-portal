@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
-from app.schemas import UserCreate, UserResponse, UserUpdate, ParentInviteRequest, ParentInviteResponse
+from app.schemas import UserCreate, UserListResponse, UserResponse, UserUpdate, ParentInviteRequest, ParentInviteResponse
 from app.models import User, UserRole, Role
 from app.routers.action_log import log_action
 from app.services.parent_invite import create_parent_with_invite
@@ -126,6 +126,32 @@ async def read_users(
         query = query.filter(User.role == UserRole(role))
     users = query.offset(skip).limit(limit).all()
     return users
+
+
+@router.get("/paginated", response_model=UserListResponse)
+async def read_users_paginated(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    role: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    effective_role = auth.resolve_effective_role(current_user)
+    if effective_role == UserRole.SALES:
+        role = "trainer"
+    elif not auth.has_permission(current_user, "users.access"):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    query = db.query(User)
+    if role:
+        query = query.filter(User.role == UserRole(role))
+    total = query.order_by(None).count()
+    users = query.offset(skip).limit(limit).all()
+    return {
+        "total": total,
+        "items": users,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.get("/{user_id}", response_model=UserResponse)

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, selectinload, joinedload
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from app.database import get_db
 from app import auth
 from app.schemas import (
@@ -16,6 +16,7 @@ from app.schemas import (
     StudentWithParentResponse,
     InviteParentResponse,
     StudentActivityLogResponse,
+    StudentListResponse,
 )
 from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group, StudentActivityLog
 from app.routers.action_log import log_action
@@ -61,6 +62,75 @@ def _student_timeline_item(activity: StudentActivityLog) -> StudentActivityLogRe
         created_at=activity.created_at,
         payload_json=activity.payload_json,
     )
+
+
+def _build_students_query(
+    db: Session,
+    current_user: User,
+    status_filter: Optional[StudentStatus],
+    q: Optional[str],
+    ids: Optional[str],
+):
+    effective_role = _student_effective_role(current_user)
+    query = db.query(Student)
+
+    if effective_role == UserRole.PARENT:
+        query = query.filter(
+            Student.parent_id == current_user.id,
+            Student.status == StudentStatus.ACTIVE,
+        )
+    elif effective_role == UserRole.TRAINER:
+        from app.models import GroupStudent, Group
+
+        subq = (
+            db.query(Student.id)
+            .join(GroupStudent, GroupStudent.student_id == Student.id)
+            .join(Group, Group.id == GroupStudent.group_id)
+            .filter(
+                Group.trainer_id == current_user.id,
+                Student.status == StudentStatus.ACTIVE,
+            )
+            .distinct()
+        )
+        query = query.filter(Student.id.in_(subq))
+    elif effective_role in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+        if status_filter:
+            query = query.filter(Student.status == status_filter)
+
+    if ids and ids.strip():
+        id_list = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
+        if id_list:
+            query = query.filter(Student.id.in_(id_list))
+        return query
+
+    if q and q.strip():
+        term = f"%{q.strip()}%"
+        query = query.filter(Student.full_name.ilike(term))
+
+    return query
+
+
+def _serialize_students(db: Session, students: List[Student]) -> List[StudentResponse]:
+    seen_ids = set()
+    unique_students: List[Student] = []
+    for student in students:
+        if student.id not in seen_ids:
+            seen_ids.add(student.id)
+            unique_students.append(student)
+    if not unique_students:
+        return []
+
+    display_names = get_students_display_names(db, [student.id for student in unique_students])
+    return [
+        StudentResponse(
+            **{
+                **StudentResponse.model_validate(student).model_dump(),
+                "full_name": display_names.get(student.id, student.full_name),
+                "in_group": any(getattr(group_student, "left_at", None) is None for group_student in (student.group_students or [])),
+            }
+        )
+        for student in unique_students
+    ]
 
 
 @router.post("/with-parent", response_model=StudentWithParentResponse, status_code=status.HTTP_201_CREATED)
@@ -233,6 +303,37 @@ async def create_student(
     
     log_action(db, current_user.id, "create", "student", db_student.id)
     return db_student
+
+
+@router.get("/paginated", response_model=StudentListResponse)
+async def read_students_paginated(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    status_filter: Optional[StudentStatus] = Query(None, alias="status"),
+    q: Optional[str] = Query(None, description="РџРѕРёСЃРє РїРѕ Р¤РРћ (РїРѕРґСЃС‚СЂРѕРєР°)"),
+    ids: Optional[str] = Query(None, description="РЎРїРёСЃРѕРє ID С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    auth.ensure_permission(current_user, "students.access")
+    query = _build_students_query(db, current_user, status_filter, q, ids)
+    total = query.with_entities(func.count(Student.id)).scalar() or 0
+    rows = (
+        query.options(
+            selectinload(Student.student_programs).joinedload(StudentProgram.program),
+            selectinload(Student.group_students),
+        )
+        .order_by(Student.id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return StudentListResponse(
+        total=total,
+        items=_serialize_students(db, rows),
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.get("/", response_model=List[StudentResponse])

@@ -22,9 +22,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     UserRole.ADMIN.value: {"*"},
     UserRole.OWNER.value: {"*"},
-    UserRole.SALES.value: {"sales.access", "finance.access", "tasks.access", "projects.access", "owner_workspace.access", "students.access", "students.manage", "lessons.access", "lessons.manage", "lessons.schedule_manage", "student_accounts.access", "student_accounts.manage", "student_accounts.payment"},
-    UserRole.TRAINER.value: {"tasks.access", "projects.access", "owner_workspace.access", "groups.access", "programs.access", "students.access", "grades.access", "grades.manage", "characteristics.access", "characteristics.manage", "lessons.access", "lessons.manage", "telegram.link"},
-    UserRole.PARENT.value: {"programs.access", "groups.access", "grades.access", "characteristics.access", "student_accounts.access", "student_accounts.payment", "telegram.link"},
+    UserRole.SALES.value: {"sales.access", "finance.access", "tasks.access", "projects.access", "owner_workspace.access", "students.access", "students.manage", "lessons.access", "lessons.manage", "lessons.schedule_manage", "student_accounts.access", "student_accounts.manage", "student_accounts.payment", "persons.access", "persons.manage"},
+    UserRole.TRAINER.value: {"tasks.access", "projects.access", "owner_workspace.access", "groups.access", "programs.access", "students.access", "grades.access", "grades.manage", "characteristics.access", "characteristics.manage", "lessons.access", "lessons.manage", "telegram.link", "trainer_cockpit.access"},
+    UserRole.PARENT.value: {"programs.access", "groups.access", "grades.access", "characteristics.access", "student_accounts.access", "student_accounts.payment", "telegram.link", "parent_dashboard.access"},
     UserRole.GUEST.value: {"programs.access"},
 }
 

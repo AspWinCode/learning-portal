@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -32,6 +32,7 @@ const entityTypeLabel = (entityType: string): string => {
 
 const PersonRegistryPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(0);
   const [personQuery, setPersonQuery] = useState('');
   const [phoneQuery, setPhoneQuery] = useState('');
@@ -51,6 +52,40 @@ const PersonRegistryPage: React.FC = () => {
     if (!phoneResult) return 0;
     return phoneResult.users.length + phoneResult.leads.length + phoneResult.student_cards.length;
   }, [phoneResult]);
+
+  useEffect(() => {
+    const personIdRaw = searchParams.get('personId');
+    if (!personIdRaw) return;
+    const personId = Number(personIdRaw);
+    if (!Number.isFinite(personId)) return;
+
+    let cancelled = false;
+    const loadPerson = async () => {
+      setPersonsLoading(true);
+      setError('');
+      try {
+        const item = await searchApi.getPersonById(personId);
+        if (!cancelled) {
+          setTab(0);
+          setPersonQuery(String(personId));
+          setPersonsResult({ query: String(personId), items: [item] });
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setError(extractApiError(err, 'Failed to load Person record.'));
+        }
+      } finally {
+        if (!cancelled) {
+          setPersonsLoading(false);
+        }
+      }
+    };
+
+    void loadPerson();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   const handlePersonsSearch = async () => {
     const query = personQuery.trim();
@@ -159,6 +194,15 @@ const PersonRegistryPage: React.FC = () => {
           <Typography variant="h6">{item.full_name || `Person #${item.id}`}</Typography>
           <Chip size="small" label={`Person #${item.id}`} />
           {item.role_hint ? <Chip size="small" color="primary" variant="outlined" label={item.role_hint} /> : null}
+          <Button
+            size="small"
+            onClick={() => {
+              setTab(1);
+              setAttachPersonId(String(item.id));
+            }}
+          >
+            Для привязки
+          </Button>
           <Button size="small" onClick={() => setSourcePersonId(item.id)}>
             В source
           </Button>
@@ -207,7 +251,7 @@ const PersonRegistryPage: React.FC = () => {
                     </Button>
                   ) : null}
                   {record.entity_type === 'user' ? (
-                    <Button size="small" onClick={() => navigate(`/roles?userId=${record.entity_id}`)}>
+                    <Button size="small" onClick={() => navigate(`/users/${record.entity_id}`)}>
                       Открыть пользователя
                     </Button>
                   ) : null}
@@ -354,9 +398,17 @@ const PersonRegistryPage: React.FC = () => {
                               {phoneResult.users.map((item) => (
                                 <ListItem key={`user-${item.id}`} disableGutters secondaryAction={
                                   <Stack direction="row" spacing={1}>
+                                    {item.person_id ? (
+                                      <Button
+                                        size="small"
+                                        onClick={() => navigate(`/persons?personId=${item.person_id}`)}
+                                      >
+                                        Person
+                                      </Button>
+                                    ) : null}
                                     <Button
                                       size="small"
-                                      onClick={() => navigate(`/roles?userId=${item.id}`)}
+                                      onClick={() => navigate(`/users/${item.id}`)}
                                     >
                                       Открыть
                                     </Button>
@@ -394,6 +446,14 @@ const PersonRegistryPage: React.FC = () => {
                               {phoneResult.leads.map((item) => (
                                 <ListItem key={`lead-${item.id}`} disableGutters secondaryAction={
                                   <Stack direction="row" spacing={1}>
+                                    {item.person_id ? (
+                                      <Button
+                                        size="small"
+                                        onClick={() => navigate(`/persons?personId=${item.person_id}`)}
+                                      >
+                                        Person
+                                      </Button>
+                                    ) : null}
                                     <Button size="small" onClick={() => navigate(`/sales/leads/${item.id}`)}>
                                       Открыть
                                     </Button>
@@ -440,6 +500,14 @@ const PersonRegistryPage: React.FC = () => {
                               {phoneResult.student_cards.map((item) => (
                                 <ListItem key={`card-${item.id}`} disableGutters secondaryAction={
                                   <Stack direction="row" spacing={1}>
+                                    {item.person_id ? (
+                                      <Button
+                                        size="small"
+                                        onClick={() => navigate(`/persons?personId=${item.person_id}`)}
+                                      >
+                                        Person
+                                      </Button>
+                                    ) : null}
                                     <Button size="small" onClick={() => navigate(`/students?tab=ankety&cardId=${item.id}`)}>
                                       Открыть
                                     </Button>

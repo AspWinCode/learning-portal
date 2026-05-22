@@ -53,7 +53,7 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, allowedRoles, req
               403
             </Box>
             <Box component="p" sx={{ mt: 1, color: 'text.secondary' }}>
-              РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕР№ СЃС‚СЂР°РЅРёС†Рµ.
+              Недостаточно прав для доступа к этой странице.
             </Box>
           </Box>
         </Box>
@@ -69,7 +69,7 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, allowedRoles, req
             403
           </Box>
           <Box component="p" sx={{ mt: 1, color: 'text.secondary' }}>
-            РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕР№ СЃС‚СЂР°РЅРёС†Рµ.
+            Недостаточно прав для доступа к этой странице.
           </Box>
         </Box>
       </Box>

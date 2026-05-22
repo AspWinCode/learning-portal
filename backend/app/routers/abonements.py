@@ -1,10 +1,10 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
 from app.models import Abonement, AbonementStatus, DiscountType, User
-from app.schemas import AbonementCreate, AbonementResponse, AbonementUpdate
+from app.schemas import AbonementCreate, AbonementListResponse, AbonementResponse, AbonementUpdate
 from app.routers.action_log import log_action
 
 router = APIRouter()
@@ -32,6 +32,27 @@ async def read_abonements(
     if status_filter:
         query = query.filter(Abonement.status == status_filter)
     return query.order_by(Abonement.created_at.desc()).all()
+
+
+@router.get("/paginated", response_model=AbonementListResponse)
+async def read_abonements_paginated(
+    status_filter: Optional[AbonementStatus] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("abonements.access")),
+):
+    query = db.query(Abonement)
+    if status_filter:
+        query = query.filter(Abonement.status == status_filter)
+    total = query.order_by(None).count()
+    items = query.order_by(Abonement.created_at.desc()).offset(skip).limit(limit).all()
+    return {
+        "total": total,
+        "items": items,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.post("/", response_model=AbonementResponse, status_code=status.HTTP_201_CREATED)

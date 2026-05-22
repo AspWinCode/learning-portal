@@ -21,9 +21,7 @@ router = APIRouter()
 
 
 def _require_phone_search_access(current_user: User) -> None:
-    effective_role = auth.resolve_effective_role(current_user)
-    if effective_role not in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    auth.ensure_permission(current_user, "persons.access")
 
 
 def _build_person_search_item(person: Person) -> PersonSearchItemResponse:
@@ -224,13 +222,26 @@ async def search_person_registry(
     }
 
 
+@router.get("/persons/{person_id}", response_model=PersonSearchItemResponse)
+async def get_person_registry_item(
+    person_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_phone_search_access(current_user)
+    person = db.query(Person).filter(Person.id == person_id).first()
+    if person is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return _build_person_search_item(person)
+
+
 @router.post("/persons/merge", response_model=PersonSearchItemResponse)
 async def merge_person_registry_items(
     payload: PersonMergeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_phone_search_access(current_user)
+    auth.ensure_permission(current_user, "persons.manage")
     source_person = db.query(Person).filter(Person.id == payload.source_person_id).first()
     target_person = db.query(Person).filter(Person.id == payload.target_person_id).first()
     if source_person is None or target_person is None:
@@ -247,7 +258,7 @@ async def attach_record_to_person_registry(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_phone_search_access(current_user)
+    auth.ensure_permission(current_user, "persons.manage")
     person = db.query(Person).filter(Person.id == payload.person_id).first()
     if person is None:
         raise HTTPException(status_code=404, detail="Person not found")

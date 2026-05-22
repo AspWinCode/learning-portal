@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse, Response
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import cast, Text, or_, update as sa_update
 from openpyxl import Workbook, load_workbook
 
@@ -191,17 +191,45 @@ from app.services.makeup_selection import (
     resolve_absence_by_token,
 )
 from app.dependencies import require_sales_admin_owner
+from app.routers import sales_admin, sales_bank, sales_bank_import, sales_events, sales_invoices, sales_lead_views, sales_lead_workflow, sales_leads, sales_makeups, sales_operations, sales_student_cards, sales_support, sales_tax
 
 router = APIRouter()
+router.include_router(sales_admin.router)
+router.include_router(sales_bank.router)
+router.include_router(sales_bank_import.router)
+router.include_router(sales_events.router)
+router.include_router(sales_invoices.router)
+router.include_router(sales_lead_views.router)
+router.include_router(sales_lead_workflow.router)
+router.include_router(sales_leads.router)
+router.include_router(sales_makeups.router)
+router.include_router(sales_operations.router)
+router.include_router(sales_student_cards.router)
+router.include_router(sales_support.router)
+router.include_router(sales_tax.router)
 
-# Compatibility layer /api/sales (ТЗ этап 4): CRM + Operations + Finance.
-# Бизнес-логика в app.services.*; здесь — проверка прав, вызов сервисов, маппинг ответов.
+
+def _lead_eager_options():
+    return (
+        joinedload(Lead.owner),
+        joinedload(Lead.abonement),
+        joinedload(Lead.status_option),
+        joinedload(Lead.source_ref),
+        selectinload(Lead.tasks).joinedload(LeadTask.owner),
+        selectinload(Lead.tasks).joinedload(LeadTask.template),
+        selectinload(Lead.communications).joinedload(LeadCommunication.sender),
+        selectinload(Lead.communications).joinedload(LeadCommunication.template),
+        selectinload(Lead.invoices),
+    )
+
+# Compatibility layer /api/sales (РўР— СЌС‚Р°Рї 4): CRM + Operations + Finance.
+# Р‘РёР·РЅРµСЃ-Р»РѕРіРёРєР° РІ app.services.*; Р·РґРµСЃСЊ вЂ” РїСЂРѕРІРµСЂРєР° РїСЂР°РІ, РІС‹Р·РѕРІ СЃРµСЂРІРёСЃРѕРІ, РјР°РїРїРёРЅРі РѕС‚РІРµС‚РѕРІ.
 
 
 def _fix_mojibake(s: Optional[str]) -> Optional[str]:
     """
-    Восстанавливает строку из битой кодировки (UTF-8, прочитанный как Latin-1/CP1252).
-    Для уже нормальных строк остаётся без изменений.
+    Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ СЃС‚СЂРѕРєСѓ РёР· Р±РёС‚РѕР№ РєРѕРґРёСЂРѕРІРєРё (UTF-8, РїСЂРѕС‡РёС‚Р°РЅРЅС‹Р№ РєР°Рє Latin-1/CP1252).
+    Р”Р»СЏ СѓР¶Рµ РЅРѕСЂРјР°Р»СЊРЅС‹С… СЃС‚СЂРѕРє РѕСЃС‚Р°С‘С‚СЃСЏ Р±РµР· РёР·РјРµРЅРµРЅРёР№.
     """
     if not s or not isinstance(s, str):
         return s
@@ -217,8 +245,8 @@ def _fix_mojibake(s: Optional[str]) -> Optional[str]:
 
 def _fix_lead_strings(lead: Lead) -> Lead:
     """
-    Починить самые заметные текстовые поля лида, если они были сохранены кракозябрами.
-    Возвращает тот же ORM‑объект (мутабельно), чтобы Pydantic увидел уже исправленные значения.
+    РџРѕС‡РёРЅРёС‚СЊ СЃР°РјС‹Рµ Р·Р°РјРµС‚РЅС‹Рµ С‚РµРєСЃС‚РѕРІС‹Рµ РїРѕР»СЏ Р»РёРґР°, РµСЃР»Рё РѕРЅРё Р±С‹Р»Рё СЃРѕС…СЂР°РЅРµРЅС‹ РєСЂР°РєРѕР·СЏР±СЂР°РјРё.
+    Р’РѕР·РІСЂР°С‰Р°РµС‚ С‚РѕС‚ Р¶Рµ ORMвЂ‘РѕР±СЉРµРєС‚ (РјСѓС‚Р°Р±РµР»СЊРЅРѕ), С‡С‚РѕР±С‹ Pydantic СѓРІРёРґРµР» СѓР¶Рµ РёСЃРїСЂР°РІР»РµРЅРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ.
     """
     for field in [
         "contact_name",
@@ -249,7 +277,7 @@ def _serialize_time_for_api(t: Optional[dt_time]) -> Optional[str]:
 
 
 def _lesson_task_status(lesson_start: datetime, lesson_end: datetime, now: datetime, call_window_min: int = 25) -> str:
-    """Статус карточки урока: waiting | soon | in_progress | call_round | completed."""
+    """РЎС‚Р°С‚СѓСЃ РєР°СЂС‚РѕС‡РєРё СѓСЂРѕРєР°: waiting | soon | in_progress | call_round | completed."""
     if now < lesson_start - timedelta(minutes=15):
         return "waiting"
     if now < lesson_start:
@@ -267,7 +295,7 @@ def _lesson_tasks_for_date(
     target_date: date,
     now: Optional[datetime] = None,
 ) -> List[dict]:
-    """Список уроков на одну дату (для сегодня/завтра/недели)."""
+    """РЎРїРёСЃРѕРє СѓСЂРѕРєРѕРІ РЅР° РѕРґРЅСѓ РґР°С‚Сѓ (РґР»СЏ СЃРµРіРѕРґРЅСЏ/Р·Р°РІС‚СЂР°/РЅРµРґРµР»Рё)."""
     if now is None:
         now = datetime.now()
     weekday = target_date.weekday()
@@ -289,7 +317,7 @@ def _lesson_tasks_for_date(
             continue
         key = (group.id, sched.start_time, sched.end_time)
         if key in seen_keys:
-            # Защита от случайных дублей расписания: один слот в день показываем один раз
+            # Р—Р°С‰РёС‚Р° РѕС‚ СЃР»СѓС‡Р°Р№РЅС‹С… РґСѓР±Р»РµР№ СЂР°СЃРїРёСЃР°РЅРёСЏ: РѕРґРёРЅ СЃР»РѕС‚ РІ РґРµРЅСЊ РїРѕРєР°Р·С‹РІР°РµРј РѕРґРёРЅ СЂР°Р·
             continue
         seen_keys.add(key)
         trainer = group.trainer
@@ -337,7 +365,7 @@ def _lesson_tasks_for_date(
             call_result = getattr(att_row, "call_result", None) if att_row else None
             students_out.append({
                 "student_id": st.id,
-                "full_name": display_names.get(st.id, st.full_name or "—"),
+                "full_name": display_names.get(st.id, st.full_name or "вЂ”"),
                 "attended": attended,
                 "late": late,
                 "call_result": call_result,
@@ -358,7 +386,7 @@ def _lesson_tasks_for_date(
             "end_time": sched.end_time.strftime("%H:%M") if hasattr(sched.end_time, "strftime") else str(sched.end_time),
             "status": status,
             "trainer_id": trainer.id if trainer else None,
-            "trainer_name": trainer.full_name if trainer else "—",
+            "trainer_name": trainer.full_name if trainer else "вЂ”",
             "students": students_out,
             "total": len(students_out),
             "present_count": sum(1 for u in students_out if u.get("attended") is True),
@@ -369,37 +397,37 @@ def _lesson_tasks_for_date(
     return out
 
 
-@router.get("/lesson-tasks/today")
+@router.get("/_legacy-disabled/lesson-tasks/today")
 async def list_lesson_tasks_today(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("sales.access")),
 ):
-    """Уроки на сегодня для раздела «Позвать детей на занятие»."""
+    """РЈСЂРѕРєРё РЅР° СЃРµРіРѕРґРЅСЏ РґР»СЏ СЂР°Р·РґРµР»Р° В«РџРѕР·РІР°С‚СЊ РґРµС‚РµР№ РЅР° Р·Р°РЅСЏС‚РёРµВ»."""
     today = date.today()
     out = _lesson_tasks_for_date(db, today)
-    # Для вкладки «Сегодня» менеджеру показываем только актуальные уроки:
-    # ожидаются / скоро / идут / идёт дозвон. Завершённые убираем.
+    # Р”Р»СЏ РІРєР»Р°РґРєРё В«РЎРµРіРѕРґРЅСЏВ» РјРµРЅРµРґР¶РµСЂСѓ РїРѕРєР°Р·С‹РІР°РµРј С‚РѕР»СЊРєРѕ Р°РєС‚СѓР°Р»СЊРЅС‹Рµ СѓСЂРѕРєРё:
+    # РѕР¶РёРґР°СЋС‚СЃСЏ / СЃРєРѕСЂРѕ / РёРґСѓС‚ / РёРґС‘С‚ РґРѕР·РІРѕРЅ. Р—Р°РІРµСЂС€С‘РЅРЅС‹Рµ СѓР±РёСЂР°РµРј.
     out = [item for item in out if item.get("status") != "completed"]
     return {"items": out}
 
 
-@router.get("/lesson-tasks/tomorrow")
+@router.get("/_legacy-disabled/lesson-tasks/tomorrow")
 async def list_lesson_tasks_tomorrow(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("sales.access")),
 ):
-    """Уроки на завтра."""
+    """РЈСЂРѕРєРё РЅР° Р·Р°РІС‚СЂР°."""
     tomorrow = date.today() + timedelta(days=1)
     out = _lesson_tasks_for_date(db, tomorrow)
     return {"items": out}
 
 
-@router.get("/lesson-tasks/week")
+@router.get("/_legacy-disabled/lesson-tasks/week")
 async def list_lesson_tasks_week(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("sales.access")),
 ):
-    """Уроки на неделю (сегодня + 6 дней)."""
+    """РЈСЂРѕРєРё РЅР° РЅРµРґРµР»СЋ (СЃРµРіРѕРґРЅСЏ + 6 РґРЅРµР№)."""
     today = date.today()
     out = []
     for day_offset in range(7):
@@ -411,13 +439,13 @@ async def list_lesson_tasks_week(
 VALID_CALL_RESULTS = {"contacted", "no_answer", "cancelled", "technical", "messenger"}
 
 
-@router.post("/lesson-tasks/call-result")
+@router.post("/_legacy-disabled/lesson-tasks/call-result")
 async def set_lesson_call_result(
     payload: LessonCallResultUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("sales.access")),
 ):
-    """Установить результат дозвона по ученику (менеджер): contacted | no_answer | cancelled | technical | messenger."""
+    """РЈСЃС‚Р°РЅРѕРІРёС‚СЊ СЂРµР·СѓР»СЊС‚Р°С‚ РґРѕР·РІРѕРЅР° РїРѕ СѓС‡РµРЅРёРєСѓ (РјРµРЅРµРґР¶РµСЂ): contacted | no_answer | cancelled | technical | messenger."""
     if payload.call_result not in VALID_CALL_RESULTS:
         raise HTTPException(status_code=400, detail=f"call_result must be one of: {sorted(VALID_CALL_RESULTS)}")
     lesson_date = payload.lesson_date if isinstance(payload.lesson_date, date) else date.fromisoformat(str(payload.lesson_date))
@@ -446,7 +474,7 @@ async def set_lesson_call_result(
     return {"ok": True}
 
 
-@router.get("/sales-instructions", response_model=List[SalesInstructionResponse])
+@router.get("/_legacy-disabled/sales-instructions", response_model=List[SalesInstructionResponse])
 async def list_sales_instructions(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
@@ -456,7 +484,7 @@ async def list_sales_instructions(
     return items
 
 
-@router.post("/sales-instructions", response_model=SalesInstructionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/sales-instructions", response_model=SalesInstructionResponse, status_code=status.HTTP_201_CREATED)
 async def create_sales_instruction(
     payload: SalesInstructionCreate,
     db: Session = Depends(get_db),
@@ -480,7 +508,7 @@ async def create_sales_instruction(
     return item
 
 
-@router.put("/sales-instructions/{instruction_id}", response_model=SalesInstructionResponse)
+@router.put("/_legacy-disabled/sales-instructions/{instruction_id}", response_model=SalesInstructionResponse)
 async def update_sales_instruction(
     instruction_id: int,
     payload: SalesInstructionUpdate,
@@ -507,7 +535,7 @@ async def update_sales_instruction(
     return item
 
 
-@router.delete("/sales-instructions/{instruction_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/_legacy-disabled/sales-instructions/{instruction_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sales_instruction(
     instruction_id: int,
     db: Session = Depends(get_db),
@@ -522,7 +550,7 @@ async def delete_sales_instruction(
     return None
 
 
-@router.post("/instruction-images")
+@router.post("/_legacy-disabled/instruction-images")
 async def upload_sales_instruction_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -531,12 +559,12 @@ async def upload_sales_instruction_image(
     filename = file.filename or ""
     content_type = file.content_type or "application/octet-stream"
     if not content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Можно загружать только изображения")
+        raise HTTPException(status_code=400, detail="РњРѕР¶РЅРѕ Р·Р°РіСЂСѓР¶Р°С‚СЊ С‚РѕР»СЊРєРѕ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ")
     data = await file.read()
     if not data:
-        raise HTTPException(status_code=400, detail="Файл пустой")
+        raise HTTPException(status_code=400, detail="Р¤Р°Р№Р» РїСѓСЃС‚РѕР№")
     if len(data) > 400 * 1024:
-        raise HTTPException(status_code=400, detail="Картинка слишком большая (лимит ~400KB)")
+        raise HTTPException(status_code=400, detail="РљР°СЂС‚РёРЅРєР° СЃР»РёС€РєРѕРј Р±РѕР»СЊС€Р°СЏ (Р»РёРјРёС‚ ~400KB)")
     img = SalesInstructionImage(data=data, content_type=content_type)
     db.add(img)
     db.commit()
@@ -545,7 +573,7 @@ async def upload_sales_instruction_image(
     return {"id": img.id, "url": url}
 
 
-@router.get("/instruction-images/{image_id}")
+@router.get("/_legacy-disabled/instruction-images/{image_id}")
 async def get_sales_instruction_image(
     image_id: int,
     db: Session = Depends(get_db),
@@ -557,7 +585,7 @@ async def get_sales_instruction_image(
 
 
 def _student_card_response(card: StudentCard, user: User, db: Session) -> StudentCardResponse:
-    """Собирает ответ по карточке; поля абонемента/скидки только для owner."""
+    """РЎРѕР±РёСЂР°РµС‚ РѕС‚РІРµС‚ РїРѕ РєР°СЂС‚РѕС‡РєРµ; РїРѕР»СЏ Р°Р±РѕРЅРµРјРµРЅС‚Р°/СЃРєРёРґРєРё С‚РѕР»СЊРєРѕ РґР»СЏ owner."""
     parent_cabinet_open = False
     if getattr(card, "student_id", None):
         st = db.query(Student).filter(Student.id == card.student_id).first()
@@ -614,7 +642,7 @@ def _require_sales_admin_owner(user: User) -> None:
 
 
 def _normalize_name(s: str) -> str:
-    """Нормализация ФИО для сравнения: нижний регистр, одна пробельная строка."""
+    """РќРѕСЂРјР°Р»РёР·Р°С†РёСЏ Р¤РРћ РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ: РЅРёР¶РЅРёР№ СЂРµРіРёСЃС‚СЂ, РѕРґРЅР° РїСЂРѕР±РµР»СЊРЅР°СЏ СЃС‚СЂРѕРєР°."""
     if not s or not isinstance(s, str):
         return ""
     return " ".join((s or "").lower().strip().split())
@@ -622,10 +650,10 @@ def _normalize_name(s: str) -> str:
 
 def _payer_matches_parent(payer_name: str, parent_full_name: Optional[str]) -> bool:
     """
-    Совпадает ли плательщик с ФИО родителя.
-    В Точка Банк часто пишут «Имя Отчество Ф.» (например «Наталья Георгиевна М.»),
-    в карточке — «Фамилия Имя Отчество» (например «Медведева Наталья Георгиевна»).
-    Инициал (одна буква или «Х.») сопоставляется с первой буквой любого слова у родителя (обычно фамилии).
+    РЎРѕРІРїР°РґР°РµС‚ Р»Рё РїР»Р°С‚РµР»СЊС‰РёРє СЃ Р¤РРћ СЂРѕРґРёС‚РµР»СЏ.
+    Р’ РўРѕС‡РєР° Р‘Р°РЅРє С‡Р°СЃС‚Рѕ РїРёС€СѓС‚ В«РРјСЏ РћС‚С‡РµСЃС‚РІРѕ Р¤.В» (РЅР°РїСЂРёРјРµСЂ В«РќР°С‚Р°Р»СЊСЏ Р“РµРѕСЂРіРёРµРІРЅР° Рњ.В»),
+    РІ РєР°СЂС‚РѕС‡РєРµ вЂ” В«Р¤Р°РјРёР»РёСЏ РРјСЏ РћС‚С‡РµСЃС‚РІРѕВ» (РЅР°РїСЂРёРјРµСЂ В«РњРµРґРІРµРґРµРІР° РќР°С‚Р°Р»СЊСЏ Р“РµРѕСЂРіРёРµРІРЅР°В»).
+    РРЅРёС†РёР°Р» (РѕРґРЅР° Р±СѓРєРІР° РёР»Рё В«РҐ.В») СЃРѕРїРѕСЃС‚Р°РІР»СЏРµС‚СЃСЏ СЃ РїРµСЂРІРѕР№ Р±СѓРєРІРѕР№ Р»СЋР±РѕРіРѕ СЃР»РѕРІР° Сѓ СЂРѕРґРёС‚РµР»СЏ (РѕР±С‹С‡РЅРѕ С„Р°РјРёР»РёРё).
     """
     if not parent_full_name or not payer_name:
         return False
@@ -640,7 +668,7 @@ def _payer_matches_parent(payer_name: str, parent_full_name: Optional[str]) -> b
     p_words = p.split()
     parent_words = parent.split()
     parent_word_set = set(parent_words)
-    # Слова-инициалы: одна буква или буква с точкой («м», «м.»)
+    # РЎР»РѕРІР°-РёРЅРёС†РёР°Р»С‹: РѕРґРЅР° Р±СѓРєРІР° РёР»Рё Р±СѓРєРІР° СЃ С‚РѕС‡РєРѕР№ (В«РјВ», В«Рј.В»)
     initials = []
     full_words = []
     for w in p_words:
@@ -649,10 +677,10 @@ def _payer_matches_parent(payer_name: str, parent_full_name: Optional[str]) -> b
             initials.append(w_clean)
         else:
             full_words.append(w)
-    # Все не-инициалы из плательщика должны быть в ФИО родителя
+    # Р’СЃРµ РЅРµ-РёРЅРёС†РёР°Р»С‹ РёР· РїР»Р°С‚РµР»СЊС‰РёРєР° РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ РІ Р¤РРћ СЂРѕРґРёС‚РµР»СЏ
     if not all(w in parent_word_set for w in full_words):
         return False
-    # Каждый инициал должен совпадать с первой буквой какого-то слова у родителя (фамилия «Медведева» → «м»)
+    # РљР°Р¶РґС‹Р№ РёРЅРёС†РёР°Р» РґРѕР»Р¶РµРЅ СЃРѕРІРїР°РґР°С‚СЊ СЃ РїРµСЂРІРѕР№ Р±СѓРєРІРѕР№ РєР°РєРѕРіРѕ-С‚Рѕ СЃР»РѕРІР° Сѓ СЂРѕРґРёС‚РµР»СЏ (С„Р°РјРёР»РёСЏ В«РњРµРґРІРµРґРµРІР°В» в†’ В«РјВ»)
     for letter in initials:
         if not any(pw.startswith(letter) for pw in parent_words):
             return False
@@ -662,7 +690,7 @@ def _payer_matches_parent(payer_name: str, parent_full_name: Optional[str]) -> b
 def _tochka_payment_already_applied(
     db: Session, account_id: str, payment_date: str, amount: float, payer_name: str
 ) -> bool:
-    """Проверяет, был ли этот платёж из Точка Банк уже зачислен (идемпотентность)."""
+    """РџСЂРѕРІРµСЂСЏРµС‚, Р±С‹Р» Р»Рё СЌС‚РѕС‚ РїР»Р°С‚С‘Р¶ РёР· РўРѕС‡РєР° Р‘Р°РЅРє СѓР¶Рµ Р·Р°С‡РёСЃР»РµРЅ (РёРґРµРјРїРѕС‚РµРЅС‚РЅРѕСЃС‚СЊ)."""
     payer_trunc = (payer_name or "")[:512]
     return (
         db.query(TochkaAppliedPayment.id)
@@ -686,7 +714,7 @@ def _resolve_student_for_bank_payment(
     payer_name: str,
 ) -> Optional[int]:
     """
-    Из нескольких учеников (один родитель) выбираем одного: primary_for_bank_payments, затем активный абонемент, затем отрицательный баланс.
+    РР· РЅРµСЃРєРѕР»СЊРєРёС… СѓС‡РµРЅРёРєРѕРІ (РѕРґРёРЅ СЂРѕРґРёС‚РµР»СЊ) РІС‹Р±РёСЂР°РµРј РѕРґРЅРѕРіРѕ: primary_for_bank_payments, Р·Р°С‚РµРј Р°РєС‚РёРІРЅС‹Р№ Р°Р±РѕРЅРµРјРµРЅС‚, Р·Р°С‚РµРј РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Р№ Р±Р°Р»Р°РЅСЃ.
     """
     if not student_ids:
         return None
@@ -725,9 +753,9 @@ def do_tochka_import_and_apply(
     actor_user_id: Optional[int] = None,
 ) -> BankPaymentImportResponse:
     """
-    Загружает выписку Точка Банк за период. Дедупликация по operation_id (bank_transactions).
-    Матчинг по нормализованному телефону плательщика: привязки (phone_payment_bindings) или родитель в карточке.
-    При одном родителе и нескольких учениках: primary_for_bank_payments → активный абонемент → отрицательный баланс → иначе ambiguous.
+    Р—Р°РіСЂСѓР¶Р°РµС‚ РІС‹РїРёСЃРєСѓ РўРѕС‡РєР° Р‘Р°РЅРє Р·Р° РїРµСЂРёРѕРґ. Р”РµРґСѓРїР»РёРєР°С†РёСЏ РїРѕ operation_id (bank_transactions).
+    РњР°С‚С‡РёРЅРі РїРѕ РЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅРѕРјСѓ С‚РµР»РµС„РѕРЅСѓ РїР»Р°С‚РµР»СЊС‰РёРєР°: РїСЂРёРІСЏР·РєРё (phone_payment_bindings) РёР»Рё СЂРѕРґРёС‚РµР»СЊ РІ РєР°СЂС‚РѕС‡РєРµ.
+    РџСЂРё РѕРґРЅРѕРј СЂРѕРґРёС‚РµР»Рµ Рё РЅРµСЃРєРѕР»СЊРєРёС… СѓС‡РµРЅРёРєР°С…: primary_for_bank_payments в†’ Р°РєС‚РёРІРЅС‹Р№ Р°Р±РѕРЅРµРјРµРЅС‚ в†’ РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Р№ Р±Р°Р»Р°РЅСЃ в†’ РёРЅР°С‡Рµ ambiguous.
     """
     from app.services.tochka_client import (
         fetch_statement_ready,
@@ -776,7 +804,7 @@ def do_tochka_import_and_apply(
             db.add(bt)
             db.flush()
 
-        # Отразим операцию в едином финансовом журнале.
+        # РћС‚СЂР°Р·РёРј РѕРїРµСЂР°С†РёСЋ РІ РµРґРёРЅРѕРј С„РёРЅР°РЅСЃРѕРІРѕРј Р¶СѓСЂРЅР°Р»Рµ.
         ensure_finance_transaction_for_bank_transaction(db, bt, bank_source="tochka")
 
         student_ids: List[int] = []
@@ -796,7 +824,7 @@ def do_tochka_import_and_apply(
                             student_ids.append(c.student_id)
                 student_ids = list(dict.fromkeys(student_ids))
 
-        # Если телефон в выписке не пришёл или по телефону не нашли — пробуем матч по ФИО (fallback)
+        # Р•СЃР»Рё С‚РµР»РµС„РѕРЅ РІ РІС‹РїРёСЃРєРµ РЅРµ РїСЂРёС€С‘Р» РёР»Рё РїРѕ С‚РµР»РµС„РѕРЅСѓ РЅРµ РЅР°С€Р»Рё вЂ” РїСЂРѕР±СѓРµРј РјР°С‚С‡ РїРѕ Р¤РРћ (fallback)
         if not student_ids and payer_name:
             for c in cards:
                 if _payer_matches_parent(payer_name, c.parent_full_name):
@@ -857,11 +885,11 @@ def do_tochka_import_and_apply(
             .first()
         )
         if not account:
-            account = StudentAccount(student_id=chosen_student_id, name="Основной", balance=0.0)
+            account = StudentAccount(student_id=chosen_student_id, name="РћСЃРЅРѕРІРЅРѕР№", balance=0.0)
             db.add(account)
             db.flush()
 
-        note = f"Точка Банк, плательщик: {payer_name}, дата: {tx_date}"
+        note = f"РўРѕС‡РєР° Р‘Р°РЅРє, РїР»Р°С‚РµР»СЊС‰РёРє: {payer_name}, РґР°С‚Р°: {tx_date}"
         db.add(
             StudentAccountTransaction(
                 account_id=account.id,
@@ -912,9 +940,9 @@ def do_tochka_import_and_apply(
     return BankPaymentImportResponse(applied=applied, no_match=no_match, ambiguous=ambiguous)
 
 
-@router.get("/tochka/status")
+@router.get("/_legacy-disabled/tochka/status")
 async def tochka_bank_status(current_user: User = Depends(require_sales_admin_owner)):
-    """Проверка: заданы ли учётные данные Точка Банк и включено ли автозачисление."""
+    """РџСЂРѕРІРµСЂРєР°: Р·Р°РґР°РЅС‹ Р»Рё СѓС‡С‘С‚РЅС‹Рµ РґР°РЅРЅС‹Рµ РўРѕС‡РєР° Р‘Р°РЅРє Рё РІРєР»СЋС‡РµРЅРѕ Р»Рё Р°РІС‚РѕР·Р°С‡РёСЃР»РµРЅРёРµ."""
     from app.services.tochka_client import is_configured, is_auto_import_configured
     return {
         "configured": is_configured(),
@@ -922,9 +950,9 @@ async def tochka_bank_status(current_user: User = Depends(require_sales_admin_ow
     }
 
 
-@router.get("/tochka/status/public")
+@router.get("/_legacy-disabled/tochka/status/public")
 async def tochka_bank_status_public():
-    """Проверка без авторизации (только configured/auto_import_configured). Для мониторинга и curl с сервера."""
+    """РџСЂРѕРІРµСЂРєР° Р±РµР· Р°РІС‚РѕСЂРёР·Р°С†РёРё (С‚РѕР»СЊРєРѕ configured/auto_import_configured). Р”Р»СЏ РјРѕРЅРёС‚РѕСЂРёРЅРіР° Рё curl СЃ СЃРµСЂРІРµСЂР°."""
     from app.services.tochka_client import is_configured, is_auto_import_configured
     return {
         "configured": is_configured(),
@@ -932,50 +960,50 @@ async def tochka_bank_status_public():
     }
 
 
-@router.post("/tochka/import-and-apply", response_model=BankPaymentImportResponse)
+@router.post("/_legacy-disabled/tochka/import-and-apply", response_model=BankPaymentImportResponse)
 async def tochka_import_and_apply(
     payload: TochkaImportRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
     """
-    Загрузить выписку из Точка Банк за период. Матчинг по телефону плательщика (привязки или карточка).
-    Дедупликация по operation_id. Уже обработанные операции пропускаются.
+    Р—Р°РіСЂСѓР·РёС‚СЊ РІС‹РїРёСЃРєСѓ РёР· РўРѕС‡РєР° Р‘Р°РЅРє Р·Р° РїРµСЂРёРѕРґ. РњР°С‚С‡РёРЅРі РїРѕ С‚РµР»РµС„РѕРЅСѓ РїР»Р°С‚РµР»СЊС‰РёРєР° (РїСЂРёРІСЏР·РєРё РёР»Рё РєР°СЂС‚РѕС‡РєР°).
+    Р”РµРґСѓРїР»РёРєР°С†РёСЏ РїРѕ operation_id. РЈР¶Рµ РѕР±СЂР°Р±РѕС‚Р°РЅРЅС‹Рµ РѕРїРµСЂР°С†РёРё РїСЂРѕРїСѓСЃРєР°СЋС‚СЃСЏ.
     """
     from app.services.tochka_client import is_configured
 
     if not is_configured():
-        raise HTTPException(status_code=400, detail="Точка Банк не настроен: задайте TOCHKA_CLIENT_ID и TOCHKA_CLIENT_SECRET в .env")
+        raise HTTPException(status_code=400, detail="РўРѕС‡РєР° Р‘Р°РЅРє РЅРµ РЅР°СЃС‚СЂРѕРµРЅ: Р·Р°РґР°Р№С‚Рµ TOCHKA_CLIENT_ID Рё TOCHKA_CLIENT_SECRET РІ .env")
 
     account_id = (payload.account_id or "").strip() or (os.getenv("TOCHKA_ACCOUNT_ID") or "").strip()
     if not account_id:
         raise HTTPException(
             status_code=400,
-            detail="Укажите account_id (ID счёта в Точка Банк) в теле запроса или задайте TOCHKA_ACCOUNT_ID в .env",
+            detail="РЈРєР°Р¶РёС‚Рµ account_id (ID СЃС‡С‘С‚Р° РІ РўРѕС‡РєР° Р‘Р°РЅРє) РІ С‚РµР»Рµ Р·Р°РїСЂРѕСЃР° РёР»Рё Р·Р°РґР°Р№С‚Рµ TOCHKA_ACCOUNT_ID РІ .env",
         )
 
     try:
         date_from = date.fromisoformat(payload.date_from)
         date_to = date.fromisoformat(payload.date_to)
     except ValueError:
-        raise HTTPException(status_code=400, detail="date_from и date_to должны быть в формате YYYY-MM-DD")
+        raise HTTPException(status_code=400, detail="date_from Рё date_to РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ РІ С„РѕСЂРјР°С‚Рµ YYYY-MM-DD")
 
     if date_from > date_to:
-        raise HTTPException(status_code=400, detail="date_from не может быть больше date_to")
+        raise HTTPException(status_code=400, detail="date_from РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ Р±РѕР»СЊС€Рµ date_to")
 
     try:
         return do_tochka_import_and_apply(db, account_id, date_from, date_to, actor_user_id=current_user.id)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Ошибка выписки Точка Банк: {e!s}")
+        raise HTTPException(status_code=502, detail=f"РћС€РёР±РєР° РІС‹РїРёСЃРєРё РўРѕС‡РєР° Р‘Р°РЅРє: {e!s}")
 
 
-@router.get("/bank-transactions", response_model=List[BankTransactionResponse])
+@router.get("/_legacy-disabled/bank-transactions", response_model=List[BankTransactionResponse])
 async def list_bank_transactions(
-    status: Optional[List[str]] = Query(None, description="Фильтр: new, no_match, ambiguous, applied, expense; без параметра — все операции"),
+    status: Optional[List[str]] = Query(None, description="Р¤РёР»СЊС‚СЂ: new, no_match, ambiguous, applied, expense; Р±РµР· РїР°СЂР°РјРµС‚СЂР° вЂ” РІСЃРµ РѕРїРµСЂР°С†РёРё"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    """Очередь операций из банка для ручного разбора (no_match, ambiguous)."""
+    """РћС‡РµСЂРµРґСЊ РѕРїРµСЂР°С†РёР№ РёР· Р±Р°РЅРєР° РґР»СЏ СЂСѓС‡РЅРѕРіРѕ СЂР°Р·Р±РѕСЂР° (no_match, ambiguous)."""
     q = db.query(BankTransaction).order_by(BankTransaction.created_at.desc())
     if status:
         q = q.filter(BankTransaction.status.in_(status))
@@ -983,19 +1011,19 @@ async def list_bank_transactions(
     return [BankTransactionResponse.model_validate(b) for b in items]
 
 
-@router.post("/phone-payment-bindings")
+@router.post("/_legacy-disabled/phone-payment-bindings")
 async def create_phone_payment_binding(
     payload: PhonePaymentBindingCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    """Привязать телефон плательщика к родителю: следующие платежи с этого номера зачислятся автоматически."""
+    """РџСЂРёРІСЏР·Р°С‚СЊ С‚РµР»РµС„РѕРЅ РїР»Р°С‚РµР»СЊС‰РёРєР° Рє СЂРѕРґРёС‚РµР»СЋ: СЃР»РµРґСѓСЋС‰РёРµ РїР»Р°С‚РµР¶Рё СЃ СЌС‚РѕРіРѕ РЅРѕРјРµСЂР° Р·Р°С‡РёСЃР»СЏС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё."""
     normalized = normalize_phone(payload.payer_phone)
     if not normalized:
-        raise HTTPException(status_code=400, detail="Некорректный номер телефона")
+        raise HTTPException(status_code=400, detail="РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°")
     parent = db.query(User).filter(User.id == payload.parent_id, User.role == UserRole.PARENT).first()
     if not parent:
-        raise HTTPException(status_code=404, detail="Родитель не найден")
+        raise HTTPException(status_code=404, detail="Р РѕРґРёС‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ")
     existing = db.query(PhonePaymentBinding).filter(PhonePaymentBinding.payer_phone_normalized == normalized).first()
     if existing:
         existing.parent_id = payload.parent_id
@@ -1006,37 +1034,37 @@ async def create_phone_payment_binding(
     return {"ok": True}
 
 
-@router.post("/bank-transactions/{transaction_id}/apply", response_model=BankTransactionResponse)
+@router.post("/_legacy-disabled/bank-transactions/{transaction_id}/apply", response_model=BankTransactionResponse)
 async def apply_bank_transaction(
     transaction_id: int,
     payload: BankTransactionApplyRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    """Зачислить спорную операцию (no_match / ambiguous) на выбранного ученика. При no_match создаётся привязка телефона к родителю."""
+    """Р—Р°С‡РёСЃР»РёС‚СЊ СЃРїРѕСЂРЅСѓСЋ РѕРїРµСЂР°С†РёСЋ (no_match / ambiguous) РЅР° РІС‹Р±СЂР°РЅРЅРѕРіРѕ СѓС‡РµРЅРёРєР°. РџСЂРё no_match СЃРѕР·РґР°С‘С‚СЃСЏ РїСЂРёРІСЏР·РєР° С‚РµР»РµС„РѕРЅР° Рє СЂРѕРґРёС‚РµР»СЋ."""
     try:
         result = bank_operation_apply(db, transaction_id, payload.student_id)
     except ValueError as e:
         msg = str(e)
-        if "не найден" in msg.lower():
+        if "РЅРµ РЅР°Р№РґРµРЅ" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     return BankTransactionResponse.model_validate(result.transaction)
 
 
-@router.patch("/bank-transactions/{transaction_id}/expense-category", response_model=BankTransactionResponse)
+@router.patch("/_legacy-disabled/bank-transactions/{transaction_id}/expense-category", response_model=BankTransactionResponse)
 async def update_bank_transaction_expense_category(
     transaction_id: int,
     payload: BankTransactionExpenseCategoryUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    """Установить категорию расхода (комиссия, типография, аренда и т.д.). Только для операций со статусом expense."""
+    """РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РєР°С‚РµРіРѕСЂРёСЋ СЂР°СЃС…РѕРґР° (РєРѕРјРёСЃСЃРёСЏ, С‚РёРїРѕРіСЂР°С„РёСЏ, Р°СЂРµРЅРґР° Рё С‚.Рґ.). РўРѕР»СЊРєРѕ РґР»СЏ РѕРїРµСЂР°С†РёР№ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј expense."""
     bt = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
     if not bt:
-        raise HTTPException(status_code=404, detail="Операция не найдена")
+        raise HTTPException(status_code=404, detail="РћРїРµСЂР°С†РёСЏ РЅРµ РЅР°Р№РґРµРЅР°")
     if bt.status != BankTransactionStatus.EXPENSE.value:
-        raise HTTPException(status_code=400, detail="Категорию можно задать только для расхода (списание)")
+        raise HTTPException(status_code=400, detail="РљР°С‚РµРіРѕСЂРёСЋ РјРѕР¶РЅРѕ Р·Р°РґР°С‚СЊ С‚РѕР»СЊРєРѕ РґР»СЏ СЂР°СЃС…РѕРґР° (СЃРїРёСЃР°РЅРёРµ)")
     if payload.expense_category is not None:
         bt.expense_category = (payload.expense_category or "").strip() or None
     db.commit()
@@ -1044,30 +1072,30 @@ async def update_bank_transaction_expense_category(
     return BankTransactionResponse.model_validate(bt)
 
 
-@router.delete("/bank-transactions/{transaction_id}")
+@router.delete("/_legacy-disabled/bank-transactions/{transaction_id}")
 async def delete_bank_transaction(
     transaction_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ) -> Dict[str, bool]:
-    """Удалить операцию банка (BankTransaction).
+    """РЈРґР°Р»РёС‚СЊ РѕРїРµСЂР°С†РёСЋ Р±Р°РЅРєР° (BankTransaction).
 
-    Используется для ручной очистки очереди операций в интерфейсе «Долги и оплаты» → «Операции банка».
-    Предполагается, что перед удалением администрация при необходимости откатила связанные действия по счетам учеников.
+    РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґР»СЏ СЂСѓС‡РЅРѕР№ РѕС‡РёСЃС‚РєРё РѕС‡РµСЂРµРґРё РѕРїРµСЂР°С†РёР№ РІ РёРЅС‚РµСЂС„РµР№СЃРµ В«Р”РѕР»РіРё Рё РѕРїР»Р°С‚С‹В» в†’ В«РћРїРµСЂР°С†РёРё Р±Р°РЅРєР°В».
+    РџСЂРµРґРїРѕР»Р°РіР°РµС‚СЃСЏ, С‡С‚Рѕ РїРµСЂРµРґ СѓРґР°Р»РµРЅРёРµРј Р°РґРјРёРЅРёСЃС‚СЂР°С†РёСЏ РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РѕС‚РєР°С‚РёР»Р° СЃРІСЏР·Р°РЅРЅС‹Рµ РґРµР№СЃС‚РІРёСЏ РїРѕ СЃС‡РµС‚Р°Рј СѓС‡РµРЅРёРєРѕРІ.
     """
     bt = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
     if not bt:
-        raise HTTPException(status_code=404, detail="Операция не найдена")
+        raise HTTPException(status_code=404, detail="РћРїРµСЂР°С†РёСЏ РЅРµ РЅР°Р№РґРµРЅР°")
     db.delete(bt)
     db.commit()
     return {"ok": True}
 
 
-@router.get("/student-cards", response_model=List[StudentCardResponse])
+@router.get("/_legacy-disabled/student-cards", response_model=List[StudentCardResponse])
 async def list_student_cards(
-    archived: Optional[bool] = Query(None, description="Фильтр по архиву: true/false или не передавать — все"),
-    anketa_status: Optional[List[str]] = Query(None, description="Фильтр по статусу анкеты: draft, filled, converted, cancelled"),
-    student_id: Optional[int] = Query(None, description="Фильтр по привязанному ученику"),
+    archived: Optional[bool] = Query(None, description="Р¤РёР»СЊС‚СЂ РїРѕ Р°СЂС…РёРІСѓ: true/false РёР»Рё РЅРµ РїРµСЂРµРґР°РІР°С‚СЊ вЂ” РІСЃРµ"),
+    anketa_status: Optional[List[str]] = Query(None, description="Р¤РёР»СЊС‚СЂ РїРѕ СЃС‚Р°С‚СѓСЃСѓ Р°РЅРєРµС‚С‹: draft, filled, converted, cancelled"),
+    student_id: Optional[int] = Query(None, description="Р¤РёР»СЊС‚СЂ РїРѕ РїСЂРёРІСЏР·Р°РЅРЅРѕРјСѓ СѓС‡РµРЅРёРєСѓ"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -1083,7 +1111,7 @@ async def list_student_cards(
     return [_student_card_response(c, current_user, db) for c in items]
 
 
-@router.post("/student-cards", response_model=StudentCardResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/student-cards", response_model=StudentCardResponse, status_code=status.HTTP_201_CREATED)
 async def create_student_card(
     payload: StudentCardCreate,
     db: Session = Depends(get_db),
@@ -1092,27 +1120,27 @@ async def create_student_card(
     _require_sales_admin_owner(current_user)
     name = (payload.student_full_name or "").strip()
     if not name:
-        raise HTTPException(status_code=400, detail="ФИО ученика обязательно")
+        raise HTTPException(status_code=400, detail="Р¤РРћ СѓС‡РµРЅРёРєР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ")
     data = payload.model_dump()
     if data.get("student_id") is None and not data.get("anketa_status"):
         data["anketa_status"] = "draft"
     data["phone_normalized"] = normalize_phone(data.get("parent_phone") or data.get("student_phone") or "") or None
-    # Абонемент и скидка может менять только owner
+    # РђР±РѕРЅРµРјРµРЅС‚ Рё СЃРєРёРґРєР° РјРѕР¶РµС‚ РјРµРЅСЏС‚СЊ С‚РѕР»СЊРєРѕ owner
     if auth.resolve_effective_role(current_user) != UserRole.OWNER:
         data["abonement_id"] = None
         data["discount_type"] = DiscountType.NONE
         data["discount_value"] = 0.0
-    # Ссылку оплаты могут задавать owner и admin; для остальных (sales) очищаем
+    # РЎСЃС‹Р»РєСѓ РѕРїР»Р°С‚С‹ РјРѕРіСѓС‚ Р·Р°РґР°РІР°С‚СЊ owner Рё admin; РґР»СЏ РѕСЃС‚Р°Р»СЊРЅС‹С… (sales) РѕС‡РёС‰Р°РµРј
     if auth.resolve_effective_role(current_user) not in (UserRole.OWNER, UserRole.ADMIN):
         data["payment_link"] = None
     if data.get("abonement_id"):
         ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
         if not ab:
-            raise HTTPException(status_code=404, detail="Абонемент не найден")
+            raise HTTPException(status_code=404, detail="РђР±РѕРЅРµРјРµРЅС‚ РЅРµ РЅР°Р№РґРµРЅ")
     if data.get("student_id") is not None:
         st = db.query(Student).filter(Student.id == data["student_id"]).first()
         if not st:
-            raise HTTPException(status_code=404, detail="Ученик не найден")
+            raise HTTPException(status_code=404, detail="РЈС‡РµРЅРёРє РЅРµ РЅР°Р№РґРµРЅ")
     card = StudentCard(**data)
     db.add(card)
     db.flush()
@@ -1122,57 +1150,57 @@ async def create_student_card(
     return _student_card_response(card, current_user, db)
 
 
-@router.get("/student-cards/import-template")
+@router.get("/_legacy-disabled/student-cards/import-template")
 async def download_student_cards_import_template(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     _require_sales_admin_owner(current_user)
     wb = Workbook()
     ws = wb.active
-    ws.title = "Карточки учеников"
+    ws.title = "РљР°СЂС‚РѕС‡РєРё СѓС‡РµРЅРёРєРѕРІ"
     headers = [
-        "ФИО ученика",
-        "Дата рождения",
-        "Телефон ученика",
-        "Телеграм ученика",
-        "Пол",
-        "На гранте",
-        "Формат",
-        "Город",
-        "Образовательное учреждение",
-        "Класс",
-        "Email ученика",
-        "ФИО родителя",
-        "Телефон родителя",
-        "Второй телефон родителя",
-        "Телеграм родителя",
-        "Email родителя",
-        "Удобный мессенджер",
-        "Комментарий",
-        "Откуда пришел",
+        "Р¤РРћ СѓС‡РµРЅРёРєР°",
+        "Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ",
+        "РўРµР»РµС„РѕРЅ СѓС‡РµРЅРёРєР°",
+        "РўРµР»РµРіСЂР°Рј СѓС‡РµРЅРёРєР°",
+        "РџРѕР»",
+        "РќР° РіСЂР°РЅС‚Рµ",
+        "Р¤РѕСЂРјР°С‚",
+        "Р“РѕСЂРѕРґ",
+        "РћР±СЂР°Р·РѕРІР°С‚РµР»СЊРЅРѕРµ СѓС‡СЂРµР¶РґРµРЅРёРµ",
+        "РљР»Р°СЃСЃ",
+        "Email СѓС‡РµРЅРёРєР°",
+        "Р¤РРћ СЂРѕРґРёС‚РµР»СЏ",
+        "РўРµР»РµС„РѕРЅ СЂРѕРґРёС‚РµР»СЏ",
+        "Р’С‚РѕСЂРѕР№ С‚РµР»РµС„РѕРЅ СЂРѕРґРёС‚РµР»СЏ",
+        "РўРµР»РµРіСЂР°Рј СЂРѕРґРёС‚РµР»СЏ",
+        "Email СЂРѕРґРёС‚РµР»СЏ",
+        "РЈРґРѕР±РЅС‹Р№ РјРµСЃСЃРµРЅРґР¶РµСЂ",
+        "РљРѕРјРјРµРЅС‚Р°СЂРёР№",
+        "РћС‚РєСѓРґР° РїСЂРёС€РµР»",
     ]
     ws.append(headers)
     ws.append(
         [
-            "Иванов Петр Сергеевич",
+            "РРІР°РЅРѕРІ РџРµС‚СЂ РЎРµСЂРіРµРµРІРёС‡",
             "2015-03-15",
             "+7 999 111-22-33",
             "@petr_ivanov",
-            "м",
-            "нет",
-            "группа",
-            "Москва",
-            "Школа №12",
+            "Рј",
+            "РЅРµС‚",
+            "РіСЂСѓРїРїР°",
+            "РњРѕСЃРєРІР°",
+            "РЁРєРѕР»Р° в„–12",
             "3",
             "petr@example.com",
-            "Иванова Анна Петровна",
+            "РРІР°РЅРѕРІР° РђРЅРЅР° РџРµС‚СЂРѕРІРЅР°",
             "+7 999 111-22-34",
             "+7 900 111-22-44",
             "@anna_ivanova",
             "anna@example.com",
             "Telegram",
-            "Записан на пробное занятие",
-            "рекомендация",
+            "Р—Р°РїРёСЃР°РЅ РЅР° РїСЂРѕР±РЅРѕРµ Р·Р°РЅСЏС‚РёРµ",
+            "СЂРµРєРѕРјРµРЅРґР°С†РёСЏ",
         ]
     )
     ws.freeze_panes = "A2"
@@ -1188,7 +1216,7 @@ async def download_student_cards_import_template(
     )
 
 
-@router.post("/student-cards/import-xlsx", response_model=StudentCardImportResponse)
+@router.post("/_legacy-disabled/student-cards/import-xlsx", response_model=StudentCardImportResponse)
 async def import_student_cards_from_excel(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -1197,15 +1225,15 @@ async def import_student_cards_from_excel(
     _require_sales_admin_owner(current_user)
     filename = (file.filename or "").lower()
     if not filename.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Поддерживается только формат .xlsx")
+        raise HTTPException(status_code=400, detail="РџРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ С„РѕСЂРјР°С‚ .xlsx")
     data = await file.read()
     if not data:
-        raise HTTPException(status_code=400, detail="Файл пустой")
+        raise HTTPException(status_code=400, detail="Р¤Р°Р№Р» РїСѓСЃС‚РѕР№")
     wb = load_workbook(filename=BytesIO(data), data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
-        return StudentCardImportResponse(created=0, skipped=0, errors=["Пустой лист"])
+        return StudentCardImportResponse(created=0, skipped=0, errors=["РџСѓСЃС‚РѕР№ Р»РёСЃС‚"])
     headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
     header_map = {name: idx for idx, name in enumerate(headers)}
 
@@ -1245,56 +1273,56 @@ async def import_student_cards_from_excel(
     errors: List[str] = []
     for i, row in enumerate(rows[1:], start=2):
         row = list(row) if row else []
-        student_full_name = val(row, ["фио ученика", "ученик", "student_full_name"])
+        student_full_name = val(row, ["С„РёРѕ СѓС‡РµРЅРёРєР°", "СѓС‡РµРЅРёРє", "student_full_name"])
         if not student_full_name:
             skipped += 1
             continue
-        birth_date_raw = val(row, ["дата рождения", "birth_date"])
+        birth_date_raw = val(row, ["РґР°С‚Р° СЂРѕР¶РґРµРЅРёСЏ", "birth_date"])
         birth_date = parse_date(birth_date_raw) if birth_date_raw else None
-        student_phone = val(row, ["телефон ученика", "student_phone"])
-        telegram = val(row, ["телеграм ученика", "telegram"])
-        gender_raw = val(row, ["пол", "gender"])
-        gender = gender_raw.lower() if gender_raw and gender_raw.lower() in ("м", "ж", "m", "f", "male", "female") else (gender_raw or None)
-        on_grant_raw = val(row, ["на гранте", "on_grant"])
-        on_grant = str(on_grant_raw).strip().lower() in ("да", "yes", "1", "true", "+")
-        format_raw = val(row, ["формат", "format_type"])
+        student_phone = val(row, ["С‚РµР»РµС„РѕРЅ СѓС‡РµРЅРёРєР°", "student_phone"])
+        telegram = val(row, ["С‚РµР»РµРіСЂР°Рј СѓС‡РµРЅРёРєР°", "telegram"])
+        gender_raw = val(row, ["РїРѕР»", "gender"])
+        gender = gender_raw.lower() if gender_raw and gender_raw.lower() in ("Рј", "Р¶", "m", "f", "male", "female") else (gender_raw or None)
+        on_grant_raw = val(row, ["РЅР° РіСЂР°РЅС‚Рµ", "on_grant"])
+        on_grant = str(on_grant_raw).strip().lower() in ("РґР°", "yes", "1", "true", "+")
+        format_raw = val(row, ["С„РѕСЂРјР°С‚", "format_type"])
         format_type = None
         if format_raw:
             f = format_raw.lower()
-            if "групп" in f or f == "group":
+            if "РіСЂСѓРїРї" in f or f == "group":
                 format_type = "group"
-            elif "индивид" in f or f == "individual":
+            elif "РёРЅРґРёРІРёРґ" in f or f == "individual":
                 format_type = "individual"
             else:
                 format_type = format_raw
-        city = val(row, ["город", "city"])
-        school = val(row, ["образовательное учреждение", "школа", "school"])
-        grade = val(row, ["класс", "grade"])
-        student_email = val(row, ["email ученика", "student_email"])
-        parent_full_name = val(row, ["фио родителя", "родитель", "parent_full_name"])
-        parent_phone = val(row, ["телефон родителя", "parent_phone"])
-        parent_phone_2 = val(row, ["второй телефон родителя", "parent_phone_2"])
-        parent_telegram = val(row, ["телеграм родителя", "parent_telegram"])
-        parent_email = val(row, ["email родителя", "parent_email"])
-        preferred_raw = val(row, ["удобный мессенджер", "preferred_messenger"])
+        city = val(row, ["РіРѕСЂРѕРґ", "city"])
+        school = val(row, ["РѕР±СЂР°Р·РѕРІР°С‚РµР»СЊРЅРѕРµ СѓС‡СЂРµР¶РґРµРЅРёРµ", "С€РєРѕР»Р°", "school"])
+        grade = val(row, ["РєР»Р°СЃСЃ", "grade"])
+        student_email = val(row, ["email СѓС‡РµРЅРёРєР°", "student_email"])
+        parent_full_name = val(row, ["С„РёРѕ СЂРѕРґРёС‚РµР»СЏ", "СЂРѕРґРёС‚РµР»СЊ", "parent_full_name"])
+        parent_phone = val(row, ["С‚РµР»РµС„РѕРЅ СЂРѕРґРёС‚РµР»СЏ", "parent_phone"])
+        parent_phone_2 = val(row, ["РІС‚РѕСЂРѕР№ С‚РµР»РµС„РѕРЅ СЂРѕРґРёС‚РµР»СЏ", "parent_phone_2"])
+        parent_telegram = val(row, ["С‚РµР»РµРіСЂР°Рј СЂРѕРґРёС‚РµР»СЏ", "parent_telegram"])
+        parent_email = val(row, ["email СЂРѕРґРёС‚РµР»СЏ", "parent_email"])
+        preferred_raw = val(row, ["СѓРґРѕР±РЅС‹Р№ РјРµСЃСЃРµРЅРґР¶РµСЂ", "preferred_messenger"])
         preferred_messenger = None
         if preferred_raw:
             p = preferred_raw.lower()
             if "max" in p or p == "max":
                 preferred_messenger = "max"
-            elif "telegram" in p or "телеграм" in p or p == "tg":
+            elif "telegram" in p or "С‚РµР»РµРіСЂР°Рј" in p or p == "tg":
                 preferred_messenger = "telegram"
             elif "sms" in p:
                 preferred_messenger = "sms"
             else:
                 preferred_messenger = preferred_raw
-        comment = val(row, ["комментарий", "comment"])
-        source = val(row, ["откуда пришел", "источник", "source"])
+        comment = val(row, ["РєРѕРјРјРµРЅС‚Р°СЂРёР№", "comment"])
+        source = val(row, ["РѕС‚РєСѓРґР° РїСЂРёС€РµР»", "РёСЃС‚РѕС‡РЅРёРє", "source"])
         abonement_id = None
         discount_type = DiscountType.NONE
         discount_value = 0.0
         if auth.resolve_effective_role(current_user) == UserRole.OWNER:
-            ab_id_raw = val(row, ["абонемент", "abonement_id"])
+            ab_id_raw = val(row, ["Р°Р±РѕРЅРµРјРµРЅС‚", "abonement_id"])
             if ab_id_raw:
                 try:
                     abonement_id = int(float(ab_id_raw))
@@ -1336,18 +1364,18 @@ async def import_student_cards_from_excel(
 
 
 def _parse_vertical_date(text: str, today: date) -> Optional[str]:
-    """Парсит дату из строки вида 'Сегодня, 26 февраля', 'Вчера, 25 февраля', '25 февраля, 19:51', '24 февраля'."""
+    """РџР°СЂСЃРёС‚ РґР°С‚Сѓ РёР· СЃС‚СЂРѕРєРё РІРёРґР° 'РЎРµРіРѕРґРЅСЏ, 26 С„РµРІСЂР°Р»СЏ', 'Р’С‡РµСЂР°, 25 С„РµРІСЂР°Р»СЏ', '25 С„РµРІСЂР°Р»СЏ, 19:51', '24 С„РµРІСЂР°Р»СЏ'."""
     if not text or not str(text).strip():
         return None
     s = str(text).strip()
     year = today.year
     months_ru = {
-        "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
-        "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
+        "СЏРЅРІР°СЂСЏ": 1, "С„РµРІСЂР°Р»СЏ": 2, "РјР°СЂС‚Р°": 3, "Р°РїСЂРµР»СЏ": 4, "РјР°СЏ": 5, "РёСЋРЅСЏ": 6,
+        "РёСЋР»СЏ": 7, "Р°РІРіСѓСЃС‚Р°": 8, "СЃРµРЅС‚СЏР±СЂСЏ": 9, "РѕРєС‚СЏР±СЂСЏ": 10, "РЅРѕСЏР±СЂСЏ": 11, "РґРµРєР°Р±СЂСЏ": 12,
     }
-    if "сегодня" in s.lower():
+    if "СЃРµРіРѕРґРЅСЏ" in s.lower():
         return today.isoformat()
-    if "вчера" in s.lower():
+    if "РІС‡РµСЂР°" in s.lower():
         from datetime import timedelta
         return (today - timedelta(days=1)).isoformat()
     for month_name, month_num in months_ru.items():
@@ -1364,13 +1392,13 @@ def _parse_vertical_date(text: str, today: date) -> Optional[str]:
 
 
 def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
-    """Импорт выписки в вертикальном формате (одна колонка, блоки: дата, сумма, статус, контрагент, описание)."""
+    """РРјРїРѕСЂС‚ РІС‹РїРёСЃРєРё РІ РІРµСЂС‚РёРєР°Р»СЊРЅРѕРј С„РѕСЂРјР°С‚Рµ (РѕРґРЅР° РєРѕР»РѕРЅРєР°, Р±Р»РѕРєРё: РґР°С‚Р°, СЃСѓРјРјР°, СЃС‚Р°С‚СѓСЃ, РєРѕРЅС‚СЂР°РіРµРЅС‚, РѕРїРёСЃР°РЅРёРµ)."""
     lines = []
     for row in rows:
         val = row[0] if row and len(row) > 0 else None
         lines.append(str(val).strip() if val is not None else "")
     today = date.today()
-    amount_re = re.compile(r"^[+\-–]\s*([\d\s,]+)\s*[₽р]", re.IGNORECASE)
+    amount_re = re.compile(r"^[+\-вЂ“]\s*([\d\s,]+)\s*[в‚ЅСЂ]", re.IGNORECASE)
     imported = 0
     skipped = 0
     last_date_str = None
@@ -1378,7 +1406,7 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
         if not line:
             continue
         line_norm = line.replace("\xa0", " ")
-        if "₽" not in line_norm and " р" not in line_norm.lower():
+        if "в‚Ѕ" not in line_norm and " СЂ" not in line_norm.lower():
             maybe_date = _parse_vertical_date(line, today)
             if maybe_date:
                 last_date_str = maybe_date
@@ -1396,7 +1424,7 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
             amount_val = -abs(amount_val)
         else:
             amount_val = abs(amount_val)
-        if line.strip().startswith(("-", "–")):
+        if line.strip().startswith(("-", "вЂ“")):
             amount_val = -abs(amount_val)
         date_str = last_date_str
         counterparty = ""
@@ -1411,7 +1439,7 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
                     date_str = parsed
         if not date_str:
             date_str = today.isoformat()
-        payer_name = counterparty or "Списание" if amount_val < 0 else "Из выписки (без ФИО)"
+        payer_name = counterparty or "РЎРїРёСЃР°РЅРёРµ" if amount_val < 0 else "РР· РІС‹РїРёСЃРєРё (Р±РµР· Р¤РРћ)"
         payer_phone = None
         if amount_val > 0 and counterparty:
             phone_m = re.search(r"\+7\s*\(?\d{3}\)?\s*\d{3}[- ]?\d{2}[- ]?\d{2}", counterparty)
@@ -1422,7 +1450,7 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
                 if rest and len(rest) >= 2:
                     payer_name = rest[:512]
         if amount_val > 0 and not payer_name:
-            payer_name = counterparty or "Из выписки (без ФИО)"
+            payer_name = counterparty or "РР· РІС‹РїРёСЃРєРё (Р±РµР· Р¤РРћ)"
         op_id_source = f"vertical_xlsx|{date_str}|{amount_val}|{payer_name}|{payer_phone or ''}|{i}"
         operation_id = hashlib.sha256(op_id_source.encode("utf-8")).hexdigest()
         if db.query(BankTransaction.id).filter(BankTransaction.operation_id == operation_id).first():
@@ -1445,42 +1473,42 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
     db.commit()
     errors = []
     if imported == 0 and skipped == 0 and len(lines) > 1:
-        errors.append("В файле не найдено строк с суммой вида «+ 3 200 ₽» или «– 102 ₽».")
+        errors.append("Р’ С„Р°Р№Р»Рµ РЅРµ РЅР°Р№РґРµРЅРѕ СЃС‚СЂРѕРє СЃ СЃСѓРјРјРѕР№ РІРёРґР° В«+ 3 200 в‚ЅВ» РёР»Рё В«вЂ“ 102 в‚ЅВ».")
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
-@router.post("/bank-transactions/import-xlsx")
+@router.post("/_legacy-disabled/bank-transactions/import-xlsx")
 async def import_bank_transactions_from_excel(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """
-    Импорт банковской выписки из .xlsx, когда файл скачан вручную (Точка или другой банк).
-    Создаёт записи в bank_transactions со статусом new; дальше менеджер распределяет их по ученикам во вкладке «Операции банка».
-    Поддерживаются два формата:
-    1) Универсальный: колонки Дата, Сумма, ФИО плательщика, Телефон (регистр не важен).
-    2) Выписка Точка Банк: Дата операции/Дата документа, Зачисление (приход) или Сумма, Назначение платежа (из него извлекаются телефон и «Получатель …»/«Плательщик …»); при отсутствии ФИО/телефона в колонках используется разбор назначения.
+    РРјРїРѕСЂС‚ Р±Р°РЅРєРѕРІСЃРєРѕР№ РІС‹РїРёСЃРєРё РёР· .xlsx, РєРѕРіРґР° С„Р°Р№Р» СЃРєР°С‡Р°РЅ РІСЂСѓС‡РЅСѓСЋ (РўРѕС‡РєР° РёР»Рё РґСЂСѓРіРѕР№ Р±Р°РЅРє).
+    РЎРѕР·РґР°С‘С‚ Р·Р°РїРёСЃРё РІ bank_transactions СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј new; РґР°Р»СЊС€Рµ РјРµРЅРµРґР¶РµСЂ СЂР°СЃРїСЂРµРґРµР»СЏРµС‚ РёС… РїРѕ СѓС‡РµРЅРёРєР°Рј РІРѕ РІРєР»Р°РґРєРµ В«РћРїРµСЂР°С†РёРё Р±Р°РЅРєР°В».
+    РџРѕРґРґРµСЂР¶РёРІР°СЋС‚СЃСЏ РґРІР° С„РѕСЂРјР°С‚Р°:
+    1) РЈРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№: РєРѕР»РѕРЅРєРё Р”Р°С‚Р°, РЎСѓРјРјР°, Р¤РРћ РїР»Р°С‚РµР»СЊС‰РёРєР°, РўРµР»РµС„РѕРЅ (СЂРµРіРёСЃС‚СЂ РЅРµ РІР°Р¶РµРЅ).
+    2) Р’С‹РїРёСЃРєР° РўРѕС‡РєР° Р‘Р°РЅРє: Р”Р°С‚Р° РѕРїРµСЂР°С†РёРё/Р”Р°С‚Р° РґРѕРєСѓРјРµРЅС‚Р°, Р—Р°С‡РёСЃР»РµРЅРёРµ (РїСЂРёС…РѕРґ) РёР»Рё РЎСѓРјРјР°, РќР°Р·РЅР°С‡РµРЅРёРµ РїР»Р°С‚РµР¶Р° (РёР· РЅРµРіРѕ РёР·РІР»РµРєР°СЋС‚СЃСЏ С‚РµР»РµС„РѕРЅ Рё В«РџРѕР»СѓС‡Р°С‚РµР»СЊ вЂ¦В»/В«РџР»Р°С‚РµР»СЊС‰РёРє вЂ¦В»); РїСЂРё РѕС‚СЃСѓС‚СЃС‚РІРёРё Р¤РРћ/С‚РµР»РµС„РѕРЅР° РІ РєРѕР»РѕРЅРєР°С… РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ СЂР°Р·Р±РѕСЂ РЅР°Р·РЅР°С‡РµРЅРёСЏ.
     """
     _require_sales_admin_owner(current_user)
     filename = (file.filename or "").lower()
     if not filename.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Поддерживается только формат .xlsx")
+        raise HTTPException(status_code=400, detail="РџРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ С„РѕСЂРјР°С‚ .xlsx")
     data = await file.read()
     if not data:
-        raise HTTPException(status_code=400, detail="Файл пустой")
+        raise HTTPException(status_code=400, detail="Р¤Р°Р№Р» РїСѓСЃС‚РѕР№")
     wb = load_workbook(filename=BytesIO(data), data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
-        return {"imported": 0, "skipped": 0, "errors": ["Пустой лист"]}
+        return {"imported": 0, "skipped": 0, "errors": ["РџСѓСЃС‚РѕР№ Р»РёСЃС‚"]}
     first_row = rows[0]
     is_vertical = (
         len(first_row) == 1
         and first_row[0] is not None
         and not any(
             k in str(first_row[0]).strip().lower()
-            for k in ("дата", "сумма", "зачисление", "списание", "кредит", "дебет", "назначение")
+            for k in ("РґР°С‚Р°", "СЃСѓРјРјР°", "Р·Р°С‡РёСЃР»РµРЅРёРµ", "СЃРїРёСЃР°РЅРёРµ", "РєСЂРµРґРёС‚", "РґРµР±РµС‚", "РЅР°Р·РЅР°С‡РµРЅРёРµ")
         )
     )
     if is_vertical:
@@ -1539,7 +1567,7 @@ async def import_bank_transactions_from_excel(
         try:
             return datetime.fromisoformat(text[:10]).date().isoformat()
         except (ValueError, TypeError):
-            return text  # сохраняем как есть
+            return text  # СЃРѕС…СЂР°РЅСЏРµРј РєР°Рє РµСЃС‚СЊ
 
     def parse_amount(raw_value) -> Optional[float]:
         if raw_value is None:
@@ -1556,10 +1584,10 @@ async def import_bank_transactions_from_excel(
             return None
 
     def parse_payment_purpose(purpose: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
-        """Из «Назначение платежа» извлечь телефон и ФИО. Поддерживает:
-        - «Получатель X» / «Плательщик X»;
-        - формат Точка/СБП: «+7 (950) 112-78-38 Дмитрий Андреевич П. Заказ 767: …» (ФИО сразу после телефона).
-        Возвращает (payer_name, payer_phone_raw)."""
+        """РР· В«РќР°Р·РЅР°С‡РµРЅРёРµ РїР»Р°С‚РµР¶Р°В» РёР·РІР»РµС‡СЊ С‚РµР»РµС„РѕРЅ Рё Р¤РРћ. РџРѕРґРґРµСЂР¶РёРІР°РµС‚:
+        - В«РџРѕР»СѓС‡Р°С‚РµР»СЊ XВ» / В«РџР»Р°С‚РµР»СЊС‰РёРє XВ»;
+        - С„РѕСЂРјР°С‚ РўРѕС‡РєР°/РЎР‘Рџ: В«+7 (950) 112-78-38 Р”РјРёС‚СЂРёР№ РђРЅРґСЂРµРµРІРёС‡ Рџ. Р—Р°РєР°Р· 767: вЂ¦В» (Р¤РРћ СЃСЂР°Р·Сѓ РїРѕСЃР»Рµ С‚РµР»РµС„РѕРЅР°).
+        Р’РѕР·РІСЂР°С‰Р°РµС‚ (payer_name, payer_phone_raw)."""
         if not purpose or not str(purpose).strip():
             return None, None
         text = str(purpose).strip()
@@ -1586,10 +1614,10 @@ async def import_bank_transactions_from_excel(
                     phone_end = m.end()
                     break
         name = None
-        for prefix in ("Получатель ", "Плательщик "):
+        for prefix in ("РџРѕР»СѓС‡Р°С‚РµР»СЊ ", "РџР»Р°С‚РµР»СЊС‰РёРє "):
             if prefix in text:
                 start = text.find(prefix) + len(prefix)
-                end = text.find(" через", start)
+                end = text.find(" С‡РµСЂРµР·", start)
                 if end == -1:
                     end = text.find(".", start)
                 if end == -1:
@@ -1599,7 +1627,7 @@ async def import_bank_transactions_from_excel(
                     break
         if not name and phone_end > 0:
             rest = text[phone_end:].strip()
-            for stop in ("Заказ ", "Order ", " заказ ", " №", " N "):
+            for stop in ("Р—Р°РєР°Р· ", "Order ", " Р·Р°РєР°Р· ", " в„–", " N "):
                 if stop in rest:
                     idx = rest.find(stop)
                     candidate = rest[:idx].strip()
@@ -1614,22 +1642,22 @@ async def import_bank_transactions_from_excel(
     skipped = 0
     for idx, row in enumerate(rows[1:], start=2):
         row = list(row) if row else []
-        date_str = parse_date_any(col(row, ["дата", "date"]))
+        date_str = parse_date_any(col(row, ["РґР°С‚Р°", "date"]))
         if not date_str:
             for name, idx in header_map.items():
-                if "дата" in name and idx < len(row) and row[idx] is not None:
+                if "РґР°С‚Р°" in name and idx < len(row) and row[idx] is not None:
                     date_str = parse_date_any(row[idx])
                     if date_str:
                         break
-        amount_raw = col(row, ["сумма", "amount", "зачисление", "кредит"])
+        amount_raw = col(row, ["СЃСѓРјРјР°", "amount", "Р·Р°С‡РёСЃР»РµРЅРёРµ", "РєСЂРµРґРёС‚"])
         amount = parse_amount(amount_raw)
         if amount is None or amount <= 0:
-            amount = parse_amount(col(row, ["списание", "дебет"]))
+            amount = parse_amount(col(row, ["СЃРїРёСЃР°РЅРёРµ", "РґРµР±РµС‚"]))
             if amount is not None and amount > 0:
                 amount = -amount
-        payer_name = col(row, ["фио", "плательщик", "payer"])
-        payer_phone_raw = col(row, ["телефон", "phone"])
-        purpose = col(row, ["назначение", "payment purpose", "назначение платежа"])
+        payer_name = col(row, ["С„РёРѕ", "РїР»Р°С‚РµР»СЊС‰РёРє", "payer"])
+        payer_phone_raw = col(row, ["С‚РµР»РµС„РѕРЅ", "phone"])
+        purpose = col(row, ["РЅР°Р·РЅР°С‡РµРЅРёРµ", "payment purpose", "РЅР°Р·РЅР°С‡РµРЅРёРµ РїР»Р°С‚РµР¶Р°"])
         if (not payer_name or not payer_phone_raw) and purpose:
             name_from_purpose, phone_from_purpose = parse_payment_purpose(purpose)
             if not payer_name and name_from_purpose:
@@ -1637,13 +1665,13 @@ async def import_bank_transactions_from_excel(
             if not payer_phone_raw and phone_from_purpose:
                 payer_phone_raw = phone_from_purpose
         if not payer_name and amount and amount > 0 and date_str:
-            payer_name = "Из выписки (без ФИО)"
+            payer_name = "РР· РІС‹РїРёСЃРєРё (Р±РµР· Р¤РРћ)"
         if amount is None or not date_str:
             skipped += 1
             continue
         is_expense = amount < 0
         if is_expense:
-            payer_name = payer_name or col(row, ["контрагент", "counterparty"]) or (purpose[:512] if purpose else "Списание")
+            payer_name = payer_name or col(row, ["РєРѕРЅС‚СЂР°РіРµРЅС‚", "counterparty"]) or (purpose[:512] if purpose else "РЎРїРёСЃР°РЅРёРµ")
         else:
             if not payer_name:
                 skipped += 1
@@ -1675,11 +1703,11 @@ async def import_bank_transactions_from_excel(
     errors: List[str] = []
     if imported == 0 and skipped > 0:
         errors.append(
-            "Ни одна строка не подошла. Проверьте: в первой строке — заголовки (Дата, Зачисление/Списание или Кредит/Дебет, Назначение/Контрагент); даты в формате ДД.ММ.ГГГГ или число Excel; суммы — числа с запятой или точкой."
+            "РќРё РѕРґРЅР° СЃС‚СЂРѕРєР° РЅРµ РїРѕРґРѕС€Р»Р°. РџСЂРѕРІРµСЂСЊС‚Рµ: РІ РїРµСЂРІРѕР№ СЃС‚СЂРѕРєРµ вЂ” Р·Р°РіРѕР»РѕРІРєРё (Р”Р°С‚Р°, Р—Р°С‡РёСЃР»РµРЅРёРµ/РЎРїРёСЃР°РЅРёРµ РёР»Рё РљСЂРµРґРёС‚/Р”РµР±РµС‚, РќР°Р·РЅР°С‡РµРЅРёРµ/РљРѕРЅС‚СЂР°РіРµРЅС‚); РґР°С‚С‹ РІ С„РѕСЂРјР°С‚Рµ Р”Р”.РњРњ.Р“Р“Р“Р“ РёР»Рё С‡РёСЃР»Рѕ Excel; СЃСѓРјРјС‹ вЂ” С‡РёСЃР»Р° СЃ Р·Р°РїСЏС‚РѕР№ РёР»Рё С‚РѕС‡РєРѕР№."
         )
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
-@router.get("/student-cards/{card_id}", response_model=StudentCardResponse)
+@router.get("/_legacy-disabled/student-cards/{card_id}", response_model=StudentCardResponse)
 async def get_student_card(
     card_id: int,
     db: Session = Depends(get_db),
@@ -1688,11 +1716,11 @@ async def get_student_card(
     _require_sales_admin_owner(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
+        raise HTTPException(status_code=404, detail="РљР°СЂС‚РѕС‡РєР° РЅРµ РЅР°Р№РґРµРЅР°")
     return _student_card_response(card, current_user, db)
 
 
-@router.put("/student-cards/{card_id}", response_model=StudentCardResponse)
+@router.put("/_legacy-disabled/student-cards/{card_id}", response_model=StudentCardResponse)
 async def update_student_card(
     card_id: int,
     payload: StudentCardUpdate,
@@ -1702,24 +1730,24 @@ async def update_student_card(
     _require_sales_admin_owner(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
+        raise HTTPException(status_code=404, detail="РљР°СЂС‚РѕС‡РєР° РЅРµ РЅР°Р№РґРµРЅР°")
     data = payload.model_dump(exclude_unset=True)
-    # Абонемент и скидку может менять только owner
+    # РђР±РѕРЅРµРјРµРЅС‚ Рё СЃРєРёРґРєСѓ РјРѕР¶РµС‚ РјРµРЅСЏС‚СЊ С‚РѕР»СЊРєРѕ owner
     if auth.resolve_effective_role(current_user) != UserRole.OWNER:
         data.pop("abonement_id", None)
         data.pop("discount_type", None)
         data.pop("discount_value", None)
-    # payment_link может менять только owner и admin (sales не может)
+    # payment_link РјРѕР¶РµС‚ РјРµРЅСЏС‚СЊ С‚РѕР»СЊРєРѕ owner Рё admin (sales РЅРµ РјРѕР¶РµС‚)
     if auth.resolve_effective_role(current_user) not in (UserRole.OWNER, UserRole.ADMIN):
         data.pop("payment_link", None)
     if data.get("abonement_id"):
         ab = db.query(Abonement).filter(Abonement.id == data["abonement_id"]).first()
         if not ab:
-            raise HTTPException(status_code=404, detail="Абонемент не найден")
+            raise HTTPException(status_code=404, detail="РђР±РѕРЅРµРјРµРЅС‚ РЅРµ РЅР°Р№РґРµРЅ")
     if "student_id" in data and data["student_id"] is not None:
         st = db.query(Student).filter(Student.id == data["student_id"]).first()
         if not st:
-            raise HTTPException(status_code=404, detail="Ученик не найден")
+            raise HTTPException(status_code=404, detail="РЈС‡РµРЅРёРє РЅРµ РЅР°Р№РґРµРЅ")
     if any(field in data for field in ("parent_phone", "student_phone")):
         data["phone_normalized"] = normalize_phone(
             data.get("parent_phone", card.parent_phone) or data.get("student_phone", card.student_phone) or ""
@@ -1732,7 +1760,7 @@ async def update_student_card(
     return _student_card_response(card, current_user, db)
 
 
-@router.post("/student-cards/{card_id}/convert", response_model=AnketaConvertResponse)
+@router.post("/_legacy-disabled/student-cards/{card_id}/convert", response_model=AnketaConvertResponse)
 async def convert_anketa_to_student(
     card_id: int,
     payload: Optional[AnketaConvertRequest] = None,
@@ -1740,8 +1768,8 @@ async def convert_anketa_to_student(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """
-    Конверсия анкеты в ученика: создаёт/привязывает Student, не создаёт кабинет родителя.
-    При дублях по email родителя или ФИО ученика возвращает 409 с выбором привязки к существующему.
+    РљРѕРЅРІРµСЂСЃРёСЏ Р°РЅРєРµС‚С‹ РІ СѓС‡РµРЅРёРєР°: СЃРѕР·РґР°С‘С‚/РїСЂРёРІСЏР·С‹РІР°РµС‚ Student, РЅРµ СЃРѕР·РґР°С‘С‚ РєР°Р±РёРЅРµС‚ СЂРѕРґРёС‚РµР»СЏ.
+    РџСЂРё РґСѓР±Р»СЏС… РїРѕ email СЂРѕРґРёС‚РµР»СЏ РёР»Рё Р¤РРћ СѓС‡РµРЅРёРєР° РІРѕР·РІСЂР°С‰Р°РµС‚ 409 СЃ РІС‹Р±РѕСЂРѕРј РїСЂРёРІСЏР·РєРё Рє СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРјСѓ.
     """
     _require_sales_admin_owner(current_user)
     body = payload or AnketaConvertRequest()
@@ -1761,7 +1789,7 @@ async def convert_anketa_to_student(
         )
     except ValueError as e:
         msg = str(e)
-        if "не найден" in msg.lower():
+        if "РЅРµ РЅР°Р№РґРµРЅ" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     return AnketaConvertResponse(
@@ -1770,7 +1798,7 @@ async def convert_anketa_to_student(
     )
 
 
-@router.post("/student-cards/{card_id}/archive")
+@router.post("/_legacy-disabled/student-cards/{card_id}/archive")
 async def archive_student_card(
     card_id: int,
     db: Session = Depends(get_db),
@@ -1779,13 +1807,13 @@ async def archive_student_card(
     _require_sales_admin_owner(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
+        raise HTTPException(status_code=404, detail="РљР°СЂС‚РѕС‡РєР° РЅРµ РЅР°Р№РґРµРЅР°")
     card.archived = True
     db.commit()
     return {"archived": True}
 
 
-@router.post("/student-cards/{card_id}/unarchive")
+@router.post("/_legacy-disabled/student-cards/{card_id}/unarchive")
 async def unarchive_student_card(
     card_id: int,
     db: Session = Depends(get_db),
@@ -1794,39 +1822,39 @@ async def unarchive_student_card(
     _require_sales_admin_owner(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
+        raise HTTPException(status_code=404, detail="РљР°СЂС‚РѕС‡РєР° РЅРµ РЅР°Р№РґРµРЅР°")
     card.archived = False
     db.commit()
     return {"archived": False}
 
 
-@router.post("/student-cards/{card_id}/open-parent-cabinet", response_model=OpenParentCabinetResponse)
+@router.post("/_legacy-disabled/student-cards/{card_id}/open-parent-cabinet", response_model=OpenParentCabinetResponse)
 async def open_parent_cabinet_from_card(
     card_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """
-    Карточка во главе: по карточке создаём/привязываем ученика и родителя, открываем кабинет.
-    Если у карточки нет student_id — создаётся Student из ФИО карточки.
-    Если у ученика нет parent_id — создаётся или находится родитель по email карточки, при необходимости отправляется приглашение.
-    База (оценки, характеристики) не меняется.
+    РљР°СЂС‚РѕС‡РєР° РІРѕ РіР»Р°РІРµ: РїРѕ РєР°СЂС‚РѕС‡РєРµ СЃРѕР·РґР°С‘Рј/РїСЂРёРІСЏР·С‹РІР°РµРј СѓС‡РµРЅРёРєР° Рё СЂРѕРґРёС‚РµР»СЏ, РѕС‚РєСЂС‹РІР°РµРј РєР°Р±РёРЅРµС‚.
+    Р•СЃР»Рё Сѓ РєР°СЂС‚РѕС‡РєРё РЅРµС‚ student_id вЂ” СЃРѕР·РґР°С‘С‚СЃСЏ Student РёР· Р¤РРћ РєР°СЂС‚РѕС‡РєРё.
+    Р•СЃР»Рё Сѓ СѓС‡РµРЅРёРєР° РЅРµС‚ parent_id вЂ” СЃРѕР·РґР°С‘С‚СЃСЏ РёР»Рё РЅР°С…РѕРґРёС‚СЃСЏ СЂРѕРґРёС‚РµР»СЊ РїРѕ email РєР°СЂС‚РѕС‡РєРё, РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РѕС‚РїСЂР°РІР»СЏРµС‚СЃСЏ РїСЂРёРіР»Р°С€РµРЅРёРµ.
+    Р‘Р°Р·Р° (РѕС†РµРЅРєРё, С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРєРё) РЅРµ РјРµРЅСЏРµС‚СЃСЏ.
     """
     _require_sales_admin_owner(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
-        raise HTTPException(status_code=404, detail="Карточка не найдена")
+        raise HTTPException(status_code=404, detail="РљР°СЂС‚РѕС‡РєР° РЅРµ РЅР°Р№РґРµРЅР°")
     parent_email = (getattr(card, "parent_email", None) or "").strip().lower()
     if not parent_email:
         raise HTTPException(
             status_code=400,
-            detail="Укажите email родителя в карточке (поле «Email родителя»), чтобы открыть кабинет.",
+            detail="РЈРєР°Р¶РёС‚Рµ email СЂРѕРґРёС‚РµР»СЏ РІ РєР°СЂС‚РѕС‡РєРµ (РїРѕР»Рµ В«Email СЂРѕРґРёС‚РµР»СЏВ»), С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ РєР°Р±РёРЅРµС‚.",
         )
-    parent_full_name = (getattr(card, "parent_full_name", None) or "").strip() or "Родитель"
+    parent_full_name = (getattr(card, "parent_full_name", None) or "").strip() or "Р РѕРґРёС‚РµР»СЊ"
 
     if not getattr(card, "student_id", None):
         student = Student(
-            full_name=(card.student_full_name or "").strip() or "Ученик",
+            full_name=(card.student_full_name or "").strip() or "РЈС‡РµРЅРёРє",
             status=StudentStatus.ACTIVE,
         )
         db.add(student)
@@ -1837,7 +1865,7 @@ async def open_parent_cabinet_from_card(
     else:
         student = db.query(Student).filter(Student.id == card.student_id).first()
         if not student:
-            raise HTTPException(status_code=404, detail="Ученик по карточке не найден")
+            raise HTTPException(status_code=404, detail="РЈС‡РµРЅРёРє РїРѕ РєР°СЂС‚РѕС‡РєРµ РЅРµ РЅР°Р№РґРµРЅ")
 
     if student.parent_id:
         db.commit()
@@ -1877,12 +1905,12 @@ async def open_parent_cabinet_from_card(
     )
 
 
-@router.get("/students-for-cards", response_model=List[Dict])
+@router.get("/_legacy-disabled/students-for-cards", response_model=List[Dict])
 async def list_students_for_cards(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Список учеников (id, full_name) для привязки к карточке. ФИО из карточки, если привязана."""
+    """РЎРїРёСЃРѕРє СѓС‡РµРЅРёРєРѕРІ (id, full_name) РґР»СЏ РїСЂРёРІСЏР·РєРё Рє РєР°СЂС‚РѕС‡РєРµ. Р¤РРћ РёР· РєР°СЂС‚РѕС‡РєРё, РµСЃР»Рё РїСЂРёРІСЏР·Р°РЅР°."""
     _require_sales_admin_owner(current_user)
     students = db.query(Student).filter(Student.status == StudentStatus.ACTIVE).order_by(Student.full_name).all()
     if not students:
@@ -1892,7 +1920,7 @@ async def list_students_for_cards(
 
 
 def _get_student_program_name(db: Session, student_id: int, fallback_group_id: Optional[int] = None) -> Optional[str]:
-    """Программа ученика (источник правды для отработок). Сначала student_programs, иначе программа группы."""
+    """РџСЂРѕРіСЂР°РјРјР° СѓС‡РµРЅРёРєР° (РёСЃС‚РѕС‡РЅРёРє РїСЂР°РІРґС‹ РґР»СЏ РѕС‚СЂР°Р±РѕС‚РѕРє). РЎРЅР°С‡Р°Р»Р° student_programs, РёРЅР°С‡Рµ РїСЂРѕРіСЂР°РјРјР° РіСЂСѓРїРїС‹."""
     sp = db.query(StudentProgram).filter(
         StudentProgram.student_id == student_id,
         StudentProgram.status == "active",
@@ -1935,10 +1963,10 @@ def _absence_to_response(db: Session, a: AbsenceFollowUp) -> AbsenceFollowUpResp
     )
 
 
-@router.get("/absences", response_model=List[AbsenceFollowUpResponse])
+@router.get("/_legacy-disabled/absences", response_model=List[AbsenceFollowUpResponse])
 async def list_absences(
-    stage: Optional[str] = Query(None, description="Фильтр по этапу: missed, assigned, made_up, missed_makeup"),
-    student_id: Optional[int] = Query(None, description="Фильтр по ученику"),
+    stage: Optional[str] = Query(None, description="Р¤РёР»СЊС‚СЂ РїРѕ СЌС‚Р°РїСѓ: missed, assigned, made_up, missed_makeup"),
+    student_id: Optional[int] = Query(None, description="Р¤РёР»СЊС‚СЂ РїРѕ СѓС‡РµРЅРёРєСѓ"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -1952,7 +1980,7 @@ async def list_absences(
     return [_absence_to_response(db, a) for a in items]
 
 
-@router.patch("/absences/{absence_id}", response_model=AbsenceFollowUpResponse)
+@router.patch("/_legacy-disabled/absences/{absence_id}", response_model=AbsenceFollowUpResponse)
 async def update_absence_stage(
     absence_id: int,
     payload: AbsenceFollowUpStageUpdate,
@@ -1962,10 +1990,10 @@ async def update_absence_stage(
     _require_sales_admin_owner(current_user)
     valid_stages = ("missed", "assigned", "link_sent", "made_up", "missed_makeup")
     if payload.stage not in valid_stages:
-        raise HTTPException(status_code=400, detail=f"stage должен быть один из: {valid_stages}")
+        raise HTTPException(status_code=400, detail=f"stage РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕРґРёРЅ РёР·: {valid_stages}")
     absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
     if not absence:
-        raise HTTPException(status_code=404, detail="Пропуск не найден")
+        raise HTTPException(status_code=404, detail="РџСЂРѕРїСѓСЃРє РЅРµ РЅР°Р№РґРµРЅ")
     absence.stage = payload.stage
     if payload.stage == "missed_makeup":
         absence.makeup_group_id = None
@@ -1975,14 +2003,14 @@ async def update_absence_stage(
     return _absence_to_response(db, absence)
 
 
-@router.post("/absences/{absence_id}/assign-makeup", response_model=AbsenceFollowUpResponse)
+@router.post("/_legacy-disabled/absences/{absence_id}/assign-makeup", response_model=AbsenceFollowUpResponse)
 async def assign_makeup(
     absence_id: int,
     payload: AbsenceMakeupAssign,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Назначить отработку на группу и дату занятия (ТЗ п.5.5)."""
+    """РќР°Р·РЅР°С‡РёС‚СЊ РѕС‚СЂР°Р±РѕС‚РєСѓ РЅР° РіСЂСѓРїРїСѓ Рё РґР°С‚Сѓ Р·Р°РЅСЏС‚РёСЏ (РўР— Рї.5.5)."""
     _require_sales_admin_owner(current_user)
     try:
         result = absence_makeup_assign(
@@ -1993,7 +2021,7 @@ async def assign_makeup(
         )
     except ValueError as e:
         msg = str(e)
-        if "не найден" in msg.lower():
+        if "РЅРµ РЅР°Р№РґРµРЅ" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     absence = result.absence
@@ -2001,8 +2029,8 @@ async def assign_makeup(
         db,
         student_id=absence.student_id,
         activity_type="makeup_scheduled",
-        title="Назначена отработка",
-        description=f"Дата: {absence.makeup_lesson_date}" if getattr(absence, "makeup_lesson_date", None) else "Назначена отработка",
+        title="РќР°Р·РЅР°С‡РµРЅР° РѕС‚СЂР°Р±РѕС‚РєР°",
+        description=f"Р”Р°С‚Р°: {absence.makeup_lesson_date}" if getattr(absence, "makeup_lesson_date", None) else "РќР°Р·РЅР°С‡РµРЅР° РѕС‚СЂР°Р±РѕС‚РєР°",
         created_by=current_user.id,
         payload_json={"absence_id": absence.id, "makeup_group_id": absence.makeup_group_id, "makeup_lesson_date": str(getattr(absence, "makeup_lesson_date", None) or "")},
     )
@@ -2011,18 +2039,18 @@ async def assign_makeup(
     return _absence_to_response(db, absence)
 
 
-@router.get("/absences/{absence_id}/suggest-makeups", response_model=List[MakeupSuggestionItem])
+@router.get("/_legacy-disabled/absences/{absence_id}/suggest-makeups", response_model=List[MakeupSuggestionItem])
 async def suggest_makeups(
     absence_id: int,
     days_ahead: int = Query(30, ge=7, le=60),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Подбор вариантов отработки по совместимости программ (ТЗ п.5). Окно 14–30 дней по умолчанию 30."""
+    """РџРѕРґР±РѕСЂ РІР°СЂРёР°РЅС‚РѕРІ РѕС‚СЂР°Р±РѕС‚РєРё РїРѕ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё РїСЂРѕРіСЂР°РјРј (РўР— Рї.5). РћРєРЅРѕ 14вЂ“30 РґРЅРµР№ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ 30."""
     _require_sales_admin_owner(current_user)
     absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
     if not absence:
-        raise HTTPException(status_code=404, detail="Пропуск не найден")
+        raise HTTPException(status_code=404, detail="РџСЂРѕРїСѓСЃРє РЅРµ РЅР°Р№РґРµРЅ")
     student_id = absence.student_id
     today = date.today()
     end_date = today + timedelta(days=days_ahead)
@@ -2050,8 +2078,8 @@ async def suggest_makeups(
         ).distinct().all()
     }) if allowed_target_ids else []
     groups_active = db.query(Group).filter(Group.id.in_(group_ids), Group.status == "active").all() if group_ids else []
-    # Исключаем индивидуальные группы из вариантов отработки (ТЗ)
-    groups_active = [g for g in groups_active if "индивид" not in (g.name or "").lower()]
+    # РСЃРєР»СЋС‡Р°РµРј РёРЅРґРёРІРёРґСѓР°Р»СЊРЅС‹Рµ РіСЂСѓРїРїС‹ РёР· РІР°СЂРёР°РЅС‚РѕРІ РѕС‚СЂР°Р±РѕС‚РєРё (РўР—)
+    groups_active = [g for g in groups_active if "РёРЅРґРёРІРёРґ" not in (g.name or "").lower()]
     group_ids = [g.id for g in groups_active]
     slots = []
     for sched in db.query(GroupSchedule).filter(GroupSchedule.group_id.in_(group_ids)).all():
@@ -2081,7 +2109,7 @@ async def suggest_makeups(
     return result[:50]
 
 
-@router.get("/public/makeup-selection", response_model=PublicMakeupSlotsResponse)
+@router.get("/_legacy-disabled/public/makeup-selection", response_model=PublicMakeupSlotsResponse)
 async def get_public_makeup_selection(
     token: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
@@ -2102,7 +2130,7 @@ async def get_public_makeup_selection(
     )
 
 
-@router.post("/public/makeup-selection/confirm", response_model=AbsenceFollowUpResponse)
+@router.post("/_legacy-disabled/public/makeup-selection/confirm", response_model=AbsenceFollowUpResponse)
 async def confirm_public_makeup_selection(
     payload: PublicMakeupSelectionRequest,
     db: Session = Depends(get_db),
@@ -2120,7 +2148,7 @@ async def confirm_public_makeup_selection(
         )
     except ValueError as exc:
         message = str(exc)
-        if "не найден" in message.lower():
+        if "РЅРµ РЅР°Р№РґРµРЅ" in message.lower():
             raise HTTPException(status_code=404, detail=message)
         raise HTTPException(status_code=400, detail=message)
 
@@ -2129,8 +2157,8 @@ async def confirm_public_makeup_selection(
         db,
         student_id=absence.student_id,
         activity_type="makeup_scheduled",
-        title="Назначена отработка",
-        description=f"Дата: {absence.makeup_lesson_date}" if getattr(absence, "makeup_lesson_date", None) else "Назначена отработка",
+        title="РќР°Р·РЅР°С‡РµРЅР° РѕС‚СЂР°Р±РѕС‚РєР°",
+        description=f"Р”Р°С‚Р°: {absence.makeup_lesson_date}" if getattr(absence, "makeup_lesson_date", None) else "РќР°Р·РЅР°С‡РµРЅР° РѕС‚СЂР°Р±РѕС‚РєР°",
         created_by=None,
         payload_json={"absence_id": absence.id, "makeup_group_id": absence.makeup_group_id, "makeup_lesson_date": str(getattr(absence, "makeup_lesson_date", None) or "")},
     )
@@ -2148,34 +2176,34 @@ async def confirm_public_makeup_selection(
 
 
 def _require_owner(user: User) -> None:
-    """Только owner (ТЗ: заморозка, закрытие по факту)."""
+    """РўРѕР»СЊРєРѕ owner (РўР—: Р·Р°РјРѕСЂРѕР·РєР°, Р·Р°РєСЂС‹С‚РёРµ РїРѕ С„Р°РєС‚Сѓ)."""
     if auth.resolve_effective_role(user) != UserRole.OWNER:
-        raise HTTPException(status_code=403, detail="Только owner")
+        raise HTTPException(status_code=403, detail="РўРѕР»СЊРєРѕ owner")
 
 
 def _require_owner_or_admin_settings(user: User) -> None:
-    """Owner или admin (настройки отработок, без lead)."""
+    """Owner РёР»Рё admin (РЅР°СЃС‚СЂРѕР№РєРё РѕС‚СЂР°Р±РѕС‚РѕРє, Р±РµР· lead)."""
     if auth.resolve_effective_role(user) not in (UserRole.OWNER, UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Только owner или admin")
+        raise HTTPException(status_code=403, detail="РўРѕР»СЊРєРѕ owner РёР»Рё admin")
 
 
-@router.get("/payment-status", response_model=List[PaymentStatusItem])
+@router.get("/_legacy-disabled/payment-status", response_model=List[PaymentStatusItem])
 async def list_payment_status(
-    status_filter: Optional[str] = Query(None, description="overdue | due_soon | ok | все"),
+    status_filter: Optional[str] = Query(None, description="overdue | due_soon | ok | РІСЃРµ"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    """Раздел «Долги» для менеджера (п.8.2, 12.2): ученики с датой следующей оплаты и статусом."""
+    """Р Р°Р·РґРµР» В«Р”РѕР»РіРёВ» РґР»СЏ РјРµРЅРµРґР¶РµСЂР° (Рї.8.2, 12.2): СѓС‡РµРЅРёРєРё СЃ РґР°С‚РѕР№ СЃР»РµРґСѓСЋС‰РµР№ РѕРїР»Р°С‚С‹ Рё СЃС‚Р°С‚СѓСЃРѕРј."""
     items = payment_status_list_svc(db, status_filter=status_filter)
     return [PaymentStatusItem(**item) for item in items]
 
 
-@router.get("/payment-status-summary", response_model=PaymentStatusSummary)
+@router.get("/_legacy-disabled/payment-status-summary", response_model=PaymentStatusSummary)
 async def get_payment_status_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    """Сводка по просрочкам: число учеников с долгом 3+ и 10+ дней (для KPI на странице «Долги»)."""
+    """РЎРІРѕРґРєР° РїРѕ РїСЂРѕСЃСЂРѕС‡РєР°Рј: С‡РёСЃР»Рѕ СѓС‡РµРЅРёРєРѕРІ СЃ РґРѕР»РіРѕРј 3+ Рё 10+ РґРЅРµР№ (РґР»СЏ KPI РЅР° СЃС‚СЂР°РЅРёС†Рµ В«Р”РѕР»РіРёВ»)."""
     data = payment_status_summary_svc(db)
     return PaymentStatusSummary(**data)
 
@@ -2218,24 +2246,24 @@ def _custom_lesson_to_response(db: Session, lesson: CustomLesson) -> CustomLesso
     )
 
 
-@router.post("/custom-lessons", response_model=CustomLessonResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/custom-lessons", response_model=CustomLessonResponse, status_code=status.HTTP_201_CREATED)
 async def create_custom_lesson(
     payload: CustomLessonCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("lessons.manage")),
 ):
-    """Создать ручной урок без группы (отработка / доп.урок / пробное). Только admin/owner/sales."""
+    """РЎРѕР·РґР°С‚СЊ СЂСѓС‡РЅРѕР№ СѓСЂРѕРє Р±РµР· РіСЂСѓРїРїС‹ (РѕС‚СЂР°Р±РѕС‚РєР° / РґРѕРї.СѓСЂРѕРє / РїСЂРѕР±РЅРѕРµ). РўРѕР»СЊРєРѕ admin/owner/sales."""
     try:
         start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
         end_t = None
         if payload.end_time:
             end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Время укажите в формате HH:MM")
+        raise HTTPException(status_code=400, detail="Р’СЂРµРјСЏ СѓРєР°Р¶РёС‚Рµ РІ С„РѕСЂРјР°С‚Рµ HH:MM")
 
     lesson_type_value = payload.lesson_type or "makeup"
     if lesson_type_value not in {t.value for t in CustomLessonType}:
-        raise HTTPException(status_code=400, detail=f"lesson_type должен быть одним из: {[t.value for t in CustomLessonType]}")
+        raise HTTPException(status_code=400, detail=f"lesson_type РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕРґРЅРёРј РёР·: {[t.value for t in CustomLessonType]}")
 
     students_tuples = [
         (item.student_id, item.planned_absence_id)
@@ -2256,13 +2284,13 @@ async def create_custom_lesson(
         )
     except ValueError as e:
         msg = str(e)
-        if "не найден" in msg.lower():
+        if "РЅРµ РЅР°Р№РґРµРЅ" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     return _custom_lesson_to_response(db, result.lesson)
 
 
-@router.get("/custom-lessons", response_model=List[CustomLessonResponse])
+@router.get("/_legacy-disabled/custom-lessons", response_model=List[CustomLessonResponse])
 async def list_custom_lessons(
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
@@ -2272,7 +2300,7 @@ async def list_custom_lessons(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("lessons.access")),
 ):
-    """Список ручных уроков для менеджера (admin/owner/sales)."""
+    """РЎРїРёСЃРѕРє СЂСѓС‡РЅС‹С… СѓСЂРѕРєРѕРІ РґР»СЏ РјРµРЅРµРґР¶РµСЂР° (admin/owner/sales)."""
     query = db.query(CustomLesson)
     if date_from:
         query = query.filter(CustomLesson.lesson_date >= date_from)
@@ -2284,7 +2312,7 @@ async def list_custom_lessons(
         query = query.filter(CustomLesson.lesson_type == lesson_type)
     lessons = query.order_by(CustomLesson.lesson_date.desc(), CustomLesson.start_time.asc()).all()
 
-    # Фильтр по ученику через связку
+    # Р¤РёР»СЊС‚СЂ РїРѕ СѓС‡РµРЅРёРєСѓ С‡РµСЂРµР· СЃРІСЏР·РєСѓ
     if student_id is not None:
         lesson_ids = {
             ls.lesson_id
@@ -2295,7 +2323,7 @@ async def list_custom_lessons(
     return [_custom_lesson_to_response(db, l) for l in lessons]
 
 
-@router.get("/custom-lessons/{lesson_id}", response_model=CustomLessonResponse)
+@router.get("/_legacy-disabled/custom-lessons/{lesson_id}", response_model=CustomLessonResponse)
 async def get_custom_lesson(
     lesson_id: int,
     db: Session = Depends(get_db),
@@ -2303,21 +2331,21 @@ async def get_custom_lesson(
 ):
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:
-        raise HTTPException(status_code=404, detail="Ручной урок не найден")
+        raise HTTPException(status_code=404, detail="Р СѓС‡РЅРѕР№ СѓСЂРѕРє РЅРµ РЅР°Р№РґРµРЅ")
     return _custom_lesson_to_response(db, lesson)
 
 
-@router.put("/custom-lessons/{lesson_id}", response_model=CustomLessonResponse)
+@router.put("/_legacy-disabled/custom-lessons/{lesson_id}", response_model=CustomLessonResponse)
 async def update_custom_lesson(
     lesson_id: int,
     payload: CustomLessonUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("lessons.manage")),
 ):
-    """Редактирование ручного урока. Только admin/owner/sales."""
+    """Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ СЂСѓС‡РЅРѕРіРѕ СѓСЂРѕРєР°. РўРѕР»СЊРєРѕ admin/owner/sales."""
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:
-        raise HTTPException(status_code=404, detail="Ручной урок не найден")
+        raise HTTPException(status_code=404, detail="Р СѓС‡РЅРѕР№ СѓСЂРѕРє РЅРµ РЅР°Р№РґРµРЅ")
 
     if payload.title is not None:
         lesson.title = payload.title.strip()
@@ -2327,7 +2355,7 @@ async def update_custom_lesson(
         try:
             lesson.start_time = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
         except ValueError:
-            raise HTTPException(status_code=400, detail="start_time: формат HH:MM")
+            raise HTTPException(status_code=400, detail="start_time: С„РѕСЂРјР°С‚ HH:MM")
     if payload.end_time is not None:
         if payload.end_time == "":
             lesson.end_time = None
@@ -2335,20 +2363,20 @@ async def update_custom_lesson(
             try:
                 lesson.end_time = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
             except ValueError:
-                raise HTTPException(status_code=400, detail="end_time: формат HH:MM")
+                raise HTTPException(status_code=400, detail="end_time: С„РѕСЂРјР°С‚ HH:MM")
     if payload.trainer_id is not None:
         trainer = db.query(User).filter(User.id == payload.trainer_id).first()
         if not trainer:
-            raise HTTPException(status_code=404, detail="Тренер не найден")
+            raise HTTPException(status_code=404, detail="РўСЂРµРЅРµСЂ РЅРµ РЅР°Р№РґРµРЅ")
         lesson.trainer_id = payload.trainer_id
     if payload.lesson_type is not None:
         if payload.lesson_type not in {t.value for t in CustomLessonType}:
-            raise HTTPException(status_code=400, detail=f"lesson_type должен быть одним из: {[t.value for t in CustomLessonType]}")
+            raise HTTPException(status_code=400, detail=f"lesson_type РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕРґРЅРёРј РёР·: {[t.value for t in CustomLessonType]}")
         lesson.lesson_type = CustomLessonType(payload.lesson_type)
     if payload.comment is not None:
         lesson.comment = payload.comment.strip() or None
 
-    # Обновление списка учеников: если передан payload.students — пересобираем список
+    # РћР±РЅРѕРІР»РµРЅРёРµ СЃРїРёСЃРєР° СѓС‡РµРЅРёРєРѕРІ: РµСЃР»Рё РїРµСЂРµРґР°РЅ payload.students вЂ” РїРµСЂРµСЃРѕР±РёСЂР°РµРј СЃРїРёСЃРѕРє
     if payload.students is not None:
         existing = db.query(CustomLessonStudent).filter(CustomLessonStudent.lesson_id == lesson.id).all()
         existing_by_student = {(e.student_id, e.planned_absence_id): e for e in existing}
@@ -2357,13 +2385,13 @@ async def update_custom_lesson(
         for item in payload.students:
             student = db.query(Student).filter(Student.id == item.student_id).first()
             if not student:
-                raise HTTPException(status_code=404, detail=f"Ученик {item.student_id} не найден")
+                raise HTTPException(status_code=404, detail=f"РЈС‡РµРЅРёРє {item.student_id} РЅРµ РЅР°Р№РґРµРЅ")
             planned_absence_id = item.planned_absence_id
             if planned_absence_id is not None:
                 absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == planned_absence_id).first()
                 if not absence or absence.student_id != item.student_id:
-                    raise HTTPException(status_code=400, detail=f"Пропуск {planned_absence_id} не найден для этого ученика")
-            # Сбрасываем посещаемость при полном пересборе списка
+                    raise HTTPException(status_code=400, detail=f"РџСЂРѕРїСѓСЃРє {planned_absence_id} РЅРµ РЅР°Р№РґРµРЅ РґР»СЏ СЌС‚РѕРіРѕ СѓС‡РµРЅРёРєР°")
+            # РЎР±СЂР°СЃС‹РІР°РµРј РїРѕСЃРµС‰Р°РµРјРѕСЃС‚СЊ РїСЂРё РїРѕР»РЅРѕРј РїРµСЂРµСЃР±РѕСЂРµ СЃРїРёСЃРєР°
             cls = CustomLessonStudent(
                 lesson_id=lesson.id,
                 student_id=item.student_id,
@@ -2377,28 +2405,28 @@ async def update_custom_lesson(
     return _custom_lesson_to_response(db, lesson)
 
 
-@router.delete("/custom-lessons/{lesson_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/_legacy-disabled/custom-lessons/{lesson_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_custom_lesson(
     lesson_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("lessons.manage")),
 ):
-    """Удалить ручной урок. Только admin/owner/sales."""
+    """РЈРґР°Р»РёС‚СЊ СЂСѓС‡РЅРѕР№ СѓСЂРѕРє. РўРѕР»СЊРєРѕ admin/owner/sales."""
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:
-        raise HTTPException(status_code=404, detail="Ручной урок не найден")
+        raise HTTPException(status_code=404, detail="Р СѓС‡РЅРѕР№ СѓСЂРѕРє РЅРµ РЅР°Р№РґРµРЅ")
     db.query(CustomLessonStudent).filter(CustomLessonStudent.lesson_id == lesson.id).delete(synchronize_session=False)
     db.delete(lesson)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/program-makeup-compatibility", response_model=List[ProgramMakeupCompatibilityResponse])
+@router.get("/_legacy-disabled/program-makeup-compatibility", response_model=List[ProgramMakeupCompatibilityResponse])
 async def list_program_makeup_compatibility(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Список правил совместимости программ для отработок (ТЗ п.5.3). Owner/admin."""
+    """РЎРїРёСЃРѕРє РїСЂР°РІРёР» СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё РїСЂРѕРіСЂР°РјРј РґР»СЏ РѕС‚СЂР°Р±РѕС‚РѕРє (РўР— Рї.5.3). Owner/admin."""
     _require_owner_or_admin_settings(current_user)
     items = db.query(ProgramMakeupCompatibility).order_by(
         ProgramMakeupCompatibility.source_program_id,
@@ -2418,17 +2446,17 @@ async def list_program_makeup_compatibility(
     return result
 
 
-@router.post("/program-makeup-compatibility", response_model=ProgramMakeupCompatibilityResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/program-makeup-compatibility", response_model=ProgramMakeupCompatibilityResponse, status_code=status.HTTP_201_CREATED)
 async def create_program_makeup_compatibility(
     payload: ProgramMakeupCompatibilityCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Добавить правило: программа source может отрабатывать в программе target. Owner/admin."""
+    """Р”РѕР±Р°РІРёС‚СЊ РїСЂР°РІРёР»Рѕ: РїСЂРѕРіСЂР°РјРјР° source РјРѕР¶РµС‚ РѕС‚СЂР°Р±Р°С‚С‹РІР°С‚СЊ РІ РїСЂРѕРіСЂР°РјРјРµ target. Owner/admin."""
     _require_owner_or_admin_settings(current_user)
     for pid in (payload.source_program_id, payload.target_program_id):
         if not db.query(Program).filter(Program.id == pid).first():
-            raise HTTPException(status_code=404, detail=f"Программа {pid} не найдена")
+            raise HTTPException(status_code=404, detail=f"РџСЂРѕРіСЂР°РјРјР° {pid} РЅРµ РЅР°Р№РґРµРЅР°")
     compat = ProgramMakeupCompatibility(
         source_program_id=payload.source_program_id,
         target_program_id=payload.target_program_id,
@@ -2447,50 +2475,50 @@ async def create_program_makeup_compatibility(
     )
 
 
-@router.delete("/program-makeup-compatibility/{compat_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/_legacy-disabled/program-makeup-compatibility/{compat_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_program_makeup_compatibility(
     compat_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Удалить правило совместимости. Owner/admin."""
+    """РЈРґР°Р»РёС‚СЊ РїСЂР°РІРёР»Рѕ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё. Owner/admin."""
     _require_owner_or_admin_settings(current_user)
     compat = db.query(ProgramMakeupCompatibility).filter(ProgramMakeupCompatibility.id == compat_id).first()
     if not compat:
-        raise HTTPException(status_code=404, detail="Правило не найдено")
+        raise HTTPException(status_code=404, detail="РџСЂР°РІРёР»Рѕ РЅРµ РЅР°Р№РґРµРЅРѕ")
     db.delete(compat)
     db.commit()
 
 
-@router.get("/students/{student_id}/freezes", response_model=List[StudentFreezeResponse])
+@router.get("/_legacy-disabled/students/{student_id}/freezes", response_model=List[StudentFreezeResponse])
 async def list_student_freezes(
     student_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Список заморозок ученика. Sales/admin/owner."""
+    """РЎРїРёСЃРѕРє Р·Р°РјРѕСЂРѕР·РѕРє СѓС‡РµРЅРёРєР°. Sales/admin/owner."""
     _require_sales_admin_owner(current_user)
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
-        raise HTTPException(status_code=404, detail="Ученик не найден")
+        raise HTTPException(status_code=404, detail="РЈС‡РµРЅРёРє РЅРµ РЅР°Р№РґРµРЅ")
     freezes = db.query(StudentFreeze).filter(StudentFreeze.student_id == student_id).order_by(StudentFreeze.freeze_start.desc()).all()
     return [StudentFreezeResponse(id=f.id, student_id=f.student_id, freeze_start=f.freeze_start, freeze_end=f.freeze_end, created_at=f.created_at) for f in freezes]
 
 
-@router.post("/students/{student_id}/freezes", response_model=StudentFreezeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/students/{student_id}/freezes", response_model=StudentFreezeResponse, status_code=status.HTTP_201_CREATED)
 async def create_student_freeze(
     student_id: int,
     payload: StudentFreezeCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Поставить заморозку (ТЗ п.7). Только owner. Сдвиг периода — при необходимости обновить next_payment_date вручную или отдельным правилом."""
+    """РџРѕСЃС‚Р°РІРёС‚СЊ Р·Р°РјРѕСЂРѕР·РєСѓ (РўР— Рї.7). РўРѕР»СЊРєРѕ owner. РЎРґРІРёРі РїРµСЂРёРѕРґР° вЂ” РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РѕР±РЅРѕРІРёС‚СЊ next_payment_date РІСЂСѓС‡РЅСѓСЋ РёР»Рё РѕС‚РґРµР»СЊРЅС‹Рј РїСЂР°РІРёР»РѕРј."""
     _require_owner(current_user)
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
-        raise HTTPException(status_code=404, detail="Ученик не найден")
+        raise HTTPException(status_code=404, detail="РЈС‡РµРЅРёРє РЅРµ РЅР°Р№РґРµРЅ")
     if payload.freeze_end <= payload.freeze_start:
-        raise HTTPException(status_code=400, detail="freeze_end должна быть больше freeze_start")
+        raise HTTPException(status_code=400, detail="freeze_end РґРѕР»Р¶РЅР° Р±С‹С‚СЊ Р±РѕР»СЊС€Рµ freeze_start")
     freeze = StudentFreeze(student_id=student_id, freeze_start=payload.freeze_start, freeze_end=payload.freeze_end)
     db.add(freeze)
     card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
@@ -2501,8 +2529,8 @@ async def create_student_freeze(
         db,
         student_id=student_id,
         activity_type="freeze_set",
-        title="Поставлена заморозка",
-        description=f"{payload.freeze_start} — {payload.freeze_end}",
+        title="РџРѕСЃС‚Р°РІР»РµРЅР° Р·Р°РјРѕСЂРѕР·РєР°",
+        description=f"{payload.freeze_start} вЂ” {payload.freeze_end}",
         created_by=current_user.id,
         payload_json={"freeze_start": payload.freeze_start.isoformat(), "freeze_end": payload.freeze_end.isoformat()},
     )
@@ -2511,33 +2539,33 @@ async def create_student_freeze(
     return StudentFreezeResponse(id=freeze.id, student_id=freeze.student_id, freeze_start=freeze.freeze_start, freeze_end=freeze.freeze_end, created_at=freeze.created_at)
 
 
-@router.delete("/students/{student_id}/freezes/{freeze_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/_legacy-disabled/students/{student_id}/freezes/{freeze_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_student_freeze(
     student_id: int,
     freeze_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Снять заморозку. Только owner."""
+    """РЎРЅСЏС‚СЊ Р·Р°РјРѕСЂРѕР·РєСѓ. РўРѕР»СЊРєРѕ owner."""
     _require_owner(current_user)
     freeze = db.query(StudentFreeze).filter(StudentFreeze.id == freeze_id, StudentFreeze.student_id == student_id).first()
     if not freeze:
-        raise HTTPException(status_code=404, detail="Заморозка не найдена")
+        raise HTTPException(status_code=404, detail="Р—Р°РјРѕСЂРѕР·РєР° РЅРµ РЅР°Р№РґРµРЅР°")
     db.delete(freeze)
     db.commit()
 
 
-@router.get("/students/{student_id}/close-by-fact-preview", response_model=CloseByFactPreview)
+@router.get("/_legacy-disabled/students/{student_id}/close-by-fact-preview", response_model=CloseByFactPreview)
 async def close_by_fact_preview(
     student_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Предпросмотр: сколько занятий посещено в текущем периоде и сумма к оплате (ТЗ п.9). Только owner."""
+    """РџСЂРµРґРїСЂРѕСЃРјРѕС‚СЂ: СЃРєРѕР»СЊРєРѕ Р·Р°РЅСЏС‚РёР№ РїРѕСЃРµС‰РµРЅРѕ РІ С‚РµРєСѓС‰РµРј РїРµСЂРёРѕРґРµ Рё СЃСѓРјРјР° Рє РѕРїР»Р°С‚Рµ (РўР— Рї.9). РўРѕР»СЊРєРѕ owner."""
     _require_owner(current_user)
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
-        raise HTTPException(status_code=404, detail="Ученик не найден")
+        raise HTTPException(status_code=404, detail="РЈС‡РµРЅРёРє РЅРµ РЅР°Р№РґРµРЅ")
     card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
     period_start = getattr(card, "learning_period_start", None) if card else None
     if not period_start:
@@ -2566,20 +2594,20 @@ async def close_by_fact_preview(
     )
 
 
-@router.post("/students/{student_id}/close-by-fact")
+@router.post("/_legacy-disabled/students/{student_id}/close-by-fact")
 async def close_by_fact_confirm(
     student_id: int,
     payload: CloseByFactConfirm,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Закрыть ученика с оплатой по факту (ТЗ п.9). Только owner. Фиксирует оплату, архивирует, снимает пропуски с очереди."""
+    """Р—Р°РєСЂС‹С‚СЊ СѓС‡РµРЅРёРєР° СЃ РѕРїР»Р°С‚РѕР№ РїРѕ С„Р°РєС‚Сѓ (РўР— Рї.9). РўРѕР»СЊРєРѕ owner. Р¤РёРєСЃРёСЂСѓРµС‚ РѕРїР»Р°С‚Сѓ, Р°СЂС…РёРІРёСЂСѓРµС‚, СЃРЅРёРјР°РµС‚ РїСЂРѕРїСѓСЃРєРё СЃ РѕС‡РµСЂРµРґРё."""
     _require_owner(current_user)
     if not payload.confirm:
-        raise HTTPException(status_code=400, detail="Подтвердите закрытие")
+        raise HTTPException(status_code=400, detail="РџРѕРґС‚РІРµСЂРґРёС‚Рµ Р·Р°РєСЂС‹С‚РёРµ")
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
-        raise HTTPException(status_code=404, detail="Ученик не найден")
+        raise HTTPException(status_code=404, detail="РЈС‡РµРЅРёРє РЅРµ РЅР°Р№РґРµРЅ")
     card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
     period_start = getattr(card, "learning_period_start", None) if card else None
     if not period_start:
@@ -2602,7 +2630,7 @@ async def close_by_fact_confirm(
             account_id=account.id,
             amount=amount,
             kind=StudentAccountTransactionKind.PAYMENT,
-            note=f"Закрытие по факту: {attended} занятий за период {period_start}–{period_end}",
+            note=f"Р—Р°РєСЂС‹С‚РёРµ РїРѕ С„Р°РєС‚Сѓ: {attended} Р·Р°РЅСЏС‚РёР№ Р·Р° РїРµСЂРёРѕРґ {period_start}вЂ“{period_end}",
         ))
         account.balance += amount
     for a in db.query(AbsenceFollowUp).filter(AbsenceFollowUp.student_id == student_id).all():
@@ -2678,7 +2706,7 @@ def _normalize_source_name(name: Optional[str]) -> Optional[str]:
 
 
 def _is_referral_source(name: Optional[str]) -> bool:
-    return (name or "").strip().lower() == "рекомендация"
+    return (name or "").strip().lower() == "СЂРµРєРѕРјРµРЅРґР°С†РёСЏ"
 
 
 def _resolve_source(
@@ -2708,7 +2736,7 @@ def _append_note_tag(note: Optional[str], tag: str) -> str:
 
 
 def _remove_note_tag(note: Optional[str], tag: str) -> str:
-    """Удалить тег из заметки (без учёта регистра), сохранив остальной текст."""
+    """РЈРґР°Р»РёС‚СЊ С‚РµРі РёР· Р·Р°РјРµС‚РєРё (Р±РµР· СѓС‡С‘С‚Р° СЂРµРіРёСЃС‚СЂР°), СЃРѕС…СЂР°РЅРёРІ РѕСЃС‚Р°Р»СЊРЅРѕР№ С‚РµРєСЃС‚."""
     if not note:
         return ""
     lower_tag = tag.lower()
@@ -2730,7 +2758,7 @@ def _get_default_open_status_option_id(db: Session) -> Optional[int]:
 
 
 def _get_default_lead_status_option_id(db: Session, base_status: LeadStatus) -> Optional[int]:
-    """Возвращает id первой активной опции статуса лида для данного base_status."""
+    """Р’РѕР·РІСЂР°С‰Р°РµС‚ id РїРµСЂРІРѕР№ Р°РєС‚РёРІРЅРѕР№ РѕРїС†РёРё СЃС‚Р°С‚СѓСЃР° Р»РёРґР° РґР»СЏ РґР°РЅРЅРѕРіРѕ base_status."""
     status_str = base_status.value if hasattr(base_status, "value") else str(base_status)
     opt = (
         db.query(LeadStatusOption)
@@ -2793,10 +2821,10 @@ def _has_open_task_like(db: Session, lead_id: int, marker: str) -> bool:
     )
 
 
-ALLOWED_PAUSE_REASONS = {"ждём ответ", "подумать", "нет времени"}
+ALLOWED_PAUSE_REASONS = {"Р¶РґС‘Рј РѕС‚РІРµС‚", "РїРѕРґСѓРјР°С‚СЊ", "РЅРµС‚ РІСЂРµРјРµРЅРё"}
 
 
-@router.get("/dashboard", response_model=SalesDashboardResponse)
+@router.get("/_legacy-disabled/dashboard", response_model=SalesDashboardResponse)
 async def get_sales_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
@@ -2879,7 +2907,7 @@ async def get_sales_dashboard(
             or_(
                 cast(LeadTask.channel, Text).ilike("%messenger%"),
                 cast(LeadTask.channel, Text).ilike("%telegram%"),
-                cast(LeadTask.note, Text).ilike("%ответ%"),
+                cast(LeadTask.note, Text).ilike("%РѕС‚РІРµС‚%"),
             ),
         )
         .order_by(LeadTask.created_at.desc())
@@ -2992,7 +3020,7 @@ async def get_sales_dashboard(
     )
 
 
-@router.get("/follow-ups", response_model=List[FollowUpItemResponse])
+@router.get("/_legacy-disabled/follow-ups", response_model=List[FollowUpItemResponse])
 async def list_follow_ups(
     period: str = Query(default="today"),
     source: Optional[str] = None,
@@ -3047,7 +3075,7 @@ async def list_follow_ups(
     ]
 
 
-@router.get("/leads/push-stats", response_model=List[LeadPushStatsResponse])
+@router.get("/_legacy-disabled/leads/push-stats", response_model=List[LeadPushStatsResponse])
 async def get_leads_push_stats(
     lead_ids: List[int] = Query(default=[]),
     db: Session = Depends(get_db),
@@ -3072,7 +3100,7 @@ async def get_leads_push_stats(
     for task in tasks:
         template_name = (task.template.name if task.template else "").lower()
         note = (task.note or "").lower()
-        is_push = "дожим" in template_name or "дожим" in note or "push" in note
+        is_push = "РґРѕР¶РёРј" in template_name or "РґРѕР¶РёРј" in note or "push" in note
         if not is_push:
             continue
         by_lead[task.lead_id]["total"] += 1
@@ -3095,7 +3123,7 @@ async def get_leads_push_stats(
     return response
 
 
-@router.get("/lead-sources", response_model=List[LeadSourceResponse])
+@router.get("/_legacy-disabled/lead-sources", response_model=List[LeadSourceResponse])
 async def list_lead_sources(
     active_only: bool = True,
     db: Session = Depends(get_db),
@@ -3107,7 +3135,7 @@ async def list_lead_sources(
     return query.all()
 
 
-@router.post("/lead-sources", response_model=LeadSourceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/lead-sources", response_model=LeadSourceResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead_source(
     payload: LeadSourceCreate,
     db: Session = Depends(get_db),
@@ -3127,7 +3155,7 @@ async def create_lead_source(
     return source
 
 
-@router.put("/lead-sources/{source_id}", response_model=LeadSourceResponse)
+@router.put("/_legacy-disabled/lead-sources/{source_id}", response_model=LeadSourceResponse)
 async def update_lead_source(
     source_id: int,
     payload: LeadSourceUpdate,
@@ -3151,7 +3179,7 @@ async def update_lead_source(
     return source
 
 
-@router.get("/lead-task-templates", response_model=List[LeadTaskTemplateResponse])
+@router.get("/_legacy-disabled/lead-task-templates", response_model=List[LeadTaskTemplateResponse])
 async def list_lead_task_templates(
     active_only: bool = True,
     db: Session = Depends(get_db),
@@ -3163,7 +3191,7 @@ async def list_lead_task_templates(
     return query.all()
 
 
-@router.post("/lead-task-templates", response_model=LeadTaskTemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/lead-task-templates", response_model=LeadTaskTemplateResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead_task_template(
     payload: LeadTaskTemplateCreate,
     db: Session = Depends(get_db),
@@ -3183,7 +3211,7 @@ async def create_lead_task_template(
     return item
 
 
-@router.put("/lead-task-templates/{template_id}", response_model=LeadTaskTemplateResponse)
+@router.put("/_legacy-disabled/lead-task-templates/{template_id}", response_model=LeadTaskTemplateResponse)
 async def update_lead_task_template(
     template_id: int,
     payload: LeadTaskTemplateUpdate,
@@ -3207,7 +3235,7 @@ async def update_lead_task_template(
     return item
 
 
-@router.get("/lead-task-statuses", response_model=List[LeadTaskStatusOptionResponse])
+@router.get("/_legacy-disabled/lead-task-statuses", response_model=List[LeadTaskStatusOptionResponse])
 async def list_lead_task_statuses(
     active_only: bool = True,
     db: Session = Depends(get_db),
@@ -3219,7 +3247,7 @@ async def list_lead_task_statuses(
     return query.all()
 
 
-@router.post("/lead-task-statuses", response_model=LeadTaskStatusOptionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/lead-task-statuses", response_model=LeadTaskStatusOptionResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead_task_status(
     payload: LeadTaskStatusOptionCreate,
     db: Session = Depends(get_db),
@@ -3239,7 +3267,7 @@ async def create_lead_task_status(
     return item
 
 
-@router.put("/lead-task-statuses/{status_id}", response_model=LeadTaskStatusOptionResponse)
+@router.put("/_legacy-disabled/lead-task-statuses/{status_id}", response_model=LeadTaskStatusOptionResponse)
 async def update_lead_task_status(
     status_id: int,
     payload: LeadTaskStatusOptionUpdate,
@@ -3265,7 +3293,7 @@ async def update_lead_task_status(
     return item
 
 
-@router.get("/lead-info-templates", response_model=List[LeadInfoTemplateResponse])
+@router.get("/_legacy-disabled/lead-info-templates", response_model=List[LeadInfoTemplateResponse])
 async def list_lead_info_templates(
     active_only: bool = True,
     db: Session = Depends(get_db),
@@ -3277,7 +3305,7 @@ async def list_lead_info_templates(
     return query.all()
 
 
-@router.post("/lead-info-templates", response_model=LeadInfoTemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/lead-info-templates", response_model=LeadInfoTemplateResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead_info_template(
     payload: LeadInfoTemplateCreate,
     db: Session = Depends(get_db),
@@ -3299,7 +3327,7 @@ async def create_lead_info_template(
     return item
 
 
-@router.put("/lead-info-templates/{template_id}", response_model=LeadInfoTemplateResponse)
+@router.put("/_legacy-disabled/lead-info-templates/{template_id}", response_model=LeadInfoTemplateResponse)
 async def update_lead_info_template(
     template_id: int,
     payload: LeadInfoTemplateUpdate,
@@ -3328,8 +3356,8 @@ async def update_lead_info_template(
     return item
 
 
-# --- Sales cities (справочник городов для Sales) ---
-@router.get("/cities", response_model=List[SalesCityResponse])
+# --- Sales cities (СЃРїСЂР°РІРѕС‡РЅРёРє РіРѕСЂРѕРґРѕРІ РґР»СЏ Sales) ---
+@router.get("/_legacy-disabled/cities", response_model=List[SalesCityResponse])
 async def list_sales_cities(
     active_only: bool = True,
     db: Session = Depends(get_db),
@@ -3341,7 +3369,7 @@ async def list_sales_cities(
     return query.all()
 
 
-@router.post("/cities", response_model=SalesCityResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/cities", response_model=SalesCityResponse, status_code=status.HTTP_201_CREATED)
 async def create_sales_city(
     payload: SalesCityCreate,
     db: Session = Depends(get_db),
@@ -3361,7 +3389,7 @@ async def create_sales_city(
     return item
 
 
-@router.put("/cities/{city_id}", response_model=SalesCityResponse)
+@router.put("/_legacy-disabled/cities/{city_id}", response_model=SalesCityResponse)
 async def update_sales_city(
     city_id: int,
     payload: SalesCityUpdate,
@@ -3385,8 +3413,8 @@ async def update_sales_city(
     return item
 
 
-# --- Sales schools (справочник школ для Sales) ---
-@router.get("/schools", response_model=List[SalesSchoolResponse])
+# --- Sales schools (СЃРїСЂР°РІРѕС‡РЅРёРє С€РєРѕР» РґР»СЏ Sales) ---
+@router.get("/_legacy-disabled/schools", response_model=List[SalesSchoolResponse])
 async def list_sales_schools(
     active_only: bool = True,
     db: Session = Depends(get_db),
@@ -3398,7 +3426,7 @@ async def list_sales_schools(
     return query.all()
 
 
-@router.post("/schools", response_model=SalesSchoolResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/schools", response_model=SalesSchoolResponse, status_code=status.HTTP_201_CREATED)
 async def create_sales_school(
     payload: SalesSchoolCreate,
     db: Session = Depends(get_db),
@@ -3418,7 +3446,7 @@ async def create_sales_school(
     return item
 
 
-@router.put("/schools/{school_id}", response_model=SalesSchoolResponse)
+@router.put("/_legacy-disabled/schools/{school_id}", response_model=SalesSchoolResponse)
 async def update_sales_school(
     school_id: int,
     payload: SalesSchoolUpdate,
@@ -3442,8 +3470,8 @@ async def update_sales_school(
     return item
 
 
-# --- Sales classes (справочник классов для лидов) ---
-@router.get("/classes", response_model=List[SalesClassResponse])
+# --- Sales classes (СЃРїСЂР°РІРѕС‡РЅРёРє РєР»Р°СЃСЃРѕРІ РґР»СЏ Р»РёРґРѕРІ) ---
+@router.get("/_legacy-disabled/classes", response_model=List[SalesClassResponse])
 async def list_sales_classes(
     active_only: bool = True,
     db: Session = Depends(get_db),
@@ -3455,7 +3483,7 @@ async def list_sales_classes(
     return query.all()
 
 
-@router.post("/classes", response_model=SalesClassResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/classes", response_model=SalesClassResponse, status_code=status.HTTP_201_CREATED)
 async def create_sales_class(
     payload: SalesClassCreate,
     db: Session = Depends(get_db),
@@ -3463,10 +3491,10 @@ async def create_sales_class(
 ):
     name = (payload.name or "").strip()
     if not name:
-        raise HTTPException(status_code=400, detail="Название класса обязательно")
+        raise HTTPException(status_code=400, detail="РќР°Р·РІР°РЅРёРµ РєР»Р°СЃСЃР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ")
     exists = db.query(SalesClass).filter(cast(SalesClass.name, Text).ilike(name)).first()
     if exists:
-        raise HTTPException(status_code=400, detail="Такой класс уже есть")
+        raise HTTPException(status_code=400, detail="РўР°РєРѕР№ РєР»Р°СЃСЃ СѓР¶Рµ РµСЃС‚СЊ")
     item = SalesClass(name=name, is_active=True)
     db.add(item)
     db.commit()
@@ -3475,7 +3503,7 @@ async def create_sales_class(
     return item
 
 
-@router.put("/classes/{class_id}", response_model=SalesClassResponse)
+@router.put("/_legacy-disabled/classes/{class_id}", response_model=SalesClassResponse)
 async def update_sales_class(
     class_id: int,
     payload: SalesClassUpdate,
@@ -3484,12 +3512,12 @@ async def update_sales_class(
 ):
     item = db.query(SalesClass).filter(SalesClass.id == class_id).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Класс не найден")
+        raise HTTPException(status_code=404, detail="РљР»Р°СЃСЃ РЅРµ РЅР°Р№РґРµРЅ")
     data = payload.dict(exclude_unset=True)
     if "name" in data:
         name = (data["name"] or "").strip()
         if not name:
-            raise HTTPException(status_code=400, detail="Название класса обязательно")
+            raise HTTPException(status_code=400, detail="РќР°Р·РІР°РЅРёРµ РєР»Р°СЃСЃР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ")
         item.name = name
     if "is_active" in data:
         item.is_active = data["is_active"]
@@ -3499,8 +3527,8 @@ async def update_sales_class(
     return item
 
 
-# --- Шаблоны счетов (название + формат: групповой/индивидуальный) ---
-@router.get("/account-templates", response_model=List[AccountTemplateResponse])
+# --- РЁР°Р±Р»РѕРЅС‹ СЃС‡РµС‚РѕРІ (РЅР°Р·РІР°РЅРёРµ + С„РѕСЂРјР°С‚: РіСЂСѓРїРїРѕРІРѕР№/РёРЅРґРёРІРёРґСѓР°Р»СЊРЅС‹Р№) ---
+@router.get("/_legacy-disabled/account-templates", response_model=List[AccountTemplateResponse])
 async def list_account_templates(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
@@ -3508,7 +3536,7 @@ async def list_account_templates(
     return db.query(AccountTemplate).order_by(AccountTemplate.id.asc()).all()
 
 
-@router.post("/account-templates", response_model=AccountTemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/account-templates", response_model=AccountTemplateResponse, status_code=status.HTTP_201_CREATED)
 async def create_account_template(
     payload: AccountTemplateCreate,
     db: Session = Depends(get_db),
@@ -3516,9 +3544,9 @@ async def create_account_template(
 ):
     name = (payload.name or "").strip()
     if not name:
-        raise HTTPException(status_code=400, detail="Название счёта обязательно")
+        raise HTTPException(status_code=400, detail="РќР°Р·РІР°РЅРёРµ СЃС‡С‘С‚Р° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ")
     if payload.format not in ("group", "individual"):
-        raise HTTPException(status_code=400, detail="Формат должен быть group или individual")
+        raise HTTPException(status_code=400, detail="Р¤РѕСЂРјР°С‚ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ group РёР»Рё individual")
     item = AccountTemplate(name=name, format=payload.format)
     db.add(item)
     db.commit()
@@ -3527,7 +3555,7 @@ async def create_account_template(
     return item
 
 
-@router.delete("/account-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/_legacy-disabled/account-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account_template(
     template_id: int,
     db: Session = Depends(get_db),
@@ -3535,15 +3563,15 @@ async def delete_account_template(
 ):
     item = db.query(AccountTemplate).filter(AccountTemplate.id == template_id).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Шаблон счёта не найден")
+        raise HTTPException(status_code=404, detail="РЁР°Р±Р»РѕРЅ СЃС‡С‘С‚Р° РЅРµ РЅР°Р№РґРµРЅ")
     db.delete(item)
     db.commit()
     log_action(db, current_user.id, "delete", "account_template", template_id, {})
     return None
 
 
-# --- Lead status options (кастомные статусы лида) ---
-@router.get("/lead-statuses", response_model=List[LeadStatusOptionResponse])
+# --- Lead status options (РєР°СЃС‚РѕРјРЅС‹Рµ СЃС‚Р°С‚СѓСЃС‹ Р»РёРґР°) ---
+@router.get("/_legacy-disabled/lead-statuses", response_model=List[LeadStatusOptionResponse])
 async def list_lead_statuses(
     active_only: bool = True,
     db: Session = Depends(get_db),
@@ -3555,7 +3583,7 @@ async def list_lead_statuses(
     return query.all()
 
 
-@router.post("/lead-statuses", response_model=LeadStatusOptionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/lead-statuses", response_model=LeadStatusOptionResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead_status(
     payload: LeadStatusOptionCreate,
     db: Session = Depends(get_db),
@@ -3576,7 +3604,7 @@ async def create_lead_status(
     return item
 
 
-@router.put("/lead-statuses/{status_id}", response_model=LeadStatusOptionResponse)
+@router.put("/_legacy-disabled/lead-statuses/{status_id}", response_model=LeadStatusOptionResponse)
 async def update_lead_status(
     status_id: int,
     payload: LeadStatusOptionUpdate,
@@ -3604,7 +3632,7 @@ async def update_lead_status(
 
 
 # --- List leads (must be before /leads/{lead_id} to avoid 404 "Not Found") ---
-@router.get("/leads", response_model=List[LeadResponse])
+@router.get("/_legacy-disabled/leads", response_model=List[LeadResponse])
 async def list_leads(
     status_filter: Optional[LeadStatus] = None,
     questionnaire_filled: Optional[bool] = None,
@@ -3623,7 +3651,10 @@ async def list_leads(
 ):
     auth.ensure_permission(current_user, "sales.access")
 
-    query = _filter_query_by_role(db.query(Lead).order_by(Lead.created_at.desc()), current_user)
+    query = _filter_query_by_role(
+        db.query(Lead).options(*_lead_eager_options()).order_by(Lead.created_at.desc()),
+        current_user,
+    )
     if status_filter:
         query = query.filter(Lead.status == status_filter)
     if questionnaire_filled is not None:
@@ -3660,13 +3691,13 @@ async def list_leads(
         query = query.filter(Lead.next_contact_at <= next_contact_to)
     leads = query.offset(offset).limit(limit).all()
 
-    # One-time/gradual бэкаповка старых лидов в воронку «Дожать на обучение»:
-    # если статус demo, по лиду уже есть [came] в регистрациях события, но post_visit_stage ещё не задана,
-    # проставляем stage='new', чтобы такие лиды появились на странице дожима.
+    # One-time/gradual Р±СЌРєР°РїРѕРІРєР° СЃС‚Р°СЂС‹С… Р»РёРґРѕРІ РІ РІРѕСЂРѕРЅРєСѓ В«Р”РѕР¶Р°С‚СЊ РЅР° РѕР±СѓС‡РµРЅРёРµВ»:
+    # РµСЃР»Рё СЃС‚Р°С‚СѓСЃ demo, РїРѕ Р»РёРґСѓ СѓР¶Рµ РµСЃС‚СЊ [came] РІ СЂРµРіРёСЃС‚СЂР°С†РёСЏС… СЃРѕР±С‹С‚РёСЏ, РЅРѕ post_visit_stage РµС‰С‘ РЅРµ Р·Р°РґР°РЅР°,
+    # РїСЂРѕСЃС‚Р°РІР»СЏРµРј stage='new', С‡С‚РѕР±С‹ С‚Р°РєРёРµ Р»РёРґС‹ РїРѕСЏРІРёР»РёСЃСЊ РЅР° СЃС‚СЂР°РЅРёС†Рµ РґРѕР¶РёРјР°.
     if status_filter == LeadStatus.DEMO:
         candidate_ids = [lead.id for lead in leads if not getattr(lead, "post_visit_stage", None)]
         if candidate_ids:
-            # Один запрос вместо N: ищем все lead_id с [came] среди кандидатов
+            # РћРґРёРЅ Р·Р°РїСЂРѕСЃ РІРјРµСЃС‚Рѕ N: РёС‰РµРј РІСЃРµ lead_id СЃ [came] СЃСЂРµРґРё РєР°РЅРґРёРґР°С‚РѕРІ
             came_lead_ids = {
                 row[0]
                 for row in db.query(EventRegistration.lead_id)
@@ -3685,10 +3716,10 @@ async def list_leads(
                     .execution_options(synchronize_session=False)
                 )
                 db.commit()
-                # Одним запросом перезагружаем только изменённые лиды
+                # РћРґРЅРёРј Р·Р°РїСЂРѕСЃРѕРј РїРµСЂРµР·Р°РіСЂСѓР¶Р°РµРј С‚РѕР»СЊРєРѕ РёР·РјРµРЅС‘РЅРЅС‹Рµ Р»РёРґС‹
                 refreshed = {
                     r.id: r
-                    for r in db.query(Lead).filter(Lead.id.in_(came_lead_ids)).all()
+                    for r in db.query(Lead).options(*_lead_eager_options()).filter(Lead.id.in_(came_lead_ids)).all()
                 }
                 leads = [refreshed.get(l.id, l) for l in leads]
 
@@ -3700,13 +3731,13 @@ async def list_leads(
     return result
 
 
-@router.get("/leads/{lead_id}/communications", response_model=List[LeadCommunicationResponse])
+@router.get("/_legacy-disabled/leads/{lead_id}/communications", response_model=List[LeadCommunicationResponse])
 async def list_lead_communications(
     lead_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    lead = db.query(Lead).options(*_lead_eager_options()).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
@@ -3718,7 +3749,7 @@ async def list_lead_communications(
     )
 
 
-@router.post("/leads/{lead_id}/communications", response_model=LeadCommunicationResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/leads/{lead_id}/communications", response_model=LeadCommunicationResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead_communication(
     lead_id: int,
     payload: LeadQuickCommunicationCreate,
@@ -3766,7 +3797,7 @@ async def create_lead_communication(
     return comm
 
 
-@router.post("/leads/{lead_id}/send-info", response_model=LeadCommunicationResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/leads/{lead_id}/send-info", response_model=LeadCommunicationResponse, status_code=status.HTTP_201_CREATED)
 async def send_info_for_lead(
     lead_id: int,
     payload: LeadSendInfoRequest,
@@ -3806,7 +3837,7 @@ async def send_info_for_lead(
     auto_task = LeadTask(
         lead_id=lead.id,
         owner_id=current_user.id,
-        note=f"[auto-follow-up] {payload.pause_reason or 'без причины'}",
+        note=f"[auto-follow-up] {payload.pause_reason or 'Р±РµР· РїСЂРёС‡РёРЅС‹'}",
         channel=(payload.channel or "messenger").strip(),
         due_at=payload.follow_up_at,
         status=LeadTaskStatus.OPEN,
@@ -3834,7 +3865,7 @@ async def send_info_for_lead(
     return comm
 
 
-@router.post("/leads/{lead_id}/contact-result", response_model=LeadCommunicationResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/leads/{lead_id}/contact-result", response_model=LeadCommunicationResponse, status_code=status.HTTP_201_CREATED)
 async def save_lead_contact_result(
     lead_id: int,
     payload: LeadContactResultRequest,
@@ -3856,9 +3887,9 @@ async def save_lead_contact_result(
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
 
     label_map = {
-        "connected": "дозвон",
-        "no_answer": "не дозвонились",
-        "callback": "перезвонить",
+        "connected": "РґРѕР·РІРѕРЅ",
+        "no_answer": "РЅРµ РґРѕР·РІРѕРЅРёР»РёСЃСЊ",
+        "callback": "РїРµСЂРµР·РІРѕРЅРёС‚СЊ",
     }
     message = f"[contact-result] {label_map[outcome]}"
     if payload.note and payload.note.strip():
@@ -3906,7 +3937,7 @@ async def save_lead_contact_result(
     return comm
 
 
-@router.post("/leads/import-xlsx", response_model=LeadImportResponse)
+@router.post("/_legacy-disabled/leads/import-xlsx", response_model=LeadImportResponse)
 async def import_leads_from_excel(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -3914,16 +3945,16 @@ async def import_leads_from_excel(
 ):
     filename = (file.filename or "").lower()
     if not filename.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Поддерживается только формат .xlsx")
+        raise HTTPException(status_code=400, detail="РџРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ С„РѕСЂРјР°С‚ .xlsx")
     data = await file.read()
     if not data:
-        raise HTTPException(status_code=400, detail="Файл пустой")
+        raise HTTPException(status_code=400, detail="Р¤Р°Р№Р» РїСѓСЃС‚РѕР№")
 
     wb = load_workbook(filename=BytesIO(data), data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
-        return LeadImportResponse(created=0, skipped=0, errors=["Пустой лист"])
+        return LeadImportResponse(created=0, skipped=0, errors=["РџСѓСЃС‚РѕР№ Р»РёСЃС‚"])
 
     headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
     header_map = {name: idx for idx, name in enumerate(headers)}
@@ -3975,17 +4006,17 @@ async def import_leads_from_excel(
     skipped = 0
     errors: List[str] = []
     for i, row in enumerate(rows[1:], start=2):
-        parent_name = val(row, ["фио родителя", "родитель", "parent_full_name"])
-        child_name = val(row, ["фио ребенка", "фио ребёнка", "ребенок", "ребёнок", "child_full_name"])
-        parent_phone = val(row, ["телефон родителя", "parent_phone"])
-        child_phone = val(row, ["телефон школьника", "телефон ребенка", "телефон ребёнка", "child_phone"])
-        source_name_raw = val(row, ["источник", "source"])
-        referral_name = val(row, ["кто пригласил", "рекомендовал", "referral_name"])
-        comment = val(row, ["комментарий", "comment"])
-        school_name = val(row, ["школа", "school", "school_name"])
-        school_class = val(row, ["класс", "class", "school_class"])
-        outreach_date_raw = val(row, ["дата обхода", "outreach_date", "outreach_at"])
-        outreach_minutes_raw = val(row, ["время обхода (мин)", "время обхода", "outreach_minutes"])
+        parent_name = val(row, ["С„РёРѕ СЂРѕРґРёС‚РµР»СЏ", "СЂРѕРґРёС‚РµР»СЊ", "parent_full_name"])
+        child_name = val(row, ["С„РёРѕ СЂРµР±РµРЅРєР°", "С„РёРѕ СЂРµР±С‘РЅРєР°", "СЂРµР±РµРЅРѕРє", "СЂРµР±С‘РЅРѕРє", "child_full_name"])
+        parent_phone = val(row, ["С‚РµР»РµС„РѕРЅ СЂРѕРґРёС‚РµР»СЏ", "parent_phone"])
+        child_phone = val(row, ["С‚РµР»РµС„РѕРЅ С€РєРѕР»СЊРЅРёРєР°", "С‚РµР»РµС„РѕРЅ СЂРµР±РµРЅРєР°", "С‚РµР»РµС„РѕРЅ СЂРµР±С‘РЅРєР°", "child_phone"])
+        source_name_raw = val(row, ["РёСЃС‚РѕС‡РЅРёРє", "source"])
+        referral_name = val(row, ["РєС‚Рѕ РїСЂРёРіР»Р°СЃРёР»", "СЂРµРєРѕРјРµРЅРґРѕРІР°Р»", "referral_name"])
+        comment = val(row, ["РєРѕРјРјРµРЅС‚Р°СЂРёР№", "comment"])
+        school_name = val(row, ["С€РєРѕР»Р°", "school", "school_name"])
+        school_class = val(row, ["РєР»Р°СЃСЃ", "class", "school_class"])
+        outreach_date_raw = val(row, ["РґР°С‚Р° РѕР±С…РѕРґР°", "outreach_date", "outreach_at"])
+        outreach_minutes_raw = val(row, ["РІСЂРµРјСЏ РѕР±С…РѕРґР° (РјРёРЅ)", "РІСЂРµРјСЏ РѕР±С…РѕРґР°", "outreach_minutes"])
         outreach_at = parse_row_datetime(outreach_date_raw)
         outreach_minutes = parse_row_minutes(outreach_minutes_raw)
 
@@ -3995,12 +4026,12 @@ async def import_leads_from_excel(
 
         source_id, source_name = _resolve_source(db, None, source_name_raw)
         if _is_referral_source(source_name) and not (referral_name or "").strip():
-            errors.append("Строка {0}: для источника 'рекомендация' не указан пригласивший".format(i))
+            errors.append("РЎС‚СЂРѕРєР° {0}: РґР»СЏ РёСЃС‚РѕС‡РЅРёРєР° 'СЂРµРєРѕРјРµРЅРґР°С†РёСЏ' РЅРµ СѓРєР°Р·Р°РЅ РїСЂРёРіР»Р°СЃРёРІС€РёР№".format(i))
             skipped += 1
             continue
 
-        contact_name = parent_name or child_name or "Без имени"
-        phone = parent_phone or child_phone or "не указан"
+        contact_name = parent_name or child_name or "Р‘РµР· РёРјРµРЅРё"
+        phone = parent_phone or child_phone or "РЅРµ СѓРєР°Р·Р°РЅ"
         lead = Lead(
             owner_id=current_user.id,
             contact_name=contact_name,
@@ -4030,7 +4061,7 @@ async def import_leads_from_excel(
     return LeadImportResponse(created=created, skipped=skipped, errors=errors)
 
 
-@router.get("/leads/import-template")
+@router.get("/_legacy-disabled/leads/import-template")
 async def download_leads_import_template(
     current_user: User = Depends(require_sales_admin_owner),
 ):
@@ -4038,32 +4069,32 @@ async def download_leads_import_template(
     ws = wb.active
     ws.title = "LeadsImport"
     headers = [
-        "ФИО родителя",
-        "ФИО ребенка",
-        "Телефон родителя",
-        "Телефон школьника",
-        "Школа",
-        "Класс",
-        "Дата обхода",
-        "Время обхода (мин)",
-        "Источник",
-        "Кто пригласил",
-        "Комментарий",
+        "Р¤РРћ СЂРѕРґРёС‚РµР»СЏ",
+        "Р¤РРћ СЂРµР±РµРЅРєР°",
+        "РўРµР»РµС„РѕРЅ СЂРѕРґРёС‚РµР»СЏ",
+        "РўРµР»РµС„РѕРЅ С€РєРѕР»СЊРЅРёРєР°",
+        "РЁРєРѕР»Р°",
+        "РљР»Р°СЃСЃ",
+        "Р”Р°С‚Р° РѕР±С…РѕРґР°",
+        "Р’СЂРµРјСЏ РѕР±С…РѕРґР° (РјРёРЅ)",
+        "РСЃС‚РѕС‡РЅРёРє",
+        "РљС‚Рѕ РїСЂРёРіР»Р°СЃРёР»",
+        "РљРѕРјРјРµРЅС‚Р°СЂРёР№",
     ]
     ws.append(headers)
     ws.append(
         [
-            "Иванова Анна Петровна",
-            "Иванов Петр",
+            "РРІР°РЅРѕРІР° РђРЅРЅР° РџРµС‚СЂРѕРІРЅР°",
+            "РРІР°РЅРѕРІ РџРµС‚СЂ",
             "+7 999 111-22-33",
             "+7 900 111-22-44",
-            "Школа №12",
-            "7А",
+            "РЁРєРѕР»Р° в„–12",
+            "7Рђ",
             "2026-02-01",
             "35",
-            "рекомендация",
-            "Мария Сидорова",
-            "Интерес к занятиям после пробного урока",
+            "СЂРµРєРѕРјРµРЅРґР°С†РёСЏ",
+            "РњР°СЂРёСЏ РЎРёРґРѕСЂРѕРІР°",
+            "РРЅС‚РµСЂРµСЃ Рє Р·Р°РЅСЏС‚РёСЏРј РїРѕСЃР»Рµ РїСЂРѕР±РЅРѕРіРѕ СѓСЂРѕРєР°",
         ]
     )
     ws.freeze_panes = "A2"
@@ -4081,7 +4112,7 @@ async def download_leads_import_template(
 
 
 @router.post(
-    "/public/leads/specialist-questionnaire",
+    "/_legacy-disabled/public/leads/specialist-questionnaire",
     response_model=SpecialistQuestionnaireResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -4090,8 +4121,8 @@ async def submit_specialist_questionnaire(
     db: Session = Depends(get_db),
 ):
     """
-    Публичная анкета для направления «Специалист».
-    Доступна без авторизации, создаёт лида с questionnaire_filled=True.
+    РџСѓР±Р»РёС‡РЅР°СЏ Р°РЅРєРµС‚Р° РґР»СЏ РЅР°РїСЂР°РІР»РµРЅРёСЏ В«РЎРїРµС†РёР°Р»РёСЃС‚В».
+    Р”РѕСЃС‚СѓРїРЅР° Р±РµР· Р°РІС‚РѕСЂРёР·Р°С†РёРё, СЃРѕР·РґР°С‘С‚ Р»РёРґР° СЃ questionnaire_filled=True.
     """
     owner = (
         db.query(User)
@@ -4102,7 +4133,7 @@ async def submit_specialist_questionnaire(
     if not owner:
         raise HTTPException(status_code=500, detail="No sales/owner/admin user configured")
 
-    # Создаём личную анкету ученика (StudentCard) со всеми полями
+    # РЎРѕР·РґР°С‘Рј Р»РёС‡РЅСѓСЋ Р°РЅРєРµС‚Сѓ СѓС‡РµРЅРёРєР° (StudentCard) СЃРѕ РІСЃРµРјРё РїРѕР»СЏРјРё
     card = StudentCard(
         student_full_name=payload.child_full_name,
         birth_date=payload.birth_date,
@@ -4123,7 +4154,7 @@ async def submit_specialist_questionnaire(
         student_email=payload.student_email,
         preferred_messenger=payload.preferred_messenger,
         comment=payload.comment,
-        source=payload.source or "Анкета Специалист",
+        source=payload.source or "РђРЅРєРµС‚Р° РЎРїРµС†РёР°Р»РёСЃС‚",
         discount_type=DiscountType.NONE,
         discount_value=0.0,
         anketa_status="filled",
@@ -4131,21 +4162,21 @@ async def submit_specialist_questionnaire(
 
     extra_parts: List[str] = []
     if payload.birth_date:
-        extra_parts.append(f"Дата рождения: {payload.birth_date.isoformat()}")
+        extra_parts.append(f"Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ: {payload.birth_date.isoformat()}")
     if payload.child_phone:
-        extra_parts.append(f"Телефон ученика: {payload.child_phone}")
+        extra_parts.append(f"РўРµР»РµС„РѕРЅ СѓС‡РµРЅРёРєР°: {payload.child_phone}")
     if payload.child_telegram:
-        extra_parts.append(f"Телеграм ученика: {payload.child_telegram}")
+        extra_parts.append(f"РўРµР»РµРіСЂР°Рј СѓС‡РµРЅРёРєР°: {payload.child_telegram}")
     if payload.gender:
-        extra_parts.append(f"Пол: {payload.gender}")
+        extra_parts.append(f"РџРѕР»: {payload.gender}")
     if payload.parent_phone_2:
-        extra_parts.append(f"Второй телефон родителя: {payload.parent_phone_2}")
+        extra_parts.append(f"Р’С‚РѕСЂРѕР№ С‚РµР»РµС„РѕРЅ СЂРѕРґРёС‚РµР»СЏ: {payload.parent_phone_2}")
     if payload.parent_telegram:
-        extra_parts.append(f"Телеграм родителя: {payload.parent_telegram}")
+        extra_parts.append(f"РўРµР»РµРіСЂР°Рј СЂРѕРґРёС‚РµР»СЏ: {payload.parent_telegram}")
     if payload.student_email:
-        extra_parts.append(f"Email ученика: {payload.student_email}")
+        extra_parts.append(f"Email СѓС‡РµРЅРёРєР°: {payload.student_email}")
     if payload.preferred_messenger:
-        extra_parts.append(f"Мессенджер: {payload.preferred_messenger}")
+        extra_parts.append(f"РњРµСЃСЃРµРЅРґР¶РµСЂ: {payload.preferred_messenger}")
 
     base_comment = payload.comment or ""
     extras_str = "\n".join(extra_parts) if extra_parts else ""
@@ -4153,7 +4184,7 @@ async def submit_specialist_questionnaire(
     if extras_str:
         full_comment = (base_comment + "\n\n" if base_comment else "") + extras_str
 
-    questionnaire_data = payload.model_dump(mode="json")  # все поля формы для отображения в карточке лида
+    questionnaire_data = payload.model_dump(mode="json")  # РІСЃРµ РїРѕР»СЏ С„РѕСЂРјС‹ РґР»СЏ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ РІ РєР°СЂС‚РѕС‡РєРµ Р»РёРґР°
     lead = Lead(
         owner_id=owner.id,
         contact_name=payload.parent_full_name,
@@ -4168,7 +4199,7 @@ async def submit_specialist_questionnaire(
         school_name=payload.school_name,
         school_class=payload.school_class,
         comment=full_comment or None,
-        source=payload.source or "Анкета Специалист",
+        source=payload.source or "РђРЅРєРµС‚Р° РЎРїРµС†РёР°Р»РёСЃС‚",
         tags=["direction:specialist"],
         status=LeadStatus.NEW,
         questionnaire_filled=True,
@@ -4185,13 +4216,13 @@ async def submit_specialist_questionnaire(
     return SpecialistQuestionnaireResponse(lead_id=lead.id)
 
 
-TILDA_SOURCE_START = "Тильда_Первый Шаг"
-TILDA_SOURCE_BASE = "Тильда_Специалист"
-TILDA_SOURCE_PRO = "Тильда_Эксперт"
+TILDA_SOURCE_START = "РўРёР»СЊРґР°_РџРµСЂРІС‹Р№ РЁР°Рі"
+TILDA_SOURCE_BASE = "РўРёР»СЊРґР°_РЎРїРµС†РёР°Р»РёСЃС‚"
+TILDA_SOURCE_PRO = "РўРёР»СЊРґР°_Р­РєСЃРїРµСЂС‚"
 
 
 @router.post(
-    "/public/leads/tilda-lead",
+    "/_legacy-disabled/public/leads/tilda-lead",
     response_model=TildaLeadResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -4200,18 +4231,18 @@ async def submit_tilda_lead(
     db: Session = Depends(get_db),
 ):
     """
-    Публичная анкета лида с сайта Tilda.
-    Создаёт лида в статусе «новый» с пометкой источника в зависимости от направления:
-    - Тильда_Первый Шаг (kind=start)
-    - Тильда_Специалист (kind=base)
-    - Тильда_Эксперт (kind=pro)
+    РџСѓР±Р»РёС‡РЅР°СЏ Р°РЅРєРµС‚Р° Р»РёРґР° СЃ СЃР°Р№С‚Р° Tilda.
+    РЎРѕР·РґР°С‘С‚ Р»РёРґР° РІ СЃС‚Р°С‚СѓСЃРµ В«РЅРѕРІС‹Р№В» СЃ РїРѕРјРµС‚РєРѕР№ РёСЃС‚РѕС‡РЅРёРєР° РІ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕС‚ РЅР°РїСЂР°РІР»РµРЅРёСЏ:
+    - РўРёР»СЊРґР°_РџРµСЂРІС‹Р№ РЁР°Рі (kind=start)
+    - РўРёР»СЊРґР°_РЎРїРµС†РёР°Р»РёСЃС‚ (kind=base)
+    - РўРёР»СЊРґР°_Р­РєСЃРїРµСЂС‚ (kind=pro)
     """
     parent_name = (payload.parent_full_name or "").strip()
     child_name = (payload.child_full_name or "").strip()
     if not parent_name:
-        raise HTTPException(status_code=400, detail="Укажите ФИО родителя")
+        raise HTTPException(status_code=400, detail="РЈРєР°Р¶РёС‚Рµ Р¤РРћ СЂРѕРґРёС‚РµР»СЏ")
     if not child_name:
-        raise HTTPException(status_code=400, detail="Укажите ФИО ученика")
+        raise HTTPException(status_code=400, detail="РЈРєР°Р¶РёС‚Рµ Р¤РРћ СѓС‡РµРЅРёРєР°")
 
     normalized_phone, phone_error = validate_phone_for_lead(payload.parent_phone)
     if phone_error:
@@ -4224,7 +4255,7 @@ async def submit_tilda_lead(
         .first()
     )
     if not owner:
-        raise HTTPException(status_code=500, detail="В системе не настроен пользователь для приёма заявок")
+        raise HTTPException(status_code=500, detail="Р’ СЃРёСЃС‚РµРјРµ РЅРµ РЅР°СЃС‚СЂРѕРµРЅ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РґР»СЏ РїСЂРёС‘РјР° Р·Р°СЏРІРѕРє")
 
     kind = (payload.kind or "start").strip()
     if kind == "base":
@@ -4262,7 +4293,7 @@ async def submit_tilda_lead(
     return TildaLeadResponse(lead_id=lead.id)
 
 
-@router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead(
     payload: LeadCreate,
     db: Session = Depends(get_db),
@@ -4272,7 +4303,7 @@ async def create_lead(
     owner_id = payload.owner_id if (effective_role in (UserRole.ADMIN, UserRole.OWNER) and payload.owner_id) else current_user.id
     source_id, source_name = _resolve_source(db, payload.source_id, payload.source)
     if _is_referral_source(source_name) and not (payload.referral_name or "").strip():
-        raise HTTPException(status_code=400, detail="Для источника 'рекомендация' укажите, кто пригласил")
+        raise HTTPException(status_code=400, detail="Р”Р»СЏ РёСЃС‚РѕС‡РЅРёРєР° 'СЂРµРєРѕРјРµРЅРґР°С†РёСЏ' СѓРєР°Р¶РёС‚Рµ, РєС‚Рѕ РїСЂРёРіР»Р°СЃРёР»")
 
     abonement = None
     if payload.abonement_id:
@@ -4311,8 +4342,8 @@ async def create_lead(
     _add_activity(
         db, lead.id, current_user.id,
         type="lead_created",
-        title="Лид создан",
-        description=f"Источник: {source_name or '—'}",
+        title="Р›РёРґ СЃРѕР·РґР°РЅ",
+        description=f"РСЃС‚РѕС‡РЅРёРє: {source_name or 'вЂ”'}",
     )
     db.commit()
     db.refresh(lead)
@@ -4321,16 +4352,16 @@ async def create_lead(
     return lead
 
 
-_SEND_INFO_TASK_MARKER = "отправить информацию"
+_SEND_INFO_TASK_MARKER = "РѕС‚РїСЂР°РІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ"
 
 
-@router.get("/leads/send-info-status")
+@router.get("/_legacy-disabled/leads/send-info-status")
 async def get_leads_send_info_status(
     lead_ids: str = Query(..., description="Comma-separated lead IDs"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    """Возвращает для каждого lead_id статус задачи «Отправить информацию»: open, done, none."""
+    """Р’РѕР·РІСЂР°С‰Р°РµС‚ РґР»СЏ РєР°Р¶РґРѕРіРѕ lead_id СЃС‚Р°С‚СѓСЃ Р·Р°РґР°С‡Рё В«РћС‚РїСЂР°РІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋВ»: open, done, none."""
     if not lead_ids.strip():
         return {}
     ids = [int(x.strip()) for x in lead_ids.split(",") if x.strip()]
@@ -4353,7 +4384,7 @@ async def get_leads_send_info_status(
     )
     result: Dict[str, str] = {str(i): "none" for i in ids if i in allowed_ids}
 
-    # 1) Статусы по LeadTask (старый механизм)
+    # 1) РЎС‚Р°С‚СѓСЃС‹ РїРѕ LeadTask (СЃС‚Р°СЂС‹Р№ РјРµС…Р°РЅРёР·Рј)
     for t in tasks:
         if t.lead_id not in allowed_ids:
             continue
@@ -4363,10 +4394,10 @@ async def get_leads_send_info_status(
         elif result.get(key) != "open":
             result[key] = "done"
 
-    # 2) Дополнительно учитываем общие задачи Task с тегами ["send_info", f"lead:{id}"].
-    #    Они ДОЛЖНЫ переопределять статус, даже если LeadTask ещё открыт:
-    #    - есть хотя бы одна активная Task → open
-    #    - активных нет, но есть архивные → done
+    # 2) Р”РѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ СѓС‡РёС‚С‹РІР°РµРј РѕР±С‰РёРµ Р·Р°РґР°С‡Рё Task СЃ С‚РµРіР°РјРё ["send_info", f"lead:{id}"].
+    #    РћРЅРё Р”РћР›Р–РќР« РїРµСЂРµРѕРїСЂРµРґРµР»СЏС‚СЊ СЃС‚Р°С‚СѓСЃ, РґР°Р¶Рµ РµСЃР»Рё LeadTask РµС‰С‘ РѕС‚РєСЂС‹С‚:
+    #    - РµСЃС‚СЊ С…РѕС‚СЏ Р±С‹ РѕРґРЅР° Р°РєС‚РёРІРЅР°СЏ Task в†’ open
+    #    - Р°РєС‚РёРІРЅС‹С… РЅРµС‚, РЅРѕ РµСЃС‚СЊ Р°СЂС…РёРІРЅС‹Рµ в†’ done
     common_tasks = (
         db.query(Task)
         .filter(Task.category == "leads", Task.tags.isnot(None))
@@ -4399,7 +4430,7 @@ async def get_leads_send_info_status(
     return result
 
 
-@router.get("/leads/badges")
+@router.get("/_legacy-disabled/leads/badges")
 async def get_leads_badges(
     lead_ids: str = Query(..., description="Comma-separated lead IDs"),
     db: Session = Depends(get_db),
@@ -4455,7 +4486,7 @@ async def get_leads_badges(
     return result
 
 
-@router.get("/leads/no-show-ids", response_model=List[int])
+@router.get("/_legacy-disabled/leads/no-show-ids", response_model=List[int])
 async def list_no_show_lead_ids(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
@@ -4476,7 +4507,7 @@ async def list_no_show_lead_ids(
     return [r[0] for r in rows]
 
 
-@router.get("/leads/{lead_id}", response_model=LeadResponse)
+@router.get("/_legacy-disabled/leads/{lead_id}", response_model=LeadResponse)
 async def get_lead(
     lead_id: int,
     db: Session = Depends(get_db),
@@ -4491,7 +4522,7 @@ async def get_lead(
     return lead
 
 
-@router.put("/leads/{lead_id}", response_model=LeadResponse)
+@router.put("/_legacy-disabled/leads/{lead_id}", response_model=LeadResponse)
 async def update_lead(
     lead_id: int,
     payload: LeadUpdate,
@@ -4514,7 +4545,7 @@ async def update_lead(
     if "source_id" in update_data or "source" in update_data:
         source_id, source_name = _resolve_source(db, update_data.get("source_id"), update_data.get("source"))
         if _is_referral_source(source_name) and not (update_data.get("referral_name") or lead.referral_name or "").strip():
-            raise HTTPException(status_code=400, detail="Для источника 'рекомендация' укажите, кто пригласил")
+            raise HTTPException(status_code=400, detail="Р”Р»СЏ РёСЃС‚РѕС‡РЅРёРєР° 'СЂРµРєРѕРјРµРЅРґР°С†РёСЏ' СѓРєР°Р¶РёС‚Рµ, РєС‚Рѕ РїСЂРёРіР»Р°СЃРёР»")
         lead.source_id = source_id
         lead.source = source_name
 
@@ -4558,7 +4589,7 @@ async def update_lead(
         _add_activity(
             db, lead_id, current_user.id,
             type="status_changed",
-            title=f"Статус изменён",
+            title=f"РЎС‚Р°С‚СѓСЃ РёР·РјРµРЅС‘РЅ",
             status_effect_from=old_status,
             status_effect_to=new_status,
         )
@@ -4569,15 +4600,15 @@ async def update_lead(
     return lead
 
 
-@router.delete("/leads/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/_legacy-disabled/leads/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_lead(
     lead_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
     """
-    Полное удаление лида и связанных сущностей (задачи, коммуникации, счета и т.д.).
-    Используется, когда лид создан по ошибке или явно не нужен в системе.
+    РџРѕР»РЅРѕРµ СѓРґР°Р»РµРЅРёРµ Р»РёРґР° Рё СЃРІСЏР·Р°РЅРЅС‹С… СЃСѓС‰РЅРѕСЃС‚РµР№ (Р·Р°РґР°С‡Рё, РєРѕРјРјСѓРЅРёРєР°С†РёРё, СЃС‡РµС‚Р° Рё С‚.Рґ.).
+    РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ, РєРѕРіРґР° Р»РёРґ СЃРѕР·РґР°РЅ РїРѕ РѕС€РёР±РєРµ РёР»Рё СЏРІРЅРѕ РЅРµ РЅСѓР¶РµРЅ РІ СЃРёСЃС‚РµРјРµ.
     """
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -4589,24 +4620,24 @@ async def delete_lead(
     return None
 
 
-@router.post("/leads/{lead_id}/convert-to-student", response_model=LeadConvertToStudentResponse)
+@router.post("/_legacy-disabled/leads/{lead_id}/convert-to-student", response_model=LeadConvertToStudentResponse)
 async def convert_lead_to_student(
     lead_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """
-    Переводит лида в ученика: создаёт родителя (если нет по email) и ученика с from_lead_id,
-    привязывает или создаёт анкету (StudentCard) из данных лида/опроса.
-    Обновляет лида (status=WON, converted_to_student_id).
-    Бизнес-логика вынесена в app.services.lead_conversion.
+    РџРµСЂРµРІРѕРґРёС‚ Р»РёРґР° РІ СѓС‡РµРЅРёРєР°: СЃРѕР·РґР°С‘С‚ СЂРѕРґРёС‚РµР»СЏ (РµСЃР»Рё РЅРµС‚ РїРѕ email) Рё СѓС‡РµРЅРёРєР° СЃ from_lead_id,
+    РїСЂРёРІСЏР·С‹РІР°РµС‚ РёР»Рё СЃРѕР·РґР°С‘С‚ Р°РЅРєРµС‚Сѓ (StudentCard) РёР· РґР°РЅРЅС‹С… Р»РёРґР°/РѕРїСЂРѕСЃР°.
+    РћР±РЅРѕРІР»СЏРµС‚ Р»РёРґР° (status=WON, converted_to_student_id).
+    Р‘РёР·РЅРµСЃ-Р»РѕРіРёРєР° РІС‹РЅРµСЃРµРЅР° РІ app.services.lead_conversion.
     """
     _require_sales_admin_owner(current_user)
     try:
         result = lead_conversion_convert(db, lead_id, actor_user_id=current_user.id)
     except ValueError as e:
         msg = str(e)
-        if "не найден" in msg.lower():
+        if "РЅРµ РЅР°Р№РґРµРЅ" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     return LeadConvertToStudentResponse(
@@ -4615,7 +4646,7 @@ async def convert_lead_to_student(
     )
 
 
-@router.post("/leads/{lead_id}/tasks", response_model=LeadTaskResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/leads/{lead_id}/tasks", response_model=LeadTaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead_task(
     lead_id: int,
     payload: LeadTaskCreate,
@@ -4670,14 +4701,14 @@ async def create_lead_task(
     )
     db.add(task)
 
-    # Если это задача «Отправить информацию» — создаём также общую задачу в /tasks
-    # (категория leads), чтобы менеджер увидел её в «Плане на сегодня».
+    # Р•СЃР»Рё СЌС‚Рѕ Р·Р°РґР°С‡Р° В«РћС‚РїСЂР°РІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋВ» вЂ” СЃРѕР·РґР°С‘Рј С‚Р°РєР¶Рµ РѕР±С‰СѓСЋ Р·Р°РґР°С‡Сѓ РІ /tasks
+    # (РєР°С‚РµРіРѕСЂРёСЏ leads), С‡С‚РѕР±С‹ РјРµРЅРµРґР¶РµСЂ СѓРІРёРґРµР» РµС‘ РІ В«РџР»Р°РЅРµ РЅР° СЃРµРіРѕРґРЅСЏВ».
     note_lower = (payload.note or "").strip().lower() if payload.note else ""
     if _SEND_INFO_TASK_MARKER in note_lower:
-        from app.models import Task, TaskStatus  # локальный импорт, чтобы не плодить зависимости наверху
+        from app.models import Task, TaskStatus  # Р»РѕРєР°Р»СЊРЅС‹Р№ РёРјРїРѕСЂС‚, С‡С‚РѕР±С‹ РЅРµ РїР»РѕРґРёС‚СЊ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РЅР°РІРµСЂС…Сѓ
 
-        title = f"Отправить информацию: {lead.parent_full_name or lead.contact_name or lead.phone or f'Лид #{lead.id}'}"
-        description = f"Отправить информацию по лиду #{lead.id}"
+        title = f"РћС‚РїСЂР°РІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ: {lead.parent_full_name or lead.contact_name or lead.phone or f'Р›РёРґ #{lead.id}'}"
+        description = f"РћС‚РїСЂР°РІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ РїРѕ Р»РёРґСѓ #{lead.id}"
         assignee_id = lead.owner_id or current_user.id
         common_task = Task(
             title=title,
@@ -4695,8 +4726,8 @@ async def create_lead_task(
     _add_activity(
         db, lead_id, current_user.id,
         type="task_created",
-        title=f"Создана задача: {payload.note or 'без названия'}",
-        description=f"Срок: {payload.due_at.strftime('%d.%m.%Y %H:%M') if payload.due_at else 'не указан'}",
+        title=f"РЎРѕР·РґР°РЅР° Р·Р°РґР°С‡Р°: {payload.note or 'Р±РµР· РЅР°Р·РІР°РЅРёСЏ'}",
+        description=f"РЎСЂРѕРє: {payload.due_at.strftime('%d.%m.%Y %H:%M') if payload.due_at else 'РЅРµ СѓРєР°Р·Р°РЅ'}",
         related_task_id=task.id,
     )
     db.commit()
@@ -4705,7 +4736,7 @@ async def create_lead_task(
     return task
 
 
-@router.get("/leads/{lead_id}/tasks", response_model=List[LeadTaskResponse])
+@router.get("/_legacy-disabled/leads/{lead_id}/tasks", response_model=List[LeadTaskResponse])
 async def list_lead_tasks(
     lead_id: int,
     db: Session = Depends(get_db),
@@ -4724,7 +4755,7 @@ async def list_lead_tasks(
     return tasks
 
 
-@router.post("/leads/{lead_id}/tasks/{task_id}/close", response_model=LeadTaskResponse)
+@router.post("/_legacy-disabled/leads/{lead_id}/tasks/{task_id}/close", response_model=LeadTaskResponse)
 async def close_lead_task(
     lead_id: int,
     task_id: int,
@@ -4761,8 +4792,8 @@ async def close_lead_task(
     db.commit()
     db.refresh(task)
 
-    # Если закрыли задачу «Отправить информацию» — переводим лида в «Подумают» и создаём задачу «Позвонить лиду и узнать решение» через 2 дня
-    _FOLLOW_UP_NOTE = "Позвонить лиду и узнать решение"
+    # Р•СЃР»Рё Р·Р°РєСЂС‹Р»Рё Р·Р°РґР°С‡Сѓ В«РћС‚РїСЂР°РІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋВ» вЂ” РїРµСЂРµРІРѕРґРёРј Р»РёРґР° РІ В«РџРѕРґСѓРјР°СЋС‚В» Рё СЃРѕР·РґР°С‘Рј Р·Р°РґР°С‡Сѓ В«РџРѕР·РІРѕРЅРёС‚СЊ Р»РёРґСѓ Рё СѓР·РЅР°С‚СЊ СЂРµС€РµРЅРёРµВ» С‡РµСЂРµР· 2 РґРЅСЏ
+    _FOLLOW_UP_NOTE = "РџРѕР·РІРѕРЅРёС‚СЊ Р»РёРґСѓ Рё СѓР·РЅР°С‚СЊ СЂРµС€РµРЅРёРµ"
     template_name = (task.template.name if task.template else "") or ""
     note_lower = (task.note or "").lower()
     is_send_info = _SEND_INFO_TASK_MARKER in template_name.lower() or _SEND_INFO_TASK_MARKER in note_lower
@@ -4794,7 +4825,7 @@ async def close_lead_task(
     _add_activity(
         db, lead_id, current_user.id,
         type="task_done",
-        title=f"Задача выполнена: {task.note or 'без названия'}",
+        title=f"Р—Р°РґР°С‡Р° РІС‹РїРѕР»РЅРµРЅР°: {task.note or 'Р±РµР· РЅР°Р·РІР°РЅРёСЏ'}",
         related_task_id=task.id,
     )
     if not is_send_info:
@@ -4804,7 +4835,7 @@ async def close_lead_task(
     return task
 
 
-@router.put("/leads/{lead_id}/tasks/{task_id}", response_model=LeadTaskResponse)
+@router.put("/_legacy-disabled/leads/{lead_id}/tasks/{task_id}", response_model=LeadTaskResponse)
 async def update_lead_task(
     lead_id: int,
     task_id: int,
@@ -4837,7 +4868,7 @@ async def update_lead_task(
     return task
 
 
-@router.post("/leads/{lead_id}/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/leads/{lead_id}/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 async def create_invoice_for_lead(
     lead_id: int,
     payload: InvoiceCreate,
@@ -4871,7 +4902,7 @@ async def create_invoice_for_lead(
     _add_activity(
         db, lead_id, current_user.id,
         type="invoice_created",
-        title=f"Выставлен счёт на {amount} {payload.currency or 'RUB'}",
+        title=f"Р’С‹СЃС‚Р°РІР»РµРЅ СЃС‡С‘С‚ РЅР° {amount} {payload.currency or 'RUB'}",
         status_effect_from=old_status if old_status != lead.status.value else None,
         status_effect_to=lead.status.value if old_status != lead.status.value else None,
         related_invoice_id=invoice.id,
@@ -4882,7 +4913,7 @@ async def create_invoice_for_lead(
     return invoice
 
 
-@router.get("/leads/{lead_id}/invoices", response_model=List[InvoiceResponse])
+@router.get("/_legacy-disabled/leads/{lead_id}/invoices", response_model=List[InvoiceResponse])
 async def list_invoices_for_lead(
     lead_id: int,
     db: Session = Depends(get_db),
@@ -4900,19 +4931,19 @@ async def list_invoices_for_lead(
     )
 
 
-@router.get("/leads/{lead_id}/card")
+@router.get("/_legacy-disabled/leads/{lead_id}/card")
 async def get_lead_card(
     lead_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
     """Aggregated endpoint for lead card first render."""
-    lead = db.query(Lead).options(joinedload(Lead.owner)).filter(Lead.id == lead_id).first()
+    lead = db.query(Lead).options(*_lead_eager_options()).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
 
-    # Next action — closest open task
+    # Next action вЂ” closest open task
     next_task = (
         db.query(LeadTask)
         .options(joinedload(LeadTask.owner))
@@ -4935,7 +4966,7 @@ async def get_lead_card(
             state = "on_time"
         next_action = LeadNextAction(
             type="task",
-            title=next_task.note or "Задача",
+            title=next_task.note or "Р—Р°РґР°С‡Р°",
             due_at=next_task.due_at,
             owner_name=next_task.owner.full_name if next_task.owner else None,
             task_id=next_task.id,
@@ -4950,7 +4981,7 @@ async def get_lead_card(
             state = "on_time"
         next_action = LeadNextAction(
             type="contact",
-            title="Связаться",
+            title="РЎРІСЏР·Р°С‚СЊСЃСЏ",
             due_at=lead.next_contact_at,
             owner_name=lead.owner.full_name if lead.owner else None,
             state=state,
@@ -5034,7 +5065,7 @@ async def get_lead_card(
     }
 
 
-@router.get("/leads/{lead_id}/timeline", response_model=List[LeadActivityResponse])
+@router.get("/_legacy-disabled/leads/{lead_id}/timeline", response_model=List[LeadActivityResponse])
 async def get_lead_timeline(
     lead_id: int,
     offset: int = Query(0, ge=0),
@@ -5078,7 +5109,7 @@ async def get_lead_timeline(
     ]
 
 
-@router.post("/leads/{lead_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/leads/{lead_id}/activities", response_model=LeadActivityResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead_activity(
     lead_id: int,
     payload: LeadActivityCreate,
@@ -5135,7 +5166,7 @@ async def create_lead_activity(
     )
 
 
-@router.post("/leads/{lead_id}/invoices/{invoice_id}/mark-paid", response_model=InvoiceResponse)
+@router.post("/_legacy-disabled/leads/{lead_id}/invoices/{invoice_id}/mark-paid", response_model=InvoiceResponse)
 async def mark_invoice_paid(
     lead_id: int,
     invoice_id: int,
@@ -5158,7 +5189,7 @@ async def mark_invoice_paid(
     _add_activity(
         db, lead_id, current_user.id,
         type="invoice_paid",
-        title=f"Счёт оплачен: {invoice.amount} {invoice.currency}",
+        title=f"РЎС‡С‘С‚ РѕРїР»Р°С‡РµРЅ: {invoice.amount} {invoice.currency}",
         related_invoice_id=invoice.id,
     )
     db.commit()
@@ -5167,7 +5198,7 @@ async def mark_invoice_paid(
     return invoice
 
 
-@router.post("/invoices/{invoice_id}/send-email", response_model=InvoiceResponse)
+@router.post("/_legacy-disabled/invoices/{invoice_id}/send-email", response_model=InvoiceResponse)
 async def send_invoice_email(
     invoice_id: int,
     db: Session = Depends(get_db),
@@ -5196,7 +5227,7 @@ async def send_invoice_email(
     return invoice
 
 
-@router.get("/invoices", response_model=List[InvoiceResponse])
+@router.get("/_legacy-disabled/invoices", response_model=List[InvoiceResponse])
 async def list_invoices(
     status_filter: Optional[InvoiceStatus] = None,
     lead_id: Optional[int] = None,
@@ -5224,7 +5255,7 @@ async def list_invoices(
     return query.all()
 
 
-@router.get("/events", response_model=List[EventResponse])
+@router.get("/_legacy-disabled/events", response_model=List[EventResponse])
 async def list_events(
     status_filter: Optional[EventStatus] = None,
     db: Session = Depends(get_db),
@@ -5236,7 +5267,7 @@ async def list_events(
     return query.all()
 
 
-@router.post("/events", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/events", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 async def create_event(
     payload: EventCreate,
     db: Session = Depends(get_db),
@@ -5259,7 +5290,7 @@ async def create_event(
     return event
 
 
-@router.put("/events/{event_id}", response_model=EventResponse)
+@router.put("/_legacy-disabled/events/{event_id}", response_model=EventResponse)
 async def update_event(
     event_id: int,
     payload: EventUpdate,
@@ -5279,7 +5310,7 @@ async def update_event(
     return event
 
 
-@router.get("/events/{event_id}/registrations", response_model=List[EventRegistrationResponse])
+@router.get("/_legacy-disabled/events/{event_id}/registrations", response_model=List[EventRegistrationResponse])
 async def list_event_registrations(
     event_id: int,
     db: Session = Depends(get_db),
@@ -5293,7 +5324,7 @@ async def list_event_registrations(
     return query.all()
 
 
-@router.post("/events/{event_id}/registrations", response_model=EventRegistrationResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/_legacy-disabled/events/{event_id}/registrations", response_model=EventRegistrationResponse, status_code=status.HTTP_201_CREATED)
 async def create_event_registration(
     event_id: int,
     payload: EventRegistrationCreate,
@@ -5313,7 +5344,7 @@ async def create_event_registration(
             .count()
         )
         if current_registered >= event.capacity:
-            raise HTTPException(status_code=400, detail="Свободных слотов нет")
+            raise HTTPException(status_code=400, detail="РЎРІРѕР±РѕРґРЅС‹С… СЃР»РѕС‚РѕРІ РЅРµС‚")
 
     lead = db.query(Lead).filter(Lead.id == payload.lead_id).first()
     if not lead:
@@ -5350,7 +5381,7 @@ async def create_event_registration(
     return reg
 
 
-@router.post("/events/{event_id}/registrations/{registration_id}/cancel", response_model=EventRegistrationResponse)
+@router.post("/_legacy-disabled/events/{event_id}/registrations/{registration_id}/cancel", response_model=EventRegistrationResponse)
 async def cancel_event_registration(
     event_id: int,
     registration_id: int,
@@ -5376,7 +5407,7 @@ async def cancel_event_registration(
     return reg
 
 
-@router.post("/events/{event_id}/registrations/{registration_id}/confirm", response_model=EventRegistrationResponse)
+@router.post("/_legacy-disabled/events/{event_id}/registrations/{registration_id}/confirm", response_model=EventRegistrationResponse)
 async def confirm_event_registration(
     event_id: int,
     registration_id: int,
@@ -5400,7 +5431,7 @@ async def confirm_event_registration(
     return reg
 
 
-@router.post("/events/{event_id}/registrations/{registration_id}/mark-came", response_model=EventRegistrationResponse)
+@router.post("/_legacy-disabled/events/{event_id}/registrations/{registration_id}/mark-came", response_model=EventRegistrationResponse)
 async def mark_event_registration_came(
     event_id: int,
     registration_id: int,
@@ -5417,10 +5448,10 @@ async def mark_event_registration_came(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
-    # Если ранее пометили как no-show, убираем этот тег и ставим came
+    # Р•СЃР»Рё СЂР°РЅРµРµ РїРѕРјРµС‚РёР»Рё РєР°Рє no-show, СѓР±РёСЂР°РµРј СЌС‚РѕС‚ С‚РµРі Рё СЃС‚Р°РІРёРј came
     cleaned_note = _remove_note_tag(reg.note, "[no-show]")
     reg.note = _append_note_tag(cleaned_note, "[came]")
-    # Обновляем статус лида и стартовую стадию воронки «Дожать на обучение»
+    # РћР±РЅРѕРІР»СЏРµРј СЃС‚Р°С‚СѓСЃ Р»РёРґР° Рё СЃС‚Р°СЂС‚РѕРІСѓСЋ СЃС‚Р°РґРёСЋ РІРѕСЂРѕРЅРєРё В«Р”РѕР¶Р°С‚СЊ РЅР° РѕР±СѓС‡РµРЅРёРµВ»
     lead.status = LeadStatus.DEMO
     lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.DEMO)
     if not getattr(lead, "post_visit_stage", None):
@@ -5436,9 +5467,9 @@ async def mark_event_registration_came(
                 db,
                 lead=lead,
                 owner_id=lead.owner_id,
-                note="[auto_attended_offer] После мероприятия: предложить курс",
+                note="[auto_attended_offer] РџРѕСЃР»Рµ РјРµСЂРѕРїСЂРёСЏС‚РёСЏ: РїСЂРµРґР»РѕР¶РёС‚СЊ РєСѓСЂСЃ",
                 due_at=due_at,
-                preferred_template_keywords=["курс", "предлож", "дожим", "offer"],
+                preferred_template_keywords=["РєСѓСЂСЃ", "РїСЂРµРґР»РѕР¶", "РґРѕР¶РёРј", "offer"],
             )
             db.add(auto_task)
             db.flush()
@@ -5458,7 +5489,7 @@ async def mark_event_registration_came(
     return reg
 
 
-@router.post("/events/{event_id}/registrations/{registration_id}/mark-no-show", response_model=EventRegistrationResponse)
+@router.post("/_legacy-disabled/events/{event_id}/registrations/{registration_id}/mark-no-show", response_model=EventRegistrationResponse)
 async def mark_event_registration_no_show(
     event_id: int,
     registration_id: int,
@@ -5475,7 +5506,7 @@ async def mark_event_registration_no_show(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
-    # Если ранее пометили как пришёл, убираем этот тег и ставим no-show
+    # Р•СЃР»Рё СЂР°РЅРµРµ РїРѕРјРµС‚РёР»Рё РєР°Рє РїСЂРёС€С‘Р», СѓР±РёСЂР°РµРј СЌС‚РѕС‚ С‚РµРі Рё СЃС‚Р°РІРёРј no-show
     cleaned_note = _remove_note_tag(reg.note, "[came]")
     reg.note = _append_note_tag(cleaned_note, "[no-show]")
     # UX automation: after no-show create reactivation follow-up.
@@ -5485,9 +5516,9 @@ async def mark_event_registration_no_show(
             db,
             lead=lead,
             owner_id=lead.owner_id,
-            note="[auto_no_show_reactivate] No-show: реактивация и перенос",
+            note="[auto_no_show_reactivate] No-show: СЂРµР°РєС‚РёРІР°С†РёСЏ Рё РїРµСЂРµРЅРѕСЃ",
             due_at=due_at,
-            preferred_template_keywords=["реактивац", "перезап", "no-show", "дожим"],
+            preferred_template_keywords=["СЂРµР°РєС‚РёРІР°С†", "РїРµСЂРµР·Р°Рї", "no-show", "РґРѕР¶РёРј"],
         )
         db.flush()
         log_action(
@@ -5506,7 +5537,7 @@ async def mark_event_registration_no_show(
     return reg
 
 
-@router.get("/leads/{lead_id}/event-registrations", response_model=List[EventRegistrationResponse])
+@router.get("/_legacy-disabled/leads/{lead_id}/event-registrations", response_model=List[EventRegistrationResponse])
 async def list_lead_event_registrations(
     lead_id: int,
     db: Session = Depends(get_db),
@@ -5524,14 +5555,14 @@ async def list_lead_event_registrations(
     )
 
 
-@router.post("/leads/{lead_id}/post-visit-stage", response_model=LeadResponse)
+@router.post("/_legacy-disabled/leads/{lead_id}/post-visit-stage", response_model=LeadResponse)
 async def update_lead_post_visit_stage(
     lead_id: int,
     payload: LeadPostVisitStageUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    """Обновление стадии воронки «Дожать на обучение» после мероприятия."""
+    """РћР±РЅРѕРІР»РµРЅРёРµ СЃС‚Р°РґРёРё РІРѕСЂРѕРЅРєРё В«Р”РѕР¶Р°С‚СЊ РЅР° РѕР±СѓС‡РµРЅРёРµВ» РїРѕСЃР»Рµ РјРµСЂРѕРїСЂРёСЏС‚РёСЏ."""
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -5560,9 +5591,9 @@ async def update_lead_post_visit_stage(
             db,
             lead=lead,
             owner_id=lead.owner_id,
-            note="[auto_post_visit_agreed] Контроль оплаты",
+            note="[auto_post_visit_agreed] РљРѕРЅС‚СЂРѕР»СЊ РѕРїР»Р°С‚С‹",
             due_at=due_at,
-            preferred_template_keywords=["оплат", "контроль", "дожим"],
+            preferred_template_keywords=["РѕРїР»Р°С‚", "РєРѕРЅС‚СЂРѕР»СЊ", "РґРѕР¶РёРј"],
         )
         db.add(auto_task)
         db.flush()
@@ -5588,18 +5619,18 @@ async def update_lead_post_visit_stage(
     return _fix_lead_strings(lead)
 
 
-@router.get("/post-visit/leads", response_model=List[LeadResponse])
+@router.get("/_legacy-disabled/post-visit/leads", response_model=List[LeadResponse])
 async def list_post_visit_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
     """
-    Лиды для страницы «Дожать на обучение».
+    Р›РёРґС‹ РґР»СЏ СЃС‚СЂР°РЅРёС†С‹ В«Р”РѕР¶Р°С‚СЊ РЅР° РѕР±СѓС‡РµРЅРёРµВ».
 
-    Логика:
-    - берём лидов, по которым есть регистрация на мероприятие с тегом [came] (нажали «Пришел»);
-    - ограничиваем по правам (admin/owner/sales видят только свои лиды);
-    - если post_visit_stage ещё не задана — проставляем 'new' (однократно).
+    Р›РѕРіРёРєР°:
+    - Р±РµСЂС‘Рј Р»РёРґРѕРІ, РїРѕ РєРѕС‚РѕСЂС‹Рј РµСЃС‚СЊ СЂРµРіРёСЃС‚СЂР°С†РёСЏ РЅР° РјРµСЂРѕРїСЂРёСЏС‚РёРµ СЃ С‚РµРіРѕРј [came] (РЅР°Р¶Р°Р»Рё В«РџСЂРёС€РµР»В»);
+    - РѕРіСЂР°РЅРёС‡РёРІР°РµРј РїРѕ РїСЂР°РІР°Рј (admin/owner/sales РІРёРґСЏС‚ С‚РѕР»СЊРєРѕ СЃРІРѕРё Р»РёРґС‹);
+    - РµСЃР»Рё post_visit_stage РµС‰С‘ РЅРµ Р·Р°РґР°РЅР° вЂ” РїСЂРѕСЃС‚Р°РІР»СЏРµРј 'new' (РѕРґРЅРѕРєСЂР°С‚РЅРѕ).
     """
     came_lead_ids = (
         db.query(EventRegistration.lead_id)
@@ -5607,7 +5638,7 @@ async def list_post_visit_leads(
         .distinct()
     )
     leads_q = (
-        _filter_query_by_role(db.query(Lead), current_user)
+        _filter_query_by_role(db.query(Lead).options(*_lead_eager_options()), current_user)
         .filter(Lead.id.in_(came_lead_ids))
         .order_by(Lead.created_at.desc())
     )
@@ -5624,483 +5655,3 @@ async def list_post_visit_leads(
             db.refresh(lead)
 
     return [_fix_lead_strings(l) for l in leads]
-
-
-# --- Справка для налогового вычета (форма КНД 1151158) ---
-try:
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    REPORTLAB_AVAILABLE = True
-except ImportError:
-    REPORTLAB_AVAILABLE = False
-    mm = 2.834645669  # pt per mm, for default arg when reportlab not installed
-
-try:
-    from pypdf import PdfReader, PdfWriter
-    PYPDF_AVAILABLE = True
-except ImportError:
-    PYPDF_AVAILABLE = False
-
-# Путь к шаблону PDF формы (2 страницы). Если файл есть — заполняем его поверх, иначе рисуем с нуля.
-def _knd_template_path() -> str:
-    _base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    return os.path.join(_base, "templates", "knd_1151158.pdf")
-
-# Разметка под файл backend/templates/knd_1151158.pdf (координаты сняты с полей формы PDF).
-# Чекбоксы: (страница, x_мм ячейки "0-нет", x_мм ячейки "1-да", y_mm, ключ, ширина_ячейки_мм). Рисуем цифру 0 или 1 по центру ячейки.
-_KND_OVERLAY_CHECKBOXES = [
-    (0, 80.0, 85.0, 100.3, "fulltime_study", 5.0),
-    # немного сдвинули вправо, чтобы цифра была строго в своём «окошке»
-    (0, 90.6, 96.0, 175.8, "taxpayer_same_as_student", 5.4),
-]
-
-# Поля посимвольно (каждый символ в своей ячейке). Шрифт 12 pt. Ширина ячейки — под бланк (не растягивать).
-_KND_OVERLAY_BOXED = [
-    (0, 69.5, 5.1, "org_inn", 12, 5.02, 12),
-    (0, 69.5, 12.9, "org_kpp", 12, 5.04, 9),
-    # номер справки: ещё немного поджали цифры друг к другу
-    (0, 29.4, 46.0, "cert_number", 12, 5.4, 5),
-    (0, 134.4, 45.9, "correction_number", 12, 5.17, 3),
-    (0, 184.5, 45.9, "report_year", 12, 5.08, 4),
-    # ИНН налогоплательщика: чуть сжали по горизонтали
-    (0, 24.9, 141.8, "taxpayer_inn", 12, 5.4, 12),
-    (0, 39.3, 158.0, "doc_type_code", 12, 5.3, 2),
-    # серия и номер документа: немного сжали, чтобы цифры не «разъезжались»
-    (0, 104.7, 158.0, "doc_series_number", 12, 6.0, 14),
-    (0, 94.7, 186.0, "amount", 12, 5.2, 12),       # сумма в полях
-    (0, 44.6, 247.7, "pages_count", 12, 7.6, 2),
-    (1, 64.5, 5.2, "org_inn", 12, 5.02, 12),
-    (1, 64.5, 12.9, "org_kpp", 12, 5.04, 9),
-    (1, 129.7, 64.2, "student_inn", 12, 5.0, 12),
-    (1, 39.6, 81.3, "student_doc_type_code", 12, 5.05, 2),
-    (1, 104.5, 81.3, "student_doc_series_number", 12, 7.16, 14),
-]
-
-# Текстовые поля посимвольно. Шрифт 12 pt. Данные об организации и ФИО — чуть растянуты по горизонтали.
-_KND_OVERLAY_TEXT_PER_CELL = [
-    # данные об образовательной организации: ещё немного растянули по горизонтали
-    (0, 4.8, 61.5, "org_name", 12, 4.2, 80),
-    # Фамилия / Имя / Отчество: по отдельной строке, чуть шире ячейки по X
-    (0, 24.9, 114.8, "taxpayer_lastname", 12, 4.2, 35),
-    (0, 24.9, 123.8, "taxpayer_firstname", 12, 4.2, 30),
-    (0, 24.9, 132.8, "taxpayer_patronymic", 12, 4.2, 40),
-    # достоверность/полнота: немного растянули, чтобы буквы попали в свои поля
-    (0, 4.9, 207.1, "confirm_fio", 12, 4.2, 55),
-    (1, 24.9, 37.1, "student_lastname", 12, 4.0, 35),
-    (1, 24.9, 46.2, "student_firstname", 12, 4.0, 30),
-    (1, 24.9, 55.2, "student_patronymic", 12, 4.0, 40),
-]
-
-# Даты ДД.ММ.ГГГГ по ячейкам. Шрифт 12 pt.
-_KND_OVERLAY_DATES_PER_CELL = [
-    (0, 129.5, 141.8, 5.1, "taxpayer_dob", 12),
-    (0, 39.8, 166.7, 5.1, "doc_issue_date", 12),
-    (0, 56.6, 237.4, 5.1, "confirm_date", 12),
-    (1, 39.7, 90.3, 5.1, "student_dob", 12),
-    (1, 39.7, 90.3, 5.1, "student_doc_issue_date", 12),
-    (1, 119.6, 286.3, 5.1, "confirm_date", 12),
-]
-
-# Смещение по вертикали (мм): опускаем символы в ячейках, чтобы попадали в свои поля.
-_KND_Y_OFFSET_MM = 5.0
-
-# Шрифт с кириллицей (без него русский текст отображается чёрными квадратами)
-_PDF_FONT_NAME = "Helvetica"
-_PDF_FONT_BOLD = "Helvetica-Bold"
-
-
-def _register_cyrillic_font() -> None:
-    global _PDF_FONT_NAME, _PDF_FONT_BOLD
-    if _PDF_FONT_NAME != "Helvetica":
-        return
-    _base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    _candidates = [
-        os.path.join(_base, "fonts", "DejaVuSans.ttf"),
-        os.path.join(_base, "app", "fonts", "DejaVuSans.ttf"),
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "Fonts", "arial.ttf"),
-    ]
-    _font_path = None
-    for p in _candidates:
-        if p and os.path.isfile(p):
-            _font_path = p
-            break
-    if not _font_path:
-        return
-    try:
-        pdfmetrics.registerFont(TTFont("Cyrillic", _font_path))
-        _PDF_FONT_NAME = "Cyrillic"
-        _bold_path = _font_path.replace("DejaVuSans.ttf", "DejaVuSans-Bold.ttf").replace("arial.ttf", "arialbd.ttf")
-        if os.path.isfile(_bold_path):
-            pdfmetrics.registerFont(TTFont("CyrillicBold", _bold_path))
-            _PDF_FONT_BOLD = "CyrillicBold"
-        else:
-            _PDF_FONT_BOLD = "Cyrillic"
-    except Exception:
-        pass
-
-
-def _draw_date_cells(c, x: float, y: float, d: str, cell_w: float = 7 * mm):
-    """Печатает дату в ячейках ДД.ММ.ГГГГ (три группы: ДД, ММ, ГГГГ)."""
-    parts = (d or "").replace("-", ".").split(".") if d else []
-    day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
-    month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
-    year = (parts[2] if len(parts) > 2 else "")[:4]
-    c.drawString(x, y, day)
-    c.drawString(x + cell_w + 1, y, month)
-    c.drawString(x + (cell_w + 1) * 2, y, year)
-
-
-def _draw_date_per_cell(c, x_pt: float, y_pt: float, date_str: str, cell_w_pt: float, font_name: str, font_size: int) -> None:
-    """Рисует дату ДД.ММ.ГГГГ по одному символу в ячейку (10 ячеек), по центру ячейки."""
-    parts = (date_str or "").replace("-", ".").split(".") if date_str else []
-    day = (parts[0] if len(parts) > 0 else "").zfill(2)[:2]
-    month = (parts[1] if len(parts) > 1 else "").zfill(2)[:2]
-    year = (parts[2] if len(parts) > 2 else "")[:4]
-    s = f"{day}.{month}.{year}"
-    c.setFont(font_name, font_size)
-    for i, ch in enumerate(s[:10]):
-        try:
-            w = c.stringWidth(ch, font_name, font_size)
-            c.drawString(x_pt + i * cell_w_pt + (cell_w_pt - w) / 2.0, y_pt, ch)
-        except Exception:
-            c.drawString(x_pt + i * cell_w_pt, y_pt, ch)
-
-
-def _draw_string_per_cell(c, x_pt: float, y_pt: float, value: str, cell_w_pt: float, max_chars: int, font_name: str, font_size: int) -> None:
-    """Рисует строку посимвольно: каждый символ в своей ячейке, по центру ячейки по горизонтали. Пробел = пустая ячейка."""
-    s = (value or "").strip()[:max_chars]
-    c.setFont(font_name, font_size)
-    pos = 0.0
-    for ch in s:
-        if ch != " ":
-            try:
-                w = c.stringWidth(ch, font_name, font_size)
-                c.drawString(x_pt + pos + (cell_w_pt - w) / 2.0, y_pt, ch)
-            except Exception:
-                c.drawString(x_pt + pos, y_pt, ch)
-        pos += cell_w_pt
-
-
-def _format_amount_for_cells(amount_val) -> str:
-    """Форматирует сумму для посимвольного вывода: XXXXX.XX (рубли.копейки)."""
-    if amount_val is None or amount_val == "":
-        return "0.00"
-    try:
-        n = float(str(amount_val).replace(",", ".").replace(" ", ""))
-        return f"{n:.2f}"
-    except (ValueError, TypeError):
-        return "0.00"
-
-
-def _build_tax_deduction_pdf_from_template(template_path: str, data: Dict) -> bytes:
-    """Заполняет загруженную PDF-форму: подложка — шаблон, поверх — только данные по координатам."""
-    _register_cyrillic_font()
-    reader = PdfReader(template_path)
-    page_w_pt = float(reader.pages[0].mediabox.width)
-    page_h_pt = float(reader.pages[0].mediabox.height)
-    # мм -> pt (A4: 210x297 mm = 595x842 pt)
-    def x_pt(x_mm: float) -> float:
-        return x_mm * (page_w_pt / 210.0)
-    def y_pt(y_mm_from_top: float) -> float:
-        return page_h_pt - y_mm_from_top * (page_h_pt / 297.0)
-    # Опускаем символы в ячейках (базовая линия ниже), чтобы не прилипали к верхней линии
-    def y_pt_adj(y_mm: float) -> float:
-        return y_pt(y_mm + _KND_Y_OFFSET_MM)
-
-    pt_per_mm = page_w_pt / 210.0
-    for i, page in enumerate(reader.pages):
-        w = float(page.mediabox.width)
-        h = float(page.mediabox.height)
-        buf = BytesIO()
-        c = canvas.Canvas(buf, pagesize=(w, h))
-        c.setFont(_PDF_FONT_NAME, 12)
-        # Цифровые/кодовые поля: по одному символу в ячейку
-        for (p, x_mm, y_mm, key, size, cell_mm, max_ch) in _KND_OVERLAY_BOXED:
-            if p != i:
-                continue
-            if key == "amount":
-                val = _format_amount_for_cells(data.get(key))
-            else:
-                val = (data.get(key) or "")
-                if isinstance(val, (bool, int)):
-                    val = str(val)
-            val = (val or "").replace(" ", "")[:max_ch] if key != "doc_series_number" and key != "student_doc_series_number" else (val or "")[:max_ch]
-            cell_pt = cell_mm * pt_per_mm
-            _draw_string_per_cell(c, x_pt(x_mm), y_pt_adj(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
-        # Текстовые поля: по одному символу (буква/пробел) в ячейку
-        for (p, x_mm, y_mm, key, size, cell_mm, max_ch) in _KND_OVERLAY_TEXT_PER_CELL:
-            if p != i:
-                continue
-            val = (data.get(key) or "")
-            if isinstance(val, (bool, int)):
-                val = str(val)
-            val = (val or "")[:max_ch]
-            cell_pt = cell_mm * pt_per_mm
-            _draw_string_per_cell(c, x_pt(x_mm), y_pt_adj(y_mm), val, cell_pt, max_ch, _PDF_FONT_NAME, size)
-        # Даты: ДД.ММ.ГГГГ по одному символу в ячейку
-        for (p, x_mm, y_mm, cell_mm, key, size) in _KND_OVERLAY_DATES_PER_CELL:
-            if p != i:
-                continue
-            d = data.get(key) or ""
-            if not d:
-                d = date.today().isoformat()
-            cell_pt = cell_mm * pt_per_mm
-            _draw_date_per_cell(c, x_pt(x_mm), y_pt_adj(y_mm), d, cell_pt, _PDF_FONT_NAME, size)
-        for cb in _KND_OVERLAY_CHECKBOXES:
-            if len(cb) == 6:
-                p, x_no, x_yes, y_mm, key, cell_w_mm = cb
-            else:
-                p, x_no, x_yes, y_mm, key = cb
-                cell_w_mm = 5.0
-            if p != i:
-                continue
-            v = data.get(key)
-            c.setFont(_PDF_FONT_NAME, 12)
-            cell_w_pt = cell_w_mm * pt_per_mm
-            if v is True or v == "1":
-                ch = "1"
-                x_center = x_pt(x_yes) + (cell_w_pt - c.stringWidth(ch, _PDF_FONT_NAME, 12)) / 2.0
-                c.drawString(x_center, y_pt_adj(y_mm), ch)
-            elif v is False or v == "0":
-                ch = "0"
-                x_center = x_pt(x_no) + (cell_w_pt - c.stringWidth(ch, _PDF_FONT_NAME, 12)) / 2.0
-                c.drawString(x_center, y_pt_adj(y_mm), ch)
-        c.save()
-        buf.seek(0)
-        overlay = PdfReader(buf)
-        page.merge_page(overlay.pages[0])
-
-    out = BytesIO()
-    writer = PdfWriter()
-    for page in reader.pages:
-        writer.add_page(page)
-    writer.write(out)
-    out.seek(0)
-    return out.read()
-
-
-def _build_tax_deduction_pdf_knd(data: Dict) -> bytes:
-    """Формирует PDF по форме КНД 1151158 (2 страницы)."""
-    _register_cyrillic_font()
-    buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
-    w, h = A4
-    left = 20 * mm
-    right = w - 20 * mm
-    row = 5.5 * mm
-
-    def _y():
-        nonlocal y
-        y -= row
-        return y + row
-
-    # ---------- СТРАНИЦА 1 ----------
-    y = h - 15 * mm
-    c.setFont(_PDF_FONT_NAME, 8)
-    c.drawString(right - 50 * mm, y, "ИНН")
-    c.drawString(right - 50 * mm, y - 4 * mm, (data.get("org_inn") or ""))
-    c.drawString(right - 20 * mm, y, "КПП")
-    c.drawString(right - 20 * mm, y - 4 * mm, (data.get("org_kpp") or ""))
-    c.drawString(right - 5 * mm, y, "Стр. 0:01")
-    y -= 12 * mm
-
-    c.setFont(_PDF_FONT_NAME, 9)
-    c.drawCentredString(w / 2, y, "Форма по КНД 1151158")
-    y -= 6 * mm
-    c.setFont(_PDF_FONT_BOLD, 10)
-    c.drawCentredString(w / 2, y, "Справка об оплате образовательных услуг для представления в налоговый орган")
-    y -= 10 * mm
-
-    c.setFont(_PDF_FONT_NAME, 9)
-    c.drawString(left, _y(), "Номер справки")
-    c.drawString(left + 45 * mm, y + row, data.get("cert_number") or "")
-    c.drawString(left + 90 * mm, y + row, "Номер корректировки")
-    c.drawString(left + 130 * mm, y + row, data.get("correction_number") or "")
-    _y()
-    c.drawString(left, _y(), "Отчетный год")
-    c.drawString(left + 35 * mm, y + row, data.get("report_year") or "")
-    y -= 3 * mm
-
-    c.setFont(_PDF_FONT_NAME, 9)
-    c.drawString(left, _y(), "Данные образовательной организации / индивидуального предпринимателя,")
-    _y()
-    c.drawString(left, _y(), "осуществляющего образовательную деятельность:")
-    y -= 2 * mm
-    org_name = (data.get("org_name") or "")[:120]
-    for i in range(0, min(len(org_name), 80), 60):
-        c.drawString(left, _y(), org_name[i : i + 60])
-    c.drawString(left, _y(), "(наименование образовательной организации / фамилия, имя, отчество ИП)")
-    y -= 2 * mm
-
-    c.drawString(left, _y(), "Обучение проводилось по очной форме обучения")
-    ft = data.get("fulltime_study")
-    c.drawString(left + 95 * mm, y + row, "0 - нет")
-    if ft is False or ft == "0":
-        c.drawString(left + 105 * mm, y + row, "X")
-    c.drawString(left + 115 * mm, y + row, "1 - да")
-    if ft is True or ft == "1":
-        c.drawString(left + 125 * mm, y + row, "X")
-    _y()
-    y -= 3 * mm
-
-    c.drawString(left, _y(), "Данные физического лица (его супруга/супруги), оплатившего образовательные услуги (далее – налогоплательщик):")
-    y -= 2 * mm
-    c.drawString(left, _y(), "Фамилия")
-    c.drawString(left + 28 * mm, y + row, (data.get("taxpayer_lastname") or "")[:35])
-    c.drawString(left + 95 * mm, y + row, "Имя")
-    c.drawString(left + 105 * mm, y + row, (data.get("taxpayer_firstname") or "")[:25])
-    _y()
-    c.drawString(left, _y(), "Отчество")
-    c.drawString(left + 28 * mm, y + row, (data.get("taxpayer_patronymic") or "")[:35])
-    c.drawString(left + 95 * mm, y + row, "ИНН")
-    c.drawString(left + 105 * mm, y + row, (data.get("taxpayer_inn") or "")[:12])
-    _y()
-    c.drawString(left, _y(), "Дата рождения")
-    _draw_date_cells(c, left + 38 * mm, y + row, data.get("taxpayer_dob"), 7 * mm)
-    y -= 3 * mm
-
-    c.drawString(left, _y(), "Сведения о документе, удостоверяющем личность:")
-    c.drawString(left, _y(), "Код вида документа")
-    c.drawString(left + 45 * mm, y + row, (data.get("doc_type_code") or "")[:5])
-    c.drawString(left + 75 * mm, y + row, "Серия и номер")
-    c.drawString(left + 105 * mm, y + row, (data.get("doc_series_number") or "")[:25])
-    _y()
-    c.drawString(left, _y(), "Дата выдачи")
-    _draw_date_cells(c, left + 32 * mm, y + row, data.get("doc_issue_date"), 7 * mm)
-    y -= 3 * mm
-
-    c.drawString(left, _y(), "Налогоплательщик и обучаемый являются одним лицом")
-    same = data.get("taxpayer_same_as_student")
-    c.drawString(left + 95 * mm, y + row, "0 - нет")
-    if same is False or same == "0":
-        c.drawString(left + 105 * mm, y + row, "X")
-    c.drawString(left + 115 * mm, y + row, "1 - да")
-    if same is True or same == "1":
-        c.drawString(left + 125 * mm, y + row, "X")
-    _y()
-    y -= 2 * mm
-
-    c.drawString(left, _y(), "Сумма расходов на оказанные образовательные услуги")
-    c.drawString(left + 95 * mm, y + row, (data.get("amount") or "0"))
-    y -= 8 * mm
-
-    c.drawString(left, _y(), "Достоверность и полноту сведений, указанных в настоящей справке, подтверждаю:")
-    _y()
-    c.drawString(left, _y(), (data.get("confirm_fio") or "")[:70])
-    c.drawString(left, _y(), "(фамилия, имя, отчество)")
-    c.drawString(left, _y(), "Подпись _______________________")
-    c.drawString(left, _y(), "Дата")
-    _draw_date_cells(c, left + 15 * mm, y + row, data.get("confirm_date") or date.today().isoformat(), 7 * mm)
-    _y()
-    c.drawString(left, _y(), "Справка составлена на")
-    c.drawString(left + 55 * mm, y + row, data.get("pages_count") or "2")
-    c.drawString(left + 65 * mm, y + row, "страницах")
-
-    c.rect(right - 25 * mm, h - 75 * mm, 22 * mm, 45 * mm)
-    c.setFont(_PDF_FONT_NAME, 8)
-    c.drawString(right - 24 * mm, h - 78 * mm, "Зона QR-кода")
-
-    c.setFont(_PDF_FONT_NAME, 7)
-    c.drawString(left, 18 * mm, "1 Отчество указывается при наличии (относится ко всем листам документа).")
-    c.drawString(left, 14 * mm, "2 ИНН указывается при наличии.")
-    c.drawString(left, 10 * mm, "Подготовлено с использованием системы КонсультантПлюс")
-
-    c.showPage()
-
-    # ---------- СТРАНИЦА 2 (данные обучаемого) ----------
-    y = h - 15 * mm
-    c.setFont(_PDF_FONT_NAME, 8)
-    c.drawString(right - 50 * mm, y, "ИНН")
-    c.drawString(right - 50 * mm, y - 4 * mm, (data.get("org_inn") or ""))
-    c.drawString(right - 20 * mm, y, "КПП")
-    c.drawString(right - 20 * mm, y - 4 * mm, (data.get("org_kpp") or ""))
-    c.drawString(right - 5 * mm, y, "Стр. 0:02")
-    y -= 14 * mm
-
-    c.setFont(_PDF_FONT_NAME, 9)
-    c.drawString(left, _y(), "Данные физического лица, которому оказаны образовательные услуги:")
-    c.drawString(left, _y(), "Фамилия")
-    c.drawString(left + 28 * mm, y + row, (data.get("student_lastname") or "")[:35])
-    c.drawString(left + 95 * mm, y + row, "Имя")
-    c.drawString(left + 105 * mm, y + row, (data.get("student_firstname") or "")[:25])
-    _y()
-    c.drawString(left, _y(), "Отчество")
-    c.drawString(left + 28 * mm, y + row, (data.get("student_patronymic") or "")[:35])
-    c.drawString(left + 95 * mm, y + row, "ИНН")
-    c.drawString(left + 105 * mm, y + row, (data.get("student_inn") or "")[:12])
-    _y()
-    c.drawString(left, _y(), "Дата рождения")
-    _draw_date_cells(c, left + 38 * mm, y + row, data.get("student_dob"), 7 * mm)
-    y -= 3 * mm
-
-    c.drawString(left, _y(), "Сведения о документе, удостоверяющем личность:")
-    c.drawString(left, _y(), "Код вида документа")
-    c.drawString(left + 45 * mm, y + row, (data.get("student_doc_type_code") or "")[:5])
-    c.drawString(left + 75 * mm, y + row, "Серия и номер")
-    c.drawString(left + 105 * mm, y + row, (data.get("student_doc_series_number") or "")[:25])
-    _y()
-    c.drawString(left, _y(), "Дата выдачи")
-    _draw_date_cells(c, left + 32 * mm, y + row, data.get("student_doc_issue_date"), 7 * mm)
-    y -= 12 * mm
-
-    c.drawString(left, _y(), "Достоверность и полноту сведений, указанных на данной странице, подтверждаю:")
-    _y()
-    c.drawString(left, _y(), "Подпись _______________________  Дата")
-    _draw_date_cells(c, left + 95 * mm, y + row, data.get("confirm_date") or date.today().isoformat(), 7 * mm)
-
-    c.setFont(_PDF_FONT_NAME, 7)
-    c.drawString(left, 10 * mm, "Подготовлено с использованием системы КонсультантПлюс")
-
-    c.showPage()
-    c.save()
-    buf.seek(0)
-    return buf.read()
-
-
-@router.get("/tax-deduction-certificate/status")
-async def tax_deduction_certificate_status(
-    current_user: User = Depends(require_sales_admin_owner),
-):
-    """Проверка: путь к шаблону PDF и доступен ли он (для отладки деплоя)."""
-    template_path = _knd_template_path()
-    return {
-        "template_path": template_path,
-        "template_exists": os.path.isfile(template_path),
-        "pypdf_available": PYPDF_AVAILABLE,
-        "will_use_template": PYPDF_AVAILABLE and os.path.isfile(template_path),
-    }
-
-
-@router.post("/tax-deduction-certificate")
-async def generate_tax_deduction_certificate(
-    body: Dict,
-    current_user: User = Depends(require_sales_admin_owner),
-):
-    """
-    Формирует PDF справки по форме КНД 1151158 (2 страницы).
-    Поля: org_inn, org_kpp, cert_number, correction_number, report_year, org_name,
-    fulltime_study (1/0), taxpayer_* (lastname, firstname, patronymic, inn, dob),
-    doc_type_code, doc_series_number, doc_issue_date, taxpayer_same_as_student (1/0),
-    amount, confirm_fio, confirm_date, pages_count,
-    student_* (если не одно лицо): lastname, firstname, patronymic, inn, dob,
-    student_doc_type_code, student_doc_series_number, student_doc_issue_date.
-    """
-    if not REPORTLAB_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Генерация PDF недоступна (reportlab не установлен)")
-    template_path = _knd_template_path()
-    use_template = PYPDF_AVAILABLE and os.path.isfile(template_path)
-    if use_template:
-        pdf_bytes = _build_tax_deduction_pdf_from_template(template_path, body)
-    else:
-        pdf_bytes = _build_tax_deduction_pdf_knd(body)
-    filename = "spravka_KND_1151158.pdf"
-    headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"',
-        "X-Spravka-Source": "template" if use_template else "generated",
-    }
-    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)

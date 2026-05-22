@@ -1,10 +1,10 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from app.database import get_db
 from app import auth
-from app.schemas import ProgramCreate, ProgramResponse, ProgramUpdate
+from app.schemas import ProgramCreate, ProgramListResponse, ProgramResponse, ProgramUpdate
 from app.models import (
     Program, Module, Topic, User, ProgramStatus, TopicStatus,
     ProgramTrainer, GroupProgram, StudentProgram, Grade, UserRole,
@@ -167,6 +167,58 @@ async def read_programs(
     
     programs = query.offset(skip).limit(limit).all()
     return programs
+
+
+@router.get("/paginated", response_model=ProgramListResponse)
+async def read_programs_paginated(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    auth.ensure_permission(current_user, "programs.access")
+    effective_role = auth.resolve_effective_role(current_user)
+    query = db.query(Program)
+
+    if effective_role == UserRole.GUEST:
+        query = query.filter(Program.status == ProgramStatus.ACTIVE)
+    elif effective_role == UserRole.TRAINER:
+        program_ids_from_groups = (
+            db.query(GroupProgram.program_id)
+            .join(Group, Group.id == GroupProgram.group_id)
+            .filter(Group.trainer_id == current_user.id, Group.status == GroupStatus.ACTIVE)
+            .subquery()
+        )
+        program_ids_from_links = (
+            db.query(ProgramTrainer.program_id)
+            .filter(ProgramTrainer.trainer_id == current_user.id)
+            .subquery()
+        )
+        query = query.filter(or_(Program.id.in_(program_ids_from_groups), Program.id.in_(program_ids_from_links))).distinct()
+    elif effective_role == UserRole.PARENT:
+        direct_program_ids = (
+            db.query(StudentProgram.program_id)
+            .join(Student, Student.id == StudentProgram.student_id)
+            .filter(Student.parent_id == current_user.id, Student.status == StudentStatus.ACTIVE)
+            .subquery()
+        )
+        group_program_ids = (
+            db.query(GroupProgram.program_id)
+            .join(GroupStudent, GroupStudent.group_id == GroupProgram.group_id)
+            .join(Student, Student.id == GroupStudent.student_id)
+            .filter(Student.parent_id == current_user.id, Student.status == StudentStatus.ACTIVE)
+            .subquery()
+        )
+        query = query.filter(or_(Program.id.in_(direct_program_ids), Program.id.in_(group_program_ids))).distinct()
+
+    total = query.order_by(None).count()
+    programs = query.offset(skip).limit(limit).all()
+    return {
+        "total": total,
+        "items": programs,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.get("/{program_id}", response_model=ProgramResponse)

@@ -8,10 +8,13 @@ Use case: назначение отработки по пропуску (assign_
 
 from dataclasses import dataclass
 from datetime import date
+import logging
 
 from sqlalchemy.orm import Session
 
 from app.models import AbsenceFollowUp, Group
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,8 +52,7 @@ def assign_makeup_for_absence(
         create_link_task_on_assign(db, absence)
     except Exception:
         # Логируем, но не блокируем основной поток (как в роутере)
-        import traceback
-        traceback.print_exc()
+        logger.exception("Failed to create absence link task on makeup assignment")
 
     db.commit()
     db.refresh(absence)

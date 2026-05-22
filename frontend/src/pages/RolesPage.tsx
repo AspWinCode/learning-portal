@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -76,6 +76,7 @@ const EMPTY_USER_FORM: UserCreateFormState = {
 
 const RolesPage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const canViewRoles = hasPermission(user, 'roles.access') || hasPermission(user, 'roles.manage');
   const canManageRoles = hasPermission(user, 'roles.manage');
@@ -534,6 +535,10 @@ const RolesPage: React.FC = () => {
                         </Stack>
                       </TableCell>
                       <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Button size="small" onClick={() => navigate(`/users/${targetUser.id}`)}>
+                            Open
+                          </Button>
                         <Button
                           size="small"
                           color={targetUser.is_active ? 'warning' : 'success'}
@@ -542,6 +547,7 @@ const RolesPage: React.FC = () => {
                         >
                           {targetUser.is_active ? 'Архивировать' : 'Разархивировать'}
                         </Button>
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   );

@@ -272,6 +272,13 @@ class UserResponse(UserBase):
         from_attributes = True
 
 
+class UserListResponse(BaseModel):
+    total: int
+    items: List[UserResponse]
+    skip: int
+    limit: int
+
+
 # Abonement schemas
 AbonementFormat = Literal["individual", "package", "group"]
 
@@ -304,6 +311,13 @@ class AbonementResponse(AbonementBase):
 
     class Config:
         from_attributes = True
+
+
+class AbonementListResponse(BaseModel):
+    total: int
+    items: List[AbonementResponse]
+    skip: int
+    limit: int
 
 
 # Student schemas
@@ -342,6 +356,13 @@ class StudentResponse(StudentBase):
 
 
 # Создание ученика вместе с родителем (композитный сценарий)
+class StudentListResponse(BaseModel):
+    total: int
+    items: List[StudentResponse]
+    skip: int
+    limit: int
+
+
 class StudentWithParentParentPayload(BaseModel):
     id: Optional[int] = None  # если задан — используем существующего
     full_name: str = Field(..., min_length=1)
@@ -1662,6 +1683,13 @@ class GroupResponse(GroupBase):
 
 
 # --- Проекты (канбан для admin/owner/sales) ---
+class GroupListResponse(BaseModel):
+    total: int
+    items: List[GroupResponse]
+    skip: int
+    limit: int
+
+
 class ProjectBase(BaseModel):
     name: str
     start_date: Optional[date] = None
@@ -1926,6 +1954,13 @@ class ProgramResponse(ProgramBase):
 
     class Config:
         from_attributes = True
+
+
+class ProgramListResponse(BaseModel):
+    total: int
+    items: List[ProgramResponse]
+    skip: int
+    limit: int
 
 
 # Grade schemas

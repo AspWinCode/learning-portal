@@ -59,6 +59,7 @@ import FinanceOverviewPage from './pages/FinanceOverviewPage';
 import FinanceProjectsPage from './pages/FinanceProjectsPage';
 import RolesPage from './pages/RolesPage';
 import PersonRegistryPage from './pages/PersonRegistryPage';
+import UserDetailsPage from './pages/UserDetailsPage';
 import { queryClient } from './queryClient';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
@@ -117,7 +118,7 @@ function App() {
             <Route
               path="/students"
               element={
-                <PrivateRoute allowedRoles={['admin', 'trainer', 'owner', 'sales']} requiredPermission="students.access">
+                <PrivateRoute requiredPermission="students.access">
                   <StudentsPage />
                 </PrivateRoute>
               }
@@ -125,7 +126,7 @@ function App() {
             <Route
               path="/groups"
               element={
-                <PrivateRoute allowedRoles={['admin', 'trainer', 'owner', 'sales']} requiredPermission="groups.access">
+                <PrivateRoute requiredPermission="groups.access">
                   <GroupsPage />
                 </PrivateRoute>
               }
@@ -133,7 +134,7 @@ function App() {
             <Route
               path="/trainer-cockpit"
               element={
-                <PrivateRoute allowedRoles={['trainer']}>
+                <PrivateRoute requiredPermission="trainer_cockpit.access">
                   <TrainerCockpitPage />
                 </PrivateRoute>
               }
@@ -141,7 +142,7 @@ function App() {
             <Route
               path="/trainer-grades"
               element={
-                <PrivateRoute allowedRoles={['trainer']}>
+                <PrivateRoute requiredPermission="grades.manage">
                   <TrainerGradesPage />
                 </PrivateRoute>
               }
@@ -149,7 +150,7 @@ function App() {
             <Route
               path="/lessons"
               element={
-                <PrivateRoute allowedRoles={['admin', 'trainer', 'owner', 'sales']} requiredPermission="lessons.access">
+                <PrivateRoute requiredPermission="lessons.access">
                   <TrainerLessonsPage />
                 </PrivateRoute>
               }
@@ -157,7 +158,7 @@ function App() {
             <Route
               path="/programs"
               element={
-                <PrivateRoute allowedRoles={['admin', 'trainer', 'parent', 'guest', 'sales']} requiredPermission="programs.access">
+                <PrivateRoute requiredPermission="programs.access">
                   <ProgramsRoute />
                 </PrivateRoute>
               }
@@ -165,7 +166,7 @@ function App() {
             <Route
               path="/sales/dashboard"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']}>
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesDashboardPage />
                 </PrivateRoute>
               }
@@ -173,7 +174,7 @@ function App() {
             <Route
               path="/sales/leads"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesLeadsPage />
                 </PrivateRoute>
               }
@@ -181,7 +182,7 @@ function App() {
             <Route
               path="/sales/leads/:id"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <LeadCardPage />
                 </PrivateRoute>
               }
@@ -189,7 +190,7 @@ function App() {
             <Route
               path="/sales/pipeline"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesLeadsPage />
                 </PrivateRoute>
               }
@@ -197,7 +198,7 @@ function App() {
             <Route
               path="/sales/events"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesEventsHubPage />
                 </PrivateRoute>
               }
@@ -205,7 +206,7 @@ function App() {
             <Route
               path="/sales/post-visit"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesPostVisitPage />
                 </PrivateRoute>
               }
@@ -213,7 +214,7 @@ function App() {
             <Route
               path="/sales/reinvite-event"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesReinviteEventPage />
                 </PrivateRoute>
               }
@@ -221,7 +222,7 @@ function App() {
             <Route
               path="/sales/agreed"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesAgreedPage />
                 </PrivateRoute>
               }
@@ -229,7 +230,7 @@ function App() {
             <Route
               path="/sales/invoices"
               element={
-                <PrivateRoute allowedRoles={['sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesInvoicesPage />
                 </PrivateRoute>
               }
@@ -243,7 +244,7 @@ function App() {
             <Route
               path="/sales/reports"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']}>
+                <PrivateRoute requiredPermission="reports.access">
                   <SalesReportsPage />
                 </PrivateRoute>
               }
@@ -251,7 +252,7 @@ function App() {
             <Route
               path="/finance/overview"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="finance.access">
+                <PrivateRoute requiredPermission="finance.access">
                   <FinanceOverviewPage />
                 </PrivateRoute>
               }
@@ -259,7 +260,7 @@ function App() {
             <Route
               path="/finance/projects"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="finance.access">
+                <PrivateRoute requiredPermission="finance.access">
                   <FinanceProjectsPage />
                 </PrivateRoute>
               }
@@ -267,7 +268,7 @@ function App() {
             <Route
               path="/sales/instructions"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesInstructionsPage />
                 </PrivateRoute>
               }
@@ -275,7 +276,7 @@ function App() {
             <Route
               path="/sales/absences"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesAbsencesPage />
                 </PrivateRoute>
               }
@@ -285,7 +286,7 @@ function App() {
             <Route
               path="/sales/debts"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesDebtsPage />
                 </PrivateRoute>
               }
@@ -293,7 +294,7 @@ function App() {
             <Route
               path="/sales/program-makeup"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']}>
+                <PrivateRoute requiredPermission="settings.manage">
                   <SalesProgramMakeupPage />
                 </PrivateRoute>
               }
@@ -301,7 +302,7 @@ function App() {
             <Route
               path="/sales/tax-deduction"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']} requiredPermission="sales.access">
+                <PrivateRoute requiredPermission="sales.access">
                   <SalesTaxDeductionPage />
                 </PrivateRoute>
               }
@@ -309,7 +310,7 @@ function App() {
             <Route
               path="/sales/manual-lessons"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']}>
+                <PrivateRoute requiredPermission="lessons.manage">
                   <ManualLessonsPage />
                 </PrivateRoute>
               }
@@ -317,7 +318,7 @@ function App() {
             <Route
               path="/grades"
               element={
-                <PrivateRoute allowedRoles={['admin', 'trainer', 'parent']} requiredPermission="grades.access">
+                <PrivateRoute requiredPermission="grades.access">
                   <GradesPage />
                 </PrivateRoute>
               }
@@ -325,7 +326,7 @@ function App() {
             <Route
               path="/characteristics"
               element={
-                <PrivateRoute allowedRoles={['admin', 'trainer', 'parent']} requiredPermission="characteristics.access">
+                <PrivateRoute requiredPermission="characteristics.access">
                   <CharacteristicsPage />
                 </PrivateRoute>
               }
@@ -333,7 +334,7 @@ function App() {
             <Route
               path="/reports"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']} requiredPermission="reports.access">
+                <PrivateRoute requiredPermission="reports.access">
                   <ReportsPage />
                 </PrivateRoute>
               }
@@ -341,7 +342,7 @@ function App() {
             <Route
               path="/financial-model"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales']} requiredPermission="abonements.access">
+                <PrivateRoute requiredPermission="abonements.access">
                   <FinancialModelPage />
                 </PrivateRoute>
               }
@@ -349,7 +350,7 @@ function App() {
             <Route
               path="/abonements"
               element={
-                <PrivateRoute allowedRoles={['owner']}>
+                <PrivateRoute requiredPermission="abonements.access">
                   <AbonementsPage />
                 </PrivateRoute>
               }
@@ -357,7 +358,7 @@ function App() {
             <Route
               path="/trainers"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales']} requiredPermission="users.access">
+                <PrivateRoute requiredPermission="users.access">
                   <TrainersPage />
                 </PrivateRoute>
               }
@@ -365,7 +366,7 @@ function App() {
             <Route
               path="/calculations"
               element={
-                <PrivateRoute allowedRoles={['owner']} requiredPermission="owner_calculations.access">
+                <PrivateRoute requiredPermission="owner_calculations.access">
                   <CalculationsPage />
                 </PrivateRoute>
               }
@@ -373,7 +374,7 @@ function App() {
             <Route
               path="/owner-funnels"
               element={
-                <PrivateRoute allowedRoles={['owner']} requiredPermission="owner_funnels.access">
+                <PrivateRoute requiredPermission="owner_funnels.access">
                   <OwnerFunnelsPage />
                 </PrivateRoute>
               }
@@ -381,7 +382,7 @@ function App() {
             <Route
               path="/b2b-schools/plan"
               element={
-                <PrivateRoute allowedRoles={['owner']} requiredPermission="b2b.access">
+                <PrivateRoute requiredPermission="b2b.access">
                   <B2BPlanForTodayPage />
                 </PrivateRoute>
               }
@@ -393,7 +394,7 @@ function App() {
             <Route
               path="/b2b-schools"
               element={
-                <PrivateRoute allowedRoles={['owner']} requiredPermission="b2b.access">
+                <PrivateRoute requiredPermission="b2b.access">
                   <B2BSchoolsWorkPage />
                 </PrivateRoute>
               }
@@ -401,7 +402,7 @@ function App() {
             <Route
               path="/sales-managers"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']}>
+                <PrivateRoute requiredPermission="users.manage">
                   <SalesManagersPage />
                 </PrivateRoute>
               }
@@ -409,7 +410,7 @@ function App() {
             <Route
               path="/sales/settings"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']} requiredPermission="settings.access">
+                <PrivateRoute requiredPermission="settings.access">
                   <SalesSettingsPage />
                 </PrivateRoute>
               }
@@ -417,7 +418,7 @@ function App() {
             <Route
               path="/roles"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']} requiredPermission="roles.access">
+                <PrivateRoute requiredPermission="roles.access">
                   <RolesPage />
                 </PrivateRoute>
               }
@@ -425,15 +426,23 @@ function App() {
             <Route
               path="/persons"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales']}>
+                <PrivateRoute requiredPermission="persons.access">
                   <PersonRegistryPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/users/:userId"
+              element={
+                <PrivateRoute requiredPermission="users.access">
+                  <UserDetailsPage />
                 </PrivateRoute>
               }
             />
             <Route
               path="/settings/communications"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner']} requiredPermission="communications.access">
+                <PrivateRoute requiredPermission="communications.access">
                   <CommunicationsSettingsPage />
                 </PrivateRoute>
               }
@@ -441,7 +450,7 @@ function App() {
             <Route
               path="/tasks"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']} requiredPermission="tasks.access">
+                <PrivateRoute requiredPermission="tasks.access">
                   <TasksPage />
                 </PrivateRoute>
               }
@@ -449,7 +458,7 @@ function App() {
             <Route
               path="/projects"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']} requiredPermission="projects.access">
+                <PrivateRoute requiredPermission="projects.access">
                   <ProjectsPage />
                 </PrivateRoute>
               }
@@ -457,7 +466,7 @@ function App() {
             <Route
               path="/projects/:projectId"
               element={
-                <PrivateRoute allowedRoles={['admin', 'owner', 'sales', 'trainer']} requiredPermission="projects.access">
+                <PrivateRoute requiredPermission="projects.access">
                   <ProjectKanbanPage />
                 </PrivateRoute>
               }
@@ -465,7 +474,7 @@ function App() {
             <Route
               path="/owner-workspace/notifications"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -473,7 +482,7 @@ function App() {
             <Route
               path="/owner-workspace/settings"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -481,7 +490,7 @@ function App() {
             <Route
               path="/owner-workspace/projects"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -489,7 +498,7 @@ function App() {
             <Route
               path="/owner-workspace/projects/:projectId"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -497,7 +506,7 @@ function App() {
             <Route
               path="/owner-workspace/contacts"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -505,7 +514,7 @@ function App() {
             <Route
               path="/owner-workspace/contacts/:contactId"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -513,7 +522,7 @@ function App() {
             <Route
               path="/owner-workspace/tasks"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -521,7 +530,7 @@ function App() {
             <Route
               path="/owner-workspace/tasks/:taskId"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -529,7 +538,7 @@ function App() {
             <Route
               path="/owner-workspace/reports"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -537,7 +546,7 @@ function App() {
             <Route
               path="/owner-workspace/comms"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -545,7 +554,7 @@ function App() {
             <Route
               path="/owner-workspace/history"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -553,7 +562,7 @@ function App() {
             <Route
               path="/owner-workspace"
               element={
-                <PrivateRoute allowedRoles={['owner', 'admin', 'sales', 'trainer']} requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
                 </PrivateRoute>
               }
@@ -561,7 +570,7 @@ function App() {
             <Route
               path="/parent-dashboard"
               element={
-                <PrivateRoute allowedRoles={['parent']}>
+                <PrivateRoute requiredPermission="parent_dashboard.access">
                   <ParentDashboardPage />
                 </PrivateRoute>
               }
@@ -569,7 +578,7 @@ function App() {
             <Route
               path="/personal-finance"
               element={
-                <PrivateRoute allowedRoles={['owner']}>
+                <PrivateRoute requiredPermission="personal_finance.access">
                   <PersonalFinancePage />
                 </PrivateRoute>
               }

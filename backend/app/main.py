@@ -1,13 +1,20 @@
 import traceback
 from datetime import date, timedelta
 import os
+import logging
 from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from app.database import SessionLocal
+from app.logging_config import configure_logging
+from app.rate_limit import limiter
 from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, communications, trainer_cockpit, parent_dashboard, owner_dashboard, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, personal_finance, admin_tools, sms, max_messenger, owner_workspace, roles
+
+configure_logging()
 
 app = FastAPI(
     title="Learning Portal API",
@@ -15,12 +22,26 @@ app = FastAPI(
     version="1.0.0"
 )
 
+logger = logging.getLogger(__name__)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Если при старте не прошла проверка production (SECRET_KEY/DATABASE_URL), не падаем с 502, а отдаём 503 на запросах
 _startup_config_error: Optional[str] = None
 
 
 def _env_enabled(name: str, default: str = "1") -> bool:
     return (os.getenv(name, default).strip().lower() in ("1", "true", "yes"))
+
+
+def _is_production() -> bool:
+    return (os.getenv("APP_ENV") or "development").lower().strip() == "production"
+
+
+def _build_error_detail(exc: Exception) -> str:
+    if _is_production():
+        return "Internal server error"
+    return f"{type(exc).__name__}: {str(exc)}"
 
 def _run_tochka_auto_import() -> None:
     """Периодическая задача: импорт выписки Точка Банк, матч по телефону (и ФИО как fallback), за последние 14 дней. Каждые 10 мин."""
@@ -41,7 +62,7 @@ def _run_tochka_auto_import() -> None:
             db.close()
     except Exception:
         # Логируем, но не падаем — следующий запуск повторит
-        traceback.print_exc()
+        logger.exception("In-process Tochka auto import failed")
 
 
 @app.on_event("startup")
@@ -59,8 +80,7 @@ def _run_migrations_on_startup() -> None:
         alembic_cfg.set_main_option("script_location", os.path.join(_root, "alembic"))
         command.upgrade(alembic_cfg, "head")
     except Exception as e:
-        traceback.print_exc()
-        print(f"[startup] Migrations on startup skipped or failed: {e}")
+        logger.exception("Migrations on startup skipped or failed: %s", e)
 
 
 # Safety checks for production env (не падаем с 502, а выставляем флаг и отдаём 503 на запросах)
@@ -74,12 +94,12 @@ def _validate_production_env() -> None:
         secret = os.getenv("SECRET_KEY") or ""
         if (not secret) or secret == "your-secret-key-change-in-production" or len(secret) < 32:
             _startup_config_error = "APP_ENV=production: SECRET_KEY must be set and at least 32 characters long"
-            print(f"[startup] {_startup_config_error}")
+            logger.error(_startup_config_error)
             return
         db_url = os.getenv("DATABASE_URL") or ""
         if (not db_url) or ("user:password" in db_url) or ("YOUR_PASSWORD" in db_url):
             _startup_config_error = "APP_ENV=production: DATABASE_URL must be set (no placeholder credentials)"
-            print(f"[startup] {_startup_config_error}")
+            logger.error(_startup_config_error)
             return
         cors_raw = os.getenv("CORS_ORIGINS") or ""
         if "localhost" in cors_raw or "127.0.0.1" in cors_raw:
@@ -100,7 +120,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process payment overdue tasks failed")
 
     def _run_payment_reminder_notifications() -> None:
         """Ежедневно: поставить родительские напоминания об оплате за 3 дня до даты next_payment_date."""
@@ -113,7 +133,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process payment reminder notifications failed")
 
     def _run_parent_weekly_digests() -> None:
         """Проверить, пора ли отправить weekly digest родителям."""
@@ -126,7 +146,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process parent weekly digests failed")
 
     def _run_student_class_autopromo() -> None:
         """Ежегодное автоповышение класса учеников (1 сентября, только активные)."""
@@ -139,7 +159,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process student class autopromo failed")
 
     def _run_absence_link_tasks() -> None:
         """Утренние задачи: отправить ссылки на отработки."""
@@ -153,7 +173,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process absence link tasks failed")
 
     def _run_scheduled_messages() -> None:
         """Каждую минуту: отправить SMS и MAX-сообщения, у которых scheduled_at <= now."""
@@ -165,7 +185,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process scheduled messages dispatch failed")
 
     def _run_communication_queue() -> None:
         """Каждую минуту: обработать pending записи Communication Hub."""
@@ -178,7 +198,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process communication queue dispatch failed")
 
     def _run_owner_workspace_max_sync() -> None:
         """Импорт max_messages → owner_workspace_messages по телефону. Включить: OWNER_WORKSPACE_AUTO_SYNC_MAX=1."""
@@ -194,7 +214,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process owner workspace MAX sync failed")
 
     def _run_owner_workspace_notification_email_dispatch() -> None:
         """Dispatch queued owner workspace notification emails."""
@@ -211,7 +231,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process owner workspace email dispatch failed")
 
     def _run_owner_workspace_notification_web_push_dispatch() -> None:
         """Dispatch queued owner workspace web push notifications."""
@@ -228,7 +248,7 @@ def _validate_production_env() -> None:
             finally:
                 db.close()
         except Exception:
-            traceback.print_exc()
+            logger.exception("In-process owner workspace web push dispatch failed")
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_tochka_auto_import, "interval", minutes=10, id="tochka_auto_import")
@@ -299,20 +319,19 @@ async def catch_all_exceptions_middleware(request: Request, call_next):
     except Exception as exc:
         # ВРЕМЕННО: всегда логируем полный traceback, чтобы увидеть причину 502/500
         tb = traceback.format_exc()
-        print(tb)
-        detail = f"{type(exc).__name__}: {str(exc)}"
+        logger.exception("Unhandled request error", extra={"path": str(request.url.path), "method": request.method})
+        detail = _build_error_detail(exc)
         err_str = str(exc).lower()
         if "does not exist" in err_str and ("column" in err_str or "relation" in err_str):
             return JSONResponse(
                 status_code=503,
                 content={
                     "detail": "Database schema is outdated. Run: cd backend && alembic upgrade head",
-                    "error": detail[:500],
-                    "trace": tb.replace("\n", " ")[:800],
                 },
             )
         # ВРЕМЕННО: даже в production добавляем traceback в ответ, чтобы отладить 502
-        detail += " | " + tb.replace("\n", " ")[:800]
+        if not _is_production():
+            detail += " | " + tb.replace("\n", " ")[:800]
         return JSONResponse(status_code=500, content={"detail": detail})
 
 # Подключение роутеров
@@ -357,20 +376,19 @@ async def global_exception_handler(request: Request, exc: Exception):
         raise exc
     tb = traceback.format_exc()
     # ВРЕМЕННО: логируем traceback всегда
-    print(tb)
-    detail = f"{type(exc).__name__}: {str(exc)}"
+    logger.exception("Unhandled exception", extra={"path": str(request.url.path), "method": request.method})
+    detail = _build_error_detail(exc)
     err_str = str(exc).lower()
     if ("does not exist" in err_str and ("column" in err_str or "relation" in err_str)):
         return JSONResponse(
             status_code=503,
             content={
                 "detail": "Database schema is outdated. Run migrations: cd backend && alembic upgrade head",
-                "error": detail[:500],
-                "trace": tb.replace("\n", " ")[:800],
             },
         )
     # ВРЕМЕННО: добавляем traceback в detail даже в production
-    detail += " | " + tb.replace("\n", " ")[:800]
+    if not _is_production():
+        detail += " | " + tb.replace("\n", " ")[:800]
     return JSONResponse(status_code=500, content={"detail": detail})
 
 

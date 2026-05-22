@@ -2,11 +2,12 @@ import hmac
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
+from app.rate_limit import limiter
 from app.schemas import Token, UserLogin, PasswordReset, PasswordResetConfirm, SetPasswordByInvite, UserResponse
 from app.models import User
 from app.services.telegram import notify_user
@@ -15,7 +16,9 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -47,14 +50,16 @@ async def guest_login():
 
 
 @router.post("/password-reset")
+@limiter.limit("5/minute")
 async def password_reset(
-    request: PasswordReset,
+    request: Request,
+    payload: PasswordReset,
     db: Session = Depends(get_db)
 ):
     """
     Backward-compatible alias for request endpoint.
     """
-    return await password_reset_request(request, db)
+    return await _password_reset_request_impl(payload, db)
 
 
 def _hash_reset_code(code: str) -> str:
@@ -74,17 +79,8 @@ def _now_for(expires_at: datetime) -> datetime:
     return datetime.utcnow()
 
 
-@router.post("/password-reset/request")
-async def password_reset_request(
-    request: PasswordReset,
-    db: Session = Depends(get_db)
-):
-    """
-    Step 1: Request password reset code.
-    - If user has Telegram linked, send code there.
-    - Otherwise code is not delivered (neutral response for security).
-    """
-    user = auth.get_user_by_email(db, request.email)
+async def _password_reset_request_impl(payload: PasswordReset, db: Session):
+    user = auth.get_user_by_email(db, payload.email)
 
     if user:
         # 6-значный код, удобно вводить руками
@@ -112,6 +108,21 @@ async def password_reset_request(
 
     # Всегда возвращаем успех (не раскрываем существование email)
     return {"message": "Если email существует, код для сброса пароля отправлен (в Telegram, если он привязан)"}
+
+
+@router.post("/password-reset/request")
+@limiter.limit("5/minute")
+async def password_reset_request(
+    request: Request,
+    payload: PasswordReset,
+    db: Session = Depends(get_db)
+):
+    """
+    Step 1: Request password reset code.
+    - If user has Telegram linked, send code there.
+    - Otherwise code is not delivered (neutral response for security).
+    """
+    return await _password_reset_request_impl(payload, db)
 
 
 @router.post("/password-reset/confirm")

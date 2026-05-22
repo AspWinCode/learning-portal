@@ -74,6 +74,7 @@ wheels/
 # IDE
 .vscode/
 .idea/
+.claude/worktrees/
 *.swp
 *.swo
 *~

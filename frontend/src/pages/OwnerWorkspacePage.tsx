@@ -63,6 +63,7 @@ import {
 import { ru } from 'date-fns/locale';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
+import { OwnerWorkspaceSettingsDialogs } from '../components/ownerWorkspace/OwnerWorkspaceSettingsDialogs';
 import { useAuth } from '../contexts/AuthContext';
 import { ownerWorkspaceApi, settingsApi, usersApi } from '../services/api';
 import type {
@@ -9630,6 +9631,56 @@ const OwnerWorkspacePage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      <OwnerWorkspaceSettingsDialogs
+        settingsBundleDialogOpen={settingsBundleDialogOpen}
+        settingsBundleImporting={settingsBundleImporting}
+        settingsBundleImportText={settingsBundleImportText}
+        parsedSettingsBundleInput={parsedSettingsBundleInput}
+        settingsSnapshotCreateOpen={settingsSnapshotCreateOpen}
+        settingsSnapshotEditOpen={settingsSnapshotEditOpen}
+        settingsSnapshotCreating={settingsSnapshotCreating}
+        settingsSnapshotName={settingsSnapshotName}
+        settingsSnapshotNote={settingsSnapshotNote}
+        settingsSnapshotPreview={settingsSnapshotPreview}
+        settingsSnapshotDeleteConfirm={settingsSnapshotDeleteConfirm}
+        settingsSnapshotDeletingId={settingsSnapshotDeletingId}
+        settingsSnapshotReview={settingsSnapshotReview}
+        settingsSnapshotApplyingId={settingsSnapshotApplyingId}
+        settingsSnapshotCompareBaseId={settingsSnapshotCompareBaseId}
+        settingsSnapshots={settingsSnapshots}
+        settingsSnapshotCompareBaseSnapshot={settingsSnapshotCompareBaseSnapshot}
+        settingsSnapshotCompareBaseSummary={settingsSnapshotCompareBaseSummary}
+        reviewedSnapshotDiff={reviewedSnapshotDiff}
+        settingsSnapshotCreateSafetyBeforeApply={settingsSnapshotCreateSafetyBeforeApply}
+        onSettingsBundleDialogClose={() => setSettingsBundleDialogOpen(false)}
+        onSettingsBundleImportTextChange={setSettingsBundleImportText}
+        onImportWorkspaceSettingsBundle={() => void importWorkspaceSettingsBundle()}
+        onSettingsSnapshotCreateClose={() => setSettingsSnapshotCreateOpen(false)}
+        onSettingsSnapshotNameChange={setSettingsSnapshotName}
+        onSettingsSnapshotNoteChange={setSettingsSnapshotNote}
+        onCreateSettingsSnapshot={() => void createSettingsSnapshot()}
+        onSettingsSnapshotEditClose={() => {
+          setSettingsSnapshotEditOpen(false);
+          setSettingsSnapshotEditingId(null);
+        }}
+        onUpdateSettingsSnapshot={() => void updateSettingsSnapshot()}
+        onSettingsSnapshotPreviewClose={() => setSettingsSnapshotPreview(null)}
+        onCopySettingsSnapshot={(snapshot) => void copySettingsSnapshot(snapshot)}
+        onExportSettingsSnapshot={exportSettingsSnapshot}
+        onSettingsSnapshotDeleteConfirmClose={() => setSettingsSnapshotDeleteConfirm(null)}
+        onDeleteSettingsSnapshot={(snapshot) => {
+          void deleteSettingsSnapshot(snapshot);
+          setSettingsSnapshotDeleteConfirm(null);
+        }}
+        onSettingsSnapshotReviewClose={() => setSettingsSnapshotReview(null)}
+        onSettingsSnapshotCompareBaseIdChange={setSettingsSnapshotCompareBaseId}
+        onSettingsSnapshotCreateSafetyBeforeApplyChange={setSettingsSnapshotCreateSafetyBeforeApply}
+        onApplySettingsSnapshot={(snapshot) => void applySettingsSnapshot(snapshot)}
+        summarizeWorkspaceSettingsBundle={summarizeWorkspaceSettingsBundle}
+      />
+
+      {false && (
+        <>
       <Dialog open={settingsBundleDialogOpen} onClose={() => !settingsBundleImporting && setSettingsBundleDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Импорт bundle системных настроек</DialogTitle>
         <DialogContent>
@@ -9659,7 +9710,7 @@ const OwnerWorkspacePage: React.FC = () => {
                       </Typography>
                     )}
                     <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                      {Object.entries(summarizeWorkspaceSettingsBundle(parsedSettingsBundleInput.bundle)).map(([key, value]) => (
+                      {Object.entries(parsedSettingsBundleInput.bundle ? summarizeWorkspaceSettingsBundle(parsedSettingsBundleInput.bundle!) : {}).map(([key, value]) => (
                         <Chip key={key} size="small" label={`${key}: ${value}`} />
                       ))}
                     </Stack>
@@ -9787,14 +9838,14 @@ const OwnerWorkspacePage: React.FC = () => {
           {settingsSnapshotPreview && (
             <Stack spacing={2} sx={{ mt: 1 }}>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Chip size="small" label={settingsSnapshotPreview.name} />
-                <Chip size="small" variant="outlined" label={`Создан: ${new Date(settingsSnapshotPreview.created_at).toLocaleString('ru-RU')}`} />
+                <Chip size="small" label={settingsSnapshotPreview?.name ?? ''} />
+                <Chip size="small" variant="outlined" label={`Создан: ${settingsSnapshotPreview?.created_at ? new Date(settingsSnapshotPreview?.created_at ?? '').toLocaleString('ru-RU') : ''}`} />
               </Stack>
               <TextField
                 fullWidth
                 multiline
                 minRows={18}
-                value={JSON.stringify(settingsSnapshotPreview.bundle, null, 2)}
+                value={JSON.stringify(settingsSnapshotPreview?.bundle ?? {}, null, 2)}
                 InputProps={{ readOnly: true }}
               />
             </Stack>
@@ -9831,19 +9882,19 @@ const OwnerWorkspacePage: React.FC = () => {
                 Snapshot будет удалён из списка rollback-точек. Bundle, уже применённый на сервере, это не изменит.
               </Alert>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Chip size="small" label={settingsSnapshotDeleteConfirm.name} />
-                <Chip size="small" variant="outlined" label={`Создан: ${new Date(settingsSnapshotDeleteConfirm.created_at).toLocaleString('ru-RU')}`} />
-                {settingsSnapshotDeleteConfirm.created_by_name && (
-                  <Chip size="small" variant="outlined" label={`Автор: ${settingsSnapshotDeleteConfirm.created_by_name}`} />
+                <Chip size="small" label={settingsSnapshotDeleteConfirm?.name ?? ''} />
+                <Chip size="small" variant="outlined" label={`Создан: ${settingsSnapshotDeleteConfirm?.created_at ? new Date(settingsSnapshotDeleteConfirm?.created_at ?? '').toLocaleString('ru-RU') : ''}`} />
+                {settingsSnapshotDeleteConfirm?.created_by_name && (
+                  <Chip size="small" variant="outlined" label={`Автор: ${settingsSnapshotDeleteConfirm?.created_by_name ?? ''}`} />
                 )}
               </Stack>
-              {settingsSnapshotDeleteConfirm.note && (
+              {settingsSnapshotDeleteConfirm?.note && (
                 <Typography variant="body2" color="text.secondary">
-                  {settingsSnapshotDeleteConfirm.note}
+                  {settingsSnapshotDeleteConfirm?.note ?? ''}
                 </Typography>
               )}
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                {Object.entries(settingsSnapshotDeleteConfirm.bundle.meta.summary).map(([key, value]) => (
+                {Object.entries(settingsSnapshotDeleteConfirm?.bundle.meta.summary ?? {}).map(([key, value]) => (
                   <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
                 ))}
               </Stack>
@@ -9885,16 +9936,16 @@ const OwnerWorkspacePage: React.FC = () => {
                 сохранить safety snapshot.
               </Alert>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Chip size="small" label={settingsSnapshotReview.name} />
-                <Chip size="small" variant="outlined" label={`Создан: ${new Date(settingsSnapshotReview.created_at).toLocaleString('ru-RU')}`} />
-                {settingsSnapshotReview.created_by_name && (
-                  <Chip size="small" variant="outlined" label={`Автор: ${settingsSnapshotReview.created_by_name}`} />
+                <Chip size="small" label={settingsSnapshotReview?.name ?? ''} />
+                <Chip size="small" variant="outlined" label={`Создан: ${settingsSnapshotReview?.created_at ? new Date(settingsSnapshotReview?.created_at ?? '').toLocaleString('ru-RU') : ''}`} />
+                {settingsSnapshotReview?.created_by_name && (
+                  <Chip size="small" variant="outlined" label={`Автор: ${settingsSnapshotReview?.created_by_name ?? ''}`} />
                 )}
-                <Chip size="small" variant="outlined" label={`v${settingsSnapshotReview.bundle.meta.version}`} />
+                <Chip size="small" variant="outlined" label={`v${settingsSnapshotReview?.bundle.meta.version ?? ''}`} />
               </Stack>
-              {settingsSnapshotReview.note && (
+              {settingsSnapshotReview?.note && (
                 <Typography variant="body2" color="text.secondary">
-                  {settingsSnapshotReview.note}
+                  {settingsSnapshotReview?.note ?? ''}
                 </Typography>
               )}
               <TextField
@@ -9907,7 +9958,7 @@ const OwnerWorkspacePage: React.FC = () => {
               >
                 <MenuItem value="__current__">Текущее состояние</MenuItem>
                 {settingsSnapshots
-                  .filter((snapshot) => snapshot.id !== settingsSnapshotReview.id)
+                  .filter((snapshot) => snapshot.id !== settingsSnapshotReview?.id)
                   .map((snapshot) => (
                     <MenuItem key={snapshot.id} value={snapshot.id}>
                       {snapshot.name} · {new Date(snapshot.created_at).toLocaleString('ru-RU')}
@@ -9920,13 +9971,13 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Typography>
                 {settingsSnapshotCompareBaseSnapshot && (
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {settingsSnapshotCompareBaseSnapshot.name}
-                    {settingsSnapshotCompareBaseSnapshot.created_by_name ? ` · ${settingsSnapshotCompareBaseSnapshot.created_by_name}` : ''}
+                    {settingsSnapshotCompareBaseSnapshot?.name ?? ''}
+                    {settingsSnapshotCompareBaseSnapshot?.created_by_name ? ` · ${settingsSnapshotCompareBaseSnapshot?.created_by_name}` : ''}
                   </Typography>
                 )}
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                   {settingsSnapshotCompareBaseSummary ? (
-                    Object.entries(settingsSnapshotCompareBaseSummary).map(([key, value]) => (
+                    Object.entries(settingsSnapshotCompareBaseSummary ?? {}).map(([key, value]) => (
                       <Chip key={key} size="small" label={`${key}: ${value}`} />
                     ))
                   ) : (
@@ -9939,7 +9990,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   Snapshot
                 </Typography>
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                  {Object.entries(settingsSnapshotReview.bundle.meta.summary).map(([key, value]) => (
+                  {Object.entries(settingsSnapshotReview?.bundle.meta.summary ?? {}).map(([key, value]) => (
                     <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
                   ))}
                 </Stack>
@@ -9985,6 +10036,9 @@ const OwnerWorkspacePage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+        </>
+      )}
 
       <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Поиск по задачнику</DialogTitle>

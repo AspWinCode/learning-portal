@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-if sys.version_info >= (3, 9):
+if sys.version_info >= (3, 8):
     from fastapi.testclient import TestClient
     from app.main import app
 else:
@@ -25,7 +25,7 @@ def _is_db_configured() -> bool:
 def client():
     """HTTP-клиент для вызова API без поднятия сервера."""
     if app is None:
-        pytest.skip("Integration tests require Python 3.9+ (app uses modern type hints)")
+        pytest.skip("Integration tests require Python 3.8+")
     return TestClient(app)
 
 

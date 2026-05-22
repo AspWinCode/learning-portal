@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import os
-import traceback
+import logging
 from datetime import date, timedelta
 from typing import Callable
 
 from app.database import SessionLocal
+from app.logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 def _env_enabled(name: str, default: str = "1") -> bool:
@@ -20,8 +24,7 @@ def _run_db_job(job_name: str, fn: Callable) -> None:
         finally:
             db.close()
     except Exception:
-        print(f"[background-job] failed: {job_name}")
-        traceback.print_exc()
+        logger.exception("Background job failed: %s", job_name)
 
 
 def run_tochka_auto_import() -> None:
@@ -43,8 +46,7 @@ def run_tochka_auto_import() -> None:
         finally:
             db.close()
     except Exception:
-        print("[background-job] failed: tochka_auto_import")
-        traceback.print_exc()
+        logger.exception("Background job failed: tochka_auto_import")
 
 
 def run_payment_overdue_tasks() -> None:
@@ -119,7 +121,7 @@ def run_owner_workspace_notification_email_dispatch() -> None:
     def _job(db) -> None:
         sent = dispatch_pending_owner_workspace_notification_emails(db, limit=100)
         if sent:
-            print(f"[background-job] sent owner-workspace email notifications: {sent}")
+            logger.info("Sent owner-workspace email notifications: %s", sent)
 
     _run_db_job("owner_workspace_notification_email_dispatch", _job)
 
@@ -135,6 +137,6 @@ def run_owner_workspace_notification_web_push_dispatch() -> None:
     def _job(db) -> None:
         sent = dispatch_pending_owner_workspace_notification_web_push(db, limit=100)
         if sent:
-            print(f"[background-job] sent owner-workspace web push notifications: {sent}")
+            logger.info("Sent owner-workspace web push notifications: %s", sent)
 
     _run_db_job("owner_workspace_notification_web_push_dispatch", _job)

@@ -27,6 +27,36 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Создание пользователей, смена ролей и управление архивом.",
     },
     {
+        "key": "persons.access",
+        "module": "persons",
+        "label": "Person registry view",
+        "description": "Access to Person registry, phone dedup, and linked record deep links.",
+    },
+    {
+        "key": "persons.manage",
+        "module": "persons",
+        "label": "Person registry manage",
+        "description": "Merge Person records and attach users, leads, and student cards.",
+    },
+    {
+        "key": "trainer_cockpit.access",
+        "module": "trainer_cockpit",
+        "label": "Trainer cockpit view",
+        "description": "Access to trainer cockpit summary and quick actions.",
+    },
+    {
+        "key": "parent_dashboard.access",
+        "module": "parent_dashboard",
+        "label": "Parent dashboard view",
+        "description": "Access to parent dashboard, weekly digest summary, questions, and web push.",
+    },
+    {
+        "key": "personal_finance.access",
+        "module": "personal_finance",
+        "label": "Personal finance access",
+        "description": "Access to owner personal finance workspace.",
+    },
+    {
         "key": "settings.access",
         "module": "settings",
         "label": "Просмотр настроек",

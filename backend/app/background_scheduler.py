@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.background_tasks import (
@@ -15,6 +17,10 @@ from app.background_tasks import (
     task_student_class_autopromo,
     task_tochka_auto_import,
 )
+from app.logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 def _enqueue_fast_cycle_jobs() -> None:
@@ -37,7 +43,7 @@ def main() -> None:
     scheduler.add_job(lambda: task_owner_workspace_notification_web_push_dispatch.send(), "interval", minutes=1, id="owner_workspace_notification_web_push_dispatch", max_instances=1)
     scheduler.add_job(lambda: task_student_class_autopromo.send(), "cron", month=9, day=1, hour=3, id="student_class_autopromo", max_instances=1)
     scheduler.add_job(lambda: task_absence_link_tasks.send(), "cron", hour=8, minute=0, id="absence_link_tasks", max_instances=1)
-    print("[background-scheduler] starting periodic scheduler")
+    logger.info("Starting background scheduler")
     _enqueue_fast_cycle_jobs()
     scheduler.start()
 

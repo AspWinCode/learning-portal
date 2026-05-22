@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import User, UserRole
+from app.models import User
 from app.routers.action_log import log_action
 from app.schemas import (
     OwnerWorkspaceWebPushStatusResponse,
@@ -25,8 +25,7 @@ router = APIRouter()
 
 
 def _require_parent(current_user: User) -> None:
-    if auth.resolve_effective_role(current_user) != UserRole.PARENT:
-        raise HTTPException(status_code=403, detail="Only parents can access parent dashboard")
+    auth.ensure_permission(current_user, "parent_dashboard.access")
 
 
 @router.get("/summary", response_model=ParentDashboardSummaryResponse)

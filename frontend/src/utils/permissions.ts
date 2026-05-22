@@ -3,9 +3,9 @@ import { User } from '../types';
 const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: ['*'],
   owner: ['*'],
-  sales: ['sales.access', 'finance.access', 'tasks.access', 'projects.access', 'owner_workspace.access', 'students.access', 'students.manage', 'lessons.access', 'lessons.manage', 'lessons.schedule_manage', 'student_accounts.access', 'student_accounts.manage', 'student_accounts.payment'],
-  trainer: ['tasks.access', 'projects.access', 'owner_workspace.access', 'groups.access', 'programs.access', 'students.access', 'grades.access', 'grades.manage', 'characteristics.access', 'characteristics.manage', 'lessons.access', 'lessons.manage', 'telegram.link'],
-  parent: ['programs.access', 'groups.access', 'grades.access', 'characteristics.access', 'student_accounts.access', 'student_accounts.payment', 'telegram.link'],
+  sales: ['sales.access', 'finance.access', 'tasks.access', 'projects.access', 'owner_workspace.access', 'students.access', 'students.manage', 'lessons.access', 'lessons.manage', 'lessons.schedule_manage', 'student_accounts.access', 'student_accounts.manage', 'student_accounts.payment', 'persons.access', 'persons.manage'],
+  trainer: ['tasks.access', 'projects.access', 'owner_workspace.access', 'groups.access', 'programs.access', 'students.access', 'grades.access', 'grades.manage', 'characteristics.access', 'characteristics.manage', 'lessons.access', 'lessons.manage', 'telegram.link', 'trainer_cockpit.access'],
+  parent: ['programs.access', 'groups.access', 'grades.access', 'characteristics.access', 'student_accounts.access', 'student_accounts.payment', 'telegram.link', 'parent_dashboard.access'],
   guest: ['programs.access'],
 };
 

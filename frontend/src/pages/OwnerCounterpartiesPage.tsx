@@ -740,7 +740,6 @@ const OwnerCounterpartiesPage: React.FC = () => {
         title="Удалить контрагента?"
         description="Удаление необратимо. Карточка, документы и связанные привязки будут удалены."
         confirmLabel="Удалить"
-        confirmColor="error"
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
       />

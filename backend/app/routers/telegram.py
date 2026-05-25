@@ -1,22 +1,14 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from app.database import get_db
 from app import auth
 from app.models import User
+from app.schemas.telegram import TelegramLinkCodeResponse
 from app.services.telegram import issue_link_code, build_deep_link
 
 router = APIRouter()
-
-
-class TelegramLinkCodeResponse(BaseModel):
-    code: str
-    expires_at: datetime
-    deep_link_url: Optional[str] = None
-
 
 @router.post("/link-code", response_model=TelegramLinkCodeResponse)
 async def get_link_code(

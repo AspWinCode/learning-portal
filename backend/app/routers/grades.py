@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app import auth
-from app.schemas import GradeCreate, GradeResponse, GradeUpdate
+from app.schemas.grades import GradeCreate, GradeResponse, GradeUpdate
 from app.models import (
     Grade, User, UserRole, Topic, TopicStatus, Student, StudentStatus, GroupStudent, Group,
     ProgramTrainer, StudentProgram, GroupProgram, Program, ProgramStatus, Module,

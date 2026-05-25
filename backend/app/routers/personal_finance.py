@@ -14,7 +14,7 @@ from app.models import (
     PersonalFinanceTransaction,
     User,
 )
-from app.schemas import (
+from app.schemas.personal_finance import (
     PersonalFinanceAccountCreate,
     PersonalFinanceAccountResponse,
     PersonalFinanceAccountUpdate,

@@ -1,5 +1,8 @@
 import type {
   OwnerWorkspaceAuditLog,
+  OwnerWorkspaceCounterparty,
+  OwnerWorkspaceCounterpartyCustomField,
+  OwnerWorkspaceCounterpartyDocument,
   OwnerWorkspaceContact,
   OwnerWorkspaceConversation,
   OwnerWorkspaceDigest,
@@ -49,6 +52,96 @@ export const ownerWorkspaceApi = {
   },
   archiveProject: async (projectId: number): Promise<void> => {
     await api.delete(`/api/owner-workspace/projects/${projectId}`);
+  },
+  listCounterparties: async (params?: {
+    search?: string;
+    project_id?: number;
+    archived?: boolean;
+  }): Promise<OwnerWorkspaceCounterparty[]> => {
+    const response = await api.get('/api/owner-workspace/counterparties', { params: params || {} });
+    return response.data;
+  },
+  getCounterparty: async (contactId: number): Promise<OwnerWorkspaceCounterparty> => {
+    const response = await api.get(`/api/owner-workspace/counterparties/${contactId}`);
+    return response.data;
+  },
+  createCounterparty: async (payload: {
+    full_name: string;
+    phone?: string | null;
+    email?: string | null;
+    company?: string | null;
+    position?: string | null;
+    tags?: string[];
+    comment?: string | null;
+    source?: string | null;
+    project_ids?: number[];
+    custom_fields?: OwnerWorkspaceCounterpartyCustomField[];
+  }): Promise<OwnerWorkspaceCounterparty> => {
+    const response = await api.post('/api/owner-workspace/counterparties', payload);
+    return response.data;
+  },
+  updateCounterparty: async (
+    contactId: number,
+    payload: {
+      full_name?: string;
+      phone?: string | null;
+      email?: string | null;
+      company?: string | null;
+      position?: string | null;
+      tags?: string[];
+      comment?: string | null;
+      source?: string | null;
+      project_ids?: number[];
+      custom_fields?: OwnerWorkspaceCounterpartyCustomField[];
+    }
+  ): Promise<OwnerWorkspaceCounterparty> => {
+    const response = await api.patch(`/api/owner-workspace/counterparties/${contactId}`, payload);
+    return response.data;
+  },
+  archiveCounterparty: async (contactId: number): Promise<OwnerWorkspaceCounterparty> => {
+    const response = await api.post(`/api/owner-workspace/counterparties/${contactId}/archive`);
+    return response.data;
+  },
+  unarchiveCounterparty: async (contactId: number): Promise<OwnerWorkspaceCounterparty> => {
+    const response = await api.post(`/api/owner-workspace/counterparties/${contactId}/unarchive`);
+    return response.data;
+  },
+  deleteCounterparty: async (contactId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/counterparties/${contactId}`);
+  },
+  listCounterpartyDocuments: async (contactId: number): Promise<OwnerWorkspaceCounterpartyDocument[]> => {
+    const response = await api.get(`/api/owner-workspace/counterparties/${contactId}/documents`);
+    return response.data;
+  },
+  uploadCounterpartyDocument: async (
+    contactId: number,
+    category: string,
+    file: File
+  ): Promise<OwnerWorkspaceCounterpartyDocument> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post(`/api/owner-workspace/counterparties/${contactId}/documents/${category}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+  deleteCounterpartyDocument: async (
+    contactId: number,
+    category: string
+  ): Promise<OwnerWorkspaceCounterpartyDocument> => {
+    const response = await api.delete(`/api/owner-workspace/counterparties/${contactId}/documents/${category}`);
+    return response.data;
+  },
+  downloadCounterpartyDocument: async (
+    contactId: number,
+    category: string
+  ): Promise<{ blob: Blob; filename: string | null }> => {
+    const response = await api.get(`/api/owner-workspace/counterparties/${contactId}/documents/${category}`, {
+      responseType: 'blob',
+    });
+    const disposition = String(response.headers['content-disposition'] || '');
+    const match = disposition.match(/filename="?([^"]+)"?/i);
+    return { blob: response.data, filename: match ? match[1] : null };
   },
   getContact: async (contactId: number): Promise<OwnerWorkspaceContact> => {
     const response = await api.get(`/api/owner-workspace/contacts/${contactId}`);

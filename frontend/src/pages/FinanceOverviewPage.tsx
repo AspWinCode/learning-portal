@@ -17,7 +17,6 @@ import {
   Tabs,
   Tab,
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -26,7 +25,8 @@ import {
 import { Delete as DeleteIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { financeApi, studentsApi } from '../services/api';
-import type { FinanceAccountBalance, FinancePnlRow, FinanceLedgerBankRow, FinanceAnalyticsSummary, Student } from '../types';
+import type { FinanceAccountBalance, FinanceLedgerBankRow, FinanceAnalyticsSummary, Student } from '../types';
+import { EmptyState, FilterPanel, FormDialog, LoadingSkeleton } from '../components/ui';
 
 const FinanceOverviewPageContent: React.FC = () => {
   const [tab, setTab] = useState<'analytics' | 'overview' | 'all' | 'unclassified'>('analytics');
@@ -35,15 +35,11 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [balancesError, setBalancesError] = useState<string | null>(null);
 
-  const [targetCode, setTargetCode] = useState<string>('academy');
   const [pnlFrom, setPnlFrom] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-01-01`;
   });
   const [pnlTo, setPnlTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  const [pnlRows, setPnlRows] = useState<FinancePnlRow[]>([]);
-  const [pnlLoading, setPnlLoading] = useState(false);
-  const [pnlError, setPnlError] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<FinanceAnalyticsSummary | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
@@ -94,22 +90,6 @@ const FinanceOverviewPageContent: React.FC = () => {
       .finally(() => setBalancesLoading(false));
   }, [asOf]);
 
-  useEffect(() => {
-    setPnlLoading(true);
-    setPnlError(null);
-    financeApi
-      .getPnl({
-        target_code: targetCode || 'academy',
-        date_from: pnlFrom || undefined,
-        date_to: pnlTo || undefined,
-        group_by: 'month',
-      })
-      .then(setPnlRows)
-      .catch((err: any) => {
-        setPnlError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить P&L');
-      })
-      .finally(() => setPnlLoading(false));
-  }, [targetCode, pnlFrom, pnlTo]);
 
   useEffect(() => {
     if (tab !== 'analytics') return;
@@ -189,7 +169,66 @@ const FinanceOverviewPageContent: React.FC = () => {
         setJournalRows([]);
       })
       .finally(() => setJournalLoading(false));
-  }, [tab, journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, targets.length, articles.length]);
+  }, [tab, journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, targets.length, articles.length, accounts.length]);
+
+  const closeApplyDialog = () => {
+    setApplyDialogOpen(false);
+    setSelectedJournalTx(null);
+    setStudentSearch('');
+    setStudentOptions([]);
+    setSelectedStudent(null);
+  };
+
+  const handleApplyStudentPayment = async () => {
+    if (!selectedJournalTx || !selectedStudent) return;
+    try {
+      setApplyLoading(true);
+      const updated = await financeApi.applyTransactionToStudent(selectedJournalTx.id, {
+        student_id: selectedStudent.id,
+      });
+      setJournalRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      closeApplyDialog();
+    } catch (err: any) {
+      setJournalError(
+        err?.response?.data?.detail ||
+          err?.message ||
+          'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°С‡РёСЃР»РёС‚СЊ РїР»Р°С‚С‘Р¶ РЅР° СЃС‡С‘С‚ СѓС‡РµРЅРёРєР°'
+      );
+    } finally {
+      setApplyLoading(false);
+    }
+  };
+
+  const handleCreateManualOperation = async () => {
+    if (!manualAccountId || !manualAmount || Number(manualAmount) <= 0) return;
+    setManualSubmitting(true);
+    setManualError(null);
+    try {
+      await financeApi.createManualTransaction({
+        account_id: Number(manualAccountId),
+        amount: Number(manualAmount),
+        direction: manualDirection,
+        occurred_at: manualDate,
+        article_id: manualArticleId === '' ? null : manualArticleId,
+        target_id: manualTargetId === '' ? null : manualTargetId,
+        description: manualDescription.trim() || null,
+      });
+      setManualDialogOpen(false);
+      const refreshed = await financeApi.listJournalTransactions({
+        unclassified_only: tab === 'unclassified',
+        target_ids: journalTargetFilter === 'all' ? undefined : [journalTargetFilter],
+        direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
+        date_from: journalFrom || undefined,
+        date_to: journalTo || undefined,
+        limit: 5000,
+      });
+      setJournalRows(refreshed);
+    } catch (err: any) {
+      setManualError(err?.response?.data?.detail || err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ РѕРїРµСЂР°С†РёСЋ');
+    } finally {
+      setManualSubmitting(false);
+    }
+  };
 
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -210,7 +249,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           <Typography variant="h6" sx={{ mb: 1 }}>
             Управленческая финансовая аналитика
           </Typography>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+          <FilterPanel>
             <TextField
               label="С"
               type="date"
@@ -232,12 +271,21 @@ const FinanceOverviewPageContent: React.FC = () => {
                 Загрузка...
               </Typography>
             )}
-          </Box>
+          </FilterPanel>
 
           {analyticsError && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {analyticsError}
             </Alert>
+          )}
+
+          {analyticsLoading && <LoadingSkeleton rows={4} />}
+
+          {!analyticsLoading && !analyticsError && !analytics && (
+            <EmptyState
+              title="Финансовая аналитика недоступна"
+              description="Выберите период или дождитесь загрузки данных."
+            />
           )}
 
           {analytics && (
@@ -845,7 +893,7 @@ const FinanceOverviewPageContent: React.FC = () => {
       </Box>
       )}
 
-      <Dialog
+      <FormDialog
         open={applyDialogOpen && !!selectedJournalTx}
         onClose={() => {
           setApplyDialogOpen(false);
@@ -854,11 +902,13 @@ const FinanceOverviewPageContent: React.FC = () => {
           setStudentOptions([]);
           setSelectedStudent(null);
         }}
+        onSubmit={handleApplyStudentPayment}
+        submitLabel={applyLoading ? 'РЎРѕС…СЂР°РЅРµРЅРёРµ...' : 'Р—Р°С‡РёСЃР»РёС‚СЊ'}
+        submitDisabled={!selectedJournalTx || !selectedStudent || applyLoading}
+        title="Р—Р°С‡РёСЃР»РёС‚СЊ РїР»Р°С‚С‘Р¶ СѓС‡РµРЅРёРєСѓ"
         maxWidth="sm"
-        fullWidth
       >
         <DialogTitle>Зачислить платёж ученику</DialogTitle>
-        <DialogContent>
           {selectedJournalTx && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2">
@@ -913,7 +963,6 @@ const FinanceOverviewPageContent: React.FC = () => {
               ))}
             </Box>
           )}
-        </DialogContent>
         <DialogActions>
           <Button
             onClick={() => {
@@ -956,9 +1005,9 @@ const FinanceOverviewPageContent: React.FC = () => {
             {applyLoading ? 'Сохранение...' : 'Зачислить'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </FormDialog>
 
-      <Dialog open={manualDialogOpen} onClose={() => !manualSubmitting && setManualDialogOpen(false)} maxWidth="sm" fullWidth>
+      <FormDialog open={manualDialogOpen} onClose={() => !manualSubmitting && setManualDialogOpen(false)} onSubmit={handleCreateManualOperation} submitLabel={manualSubmitting ? 'РЎРѕС…СЂР°РЅРµРЅРёРµвЂ¦' : 'Р”РѕР±Р°РІРёС‚СЊ'} submitDisabled={manualSubmitting || !manualAccountId || !manualAmount || Number(manualAmount) <= 0} title="Р”РѕР±Р°РІРёС‚СЊ РѕРїРµСЂР°С†РёСЋ (СЂСѓС‡РЅР°СЏ Р·Р°РїРёСЃСЊ)" maxWidth="sm">
         <DialogTitle>Добавить операцию (ручная запись)</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -1082,7 +1131,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             {manualSubmitting ? 'Сохранение…' : 'Добавить'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </FormDialog>
     </Box>
   );
 };

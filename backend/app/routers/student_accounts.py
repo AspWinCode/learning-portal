@@ -16,7 +16,7 @@ from app.models import (
     GroupStudent,
     Group,
 )
-from app.schemas import (
+from app.schemas.students import (
     StudentAccountResponse,
     StudentAccountUpdate,
     StudentAccountTransactionResponse,

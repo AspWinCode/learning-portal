@@ -23,7 +23,7 @@ from app.models import (
     UserRole,
 )
 from app.routers.action_log import log_action
-from app.schemas import EventCreate, EventRegistrationCreate, EventRegistrationResponse, EventResponse, EventUpdate
+from app.schemas.sales import EventCreate, EventRegistrationCreate, EventRegistrationResponse, EventResponse, EventUpdate
 
 router = APIRouter()
 

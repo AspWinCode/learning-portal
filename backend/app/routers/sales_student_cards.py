@@ -11,8 +11,8 @@ from app import auth
 from app.database import get_db
 from app.models import Abonement, DiscountType, Student, StudentCard, StudentStatus, User, UserRole
 from app.routers.action_log import log_action
-from app.schemas import (
-    AbonementResponse,
+from app.schemas.abonements import AbonementResponse
+from app.schemas.sales import (
     AnketaConvertRequest,
     AnketaConvertResponse,
     OpenParentCabinetResponse,

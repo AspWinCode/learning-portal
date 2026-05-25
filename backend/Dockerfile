@@ -19,7 +19,7 @@ COPY . /app
 COPY docker/0047_eight_lessons_units_extra.py /app/alembic/versions/0047_eight_lessons_units_extra.py
 COPY docker/0079_scheduled_messages.py /app/alembic/versions/0079_scheduled_messages.py
 
-# Migrations run inside the app on startup (main.py _run_migrations_on_startup). If they fail, app still starts and returns 503 so we avoid 502.
+# Schema migrations are executed by the dedicated `migrator` service in docker-compose before app startup.
 # `--proxy-headers` is required behind reverse proxies (Caddy/Nginx) to respect X-Forwarded-Proto/For.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
 

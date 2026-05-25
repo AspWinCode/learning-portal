@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import Project, ProjectCard, ProjectStage, Student, StudentStatus, User, UserRole
-from app.schemas import (
+from app.schemas.projects import (
     ProjectCardMove,
     ProjectCardResponse,
     ProjectCreate,

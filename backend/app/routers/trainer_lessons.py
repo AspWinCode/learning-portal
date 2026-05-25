@@ -33,7 +33,7 @@ from app.models import (
     CustomLesson,
     CustomLessonStudent,
 )
-from app.schemas import (
+from app.schemas.groups import (
     TrainerLessonSlotResponse,
     LessonAttendanceSave,
     MoveLessonPayload,
@@ -42,6 +42,8 @@ from app.schemas import (
     AddStudentToLessonPayload,
     RemoveStudentFromLessonPayload,
     SetLessonTrainerPayload,
+)
+from app.schemas.sales import (
     CustomLessonAttendancePayload,
     CustomLessonResponse,
 )

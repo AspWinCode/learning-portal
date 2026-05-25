@@ -44,6 +44,7 @@ import StudentDetailPopup from '../components/StudentDetailPopup';
 import AnketaFormDrawer from '../components/AnketaFormDrawer';
 import { applyPhoneMask, isValidPhone, isValidGeorgianPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
+import { FilterPanel } from '../components/ui';
 
 const StudentsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -1207,7 +1208,7 @@ const StudentsPage: React.FC = () => {
             <Grid item><Paper variant="outlined" sx={{ px: 1.5, py: 1 }}><Typography variant="body2" color="text.secondary">По гранту</Typography><Typography variant="h6">{studentsMetrics.onGrant}</Typography></Paper></Grid>
           </Grid>
 
-          <Stack direction="row" flexWrap="wrap" alignItems="center" gap={1} sx={{ mb: 2 }}>
+          <FilterPanel>
             <TextField
               size="small"
               placeholder="Поиск по ФИО / email / телефону..."
@@ -1265,7 +1266,7 @@ const StudentsPage: React.FC = () => {
             <FormControlLabel control={<Checkbox checked={quickFilterNoGroup} onChange={(e) => setQuickFilterNoGroup(e.target.checked)} />} label="Только без группы" />
             <FormControlLabel control={<Checkbox checked={quickFilterFromLead} onChange={(e) => setQuickFilterFromLead(e.target.checked)} />} label="Только из лидов" />
             <Button size="small" onClick={() => { setQuickFilterNoGroup(false); setQuickFilterFromLead(false); setGroupFilter(''); setTrainerFilter(''); setProgramFilter(''); setStatusFilter('all'); setTypeFilter(''); setSearchQuery(''); }}>Сбросить фильтры</Button>
-          </Stack>
+          </FilterPanel>
 
           <TableContainer component={Paper} sx={{ mb: 2 }}>
             <Table size="small">

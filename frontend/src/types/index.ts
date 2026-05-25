@@ -1292,7 +1292,7 @@ export interface OwnerWorkspaceProject {
 export interface OwnerWorkspaceContact {
   id: number;
   full_name: string;
-  phone: string;
+  phone?: string | null;
   email?: string | null;
   company?: string | null;
   position?: string | null;
@@ -1626,6 +1626,32 @@ export interface PersonalFinanceAccount {
   is_active: boolean;
   created_at: string;
   updated_at?: string | null;
+}
+
+export interface OwnerWorkspaceCounterpartyCustomField {
+  id?: string | null;
+  label: string;
+  field_type: 'text' | 'number' | 'date' | 'link' | 'file' | 'comment';
+  value?: unknown;
+}
+
+export interface OwnerWorkspaceCounterpartyDocument {
+  category: string;
+  label: string;
+  uploaded: boolean;
+  status: 'missing' | 'uploaded';
+  filename?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  uploaded_at?: string | null;
+  download_url?: string | null;
+}
+
+export interface OwnerWorkspaceCounterparty extends OwnerWorkspaceContact {
+  custom_fields: OwnerWorkspaceCounterpartyCustomField[];
+  documents: OwnerWorkspaceCounterpartyDocument[];
+  is_archived: boolean;
+  archived_at?: string | null;
 }
 
 export interface PersonalFinanceCategory {

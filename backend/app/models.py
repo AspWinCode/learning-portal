@@ -2065,13 +2065,16 @@ class OwnerWorkspaceContact(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String(255), nullable=False, index=True)
-    phone = Column(String(64), nullable=False, index=True)
+    phone = Column(String(64), nullable=True, index=True)
     email = Column(String(255), nullable=True, index=True)
     company = Column(String(255), nullable=True, index=True)
     position = Column(String(255), nullable=True)
     tags = Column(JSON, nullable=True)
     comment = Column(Text, nullable=True)
     source = Column(String(128), nullable=True)
+    custom_fields = Column(JSON, nullable=True)
+    is_archived = Column(Boolean, nullable=False, server_default="false", index=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -2088,6 +2091,25 @@ class OwnerWorkspaceProjectContact(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("OwnerWorkspaceProject")
+    contact = relationship("OwnerWorkspaceContact")
+
+
+class OwnerWorkspaceCounterpartyDocument(Base):
+    __tablename__ = "owner_workspace_counterparty_documents"
+    __table_args__ = (
+        UniqueConstraint("contact_id", "category", name="uq_owner_workspace_counterparty_document_contact_category"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    category = Column(String(64), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(128), nullable=False)
+    size_bytes = Column(Integer, nullable=False, server_default="0")
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     contact = relationship("OwnerWorkspaceContact")
 
 

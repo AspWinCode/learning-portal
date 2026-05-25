@@ -4,16 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app import auth
-from app.schemas import (
+from app.schemas.groups import (
     GroupCreate,
     GroupListResponse,
     GroupResponse,
     GroupUpdate,
-    StudentResponse,
     GroupScheduleResponse,
     LessonSlotExtraPolicyPayload,
     LessonSlotExtraPolicyResponse,
 )
+from app.schemas.students import StudentResponse
 from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy
 from app.routers.action_log import log_action
 from app.services.student_activity import log_student_activity

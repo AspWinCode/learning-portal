@@ -83,7 +83,8 @@ from app.models import (
     LeadActivity,
 )
 from app.utils.phone import normalize_phone, validate_phone_for_lead
-from app.schemas import (
+from app.schemas.abonements import AbonementResponse
+from app.schemas.sales import (
     LeadCreate,
     LeadUpdate,
     LeadResponse,
@@ -141,7 +142,6 @@ from app.schemas import (
     StudentCardUpdate,
     StudentCardResponse,
     StudentCardImportResponse,
-    AbonementResponse,
     AbsenceFollowUpResponse,
     AbsenceFollowUpStageUpdate,
     OpenParentCabinetResponse,

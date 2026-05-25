@@ -1,15 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import {
   Typography,
   Box,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
   Button,
   TextField,
   Dialog,
@@ -17,6 +10,11 @@ import {
   DialogContent,
   DialogActions,
   Alert,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
   MenuItem,
   Select,
   FormControl,
@@ -27,9 +25,10 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon } from '@mui/icons-material';
 import { groupsApi, usersApi, studentsApi } from '../services/api';
-import { Group, User, Student, GroupSchedule } from '../types';
+import { Group, User, Student } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
+import { ConfirmDialog, DataTable, EmptyState, FormDialog, StatusChip } from '../components/ui';
 
 const GroupsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -37,6 +36,7 @@ const GroupsPage: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<Group | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [groupDetails, setGroupDetails] = useState<Group | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -80,15 +80,7 @@ const GroupsPage: React.FC = () => {
     { value: 'oge', label: 'ОГЭ' },
     { value: 'ege', label: 'ЕГЭ' },
   ];
-  useEffect(() => {
-    loadGroups();
-    if (canManageGroups) {
-      loadTrainers();
-      loadStudents();
-    }
-  }, [user, canManageGroups]);
-
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async () => {
     try {
       const data = await groupsApi.getAll();
       // Для тренера подтягиваем полные данные группы (включая учеников), чтобы показать счётчик и состав
@@ -109,25 +101,33 @@ const GroupsPage: React.FC = () => {
     } catch (err) {
       console.error('Ошибка загрузки групп', err);
     }
-  };
+  }, [effectiveRole]);
 
-  const loadTrainers = async () => {
+  const loadTrainers = useCallback(async () => {
     try {
       const data = await usersApi.getAll('trainer');
       setTrainers(data.filter(t => t.is_active));
     } catch (err) {
       console.error('Ошибка загрузки тренеров', err);
     }
-  };
+  }, []);
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     try {
       const data = await studentsApi.getAll({ status: 'active' });
       setStudents(data);
     } catch (err) {
       console.error('Ошибка загрузки учеников', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadGroups();
+    if (canManageGroups) {
+      loadTrainers();
+      loadStudents();
+    }
+  }, [canManageGroups, loadGroups, loadStudents, loadTrainers, user]);
 
   const openEditDialog = async (group: Group) => {
     setSelectedGroup(group);
@@ -275,6 +275,61 @@ const GroupsPage: React.FC = () => {
     }
   };
 
+  const groupColumns = [
+    { key: 'name', header: 'Название', render: (group: Group) => group.name },
+    {
+      key: 'direction',
+      header: 'Направление',
+      render: (group: Group) => DIRECTION_OPTIONS.find((o) => o.value === group.direction)?.label ?? group.direction ?? '-',
+    },
+    { key: 'trainer', header: 'Тренер', render: (group: Group) => group.trainer?.full_name || '-' },
+    {
+      key: 'units',
+      header: 'Юниты',
+      render: (group: Group) =>
+        group.lesson_format === 'individual'
+          ? '—'
+          : `${group.units_per_session ?? 1}${group.extra_rate_per_unit != null ? ` · ${group.extra_rate_per_unit} ₽/доп` : ''}`,
+    },
+    { key: 'students', header: 'Ученики', render: (group: Group) => group.students?.length ?? '-' },
+    {
+      key: 'status',
+      header: 'Статус',
+      render: (group: Group) => (
+        <StatusChip status={group.status} label={group.status === 'active' ? 'Активна' : 'В архиве'} />
+      ),
+    },
+    ...(canViewMembers
+      ? [
+          {
+            key: 'actions',
+            header: 'Действия',
+            render: (group: Group) => (
+              <>
+                <Button size="small" startIcon={<PeopleIcon />} onClick={() => openMembersDialog(group)} sx={{ mr: 1 }}>
+                  Состав
+                </Button>
+                {canManageGroups && (
+                  <>
+                    <Button size="small" startIcon={<EditIcon />} onClick={() => openEditDialog(group)} sx={{ mr: 1 }}>
+                      Редактировать
+                    </Button>
+                    <Button
+                      size="small"
+                      color={group.status === 'active' ? 'warning' : 'success'}
+                      onClick={() => setArchiveTarget(group)}
+                    >
+                      {group.status === 'active' ? 'В архив' : 'Разархивировать'}
+                    </Button>
+                  </>
+                )}
+              </>
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <Layout>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
@@ -306,7 +361,18 @@ const GroupsPage: React.FC = () => {
         </Alert>
       )}
 
-      <TableContainer component={Paper}>
+      <DataTable
+        columns={groupColumns}
+        rows={displayedGroups}
+        getRowKey={(group) => group.id}
+        emptyState={
+          <EmptyState
+            title="Группы не найдены"
+            description={groupsTab === 'active' ? 'В активном разделе пока нет групп.' : 'В архиве пока нет групп.'}
+          />
+        }
+      />
+      {false && (
         <Table>
           <TableHead>
             <TableRow>
@@ -363,11 +429,11 @@ const GroupsPage: React.FC = () => {
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      )}
 
       {/* Диалог создания группы */}
       {canManageGroups && (
-        <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <FormDialog open={open} title="РЎРѕР·РґР°С‚СЊ РіСЂСѓРїРїСѓ" onClose={() => setOpen(false)} onSubmit={handleCreate} submitLabel="РЎРѕР·РґР°С‚СЊ" maxWidth="sm">
           <DialogTitle>Создать группу</DialogTitle>
           <DialogContent>
             <TextField
@@ -547,7 +613,7 @@ const GroupsPage: React.FC = () => {
               Создать
             </Button>
           </DialogActions>
-        </Dialog>
+        </FormDialog>
       )}
 
       {/* Диалог редактирования группы */}
@@ -819,6 +885,20 @@ const GroupsPage: React.FC = () => {
           </DialogActions>
         </Dialog>
       )}
+
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        title={archiveTarget?.status === 'active' ? 'РћС‚РїСЂР°РІРёС‚СЊ РіСЂСѓРїРїСѓ РІ Р°СЂС…РёРІ?' : 'Р’РµСЂРЅСѓС‚СЊ РіСЂСѓРїРїСѓ РёР· Р°СЂС…РёРІР°?'}
+        description={archiveTarget ? `Р“СЂСѓРїРїР°: ${archiveTarget.name}` : undefined}
+        confirmLabel={archiveTarget?.status === 'active' ? 'Р’ Р°СЂС…РёРІ' : 'Р Р°Р·Р°СЂС…РёРІРёСЂРѕРІР°С‚СЊ'}
+        destructive={archiveTarget?.status === 'active'}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={async () => {
+          if (!archiveTarget) return;
+          await handleArchiveToggle(archiveTarget);
+          setArchiveTarget(null);
+        }}
+      />
 
     </Layout>
   );

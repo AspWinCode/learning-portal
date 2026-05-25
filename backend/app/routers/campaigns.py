@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel
 
 from app import auth
 from app.database import get_db
@@ -18,7 +17,8 @@ from app.models import (
     TaskStatus,
     User,
 )
-from app.schemas import (
+from app.schemas.campaigns import (
+    AddSchoolsBody,
     CampaignCreate,
     CampaignEventCreate,
     CampaignEventResponse,
@@ -30,14 +30,10 @@ from app.schemas import (
     SchoolCampaignEventUpdate,
     SchoolCampaignResponse,
     SchoolCampaignUpdate,
+    SchoolsEventsMatrixResponse,
 )
 
 router = APIRouter()
-
-
-class AddSchoolsBody(BaseModel):
-    school_ids: List[int]
-    create_contact_task: bool = True
 
 
 def _campaign_to_response(c: Campaign) -> CampaignResponse:
@@ -402,12 +398,6 @@ def _sce_to_response(sce: SchoolCampaignEvent) -> SchoolCampaignEventResponse:
         created_at=sce.created_at,
         updated_at=sce.updated_at,
     )
-
-
-class SchoolsEventsMatrixResponse(BaseModel):
-    schools: List[Dict[str, Any]]
-    events: List[CampaignEventResponse]
-    school_campaign_events: List[SchoolCampaignEventResponse]
 
 
 @router.get("/campaigns/{campaign_id}/schools-events-matrix", response_model=SchoolsEventsMatrixResponse)

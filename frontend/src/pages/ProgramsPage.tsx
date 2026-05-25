@@ -23,6 +23,7 @@ import { programsApi } from '../services/api';
 import { Program } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
+import { EmptyState, FormDialog, StatusChip } from '../components/ui';
 
 interface TopicForm {
   name: string;
@@ -270,6 +271,19 @@ const ProgramsPage: React.FC = () => {
     }
   };
 
+  const handleSaveProgramName = async () => {
+    if (!editNameProgram || !editNameValue.trim()) return;
+    try {
+      await programsApi.update(editNameProgram.id, { name: editNameValue.trim() });
+      setEditNameOpen(false);
+      setEditNameProgram(null);
+      setInfo('РќР°Р·РІР°РЅРёРµ РїСЂРѕРіСЂР°РјРјС‹ РѕР±РЅРѕРІР»РµРЅРѕ');
+      loadPrograms();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ РЅР°Р·РІР°РЅРёСЏ');
+    }
+  };
+
   const handleCreate = async () => {
     if (!programName.trim()) {
       setError('Заполните название программы');
@@ -353,7 +367,9 @@ const ProgramsPage: React.FC = () => {
       )}
 
       <Box sx={{ mt: 2 }}>
-        {buildFamilies().map((family) => (
+        {buildFamilies().length === 0 ? (
+          <EmptyState title="Программы не найдены" description="Создайте первую программу, чтобы она появилась в списке." />
+        ) : buildFamilies().map((family) => (
           <Accordion key={family.rootId} sx={{ mb: 1 }}>
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 2 }}>
@@ -403,7 +419,7 @@ const ProgramsPage: React.FC = () => {
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Typography variant="h6">{module.name}</Typography>
-                              {module.status === 'archived' && <Chip size="small" label="Модуль в архиве" />}
+                              {module.status === 'archived' && <StatusChip status="archived" label="Модуль в архиве" />}
                             </Box>
                             {canManagePrograms && module.status !== 'archived' && (
                               <Button
@@ -444,7 +460,7 @@ const ProgramsPage: React.FC = () => {
                             <Paper key={topic.id} sx={{ p: 1, mt: 1, ml: 2 }}>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
                                 <Typography variant="body2">{topic.name}</Typography>
-                                {topic.status === 'archived' && <Chip size="small" label="Архив" />}
+                                {topic.status === 'archived' && <StatusChip status="archived" label="Архив" />}
                                 {canManagePrograms && topic.status !== 'archived' && (
                                   <Button
                                     size="small"
@@ -504,9 +520,15 @@ const ProgramsPage: React.FC = () => {
 
       {/* Диалог создания программы */}
       {canManagePrograms && (
-        <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
+        <FormDialog
+          open={open}
+          title="РЎРѕР·РґР°С‚СЊ РїСЂРѕРіСЂР°РјРјСѓ"
+          onClose={() => setOpen(false)}
+          onSubmit={handleCreate}
+          submitLabel="РЎРѕР·РґР°С‚СЊ"
+          maxWidth="md"
+        >
           <DialogTitle>Создать программу</DialogTitle>
-          <DialogContent>
             <TextField
               fullWidth
               label="Название программы *"
@@ -614,14 +636,11 @@ const ProgramsPage: React.FC = () => {
             <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddModule} sx={{ mt: 1 }}>
               Добавить модуль
             </Button>
-          </DialogContent>
-          <DialogActions>
             <Button onClick={() => setOpen(false)}>Отмена</Button>
             <Button onClick={handleCreate} variant="contained">
               Создать
             </Button>
-          </DialogActions>
-        </Dialog>
+        </FormDialog>
       )}
 
       {/* Диалог создания новой версии */}
@@ -723,7 +742,14 @@ const ProgramsPage: React.FC = () => {
       )}
 
       {/* Диалог редактирования названия программы (кнопка только у админа, диалог общий) */}
-      <Dialog open={editNameOpen} onClose={() => setEditNameOpen(false)} maxWidth="sm" fullWidth>
+      <FormDialog
+        open={editNameOpen}
+        title=""
+        onClose={() => setEditNameOpen(false)}
+        onSubmit={handleSaveProgramName}
+        submitLabel="РЎРѕС…СЂР°РЅРёС‚СЊ"
+        maxWidth="sm"
+      >
         <DialogTitle>Изменить название программы</DialogTitle>
         <DialogContent>
           <TextField
@@ -754,7 +780,7 @@ const ProgramsPage: React.FC = () => {
             Сохранить
           </Button>
         </DialogActions>
-      </Dialog>
+      </FormDialog>
     </Layout>
   );
 };

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from app.database import get_db
 from app import auth
-from app.schemas import ProgramCreate, ProgramListResponse, ProgramResponse, ProgramUpdate
+from app.schemas.programs import ProgramCreate, ProgramListResponse, ProgramResponse, ProgramUpdate
 from app.models import (
     Program, Module, Topic, User, ProgramStatus, TopicStatus,
     ProgramTrainer, GroupProgram, StudentProgram, Grade, UserRole,

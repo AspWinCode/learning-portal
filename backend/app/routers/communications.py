@@ -7,7 +7,7 @@ from app import auth
 from app.database import get_db
 from app.models import CommunicationQueue, SmsTemplate, User
 from app.routers.action_log import log_action
-from app.schemas import (
+from app.schemas.communications import (
     CommunicationQueueResponse,
     CommunicationTemplateCreate,
     CommunicationTemplateUpdate,

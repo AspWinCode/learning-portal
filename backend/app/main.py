@@ -6,21 +6,24 @@ from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.database import SessionLocal
 from app.logging_config import configure_logging
+from app.observability import configure_fastapi_observability, configure_sentry
 from app.rate_limit import limiter
 from app.routers import auth, users, students, groups, programs, grades, characteristics, reports, search, telegram, settings, communications, trainer_cockpit, parent_dashboard, owner_dashboard, abonements, sales, tasks, b2b, campaigns, owner_funnels, owner_calculations, trainer_lessons, student_accounts, projects, finance, personal_finance, admin_tools, sms, max_messenger, owner_workspace, roles
 
 configure_logging()
+configure_sentry()
 
 app = FastAPI(
-    title="Learning Portal API",
-    description="API для портала управления обучением",
-    version="1.0.0"
+    title="Learning Portal API v1",
+    description="Versioned API v1 for the Learning Portal.",
+    version="v1",
 )
+configure_fastapi_observability(app)
 
 logger = logging.getLogger(__name__)
 app.state.limiter = limiter
@@ -63,24 +66,6 @@ def _run_tochka_auto_import() -> None:
     except Exception:
         # Логируем, но не падаем — следующий запуск повторит
         logger.exception("In-process Tochka auto import failed")
-
-
-@app.on_event("startup")
-def _run_migrations_on_startup() -> None:
-    """При старте приложения применить миграции (чтобы не было 502 из-за отсутствующих колонок)."""
-    run_migrate = _env_enabled("RUN_MIGRATIONS_ON_STARTUP", "1")
-    if not run_migrate:
-        return
-    try:
-        from alembic import command
-        from alembic.config import Config
-        _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        _ini = os.path.join(_root, "alembic.ini")
-        alembic_cfg = Config(_ini)
-        alembic_cfg.set_main_option("script_location", os.path.join(_root, "alembic"))
-        command.upgrade(alembic_cfg, "head")
-    except Exception as e:
-        logger.exception("Migrations on startup skipped or failed: %s", e)
 
 
 # Safety checks for production env (не падаем с 502, а выставляем флаг и отдаём 503 на запросах)
@@ -310,14 +295,19 @@ async def catch_all_exceptions_middleware(request: Request, call_next):
     if _startup_config_error:
         return JSONResponse(
             status_code=503,
-            content={"detail": "Server misconfiguration. Check backend logs.", "error": _startup_config_error},
+            content={
+                "detail": (
+                    "Server misconfiguration. Check backend logs."
+                    if _is_production()
+                    else f"Server misconfiguration. Check backend logs. | {_startup_config_error}"
+                )
+            },
         )
     try:
         return await call_next(request)
     except HTTPException:
         raise
     except Exception as exc:
-        # ВРЕМЕННО: всегда логируем полный traceback, чтобы увидеть причину 502/500
         tb = traceback.format_exc()
         logger.exception("Unhandled request error", extra={"path": str(request.url.path), "method": request.method})
         detail = _build_error_detail(exc)
@@ -329,44 +319,55 @@ async def catch_all_exceptions_middleware(request: Request, call_next):
                     "detail": "Database schema is outdated. Run: cd backend && alembic upgrade head",
                 },
             )
-        # ВРЕМЕННО: даже в production добавляем traceback в ответ, чтобы отладить 502
         if not _is_production():
             detail += " | " + tb.replace("\n", " ")[:800]
         return JSONResponse(status_code=500, content={"detail": detail})
 
+
+@app.middleware("http")
+async def redirect_legacy_api_paths(request: Request, call_next):
+    path = request.url.path
+    if path == "/api" or (path.startswith("/api/") and not path.startswith("/api/v1/")):
+        suffix = path[4:]
+        redirect_path = f"/api/v1{suffix}" if suffix else "/api/v1"
+        if request.url.query:
+            redirect_path = f"{redirect_path}?{request.url.query}"
+        return RedirectResponse(url=redirect_path, status_code=307)
+    return await call_next(request)
+
 # Подключение роутеров
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(users.router, prefix="/api/users", tags=["users"])
-app.include_router(roles.router, prefix="/api/roles", tags=["roles"])
-app.include_router(students.router, prefix="/api/students", tags=["students"])
-app.include_router(groups.router, prefix="/api/groups", tags=["groups"])
-app.include_router(programs.router, prefix="/api/programs", tags=["programs"])
-app.include_router(grades.router, prefix="/api/grades", tags=["grades"])
-app.include_router(characteristics.router, prefix="/api/characteristics", tags=["characteristics"])
-app.include_router(trainer_cockpit.router, prefix="/api/trainer-cockpit", tags=["trainer-cockpit"])
-app.include_router(parent_dashboard.router, prefix="/api/parent-dashboard", tags=["parent-dashboard"])
-app.include_router(owner_dashboard.router, prefix="/api/owner-dashboard", tags=["owner-dashboard"])
-app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
-app.include_router(communications.router, prefix="/api/communications", tags=["communications"])
-app.include_router(search.router, prefix="/api/search", tags=["search"])
-app.include_router(telegram.router, prefix="/api/telegram", tags=["telegram"])
-app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
-app.include_router(abonements.router, prefix="/api/abonements", tags=["abonements"])
-app.include_router(sales.router, prefix="/api/sales", tags=["sales"])
-app.include_router(tasks.router, prefix="/api", tags=["tasks"])
-app.include_router(b2b.router, prefix="/api", tags=["b2b"])
-app.include_router(campaigns.router, prefix="/api", tags=["campaigns"])
-app.include_router(owner_funnels.router, prefix="/api", tags=["owner_funnels"])
-app.include_router(owner_calculations.router, prefix="/api", tags=["owner_calculations"])
-app.include_router(trainer_lessons.router, prefix="/api/trainer-lessons", tags=["trainer_lessons"])
-app.include_router(student_accounts.router, prefix="/api/student-accounts", tags=["student_accounts"])
-app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
-app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
-app.include_router(personal_finance.router, prefix="/api/personal-finance", tags=["personal_finance"])
-app.include_router(admin_tools.router, prefix="/api/admin-tools", tags=["admin_tools"])
-app.include_router(sms.router, prefix="/api", tags=["sms"])
-app.include_router(max_messenger.router, prefix="/api", tags=["max"])
-app.include_router(owner_workspace.router, prefix="/api/owner-workspace", tags=["owner_workspace"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(roles.router, prefix="/api/v1/roles", tags=["roles"])
+app.include_router(students.router, prefix="/api/v1/students", tags=["students"])
+app.include_router(groups.router, prefix="/api/v1/groups", tags=["groups"])
+app.include_router(programs.router, prefix="/api/v1/programs", tags=["programs"])
+app.include_router(grades.router, prefix="/api/v1/grades", tags=["grades"])
+app.include_router(characteristics.router, prefix="/api/v1/characteristics", tags=["characteristics"])
+app.include_router(trainer_cockpit.router, prefix="/api/v1/trainer-cockpit", tags=["trainer-cockpit"])
+app.include_router(parent_dashboard.router, prefix="/api/v1/parent-dashboard", tags=["parent-dashboard"])
+app.include_router(owner_dashboard.router, prefix="/api/v1/owner-dashboard", tags=["owner-dashboard"])
+app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
+app.include_router(communications.router, prefix="/api/v1/communications", tags=["communications"])
+app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
+app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["telegram"])
+app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])
+app.include_router(abonements.router, prefix="/api/v1/abonements", tags=["abonements"])
+app.include_router(sales.router, prefix="/api/v1/sales", tags=["sales"])
+app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
+app.include_router(b2b.router, prefix="/api/v1", tags=["b2b"])
+app.include_router(campaigns.router, prefix="/api/v1", tags=["campaigns"])
+app.include_router(owner_funnels.router, prefix="/api/v1", tags=["owner_funnels"])
+app.include_router(owner_calculations.router, prefix="/api/v1", tags=["owner_calculations"])
+app.include_router(trainer_lessons.router, prefix="/api/v1/trainer-lessons", tags=["trainer_lessons"])
+app.include_router(student_accounts.router, prefix="/api/v1/student-accounts", tags=["student_accounts"])
+app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
+app.include_router(finance.router, prefix="/api/v1/finance", tags=["finance"])
+app.include_router(personal_finance.router, prefix="/api/v1/personal-finance", tags=["personal_finance"])
+app.include_router(admin_tools.router, prefix="/api/v1/admin-tools", tags=["admin_tools"])
+app.include_router(sms.router, prefix="/api/v1", tags=["sms"])
+app.include_router(max_messenger.router, prefix="/api/v1", tags=["max"])
+app.include_router(owner_workspace.router, prefix="/api/v1/owner-workspace", tags=["owner_workspace"])
 
 
 @app.exception_handler(Exception)
@@ -375,7 +376,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, HTTPException):
         raise exc
     tb = traceback.format_exc()
-    # ВРЕМЕННО: логируем traceback всегда
     logger.exception("Unhandled exception", extra={"path": str(request.url.path), "method": request.method})
     detail = _build_error_detail(exc)
     err_str = str(exc).lower()
@@ -386,7 +386,6 @@ async def global_exception_handler(request: Request, exc: Exception):
                 "detail": "Database schema is outdated. Run migrations: cd backend && alembic upgrade head",
             },
         )
-    # ВРЕМЕННО: добавляем traceback в detail даже в production
     if not _is_production():
         detail += " | " + tb.replace("\n", " ")[:800]
     return JSONResponse(status_code=500, content={"detail": detail})
@@ -397,8 +396,10 @@ async def root():
     return {"message": "Learning Portal API"}
 
 
-@app.get("/api/health")
+@app.get("/api/v1/health")
 async def health_check():
     return {"status": "ok"}
+
+
 
 

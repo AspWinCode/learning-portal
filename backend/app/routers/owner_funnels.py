@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import auth
@@ -17,13 +16,14 @@ from app.models import (
     OWNER_FUNNEL_SUPPORT_LETTERS,
     OWNER_FUNNEL_THANK_YOU_LETTERS,
 )
-from app.schemas import (
+from app.schemas.owner_funnels import (
     OwnerFunnelTypeInfo,
     OwnerFunnelEventCreate,
     OwnerFunnelEventResponse,
     OwnerFunnelItemCreate,
     OwnerFunnelItemUpdate,
     OwnerFunnelItemResponse,
+    AddSchoolsByCityPayload,
 )
 from app.models import User
 
@@ -140,11 +140,6 @@ async def list_owner_funnel_events(
         )
         for e in events
     ]
-
-
-class AddSchoolsByCityPayload(BaseModel):
-    city: str
-
 
 @router.post("/owner-funnels/events/{event_id}/add-schools-by-city")
 async def add_schools_by_city_to_event(

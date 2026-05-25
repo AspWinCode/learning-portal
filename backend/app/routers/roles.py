@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models import Role, User
 from app.permissions import PERMISSION_CATALOG
 from app.routers.action_log import log_action
-from app.schemas import RoleCreate, RoleResponse, RoleUpdate
+from app.schemas.roles import RoleCreate, RoleResponse, RoleUpdate
 
 router = APIRouter()
 

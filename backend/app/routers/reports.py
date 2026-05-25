@@ -9,7 +9,7 @@ from app.models import (
     User, Grade, Student, Characteristic, ActionLog, UserRole,
     GroupStudent, Group, StudentStatus, GroupStatus, CharacteristicStatus
 )
-from app.schemas import ReportRequest
+from app.schemas.reports import ReportRequest
 import io
 import csv
 from openpyxl import Workbook

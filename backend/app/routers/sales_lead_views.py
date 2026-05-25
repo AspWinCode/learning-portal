@@ -24,7 +24,7 @@ from app.models import (
     UserRole,
 )
 from app.routers.action_log import log_action
-from app.schemas import (
+from app.schemas.sales import (
     LeadActivityCreate,
     LeadActivityResponse,
     LeadCardResponse,

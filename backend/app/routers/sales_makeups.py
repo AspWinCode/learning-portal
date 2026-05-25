@@ -17,7 +17,7 @@ from app.models import (
     StudentProgram,
     User,
 )
-from app.schemas import (
+from app.schemas.sales import (
     AbsenceFollowUpResponse,
     AbsenceFollowUpStageUpdate,
     MakeupSuggestionItem,

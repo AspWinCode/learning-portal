@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import String, and_, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
+from starlette.responses import StreamingResponse
 
 from app import auth
 from app.database import get_db
@@ -51,6 +53,7 @@ from app.services.owner_workspace_task_order import normalize_task_sort_params
 from app.models import (
     OwnerWorkspaceAuditLog,
     OwnerWorkspaceContact,
+    OwnerWorkspaceCounterpartyDocument,
     OwnerWorkspaceConversationRead,
     OwnerWorkspaceMessage,
     OwnerWorkspaceNotification,
@@ -63,13 +66,18 @@ from app.models import (
     OwnerWorkspaceWebPushSubscription,
     User,
 )
-from app.schemas import (
+from app.schemas.owner_workspace import (
     OwnerWorkspaceAuditLogResponse,
     OwnerWorkspaceHistoryStatsAuthorItem,
     OwnerWorkspaceHistoryStatsCountItem,
     OwnerWorkspaceHistoryStatsDayItem,
     OwnerWorkspaceHistoryStatsResponse,
     OwnerWorkspaceContactCreate,
+    OwnerWorkspaceCounterpartyCreate,
+    OwnerWorkspaceCounterpartyCustomField,
+    OwnerWorkspaceCounterpartyDocumentResponse,
+    OwnerWorkspaceCounterpartyResponse,
+    OwnerWorkspaceCounterpartyUpdate,
     OwnerWorkspaceDigestResponse,
     OwnerWorkspaceContactResponse,
     OwnerWorkspaceContactUpdate,
@@ -108,6 +116,12 @@ from app.schemas import (
     OwnerWorkspaceTaskMessageLink,
     OwnerWorkspaceTaskResponse,
     OwnerWorkspaceTaskUpdate,
+)
+from app.services.owner_workspace_counterparties import (
+    COUNTERPARTY_DOCUMENT_CATEGORIES,
+    COUNTERPARTY_DOCUMENT_CATEGORY_LABELS,
+    COUNTERPARTY_DOCUMENT_CATEGORY_SET,
+    create_default_counterparty_tasks,
 )
 
 router = APIRouter()
@@ -388,6 +402,85 @@ def _contact_to_response(
         last_interaction_at=last_interaction_at,
         created_at=contact.created_at,
         updated_at=contact.updated_at,
+    )
+
+
+def _counterparty_document_to_response(contact_id: int, category: str, row: Optional[OwnerWorkspaceCounterpartyDocument]):
+    label = COUNTERPARTY_DOCUMENT_CATEGORY_LABELS.get(category, category)
+    if row is None:
+        return OwnerWorkspaceCounterpartyDocumentResponse(
+            category=category,
+            label=label,
+            uploaded=False,
+            status="missing",
+            download_url=None,
+        )
+    return OwnerWorkspaceCounterpartyDocumentResponse(
+        category=category,
+        label=label,
+        uploaded=True,
+        status="uploaded",
+        filename=row.filename,
+        content_type=row.content_type,
+        size_bytes=row.size_bytes,
+        uploaded_at=row.updated_at or row.created_at,
+        download_url=f"/api/v1/owner-workspace/counterparties/{contact_id}/documents/{category}",
+    )
+
+
+def _normalize_custom_fields(fields: Optional[List[dict]]) -> List[OwnerWorkspaceCounterpartyCustomField]:
+    result: List[OwnerWorkspaceCounterpartyCustomField] = []
+    for item in fields or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            result.append(OwnerWorkspaceCounterpartyCustomField.model_validate(item))
+        except Exception:
+            continue
+    return result
+
+
+def _counterparty_to_response(
+    db: Session,
+    contact: OwnerWorkspaceContact,
+    *,
+    message_max_by_id: Optional[Dict[int, datetime]] = None,
+    task_max_by_id: Optional[Dict[int, datetime]] = None,
+) -> OwnerWorkspaceCounterpartyResponse:
+    base = _contact_to_response(
+        db,
+        contact,
+        message_max_by_id=message_max_by_id,
+        task_max_by_id=task_max_by_id,
+    )
+    docs = {
+        row.category: row
+        for row in db.query(OwnerWorkspaceCounterpartyDocument)
+        .filter(OwnerWorkspaceCounterpartyDocument.contact_id == contact.id)
+        .all()
+    }
+    return OwnerWorkspaceCounterpartyResponse(
+        id=base.id,
+        full_name=base.full_name,
+        phone=base.phone,
+        email=base.email,
+        company=base.company,
+        position=base.position,
+        tags=base.tags,
+        comment=base.comment,
+        source=base.source,
+        linked_project_ids=base.linked_project_ids,
+        active_tasks_count=base.active_tasks_count,
+        last_interaction_at=base.last_interaction_at,
+        custom_fields=_normalize_custom_fields(contact.custom_fields),
+        documents=[
+            _counterparty_document_to_response(contact.id, category, docs.get(category))
+            for category, _label in COUNTERPARTY_DOCUMENT_CATEGORIES
+        ],
+        is_archived=bool(contact.is_archived),
+        archived_at=contact.archived_at,
+        created_at=base.created_at,
+        updated_at=base.updated_at,
     )
 
 
@@ -906,6 +999,397 @@ async def update_contact(
     db.commit()
     db.refresh(row)
     return _contact_to_response(db, row)
+
+
+def _sync_counterparty_project_links(
+    db: Session,
+    *,
+    ctx: OwnerWorkspaceAccessContext,
+    contact_id: int,
+    project_ids: List[int],
+) -> None:
+    normalized_ids = []
+    seen = set()
+    for raw_id in project_ids:
+        try:
+            project_id = int(raw_id)
+        except Exception:
+            continue
+        if project_id in seen:
+            continue
+        exists = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
+        if not exists:
+            continue
+        if not ctx.full and not project_visible(ctx, project_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к проекту")
+        if not can_edit_project_content(db, ctx, project_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для привязки к проекту")
+        normalized_ids.append(project_id)
+        seen.add(project_id)
+
+    existing = db.query(OwnerWorkspaceProjectContact).filter(
+        OwnerWorkspaceProjectContact.contact_id == contact_id
+    ).all()
+    existing_ids = {row.project_id for row in existing}
+
+    for row in existing:
+        if row.project_id not in seen:
+            db.delete(row)
+    for project_id in normalized_ids:
+        if project_id not in existing_ids:
+            db.add(OwnerWorkspaceProjectContact(project_id=project_id, contact_id=contact_id))
+
+
+@router.get("/counterparties", response_model=List[OwnerWorkspaceCounterpartyResponse])
+async def list_counterparties(
+    search: Optional[str] = Query(None),
+    project_id: Optional[int] = Query(None),
+    archived: Optional[bool] = Query(False),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if project_id is not None and not ctx.full and not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    q = db.query(OwnerWorkspaceContact)
+    if not ctx.full:
+        if not ctx.contact_ids:
+            return []
+        q = q.filter(OwnerWorkspaceContact.id.in_(list(ctx.contact_ids)))
+    if archived is not None:
+        q = q.filter(OwnerWorkspaceContact.is_archived.is_(bool(archived)))
+    if search:
+        like = f"%{search.strip()}%"
+        q = q.filter(
+            or_(
+                OwnerWorkspaceContact.full_name.ilike(like),
+                OwnerWorkspaceContact.company.ilike(like),
+                OwnerWorkspaceContact.phone.ilike(like),
+                OwnerWorkspaceContact.email.ilike(like),
+            )
+        )
+    rows = q.order_by(OwnerWorkspaceContact.created_at.desc()).all()
+    if project_id is not None:
+        linked_ids = {
+            x.contact_id
+            for x in db.query(OwnerWorkspaceProjectContact).filter(
+                OwnerWorkspaceProjectContact.project_id == project_id
+            ).all()
+        }
+        rows = [r for r in rows if r.id in linked_ids]
+    ids = [r.id for r in rows]
+    msg_max = _last_message_time_by_contact_ids(db, ids)
+    task_max = _last_task_activity_by_contact_ids(db, ids)
+    return [
+        _counterparty_to_response(db, row, message_max_by_id=msg_max, task_max_by_id=task_max)
+        for row in rows
+    ]
+
+
+@router.post("/counterparties", response_model=OwnerWorkspaceCounterpartyResponse, status_code=status.HTTP_201_CREATED)
+async def create_counterparty(
+    payload: OwnerWorkspaceCounterpartyCreate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    permission_policy = get_owner_workspace_permission_policy(db)
+    if not ctx.full and not permission_policy["limited_can_create_contacts"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    row = OwnerWorkspaceContact(
+        full_name=payload.full_name.strip(),
+        phone=(payload.phone or "").strip() or None,
+        email=payload.email,
+        company=payload.company,
+        position=payload.position,
+        tags=payload.tags,
+        comment=payload.comment,
+        source=payload.source,
+        custom_fields=[item.model_dump() for item in (payload.custom_fields or [])],
+        is_archived=False,
+    )
+    db.add(row)
+    db.flush()
+    _sync_counterparty_project_links(
+        db,
+        ctx=ctx,
+        contact_id=row.id,
+        project_ids=list(payload.project_ids or []),
+    )
+    create_default_counterparty_tasks(
+        db,
+        counterparty=row,
+        project_ids=list(payload.project_ids or [None]),
+        creator_id=ctx.user.id,
+    )
+    _log_audit(
+        db,
+        entity_type="contact",
+        entity_id=row.id,
+        action_type="counterparty_create",
+        author_id=ctx.user.id,
+        new_value={"full_name": row.full_name, "company": row.company, "project_ids": payload.project_ids or []},
+    )
+    db.commit()
+    db.refresh(row)
+    return _counterparty_to_response(db, row)
+
+
+@router.get("/counterparties/{contact_id}", response_model=OwnerWorkspaceCounterpartyResponse)
+async def get_counterparty(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+    if not row or not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    return _counterparty_to_response(db, row)
+
+
+@router.patch("/counterparties/{contact_id}", response_model=OwnerWorkspaceCounterpartyResponse)
+async def update_counterparty(
+    contact_id: int,
+    payload: OwnerWorkspaceCounterpartyUpdate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+    if not row or not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    if not can_update_contact_content(db, ctx, contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+
+    old = {
+        "full_name": row.full_name,
+        "phone": row.phone,
+        "company": row.company,
+        "project_ids": [x.project_id for x in db.query(OwnerWorkspaceProjectContact).filter(
+            OwnerWorkspaceProjectContact.contact_id == contact_id
+        ).all()],
+    }
+    data = payload.model_dump(exclude_unset=True, exclude={"project_ids", "custom_fields"})
+    if "phone" in data:
+        data["phone"] = (data["phone"] or "").strip() or None
+    for k, v in data.items():
+        setattr(row, k, v)
+    if payload.custom_fields is not None:
+        row.custom_fields = [item.model_dump() for item in payload.custom_fields]
+    if payload.project_ids is not None:
+        _sync_counterparty_project_links(
+            db,
+            ctx=ctx,
+            contact_id=row.id,
+            project_ids=list(payload.project_ids),
+        )
+    _log_audit(
+        db,
+        entity_type="contact",
+        entity_id=row.id,
+        action_type="counterparty_update",
+        author_id=ctx.user.id,
+        old_value=old,
+        new_value=payload.model_dump(exclude_unset=True),
+    )
+    db.commit()
+    db.refresh(row)
+    return _counterparty_to_response(db, row)
+
+
+@router.post("/counterparties/{contact_id}/archive", response_model=OwnerWorkspaceCounterpartyResponse)
+async def archive_counterparty(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+    if not row or not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    if not can_update_contact_content(db, ctx, contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    row.is_archived = True
+    row.archived_at = datetime.now(timezone.utc)
+    _log_audit(
+        db,
+        entity_type="contact",
+        entity_id=row.id,
+        action_type="counterparty_archive",
+        author_id=ctx.user.id,
+    )
+    db.commit()
+    db.refresh(row)
+    return _counterparty_to_response(db, row)
+
+
+@router.post("/counterparties/{contact_id}/unarchive", response_model=OwnerWorkspaceCounterpartyResponse)
+async def unarchive_counterparty(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+    if not row or not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    if not can_update_contact_content(db, ctx, contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    row.is_archived = False
+    row.archived_at = None
+    _log_audit(
+        db,
+        entity_type="contact",
+        entity_id=row.id,
+        action_type="counterparty_unarchive",
+        author_id=ctx.user.id,
+    )
+    db.commit()
+    db.refresh(row)
+    return _counterparty_to_response(db, row)
+
+
+@router.delete("/counterparties/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_counterparty(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+    if not row or not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    if not can_update_contact_content(db, ctx, contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    db.delete(row)
+    _log_audit(
+        db,
+        entity_type="contact",
+        entity_id=contact_id,
+        action_type="counterparty_delete",
+        author_id=ctx.user.id,
+    )
+    db.commit()
+    return None
+
+
+def _validate_counterparty_document_category(category: str) -> str:
+    normalized = (category or "").strip().lower()
+    if normalized not in COUNTERPARTY_DOCUMENT_CATEGORY_SET:
+        raise HTTPException(status_code=400, detail="Unsupported document category")
+    return normalized
+
+
+@router.get("/counterparties/{contact_id}/documents", response_model=List[OwnerWorkspaceCounterpartyDocumentResponse])
+async def list_counterparty_documents(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+    if not row or not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    return _counterparty_to_response(db, row).documents
+
+
+@router.post("/counterparties/{contact_id}/documents/{category}", response_model=OwnerWorkspaceCounterpartyDocumentResponse)
+async def upload_counterparty_document(
+    contact_id: int,
+    category: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+    if not row or not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    if not can_update_contact_content(db, ctx, contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    normalized_category = _validate_counterparty_document_category(category)
+    filename = (file.filename or "").strip()
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if ext not in {"doc", "docx", "pdf", "xls", "xlsx"}:
+        raise HTTPException(status_code=400, detail="Supported formats: DOC, DOCX, PDF, XLS, XLSX")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    existing = db.query(OwnerWorkspaceCounterpartyDocument).filter(
+        OwnerWorkspaceCounterpartyDocument.contact_id == contact_id,
+        OwnerWorkspaceCounterpartyDocument.category == normalized_category,
+    ).first()
+    if existing is None:
+        existing = OwnerWorkspaceCounterpartyDocument(
+            contact_id=contact_id,
+            category=normalized_category,
+            filename=filename or f"{normalized_category}.{ext}",
+            content_type=file.content_type or "application/octet-stream",
+            size_bytes=len(data),
+            data=data,
+        )
+        db.add(existing)
+    else:
+        existing.filename = filename or existing.filename
+        existing.content_type = file.content_type or existing.content_type
+        existing.size_bytes = len(data)
+        existing.data = data
+    _log_audit(
+        db,
+        entity_type="contact",
+        entity_id=contact_id,
+        action_type="counterparty_document_upload",
+        author_id=ctx.user.id,
+        new_value={"category": normalized_category, "filename": filename},
+    )
+    db.commit()
+    db.refresh(existing)
+    return _counterparty_document_to_response(contact_id, normalized_category, existing)
+
+
+@router.get("/counterparties/{contact_id}/documents/{category}")
+async def download_counterparty_document(
+    contact_id: int,
+    category: str,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    normalized_category = _validate_counterparty_document_category(category)
+    row = db.query(OwnerWorkspaceCounterpartyDocument).filter(
+        OwnerWorkspaceCounterpartyDocument.contact_id == contact_id,
+        OwnerWorkspaceCounterpartyDocument.category == normalized_category,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return StreamingResponse(
+        BytesIO(row.data),
+        media_type=row.content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{row.filename}"'},
+    )
+
+
+@router.delete("/counterparties/{contact_id}/documents/{category}", response_model=OwnerWorkspaceCounterpartyDocumentResponse)
+async def delete_counterparty_document(
+    contact_id: int,
+    category: str,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    if not can_update_contact_content(db, ctx, contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    normalized_category = _validate_counterparty_document_category(category)
+    row = db.query(OwnerWorkspaceCounterpartyDocument).filter(
+        OwnerWorkspaceCounterpartyDocument.contact_id == contact_id,
+        OwnerWorkspaceCounterpartyDocument.category == normalized_category,
+    ).first()
+    if row:
+        db.delete(row)
+        _log_audit(
+            db,
+            entity_type="contact",
+            entity_id=contact_id,
+            action_type="counterparty_document_delete",
+            author_id=ctx.user.id,
+            old_value={"category": normalized_category, "filename": row.filename},
+        )
+        db.commit()
+    return _counterparty_document_to_response(contact_id, normalized_category, None)
 
 
 @router.get("/contacts/{contact_id}/tasks", response_model=List[OwnerWorkspaceTaskResponse])

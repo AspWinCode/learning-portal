@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
 from app.rate_limit import limiter
-from app.schemas import Token, UserLogin, PasswordReset, PasswordResetConfirm, SetPasswordByInvite, UserResponse
+from app.schemas.auth import Token, UserLogin, PasswordReset, PasswordResetConfirm, SetPasswordByInvite
+from app.schemas.users import UserResponse
 from app.models import User
 from app.services.telegram import notify_user
 

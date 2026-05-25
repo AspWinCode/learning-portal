@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import User
-from app.schemas import TrainerCockpitSummaryResponse
+from app.schemas.trainer_cockpit import TrainerCockpitSummaryResponse
 from app.services.trainer_cockpit import build_trainer_cockpit_summary
 
 router = APIRouter()

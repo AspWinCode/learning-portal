@@ -278,6 +278,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'owner') {
       items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+      if (canAccessOwnerWorkspace) items.push({ text: 'Контрагенты', icon: <People />, path: '/owner-workspace/counterparties' });
       if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
       items.push({ text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' });
     }
@@ -317,12 +318,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     pathname.startsWith('/owner-workspace') &&
     pathname !== '/owner-workspace/reports' &&
     pathname !== '/owner-workspace/notifications' &&
-    pathname !== '/owner-workspace/settings';
+    pathname !== '/owner-workspace/settings' &&
+    pathname !== '/owner-workspace/counterparties';
 
   const isDrawerItemSelected = (itemPath: string) => {
     if (itemPath === '/owner-workspace/reports') return location.pathname === '/owner-workspace/reports';
     if (itemPath === '/owner-workspace/notifications') return location.pathname === '/owner-workspace/notifications';
     if (itemPath === '/owner-workspace/settings') return location.pathname === '/owner-workspace/settings';
+    if (itemPath === '/owner-workspace/counterparties') return location.pathname === '/owner-workspace/counterparties';
     if (itemPath === '/owner-workspace/projects') return isOwnerWorkspaceMainSection(location.pathname);
     return location.pathname === itemPath;
   };

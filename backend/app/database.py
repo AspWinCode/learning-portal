@@ -4,6 +4,8 @@ from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
 
+from app.observability import configure_sqlalchemy_observability
+
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/learning_portal")
@@ -15,6 +17,7 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "3600")),
 )
+configure_sqlalchemy_observability(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

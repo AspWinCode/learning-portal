@@ -8,7 +8,7 @@ from app import auth
 from app.database import get_db
 from app.models import Abonement, Invoice, InvoiceStatus, Lead, LeadStatus, User, UserRole
 from app.routers.action_log import log_action
-from app.schemas import InvoiceCreate, InvoiceResponse
+from app.schemas.sales import InvoiceCreate, InvoiceResponse
 
 router = APIRouter()
 

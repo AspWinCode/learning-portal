@@ -4,7 +4,7 @@ from app.routers import auth as auth_router
 
 
 def test_protected_endpoint_without_token_returns_401(client: TestClient) -> None:
-    response = client.get("/api/students")
+    response = client.get("/api/v1/students")
     assert response.status_code == 401
 
 
@@ -17,7 +17,7 @@ def test_login_brute_force_rate_limited(client: TestClient, monkeypatch) -> None
     last_response = None
     for _ in range(11):
         last_response = client.post(
-            "/api/auth/login",
+            "/api/v1/auth/login",
             data={"username": "rate-limit@example.com", "password": "wrong"},
         )
 
@@ -34,7 +34,7 @@ def test_password_reset_request_rate_limited(client: TestClient, monkeypatch) ->
     last_response = None
     for _ in range(6):
         last_response = client.post(
-            "/api/auth/password-reset/request",
+            "/api/v1/auth/password-reset/request",
             json={"email": "rate-limit@example.com"},
         )
 

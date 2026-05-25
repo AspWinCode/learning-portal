@@ -2,7 +2,6 @@
 from datetime import date, datetime, timedelta, time, timezone
 from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
@@ -23,7 +22,7 @@ from app.models import (
     TaskStatus,
     TaskCounter,
 )
-from app.schemas import (
+from app.schemas.tasks import (
     TaskTemplateCreate,
     TaskTemplateUpdate,
     TaskTemplateResponse,
@@ -34,6 +33,18 @@ from app.schemas import (
     TaskSubtaskResponse,
     TaskSubtaskUpdate,
     TaskCountersResponse,
+    ParentResponsesStat,
+    TaskCounterIncrement,
+    TaskDayDeskResponse,
+    TaskDayDeskStats,
+    TaskDayStatsResponse,
+)
+from app.schemas.tasks import (
+    ParentResponsesStat,
+    TaskCounterIncrement,
+    TaskDayDeskResponse,
+    TaskDayDeskStats,
+    TaskDayStatsResponse,
 )
 
 router = APIRouter()
@@ -482,42 +493,6 @@ async def list_today_tasks(
     # mode == "active"
     tasks = q.order_by(Task.created_at.desc()).all()
     return [_task_to_response(t, db) for t in tasks]
-
-
-class TaskDayStatsResponse(BaseModel):
-    """4.2 Счётчик «выполнено M» за день (по МСК)."""
-    date: date
-    completed_count: int
-
-
-class TaskDayDeskStats(BaseModel):
-    overdue: int
-    today: int
-    completed_today: int
-    overload: int
-
-
-class TaskDayDeskResponse(BaseModel):
-    stats: TaskDayDeskStats
-    urgent: List[TaskResponse]
-    parents: List[TaskResponse]
-    makeups: List[TaskResponse]
-    payments: List[TaskResponse]
-    operations: List[TaskResponse]
-    leads: List[TaskResponse]
-
-
-class TaskCounterIncrement(BaseModel):
-    key: str
-    delta: Optional[int] = 1
-
-
-class ParentResponsesStat(BaseModel):
-    date: date
-    user_id: int
-    user_name: str
-    replies: int
-    escalations: int
 
 
 @router.get("/tasks/stats", response_model=TaskDayStatsResponse)

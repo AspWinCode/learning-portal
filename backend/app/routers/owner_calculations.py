@@ -3,7 +3,6 @@ from datetime import date, time, datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from sqlalchemy.orm import Session, selectinload
 
 from app import auth
@@ -17,6 +16,12 @@ from app.models import (
     LessonTrainerOverride,
     TrainerPeriodBonus,
     TrainerPayout,
+)
+from app.schemas.owner_calculations import (
+    TrainerBonusPayload,
+    TrainerCalculationRow,
+    TrainerPayPayload,
+    TrainerRateUpdate,
 )
 
 router = APIRouter()
@@ -36,34 +41,6 @@ def _slot_duration_hours(start_t: Optional[time], end_t: Optional[time]) -> floa
     from datetime import datetime as dt
     d = dt.combine(date.today(), end_t) - dt.combine(date.today(), start_t)
     return max(0, d.total_seconds() / 3600.0)
-
-
-class TrainerCalculationRow(BaseModel):
-    trainer_id: int
-    full_name: str
-    is_individual_format: bool  # ведёт ли хотя бы одну группу в индивидуальном формате (для отображения «часы»)
-    rate_per_lesson: Optional[float] = None
-    rate_per_hour: Optional[float] = None
-    lessons_count: int = 0
-    hours_count: float = 0.0
-    base_payment: float = 0.0
-    bonus: float = 0.0
-    total_payment: float = 0.0
-    already_paid: bool = False
-
-
-class TrainerRateUpdate(BaseModel):
-    rate_per_lesson: Optional[float] = None
-    rate_per_hour: Optional[float] = None
-
-
-class TrainerBonusPayload(BaseModel):
-    period: str  # YYYY-MM
-    bonus: float
-
-
-class TrainerPayPayload(BaseModel):
-    period: str  # YYYY-MM
 
 
 @router.get("/owner/calculations/trainers", response_model=List[TrainerCalculationRow])

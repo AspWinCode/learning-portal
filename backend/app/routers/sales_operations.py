@@ -25,7 +25,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.schemas import (
+from app.schemas.sales import (
     CloseByFactConfirm,
     CloseByFactPreview,
     CustomLessonCreate,

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import User, Lead, LeadCommunication, MaxMessage
-from app.schemas import MaxSendRequest, MaxSendResponse
+from app.schemas.communications import MaxSendRequest, MaxSendResponse
 from app.utils.phone import normalize_phone
 from app.services.max_messenger import (
     send_message,

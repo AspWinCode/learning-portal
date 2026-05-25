@@ -32,7 +32,7 @@ from app.models import (
     TaskStatus,
 )
 from app.routers.action_log import log_action
-from app.schemas import (
+from app.schemas.sales import (
     AccountTemplateCreate,
     AccountTemplateResponse,
     FollowUpItemResponse,

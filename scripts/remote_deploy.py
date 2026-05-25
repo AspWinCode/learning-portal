@@ -75,7 +75,7 @@ def main() -> int:
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),
                 ("git status", f"cd {repo_dir} && git status --short"),
                 ("compose ps", f"cd {repo_dir} && docker compose ps"),
-                ("health", "curl -fsS http://127.0.0.1:8000/api/health"),
+                ("health", "curl -fsS http://127.0.0.1:8000/api/v1/health"),
             ]
         elif args.mode == "rebuild":
             commands = [
@@ -84,7 +84,7 @@ def main() -> int:
                 ("docker compose up", f"cd {repo_dir} && docker compose up -d --build --force-recreate backend app_worker app_scheduler web"),
                 ("migrations", f"cd {repo_dir} && docker compose exec -T backend alembic upgrade head"),
                 ("compose ps", f"cd {repo_dir} && docker compose ps"),
-                ("health", "curl -fsS http://127.0.0.1:8000/api/health"),
+                ("health", "curl -fsS http://127.0.0.1:8000/api/v1/health"),
             ]
         elif args.mode == "force-sync-deploy":
             commands = [
@@ -98,7 +98,7 @@ def main() -> int:
                 ("docker compose up", f"cd {repo_dir} && docker compose up -d --build"),
                 ("migrations", f"cd {repo_dir} && docker compose exec -T backend alembic upgrade head"),
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),
-                ("health", "curl -fsS http://127.0.0.1:8000/api/health"),
+                ("health", "curl -fsS http://127.0.0.1:8000/api/v1/health"),
                 ("compose ps", f"cd {repo_dir} && docker compose ps"),
                 ("final git status", f"cd {repo_dir} && git status --short"),
             ]
@@ -109,7 +109,7 @@ def main() -> int:
                 ("docker compose up", f"cd {repo_dir} && docker compose up -d --build"),
                 ("migrations", f"cd {repo_dir} && docker compose exec -T backend alembic upgrade head"),
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),
-                ("health", "curl -fsS http://127.0.0.1:8000/api/health"),
+                ("health", "curl -fsS http://127.0.0.1:8000/api/v1/health"),
                 ("compose ps", f"cd {repo_dir} && docker compose ps"),
             ]
 

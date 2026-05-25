@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Set, Tuple
 
-from pydantic import BaseModel
 import csv
 import hashlib
 from datetime import date, datetime
@@ -31,26 +30,27 @@ from app.models import (
     StudentAccountTransaction,
     StudentAccountTransactionKind,
 )
-from app.schemas import (
+from app.schemas.finance import (
+    BankTransactionApplyRequest,
+    BankTransactionResponse,
+    FinanceAccountBalance,
+    FinanceAccountResponse,
+    FinanceAnalyticsExpenseBreakdownRow,
+    FinanceAnalyticsKpiBlock,
+    FinanceAnalyticsSummaryResponse,
+    FinanceAnalyticsTargetBreakdownRow,
+    FinanceArticleCreate,
+    FinanceArticleResponse,
+    FinanceArticleUpdate,
     FinanceLedgerBankRow,
     FinanceLedgerTransactionRow,
-    FinancePersonalOperationCreate,
     FinanceManualTransactionCreate,
-    FinanceTransactionUpdate,
-    FinanceAccountResponse,
-    FinanceTargetResponse,
-    FinanceArticleResponse,
-    FinanceArticleCreate,
-    FinanceArticleUpdate,
-    FinanceAccountBalance,
+    FinancePersonalOperationCreate,
     FinancePnlRow,
-    FinanceAnalyticsSummaryResponse,
-    FinanceAnalyticsKpiBlock,
-    FinanceAnalyticsTargetBreakdownRow,
-    FinanceAnalyticsExpenseBreakdownRow,
+    FinanceStudentAccountCreate,
+    FinanceTargetResponse,
     FinanceTransactionApplyStudentRequest,
-    BankTransactionResponse,
-    BankTransactionApplyRequest,
+    FinanceTransactionUpdate,
     StudentAccountResponse,
 )
 from app.services.finance_ledger import apply_recognition_rules
@@ -1700,12 +1700,6 @@ async def apply_finance_transaction_to_student(
 # --- Счета учеников (StudentAccount): канонический API Finance по ТЗ ---
 
 
-class FinanceStudentAccountCreate(BaseModel):
-    """Создание счёта ученика через Finance API."""
-    student_id: int
-    name: str
-
-
 @router.post("/student-accounts", response_model=StudentAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_student_account_finance(
     payload: FinanceStudentAccountCreate,
@@ -1747,4 +1741,3 @@ async def apply_bank_transaction_to_student(
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     return BankTransactionResponse.model_validate(result.transaction)
-

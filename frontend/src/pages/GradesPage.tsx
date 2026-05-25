@@ -27,6 +27,7 @@ import { gradesApi, studentsApi, programsApi } from '../services/api';
 import { Grade, Student, Program } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
+import { FilterPanel } from '../components/ui';
 
 type TopicOption = {
   id: number;
@@ -388,7 +389,7 @@ const GradesPage: React.FC = () => {
           <Typography variant="h6" sx={{ mb: 2 }}>
             Поставить оценку
           </Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <FilterPanel>
             <FormControl size="small" sx={{ minWidth: 260 }}>
               <InputLabel>Ученик</InputLabel>
               <Select
@@ -459,7 +460,7 @@ const GradesPage: React.FC = () => {
             >
               Сохранить
             </Button>
-          </Box>
+          </FilterPanel>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             Для выставления доступны только активные темы, по которым ещё нет оценки.
           </Typography>

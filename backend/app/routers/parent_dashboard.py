@@ -5,7 +5,7 @@ from app import auth
 from app.database import get_db
 from app.models import User
 from app.routers.action_log import log_action
-from app.schemas import (
+from app.schemas.parent_dashboard import (
     OwnerWorkspaceWebPushStatusResponse,
     OwnerWorkspaceWebPushSubscriptionDelete,
     OwnerWorkspaceWebPushSubscriptionUpsert,

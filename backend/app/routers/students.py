@@ -5,18 +5,18 @@ from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func, or_
 from app.database import get_db
 from app import auth
-from app.schemas import (
-    StudentCreate,
-    StudentResponse,
-    StudentUpdate,
-    ProgramSummaryResponse,
+from app.schemas.programs import ProgramSummaryResponse
+from app.schemas.students import (
+    InviteParentResponse,
     StudentAccountCreate,
     StudentAccountResponse,
+    StudentActivityLogResponse,
+    StudentCreate,
+    StudentListResponse,
+    StudentResponse,
+    StudentUpdate,
     StudentWithParentCreate,
     StudentWithParentResponse,
-    InviteParentResponse,
-    StudentActivityLogResponse,
-    StudentListResponse,
 )
 from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group, StudentActivityLog
 from app.routers.action_log import log_action
@@ -226,7 +226,7 @@ async def create_student_with_parent(
         abonement=db_student.abonement,
         programs=[],
     )
-    from app.schemas import ParentInfoInResponse
+    from app.schemas.students import ParentInfoInResponse
     return StudentWithParentResponse(
         student=student_response,
         parent=ParentInfoInResponse(id=parent_user.id, full_name=parent_user.full_name, email=parent_user.email),

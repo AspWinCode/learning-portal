@@ -87,3 +87,30 @@
 2. Проверьте логи в терминалах backend и frontend
 3. Убедитесь, что все сервисы запущены (PostgreSQL, Backend, Frontend)
 
+## Docker Compose Startup
+
+- `migrator` is a dedicated one-shot service that runs `alembic upgrade head`.
+- `backend`, `app_worker`, `app_scheduler`, and `telegram_bot` start only after `migrator` completes successfully.
+- `RUN_MIGRATIONS_ON_STARTUP` is deprecated. Schema migrations must not be executed from the FastAPI startup process.
+
+## API Versioning
+
+- Current API namespace: /api/v1/...`r
+- Swagger UI: http://localhost:8000/docs
+- Legacy /api/... paths are redirected to /api/v1/... during the transition period
+
+## Observability
+
+- Backend metrics endpoint: `/metrics`
+- Optional backend Sentry integration:
+  - `SENTRY_DSN`
+  - `SENTRY_TRACES_SAMPLE_RATE`
+  - `APP_RELEASE`
+- Slow SQL warning threshold:
+  - `DB_SLOW_QUERY_MS` (default: `500`)
+- Prometheus and Grafana are available as optional Docker Compose services under the `observability` profile:
+  - `docker compose --profile observability up -d`
+- Grafana credentials:
+  - `GRAFANA_ADMIN_USER`
+  - `GRAFANA_ADMIN_PASSWORD`
+

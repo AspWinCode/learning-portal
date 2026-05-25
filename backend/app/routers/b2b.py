@@ -4,7 +4,6 @@ from io import BytesIO, StringIO
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel
 from openpyxl import load_workbook
 from sqlalchemy import distinct, func as sa_func, nulls_last
 from sqlalchemy.orm import Session, joinedload
@@ -25,7 +24,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.schemas import (
+from app.schemas.b2b import (
     B2BSchoolContactCreate,
     B2BSchoolContactResponse,
     B2BSchoolContactUpdate,
@@ -41,6 +40,7 @@ from app.schemas import (
     B2BProjectCreate,
     B2BProjectResponse,
     B2BProjectUpdate,
+    CitySummaryItem,
 )
 
 router = APIRouter()
@@ -241,16 +241,6 @@ async def plan_for_today(
         "event_done_no_leads_24_48h": event_done_no_leads_24_48h,
         "negotiations_14d": run(negotiations_14d),
     }
-
-
-class CitySummaryItem(BaseModel):
-    """Сводка по одному городу для плана на сегодня."""
-    city: str
-    schools_in_work: int
-    overdue: int
-    events_this_week: int
-    leads_7d: int
-    partners: int
 
     class Config:
         frozen = True

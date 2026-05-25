@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
 from app.models import Abonement, AbonementStatus, DiscountType, User
-from app.schemas import AbonementCreate, AbonementListResponse, AbonementResponse, AbonementUpdate
+from app.schemas.abonements import AbonementCreate, AbonementListResponse, AbonementResponse, AbonementUpdate
 from app.routers.action_log import log_action
 
 router = APIRouter()

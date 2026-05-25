@@ -35,7 +35,7 @@ def auth_headers(client):
     Опционально: токен гостя для запросов, требующих авторизации.
     Использовать в тестах, где нужен любой залогиненный пользователь.
     """
-    response = client.post("/api/auth/guest", json={})
+    response = client.post("/api/v1/auth/guest", json={})
     if response.status_code != 200:
         return {}
     data = response.json()

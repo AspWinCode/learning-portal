@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import User, SmsMessage, SmsTemplate, LeadCommunication
-from app.schemas import (
+from app.schemas.sms import (
     SmsSendRequest,
     SmsSendBulkRequest,
     SmsMessageResponse,

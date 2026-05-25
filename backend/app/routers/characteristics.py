@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from app.database import get_db
 from app import auth
-from app.schemas import (
+from app.schemas.characteristics import (
     CharacteristicCreate, CharacteristicResponse, CharacteristicUpdate,
     CharacteristicApprove, CharacteristicReject, CharacteristicTemplateCreate,
     CharacteristicTemplateResponse

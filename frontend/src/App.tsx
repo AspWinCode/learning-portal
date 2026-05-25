@@ -54,6 +54,7 @@ import TasksPage from './pages/TasksPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectKanbanPage from './pages/ProjectKanbanPage';
 import OwnerWorkspacePage from './pages/OwnerWorkspacePage';
+import OwnerCounterpartiesPage from './pages/OwnerCounterpartiesPage';
 import PersonalFinancePage from './pages/PersonalFinancePage';
 import FinanceOverviewPage from './pages/FinanceOverviewPage';
 import FinanceProjectsPage from './pages/FinanceProjectsPage';
@@ -468,6 +469,14 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="projects.access">
                   <ProjectKanbanPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/counterparties"
+              element={
+                <PrivateRoute allowedRoles={['owner']} requiredPermission="owner_workspace.access">
+                  <OwnerCounterpartiesPage />
                 </PrivateRoute>
               }
             />

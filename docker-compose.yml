@@ -26,6 +26,19 @@ services:
       retries: 20
     restart: unless-stopped
 
+  migrator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
   backend:
     build:
       context: ./backend
@@ -76,7 +89,14 @@ services:
       WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
       WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-}
+      METRICS_ENABLED: ${METRICS_ENABLED:-1}
+      DB_SLOW_QUERY_MS: ${DB_SLOW_QUERY_MS:-500}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      APP_RELEASE: ${APP_RELEASE:-}
     depends_on:
+      migrator:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
@@ -89,7 +109,6 @@ services:
       dockerfile: Dockerfile
     environment:
       APP_ENV: production
-      RUN_MIGRATIONS_ON_STARTUP: "0"
       IN_PROCESS_SCHEDULER_ENABLED: "0"
       REDIS_URL: redis://redis:6379/0
       DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
@@ -121,7 +140,13 @@ services:
       WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
       WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-}
+      DB_SLOW_QUERY_MS: ${DB_SLOW_QUERY_MS:-500}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      APP_RELEASE: ${APP_RELEASE:-}
     depends_on:
+      migrator:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
@@ -135,7 +160,6 @@ services:
       dockerfile: Dockerfile
     environment:
       APP_ENV: production
-      RUN_MIGRATIONS_ON_STARTUP: "0"
       IN_PROCESS_SCHEDULER_ENABLED: "0"
       REDIS_URL: redis://redis:6379/0
       DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
@@ -146,7 +170,13 @@ services:
       OWNER_WORKSPACE_AUTO_SYNC_MAX: ${OWNER_WORKSPACE_AUTO_SYNC_MAX:-0}
       OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED: ${OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED:-1}
       OWNER_WORKSPACE_WEB_PUSH_DISPATCH_ENABLED: ${OWNER_WORKSPACE_WEB_PUSH_DISPATCH_ENABLED:-1}
+      DB_SLOW_QUERY_MS: ${DB_SLOW_QUERY_MS:-500}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      APP_RELEASE: ${APP_RELEASE:-}
     depends_on:
+      migrator:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
@@ -162,6 +192,8 @@ services:
       DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     depends_on:
+      migrator:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
     command: ["python", "telegram_bot_polling.py"]
@@ -184,6 +216,35 @@ services:
       - backend
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+    profiles: ["observability"]
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin_change_me}
+    volumes:
+      - ./deploy/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./deploy/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "127.0.0.1:3001:3000"
+    restart: unless-stopped
+    profiles: ["observability"]
+
 volumes:
   db_data:
     external: true
@@ -191,5 +252,6 @@ volumes:
   redis_data:
   caddy_data:
   caddy_config:
+  grafana_data:
 
 

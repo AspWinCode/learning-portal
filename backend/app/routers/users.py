@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
-from app.schemas import UserCreate, UserListResponse, UserResponse, UserUpdate, ParentInviteRequest, ParentInviteResponse
+from app.schemas.auth import ParentInviteRequest, ParentInviteResponse
+from app.schemas.users import UserCreate, UserListResponse, UserResponse, UserUpdate
 from app.models import User, UserRole, Role
 from app.routers.action_log import log_action
 from app.services.parent_invite import create_parent_with_invite

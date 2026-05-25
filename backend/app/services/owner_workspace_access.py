@@ -12,6 +12,7 @@ from typing import FrozenSet, Optional, Set
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app import auth
 from app.models import (
     OwnerWorkspaceContact,
     OwnerWorkspaceProject,

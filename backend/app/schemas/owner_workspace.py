@@ -89,7 +89,7 @@ class OwnerWorkspaceContactUpdate(BaseModel):
 class OwnerWorkspaceContactResponse(BaseModel):
     id: int
     full_name: str
-    phone: str
+    phone: Optional[str] = None
     email: Optional[str] = None
     company: Optional[str] = None
     position: Optional[str] = None

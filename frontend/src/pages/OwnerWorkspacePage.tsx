@@ -1874,7 +1874,7 @@ const OwnerWorkspacePage: React.FC = () => {
   useEffect(() => {
     if (!contactDialog) return;
     setContactEditFullName(contactDialog.full_name);
-    setContactEditPhone(contactDialog.phone);
+    setContactEditPhone(contactDialog.phone ?? '');
     setContactEditEmail(contactDialog.email ?? '');
     setContactEditCompany(contactDialog.company ?? '');
     setContactEditPosition(contactDialog.position ?? '');

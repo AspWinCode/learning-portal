@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class CampaignBase(BaseModel):
@@ -50,8 +50,7 @@ class CampaignResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SchoolCampaignBase(BaseModel):
@@ -84,8 +83,7 @@ class SchoolCampaignResponse(BaseModel):
     school_name: Optional[str] = None
     school_city: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CampaignEventCreate(BaseModel):
@@ -124,8 +122,7 @@ class CampaignEventResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SchoolCampaignEventUpdate(BaseModel):
@@ -148,8 +145,7 @@ class SchoolCampaignEventResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SchoolCampaignEventBulkUpdate(BaseModel):

@@ -1,70 +1,74 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
-import LoginPage from './pages/LoginPage';
-import SetPasswordPage from './pages/SetPasswordPage';
-import DashboardPage from './pages/DashboardPage';
-import StudentsPage from './pages/StudentsPage';
-import GroupsPage from './pages/GroupsPage';
-import TrainerLessonsPage from './pages/TrainerLessonsPage';
-import ProgramsPage from './pages/ProgramsPage';
-import GuestProgramsPage from './pages/GuestProgramsPage';
-import GradesPage from './pages/GradesPage';
-import CharacteristicsPage from './pages/CharacteristicsPage';
-import ReportsPage from './pages/ReportsPage';
-import FinancialModelPage from './pages/FinancialModelPage';
-import AbonementsPage from './pages/AbonementsPage';
-import TrainersPage from './pages/TrainersPage';
-import CalculationsPage from './pages/CalculationsPage';
-import B2BSchoolsWorkPage from './pages/B2BSchoolsWorkPage';
-import B2BPlanForTodayPage from './pages/B2BPlanForTodayPage';
-import OwnerFunnelsPage from './pages/OwnerFunnelsPage';
-import ParentDashboardPage from './pages/ParentDashboardPage';
-import TrainerCockpitPage from './pages/TrainerCockpitPage';
-import TrainerGradesPage from './pages/TrainerGradesPage';
-import SalesLeadsPage from './pages/SalesLeadsPage';
-import SalesManagersPage from './pages/SalesManagersPage';
-import SalesEventsHubPage from './pages/SalesEventsHubPage';
-import SalesInvoicesPage from './pages/SalesInvoicesPage';
-import SalesSettingsPage from './pages/SalesSettingsPage';
-import CommunicationsSettingsPage from './pages/CommunicationsSettingsPage';
-import SalesDashboardPage from './pages/SalesDashboardPage';
-import SalesPostVisitPage from './pages/SalesPostVisitPage';
-import SalesReinviteEventPage from './pages/SalesReinviteEventPage';
-import SalesAgreedPage from './pages/SalesAgreedPage';
-import SalesReportsPage from './pages/SalesReportsPage';
-import SalesInstructionsPage from './pages/SalesInstructionsPage';
-import SalesAbsencesPage from './pages/SalesAbsencesPage';
-import SalesDebtsPage from './pages/SalesDebtsPage';
-import SalesProgramMakeupPage from './pages/SalesProgramMakeupPage';
-import SalesTaxDeductionPage from './pages/SalesTaxDeductionPage';
-import LeadCardPage from './pages/LeadCardPage';
-import ManualLessonsPage from './pages/ManualLessonsPage';
-import SpecialistQuestionnairePage from './pages/SpecialistQuestionnairePage';
-import TildaLeadPage from './pages/TildaLeadPage';
-import StartLeadPage from './pages/StartLeadPage';
-import BaseLeadPage from './pages/BaseLeadPage';
-import ProLeadPage from './pages/ProLeadPage';
-import SelectMakeupPage from './pages/SelectMakeupPage';
-import TasksPage from './pages/TasksPage';
-import ProjectsPage from './pages/ProjectsPage';
-import ProjectKanbanPage from './pages/ProjectKanbanPage';
-import OwnerWorkspacePage from './pages/OwnerWorkspacePage';
-import OwnerCounterpartiesPage from './pages/OwnerCounterpartiesPage';
-import PersonalFinancePage from './pages/PersonalFinancePage';
-import FinanceOverviewPage from './pages/FinanceOverviewPage';
-import FinanceProjectsPage from './pages/FinanceProjectsPage';
-import RolesPage from './pages/RolesPage';
-import PersonRegistryPage from './pages/PersonRegistryPage';
-import UserDetailsPage from './pages/UserDetailsPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { queryClient } from './queryClient';
 import { appTheme } from './theme';
 import { useAuth } from './contexts/AuthContext';
 import { getEffectiveRole } from './utils/permissions';
+
+const LoginPage = React.lazy(() => import('./pages/LoginPage'));
+const SetPasswordPage = React.lazy(() => import('./pages/SetPasswordPage'));
+const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
+const StudentsPage = React.lazy(() => import('./pages/StudentsPage'));
+const GroupsPage = React.lazy(() => import('./pages/GroupsPage'));
+const TrainerLessonsPage = React.lazy(() => import('./pages/TrainerLessonsPage'));
+const ProgramsPage = React.lazy(() => import('./pages/ProgramsPage'));
+const GuestProgramsPage = React.lazy(() => import('./pages/GuestProgramsPage'));
+const GradesPage = React.lazy(() => import('./pages/GradesPage'));
+const CharacteristicsPage = React.lazy(() => import('./pages/CharacteristicsPage'));
+const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
+const FinancialModelPage = React.lazy(() => import('./pages/FinancialModelPage'));
+const AbonementsPage = React.lazy(() => import('./pages/AbonementsPage'));
+const TrainersPage = React.lazy(() => import('./pages/TrainersPage'));
+const CalculationsPage = React.lazy(() => import('./pages/CalculationsPage'));
+const B2BSchoolsWorkPage = React.lazy(() => import('./pages/B2BSchoolsWorkPage'));
+const B2BPlanForTodayPage = React.lazy(() => import('./pages/B2BPlanForTodayPage'));
+const OwnerFunnelsPage = React.lazy(() => import('./pages/OwnerFunnelsPage'));
+const ParentDashboardPage = React.lazy(() => import('./pages/ParentDashboardPage'));
+const TrainerCockpitPage = React.lazy(() => import('./pages/TrainerCockpitPage'));
+const TrainerGradesPage = React.lazy(() => import('./pages/TrainerGradesPage'));
+const SalesLeadsPage = React.lazy(() => import('./pages/SalesLeadsPage'));
+const SalesManagersPage = React.lazy(() => import('./pages/SalesManagersPage'));
+const SalesEventsHubPage = React.lazy(() => import('./pages/SalesEventsHubPage'));
+const SalesInvoicesPage = React.lazy(() => import('./pages/SalesInvoicesPage'));
+const SalesSettingsPage = React.lazy(() => import('./pages/SalesSettingsPage'));
+const CommunicationsSettingsPage = React.lazy(() => import('./pages/CommunicationsSettingsPage'));
+const SalesDashboardPage = React.lazy(() => import('./pages/SalesDashboardPage'));
+const SalesPostVisitPage = React.lazy(() => import('./pages/SalesPostVisitPage'));
+const SalesReinviteEventPage = React.lazy(() => import('./pages/SalesReinviteEventPage'));
+const SalesAgreedPage = React.lazy(() => import('./pages/SalesAgreedPage'));
+const SalesReportsPage = React.lazy(() => import('./pages/SalesReportsPage'));
+const SalesInstructionsPage = React.lazy(() => import('./pages/SalesInstructionsPage'));
+const SalesAbsencesPage = React.lazy(() => import('./pages/SalesAbsencesPage'));
+const SalesDebtsPage = React.lazy(() => import('./pages/SalesDebtsPage'));
+const SalesProgramMakeupPage = React.lazy(() => import('./pages/SalesProgramMakeupPage'));
+const SalesTaxDeductionPage = React.lazy(() => import('./pages/SalesTaxDeductionPage'));
+const LeadCardPage = React.lazy(() => import('./pages/LeadCardPage'));
+const ManualLessonsPage = React.lazy(() => import('./pages/ManualLessonsPage'));
+const SpecialistQuestionnairePage = React.lazy(() => import('./pages/SpecialistQuestionnairePage'));
+const TildaLeadPage = React.lazy(() => import('./pages/TildaLeadPage'));
+const StartLeadPage = React.lazy(() => import('./pages/StartLeadPage'));
+const BaseLeadPage = React.lazy(() => import('./pages/BaseLeadPage'));
+const ProLeadPage = React.lazy(() => import('./pages/ProLeadPage'));
+const SelectMakeupPage = React.lazy(() => import('./pages/SelectMakeupPage'));
+const TasksPage = React.lazy(() => import('./pages/TasksPage'));
+const ProjectsPage = React.lazy(() => import('./pages/ProjectsPage'));
+const ProjectKanbanPage = React.lazy(() => import('./pages/ProjectKanbanPage'));
+const OwnerWorkspacePage = React.lazy(() => import('./pages/OwnerWorkspacePage'));
+const OwnerCounterpartiesPage = React.lazy(() => import('./pages/OwnerCounterpartiesPage'));
+const PersonalFinancePage = React.lazy(() => import('./pages/PersonalFinancePage'));
+const FinanceOverviewPage = React.lazy(() => import('./pages/FinanceOverviewPage'));
+const FinanceProjectsPage = React.lazy(() => import('./pages/FinanceProjectsPage'));
+const RolesPage = React.lazy(() => import('./pages/RolesPage'));
+const PersonRegistryPage = React.lazy(() => import('./pages/PersonRegistryPage'));
+const UserDetailsPage = React.lazy(() => import('./pages/UserDetailsPage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -82,19 +86,31 @@ const ProgramsRoute: React.FC = () => {
   return <ProgramsPage />;
 };
 
+const SectionBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <ErrorBoundary>{children}</ErrorBoundary>
+);
+
+const RouteFallback: React.FC = () => (
+  <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <CircularProgress />
+  </Box>
+);
+
 function App() {
   return (
     <ThemeProvider theme={appTheme}>
       <CssBaseline />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <Router
-            future={{
-              v7_startTransition: true,
-              v7_relativeSplatPath: true,
-            }}
-          >
-            <Routes>
+          <ErrorBoundary>
+            <Router
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+              }}
+            >
+              <Suspense fallback={<RouteFallback />}>
+                <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/set-password" element={<SetPasswordPage />} />
             <Route path="/anketa/specialist" element={<SpecialistQuestionnairePage />} />
@@ -136,7 +152,9 @@ function App() {
               path="/trainer-cockpit"
               element={
                 <PrivateRoute requiredPermission="trainer_cockpit.access">
-                  <TrainerCockpitPage />
+                  <SectionBoundary>
+                    <TrainerCockpitPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -144,7 +162,9 @@ function App() {
               path="/trainer-grades"
               element={
                 <PrivateRoute requiredPermission="grades.manage">
-                  <TrainerGradesPage />
+                  <SectionBoundary>
+                    <TrainerGradesPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -152,7 +172,9 @@ function App() {
               path="/lessons"
               element={
                 <PrivateRoute requiredPermission="lessons.access">
-                  <TrainerLessonsPage />
+                  <SectionBoundary>
+                    <TrainerLessonsPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -168,7 +190,9 @@ function App() {
               path="/sales/dashboard"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesDashboardPage />
+                  <SectionBoundary>
+                    <SalesDashboardPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -176,7 +200,9 @@ function App() {
               path="/sales/leads"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesLeadsPage />
+                  <SectionBoundary>
+                    <SalesLeadsPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -184,7 +210,9 @@ function App() {
               path="/sales/leads/:id"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <LeadCardPage />
+                  <SectionBoundary>
+                    <LeadCardPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -192,7 +220,9 @@ function App() {
               path="/sales/pipeline"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesLeadsPage />
+                  <SectionBoundary>
+                    <SalesLeadsPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -200,7 +230,9 @@ function App() {
               path="/sales/events"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesEventsHubPage />
+                  <SectionBoundary>
+                    <SalesEventsHubPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -208,7 +240,9 @@ function App() {
               path="/sales/post-visit"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesPostVisitPage />
+                  <SectionBoundary>
+                    <SalesPostVisitPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -216,7 +250,9 @@ function App() {
               path="/sales/reinvite-event"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesReinviteEventPage />
+                  <SectionBoundary>
+                    <SalesReinviteEventPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -224,7 +260,9 @@ function App() {
               path="/sales/agreed"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesAgreedPage />
+                  <SectionBoundary>
+                    <SalesAgreedPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -232,7 +270,9 @@ function App() {
               path="/sales/invoices"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesInvoicesPage />
+                  <SectionBoundary>
+                    <SalesInvoicesPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -246,7 +286,9 @@ function App() {
               path="/sales/reports"
               element={
                 <PrivateRoute requiredPermission="reports.access">
-                  <SalesReportsPage />
+                  <SectionBoundary>
+                    <SalesReportsPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -254,7 +296,9 @@ function App() {
               path="/finance/overview"
               element={
                 <PrivateRoute requiredPermission="finance.access">
-                  <FinanceOverviewPage />
+                  <SectionBoundary>
+                    <FinanceOverviewPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -262,7 +306,9 @@ function App() {
               path="/finance/projects"
               element={
                 <PrivateRoute requiredPermission="finance.access">
-                  <FinanceProjectsPage />
+                  <SectionBoundary>
+                    <FinanceProjectsPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -270,7 +316,9 @@ function App() {
               path="/sales/instructions"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesInstructionsPage />
+                  <SectionBoundary>
+                    <SalesInstructionsPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -278,7 +326,9 @@ function App() {
               path="/sales/absences"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesAbsencesPage />
+                  <SectionBoundary>
+                    <SalesAbsencesPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -288,7 +338,9 @@ function App() {
               path="/sales/debts"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesDebtsPage />
+                  <SectionBoundary>
+                    <SalesDebtsPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -296,7 +348,9 @@ function App() {
               path="/sales/program-makeup"
               element={
                 <PrivateRoute requiredPermission="settings.manage">
-                  <SalesProgramMakeupPage />
+                  <SectionBoundary>
+                    <SalesProgramMakeupPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -304,7 +358,9 @@ function App() {
               path="/sales/tax-deduction"
               element={
                 <PrivateRoute requiredPermission="sales.access">
-                  <SalesTaxDeductionPage />
+                  <SectionBoundary>
+                    <SalesTaxDeductionPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -312,7 +368,9 @@ function App() {
               path="/sales/manual-lessons"
               element={
                 <PrivateRoute requiredPermission="lessons.manage">
-                  <ManualLessonsPage />
+                  <SectionBoundary>
+                    <ManualLessonsPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -588,7 +646,9 @@ function App() {
               path="/personal-finance"
               element={
                 <PrivateRoute requiredPermission="personal_finance.access">
-                  <PersonalFinancePage />
+                  <SectionBoundary>
+                    <PersonalFinancePage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />
@@ -600,8 +660,10 @@ function App() {
                 </PrivateRoute>
               }
             />
-            </Routes>
-          </Router>
+                </Routes>
+              </Suspense>
+            </Router>
+          </ErrorBoundary>
         </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>

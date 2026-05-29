@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OwnerWorkspaceProjectParticipantAdd(BaseModel):
@@ -56,8 +56,7 @@ class OwnerWorkspaceProjectResponse(BaseModel):
     updated_at: Optional[datetime] = None
     archived_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OwnerWorkspaceContactBase(BaseModel):
@@ -102,8 +101,7 @@ class OwnerWorkspaceContactResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OwnerWorkspaceCounterpartyCustomField(BaseModel):
@@ -171,8 +169,7 @@ class OwnerWorkspaceCounterpartyResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OwnerWorkspaceTaskBase(BaseModel):
@@ -236,8 +233,7 @@ class OwnerWorkspaceTaskCommentResponse(BaseModel):
     text: str
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OwnerWorkspaceTaskMessageLink(BaseModel):
@@ -265,8 +261,7 @@ class OwnerWorkspaceTaskResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OwnerWorkspaceTaskListResponse(BaseModel):
@@ -320,8 +315,7 @@ class OwnerWorkspaceMessageResponse(BaseModel):
     linked_task_ids: List[int] = []
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OwnerWorkspaceMessageCreateTaskRequest(BaseModel):
@@ -355,8 +349,7 @@ class OwnerWorkspaceAuditLogResponse(BaseModel):
     author_id: Optional[int] = None
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OwnerWorkspaceHistoryStatsCountItem(BaseModel):
@@ -440,8 +433,7 @@ class OwnerWorkspaceNotificationResponse(BaseModel):
     read_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OwnerWorkspaceNotificationsEnvelope(BaseModel):

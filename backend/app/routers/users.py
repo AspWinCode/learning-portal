@@ -56,6 +56,11 @@ async def create_user(
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    try:
+        auth.validate_password_strength(user.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     custom_role = _resolve_custom_role(db, user.custom_role_id, UserRole(user.role))
     hashed_password = auth.get_password_hash(user.password)
     db_user = User(

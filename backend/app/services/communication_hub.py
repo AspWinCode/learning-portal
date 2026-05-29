@@ -11,6 +11,7 @@ from app.services.max_messenger import is_configured as max_is_configured
 from app.services.max_messenger import send_message, send_message_personal
 from app.services.sms_gateway import is_configured as sms_is_configured
 from app.services.sms_gateway import send_sms
+from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,7 @@ class CommunicationService:
             message=body,
         )
 
-        duplicate_since = datetime.utcnow() - timedelta(hours=DEDUPE_WINDOW_HOURS)
+        duplicate_since = utcnow() - timedelta(hours=DEDUPE_WINDOW_HOURS)
         duplicate = (
             db.query(CommunicationQueue)
             .filter(
@@ -222,7 +223,7 @@ class CommunicationService:
 
     @staticmethod
     def dispatch_pending(db: Session, limit: int = 100) -> int:
-        now = datetime.utcnow()
+        now = utcnow()
         candidates = (
             db.query(CommunicationQueue)
             .filter(CommunicationQueue.status == "pending")
@@ -249,7 +250,7 @@ class CommunicationService:
         success, transport_id, error = _send_transport(item.channel, payload)
         if success:
             item.status = "sent"
-            item.sent_at = datetime.utcnow()
+            item.sent_at = utcnow()
             item.error = None
             _mirror_legacy_transport_log(db, item, payload, transport_id)
         else:

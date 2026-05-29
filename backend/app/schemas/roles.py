@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.permissions import VALID_PERMISSION_KEYS
 from app.schemas.common import UserRole
@@ -78,8 +78,7 @@ class RoleResponse(RoleBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

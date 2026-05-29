@@ -311,7 +311,7 @@ const SalesLeadsPage: React.FC = () => {
       const base = err?.config?.baseURL ?? '';
       const path = err?.config?.url ?? '';
       const requestUrl = base ? `${base.replace(/\/$/, '')}${path?.startsWith('/') ? path : '/' + path}` : (typeof window !== 'undefined' ? window.location.origin + path : path);
-      if (process.env.NODE_ENV !== 'production') {
+      if (!import.meta.env.PROD) {
         console.error('[SalesLeads] loadLeads error', { status, noResponse, requestUrl, message: err?.message }, err);
       }
       if (

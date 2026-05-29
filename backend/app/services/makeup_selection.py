@@ -23,8 +23,9 @@ from app.models import (
     User,
     UserRole,
 )
-from app.schemas import MakeupSuggestionItem
+from app.schemas.sales import MakeupSuggestionItem
 from app.services.communication_hub import CommunicationService
+from app.utils.datetime import utcnow
 
 MAKEUP_SELECTION_TOKEN_EXPIRE_DAYS = 14
 MAKEUP_SELECTION_AUDIENCE = "makeup-selection"
@@ -37,7 +38,7 @@ class MakeupSelectionTokenPayload:
 
 
 def create_makeup_selection_token(*, absence_id: int, student_id: int) -> str:
-    expire = datetime.utcnow() + timedelta(days=MAKEUP_SELECTION_TOKEN_EXPIRE_DAYS)
+    expire = utcnow() + timedelta(days=MAKEUP_SELECTION_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": MAKEUP_SELECTION_AUDIENCE,
         "absence_id": absence_id,

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.common import CharacteristicStatus
 from app.schemas.students import StudentResponse
@@ -27,8 +27,7 @@ class CharacteristicTemplateResponse(BaseModel):
     fields: List[CharacteristicField]
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CharacteristicCreate(BaseModel):
@@ -65,8 +64,7 @@ class CharacteristicResponse(BaseModel):
     student: Optional[StudentResponse] = None
     trainer: Optional[UserResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

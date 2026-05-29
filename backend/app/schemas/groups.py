@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.schemas.programs import ProgramSummaryResponse
 from app.schemas.students import StudentResponse
@@ -26,8 +26,7 @@ class GroupScheduleResponse(BaseModel):
     start_time: time
     end_time: time
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GroupCreate(GroupBase):
@@ -66,8 +65,7 @@ class GroupResponse(GroupBase):
     programs: Optional[List[ProgramSummaryResponse]] = []
     schedules: Optional[List[GroupScheduleResponse]] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GroupListResponse(BaseModel):
@@ -125,8 +123,7 @@ class LessonSlotExtraPolicyResponse(BaseModel):
     extra_policy: str
     extra_rate_per_unit: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CreateLessonSlotPayload(BaseModel):
@@ -176,8 +173,7 @@ class TrainerLessonSlotResponse(BaseModel):
     moved_to_start_time: Optional[time] = None
     moved_to_end_time: Optional[time] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SetLessonTrainerPayload(BaseModel):

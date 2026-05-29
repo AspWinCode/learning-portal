@@ -26,6 +26,7 @@ from app.schemas.sales import (
     SalesInstructionUpdate,
 )
 from app.student_display import get_students_display_names
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -223,7 +224,7 @@ async def set_lesson_call_result(
         db.commit()
         db.refresh(attendance)
     attendance.call_result = payload.call_result
-    attendance.call_result_at = datetime.utcnow()
+    attendance.call_result_at = utcnow()
     db.commit()
     return {"ok": True}
 

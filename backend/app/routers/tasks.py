@@ -411,7 +411,7 @@ async def list_tasks(
 
 @router.get("/tasks/today", response_model=List[TaskResponse])
 async def list_today_tasks(
-    mode: str = Query("today", regex="^(today|overdue|active)$"),
+    mode: str = Query("today", pattern="^(today|overdue|active)$"),
     category: Optional[str] = Query(None),
     assignee_id: Optional[int] = Query(None, description="По умолчанию для sales — текущий пользователь"),
     db: Session = Depends(get_db),

@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import AbsenceFollowUp, Grade, Lead, LeadStatus, LessonAttendance, Module, Topic
+from app.utils.datetime import utcnow
 
 
 def _as_naive_datetime(value: Optional[datetime]) -> Optional[datetime]:
@@ -32,7 +33,7 @@ def _lead_stage_from_score(score: int) -> str:
 
 
 def build_lead_ai_insight(lead: Lead, *, now: Optional[datetime] = None) -> Dict[str, Any]:
-    current_time = _as_naive_datetime(now) or datetime.utcnow()
+    current_time = _as_naive_datetime(now) or utcnow()
     status = getattr(lead, "status", None)
 
     if status == LeadStatus.WON:

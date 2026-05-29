@@ -28,6 +28,7 @@ from app.services.payment_status import get_payment_status_list as payment_statu
 from app.services.lead_post_visit import update_lead_post_visit_stage as lead_post_visit_update_stage
 from app.services.student_activity import log_student_activity
 from app.services.person_sync import sync_lead_person, sync_student_card_person
+from app.utils.datetime import utcnow
 from app.models import (
     Lead,
     LeadStatus,
@@ -469,7 +470,7 @@ async def set_lesson_call_result(
         db.commit()
         db.refresh(att)
     att.call_result = payload.call_result
-    att.call_result_at = datetime.utcnow()
+    att.call_result_at = utcnow()
     db.commit()
     return {"ok": True}
 
@@ -2829,7 +2830,7 @@ async def get_sales_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    now = datetime.utcnow()
+    now = utcnow()
     start_month = datetime(now.year, now.month, 1)
     end_month = datetime(now.year + (1 if now.month == 12 else 0), 1 if now.month == 12 else now.month + 1, 1)
     start_today = datetime(now.year, now.month, now.day)
@@ -3029,7 +3030,7 @@ async def list_follow_ups(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_sales_admin_owner),
 ):
-    now = datetime.utcnow()
+    now = utcnow()
     start_today = datetime(now.year, now.month, now.day)
     end_today = start_today + timedelta(days=1)
     start_tomorrow = end_today
@@ -3679,7 +3680,7 @@ async def list_leads(
         # tags are stored as JSON array; text-search keeps compatibility across DB backends.
         query = query.filter(Lead.tags.isnot(None), cast(Lead.tags, Text).ilike(f"%{tag.strip()}%"))
     if overdue_only:
-        now = datetime.utcnow()
+        now = utcnow()
         query = query.filter(Lead.next_contact_at.isnot(None), Lead.next_contact_at < now)
     if created_from:
         query = query.filter(Lead.created_at >= created_from)
@@ -3765,7 +3766,7 @@ async def create_lead_communication(
     if channel not in {"messenger", "call", "email"}:
         raise HTTPException(status_code=400, detail="Unsupported channel")
     message = (payload.message or "").strip() or f"[quick-{channel}]"
-    follow_up_at = payload.follow_up_at or datetime.utcnow()
+    follow_up_at = payload.follow_up_at or utcnow()
 
     comm = LeadCommunication(
         lead_id=lead.id,
@@ -3809,7 +3810,7 @@ async def send_info_for_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
 
-    if payload.follow_up_at <= datetime.utcnow():
+    if payload.follow_up_at <= utcnow():
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
     message = (payload.message or "").strip()
     if not message:
@@ -3883,7 +3884,7 @@ async def save_lead_contact_result(
 
     if outcome in {"no_answer", "callback"} and payload.follow_up_at is None:
         raise HTTPException(status_code=400, detail="follow_up_at is required for this outcome")
-    if payload.follow_up_at and payload.follow_up_at <= datetime.utcnow():
+    if payload.follow_up_at and payload.follow_up_at <= utcnow():
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
 
     label_map = {
@@ -3902,7 +3903,7 @@ async def save_lead_contact_result(
         channel="call",
         message=message,
         pause_reason=None,
-        follow_up_at=payload.follow_up_at or datetime.utcnow(),
+        follow_up_at=payload.follow_up_at or utcnow(),
     )
     db.add(comm)
 
@@ -4717,7 +4718,7 @@ async def create_lead_task(
             assigned_to_id=assignee_id,
             category="leads",
             status=TaskStatus.ACTIVE.value,
-            due_at=datetime.utcnow(),
+            due_at=utcnow(),
             priority="normal",
             tags=["send_info", f"lead:{lead.id}"],
         )
@@ -4788,7 +4789,7 @@ async def close_lead_task(
     )
     if closed_status:
         task.status_option_id = closed_status.id
-    task.updated_at = datetime.utcnow()
+    task.updated_at = utcnow()
     db.commit()
     db.refresh(task)
 
@@ -4808,7 +4809,7 @@ async def close_lead_task(
             .order_by(LeadTaskStatusOptionModel.id.asc())
             .first()
         )
-        follow_up_due = datetime.utcnow() + timedelta(days=2)
+        follow_up_due = utcnow() + timedelta(days=2)
         follow_up = LeadTask(
             lead_id=lead_id,
             owner_id=current_user.id,
@@ -4861,7 +4862,7 @@ async def update_lead_task(
         task.channel = update_data["channel"]
     if "due_at" in update_data:
         task.due_at = update_data["due_at"]
-    task.updated_at = datetime.utcnow()
+    task.updated_at = utcnow()
     db.commit()
     db.refresh(task)
     log_action(db, current_user.id, "update", "lead_task", task.id, update_data)
@@ -4951,7 +4952,7 @@ async def get_lead_card(
         .order_by(LeadTask.due_at.asc().nullslast())
         .first()
     )
-    now = datetime.utcnow()
+    now = utcnow()
     today_start = datetime.combine(date.today(), dt_time.min)
     today_end = datetime.combine(date.today(), dt_time.max)
     if next_task:
@@ -5143,7 +5144,7 @@ async def create_lead_activity(
 
     # Update last_contact_at for contact-type activities
     if payload.type in ("call", "no_answer", "info_sent"):
-        lead.last_contact_at = datetime.utcnow()
+        lead.last_contact_at = utcnow()
 
     db.commit()
     db.refresh(activity)
@@ -5218,7 +5219,7 @@ async def send_invoice_email(
 
     # Stub: actual email sending integration should be implemented separately.
     invoice.status = InvoiceStatus.SENT
-    invoice.sent_at = datetime.utcnow()
+    invoice.sent_at = utcnow()
     if lead.status not in (LeadStatus.WON, LeadStatus.LOST):
         lead.status = LeadStatus.INVOICE_SENT
     db.commit()
@@ -5462,7 +5463,7 @@ async def mark_event_registration_came(
     # UX automation: after attendance create follow-up "offer course" (do not fail the request if this fails)
     try:
         if not _has_open_task_like(db, lead.id, "[auto_attended_offer]"):
-            due_at = datetime.utcnow() + timedelta(hours=24)
+            due_at = utcnow() + timedelta(hours=24)
             auto_task = _create_auto_event_task(
                 db,
                 lead=lead,
@@ -5511,7 +5512,7 @@ async def mark_event_registration_no_show(
     reg.note = _append_note_tag(cleaned_note, "[no-show]")
     # UX automation: after no-show create reactivation follow-up.
     if not _has_open_task_like(db, lead.id, "[auto_no_show_reactivate]"):
-        due_at = datetime.utcnow() + timedelta(hours=24)
+        due_at = utcnow() + timedelta(hours=24)
         auto_task = _create_auto_event_task(
             db,
             lead=lead,
@@ -5586,7 +5587,7 @@ async def update_lead_post_visit_stage(
 
     lead = result.lead
     if result.need_auto_task and not _has_open_task_like(db, lead.id, "[auto_post_visit_agreed]"):
-        due_at = datetime.utcnow() + timedelta(hours=48)
+        due_at = utcnow() + timedelta(hours=48)
         auto_task = _create_auto_event_task(
             db,
             lead=lead,

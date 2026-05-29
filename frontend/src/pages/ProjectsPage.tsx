@@ -28,7 +28,7 @@ import {
   Checkbox,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, ViewKanban as KanbanIcon, Archive as ArchiveIcon } from '@mui/icons-material';
-import { projectsApi } from '../services/api';
+import { projectsApi, tasksApi } from '../services/api';
 import { Project } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
@@ -103,7 +103,6 @@ const ProjectsPage: React.FC = () => {
       });
       if (createTask) {
         try {
-          const { tasksApi } = await import('../services/api');
           await tasksApi.createTask({
             title: `Необходимо отработать проект ${project.name}`,
             description: project.description || undefined,

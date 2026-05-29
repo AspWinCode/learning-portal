@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.models import User, UserRole
+from app.utils.datetime import utcnow
 
 
 def _hash_invite_token(secret_key: str, token: str) -> str:
@@ -23,7 +24,7 @@ def create_invite_for_existing_parent(db: Session, user: User) -> str:
     """
     token = secrets.token_urlsafe(32)
     token_hash = _hash_invite_token(auth.SECRET_KEY, token)
-    expires_at = datetime.utcnow() + timedelta(days=7)
+    expires_at = utcnow() + timedelta(days=7)
     user.invite_token_hash = token_hash
     user.invite_token_expires_at = expires_at
     db.add(user)
@@ -67,7 +68,7 @@ def create_parent_with_invite(db: Session, email: str, full_name: str) -> Tuple[
         raise ValueError("Пользователь с таким email уже зарегистрирован")
     token = secrets.token_urlsafe(32)
     token_hash = _hash_invite_token(auth.SECRET_KEY, token)
-    expires_at = datetime.utcnow() + timedelta(days=7)
+    expires_at = utcnow() + timedelta(days=7)
     random_password = secrets.token_urlsafe(24)
     hashed = auth.get_password_hash(random_password)
     db_user = User(

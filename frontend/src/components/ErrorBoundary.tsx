@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Button } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 
 interface State {
   hasError: boolean;
@@ -16,6 +16,14 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
     return { hasError: true, error };
   }
 
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Unhandled React error', error, errorInfo);
+  }
+
+  handleReload = () => {
+    window.location.reload();
+  };
+
   render() {
     if (this.state.hasError && this.state.error) {
       return (
@@ -23,15 +31,20 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
           <Typography variant="h6" color="error" gutterBottom>
             Ошибка загрузки приложения
           </Typography>
-          <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mb: 2 }}>
+          <Typography
+            variant="body2"
+            component="pre"
+            sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mb: 2 }}
+          >
             {this.state.error.message}
           </Typography>
-          <Button variant="outlined" onClick={() => window.location.reload()}>
+          <Button variant="outlined" onClick={this.handleReload}>
             Обновить страницу
           </Button>
         </Box>
       );
     }
+
     return this.props.children;
   }
 }

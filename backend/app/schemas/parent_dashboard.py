@@ -2,7 +2,7 @@ import re
 from datetime import date, datetime, time
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.owner_dashboard import StudentLearningAIInsightResponse
 from app.schemas.owner_workspace import (
@@ -52,8 +52,7 @@ class ParentQuestionResponse(BaseModel):
     status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ParentWeeklyDigestSettingsResponse(BaseModel):

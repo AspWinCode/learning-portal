@@ -11,6 +11,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models import Characteristic, CharacteristicStatus, CharacteristicTemplate
+from app.utils.datetime import utcnow
 
 
 def submit_characteristic_for_review(
@@ -74,7 +75,7 @@ def approve_characteristic(
 
     characteristic.status = CharacteristicStatus.APPROVED
     characteristic.admin_comment = comment
-    characteristic.published_at = datetime.utcnow()
+    characteristic.published_at = utcnow()
     db.commit()
     db.refresh(characteristic)
     return characteristic

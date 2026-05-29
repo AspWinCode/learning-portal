@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.schemas.abonements import AbonementResponse
 from app.schemas.common import (
@@ -47,8 +47,7 @@ class AbsenceFollowUpResponse(BaseModel):
     makeup_custom_lesson_id: Optional[int] = None
     makeup_custom_lesson_title: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AbsenceFollowUpStageUpdate(BaseModel):
@@ -133,8 +132,7 @@ class CustomLessonResponse(BaseModel):
     comment: Optional[str] = None
     students: List[CustomLessonStudentResponse]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CustomLessonAttendanceItem(BaseModel):
@@ -156,8 +154,7 @@ class ProgramMakeupCompatibilityResponse(BaseModel):
     source_program_name: Optional[str] = None
     target_program_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProgramMakeupCompatibilityCreate(BaseModel):
@@ -191,8 +188,7 @@ class StudentFreezeResponse(BaseModel):
     freeze_end: date
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CloseByFactPreview(BaseModel):
@@ -288,8 +284,7 @@ class LeadStatusOptionResponse(LeadStatusOptionBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadResponse(BaseModel):
@@ -337,8 +332,7 @@ class LeadResponse(BaseModel):
     last_contact_at: Optional[datetime] = None
     ai_insight: Optional[LeadAIInsightResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadTaskBase(BaseModel):
@@ -368,8 +362,7 @@ class LeadTaskResponse(LeadTaskBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadSourceBase(BaseModel):
@@ -390,8 +383,7 @@ class LeadSourceResponse(LeadSourceBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SalesCityBase(BaseModel):
@@ -412,8 +404,7 @@ class SalesCityResponse(SalesCityBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SalesSchoolBase(BaseModel):
@@ -434,8 +425,7 @@ class SalesSchoolResponse(SalesSchoolBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SalesClassBase(BaseModel):
@@ -456,8 +446,7 @@ class SalesClassResponse(SalesClassBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AccountTemplateCreate(BaseModel):
@@ -471,8 +460,7 @@ class AccountTemplateResponse(BaseModel):
     format: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadTaskTemplateBase(BaseModel):
@@ -493,8 +481,7 @@ class LeadTaskTemplateResponse(LeadTaskTemplateBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadTaskStatusOptionBase(BaseModel):
@@ -518,8 +505,7 @@ class LeadTaskStatusOptionResponse(LeadTaskStatusOptionBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadImportResponse(BaseModel):
@@ -546,8 +532,7 @@ class LeadInfoTemplateResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SalesInstructionBase(BaseModel):
@@ -570,8 +555,7 @@ class SalesInstructionResponse(SalesInstructionBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StudentCardBase(BaseModel):
@@ -650,8 +634,7 @@ class StudentCardResponse(StudentCardBase):
     updated_at: Optional[datetime] = None
     abonement: Optional[AbonementResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AnketaConvertRequest(BaseModel):
@@ -769,8 +752,7 @@ class LeadCommunicationResponse(BaseModel):
     follow_up_at: datetime
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SalesQueueTaskItem(BaseModel):
@@ -859,8 +841,7 @@ class InvoiceResponse(BaseModel):
     sent_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EventBase(BaseModel):
@@ -893,8 +874,7 @@ class EventResponse(EventBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EventRegistrationCreate(BaseModel):
@@ -913,8 +893,7 @@ class EventRegistrationResponse(BaseModel):
     updated_at: Optional[datetime] = None
     lead: Optional[LeadResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadActivityCreate(BaseModel):
@@ -945,8 +924,7 @@ class LeadActivityResponse(BaseModel):
     related_task_id: Optional[int] = None
     related_invoice_id: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadNextAction(BaseModel):

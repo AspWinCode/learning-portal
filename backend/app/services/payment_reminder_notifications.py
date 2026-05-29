@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Student, StudentCard, StudentStatus
 from app.services.communication_hub import CommunicationService
 from app.student_display import get_student_display_name
+from app.utils.datetime import utcnow
 
 
 REMINDER_DAYS_BEFORE_PAYMENT = 3
@@ -54,7 +55,7 @@ def enqueue_upcoming_payment_reminders(db: Session, today: Optional[date] = None
             },
             dedupe_key=f"payment_reminder:{student.id}:{target_date.isoformat()}",
         )
-        if queue_item.created_at and queue_item.created_at.date() == datetime.utcnow().date():
+        if queue_item.created_at and queue_item.created_at.date() == utcnow().date():
             created += 1
 
     return created

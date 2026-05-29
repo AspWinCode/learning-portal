@@ -1,69 +1,181 @@
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Set
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+from uuid import uuid4
+
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from redis import Redis
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models import User, UserRole
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+SECRET_KEY = os.environ["SECRET_KEY"]
+if len(SECRET_KEY) < 32:
+    raise RuntimeError("SECRET_KEY must be at least 32 characters")
+
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+GUEST_TOKEN_EXPIRE_HOURS = int(os.getenv("GUEST_TOKEN_EXPIRE_HOURS", "24"))
+GUEST_USER_ID = -1
+REDIS_URL = (os.getenv("REDIS_URL") or "redis://redis:6379/0").strip()
+TOKEN_BLACKLIST_PREFIX = "auth:blacklist:jti:"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
+_redis_client: Optional[Redis] = None
 
 DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     UserRole.ADMIN.value: {"*"},
     UserRole.OWNER.value: {"*"},
-    UserRole.SALES.value: {"sales.access", "finance.access", "tasks.access", "projects.access", "owner_workspace.access", "students.access", "students.manage", "lessons.access", "lessons.manage", "lessons.schedule_manage", "student_accounts.access", "student_accounts.manage", "student_accounts.payment", "persons.access", "persons.manage"},
-    UserRole.TRAINER.value: {"tasks.access", "projects.access", "owner_workspace.access", "groups.access", "programs.access", "students.access", "grades.access", "grades.manage", "characteristics.access", "characteristics.manage", "lessons.access", "lessons.manage", "telegram.link", "trainer_cockpit.access"},
-    UserRole.PARENT.value: {"programs.access", "groups.access", "grades.access", "characteristics.access", "student_accounts.access", "student_accounts.payment", "telegram.link", "parent_dashboard.access"},
+    UserRole.SALES.value: {
+        "sales.access",
+        "finance.access",
+        "tasks.access",
+        "projects.access",
+        "owner_workspace.access",
+        "students.access",
+        "students.manage",
+        "lessons.access",
+        "lessons.manage",
+        "lessons.schedule_manage",
+        "student_accounts.access",
+        "student_accounts.manage",
+        "student_accounts.payment",
+        "persons.access",
+        "persons.manage",
+    },
+    UserRole.TRAINER.value: {
+        "tasks.access",
+        "projects.access",
+        "owner_workspace.access",
+        "groups.access",
+        "programs.access",
+        "students.access",
+        "grades.access",
+        "grades.manage",
+        "characteristics.access",
+        "characteristics.manage",
+        "lessons.access",
+        "lessons.manage",
+        "telegram.link",
+        "trainer_cockpit.access",
+    },
+    UserRole.PARENT.value: {
+        "programs.access",
+        "groups.access",
+        "grades.access",
+        "characteristics.access",
+        "student_accounts.access",
+        "student_accounts.payment",
+        "telegram.link",
+        "parent_dashboard.access",
+    },
     UserRole.GUEST.value: {"programs.access"},
 }
 
 
+def get_redis_client() -> Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
+    return _redis_client
+
+
+def _blacklist_key(jti: str) -> str:
+    return f"{TOKEN_BLACKLIST_PREFIX}{jti}"
+
+
+def add_token_to_blacklist(jti: str, ttl_seconds: int) -> None:
+    normalized_jti = str(jti or "").strip()
+    if not normalized_jti or ttl_seconds <= 0:
+        return
+    get_redis_client().setex(_blacklist_key(normalized_jti), int(ttl_seconds), "1")
+
+
+def is_token_blacklisted(jti: str) -> bool:
+    normalized_jti = str(jti or "").strip()
+    if not normalized_jti:
+        return False
+    return bool(get_redis_client().exists(_blacklist_key(normalized_jti)))
+
+
+def validate_password_strength(password: str) -> None:
+    value = str(password or "")
+    if len(value) < 8:
+        raise ValueError("Password must be at least 8 characters long and contain at least one letter and one digit")
+    if not any(char.isalpha() for char in value):
+        raise ValueError("Password must contain at least one letter")
+    if not any(char.isdigit() for char in value):
+        raise ValueError("Password must contain at least one digit")
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
-        # Попробуем через passlib
         return pwd_context.verify(plain_password, hashed_password)
     except Exception:
-        # Если не работает, используем прямой bcrypt (для совместимости)
         import bcrypt
+
         try:
-            return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+            return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
         except Exception:
             return False
 
 
 def get_password_hash(password: str) -> str:
-    """Хеширование пароля с использованием bcrypt напрямую для совместимости"""
     import bcrypt
-    # Обрезаем пароль до 72 байт (ограничение bcrypt)
-    password_bytes = password.encode('utf-8')
+
+    password_bytes = password.encode("utf-8")
     if len(password_bytes) > 72:
         password_bytes = password_bytes[:72]
-    # Генерируем соль и хешируем
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password_bytes, salt)
-    return hashed.decode('utf-8')
+    return hashed.decode("utf-8")
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.setdefault("jti", str(uuid4()))
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_access_token(token: str) -> dict:
+    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+
+def get_token_ttl_seconds(payload: dict) -> int:
+    exp = payload.get("exp")
+    if exp is None:
+        return 0
+    if isinstance(exp, datetime):
+        expire_at = exp if exp.tzinfo is not None else exp.replace(tzinfo=timezone.utc)
+    else:
+        expire_at = datetime.fromtimestamp(float(exp), tz=timezone.utc)
+    ttl = int((expire_at - datetime.now(timezone.utc)).total_seconds())
+    return max(ttl, 0)
+
+
+def blacklist_token(token: str) -> None:
+    payload = decode_access_token(token)
+    jti = str(payload.get("jti") or "").strip()
+    if not jti:
+        return
+    add_token_to_blacklist(jti, get_token_ttl_seconds(payload))
+
+
+def ensure_persisted_user_id(user_id: int) -> int:
+    if int(user_id) == GUEST_USER_ID:
+        raise PermissionError("Guest user cannot be used in database user_id queries")
+    return int(user_id)
 
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
@@ -83,7 +195,7 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -91,25 +203,24 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        role: str = payload.get("role") or ""
-        if email is None:
+        payload = decode_access_token(token)
+        email = payload.get("sub")
+        role = payload.get("role") or ""
+        jti = str(payload.get("jti") or "").strip()
+        if email is None or not jti or is_token_blacklisted(jti):
             raise credentials_exception
     except JWTError:
         raise credentials_exception
 
-    # Guest tokens are not tied to a DB user
     if role == UserRole.GUEST.value:
-        guest = User(
-            id=0,
-            email="guest",
+        return User(
+            id=GUEST_USER_ID,
+            email="guest@example.com",
             full_name="Гость",
             role=UserRole.GUEST,
             is_active=True,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
-        return guest
 
     user = get_user_by_email(db, email=email)
     if user is None:
@@ -117,9 +228,7 @@ async def get_current_user(
     return user
 
 
-async def get_current_active_user(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
@@ -185,7 +294,6 @@ def ensure_permission(user: User, permission: str) -> None:
 
 
 def require_role(allowed_roles: list):
-    """Dependency для проверки роли пользователя"""
     async def role_checker(current_user: User = Depends(get_current_active_user)):
         effective_roles = set(allowed_roles)
         if "admin" in effective_roles:
@@ -194,20 +302,18 @@ def require_role(allowed_roles: list):
         if effective_role.value not in effective_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
+                detail="Not enough permissions",
             )
         if effective_role == UserRole.SALES and "sales" in effective_roles:
             ensure_permission(current_user, "sales.access")
         return current_user
+
     return role_checker
 
 
 def require_permission(permission: str):
-    """Dependency for permission-based access checks."""
-
     async def permission_checker(current_user: User = Depends(get_current_active_user)):
         ensure_permission(current_user, permission)
         return current_user
 
     return permission_checker
-

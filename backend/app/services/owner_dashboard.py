@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.services.ai_insights import build_owner_ai_insights
 from app.services.payment_status import get_payment_status_summary
+from app.utils.datetime import utcnow
 
 
 def _month_bounds(now: datetime) -> Tuple[datetime, datetime]:
@@ -67,7 +68,7 @@ def _build_daily_points(
 
 
 def build_owner_dashboard_summary(db: Session) -> Dict[str, object]:
-    now = datetime.utcnow()
+    now = utcnow()
     start_today = datetime(now.year, now.month, now.day)
     end_today = start_today + timedelta(days=1)
     start_month, end_month = _month_bounds(now)

@@ -19,7 +19,6 @@ apscheduler>=3.10.0
 dramatiq[redis]>=1.17.0
 redis>=5.0.0
 requests>=2.28.0
-pytest>=7.0.0
 pywebpush>=2.0.3
 slowapi>=0.1.9
 prometheus-fastapi-instrumentator>=6.1.0,<7.0.0

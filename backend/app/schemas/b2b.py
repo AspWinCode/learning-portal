@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class B2BSchoolPipelineStage(str, Enum):
@@ -57,8 +57,7 @@ class B2BSchoolContactResponse(BaseModel):
     phone_extra: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class B2BSchoolCreate(BaseModel):
@@ -137,8 +136,7 @@ class B2BSchoolResponse(BaseModel):
     conversion_percent: Optional[float] = None
     contacts: Optional[List[B2BSchoolContactResponse]] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class B2BLeadListItem(BaseModel):
@@ -150,8 +148,7 @@ class B2BLeadListItem(BaseModel):
     source_event: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class B2BSchoolInteractionCreate(BaseModel):
@@ -172,8 +169,7 @@ class B2BSchoolInteractionResponse(BaseModel):
     created_by_name: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class B2BSchoolEventCreate(BaseModel):
@@ -190,8 +186,7 @@ class B2BSchoolEventResponse(BaseModel):
     event_dates: Optional[List[str]] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class B2BSchoolImportResponse(BaseModel):
@@ -229,8 +224,7 @@ class B2BProjectResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CitySummaryItem(BaseModel):

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class TaskTemplateSubtaskResponse(BaseModel):
@@ -10,8 +10,7 @@ class TaskTemplateSubtaskResponse(BaseModel):
     text: str
     order: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskTemplateCreate(BaseModel):
@@ -52,8 +51,7 @@ class TaskTemplateResponse(BaseModel):
     repeat_end_after_count: Optional[int] = None
     repeat_end_until: Optional[date] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskSubtaskResponse(BaseModel):
@@ -63,8 +61,7 @@ class TaskSubtaskResponse(BaseModel):
     completed: bool
     order: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskCountersResponse(BaseModel):
@@ -155,8 +152,7 @@ class TaskResponse(BaseModel):
     payment_parent_name: Optional[str] = None
     payment_balance: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskDayStatsResponse(BaseModel):

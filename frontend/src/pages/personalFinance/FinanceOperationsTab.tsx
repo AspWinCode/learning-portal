@@ -96,8 +96,8 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
     setImportError(null);
     setImportSuccess(null);
     if (!file) return;
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      setImportError('Выберите файл Excel (.xlsx или .xls)');
+    if (!file.name.endsWith('.xlsx')) {
+      setImportError('Выберите файл Excel (.xlsx)');
       return;
     }
     try {
@@ -245,7 +245,7 @@ export const FinanceOperationsTab: React.FC<FinanceOperationsTabProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,.xls"
+            accept=".xlsx"
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />

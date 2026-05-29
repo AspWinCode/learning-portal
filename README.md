@@ -93,6 +93,14 @@
 - `backend`, `app_worker`, `app_scheduler`, and `telegram_bot` start only after `migrator` completes successfully.
 - `RUN_MIGRATIONS_ON_STARTUP` is deprecated. Schema migrations must not be executed from the FastAPI startup process.
 
+## Backend Tests
+
+- Install backend test dependencies with:
+  - `pip install -r backend/requirements-dev.txt`
+- The production Docker image installs only `backend/requirements.txt`.
+- To build an image with dev/test dependencies explicitly, pass:
+  - `--build-arg INSTALL_DEV=true`
+
 ## API Versioning
 
 - Current API namespace: /api/v1/...`r

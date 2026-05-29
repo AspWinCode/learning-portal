@@ -8,6 +8,14 @@ from app import auth
 from app.models import User
 
 
+def assert_not_guest(user: User) -> None:
+    if user.id == auth.GUEST_USER_ID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Guest users cannot perform this action",
+        )
+
+
 async def require_sales_admin_owner(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> User:

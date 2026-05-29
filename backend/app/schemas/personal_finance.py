@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PersonalFinanceAccountResponse(BaseModel):
@@ -14,8 +14,7 @@ class PersonalFinanceAccountResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PersonalFinanceAccountCreate(BaseModel):
@@ -38,8 +37,7 @@ class PersonalFinanceCategoryResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PersonalFinanceCategoryCreate(BaseModel):
@@ -64,8 +62,7 @@ class PersonalFinanceRuleResponse(BaseModel):
     updated_at: Optional[datetime] = None
     category: Optional[PersonalFinanceCategoryResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PersonalFinanceRuleCreate(BaseModel):
@@ -96,8 +93,7 @@ class PersonalFinanceTransactionResponse(BaseModel):
     account: Optional[PersonalFinanceAccountResponse] = None
     category: Optional[PersonalFinanceCategoryResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PersonalFinanceTransactionCreate(BaseModel):

@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.routers.action_log import log_action
 from app.schemas.sales import EventCreate, EventRegistrationCreate, EventRegistrationResponse, EventResponse, EventUpdate
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -347,7 +348,7 @@ async def mark_event_registration_came(
     log_action(db, current_user.id, "mark_came", "event_registration", registration.id, {"event_id": event_id, "lead_id": registration.lead_id})
     try:
         if not _has_open_task_like(db, lead.id, "[auto_attended_offer]"):
-            due_at = datetime.utcnow() + timedelta(hours=24)
+            due_at = utcnow() + timedelta(hours=24)
             auto_task = _create_auto_event_task(
                 db,
                 lead=lead,
@@ -390,7 +391,7 @@ async def mark_event_registration_no_show(
     _require_owner_or_admin(lead, current_user)
     registration.note = _append_note_tag(_remove_note_tag(registration.note, "[came]"), "[no-show]")
     if not _has_open_task_like(db, lead.id, "[auto_no_show_reactivate]"):
-        due_at = datetime.utcnow() + timedelta(hours=24)
+        due_at = utcnow() + timedelta(hours=24)
         auto_task = _create_auto_event_task(
             db,
             lead=lead,

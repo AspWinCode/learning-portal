@@ -42,6 +42,7 @@ from app.schemas.b2b import (
     B2BProjectUpdate,
     CitySummaryItem,
 )
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -137,7 +138,7 @@ async def plan_for_today(
     cutoff = today - timedelta(days=3)
     cutoff_7 = today - timedelta(days=7)
     cutoff_14 = today - timedelta(days=14)
-    cutoff_48h = datetime.utcnow() - timedelta(hours=48)
+    cutoff_48h = utcnow() - timedelta(hours=48)
     date_1d_ago = today - timedelta(days=1)
     date_2d_ago = today - timedelta(days=2)
     base = db.query(B2BSchool).options(
@@ -241,10 +242,6 @@ async def plan_for_today(
         "event_done_no_leads_24_48h": event_done_no_leads_24_48h,
         "negotiations_14d": run(negotiations_14d),
     }
-
-    class Config:
-        frozen = True
-
 
 @router.get("/b2b-schools/plan-city-summary", response_model=List[CitySummaryItem])
 async def plan_city_summary(

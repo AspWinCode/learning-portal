@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import Abonement, Invoice, InvoiceStatus, Lead, LeadStatus, User, UserRole
 from app.routers.action_log import log_action
 from app.schemas.sales import InvoiceCreate, InvoiceResponse
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -177,7 +178,7 @@ async def send_invoice_email(
         raise HTTPException(status_code=400, detail="No email to send invoice")
 
     invoice.status = InvoiceStatus.SENT
-    invoice.sent_at = datetime.utcnow()
+    invoice.sent_at = utcnow()
     if lead.status not in (LeadStatus.WON, LeadStatus.LOST):
         lead.status = LeadStatus.INVOICE_SENT
     db.commit()

@@ -26,6 +26,8 @@ def client():
     """HTTP-клиент для вызова API без поднятия сервера."""
     if app is None:
         pytest.skip("Integration tests require Python 3.8+")
+    if not _is_db_configured():
+        pytest.skip("Integration tests require a configured DATABASE_URL")
     return TestClient(app)
 
 

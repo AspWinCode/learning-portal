@@ -89,6 +89,4 @@ def apply_bank_operation_to_student(
     bt.status = BankTransactionStatus.APPLIED.value
     bt.student_id = student_id
     bt.student_account_id = account.id
-    db.commit()
-    db.refresh(bt)
     return ApplyBankOperationResult(transaction=bt)

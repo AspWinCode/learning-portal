@@ -24,7 +24,7 @@ class PasswordReset(BaseModel):
 class PasswordResetConfirm(BaseModel):
     email: EmailStr
     code: str
-    new_password: str
+    new_password: str = Field(..., min_length=8)
 
 
 class ParentInviteRequest(BaseModel):
@@ -41,7 +41,7 @@ class ParentInviteResponse(BaseModel):
 
 class SetPasswordByInvite(BaseModel):
     token: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=8)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

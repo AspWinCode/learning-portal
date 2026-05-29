@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.models import User, UserRole
+from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ def generate_link_code() -> str:
 
 def issue_link_code(db: Session, user: User, ttl_minutes: int = 10) -> Tuple[str, datetime]:
     code = generate_link_code()
-    expires_at = datetime.utcnow() + timedelta(minutes=ttl_minutes)
+    expires_at = utcnow() + timedelta(minutes=ttl_minutes)
     user.telegram_link_code = code
     user.telegram_link_code_expires_at = expires_at
     db.add(user)

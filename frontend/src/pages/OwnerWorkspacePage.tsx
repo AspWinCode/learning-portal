@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -48,22 +48,13 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import {
-  eachDayOfInterval,
-  endOfMonth,
-  endOfWeek,
   format,
-  isSameMonth,
-  isToday,
   startOfMonth,
-  startOfWeek,
 } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { OwnerWorkspaceSettingsDialogs } from '../components/ownerWorkspace/OwnerWorkspaceSettingsDialogs';
 import { useAuth } from '../contexts/AuthContext';
 import { ownerWorkspaceApi, settingsApi, usersApi } from '../services/api';
 import type {
@@ -96,8 +87,72 @@ import type {
 import { extractApiError } from '../utils/extractApiError';
 import { getEffectiveRole } from '../utils/permissions';
 
+const OwnerWorkspaceSettingsDialogs = React.lazy(
+  () => import('../components/ownerWorkspace/OwnerWorkspaceSettingsDialogs').then((module) => ({ default: module.OwnerWorkspaceSettingsDialogs }))
+);
+const OwnerWorkspaceHistoryTab = React.lazy(
+  () => import('../components/ownerWorkspace/OwnerWorkspaceHistoryTab').then((module) => ({ default: module.OwnerWorkspaceHistoryTab }))
+);
+const OwnerWorkspaceCommsTab = React.lazy(
+  () => import('../components/ownerWorkspace/OwnerWorkspaceCommsTab').then((module) => ({ default: module.OwnerWorkspaceCommsTab }))
+);
+const OwnerWorkspaceProjectsTab = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceProjectsTab').then((module) => ({
+      default: module.OwnerWorkspaceProjectsTab,
+    }))
+);
+const OwnerWorkspaceContactsTab = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceContactsTab').then((module) => ({
+      default: module.OwnerWorkspaceContactsTab,
+    }))
+);
+const OwnerWorkspaceTaskInsightsSection = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceTaskInsightsSection').then((module) => ({
+      default: module.OwnerWorkspaceTaskInsightsSection,
+    }))
+);
+const OwnerWorkspaceTaskBoardCalendarSection = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceTaskBoardCalendarSection').then((module) => ({
+      default: module.OwnerWorkspaceTaskBoardCalendarSection,
+    }))
+);
+const OwnerWorkspaceNotificationsTab = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceNotificationsTab').then((module) => ({
+      default: module.OwnerWorkspaceNotificationsTab,
+    }))
+);
+const OwnerWorkspaceSettingsSnapshotsSection = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceSettingsSnapshotsSection').then((module) => ({
+      default: module.OwnerWorkspaceSettingsSnapshotsSection,
+    }))
+);
+const OwnerWorkspacePermissionPolicySection = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspacePermissionPolicySection').then((module) => ({
+      default: module.OwnerWorkspacePermissionPolicySection,
+    }))
+);
+const OwnerWorkspaceSettingsConfigSection = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceSettingsConfigSection').then((module) => ({
+      default: module.OwnerWorkspaceSettingsConfigSection,
+    }))
+);
+
 /** Макс. задач за один запрос для канбана/календаря и вспомогательных списков (лимит API). */
 const OWNER_WS_TASKS_FETCH_CAP = 500;
+
+const OwnerWorkspaceDialogsFallback: React.FC = () => (
+  <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+    <CircularProgress size={28} />
+  </Box>
+);
 
 function isTaskOverdue(t: OwnerWorkspaceTask): boolean {
   if (!t.deadline_at || t.status === 'completed' || t.status === 'cancelled') return false;
@@ -3469,6 +3524,18 @@ const OwnerWorkspacePage: React.FC = () => {
     await selectCommsContact(contactId);
   };
 
+  const markNotificationReadAndRefresh = useCallback(
+    async (notificationId: number) => {
+      try {
+        await ownerWorkspaceApi.markNotificationRead(notificationId);
+        await loadNotifications(200);
+      } catch (err: unknown) {
+        setError(extractApiError(err, 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РјРµС‚РёС‚СЊ РїСЂРѕС‡РёС‚Р°РЅРЅС‹Рј'));
+      }
+    },
+    [loadNotifications]
+  );
+
   openProjectDialogRef.current = openProjectDialog;
   openContactDialogRef.current = openContactDialog;
   openTaskDialogRef.current = openTaskDialog;
@@ -4943,375 +5010,64 @@ const OwnerWorkspacePage: React.FC = () => {
       </Tabs>
 
       {tab === OW_TAB_PROJECTS && (
-        <Stack spacing={2}>
-          {topOverdueProjects.length > 0 && (
-            <Card variant="outlined">
-              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Stack spacing={1.5}>
-                  <Typography variant="subtitle2">Проекты с самой большой просрочкой</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Блок строится по текущей видимой выборке проектов и помогает быстро перейти к проблемным задачам.
-                  </Typography>
-                  <Grid container spacing={1.5}>
-                    {topOverdueProjects.map((project) => (
-                      <Grid key={project.id} item xs={12} md={6} xl={4}>
-                        <Card variant="outlined" sx={{ height: '100%' }}>
-                          <CardContent>
-                            <Stack spacing={1}>
-                              <Typography variant="subtitle2">{project.name}</Typography>
-                              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                                <Chip size="small" color="warning" label={`Просрочено: ${project.overdue_tasks_count ?? 0}`} />
-                                <Chip size="small" label={`Активных: ${project.active_tasks_count ?? 0}`} />
-                                <Chip size="small" variant="outlined" label={`Всего: ${project.total_tasks_count ?? 0}`} />
-                              </Stack>
-                              <Typography variant="body2" color="text.secondary">
-                                Ответственный: <strong>{userName(project.owner_id)}</strong>
-                              </Typography>
-                              <Stack direction="row" spacing={1} flexWrap="wrap">
-                                <Button size="small" variant="outlined" onClick={() => openProjectDialog(project)}>
-                                  Открыть проект
-                                </Button>
-                                <Button
-                                  size="small"
-                                  variant="contained"
-                                  color="warning"
-                                  onClick={() => drillDownToProjectTasks(project.id, { overdueOnly: true })}
-                                >
-                                  Просроченные задачи
-                                </Button>
-                              </Stack>
-                            </Stack>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Stack>
-              </CardContent>
-            </Card>
-          )}
-          <Card variant="outlined">
-            <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Фильтры списка проектов
-              </Typography>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ md: 'center' }}>
-                <TextField
-                  select
-                  label="Статус"
-                  size="small"
-                  sx={{ minWidth: 160 }}
-                  value={projectListStatus}
-                  onChange={(e) => setProjectListStatus(e.target.value)}
-                >
-                  <MenuItem value="">Все</MenuItem>
-                  {enabledProjectStatuses.map((status) => (
-                    <MenuItem key={status} value={status}>
-                      {projectStatusLabels[status] ?? status}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  label="Поиск по названию/описанию"
-                  size="small"
-                  sx={{ minWidth: 220, flex: 1 }}
-                  value={projectListSearchInput}
-                  onChange={(e) => setProjectListSearchInput(e.target.value)}
-                />
-                <TextField
-                  select
-                  label="Ответственный"
-                  size="small"
-                  sx={{ minWidth: 200 }}
-                  value={projectListOwnerId === '' ? '' : String(projectListOwnerId)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setProjectListOwnerId(v === '' ? '' : Number(v));
-                  }}
-                >
-                  <MenuItem value="">Все</MenuItem>
-                  {userOptions.map((u) => (
-                    <MenuItem key={u.id} value={String(u.id)}>
-                      {u.full_name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={projectListOverdueOnly}
-                      onChange={(_, c) => setProjectListOverdueOnly(c)}
-                    />
-                  }
-                  label="Только с просроченными активными задачами"
-                />
-              </Stack>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <TextField
-                    fullWidth
-                    label="Название проекта"
-                    value={projectName}
-                    onChange={(e) => setProjectName(e.target.value)}
-                    disabled={!canCreateProjectUi}
-                  />
-                  <Button variant="contained" onClick={createProject} disabled={!canCreateProjectUi}>
-                    Создать
-                  </Button>
-                </Stack>
-                {!canCreateProjectUi && (
-                  <Alert severity="info" sx={{ mt: 1.5 }}>
-                    Создание новых проектов доступно только admin / owner.
-                  </Alert>
-                )}
-                {!isWorkspaceFullAccess && canCreateProjectUi && (
-                  <Alert severity="info" sx={{ mt: 1.5 }}>
-                    Создание новых проектов разрешено для ограниченных ролей текущей policy-моделью.
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-          <Grid container spacing={2}>
-            {projects.map((p) => (
-              <Grid item xs={12} md={6} key={p.id}>
-                <Card>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="h6">{p.name}</Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                          Ответственный: {userName(p.owner_id)}
-                        </Typography>
-                      </Box>
-                      <IconButton size="small" onClick={() => openProjectDialog(p)} aria-label="Открыть">
-                        <OpenInNewIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                    <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
-                      <Chip size="small" label={projectStatusLabels[p.status] ?? p.status} />
-                      <Chip size="small" label={`Задач всего: ${p.total_tasks_count ?? 0}`} />
-                      <Chip size="small" label={`Активн.: ${p.active_tasks_count}`} />
-                      {(p.overdue_tasks_count ?? 0) > 0 && (
-                        <Chip size="small" color="warning" label={`Просроч.: ${p.overdue_tasks_count}`} />
-                      )}
-                      <Chip size="small" label={`Контактов: ${p.contacts_count}`} />
-                      {p.subprojects_count > 0 && <Chip size="small" label={`Подпроектов: ${p.subprojects_count}`} />}
-                    </Stack>
-                    {p.updated_at ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                        Обновлён:{' '}
-                        {new Date(p.updated_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
-                      </Typography>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-            {projects.length === 0 && (
-              <Grid item xs={12}>
-                <Typography variant="body2" color="text.secondary">
-                  Нет проектов по текущим фильтрам.
-                </Typography>
-              </Grid>
-            )}
-          </Grid>
-        </Stack>
+        <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+          <OwnerWorkspaceProjectsTab
+            projects={projects}
+            topOverdueProjects={topOverdueProjects}
+            projectStatusLabels={projectStatusLabels}
+            enabledProjectStatuses={enabledProjectStatuses}
+            projectListStatus={projectListStatus}
+            projectListSearchInput={projectListSearchInput}
+            projectListOwnerId={projectListOwnerId}
+            projectListOverdueOnly={projectListOverdueOnly}
+            projectName={projectName}
+            canCreateProjectUi={canCreateProjectUi}
+            isWorkspaceFullAccess={isWorkspaceFullAccess}
+            userOptions={userOptions}
+            userName={userName}
+            onProjectListStatusChange={setProjectListStatus}
+            onProjectListSearchInputChange={setProjectListSearchInput}
+            onProjectListOwnerIdChange={setProjectListOwnerId}
+            onProjectListOverdueOnlyChange={setProjectListOverdueOnly}
+            onProjectNameChange={setProjectName}
+            onCreateProject={createProject}
+            onOpenProject={openProjectDialog}
+            onOpenProjectOverdueTasks={(projectId) => drillDownToProjectTasks(projectId, { overdueOnly: true })}
+          />
+        </Suspense>
       )}
 
+
       {tab === OW_TAB_CONTACTS && (
-        <Stack spacing={2}>
-          <Card variant="outlined">
-            <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Фильтры списка контактов
-              </Typography>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ md: 'center' }}>
-                <TextField
-                  label="Поиск (ФИО, телефон, компания)"
-                  size="small"
-                  sx={{ minWidth: 240, flex: 1 }}
-                  value={contactListSearchInput}
-                  onChange={(e) => setContactListSearchInput(e.target.value)}
-                />
-                <TextField
-                  select
-                  label="В проекте"
-                  size="small"
-                  sx={{ minWidth: 220 }}
-                  value={contactListProjectId === '' ? '' : String(contactListProjectId)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setContactListProjectId(v === '' ? '' : Number(v));
-                  }}
-                >
-                  <MenuItem value="">Любой</MenuItem>
-                  {projectsCatalogSorted.map((p) => (
-                    <MenuItem key={p.id} value={String(p.id)}>
-                      {p.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select
-                  label="Тег"
-                  size="small"
-                  sx={{ minWidth: 180 }}
-                  value={contactListTag}
-                  onChange={(e) => setContactListTag(e.target.value)}
-                  helperText={contactListTagOptions.length === 0 ? 'Нет тегов в каталоге' : undefined}
-                >
-                  <MenuItem value="">Любой</MenuItem>
-                  {contactListTagOptions.map((tg) => (
-                    <MenuItem key={tg} value={tg}>
-                      {tg}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={contactListActiveTasksOnly}
-                      onChange={(_, c) => setContactListActiveTasksOnly(c)}
-                    />
-                  }
-                  label="Только с активными задачами"
-                />
-              </Stack>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
-                <TextField fullWidth label="ФИО" value={contactName} onChange={(e) => setContactName(e.target.value)} />
-                <TextField fullWidth label="Телефон" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
-                {!isWorkspaceFullAccess && (
-                  <Autocomplete
-                    sx={{ minWidth: 260, flex: 1 }}
-                    options={projectsCatalogSorted}
-                    getOptionLabel={(o) => o.name}
-                    value={projectsCatalogSorted.find((p) => p.id === newContactProjectId) || null}
-                    onChange={(_, v) => setNewContactProjectId(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Проект для привязки" />}
-                  />
-                )}
-                  <Button
-                    variant="contained"
-                    onClick={createContact}
-                    disabled={!canCreateContactUi || (!isWorkspaceFullAccess && newContactProjectId === '')}
-                  >
-                    Создать
-                  </Button>
-                </Stack>
-                {!isWorkspaceFullAccess && !canCreateContactUi && (
-                  <Alert severity="info" sx={{ mt: 1.5 }}>
-                    Создание контактов для ограниченных ролей сейчас отключено policy-моделью.
-                  </Alert>
-                )}
-                {!isWorkspaceFullAccess && canCreateContactUi && (
-                  <Alert severity="info" sx={{ mt: 1.5 }}>
-                    Для sales / trainer новый контакт создаётся только вместе с привязкой к доступному проекту.
-                  </Alert>
-                )}
-            </CardContent>
-          </Card>
-          <Grid container spacing={2}>
-            {contacts.map((c) => (
-              <Grid item xs={12} md={6} key={c.id}>
-                <Card>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Box>
-                        <Typography variant="h6">{c.full_name}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {c.phone}
-                        </Typography>
-                        {c.company?.trim() ? (
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                            {c.company}
-                          </Typography>
-                        ) : null}
-                        {(c.tags?.length ?? 0) > 0 ? (
-                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 1, gap: 0.5 }}>
-                            {(c.tags ?? []).slice(0, 5).map((t, i) => (
-                              <Chip key={`${t}-${i}`} size="small" variant="outlined" label={t} />
-                            ))}
-                            {(c.tags ?? []).length > 5 ? (
-                              <Chip size="small" variant="outlined" label={`+${(c.tags ?? []).length - 5}`} />
-                            ) : null}
-                          </Stack>
-                        ) : null}
-                        {c.last_interaction_at ? (
-                          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.75 }}>
-                            Последнее взаимодействие:{' '}
-                            {new Date(c.last_interaction_at).toLocaleString('ru-RU', {
-                              dateStyle: 'short',
-                              timeStyle: 'short',
-                            })}
-                          </Typography>
-                        ) : null}
-                        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                          <Chip size="small" label={`Активн. задач: ${c.active_tasks_count}`} />
-                          {c.linked_project_ids.length > 0 && (
-                            <Chip size="small" label={`Проектов: ${c.linked_project_ids.length}`} />
-                          )}
-                        </Stack>
-                      </Box>
-                      <Stack direction="row" spacing={0.25} alignItems="flex-start" flexWrap="wrap" useFlexGap>
-                        <Tooltip title="Карточка контакта">
-                          <IconButton size="small" onClick={() => void openContactDialog(c)} aria-label="Карточка контакта">
-                            <OpenInNewIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Переписка">
-                          <IconButton
-                            size="small"
-                            onClick={() => void openContactQuickComms(c.id)}
-                            aria-label="Открыть переписку"
-                          >
-                            <ChatBubbleOutlineIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Задачи по контакту">
-                          <IconButton
-                            size="small"
-                            onClick={() => openContactQuickTasks(c.id)}
-                            aria-label="Задачи по контакту"
-                          >
-                            <AssignmentIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        {c.phone?.trim() ? (
-                          <Tooltip title="Позвонить">
-                            <IconButton
-                              size="small"
-                              component="a"
-                              href={`tel:${c.phone.replace(/\s/g, '')}`}
-                              aria-label="Позвонить"
-                              rel="noopener noreferrer"
-                            >
-                              <PhoneIphoneIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        ) : null}
-                      </Stack>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-            {contacts.length === 0 && (
-              <Grid item xs={12}>
-                <Typography variant="body2" color="text.secondary">
-                  Нет контактов по текущим фильтрам.
-                </Typography>
-              </Grid>
-            )}
-          </Grid>
-        </Stack>
+        <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+          <OwnerWorkspaceContactsTab
+            contacts={contacts}
+            projectsCatalogSorted={projectsCatalogSorted}
+            contactListTagOptions={contactListTagOptions}
+            contactListSearchInput={contactListSearchInput}
+            contactListProjectId={contactListProjectId}
+            contactListTag={contactListTag}
+            contactListActiveTasksOnly={contactListActiveTasksOnly}
+            contactName={contactName}
+            contactPhone={contactPhone}
+            newContactProjectId={newContactProjectId}
+            canCreateContactUi={canCreateContactUi}
+            isWorkspaceFullAccess={isWorkspaceFullAccess}
+            onContactListSearchInputChange={setContactListSearchInput}
+            onContactListProjectIdChange={setContactListProjectId}
+            onContactListTagChange={setContactListTag}
+            onContactListActiveTasksOnlyChange={setContactListActiveTasksOnly}
+            onContactNameChange={setContactName}
+            onContactPhoneChange={setContactPhone}
+            onNewContactProjectIdChange={setNewContactProjectId}
+            onCreateContact={createContact}
+            onOpenContact={openContactDialog}
+            onOpenContactComms={openContactQuickComms}
+            onOpenContactTasks={openContactQuickTasks}
+          />
+        </Suspense>
       )}
+
 
       {tab === OW_TAB_TASKS && (
         <Stack spacing={2}>
@@ -5552,148 +5308,21 @@ const OwnerWorkspacePage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {tasksAnalytics != null && (
-            <Card variant="outlined">
-              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Аналитика (ваша зона видимости)
-                </Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap" useFlexGap>
-                  <Typography variant="body2">
-                    Завершено за 7 дней: <strong>{tasksAnalytics.completed_last_7_days}</strong>
-                  </Typography>
-                  <Typography variant="body2">
-                    За 30 дней: <strong>{tasksAnalytics.completed_last_30_days}</strong>
-                  </Typography>
-                  <Typography variant="body2">
-                    Среднее время до закрытия (завершённые за 30 дн.):{' '}
-                    <strong>
-                      {tasksAnalytics.avg_days_to_complete_last_30 != null &&
-                      tasksAnalytics.avg_days_to_complete_last_30 !== undefined
-                        ? `${tasksAnalytics.avg_days_to_complete_last_30} дн.`
-                        : '—'}
-                    </strong>
-                  </Typography>
-                </Stack>
-              </CardContent>
-            </Card>
-          )}
+          <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+            <OwnerWorkspaceTaskInsightsSection
+              tasksAnalytics={tasksAnalytics}
+              taskStatusCounts={taskStatusCounts}
+              assigneeAnalyticsRows={assigneeAnalyticsRows}
+              assigneeAnalyticsSummary={assigneeAnalyticsSummary}
+              assigneeAttentionRows={assigneeAttentionRows}
+              taskViewMode={taskViewMode}
+              taskListTotal={taskListTotal}
+              taskFetchCap={OWNER_WS_TASKS_FETCH_CAP}
+              onTaskViewModeChange={setTaskViewMode}
+              onDrillDownToAssigneeTasks={drillDownToAssigneeTasks}
+            />
+          </Suspense>
 
-          {assigneeAnalyticsRows.length > 0 && (
-            <Card variant="outlined">
-              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Stack spacing={1.5}>
-                  <Typography variant="subtitle2">Нагрузка по сотрудникам</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Блок строится по текущей видимой выборке задач с учётом активных фильтров.
-                  </Typography>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
-                    <Chip size="small" label={`С активными задачами: ${assigneeAnalyticsSummary.assigneesWithActiveTasks}`} />
-                    <Chip
-                      size="small"
-                      color={assigneeAnalyticsSummary.assigneesWithOverdueTasks > 0 ? 'warning' : 'default'}
-                      label={`С просрочкой: ${assigneeAnalyticsSummary.assigneesWithOverdueTasks}`}
-                    />
-                    <Chip
-                      size="small"
-                      color={assigneeAnalyticsSummary.overloadedAssignees > 0 ? 'error' : 'default'}
-                      variant={assigneeAnalyticsSummary.overloadedAssignees > 0 ? 'filled' : 'outlined'}
-                      label={`Перегружены (5+ активных): ${assigneeAnalyticsSummary.overloadedAssignees}`}
-                    />
-                  </Stack>
-                  {assigneeAttentionRows.length > 0 && (
-                    <Alert severity="warning">
-                      <Typography variant="subtitle2" gutterBottom>
-                        Зона внимания
-                      </Typography>
-                      <Stack spacing={0.5}>
-                        {assigneeAttentionRows.map((row) => (
-                          <Stack
-                            key={`attention-${row.assigneeId == null ? 'unassigned' : row.assigneeId}`}
-                            direction={{ xs: 'column', sm: 'row' }}
-                            spacing={1}
-                            alignItems={{ sm: 'center' }}
-                          >
-                            <Typography variant="body2">
-                              {row.assigneeName}: активных {row.activeCount}, просрочено {row.overdueCount}
-                            </Typography>
-                            <Stack direction="row" spacing={1}>
-                              <Button size="small" variant="outlined" onClick={() => drillDownToAssigneeTasks(row.assigneeId)}>
-                                Все активные
-                              </Button>
-                              {row.overdueCount > 0 && (
-                                <Button
-                                  size="small"
-                                  variant="contained"
-                                  color="warning"
-                                  onClick={() => drillDownToAssigneeTasks(row.assigneeId, { overdueOnly: true })}
-                                >
-                                  Только просрочка
-                                </Button>
-                              )}
-                            </Stack>
-                          </Stack>
-                        ))}
-                      </Stack>
-                    </Alert>
-                  )}
-                  <Grid container spacing={1.5}>
-                    {assigneeAnalyticsRows.slice(0, 8).map((row) => (
-                      <Grid key={row.assigneeId == null ? 'unassigned' : row.assigneeId} item xs={12} md={6} xl={4}>
-                        <Card variant="outlined" sx={{ height: '100%' }}>
-                          <CardContent>
-                            <Stack spacing={1}>
-                              <Typography variant="subtitle2">{row.assigneeName}</Typography>
-                              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                                <Chip size="small" label={`Активных: ${row.activeCount}`} />
-                                <Chip size="small" color={row.overdueCount > 0 ? 'warning' : 'default'} label={`Просрочено: ${row.overdueCount}`} />
-                                <Chip size="small" color="success" variant="outlined" label={`Завершено: ${row.completedCount}`} />
-                              </Stack>
-                              <Typography variant="body2" color="text.secondary">
-                                Среднее время закрытия:{' '}
-                                <strong>{row.avgDaysToComplete != null ? `${row.avgDaysToComplete} дн.` : '—'}</strong>
-                              </Typography>
-                              <Button
-                                size="small"
-                                variant="text"
-                                sx={{ alignSelf: 'flex-start' }}
-                                onClick={() => drillDownToAssigneeTasks(row.assigneeId)}
-                              >
-                                Открыть задачи
-                              </Button>
-                            </Stack>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Stack>
-              </CardContent>
-            </Card>
-          )}
-
-          <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-            <ToggleButtonGroup
-              size="small"
-              value={taskViewMode}
-              exclusive
-              onChange={(_, v) => v && setTaskViewMode(v)}
-            >
-              <ToggleButton value="list">Список</ToggleButton>
-              <ToggleButton value="kanban">Канбан</ToggleButton>
-              <ToggleButton value="calendar">Календарь</ToggleButton>
-            </ToggleButtonGroup>
-            <Typography variant="caption" color="text.secondary">
-              В канбане перетащите карточку на другую колонку, чтобы сменить статус.
-            </Typography>
-          </Stack>
-
-          {taskViewMode !== 'list' && taskListTotal > OWNER_WS_TASKS_FETCH_CAP && (
-            <Alert severity="warning">
-              Загружено не более {OWNER_WS_TASKS_FETCH_CAP} задач при текущих фильтрах (всего по фильтру: {taskListTotal}
-              ). Уточните фильтры или переключитесь в режим «Список» с пагинацией.
-            </Alert>
-          )}
 
           {taskViewMode === 'list' && (
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} flexWrap="wrap">
@@ -5810,46 +5439,23 @@ const OwnerWorkspacePage: React.FC = () => {
                 labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count !== -1 ? count : `более ${to}`}`}
               />
             </Stack>
-          ) : taskViewMode === 'kanban' ? (
-            <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 1, alignItems: 'flex-start' }}>
-              {KANBAN_COLUMNS.map((col) => {
-                const colTasks = tasks.filter((t) =>
-                  col.statuses.includes(coerceTaskStatus(String(t.status)))
-                );
-                return (
-                  <Box
-                    key={col.label}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const raw = e.dataTransfer.getData('text/plain');
-                      const taskId = Number(raw);
-                      if (!taskId) return;
-                      void handleKanbanDrop(taskId, col.dropStatus);
-                    }}
-                    sx={{
-                      minWidth: 200,
-                      maxWidth: 280,
-                      flex: '0 0 auto',
-                      bgcolor: 'action.hover',
-                      borderRadius: 1,
-                      p: 1,
-                      minHeight: 200,
-                    }}
-                  >
-                    <Typography variant="subtitle2" sx={{ mb: 1, px: 0.5 }}>
-                      {col.label} ({colTasks.length})
-                    </Typography>
-                    <Stack spacing={0}>{colTasks.map((t) => renderTaskCard(t, { draggable: true }))}</Stack>
-                  </Box>
-                );
-              })}
-            </Box>
           ) : (
-            <Card>
+            <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+              <OwnerWorkspaceTaskBoardCalendarSection
+                taskViewMode={taskViewMode}
+                tasks={tasks}
+                kanbanColumns={KANBAN_COLUMNS}
+                coerceTaskStatus={coerceTaskStatus}
+                renderTaskCard={renderTaskCard}
+                onKanbanDrop={handleKanbanDrop}
+                calendarMonth={calendarMonth}
+                onCalendarMonthChange={setCalendarMonth}
+                tasksByDeadlineDay={tasksByDeadlineDay}
+                onOpenTask={openTaskDialog}
+                weekdaysShort={WEEKDAYS_SHORT}
+              />
+            </Suspense>
+          )}
               <CardContent>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                   <IconButton aria-label="Предыдущий месяц" onClick={() => setCalendarMonth((d) => startOfMonth(new Date(d.getFullYear(), d.getMonth() - 1, 1)))}>
@@ -5922,7 +5528,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Box>
               </CardContent>
             </Card>
-          )}
+          ))}
         </Stack>
       )}
 
@@ -6129,276 +5735,46 @@ const OwnerWorkspacePage: React.FC = () => {
           )}
         </Stack>
       )}
-
       {tab === OW_TAB_COMMS && (
-        <Stack spacing={2}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-            <Button variant="outlined" onClick={() => void syncMaxIntoWorkspace()}>
-              Импорт MAX в переписки
-            </Button>
-            <Typography variant="caption" color="text.secondary">
-              Исходящие из max_messages → сообщения контакта по совпадению нормализованного телефона (дубликаты по id
-              пропускаются).
-            </Typography>
-          </Stack>
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12} md={3}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 360 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Диалоги
-                  </Typography>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    placeholder="Поиск по имени или тексту…"
-                    value={commsDialogSearch}
-                    onChange={(e) => setCommsDialogSearch(e.target.value)}
-                    sx={{ mb: 1 }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon fontSize="small" color="action" />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-                    {conversationsFiltered.length === conversations.length
-                      ? `${conversations.length} диалогов`
-                      : `Найдено ${conversationsFiltered.length} из ${conversations.length}`}
-                  </Typography>
-                  <Stack spacing={1} sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                    {conversationsFiltered.length === 0 && (
-                      <Typography variant="body2" color="text.secondary">
-                        {conversations.length === 0 ? 'Нет переписок с сообщениями.' : 'Ничего не найдено.'}
-                      </Typography>
-                    )}
-                    {conversationsFiltered.map((c) => (
-                      <Box
-                        key={c.contact_id}
-                        onClick={() => void selectCommsContact(c.contact_id)}
-                        sx={{
-                          p: 1,
-                          border: '1px solid',
-                          borderColor: commsContactId === c.contact_id ? 'primary.main' : 'divider',
-                          borderRadius: 1,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Typography variant="subtitle2">{c.contact_name}</Typography>
-                            <Typography variant="caption" color="text.secondary" noWrap display="block">
-                              {c.last_message_text || '—'}
-                            </Typography>
-                            {c.last_message_at ? (
-                              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
-                                {new Date(c.last_message_at).toLocaleString('ru-RU', {
-                                  dateStyle: 'short',
-                                  timeStyle: 'short',
-                                })}
-                              </Typography>
-                            ) : null}
-                          </Box>
-                          {c.unread_count > 0 ? (
-                            <Chip
-                              size="small"
-                              color="error"
-                              label={c.unread_count > 99 ? '99+' : c.unread_count}
-                              sx={{ height: 22, flexShrink: 0 }}
-                            />
-                          ) : null}
-                        </Box>
-                      </Box>
-                    ))}
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 360 }}>
-                  <Typography variant="h6" gutterBottom>
-                    {commsContactId
-                      ? `Переписка · ${commsSelectedContact?.full_name ?? `контакт #${commsContactId}`}`
-                      : 'Выберите диалог слева'}
-                  </Typography>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    placeholder="Поиск по сообщениям…"
-                    value={commsThreadSearch}
-                    onChange={(e) => setCommsThreadSearch(e.target.value)}
-                    disabled={!commsContactId}
-                    sx={{ mb: 1 }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon fontSize="small" color="action" />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                  {commsContactId && commsThreadSearch.trim() && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-                      Показано {commsMessagesFiltered.length} из {commsMessages.length}
-                    </Typography>
-                  )}
-                  <Stack spacing={1} sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                    {!commsContactId && (
-                      <Typography variant="body2" color="text.secondary">
-                        Лента сообщений появится после выбора контакта.
-                      </Typography>
-                    )}
-                    {commsContactId &&
-                      commsMessagesFiltered.map((m) => (
-                        <Box
-                          key={m.id}
-                          sx={{
-                            p: 1,
-                            borderRadius: 1,
-                            bgcolor: m.direction === 'outgoing' ? 'action.hover' : 'background.paper',
-                            border: '1px solid',
-                            borderColor: 'divider',
-                          }}
-                        >
-                          <Typography variant="caption" color="text.secondary">
-                            {m.direction} · {m.created_at ? new Date(m.created_at).toLocaleString('ru-RU') : ''}
-                          </Typography>
-                          <Typography variant="body2">{m.text}</Typography>
-                          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                            <Button
-                              size="small"
-                              disabled={!canCreateTaskUi || !canEditContactContentUi(m.contact_id)}
-                              onClick={() => {
-                                setMessageTaskTitle(m.text.slice(0, 80) + (m.text.length > 80 ? '…' : ''));
-                                setMessageTaskDialog({ message: m });
-                              }}
-                            >
-                              Задача из сообщения
-                            </Button>
-                            <Button size="small" color="secondary" onClick={() => openLinkToTaskDialog(m)}>
-                              К существующей задаче
-                            </Button>
-                          </Stack>
-                        </Box>
-                      ))}
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Контекст
-                  </Typography>
-                  {!commsContactId && (
-                    <Typography variant="body2" color="text.secondary">
-                      Выберите диалог, чтобы увидеть карточку контакта и быстрые действия.
-                    </Typography>
-                  )}
-                  {commsContactId && (
-                    <Stack spacing={1.5}>
-                      <Typography variant="subtitle1">{commsSelectedContact?.full_name ?? `Контакт #${commsContactId}`}</Typography>
-                      {commsSelectedContact?.phone && (
-                        <Typography variant="body2" color="text.secondary">
-                          {commsSelectedContact.phone}
-                        </Typography>
-                      )}
-                      {commsSelectedContact?.company && (
-                        <Typography variant="body2" color="text.secondary">
-                          {commsSelectedContact.company}
-                        </Typography>
-                      )}
-                      <Button variant="contained" size="small" sx={{ alignSelf: 'flex-start' }} onClick={() => void openCommsContactCard()}>
-                        Открыть карточку контакта
-                      </Button>
-                      <Divider />
-                      <Typography variant="caption" color="text.secondary">
-                        Непрочитанные в API пока не учитываются (поле зарезервировано под будущую синхронизацию).
-                      </Typography>
-                    </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </Stack>
+        <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+          <OwnerWorkspaceCommsTab
+            conversations={conversations}
+            conversationsFiltered={conversationsFiltered}
+            commsDialogSearch={commsDialogSearch}
+            commsThreadSearch={commsThreadSearch}
+            commsContactId={commsContactId}
+            commsMessages={commsMessages}
+            commsMessagesFiltered={commsMessagesFiltered}
+            commsSelectedContact={commsSelectedContact}
+            canCreateTaskUi={canCreateTaskUi}
+            canEditContactContentUi={canEditContactContentUi}
+            onSyncMaxIntoWorkspace={syncMaxIntoWorkspace}
+            onCommsDialogSearchChange={setCommsDialogSearch}
+            onCommsThreadSearchChange={setCommsThreadSearch}
+            onSelectCommsContact={selectCommsContact}
+            onCreateTaskFromMessage={(message) => {
+              setMessageTaskTitle(message.text.slice(0, 80) + (message.text.length > 80 ? '…' : ''));
+              setMessageTaskDialog({ message });
+            }}
+            onLinkMessageToTask={openLinkToTaskDialog}
+            onOpenCommsContactCard={openCommsContactCard}
+          />
+        </Suspense>
       )}
 
       {tab === OW_TAB_NOTIFICATIONS && (
-        <Card variant="outlined">
-          <CardContent>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
-              <Typography variant="subtitle1">Все уведомления</Typography>
-              <Button size="small" variant="outlined" onClick={() => void loadNotifications(200)}>
-                Обновить
-              </Button>
-              <Typography variant="caption" color="text.secondary">
-                Дедлайны — при открытии списка; назначения, комментарии, обновления задач и входящие по контакту — по
-                событиям.
-              </Typography>
-            </Stack>
-            <Stack spacing={1} sx={{ maxHeight: 640, overflow: 'auto' }}>
-              {(notifEnvelope?.items || []).length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  Пока пусто. Здесь: просрочки и дедлайны, назначения, комментарии и обновления задач, новые входящие по
-                  контактам (если вы вовлечены в задачи или проекты контакта).
-                </Typography>
-              )}
-              {(notifEnvelope?.items || []).map((n) => (
-                <Card key={n.id} variant="outlined" sx={{ bgcolor: n.read_at ? 'transparent' : 'action.hover' }}>
-                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
-                      <Chip size="small" label={notificationLabels[n.kind] || n.kind} />
-                      {!n.read_at && <Chip size="small" color="warning" label="Новое" />}
-                      <Typography variant="caption" color="text.secondary">
-                        {n.created_at ? new Date(n.created_at).toLocaleString('ru-RU') : ''}
-                      </Typography>
-                    </Stack>
-                    <Typography variant="subtitle2">{n.title}</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      {n.body}
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap">
-                      {n.task_id != null && (
-                        <Button size="small" variant="contained" onClick={() => void openSearchHitTask(n.task_id!)}>
-                          Открыть задачу
-                        </Button>
-                      )}
-                      {n.contact_id != null && (
-                        <Button size="small" variant="outlined" onClick={() => void openNotificationComms(n.contact_id!)}>
-                          Переписка
-                        </Button>
-                      )}
-                      {!n.read_at && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => {
-                            void (async () => {
-                              try {
-                                await ownerWorkspaceApi.markNotificationRead(n.id);
-                                await loadNotifications(200);
-                              } catch (err: unknown) {
-                                setError(extractApiError(err, 'Не удалось отметить прочитанным'));
-                              }
-                            })();
-                          }}
-                        >
-                          Прочитано
-                        </Button>
-                      )}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              ))}
-            </Stack>
-          </CardContent>
-        </Card>
+        <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+          <OwnerWorkspaceNotificationsTab
+            notifEnvelope={notifEnvelope}
+            notificationLabels={notificationLabels}
+            onRefresh={loadNotifications}
+            onOpenTask={openSearchHitTask}
+            onOpenComms={openNotificationComms}
+            onMarkRead={markNotificationReadAndRefresh}
+          />
+        </Suspense>
       )}
+
 
       {tab === OW_TAB_SETTINGS && (
         <Card variant="outlined">
@@ -6445,1728 +5821,307 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Stack>
               </CardContent>
             </Card>
-            <Stack spacing={2} sx={{ maxWidth: 480 }}>
-              <TextField
-                select
-                fullWidth
-                label="Вид списка задач по умолчанию"
-                value={taskViewMode}
-                onChange={(e) => setTaskViewMode(e.target.value as 'list' | 'kanban' | 'calendar')}
-              >
-                <MenuItem value="list">Список</MenuItem>
-                <MenuItem value="kanban">Канбан</MenuItem>
-                <MenuItem value="calendar">Календарь</MenuItem>
-              </TextField>
-              <TextField
-                fullWidth
-                type="number"
-                inputProps={{ min: 5, max: 100 }}
-                label="Строк на странице (режим «Список», 5–100)"
-                value={taskListRowsPerPage}
-                onChange={(e) => {
-                  const n = parseInt(e.target.value, 10);
-                  if (!Number.isFinite(n)) return;
-                  setTaskListRowsPerPage(Math.min(100, Math.max(5, n)));
-                }}
+            <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+              <OwnerWorkspaceSettingsConfigSection
+                taskViewMode={taskViewMode}
+                taskListRowsPerPage={taskListRowsPerPage}
+                digestDueHours={digestDueHours}
+                digestScope={digestScope}
+                notifyEmailEnabled={notifyEmailEnabled}
+                notifyWebPushEnabled={notifyWebPushEnabled}
+                notifyTaskOverdue={notifyTaskOverdue}
+                notifyTaskDueSoon={notifyTaskDueSoon}
+                notifyTaskAssigned={notifyTaskAssigned}
+                notifyTaskComment={notifyTaskComment}
+                notifyTaskUpdated={notifyTaskUpdated}
+                notifyContactIncomingMessage={notifyContactIncomingMessage}
+                notifyTaskMention={notifyTaskMention}
+                webPushStatus={webPushStatus}
+                webPushBrowserSupported={webPushBrowserSupported}
+                webPushPermission={webPushPermission}
+                webPushConnected={webPushConnected}
+                webPushBusy={webPushBusy}
+                notificationLabels={notificationLabels}
+                notificationConfigMap={notificationConfigMap}
+                settingsSaving={settingsSaving}
+                taskConfigDraft={isWorkspaceFullAccess ? taskConfigDraft : null}
+                taskConfigSaving={taskConfigSaving}
+                projectConfigDraft={isWorkspaceFullAccess ? projectConfigDraft : null}
+                projectConfigSaving={projectConfigSaving}
+                permissionMatrixRows={permissionMatrixRows}
+                notificationConfigDraft={isWorkspaceFullAccess ? notificationConfigDraft : null}
+                notificationConfigSaving={notificationConfigSaving}
+                notificationDeliveryStats={notificationDeliveryStats}
+                notificationDeliveryStatsLoading={notificationDeliveryStatsLoading}
+                notificationDeliveryRetrying={notificationDeliveryRetrying}
+                taskTagDictionaryDraft={taskTagDictionaryDraft}
+                taskTagDictionarySaving={taskTagDictionarySaving}
+                contactTagDictionaryDraft={contactTagDictionaryDraft}
+                contactTagDictionarySaving={contactTagDictionarySaving}
+                contactSourceDictionaryDraft={contactSourceDictionaryDraft}
+                contactSourceDictionarySaving={contactSourceDictionarySaving}
+                onTaskViewModeChange={setTaskViewMode}
+                onTaskListRowsPerPageChange={setTaskListRowsPerPage}
+                onDigestDueHoursChange={setDigestDueHours}
+                onDigestScopeChange={setDigestScope}
+                onNotifyEmailEnabledChange={setNotifyEmailEnabled}
+                onNotifyWebPushEnabledChange={setNotifyWebPushEnabled}
+                onNotifyTaskOverdueChange={setNotifyTaskOverdue}
+                onNotifyTaskDueSoonChange={setNotifyTaskDueSoon}
+                onNotifyTaskAssignedChange={setNotifyTaskAssigned}
+                onNotifyTaskCommentChange={setNotifyTaskComment}
+                onNotifyTaskUpdatedChange={setNotifyTaskUpdated}
+                onNotifyContactIncomingMessageChange={setNotifyContactIncomingMessage}
+                onNotifyTaskMentionChange={setNotifyTaskMention}
+                onConnectWebPush={connectWebPush}
+                onDisconnectWebPush={disconnectWebPush}
+                onSaveWorkspaceSettings={saveWorkspaceSettings}
+                onTaskStatusLabelChange={(index, value) =>
+                  setTaskConfigDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          statuses: prev.statuses.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, label: value } : current
+                          ),
+                        }
+                      : prev
+                  )
+                }
+                onTaskStatusEnabledChange={(index, value) =>
+                  setTaskConfigDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          statuses: prev.statuses.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, enabled: value } : current
+                          ),
+                        }
+                      : prev
+                  )
+                }
+                onTaskPriorityLabelChange={(index, value) =>
+                  setTaskConfigDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          priorities: prev.priorities.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, label: value } : current
+                          ),
+                        }
+                      : prev
+                  )
+                }
+                onTaskPriorityEnabledChange={(index, value) =>
+                  setTaskConfigDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          priorities: prev.priorities.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, enabled: value } : current
+                          ),
+                        }
+                      : prev
+                  )
+                }
+                onSaveWorkspaceTaskConfig={saveWorkspaceTaskConfig}
+                onResetTaskConfig={() => taskConfig && setTaskConfigDraft(taskConfig)}
+                onProjectStatusLabelChange={(index, value) =>
+                  setProjectConfigDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          statuses: prev.statuses.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, label: value } : current
+                          ),
+                        }
+                      : prev
+                  )
+                }
+                onProjectStatusEnabledChange={(index, value) =>
+                  setProjectConfigDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          statuses: prev.statuses.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, enabled: value } : current
+                          ),
+                        }
+                      : prev
+                  )
+                }
+                onSaveWorkspaceProjectConfig={saveWorkspaceProjectConfig}
+                onResetProjectConfig={() => projectConfig && setProjectConfigDraft(projectConfig)}
+                onNotificationConfigLabelChange={(index, value) =>
+                  setNotificationConfigDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          items: prev.items.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, label: value } : current
+                          ),
+                        }
+                      : prev
+                  )
+                }
+                onNotificationConfigEnabledChange={(index, value) =>
+                  setNotificationConfigDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          items: prev.items.map((current, currentIndex) =>
+                            currentIndex === index ? { ...current, enabled: value } : current
+                          ),
+                        }
+                      : prev
+                  )
+                }
+                onSaveWorkspaceNotificationConfig={saveWorkspaceNotificationConfig}
+                onResetNotificationConfig={() => notificationConfig && setNotificationConfigDraft(notificationConfig)}
+                onLoadNotificationDeliveryStats={loadNotificationDeliveryStats}
+                onRetryNotificationDelivery={retryNotificationDelivery}
+                onTaskTagDictionaryDraftChange={(items) => setTaskTagDictionaryDraft({ items })}
+                onSaveWorkspaceTaskTagDictionary={saveWorkspaceTaskTagDictionary}
+                onResetTaskTagDictionary={() => setTaskTagDictionaryDraft(taskTagDictionary)}
+                onContactTagDictionaryDraftChange={(items) => setContactTagDictionaryDraft({ items })}
+                onSaveWorkspaceContactTagDictionary={saveWorkspaceContactTagDictionary}
+                onResetContactTagDictionary={() => setContactTagDictionaryDraft(contactTagDictionary)}
+                onContactSourceDictionaryDraftChange={(items) => setContactSourceDictionaryDraft({ items })}
+                onSaveWorkspaceContactSourceDictionary={saveWorkspaceContactSourceDictionary}
+                onResetContactSourceDictionary={() => setContactSourceDictionaryDraft(contactSourceDictionary)}
               />
-              <TextField
-                select
-                fullWidth
-                label="Сводка по дедлайнам: окно (часы)"
-                value={String(digestDueHours)}
-                onChange={(e) => setDigestDueHours(Number(e.target.value))}
-              >
-                {[8, 24, 48, 72, 168, 336].map((n) => (
-                  <MenuItem key={n} value={String(n)}>
-                    {n === 168 ? '7 дней (168 ч)' : `${n} ч`}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                select
-                fullWidth
-                label="Сводка: область"
-                value={digestScope}
-                onChange={(e) => setDigestScope(e.target.value as 'all' | 'mine')}
-              >
-                <MenuItem value="all">Все доступные задачи</MenuItem>
-                <MenuItem value="mine">Только мои (исполнитель — я)</MenuItem>
-              </TextField>
-              <Divider />
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  Настройки уведомлений
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Эти переключатели управляют созданием новых in-app уведомлений и, если включён email-канал, их отправкой на
-                  вашу почту.
-                </Typography>
-                <Stack spacing={0.5}>
-                  <FormControlLabel
-                    control={<Checkbox checked={notifyEmailEnabled} onChange={(_, checked) => setNotifyEmailEnabled(checked)} />}
-                    label="Дублировать включённые уведомления на email"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={notifyWebPushEnabled}
-                        disabled={!webPushStatus?.configured}
-                        onChange={(_, checked) => setNotifyWebPushEnabled(checked)}
-                      />
-                    }
-                    label="Дублировать включённые уведомления в web push"
-                  />
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1}
-                    alignItems={{ sm: 'center' }}
-                    sx={{ pl: 1, pb: 0.5 }}
-                  >
-                    <Typography variant="caption" color="text.secondary">
-                      {webPushBrowserSupported
-                        ? webPushConnected
-                          ? `Браузер подключён, подписок на сервере: ${webPushStatus?.subscription_count ?? 0}`
-                          : webPushStatus?.configured
-                            ? `Браузер не подключён. Разрешение: ${webPushPermission}.`
-                            : 'Web push не настроен на сервере.'
-                        : 'Этот браузер не поддерживает web push.'}
-                    </Typography>
-                    {webPushConnected ? (
-                      <Button size="small" variant="outlined" disabled={webPushBusy} onClick={() => void disconnectWebPush()}>
-                        {webPushBusy ? 'Отключение…' : 'Отключить браузер'}
-                      </Button>
-                    ) : (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        disabled={webPushBusy || !webPushBrowserSupported || !webPushStatus?.configured}
-                        onClick={() => void connectWebPush()}
-                      >
-                        {webPushBusy ? 'Подключение…' : 'Подключить браузер'}
-                      </Button>
-                    )}
-                  </Stack>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={notifyTaskOverdue}
-                        disabled={notificationConfigMap.task_overdue?.enabled === false}
-                        onChange={(_, checked) => setNotifyTaskOverdue(checked)}
-                      />
-                    }
-                    label={notificationLabels.task_overdue || 'Просроченные задачи'}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={notifyTaskDueSoon}
-                        disabled={notificationConfigMap.task_due_soon?.enabled === false}
-                        onChange={(_, checked) => setNotifyTaskDueSoon(checked)}
-                      />
-                    }
-                    label={notificationLabels.task_due_soon || 'Скоро дедлайн'}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={notifyTaskAssigned}
-                        disabled={notificationConfigMap.task_assigned?.enabled === false}
-                        onChange={(_, checked) => setNotifyTaskAssigned(checked)}
-                      />
-                    }
-                    label={notificationLabels.task_assigned || 'Назначение задачи'}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={notifyTaskComment}
-                        disabled={notificationConfigMap.task_comment?.enabled === false}
-                        onChange={(_, checked) => setNotifyTaskComment(checked)}
-                      />
-                    }
-                    label={notificationLabels.task_comment || 'Комментарии к задаче'}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={notifyTaskUpdated}
-                        disabled={notificationConfigMap.task_updated?.enabled === false}
-                        onChange={(_, checked) => setNotifyTaskUpdated(checked)}
-                      />
-                    }
-                    label={notificationLabels.task_updated || 'Обновления задачи'}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={notifyContactIncomingMessage}
-                        disabled={notificationConfigMap.contact_incoming_message?.enabled === false}
-                        onChange={(_, checked) => setNotifyContactIncomingMessage(checked)}
-                      />
-                    }
-                    label={notificationLabels.contact_incoming_message || 'Входящие сообщения по контакту'}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={notifyTaskMention}
-                        disabled={notificationConfigMap.task_mention?.enabled === false}
-                        onChange={(_, checked) => setNotifyTaskMention(checked)}
-                      />
-                    }
-                    label={notificationLabels.task_mention || 'Упоминания в комментариях'}
-                  />
-                </Stack>
-              </Box>
-              <Button variant="contained" disabled={settingsSaving} onClick={() => void saveWorkspaceSettings()}>
-                {settingsSaving ? 'Сохранение…' : 'Сохранить настройки'}
-              </Button>
-            </Stack>
-            {isWorkspaceFullAccess && taskConfigDraft && (
-              <>
-                <Divider sx={{ my: 3 }} />
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      Системные названия задач
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Эти подписи используются в списках задач, канбане, карточках и фильтрах.
-                    </Typography>
-                  </Box>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Статусы
-                          </Typography>
-                          <Stack spacing={1.5}>
-                            {(taskConfigDraft?.statuses ?? []).map((item, index) => (
-                              <Box key={item.key}>
-                                <TextField
-                                  fullWidth
-                                  size="small"
-                                  label={item.key}
-                                  value={item.label}
-                                  onChange={(e) =>
-                                    setTaskConfigDraft((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            statuses: prev.statuses.map((current, currentIndex) =>
-                                              currentIndex === index ? { ...current, label: e.target.value } : current
-                                            ),
-                                          }
-                                        : prev
-                                    )
-                                  }
-                                />
-                                <FormControlLabel
-                                  sx={{ mt: 0.5 }}
-                                  control={
-                                    <Checkbox
-                                      checked={item.enabled !== false}
-                                      onChange={(e) =>
-                                        setTaskConfigDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                statuses: prev.statuses.map((current, currentIndex) =>
-                                                  currentIndex === index ? { ...current, enabled: e.target.checked } : current
-                                                ),
-                                              }
-                                            : prev
-                                        )
-                                      }
-                                    />
-                                  }
-                                  label="Показывать в интерфейсе"
-                                />
-                              </Box>
-                            ))}
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Приоритеты
-                          </Typography>
-                          <Stack spacing={1.5}>
-                            {(taskConfigDraft?.priorities ?? []).map((item, index) => (
-                              <Box key={item.key}>
-                                <TextField
-                                  fullWidth
-                                  size="small"
-                                  label={item.key}
-                                  value={item.label}
-                                  onChange={(e) =>
-                                    setTaskConfigDraft((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            priorities: prev.priorities.map((current, currentIndex) =>
-                                              currentIndex === index ? { ...current, label: e.target.value } : current
-                                            ),
-                                          }
-                                        : prev
-                                    )
-                                  }
-                                />
-                                <FormControlLabel
-                                  sx={{ mt: 0.5 }}
-                                  control={
-                                    <Checkbox
-                                      checked={item.enabled !== false}
-                                      onChange={(e) =>
-                                        setTaskConfigDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                priorities: prev.priorities.map((current, currentIndex) =>
-                                                  currentIndex === index ? { ...current, enabled: e.target.checked } : current
-                                                ),
-                                              }
-                                            : prev
-                                        )
-                                      }
-                                    />
-                                  }
-                                  label="Показывать в интерфейсе"
-                                />
-                              </Box>
-                            ))}
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  </Grid>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                    <Button variant="contained" disabled={taskConfigSaving} onClick={() => void saveWorkspaceTaskConfig()}>
-                      {taskConfigSaving ? 'Сохранение...' : 'Сохранить названия'}
-                    </Button>
-                    <Button variant="outlined" disabled={taskConfigSaving || !taskConfig} onClick={() => setTaskConfigDraft(taskConfig)}>
-                      Сбросить
-                    </Button>
-                  </Stack>
-                </Stack>
-              </>
-            )}
-            {isWorkspaceFullAccess && projectConfigDraft && (
-              <>
-                <Divider sx={{ my: 3 }} />
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      Системные статусы проектов
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Эти подписи используются в списке проектов, карточке проекта и фильтрах owner-workspace.
-                    </Typography>
-                  </Box>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Stack spacing={1.5}>
-                        {projectConfigDraft.statuses.map((item, index) => (
-                          <Box key={item.key}>
-                            <TextField
-                              fullWidth
-                              size="small"
-                              label={item.key}
-                              value={item.label}
-                              onChange={(e) =>
-                                setProjectConfigDraft((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        statuses: prev.statuses.map((current, currentIndex) =>
-                                          currentIndex === index ? { ...current, label: e.target.value } : current
-                                        ),
-                                      }
-                                    : prev
-                                )
-                              }
-                            />
-                            <FormControlLabel
-                              sx={{ mt: 0.5 }}
-                              control={
-                                <Checkbox
-                                  checked={item.enabled !== false}
-                                  onChange={(e) =>
-                                    setProjectConfigDraft((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            statuses: prev.statuses.map((current, currentIndex) =>
-                                              currentIndex === index ? { ...current, enabled: e.target.checked } : current
-                                            ),
-                                          }
-                                        : prev
-                                    )
-                                  }
-                                />
-                              }
-                              label="Показывать в интерфейсе"
-                            />
-                          </Box>
-                        ))}
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                    <Button
-                      variant="contained"
-                      disabled={projectConfigSaving}
-                      onClick={() => void saveWorkspaceProjectConfig()}
-                    >
-                      {projectConfigSaving ? 'Сохранение...' : 'Сохранить статусы проектов'}
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      disabled={projectConfigSaving || !projectConfig}
-                      onClick={() => setProjectConfigDraft(projectConfig)}
-                    >
-                      Сбросить
-                    </Button>
-                  </Stack>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Stack spacing={1.5}>
-                        <Box>
-                          <Typography variant="subtitle2">Формальная матрица прав</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Таблица ниже показывает, как текущая policy-модель owner workspace влияет на основные действия по ролям.
-                            Для `sales / trainer` действует только своя зона видимости, а project-scoped роли применяются внутри
-                            доступного проекта.
-                          </Typography>
-                        </Box>
-                        <TableContainer>
-                          <Table size="small">
-                            <TableHead>
-                              <TableRow>
-                                <TableCell>Действие</TableCell>
-                                <TableCell>Admin / Owner</TableCell>
-                                <TableCell>Sales / Trainer</TableCell>
-                                <TableCell>Владелец проекта</TableCell>
-                                <TableCell>Manager</TableCell>
-                                <TableCell>Member</TableCell>
-                                <TableCell>Observer</TableCell>
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {permissionMatrixRows.map((row) => (
-                                <TableRow key={row.action}>
-                                  <TableCell sx={{ minWidth: 220 }}>{row.action}</TableCell>
-                                  <TableCell>{row.adminOwner}</TableCell>
-                                  <TableCell>{row.limited}</TableCell>
-                                  <TableCell>{row.projectOwner}</TableCell>
-                                  <TableCell>{row.manager}</TableCell>
-                                  <TableCell>{row.member}</TableCell>
-                                  <TableCell>{row.observer}</TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TableContainer>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Stack>
-              </>
-            )}
-            {isWorkspaceFullAccess && notificationConfigDraft && (
-              <>
-                <Divider sx={{ my: 3 }} />
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      Системные типы уведомлений
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Здесь задаются подписи и глобальная видимость типов owner-workspace уведомлений. Отключённый тип больше не
-                      создаётся ни в in-app, ни в email-канале.
-                    </Typography>
-                  </Box>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Stack spacing={1.5}>
-                        {notificationConfigDraft.items.map((item, index) => (
-                          <Box key={item.key}>
-                            <TextField
-                              fullWidth
-                              size="small"
-                              label={item.key}
-                              value={item.label}
-                              onChange={(e) =>
-                                setNotificationConfigDraft((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        items: prev.items.map((current, currentIndex) =>
-                                          currentIndex === index ? { ...current, label: e.target.value } : current
-                                        ),
-                                      }
-                                    : prev
-                                )
-                              }
-                            />
-                            <FormControlLabel
-                              sx={{ mt: 0.5 }}
-                              control={
-                                <Checkbox
-                                  checked={item.enabled !== false}
-                                  onChange={(e) =>
-                                    setNotificationConfigDraft((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            items: prev.items.map((current, currentIndex) =>
-                                              currentIndex === index ? { ...current, enabled: e.target.checked } : current
-                                            ),
-                                          }
-                                        : prev
-                                    )
-                                  }
-                                />
-                              }
-                              label="Показывать и генерировать в модуле"
-                            />
-                          </Box>
-                        ))}
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                    <Button
-                      variant="contained"
-                      disabled={notificationConfigSaving}
-                      onClick={() => void saveWorkspaceNotificationConfig()}
-                    >
-                      {notificationConfigSaving ? 'Сохранение...' : 'Сохранить типы уведомлений'}
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      disabled={notificationConfigSaving || !notificationConfig}
-                      onClick={() => setNotificationConfigDraft(notificationConfig)}
-                    >
-                      Сбросить
-                    </Button>
-                  </Stack>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Stack spacing={1.5}>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
-                          <Box>
-                            <Typography variant="subtitle2">Диагностика доставки уведомлений</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Состояние owner-workspace outbox по email и web push, включая свежие ошибки доставки.
-                            </Typography>
-                          </Box>
-                          <Button
-                            variant="outlined"
-                            disabled={notificationDeliveryStatsLoading}
-                            onClick={() => void loadNotificationDeliveryStats()}
-                          >
-                            {notificationDeliveryStatsLoading ? 'Обновление...' : 'Обновить'}
-                          </Button>
-                        </Stack>
-                        {notificationDeliveryStats ? (
-                          <>
-                            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                              <Card variant="outlined" sx={{ flex: 1 }}>
-                                <CardContent>
-                                  <Stack spacing={1}>
-                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                                      <Typography variant="subtitle2">Email</Typography>
-                                      <Chip
-                                        size="small"
-                                        color={notificationDeliveryStats.email_configured ? 'success' : 'default'}
-                                        label={notificationDeliveryStats.email_configured ? 'Сконфигурирован' : 'Не настроен'}
-                                      />
-                                    </Stack>
-                                    <Typography variant="body2" color="text.secondary">
-                                      Pending: {notificationDeliveryStats.email.pending} · Failed: {notificationDeliveryStats.email.failed} ·
-                                      Terminal: {notificationDeliveryStats.email.terminal_failed}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                      Sent 24h: {notificationDeliveryStats.email.sent_last_24h} · Disabled: {notificationDeliveryStats.email.disabled}
-                                    </Typography>
-                                    {!notificationDeliveryStats.email_configured && (
-                                      <Alert severity="warning">
-                                        SMTP для owner-workspace уведомлений не настроен на сервере. Email-канал останется недоступным, даже если он включён у пользователя.
-                                        {notificationDeliveryStats.missing_email_env.length > 0
-                                          ? ` Не хватает: ${notificationDeliveryStats.missing_email_env.join(', ')}.`
-                                          : ''}
-                                      </Alert>
-                                    )}
-                                  </Stack>
-                                </CardContent>
-                              </Card>
-                              <Card variant="outlined" sx={{ flex: 1 }}>
-                                <CardContent>
-                                  <Stack spacing={1}>
-                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                                      <Typography variant="subtitle2">Web push</Typography>
-                                      <Chip
-                                        size="small"
-                                        color={notificationDeliveryStats.web_push_configured ? 'success' : 'default'}
-                                        label={notificationDeliveryStats.web_push_configured ? 'Сконфигурирован' : 'Не настроен'}
-                                      />
-                                      <Chip
-                                        size="small"
-                                        variant="outlined"
-                                        label={`Подписок: ${notificationDeliveryStats.web_push_subscriptions_total}`}
-                                      />
-                                    </Stack>
-                                    <Typography variant="body2" color="text.secondary">
-                                      Pending: {notificationDeliveryStats.web_push.pending} · Failed: {notificationDeliveryStats.web_push.failed} ·
-                                      Terminal: {notificationDeliveryStats.web_push.terminal_failed}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                      Sent 24h: {notificationDeliveryStats.web_push.sent_last_24h} · Disabled: {notificationDeliveryStats.web_push.disabled}
-                                    </Typography>
-                                    {!notificationDeliveryStats.web_push_configured && (
-                                      <Alert severity="warning">
-                                        Web push не сконфигурирован на сервере. Проверьте VAPID-переменные окружения, иначе браузерные push-уведомления работать не будут.
-                                        {notificationDeliveryStats.missing_web_push_env.length > 0
-                                          ? ` Не хватает: ${notificationDeliveryStats.missing_web_push_env.join(', ')}.`
-                                          : ''}
-                                      </Alert>
-                                    )}
-                                  </Stack>
-                                </CardContent>
-                              </Card>
-                            </Stack>
-                            <Box>
-                              <Typography variant="subtitle2" gutterBottom>
-                                Последние ошибки доставки
-                              </Typography>
-                              {notificationDeliveryStats.recent_failures.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">
-                                  Свежих ошибок доставки нет.
-                                </Typography>
-                              ) : (
-                                <Stack spacing={1}>
-                                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                                    <Button
-                                      variant="outlined"
-                                      size="small"
-                                      disabled={notificationDeliveryRetrying === 'all'}
-                                      onClick={() =>
-                                        void retryNotificationDelivery(
-                                          notificationDeliveryStats.recent_failures.map((item) => item.id)
-                                        )
-                                      }
-                                    >
-                                      {notificationDeliveryRetrying === 'all' ? 'Повторяем...' : 'Повторить все видимые ошибки'}
-                                    </Button>
-                                  </Stack>
-                                  {notificationDeliveryStats.recent_failures.map((item) => (
-                                    <Box key={item.id} sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                                      <Stack spacing={0.5}>
-                                        <Typography variant="body2">
-                                          <strong>{item.title}</strong> · {item.kind} · {item.user_name}
-                                        </Typography>
-                                        <Typography variant="caption" color="text.secondary">
-                                          #{item.id}
-                                          {item.created_at ? ` · ${new Date(item.created_at).toLocaleString('ru-RU')}` : ''}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                          Email: {item.email_delivery_status} ({item.email_attempts})
-                                          {item.email_last_error ? ` · ${item.email_last_error}` : ''}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                          Web push: {item.web_push_delivery_status} ({item.web_push_attempts})
-                                          {item.web_push_last_error ? ` · ${item.web_push_last_error}` : ''}
-                                        </Typography>
-                                        <Box>
-                                          <Button
-                                            variant="outlined"
-                                            size="small"
-                                            disabled={notificationDeliveryRetrying === item.id}
-                                            onClick={() => void retryNotificationDelivery([item.id])}
-                                          >
-                                            {notificationDeliveryRetrying === item.id ? 'Повторяем...' : 'Повторить доставку'}
-                                          </Button>
-                                        </Box>
-                                      </Stack>
-                                    </Box>
-                                  ))}
-                                </Stack>
-                              )}
-                            </Box>
-                          </>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary">
-                            Диагностика ещё не загружена.
-                          </Typography>
-                        )}
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Stack>
-              </>
-            )}
-            {isWorkspaceFullAccess && (
-              <>
-                <Divider sx={{ my: 3 }} />
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      Справочники тегов
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Эти списки используются как рекомендованные теги и источники в карточках owner-workspace. Пользователь всё
-                      ещё может вводить новые значения вручную.
-                    </Typography>
-                  </Box>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Stack spacing={1.5}>
-                            <Typography variant="subtitle2">Теги задач</Typography>
-                            <Autocomplete
-                              multiple
-                              freeSolo
-                              options={[] as string[]}
-                              value={taskTagDictionaryDraft.items}
-                              onChange={(_, v) =>
-                                setTaskTagDictionaryDraft({
-                                  items: v.map(String),
-                                })
-                              }
-                              renderTags={(value, getTagProps) =>
-                                value.map((option, index) => (
-                                  <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
-                                ))
-                              }
-                              renderInput={(params) => <TextField {...params} label="Теги задач" placeholder="Ввод и Enter" />}
-                            />
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                              <Button
-                                variant="contained"
-                                disabled={taskTagDictionarySaving}
-                                onClick={() => void saveWorkspaceTaskTagDictionary()}
-                              >
-                                {taskTagDictionarySaving ? 'Сохранение...' : 'Сохранить'}
-                              </Button>
-                              <Button
-                                variant="outlined"
-                                disabled={taskTagDictionarySaving}
-                                onClick={() => setTaskTagDictionaryDraft(taskTagDictionary)}
-                              >
-                                Сбросить
-                              </Button>
-                            </Stack>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Stack spacing={1.5}>
-                            <Typography variant="subtitle2">Теги контактов</Typography>
-                            <Autocomplete
-                              multiple
-                              freeSolo
-                              options={[] as string[]}
-                              value={contactTagDictionaryDraft.items}
-                              onChange={(_, v) =>
-                                setContactTagDictionaryDraft({
-                                  items: v.map(String),
-                                })
-                              }
-                              renderTags={(value, getTagProps) =>
-                                value.map((option, index) => (
-                                  <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
-                                ))
-                              }
-                              renderInput={(params) => (
-                                <TextField {...params} label="Теги контактов" placeholder="Ввод и Enter" />
-                              )}
-                            />
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                              <Button
-                                variant="contained"
-                                disabled={contactTagDictionarySaving}
-                                onClick={() => void saveWorkspaceContactTagDictionary()}
-                              >
-                                {contactTagDictionarySaving ? 'Сохранение...' : 'Сохранить'}
-                              </Button>
-                              <Button
-                                variant="outlined"
-                                disabled={contactTagDictionarySaving}
-                                onClick={() => setContactTagDictionaryDraft(contactTagDictionary)}
-                              >
-                                Сбросить
-                              </Button>
-                            </Stack>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Stack spacing={1.5}>
-                            <Typography variant="subtitle2">Источники контактов</Typography>
-                            <Autocomplete
-                              multiple
-                              freeSolo
-                              options={[] as string[]}
-                              value={contactSourceDictionaryDraft.items}
-                              onChange={(_, v) =>
-                                setContactSourceDictionaryDraft({
-                                  items: v.map(String),
-                                })
-                              }
-                              renderTags={(value, getTagProps) =>
-                                value.map((option, index) => (
-                                  <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />
-                                ))
-                              }
-                              renderInput={(params) => (
-                                <TextField {...params} label="Источники контактов" placeholder="Ввод и Enter" />
-                              )}
-                            />
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                              <Button
-                                variant="contained"
-                                disabled={contactSourceDictionarySaving}
-                                onClick={() => void saveWorkspaceContactSourceDictionary()}
-                              >
-                                {contactSourceDictionarySaving ? 'Сохранение...' : 'Сохранить'}
-                              </Button>
-                              <Button
-                                variant="outlined"
-                                disabled={contactSourceDictionarySaving}
-                                onClick={() => setContactSourceDictionaryDraft(contactSourceDictionary)}
-                              >
-                                Сбросить
-                              </Button>
-                            </Stack>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  </Grid>
-                </Stack>
-              </>
-            )}
+            </Suspense>
             {isWorkspaceFullAccess && workspaceSettingsBundle && (
               <>
                 <Divider sx={{ my: 3 }} />
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      Bundle системных настроек
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Экспортируйте или импортируйте весь owner-workspace admin bundle одним JSON-файлом: словари,
-                      policy, статусы, приоритеты и конфигурацию уведомлений.
-                    </Typography>
-                  </Box>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Stack spacing={1.5}>
-                        <Typography variant="subtitle2">Portable admin bundle</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Экспорт использует текущее сохранённое состояние на сервере. Импорт нормализует значения по тем же
-                          правилам, что и обычные admin-формы owner-workspace.
-                        </Typography>
-                        {workspaceSettingsBundleSummary && (
-                          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                            <Chip size="small" label={`Статусы задач: ${workspaceSettingsBundleSummary.task_statuses}`} />
-                            <Chip size="small" label={`Приоритеты: ${workspaceSettingsBundleSummary.task_priorities}`} />
-                            <Chip size="small" label={`Статусы проектов: ${workspaceSettingsBundleSummary.project_statuses}`} />
-                            <Chip size="small" label={`Типы уведомлений: ${workspaceSettingsBundleSummary.notification_types}`} />
-                            <Chip size="small" label={`Теги задач: ${workspaceSettingsBundleSummary.task_tags}`} />
-                            <Chip size="small" label={`Теги контактов: ${workspaceSettingsBundleSummary.contact_tags}`} />
-                            <Chip size="small" label={`Источники: ${workspaceSettingsBundleSummary.contact_sources}`} />
-                          </Stack>
-                        )}
-                        {settingsBundleLastExportMeta && (
-                          <Alert severity="info">
-                            Последний export/import bundle: v{settingsBundleLastExportMeta.version}
-                            {settingsBundleLastExportMeta.exported_by_name
-                              ? ` · ${settingsBundleLastExportMeta.exported_by_name}`
-                              : ''}
-                            {settingsBundleLastExportMeta.exported_at
-                              ? ` · ${new Date(settingsBundleLastExportMeta.exported_at).toLocaleString('ru-RU')}`
-                              : ''}
-                          </Alert>
-                        )}
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                          <Button variant="contained" onClick={exportWorkspaceSettingsBundle}>
-                            Экспорт JSON
-                          </Button>
-                          <Button variant="outlined" onClick={() => void copyWorkspaceSettingsBundle()}>
-                            Копировать JSON
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            onClick={() => {
-                              setSettingsBundleImportText('');
-                              setSettingsBundleDialogOpen(true);
-                            }}
-                          >
-                            Импорт JSON
-                          </Button>
-                        </Stack>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Stack spacing={1.5}>
-                        <Stack
-                          direction={{ xs: 'column', sm: 'row' }}
-                          spacing={1}
-                          justifyContent="space-between"
-                          alignItems={{ xs: 'flex-start', sm: 'center' }}
-                        >
-                          <Box>
-                            <Typography variant="subtitle2">Snapshots системных настроек</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Именованные снимки для быстрого отката и повторного применения admin-конфигурации owner-workspace.
-                            </Typography>
-                          </Box>
-                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                            <TextField
-                              size="small"
-                              label="Поиск snapshot"
-                              value={settingsSnapshotSearch}
-                              onChange={(e) => setSettingsSnapshotSearch(e.target.value)}
-                              sx={{ minWidth: 220 }}
-                            />
-                            <TextField
-                              size="small"
-                              select
-                              label="Сортировка"
-                              value={settingsSnapshotSort}
-                              onChange={(e) => setSettingsSnapshotSort(e.target.value as 'newest' | 'oldest' | 'name')}
-                              sx={{ minWidth: 180 }}
-                            >
-                              <MenuItem value="newest">Сначала новые</MenuItem>
-                              <MenuItem value="oldest">Сначала старые</MenuItem>
-                              <MenuItem value="name">По названию</MenuItem>
-                            </TextField>
-                            <FormControlLabel
-                              control={
-                                <Checkbox
-                                  checked={settingsSnapshotOnlyChanged}
-                                  onChange={(e) => setSettingsSnapshotOnlyChanged(e.target.checked)}
-                                />
-                              }
-                              label="Только отличающиеся"
-                            />
-                            <Button variant="outlined" onClick={() => void loadSettingsSnapshots()} disabled={settingsSnapshotsLoading}>
-                              {settingsSnapshotsLoading ? 'Обновление...' : 'Обновить'}
-                            </Button>
-                            <Button
-                              variant="contained"
-                              onClick={() => {
-                                setSettingsSnapshotName('');
-                                setSettingsSnapshotNote('');
-                                setSettingsSnapshotCreateOpen(true);
-                              }}
-                            >
-                              Создать snapshot
-                            </Button>
-                          </Stack>
-                        </Stack>
-                        {settingsSnapshots.length === 0 ? (
-                          <Typography variant="body2" color="text.secondary">
-                            Снимков пока нет.
-                          </Typography>
-                        ) : (
-                          <Stack spacing={1.25}>
-                            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                              <Chip size="small" label={`Всего: ${settingsSnapshots.length}`} />
-                              <Chip size="small" label={`Видимо: ${filteredSettingsSnapshots.length}`} />
-                              <Chip size="small" label={`Отличаются: ${settingsSnapshotsChangedCount}`} />
-                              <Chip size="small" label={`Совпадают: ${Math.max(settingsSnapshots.length - settingsSnapshotsChangedCount, 0)}`} />
-                            </Stack>
-                            {filteredSettingsSnapshots.map((snapshot) => (
-                              (() => {
-                                const snapshotDiff = settingsSnapshotDiffMap.get(snapshot.id) || [];
-                                const changedSections = snapshotDiff.filter((item) => item.changed);
-                                return (
-                              <Box
-                                key={snapshot.id}
-                                sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
-                              >
-                                <Stack spacing={1}>
-                                  <Stack
-                                    direction={{ xs: 'column', md: 'row' }}
-                                    spacing={1}
-                                    justifyContent="space-between"
-                                    alignItems={{ xs: 'flex-start', md: 'center' }}
-                                  >
-                                    <Box>
-                                      <Typography variant="body2">
-                                        <strong>{snapshot.name}</strong>
-                                      </Typography>
-                                      <Typography variant="caption" color="text.secondary">
-                                        {new Date(snapshot.created_at).toLocaleString('ru-RU')}
-                                        {snapshot.created_by_name ? ` · ${snapshot.created_by_name}` : ''}
-                                      </Typography>
-                                      {snapshot.note && (
-                                        <Typography variant="body2" color="text.secondary">
-                                          {snapshot.note}
-                                        </Typography>
-                                      )}
-                                    </Box>
-                                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                                      <Button
-                                        size="small"
-                                        variant="outlined"
-                                        onClick={() => {
-                                          setSettingsSnapshotEditingId(snapshot.id);
-                                          setSettingsSnapshotName(snapshot.name);
-                                          setSettingsSnapshotNote(snapshot.note || '');
-                                          setSettingsSnapshotEditOpen(true);
-                                        }}
-                                      >
-                                        Редактировать
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        variant="outlined"
-                                        disabled={settingsSnapshotDuplicatingId === snapshot.id}
-                                        onClick={() => void duplicateSettingsSnapshot(snapshot)}
-                                      >
-                                        {settingsSnapshotDuplicatingId === snapshot.id ? 'Дублируем...' : 'Дублировать'}
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        variant="outlined"
-                                        onClick={() => setSettingsSnapshotPreview(snapshot)}
-                                      >
-                                        JSON
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        variant="outlined"
-                                        onClick={() => void copySettingsSnapshot(snapshot)}
-                                      >
-                                        Копировать
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        variant="outlined"
-                                        onClick={() => exportSettingsSnapshot(snapshot)}
-                                      >
-                                        Экспорт
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        variant="contained"
-                                        disabled={settingsSnapshotApplyingId === snapshot.id}
-                                        onClick={() => {
-                                          setSettingsSnapshotCreateSafetyBeforeApply(true);
-                                          setSettingsSnapshotCompareBaseId('__current__');
-                                          setSettingsSnapshotReview(snapshot);
-                                        }}
-                                      >
-                                        {settingsSnapshotApplyingId === snapshot.id ? 'Применяем...' : 'Проверить и применить'}
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        color="error"
-                                        variant="outlined"
-                                        disabled={settingsSnapshotDeletingId === snapshot.id}
-                                        onClick={() => setSettingsSnapshotDeleteConfirm(snapshot)}
-                                      >
-                                        {settingsSnapshotDeletingId === snapshot.id ? 'Удаляем...' : 'Удалить'}
-                                      </Button>
-                                    </Stack>
-                                  </Stack>
-                                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                                    {changedSections.length > 0 ? (
-                                      <>
-                                        <Chip size="small" color="warning" label={`Изменений: ${changedSections.length}`} />
-                                        {changedSections.slice(0, 3).map((item) => (
-                                          <Chip key={`${snapshot.id}-${item.key}`} size="small" color="warning" variant="outlined" label={item.label} />
-                                        ))}
-                                        {changedSections.length > 3 && (
-                                          <Chip size="small" variant="outlined" label={`+${changedSections.length - 3}`} />
-                                        )}
-                                      </>
-                                    ) : (
-                                      <Chip size="small" color="success" label="Совпадает с текущим" />
-                                    )}
-                                    <Chip size="small" label={`v${snapshot.bundle.meta.version}`} />
-                                    {Object.entries(snapshot.bundle.meta.summary).map(([key, value]) => (
-                                      <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
-                                    ))}
-                                  </Stack>
-                                </Stack>
-                              </Box>
-                                );
-                              })()
-                            ))}
-                          </Stack>
-                        )}
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Stack>
+                <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+                  <OwnerWorkspaceSettingsSnapshotsSection
+                    workspaceSettingsBundle={workspaceSettingsBundle}
+                    workspaceSettingsBundleSummary={workspaceSettingsBundleSummary}
+                    settingsBundleLastExportMeta={settingsBundleLastExportMeta}
+                    settingsSnapshots={settingsSnapshots}
+                    filteredSettingsSnapshots={filteredSettingsSnapshots}
+                    settingsSnapshotsChangedCount={settingsSnapshotsChangedCount}
+                    settingsSnapshotSearch={settingsSnapshotSearch}
+                    settingsSnapshotSort={settingsSnapshotSort}
+                    settingsSnapshotOnlyChanged={settingsSnapshotOnlyChanged}
+                    settingsSnapshotsLoading={settingsSnapshotsLoading}
+                    settingsSnapshotDiffMap={settingsSnapshotDiffMap}
+                    settingsSnapshotDuplicatingId={settingsSnapshotDuplicatingId}
+                    settingsSnapshotApplyingId={settingsSnapshotApplyingId}
+                    settingsSnapshotDeletingId={settingsSnapshotDeletingId}
+                    onExportWorkspaceSettingsBundle={exportWorkspaceSettingsBundle}
+                    onCopyWorkspaceSettingsBundle={copyWorkspaceSettingsBundle}
+                    onOpenImportDialog={() => {
+                      setSettingsBundleImportText('');
+                      setSettingsBundleDialogOpen(true);
+                    }}
+                    onSettingsSnapshotSearchChange={setSettingsSnapshotSearch}
+                    onSettingsSnapshotSortChange={setSettingsSnapshotSort}
+                    onSettingsSnapshotOnlyChangedChange={setSettingsSnapshotOnlyChanged}
+                    onLoadSettingsSnapshots={loadSettingsSnapshots}
+                    onOpenCreateSnapshot={() => {
+                      setSettingsSnapshotName('');
+                      setSettingsSnapshotNote('');
+                      setSettingsSnapshotCreateOpen(true);
+                    }}
+                    onOpenEditSnapshot={(snapshot) => {
+                      setSettingsSnapshotEditingId(snapshot.id);
+                      setSettingsSnapshotName(snapshot.name);
+                      setSettingsSnapshotNote(snapshot.note || '');
+                      setSettingsSnapshotEditOpen(true);
+                    }}
+                    onDuplicateSettingsSnapshot={duplicateSettingsSnapshot}
+                    onPreviewSettingsSnapshot={setSettingsSnapshotPreview}
+                    onCopySettingsSnapshot={copySettingsSnapshot}
+                    onExportSettingsSnapshot={exportSettingsSnapshot}
+                    onReviewAndApplySnapshot={(snapshot) => {
+                      setSettingsSnapshotCreateSafetyBeforeApply(true);
+                      setSettingsSnapshotCompareBaseId('__current__');
+                      setSettingsSnapshotReview(snapshot);
+                    }}
+                    onConfirmDeleteSnapshot={setSettingsSnapshotDeleteConfirm}
+                  />
+                </Suspense>
               </>
             )}
             {isWorkspaceFullAccess && permissionPolicyDraft && (
-              <>
-                <Divider sx={{ my: 3 }} />
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      Policy ролей проекта
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Эти правила управляют тем, что project manager может делать с составом команды без участия owner/admin.
-                    </Typography>
-                  </Box>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Stack spacing={0.5}>
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={permissionPolicyDraft.manager_can_manage_team}
-                              onChange={(_, checked) =>
-                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_manage_team: checked }))
-                              }
-                            />
-                          }
-                          label="Менеджер проекта может управлять составом команды"
-                        />
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={permissionPolicyDraft.manager_can_change_roles}
-                              onChange={(_, checked) =>
-                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_change_roles: checked }))
-                              }
-                              disabled={!permissionPolicyDraft.manager_can_manage_team}
-                            />
-                          }
-                          label="Менеджер проекта может менять роли существующих участников"
-                        />
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={permissionPolicyDraft.manager_can_assign_manager}
-                              onChange={(_, checked) =>
-                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_assign_manager: checked }))
-                              }
-                              disabled={!permissionPolicyDraft.manager_can_manage_team}
-                            />
-                          }
-                          label="Менеджер проекта может назначать других менеджеров"
-                        />
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={permissionPolicyDraft.manager_can_assign_observer}
-                              onChange={(_, checked) =>
-                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_assign_observer: checked }))
-                              }
-                              disabled={!permissionPolicyDraft.manager_can_manage_team}
-                            />
-                          }
-                          label="Менеджер проекта может назначать наблюдателей"
-                        />
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={permissionPolicyDraft.manager_can_remove_manager}
-                              onChange={(_, checked) =>
-                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_remove_manager: checked }))
-                              }
-                              disabled={!permissionPolicyDraft.manager_can_manage_team}
-                            />
-                          }
-                          label="Менеджер проекта может удалять других менеджеров"
-                        />
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={permissionPolicyDraft.manager_can_edit_project_meta}
-                              onChange={(_, checked) =>
-                                setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_edit_project_meta: checked }))
-                              }
-                            />
-                          }
-                          label="Менеджер проекта может редактировать название и описание проекта"
-                        />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.manager_can_archive_project}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, manager_can_archive_project: checked }))
-                                }
-                              />
-                            }
-                            label="Менеджер проекта может архивировать проект"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_create_projects}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_create_projects: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут создавать проекты"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_create_contacts}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_create_contacts: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут создавать контакты"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_create_tasks}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_create_tasks: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут создавать задачи"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_edit_contacts}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_edit_contacts: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут редактировать карточки контактов"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_edit_tasks}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_edit_tasks: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут редактировать поля задач"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_manage_project_contacts}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_manage_project_contacts: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут привязывать и отвязывать контакты в проектах"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_complete_tasks}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_complete_tasks: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут завершать задачи"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_bulk_update_tasks}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_bulk_update_tasks: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут массово обновлять задачи"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_link_messages}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_link_messages: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут привязывать сообщения к задачам"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_send_messages}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_send_messages: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут отправлять сообщения"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={permissionPolicyDraft.limited_can_comment_tasks}
-                                onChange={(_, checked) =>
-                                  setPermissionPolicyDraft((prev) => ({ ...prev, limited_can_comment_tasks: checked }))
-                                }
-                              />
-                            }
-                            label="Ограниченные роли (sales / trainer) могут комментировать задачи"
-                          />
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                    <Button
-                      variant="contained"
-                      disabled={permissionPolicySaving}
-                      onClick={() => void saveWorkspacePermissionPolicy()}
-                    >
-                      {permissionPolicySaving ? 'Сохранение...' : 'Сохранить policy'}
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      disabled={permissionPolicySaving}
-                      onClick={() => setPermissionPolicyDraft(permissionPolicy)}
-                    >
-                      Сбросить
-                    </Button>
-                  </Stack>
-                </Stack>
-              </>
+              <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+                <OwnerWorkspacePermissionPolicySection
+                  permissionPolicyDraft={permissionPolicyDraft}
+                  permissionPolicy={permissionPolicy}
+                  permissionPolicySaving={permissionPolicySaving}
+                  onPermissionPolicyChange={(key, value) =>
+                    setPermissionPolicyDraft((prev) => ({ ...prev, [key]: value }))
+                  }
+                  onSaveWorkspacePermissionPolicy={saveWorkspacePermissionPolicy}
+                  onResetPermissionPolicy={() => setPermissionPolicyDraft(permissionPolicy)}
+                />
+              </Suspense>
             )}
           </CardContent>
         </Card>
       )}
-
       {tab === OW_TAB_HISTORY && (
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle2" gutterBottom>
-              История действий (аудит)
-            </Typography>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
-              <TextField
-                select
-                label="Сущность"
-                value={historyEntityFilter}
-                onChange={(e) => setHistoryEntityFilter(e.target.value)}
-                sx={{ minWidth: 180 }}
-              >
-                <MenuItem value="">Все сущности</MenuItem>
-                {Object.entries(OWNER_WS_HISTORY_ENTITY_LABELS).map(([key, label]) => (
-                  <MenuItem key={key} value={key}>
-                    {label}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                select
-                label="Действие"
-                value={historyActionFilter}
-                onChange={(e) => setHistoryActionFilter(e.target.value)}
-                sx={{ minWidth: 220 }}
-              >
-                <MenuItem value="">Все действия</MenuItem>
-                {historyActionOptions.map((key) => (
-                  <MenuItem key={key} value={key}>
-                    {OWNER_WS_HISTORY_ACTION_LABELS[key] || key}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                label="ID сущности"
-                type="number"
-                value={historyEntityIdFilter}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  setHistoryEntityIdFilter(raw ? Number(raw) : '');
-                }}
-                inputProps={{ min: 1 }}
-                sx={{ minWidth: 160 }}
-              />
-              <TextField
-                select
-                label="Автор"
-                value={historyAuthorFilter}
-                onChange={(e) => setHistoryAuthorFilter(e.target.value ? Number(e.target.value) : '')}
-                sx={{ minWidth: 220 }}
-              >
-                <MenuItem value="">Все авторы</MenuItem>
-                {userOptions.map((u) => (
-                  <MenuItem key={u.id} value={u.id}>
-                    {u.full_name}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                label="С"
-                type="datetime-local"
-                value={historyCreatedFrom}
-                onChange={(e) => setHistoryCreatedFrom(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ minWidth: 220 }}
-              />
-              <TextField
-                label="По"
-                type="datetime-local"
-                value={historyCreatedTo}
-                onChange={(e) => setHistoryCreatedTo(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ minWidth: 220 }}
-              />
-              <TextField
-                select
-                label="Лимит"
-                value={historyLimit}
-                onChange={(e) => setHistoryLimit(Number(e.target.value) || 300)}
-                sx={{ minWidth: 120 }}
-              >
-                {[100, 200, 300, 500, 1000].map((value) => (
-                  <MenuItem key={value} value={value}>
-                    {value}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                select
-                label="Порядок"
-                value={historySortOrder}
-                onChange={(e) => setHistorySortOrder(e.target.value as 'asc' | 'desc')}
-                sx={{ minWidth: 180 }}
-              >
-                <MenuItem value="desc">Сначала новые</MenuItem>
-                <MenuItem value="asc">Сначала старые</MenuItem>
-              </TextField>
-            </Stack>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
-              <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(12)}>
-                Сегодня
-              </Button>
-              <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(24)}>
-                Последние 24ч
-              </Button>
-              <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(24 * 7)}>
-                Последние 7 дней
-              </Button>
-              <Button size="small" variant="outlined" onClick={() => applyHistoryPreset(24 * 30)}>
-                Последние 30 дней
-              </Button>
-              <Button size="small" color="secondary" onClick={resetHistoryFilters}>
-                Сбросить фильтры
-              </Button>
-              <Button size="small" variant="text" onClick={refreshHistoryView}>
-                Обновить
-              </Button>
-              <Button size="small" variant="text" onClick={expandAllVisibleHistoryEntries} disabled={historyLogs.length === 0}>
-                Раскрыть детали
-              </Button>
-              <Button size="small" variant="text" onClick={collapseAllVisibleHistoryEntries} disabled={historyExpandedIds.length === 0}>
-                Свернуть детали
-              </Button>
-              <Button size="small" variant="text" onClick={() => void copyHistoryLink()}>
-                Копировать ссылку
-              </Button>
-              <Button size="small" variant="text" onClick={openHistoryLinkInNewTab}>
-                Открыть в новой вкладке
-              </Button>
-              <Button size="small" variant="text" onClick={() => void copyHistoryStatsSummary()}>
-                Копировать сводку
-              </Button>
-              <Button size="small" variant="text" onClick={() => void copyHistoryStatsJson()} disabled={!historyStats}>
-                Копировать stats JSON
-              </Button>
-              <Button size="small" variant="contained" disabled={historyLogs.length === 0} onClick={exportHistoryCsv}>
-                Экспорт CSV
-              </Button>
-              <Button size="small" variant="outlined" disabled={historyLogs.length === 0} onClick={exportHistoryJson}>
-                Экспорт JSON
-              </Button>
-              <Button size="small" variant="outlined" disabled={!historyStats} onClick={exportHistoryStatsJson}>
-                Экспорт stats JSON
-              </Button>
-              <Button size="small" variant="outlined" disabled={!historyStats} onClick={exportHistoryStatsCsv}>
-                Экспорт stats CSV
-              </Button>
-            </Stack>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-              <Chip
-                size="small"
-                color="primary"
-                variant="outlined"
-                label={`Записей в выборке: ${historyStats?.total_rows ?? historyVisibleSummary.rows}`}
-              />
-              <Chip
-                size="small"
-                variant="outlined"
-                label={`Авторов: ${historyStats?.unique_authors ?? historyVisibleSummary.authors}`}
-              />
-              <Chip
-                size="small"
-                variant="outlined"
-                label={`Действий: ${historyStats?.unique_actions ?? historyVisibleSummary.actions}`}
-              />
-              <Chip size="small" variant="outlined" label={`Видимых строк: ${historyLogs.length}`} />
-            </Stack>
-            {Boolean(historyStats && historyStats.total_rows > historyLogs.length) && (
-              <Alert severity="info" sx={{ mb: 1.5 }}>
-                Текущий лимит показывает {historyLogs.length} из {historyStats!.total_rows} записей. Увеличьте лимит или сузьте фильтры.
-                <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
-                  <Button size="small" variant="outlined" onClick={() => setHistoryLimit(500)}>
-                    Лимит 500
-                  </Button>
-                  <Button size="small" variant="outlined" onClick={() => setHistoryLimit(1000)}>
-                    Лимит 1000
-                  </Button>
-                </Stack>
-              </Alert>
-            )}
-            {historyStatsLoading && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                Обновляем сводку истории...
-              </Typography>
-            )}
-            {historyStats?.first_created_at && historyStats?.last_created_at && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                Период выборки: {new Date(historyStats.first_created_at).toLocaleString('ru-RU')} —{' '}
-                {new Date(historyStats.last_created_at).toLocaleString('ru-RU')}
-              </Typography>
-            )}
-            {historyStatsLoadedAt && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                Сводка обновлена: {new Date(historyStatsLoadedAt).toLocaleString('ru-RU')}
-              </Typography>
-            )}
-            {Boolean(historyStats?.entity_type_counts.length) && (
-              <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-                {historyStats!.entity_type_counts.map(({ key, count }) => (
-                  <Chip
-                    key={key}
-                    size="small"
-                    variant={historyEntityFilter === key ? 'filled' : 'outlined'}
-                    label={`${OWNER_WS_HISTORY_ENTITY_LABELS[key] || key}: ${historyStatsPercentLabel(count)}`}
-                    onClick={() => applyHistoryEntityQuickFilter(key)}
-                  />
-                ))}
-              </Stack>
-            )}
-            {Boolean(historyStats?.action_counts.length) && (
-              <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-                {historyStats!.action_counts.map(({ key, count }) => (
-                  <Chip
-                    key={key}
-                    size="small"
-                    variant={historyActionFilter === key ? 'filled' : 'outlined'}
-                    label={`${OWNER_WS_HISTORY_ACTION_LABELS[key] || key}: ${historyStatsPercentLabel(count)}`}
-                    onClick={() => applyHistoryActionQuickFilter(key)}
-                  />
-                ))}
-              </Stack>
-            )}
-            {Boolean(historyStats?.author_counts.length) && (
-              <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-                {historyStats!.author_counts.map(({ author_id, count }) => (
-                  <Chip
-                    key={author_id}
-                    size="small"
-                    variant={historyAuthorFilter === author_id ? 'filled' : 'outlined'}
-                    label={`${userName(author_id)}: ${historyStatsPercentLabel(count)}`}
-                    onClick={() => applyHistoryAuthorQuickFilter(author_id)}
-                  />
-                ))}
-              </Stack>
-            )}
-            {Boolean(historyStats?.day_counts.length) && (
-              <Card variant="outlined" sx={{ mb: 2 }}>
-                <CardContent sx={{ py: 1.5 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Активность по дням
-                  </Typography>
-                  <Stack spacing={1}>
-                    {historyStats!.day_counts.map((item) => (
-                      <Box
-                        key={item.day}
-                        sx={{ cursor: 'pointer' }}
-                        onClick={() => applyHistoryDayQuickFilter(item.day)}
-                      >
-                        <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center">
-                          <Typography variant="caption" color="text.secondary">
-                            {new Date(item.day).toLocaleDateString('ru-RU')}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {item.count}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {historyStatsPercentLabel(item.count)}
-                          </Typography>
-                        </Stack>
-                        <LinearProgress
-                          variant="determinate"
-                          value={Math.max(4, Math.round((item.count / historyDayMax) * 100))}
-                          sx={{ height: 8, borderRadius: 999 }}
-                        />
-                      </Box>
-                    ))}
-                  </Stack>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Нажмите на день, чтобы отфильтровать историю по этой дате.
-                  </Typography>
-                </CardContent>
-              </Card>
-            )}
-            {historyActiveFilterChips.length > 0 && (
-              <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
-                {historyActiveFilterChips.map((chip) => (
-                  <Chip key={chip.key} size="small" label={chip.label} onDelete={() => clearHistoryFilterChip(chip.key)} />
-                ))}
-              </Stack>
-            )}
-            <Stack spacing={1} sx={{ maxHeight: 560, overflow: 'auto' }}>
-              {historyLoading && (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <CircularProgress size={18} />
-                  <Typography variant="body2" color="text.secondary">
-                    Загружаем историю...
-                  </Typography>
-                </Stack>
-              )}
-              {historyLogs.length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  Нет записей или ещё не загружено.
-                </Typography>
-              )}
-              {historyLogs.map((h) => (
-                <Box
-                  key={h.id}
-                  sx={{
-                    p: 1,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    cursor: ['project', 'contact', 'task'].includes(h.entity_type) ? 'pointer' : 'default',
-                  }}
-                  onClick={() => {
-                    if (['project', 'contact', 'task'].includes(h.entity_type)) void openHistoryEntity(h);
-                  }}
-                >
-                  <Typography variant="caption" color="text.secondary" display="block">
-                    {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} · {userName(h.author_id)}
-                  </Typography>
-                  <Typography variant="body2">{ownerWsHistoryPrimaryLabel(h)}</Typography>
-                  {ownerWsHistoryChangedFields(h).length > 0 && (
-                    <Stack direction="row" spacing={1} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
-                      {ownerWsHistoryChangedFields(h)
-                        .slice(0, 4)
-                        .map((key) => (
-                          <Chip key={key} size="small" variant="outlined" label={key} />
-                        ))}
-                      {ownerWsHistoryChangedFields(h).length > 4 && (
-                        <Chip size="small" variant="outlined" label={`+${ownerWsHistoryChangedFields(h).length - 4}`} />
-                      )}
-                    </Stack>
-                  )}
-                  <Stack direction="row" spacing={1} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
-                    <Chip
-                      size="small"
-                      variant={historyEntityFilter === h.entity_type && historyEntityIdFilter === h.entity_id ? 'filled' : 'outlined'}
-                      label={`${OWNER_WS_HISTORY_ENTITY_LABELS[h.entity_type] || h.entity_type} #${h.entity_id}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        applyHistoryExactEntityQuickFilter(h.entity_type, h.entity_id);
-                      }}
-                    />
-                    <Chip
-                      size="small"
-                      variant={historyActionFilter === h.action_type ? 'filled' : 'outlined'}
-                      label={OWNER_WS_HISTORY_ACTION_LABELS[h.action_type] || h.action_type}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        applyHistoryActionQuickFilter(h.action_type);
-                      }}
-                    />
-                    {h.author_id != null && (
-                      <Chip
-                        size="small"
-                        variant={historyAuthorFilter === h.author_id ? 'filled' : 'outlined'}
-                        label={userName(h.author_id)}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          applyHistoryAuthorQuickFilter(h.author_id);
-                        }}
-                      />
-                    )}
-                  </Stack>
-                  {(h.old_value || h.new_value) && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      sx={{ mt: 0.75, alignSelf: 'flex-start' }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleExpandedHistoryEntry(h.id);
-                      }}
-                    >
-                      {historyExpandedIds.includes(h.id) ? 'Скрыть детали' : 'Показать детали'}
-                    </Button>
-                  )}
-                  {historyExpandedIds.includes(h.id) && (
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      {h.old_value && (
-                        <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            До
-                          </Typography>
-                          <Box
-                            component="pre"
-                            sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, fontFamily: 'monospace' }}
-                          >
-                            {ownerWsHistoryPayloadText(h.old_value)}
-                          </Box>
-                        </Box>
-                      )}
-                      {h.new_value && (
-                        <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            После
-                          </Typography>
-                          <Box
-                            component="pre"
-                            sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, fontFamily: 'monospace' }}
-                          >
-                            {ownerWsHistoryPayloadText(h.new_value)}
-                          </Box>
-                        </Box>
-                      )}
-                    </Stack>
-                  )}
-                </Box>
-              ))}
-            </Stack>
-          </CardContent>
-        </Card>
+        <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+          <OwnerWorkspaceHistoryTab
+            historyEntityFilter={historyEntityFilter}
+            historyActionFilter={historyActionFilter}
+            historyEntityIdFilter={historyEntityIdFilter}
+            historyAuthorFilter={historyAuthorFilter}
+            historyCreatedFrom={historyCreatedFrom}
+            historyCreatedTo={historyCreatedTo}
+            historyLimit={historyLimit}
+            historySortOrder={historySortOrder}
+            historyActionOptions={historyActionOptions}
+            userOptions={userOptions}
+            historyLogs={historyLogs}
+            historyStats={historyStats}
+            historyStatsLoading={historyStatsLoading}
+            historyStatsLoadedAt={historyStatsLoadedAt}
+            historyVisibleSummary={historyVisibleSummary}
+            historyExpandedIds={historyExpandedIds}
+            historyDayMax={historyDayMax}
+            historyActiveFilterChips={historyActiveFilterChips}
+            onHistoryEntityFilterChange={setHistoryEntityFilter}
+            onHistoryActionFilterChange={setHistoryActionFilter}
+            onHistoryEntityIdFilterChange={setHistoryEntityIdFilter}
+            onHistoryAuthorFilterChange={setHistoryAuthorFilter}
+            onHistoryCreatedFromChange={setHistoryCreatedFrom}
+            onHistoryCreatedToChange={setHistoryCreatedTo}
+            onHistoryLimitChange={setHistoryLimit}
+            onHistorySortOrderChange={setHistorySortOrder}
+            onApplyHistoryPreset={applyHistoryPreset}
+            onResetHistoryFilters={resetHistoryFilters}
+            onRefreshHistoryView={refreshHistoryView}
+            onExpandAllVisibleHistoryEntries={expandAllVisibleHistoryEntries}
+            onCollapseAllVisibleHistoryEntries={collapseAllVisibleHistoryEntries}
+            onCopyHistoryLink={copyHistoryLink}
+            onOpenHistoryLinkInNewTab={openHistoryLinkInNewTab}
+            onCopyHistoryStatsSummary={copyHistoryStatsSummary}
+            onCopyHistoryStatsJson={copyHistoryStatsJson}
+            onExportHistoryCsv={exportHistoryCsv}
+            onExportHistoryJson={exportHistoryJson}
+            onExportHistoryStatsJson={exportHistoryStatsJson}
+            onExportHistoryStatsCsv={exportHistoryStatsCsv}
+            onApplyHistoryEntityQuickFilter={applyHistoryEntityQuickFilter}
+            onApplyHistoryActionQuickFilter={applyHistoryActionQuickFilter}
+            onApplyHistoryAuthorQuickFilter={applyHistoryAuthorQuickFilter}
+            onApplyHistoryDayQuickFilter={applyHistoryDayQuickFilter}
+            onClearHistoryFilterChip={clearHistoryFilterChip}
+            onOpenHistoryEntity={openHistoryEntity}
+            onApplyHistoryExactEntityQuickFilter={applyHistoryExactEntityQuickFilter}
+            onToggleExpandedHistoryEntry={toggleExpandedHistoryEntry}
+            ownerWsHistoryPrimaryLabel={ownerWsHistoryPrimaryLabel}
+            ownerWsHistoryChangedFields={ownerWsHistoryChangedFields}
+            ownerWsHistoryPayloadText={ownerWsHistoryPayloadText}
+            userName={userName}
+            historyStatsPercentLabel={historyStatsPercentLabel}
+            historyEntityLabels={OWNER_WS_HISTORY_ENTITY_LABELS}
+            historyActionLabels={OWNER_WS_HISTORY_ACTION_LABELS}
+            historyLoading={historyLoading}
+          />
+        </Suspense>
       )}
 
       {loading && <Typography sx={{ mt: 2 }}>Загрузка…</Typography>}
@@ -9631,552 +7586,59 @@ const OwnerWorkspacePage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <OwnerWorkspaceSettingsDialogs
-        settingsBundleDialogOpen={settingsBundleDialogOpen}
-        settingsBundleImporting={settingsBundleImporting}
-        settingsBundleImportText={settingsBundleImportText}
-        parsedSettingsBundleInput={parsedSettingsBundleInput}
-        settingsSnapshotCreateOpen={settingsSnapshotCreateOpen}
-        settingsSnapshotEditOpen={settingsSnapshotEditOpen}
-        settingsSnapshotCreating={settingsSnapshotCreating}
-        settingsSnapshotName={settingsSnapshotName}
-        settingsSnapshotNote={settingsSnapshotNote}
-        settingsSnapshotPreview={settingsSnapshotPreview}
-        settingsSnapshotDeleteConfirm={settingsSnapshotDeleteConfirm}
-        settingsSnapshotDeletingId={settingsSnapshotDeletingId}
-        settingsSnapshotReview={settingsSnapshotReview}
-        settingsSnapshotApplyingId={settingsSnapshotApplyingId}
-        settingsSnapshotCompareBaseId={settingsSnapshotCompareBaseId}
-        settingsSnapshots={settingsSnapshots}
-        settingsSnapshotCompareBaseSnapshot={settingsSnapshotCompareBaseSnapshot}
-        settingsSnapshotCompareBaseSummary={settingsSnapshotCompareBaseSummary}
-        reviewedSnapshotDiff={reviewedSnapshotDiff}
-        settingsSnapshotCreateSafetyBeforeApply={settingsSnapshotCreateSafetyBeforeApply}
-        onSettingsBundleDialogClose={() => setSettingsBundleDialogOpen(false)}
-        onSettingsBundleImportTextChange={setSettingsBundleImportText}
-        onImportWorkspaceSettingsBundle={() => void importWorkspaceSettingsBundle()}
-        onSettingsSnapshotCreateClose={() => setSettingsSnapshotCreateOpen(false)}
-        onSettingsSnapshotNameChange={setSettingsSnapshotName}
-        onSettingsSnapshotNoteChange={setSettingsSnapshotNote}
-        onCreateSettingsSnapshot={() => void createSettingsSnapshot()}
-        onSettingsSnapshotEditClose={() => {
-          setSettingsSnapshotEditOpen(false);
-          setSettingsSnapshotEditingId(null);
-        }}
-        onUpdateSettingsSnapshot={() => void updateSettingsSnapshot()}
-        onSettingsSnapshotPreviewClose={() => setSettingsSnapshotPreview(null)}
-        onCopySettingsSnapshot={(snapshot) => void copySettingsSnapshot(snapshot)}
-        onExportSettingsSnapshot={exportSettingsSnapshot}
-        onSettingsSnapshotDeleteConfirmClose={() => setSettingsSnapshotDeleteConfirm(null)}
-        onDeleteSettingsSnapshot={(snapshot) => {
-          void deleteSettingsSnapshot(snapshot);
-          setSettingsSnapshotDeleteConfirm(null);
-        }}
-        onSettingsSnapshotReviewClose={() => setSettingsSnapshotReview(null)}
-        onSettingsSnapshotCompareBaseIdChange={setSettingsSnapshotCompareBaseId}
-        onSettingsSnapshotCreateSafetyBeforeApplyChange={setSettingsSnapshotCreateSafetyBeforeApply}
-        onApplySettingsSnapshot={(snapshot) => void applySettingsSnapshot(snapshot)}
-        summarizeWorkspaceSettingsBundle={summarizeWorkspaceSettingsBundle}
-      />
-
-      {false && (
-        <>
-      <Dialog open={settingsBundleDialogOpen} onClose={() => !settingsBundleImporting && setSettingsBundleDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Импорт bundle системных настроек</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <Alert severity="info">
-              Вставьте JSON bundle owner-workspace. Импорт перезапишет системные словари, policy, статусы, приоритеты и
-              конфигурацию уведомлений.
-            </Alert>
-            {!!settingsBundleImportText.trim() && parsedSettingsBundleInput.error && (
-              <Alert severity="warning">{parsedSettingsBundleInput.error}</Alert>
-            )}
-            {parsedSettingsBundleInput.bundle && (
-              <Card variant="outlined">
-                <CardContent>
-                  <Stack spacing={1.5}>
-                    <Typography variant="subtitle2">Предпросмотр bundle</Typography>
-                    {'meta' in ((parsedSettingsBundleInput.raw as Record<string, unknown>) || {}) && (
-                      <Typography variant="body2" color="text.secondary">
-                        Версия: {(parsedSettingsBundleInput.raw as { meta?: { version?: number } }).meta?.version ?? 'n/a'}
-                        {' · '}
-                        Exported at:{' '}
-                        {(parsedSettingsBundleInput.raw as { meta?: { exported_at?: string } }).meta?.exported_at
-                          ? new Date(
-                              (parsedSettingsBundleInput.raw as { meta?: { exported_at?: string } }).meta!.exported_at!
-                            ).toLocaleString('ru-RU')
-                          : 'n/a'}
-                      </Typography>
-                    )}
-                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                      {Object.entries(parsedSettingsBundleInput.bundle ? summarizeWorkspaceSettingsBundle(parsedSettingsBundleInput.bundle!) : {}).map(([key, value]) => (
-                        <Chip key={key} size="small" label={`${key}: ${value}`} />
-                      ))}
-                    </Stack>
-                  </Stack>
-                </CardContent>
-              </Card>
-            )}
-            <TextField
-              fullWidth
-              multiline
-              minRows={16}
-              label="JSON bundle"
-              value={settingsBundleImportText}
-              onChange={(e) => setSettingsBundleImportText(e.target.value)}
-              placeholder='{"task_config": {...}, "project_config": {...}}'
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSettingsBundleDialogOpen(false)} disabled={settingsBundleImporting}>
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => void importWorkspaceSettingsBundle()}
-            disabled={settingsBundleImporting || !settingsBundleImportText.trim() || !!parsedSettingsBundleInput.error}
-          >
-            {settingsBundleImporting ? 'Импорт...' : 'Импортировать'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={settingsSnapshotCreateOpen}
-        onClose={() => !settingsSnapshotCreating && setSettingsSnapshotCreateOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Создать snapshot системных настроек</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              fullWidth
-              label="Название snapshot"
-              value={settingsSnapshotName}
-              onChange={(e) => setSettingsSnapshotName(e.target.value)}
-            />
-            <TextField
-              fullWidth
-              multiline
-              minRows={3}
-              label="Комментарий"
-              value={settingsSnapshotNote}
-              onChange={(e) => setSettingsSnapshotNote(e.target.value)}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSettingsSnapshotCreateOpen(false)} disabled={settingsSnapshotCreating}>
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => void createSettingsSnapshot()}
-            disabled={settingsSnapshotCreating || !settingsSnapshotName.trim()}
-          >
-            {settingsSnapshotCreating ? 'Создаём...' : 'Создать'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={settingsSnapshotEditOpen}
-        onClose={() => !settingsSnapshotCreating && setSettingsSnapshotEditOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Редактировать snapshot системных настроек</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              fullWidth
-              label="Название snapshot"
-              value={settingsSnapshotName}
-              onChange={(e) => setSettingsSnapshotName(e.target.value)}
-            />
-            <TextField
-              fullWidth
-              multiline
-              minRows={3}
-              label="Комментарий"
-              value={settingsSnapshotNote}
-              onChange={(e) => setSettingsSnapshotNote(e.target.value)}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => {
-              setSettingsSnapshotEditOpen(false);
-              setSettingsSnapshotEditingId(null);
-            }}
-            disabled={settingsSnapshotCreating}
-          >
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => void updateSettingsSnapshot()}
-            disabled={settingsSnapshotCreating || !settingsSnapshotName.trim()}
-          >
-            {settingsSnapshotCreating ? 'Сохраняем...' : 'Сохранить'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={!!settingsSnapshotPreview}
-        onClose={() => setSettingsSnapshotPreview(null)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>JSON snapshot системных настроек</DialogTitle>
-        <DialogContent>
-          {settingsSnapshotPreview && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Chip size="small" label={settingsSnapshotPreview?.name ?? ''} />
-                <Chip size="small" variant="outlined" label={`Создан: ${settingsSnapshotPreview?.created_at ? new Date(settingsSnapshotPreview?.created_at ?? '').toLocaleString('ru-RU') : ''}`} />
-              </Stack>
-              <TextField
-                fullWidth
-                multiline
-                minRows={18}
-                value={JSON.stringify(settingsSnapshotPreview?.bundle ?? {}, null, 2)}
-                InputProps={{ readOnly: true }}
-              />
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSettingsSnapshotPreview(null)}>Закрыть</Button>
-          <Button
-            variant="outlined"
-            onClick={() => settingsSnapshotPreview && void copySettingsSnapshot(settingsSnapshotPreview)}
-          >
-            Копировать JSON
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => settingsSnapshotPreview && exportSettingsSnapshot(settingsSnapshotPreview)}
-          >
-            Экспорт
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={!!settingsSnapshotDeleteConfirm}
-        onClose={() => !settingsSnapshotDeletingId && setSettingsSnapshotDeleteConfirm(null)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Удалить snapshot</DialogTitle>
-        <DialogContent>
-          {settingsSnapshotDeleteConfirm && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Alert severity="warning">
-                Snapshot будет удалён из списка rollback-точек. Bundle, уже применённый на сервере, это не изменит.
-              </Alert>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Chip size="small" label={settingsSnapshotDeleteConfirm?.name ?? ''} />
-                <Chip size="small" variant="outlined" label={`Создан: ${settingsSnapshotDeleteConfirm?.created_at ? new Date(settingsSnapshotDeleteConfirm?.created_at ?? '').toLocaleString('ru-RU') : ''}`} />
-                {settingsSnapshotDeleteConfirm?.created_by_name && (
-                  <Chip size="small" variant="outlined" label={`Автор: ${settingsSnapshotDeleteConfirm?.created_by_name ?? ''}`} />
-                )}
-              </Stack>
-              {settingsSnapshotDeleteConfirm?.note && (
-                <Typography variant="body2" color="text.secondary">
-                  {settingsSnapshotDeleteConfirm?.note ?? ''}
-                </Typography>
-              )}
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                {Object.entries(settingsSnapshotDeleteConfirm?.bundle.meta.summary ?? {}).map(([key, value]) => (
-                  <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
-                ))}
-              </Stack>
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSettingsSnapshotDeleteConfirm(null)} disabled={!!settingsSnapshotDeletingId}>
-            Отмена
-          </Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={!settingsSnapshotDeleteConfirm || !!settingsSnapshotDeletingId}
-            onClick={() => {
-              if (settingsSnapshotDeleteConfirm) {
-                void deleteSettingsSnapshot(settingsSnapshotDeleteConfirm);
-                setSettingsSnapshotDeleteConfirm(null);
-              }
-            }}
-          >
-            {settingsSnapshotDeletingId === settingsSnapshotDeleteConfirm?.id ? 'Удаляем...' : 'Удалить snapshot'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={!!settingsSnapshotReview}
-        onClose={() => !settingsSnapshotApplyingId && setSettingsSnapshotReview(null)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Проверить и применить snapshot</DialogTitle>
-        <DialogContent>
-          {settingsSnapshotReview && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Alert severity="warning">
-                Snapshot заменит текущие системные настройки owner workspace. Перед применением можно автоматически
-                сохранить safety snapshot.
-              </Alert>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Chip size="small" label={settingsSnapshotReview?.name ?? ''} />
-                <Chip size="small" variant="outlined" label={`Создан: ${settingsSnapshotReview?.created_at ? new Date(settingsSnapshotReview?.created_at ?? '').toLocaleString('ru-RU') : ''}`} />
-                {settingsSnapshotReview?.created_by_name && (
-                  <Chip size="small" variant="outlined" label={`Автор: ${settingsSnapshotReview?.created_by_name ?? ''}`} />
-                )}
-                <Chip size="small" variant="outlined" label={`v${settingsSnapshotReview?.bundle.meta.version ?? ''}`} />
-              </Stack>
-              {settingsSnapshotReview?.note && (
-                <Typography variant="body2" color="text.secondary">
-                  {settingsSnapshotReview?.note ?? ''}
-                </Typography>
-              )}
-              <TextField
-                fullWidth
-                select
-                size="small"
-                label="Сравнить с"
-                value={settingsSnapshotCompareBaseId}
-                onChange={(e) => setSettingsSnapshotCompareBaseId(e.target.value)}
-              >
-                <MenuItem value="__current__">Текущее состояние</MenuItem>
-                {settingsSnapshots
-                  .filter((snapshot) => snapshot.id !== settingsSnapshotReview?.id)
-                  .map((snapshot) => (
-                    <MenuItem key={snapshot.id} value={snapshot.id}>
-                      {snapshot.name} · {new Date(snapshot.created_at).toLocaleString('ru-RU')}
-                    </MenuItem>
-                  ))}
-              </TextField>
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  {settingsSnapshotCompareBaseSnapshot ? 'Базовый snapshot' : 'Текущее состояние'}
-                </Typography>
-                {settingsSnapshotCompareBaseSnapshot && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {settingsSnapshotCompareBaseSnapshot?.name ?? ''}
-                    {settingsSnapshotCompareBaseSnapshot?.created_by_name ? ` · ${settingsSnapshotCompareBaseSnapshot?.created_by_name}` : ''}
-                  </Typography>
-                )}
-                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                  {settingsSnapshotCompareBaseSummary ? (
-                    Object.entries(settingsSnapshotCompareBaseSummary ?? {}).map(([key, value]) => (
-                      <Chip key={key} size="small" label={`${key}: ${value}`} />
-                    ))
-                  ) : (
-                    <Chip size="small" label="Нет загруженного bundle" />
-                  )}
-                </Stack>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  Snapshot
-                </Typography>
-                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                  {Object.entries(settingsSnapshotReview?.bundle.meta.summary ?? {}).map(([key, value]) => (
-                    <Chip key={key} size="small" variant="outlined" label={`${key}: ${value}`} />
-                  ))}
-                </Stack>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  Изменятся разделы
-                </Typography>
-                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                  {reviewedSnapshotDiff.filter((item) => item.changed).length > 0 ? (
-                    reviewedSnapshotDiff
-                      .filter((item) => item.changed)
-                      .map((item) => (
-                        <Chip key={item.key} color="warning" variant="outlined" size="small" label={item.label} />
-                      ))
-                  ) : (
-                    <Chip size="small" color="success" label="Отличий не найдено" />
-                  )}
-                </Stack>
-              </Box>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={settingsSnapshotCreateSafetyBeforeApply}
-                    onChange={(e) => setSettingsSnapshotCreateSafetyBeforeApply(e.target.checked)}
-                  />
-                }
-                label="Автоматически создать safety snapshot перед применением"
-              />
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSettingsSnapshotReview(null)} disabled={!!settingsSnapshotApplyingId}>
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            disabled={!settingsSnapshotReview || !!settingsSnapshotApplyingId}
-            onClick={() => settingsSnapshotReview && void applySettingsSnapshot(settingsSnapshotReview)}
-          >
-            {settingsSnapshotApplyingId === settingsSnapshotReview?.id ? 'Применяем...' : 'Применить snapshot'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-        </>
-      )}
-
-      <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Поиск по задачнику</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            autoFocus
-            margin="dense"
-            label="Запрос"
-            placeholder="Минимум 2 символа — проекты, контакты, задачи, переписка"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <Box sx={{ minHeight: 40, display: 'flex', alignItems: 'center', gap: 1, my: 1 }}>
-            {searchLoading && <CircularProgress size={24} />}
-            {searchQuery.trim().length > 0 && searchQuery.trim().length < 2 && (
-              <Typography variant="caption" color="text.secondary">
-                Введите ещё символы
-              </Typography>
-            )}
-          </Box>
-          {searchResults && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Проекты ({searchResults.projects.length})
-                </Typography>
-                <Stack spacing={0.25}>
-                  {searchResults.projects.map((p) => (
-                    <Button
-                      key={p.id}
-                      size="small"
-                      variant="text"
-                      sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
-                      onClick={() => void openSearchHitProject(p.id)}
-                    >
-                      {p.name} · {p.status}
-                    </Button>
-                  ))}
-                  {searchResults.projects.length === 0 && (
-                    <Typography variant="body2" color="text.secondary">
-                      —
-                    </Typography>
-                  )}
-                </Stack>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Контакты ({searchResults.contacts.length})
-                </Typography>
-                <Stack spacing={0.25}>
-                  {searchResults.contacts.map((c) => (
-                    <Button
-                      key={c.id}
-                      size="small"
-                      variant="text"
-                      sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
-                      onClick={() => void openSearchHitContact(c.id)}
-                    >
-                      {c.full_name} · {c.phone}
-                    </Button>
-                  ))}
-                  {searchResults.contacts.length === 0 && (
-                    <Typography variant="body2" color="text.secondary">
-                      —
-                    </Typography>
-                  )}
-                </Stack>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Задачи ({searchResults.tasks.length})
-                </Typography>
-                <Stack spacing={0.25}>
-                  {searchResults.tasks.map((t) => (
-                    <Button
-                      key={t.id}
-                      size="small"
-                      variant="text"
-                      sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
-                      onClick={() => void openSearchHitTask(t.id)}
-                    >
-                      #{t.id} · {t.title} ({statusLabels[t.status] || t.status})
-                    </Button>
-                  ))}
-                  {searchResults.tasks.length === 0 && (
-                    <Typography variant="body2" color="text.secondary">
-                      —
-                    </Typography>
-                  )}
-                </Stack>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Сообщения ({(searchResults.messages ?? []).length})
-                </Typography>
-                <Stack spacing={0.25}>
-                  {(searchResults.messages ?? []).map((m) => (
-                    <Button
-                      key={m.id}
-                      size="small"
-                      variant="text"
-                      sx={{ justifyContent: 'flex-start', textTransform: 'none', alignItems: 'flex-start' }}
-                      onClick={() => void openSearchHitMessage(m.contact_id)}
-                    >
-                      <Box sx={{ textAlign: 'left' }}>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          {m.contact_name || `Контакт #${m.contact_id}`} ·{' '}
-                          {m.direction === 'incoming' ? 'входящее' : m.direction === 'outgoing' ? 'исходящее' : m.direction}
-                          {m.created_at
-                            ? ` · ${new Date(m.created_at).toLocaleString('ru-RU', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}`
-                            : ''}
-                        </Typography>
-                        <Typography variant="body2">{m.text_preview}</Typography>
-                      </Box>
-                    </Button>
-                  ))}
-                  {(searchResults.messages ?? []).length === 0 && (
-                    <Typography variant="body2" color="text.secondary">
-                      —
-                    </Typography>
-                  )}
-                </Stack>
-              </Box>
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSearchOpen(false)}>Закрыть</Button>
-        </DialogActions>
-      </Dialog>
+      <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+        <OwnerWorkspaceSettingsDialogs
+          settingsBundleDialogOpen={settingsBundleDialogOpen}
+          settingsBundleImporting={settingsBundleImporting}
+          settingsBundleImportText={settingsBundleImportText}
+          parsedSettingsBundleInput={parsedSettingsBundleInput}
+          settingsSnapshotCreateOpen={settingsSnapshotCreateOpen}
+          settingsSnapshotEditOpen={settingsSnapshotEditOpen}
+          settingsSnapshotCreating={settingsSnapshotCreating}
+          settingsSnapshotName={settingsSnapshotName}
+          settingsSnapshotNote={settingsSnapshotNote}
+          settingsSnapshotPreview={settingsSnapshotPreview}
+          settingsSnapshotDeleteConfirm={settingsSnapshotDeleteConfirm}
+          settingsSnapshotDeletingId={settingsSnapshotDeletingId}
+          settingsSnapshotReview={settingsSnapshotReview}
+          settingsSnapshotApplyingId={settingsSnapshotApplyingId}
+          settingsSnapshotCompareBaseId={settingsSnapshotCompareBaseId}
+          settingsSnapshots={settingsSnapshots}
+          settingsSnapshotCompareBaseSnapshot={settingsSnapshotCompareBaseSnapshot}
+          settingsSnapshotCompareBaseSummary={settingsSnapshotCompareBaseSummary}
+          reviewedSnapshotDiff={reviewedSnapshotDiff}
+          settingsSnapshotCreateSafetyBeforeApply={settingsSnapshotCreateSafetyBeforeApply}
+          onSettingsBundleDialogClose={() => setSettingsBundleDialogOpen(false)}
+          onSettingsBundleImportTextChange={setSettingsBundleImportText}
+          onImportWorkspaceSettingsBundle={() => void importWorkspaceSettingsBundle()}
+          onSettingsSnapshotCreateClose={() => setSettingsSnapshotCreateOpen(false)}
+          onSettingsSnapshotNameChange={setSettingsSnapshotName}
+          onSettingsSnapshotNoteChange={setSettingsSnapshotNote}
+          onCreateSettingsSnapshot={() => void createSettingsSnapshot()}
+          onSettingsSnapshotEditClose={() => {
+            setSettingsSnapshotEditOpen(false);
+            setSettingsSnapshotEditingId(null);
+          }}
+          onUpdateSettingsSnapshot={() => void updateSettingsSnapshot()}
+          onSettingsSnapshotPreviewClose={() => setSettingsSnapshotPreview(null)}
+          onCopySettingsSnapshot={(snapshot) => void copySettingsSnapshot(snapshot)}
+          onExportSettingsSnapshot={exportSettingsSnapshot}
+          onSettingsSnapshotDeleteConfirmClose={() => setSettingsSnapshotDeleteConfirm(null)}
+          onDeleteSettingsSnapshot={(snapshot) => {
+            void deleteSettingsSnapshot(snapshot);
+            setSettingsSnapshotDeleteConfirm(null);
+          }}
+          onSettingsSnapshotReviewClose={() => setSettingsSnapshotReview(null)}
+          onSettingsSnapshotCompareBaseIdChange={setSettingsSnapshotCompareBaseId}
+          onSettingsSnapshotCreateSafetyBeforeApplyChange={setSettingsSnapshotCreateSafetyBeforeApply}
+          onApplySettingsSnapshot={(snapshot) => void applySettingsSnapshot(snapshot)}
+          summarizeWorkspaceSettingsBundle={summarizeWorkspaceSettingsBundle}
+        />
+      </Suspense>
     </Layout>
   );
 };
 
 export default OwnerWorkspacePage;
+
+

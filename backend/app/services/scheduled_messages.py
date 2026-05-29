@@ -17,6 +17,7 @@ from app.services.max_messenger import (
     is_personal_configured,
     get_personal_provider,
 )
+from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def _dispatch_sms(db: Session) -> int:
     if not sms_is_configured():
         return 0
 
-    now = datetime.utcnow()
+    now = utcnow()
     pending = (
         db.query(SmsMessage)
         .filter(SmsMessage.status == "scheduled", SmsMessage.scheduled_at <= now)
@@ -40,7 +41,7 @@ def _dispatch_sms(db: Session) -> int:
             if success:
                 record.status = "sent"
                 record.gateway_id = gateway_id
-                record.sent_at = datetime.utcnow()
+                record.sent_at = utcnow()
                 sent_count += 1
                 logger.info("scheduled_sms_sent: id=%s phone=%s", record.id, record.phone)
 
@@ -53,7 +54,7 @@ def _dispatch_sms(db: Session) -> int:
                         channel="sms",
                         message=record.message,
                         pause_reason=None,
-                        follow_up_at=datetime.utcnow(),
+                        follow_up_at=utcnow(),
                     )
                     db.add(comm)
             else:
@@ -71,7 +72,7 @@ def _dispatch_max(db: Session) -> int:
     if not max_is_configured():
         return 0
 
-    now = datetime.utcnow()
+    now = utcnow()
     pending = (
         db.query(MaxMessage)
         .filter(MaxMessage.status == "scheduled", MaxMessage.scheduled_at <= now)
@@ -98,7 +99,7 @@ def _dispatch_max(db: Session) -> int:
             if success:
                 record.status = "sent"
                 record.gateway_message_id = message_id
-                record.sent_at = datetime.utcnow()
+                record.sent_at = utcnow()
                 sent_count += 1
                 logger.info("scheduled_max_sent: id=%s", record.id)
 
@@ -110,7 +111,7 @@ def _dispatch_max(db: Session) -> int:
                         channel="max",
                         message=record.message,
                         pause_reason=None,
-                        follow_up_at=datetime.utcnow(),
+                        follow_up_at=utcnow(),
                     )
                     db.add(comm)
             else:

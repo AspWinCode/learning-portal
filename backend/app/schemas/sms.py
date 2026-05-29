@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SmsSendRequest(BaseModel):
@@ -29,8 +29,7 @@ class SmsMessageResponse(BaseModel):
     sent_at: Optional[datetime] = None
     created_by: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SmsTemplateResponse(BaseModel):
@@ -44,8 +43,7 @@ class SmsTemplateResponse(BaseModel):
     active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

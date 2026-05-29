@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.schemas.abonements import AbonementResponse
 from app.schemas.common import StudentStatus
@@ -39,8 +39,7 @@ class StudentResponse(StudentBase):
     programs: Optional[List[ProgramSummaryResponse]] = []
     in_group: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StudentListResponse(BaseModel):
@@ -105,8 +104,7 @@ class StudentAccountTransactionResponse(BaseModel):
     lesson_attendance_id: Optional[int] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StudentAccountResponse(BaseModel):
@@ -118,8 +116,7 @@ class StudentAccountResponse(BaseModel):
     updated_at: Optional[datetime] = None
     transactions: Optional[List[StudentAccountTransactionResponse]] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StudentAccountPaymentRequest(BaseModel):
@@ -144,8 +141,7 @@ class StudentActivityLogResponse(BaseModel):
     actor_user_name: Optional[str] = None
     payload_json: Optional[dict] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

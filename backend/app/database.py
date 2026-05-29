@@ -1,8 +1,9 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from contextlib import contextmanager
 import os
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.observability import configure_sqlalchemy_observability
 
@@ -24,10 +25,23 @@ Base = declarative_base()
 
 
 def get_db():
-    """Dependency для получения сессии БД"""
+    """Dependency for a database session with rollback on unhandled errors."""
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
+
+@contextmanager
+def db_transaction(db: Session):
+    """Atomic transaction wrapper for multi-step write flows."""
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

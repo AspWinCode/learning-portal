@@ -66,6 +66,7 @@ from app.schemas.sales import (
     SalesSchoolResponse,
     SalesSchoolUpdate,
 )
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -87,7 +88,7 @@ async def get_sales_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("sales.access")),
 ):
-    now = datetime.utcnow()
+    now = utcnow()
     start_month = datetime(now.year, now.month, 1)
     end_month = datetime(now.year + (1 if now.month == 12 else 0), 1 if now.month == 12 else now.month + 1, 1)
     start_today = datetime(now.year, now.month, now.day)
@@ -268,7 +269,7 @@ async def list_follow_ups(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("sales.access")),
 ):
-    now = datetime.utcnow()
+    now = utcnow()
     start_today = datetime(now.year, now.month, now.day)
     end_today = start_today + timedelta(days=1)
     start_tomorrow = end_today

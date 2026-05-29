@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
-from app.database import get_db
+from app.database import db_transaction, get_db
 from app.models import (
     User,
     UserRole,
@@ -826,16 +826,14 @@ async def import_finance_transactions(
             teacher_id=None,
             status=FinanceTransactionStatus.NEW,
         )
-        db.add(tx)
-        # авто‑классификация по правилам для новых импортированных операций
-        apply_recognition_rules(db, tx)
         try:
-            # Коммитим построчно, чтобы перехватить возможные уникальные конфликты
-            db.commit()
+            with db_transaction(db):
+                db.add(tx)
+                # авто-классификация по правилам для новых импортированных операций
+                apply_recognition_rules(db, tx)
             created += 1
         except IntegrityError:
             # Дубликат по уникальному индексу или другой конфликт — пропускаем строку
-            db.rollback()
             skipped += 1
 
     if filename.endswith(".csv"):
@@ -1071,8 +1069,8 @@ async def create_manual_transaction(
         teacher_id=None,
         status=FinanceTransactionStatus.CLASSIFIED,
     )
-    db.add(tx)
-    db.commit()
+    with db_transaction(db):
+        db.add(tx)
     db.refresh(tx)
 
     tx = (
@@ -1560,7 +1558,8 @@ async def update_finance_transaction(
     if payload.transfer_group_id is not None:
         tx.transfer_group_id = payload.transfer_group_id or None
 
-    db.commit()
+    with db_transaction(db):
+        pass
     db.refresh(tx)
 
     account: Optional[FinanceAccount] = getattr(tx, "account", None)
@@ -1606,8 +1605,8 @@ async def delete_finance_transaction(
     if not tx:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
 
-    db.delete(tx)
-    db.commit()
+    with db_transaction(db):
+        db.delete(tx)
     return {"ok": True}
 
 
@@ -1660,10 +1659,9 @@ async def apply_finance_transaction_to_student(
             raise HTTPException(status_code=404, detail=str(e))
         raise HTTPException(status_code=400, detail=str(e))
 
-    tx.status = FinanceTransactionStatus.APPLIED
-    tx.student_id = payload.student_id
-
-    db.commit()
+    with db_transaction(db):
+        tx.status = FinanceTransactionStatus.APPLIED
+        tx.student_id = payload.student_id
     db.refresh(tx)
 
     account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)
@@ -1714,7 +1712,8 @@ async def create_student_account_finance(
         if "not found" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
-    db.commit()
+    with db_transaction(db):
+        pass
     db.refresh(account)
     return StudentAccountResponse.model_validate(account)
 
@@ -1734,10 +1733,12 @@ async def apply_bank_transaction_to_student(
     Канонический API Finance; дублирует функциональность POST /api/sales/bank-transactions/{id}/apply (compatibility layer).
     """
     try:
-        result = bank_operation_apply(db, transaction_id, payload.student_id)
+        with db_transaction(db):
+            result = bank_operation_apply(db, transaction_id, payload.student_id)
     except ValueError as e:
         msg = str(e)
         if "не найден" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
+    db.refresh(result.transaction)
     return BankTransactionResponse.model_validate(result.transaction)

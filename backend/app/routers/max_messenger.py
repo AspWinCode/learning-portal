@@ -14,6 +14,7 @@ from app import auth
 from app.database import get_db
 from app.models import User, Lead, LeadCommunication, MaxMessage
 from app.schemas.communications import MaxSendRequest, MaxSendResponse
+from app.utils.datetime import utcnow
 from app.utils.phone import normalize_phone
 from app.services.max_messenger import (
     send_message,
@@ -128,7 +129,7 @@ def _send_max_immediately(
             channel="max",
             message=message,
             pause_reason=None,
-            follow_up_at=datetime.utcnow(),
+            follow_up_at=utcnow(),
         )
         db.add(comm)
         db.commit()
@@ -230,7 +231,7 @@ def api_max_process_scheduled(
             )
             m.status = "sent" if resp.success else "failed"
             m.gateway_message_id = resp.message_id
-            m.sent_at = datetime.utcnow()
+            m.sent_at = utcnow()
         except HTTPException as e:
             m.status = "failed"
             logger.warning("max_failed_scheduled: id=%s error=%s", m.id, e.detail)

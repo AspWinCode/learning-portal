@@ -33,6 +33,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.utils.datetime import utcnow
 from app.routers.action_log import log_action
 from app.schemas.sales import (
     LeadCreate,
@@ -242,7 +243,7 @@ async def list_leads(
     if tag:
         query = query.filter(Lead.tags.isnot(None), cast(Lead.tags, Text).ilike(f"%{tag.strip()}%"))
     if overdue_only:
-        now = datetime.utcnow()
+        now = utcnow()
         query = query.filter(Lead.next_contact_at.isnot(None), Lead.next_contact_at < now)
     if created_from:
         query = query.filter(Lead.created_at >= created_from)

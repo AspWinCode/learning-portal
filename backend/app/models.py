@@ -224,9 +224,9 @@ class Student(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
-    parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     from_lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
-    abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True)
+    abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True, index=True)
     status = Column(_StudentStatusType(), default=StudentStatus.ACTIVE)
     training_start_date = Column(Date, nullable=True)  # с этой даты ученик в уроках; от неё считаются оплата и напоминания
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -375,7 +375,7 @@ class Lead(Base):
     source_id = Column(Integer, ForeignKey("lead_sources.id"), nullable=True, index=True)
     referral_name = Column(String, nullable=True)
     tags = Column(JSON, nullable=True)
-    abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True)
+    abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True, index=True)
     desired_slot = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
     next_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)
@@ -1191,8 +1191,8 @@ class GroupStudent(Base):
     __tablename__ = "group_students"
 
     id = Column(Integer, primary_key=True, index=True)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
-    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     left_at = Column(DateTime(timezone=True), nullable=True)  # когда ученик вышел из группы; NULL = ещё в группе
 
@@ -1206,7 +1206,7 @@ class GroupSchedule(Base):
     __tablename__ = "group_schedules"
 
     id = Column(Integer, primary_key=True, index=True)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
     day_of_week = Column(Integer, nullable=False)  # 0=Monday, 6=Sunday
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
@@ -1272,9 +1272,9 @@ class LessonAttendance(Base):
     __table_args__ = (UniqueConstraint("group_id", "lesson_date", "student_id", name="uq_lesson_attendance_group_date_student"),)
 
     id = Column(Integer, primary_key=True, index=True)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
     lesson_date = Column(Date, nullable=False)
-    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
     # Фактический тренер, который вёл занятие (для истории и расчётов).
     # Может отличаться от current group.trainer_id, если были подмены или смена тренера в середине месяца.
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)

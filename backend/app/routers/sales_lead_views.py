@@ -33,6 +33,7 @@ from app.schemas.sales import (
     LeadResponse,
     LeadSidebarSummary,
 )
+from app.utils.datetime import utcnow
 from app.services.ai_insights import build_lead_ai_insight
 from app.services.lead_post_visit import update_lead_post_visit_stage as lead_post_visit_update_stage
 
@@ -228,7 +229,7 @@ async def get_lead_card(
         .order_by(LeadTask.due_at.asc().nullslast())
         .first()
     )
-    now = datetime.utcnow()
+    now = utcnow()
     today_start = datetime.combine(date.today(), dt_time.min)
     today_end = datetime.combine(date.today(), dt_time.max)
     if next_task:
@@ -409,7 +410,7 @@ async def create_lead_activity(
     if payload.status_effect_to and payload.status_effect_to != lead.status.value:
         lead.status = LeadStatus(payload.status_effect_to)
     if payload.type in ("call", "no_answer", "info_sent"):
-        lead.last_contact_at = datetime.utcnow()
+        lead.last_contact_at = utcnow()
 
     db.commit()
     db.refresh(activity)
@@ -462,7 +463,7 @@ async def update_lead_post_visit_stage(
 
     lead = result.lead
     if result.need_auto_task and not _has_open_task_like(db, lead.id, "[auto_post_visit_agreed]"):
-        due_at = datetime.utcnow() + timedelta(hours=48)
+        due_at = utcnow() + timedelta(hours=48)
         auto_task = _create_auto_event_task(
             db,
             lead=lead,

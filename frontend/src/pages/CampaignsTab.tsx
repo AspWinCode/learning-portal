@@ -33,7 +33,7 @@ import ArrowBack from '@mui/icons-material/ArrowBack';
 import Edit from '@mui/icons-material/Edit';
 import History from '@mui/icons-material/History';
 import { useAuth } from '../contexts/AuthContext';
-import { campaignsApi } from '../services/api';
+import { b2bApi, campaignsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
 import type { Campaign, SchoolCampaign } from '../types';
@@ -104,7 +104,7 @@ export const CampaignsTab: React.FC = () => {
 
   useEffect(() => {
     if (createOpen) {
-      import('../services/api').then(({ b2bApi }) => b2bApi.listManagers().then(setManagers).catch(() => {}));
+      b2bApi.listManagers().then(setManagers).catch(() => {});
     }
   }, [createOpen]);
 

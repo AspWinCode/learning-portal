@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.schemas.users import UserResponse
 
@@ -32,8 +32,7 @@ class ProjectStageResponse(BaseModel):
     name: str
     position: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectCardResponse(BaseModel):
@@ -46,8 +45,7 @@ class ProjectCardResponse(BaseModel):
     created_at: datetime
     display_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectStageCreate(BaseModel):
@@ -70,8 +68,7 @@ class ProjectResponse(ProjectBase):
     stages: Optional[List[ProjectStageResponse]] = []
     card_count: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

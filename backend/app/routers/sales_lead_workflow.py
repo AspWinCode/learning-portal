@@ -31,6 +31,7 @@ from app.schemas.sales import (
     LeadTaskResponse,
     LeadTaskUpdate,
 )
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -109,7 +110,7 @@ async def create_lead_communication(
     if channel not in {"messenger", "call", "email"}:
         raise HTTPException(status_code=400, detail="Unsupported channel")
     message = (payload.message or "").strip() or f"[quick-{channel}]"
-    follow_up_at = payload.follow_up_at or datetime.utcnow()
+    follow_up_at = payload.follow_up_at or utcnow()
 
     communication = LeadCommunication(
         lead_id=lead.id,
@@ -150,7 +151,7 @@ async def send_info_for_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
 
-    if payload.follow_up_at <= datetime.utcnow():
+    if payload.follow_up_at <= utcnow():
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
     message = (payload.message or "").strip()
     if not message:
@@ -224,7 +225,7 @@ async def save_lead_contact_result(
 
     if outcome in {"no_answer", "callback"} and payload.follow_up_at is None:
         raise HTTPException(status_code=400, detail="follow_up_at is required for this outcome")
-    if payload.follow_up_at and payload.follow_up_at <= datetime.utcnow():
+    if payload.follow_up_at and payload.follow_up_at <= utcnow():
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
 
     label_map = {
@@ -243,7 +244,7 @@ async def save_lead_contact_result(
         channel="call",
         message=message,
         pause_reason=None,
-        follow_up_at=payload.follow_up_at or datetime.utcnow(),
+        follow_up_at=payload.follow_up_at or utcnow(),
     )
     db.add(communication)
 
@@ -344,7 +345,7 @@ async def create_lead_task(
             assigned_to_id=assignee_id,
             category="leads",
             status=TaskStatus.ACTIVE.value,
-            due_at=datetime.utcnow(),
+            due_at=utcnow(),
             priority="normal",
             tags=["send_info", f"lead:{lead.id}"],
         )
@@ -416,7 +417,7 @@ async def close_lead_task(
     )
     if closed_status:
         task.status_option_id = closed_status.id
-    task.updated_at = datetime.utcnow()
+    task.updated_at = utcnow()
     db.commit()
     db.refresh(task)
 
@@ -435,7 +436,7 @@ async def close_lead_task(
             .order_by(LeadTaskStatusOptionModel.id.asc())
             .first()
         )
-        follow_up_due = datetime.utcnow() + timedelta(days=2)
+        follow_up_due = utcnow() + timedelta(days=2)
         follow_up = LeadTask(
             lead_id=lead_id,
             owner_id=current_user.id,
@@ -490,7 +491,7 @@ async def update_lead_task(
         task.channel = update_data["channel"]
     if "due_at" in update_data:
         task.due_at = update_data["due_at"]
-    task.updated_at = datetime.utcnow()
+    task.updated_at = utcnow()
     db.commit()
     db.refresh(task)
     log_action(db, current_user.id, "update", "lead_task", task.id, update_data)

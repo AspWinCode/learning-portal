@@ -97,6 +97,7 @@ def get_owner_workspace_permission_policy(db: Session) -> dict:
 
 
 def _base_accessible_project_ids(db: Session, user_id: int) -> Set[int]:
+    auth.ensure_persisted_user_id(user_id)
     owned = {
         r[0]
         for r in db.query(OwnerWorkspaceProject.id)
@@ -130,6 +131,7 @@ def _expand_with_subprojects(db: Session, seed: Set[int]) -> Set[int]:
 
 
 def accessible_project_ids(db: Session, user_id: int) -> Set[int]:
+    auth.ensure_persisted_user_id(user_id)
     base = _base_accessible_project_ids(db, user_id)
     return _expand_with_subprojects(db, base)
 
@@ -146,6 +148,7 @@ def contact_ids_linked_to_projects(db: Session, project_ids: Set[int]) -> Set[in
 
 
 def contact_ids_from_user_tasks(db: Session, user_id: int) -> Set[int]:
+    auth.ensure_persisted_user_id(user_id)
     rows = (
         db.query(OwnerWorkspaceTask.contact_id)
         .filter(
@@ -159,6 +162,7 @@ def contact_ids_from_user_tasks(db: Session, user_id: int) -> Set[int]:
 
 
 def visible_contact_ids_limited(db: Session, user_id: int, project_ids: Set[int]) -> Set[int]:
+    auth.ensure_persisted_user_id(user_id)
     return contact_ids_linked_to_projects(db, project_ids) | contact_ids_from_user_tasks(db, user_id)
 
 
@@ -215,6 +219,7 @@ def task_visible(ctx: OwnerWorkspaceAccessContext, task: OwnerWorkspaceTask) -> 
 
 def user_can_see_owner_workspace_task(db: Session, user_id: int, task: OwnerWorkspaceTask) -> bool:
     """Проверка видимости задачи для другого пользователя (упоминания, уведомления)."""
+    auth.ensure_persisted_user_id(user_id)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return False
@@ -239,11 +244,13 @@ def project_visible(ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
 
 
 def is_project_owner(db: Session, user_id: int, project_id: int) -> bool:
+    auth.ensure_persisted_user_id(user_id)
     p = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
     return bool(p and p.owner_id == user_id)
 
 
 def is_project_participant(db: Session, user_id: int, project_id: int) -> bool:
+    auth.ensure_persisted_user_id(user_id)
     return (
         db.query(OwnerWorkspaceProjectParticipant)
         .filter(
@@ -256,6 +263,7 @@ def is_project_participant(db: Session, user_id: int, project_id: int) -> bool:
 
 
 def project_participant_record(db: Session, project_id: int, user_id: int) -> Optional[OwnerWorkspaceProjectParticipant]:
+    auth.ensure_persisted_user_id(user_id)
     return (
         db.query(OwnerWorkspaceProjectParticipant)
         .filter(

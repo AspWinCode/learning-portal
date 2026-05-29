@@ -1,19 +1,41 @@
-import hmac
 import hashlib
+import hmac
 import secrets
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from app.database import get_db
+
 from app import auth
-from app.rate_limit import limiter
-from app.schemas.auth import Token, UserLogin, PasswordReset, PasswordResetConfirm, SetPasswordByInvite
-from app.schemas.users import UserResponse
+from app.database import get_db
 from app.models import User
+from app.rate_limit import limiter
+from app.schemas.auth import (
+    ParentInviteRequest,
+    ParentInviteResponse,
+    PasswordReset,
+    PasswordResetConfirm,
+    SetPasswordByInvite,
+    Token,
+    UserLogin,
+)
+from app.schemas.users import UserResponse
 from app.services.telegram import notify_user
 
 router = APIRouter()
+
+
+def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
+    raw = str(authorization or "").strip()
+    if not raw:
+        return None
+    parts = raw.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    token = parts[1].strip()
+    return token or None
 
 
 @router.post("/login", response_model=Token)
@@ -21,7 +43,7 @@ router = APIRouter()
 async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     user = auth.authenticate_user(db, form_data.username, form_data.password)
     if not user:
@@ -32,22 +54,29 @@ async def login(
         )
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
-        data={"sub": user.email, "role": user.role.value}, expires_delta=access_token_expires
+        data={"sub": user.email, "role": user.role.value},
+        expires_delta=access_token_expires,
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/guest", response_model=Token)
 async def guest_login():
-    """
-    Guest login without credentials.
-    Creates a JWT with role=guest, not tied to a DB user.
-    """
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(hours=auth.GUEST_TOKEN_EXPIRE_HOURS)
     access_token = auth.create_access_token(
-        data={"sub": "guest", "role": "guest"}, expires_delta=access_token_expires
+        data={"sub": "guest", "role": "guest"},
+        expires_delta=access_token_expires,
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/logout")
+async def logout(
+    token: str = Depends(auth.oauth2_scheme),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    auth.blacklist_token(token)
+    return {"message": "Logged out"}
 
 
 @router.post("/password-reset")
@@ -55,11 +84,8 @@ async def guest_login():
 async def password_reset(
     request: Request,
     payload: PasswordReset,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """
-    Backward-compatible alias for request endpoint.
-    """
     return await _password_reset_request_impl(payload, db)
 
 
@@ -74,19 +100,17 @@ def _hash_invite_token(token: str) -> str:
 
 
 def _now_for(expires_at: datetime) -> datetime:
-    # Сравнение naive/aware безопасно
     if expires_at and getattr(expires_at, "tzinfo", None) is not None:
         return datetime.now(expires_at.tzinfo)
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 async def _password_reset_request_impl(payload: PasswordReset, db: Session):
     user = auth.get_user_by_email(db, payload.email)
 
     if user:
-        # 6-значный код, удобно вводить руками
         code = "".join(secrets.choice("0123456789") for _ in range(6))
-        expires_at = datetime.utcnow() + timedelta(minutes=15)
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=15)
 
         user.password_reset_code_hash = _hash_reset_code(code)
         user.password_reset_expires_at = expires_at
@@ -94,20 +118,16 @@ async def _password_reset_request_impl(payload: PasswordReset, db: Session):
         db.commit()
         db.refresh(user)
 
-        sent_to_telegram = False
         if user.telegram_chat_id:
             try:
                 await notify_user(
                     db,
                     user.id,
-                    f"Код для сброса пароля: {code}\n"
-                    f"Действителен 15 минут."
+                    f"Код для сброса пароля: {code}\nДействителен 15 минут.",
                 )
-                sent_to_telegram = True
             except Exception:
-                sent_to_telegram = False
+                pass
 
-    # Всегда возвращаем успех (не раскрываем существование email)
     return {"message": "Если email существует, код для сброса пароля отправлен (в Telegram, если он привязан)"}
 
 
@@ -116,24 +136,22 @@ async def _password_reset_request_impl(payload: PasswordReset, db: Session):
 async def password_reset_request(
     request: Request,
     payload: PasswordReset,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """
-    Step 1: Request password reset code.
-    - If user has Telegram linked, send code there.
-    - Otherwise code is not delivered (neutral response for security).
-    """
     return await _password_reset_request_impl(payload, db)
 
 
 @router.post("/password-reset/confirm")
 async def password_reset_confirm(
     body: PasswordResetConfirm,
-    db: Session = Depends(get_db)
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
 ):
-    """
-    Step 2: Confirm reset with code and set new password.
-    """
+    try:
+        auth.validate_password_strength(body.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     user = auth.get_user_by_email(db, body.email)
     if not user:
         raise HTTPException(status_code=400, detail="Неверный код или email")
@@ -143,7 +161,6 @@ async def password_reset_confirm(
 
     now = _now_for(user.password_reset_expires_at)
     if user.password_reset_expires_at < now:
-        # очищаем просроченный код
         user.password_reset_code_hash = None
         user.password_reset_expires_at = None
         db.add(user)
@@ -160,6 +177,14 @@ async def password_reset_confirm(
     user.password_reset_expires_at = None
     db.add(user)
     db.commit()
+
+    bearer_token = _extract_bearer_token(authorization)
+    if bearer_token:
+        try:
+            auth.blacklist_token(bearer_token)
+        except Exception:
+            pass
+
     return {"message": "Пароль изменён"}
 
 
@@ -168,10 +193,11 @@ async def set_password_by_invite(
     body: SetPasswordByInvite,
     db: Session = Depends(get_db),
 ):
-    """
-    Установка пароля по ссылке-приглашению (для новых родителей).
-    Токен приходит в ссылке из приглашения.
-    """
+    try:
+        auth.validate_password_strength(body.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     token_hash = _hash_invite_token(body.token.strip())
     user = db.query(User).filter(
         User.invite_token_hash == token_hash,
@@ -197,4 +223,3 @@ async def set_password_by_invite(
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(auth.get_current_active_user)):
     return UserResponse.model_validate(current_user)
-

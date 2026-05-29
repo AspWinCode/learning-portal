@@ -8,6 +8,9 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 *.pyo
+.coverage
+htmlcov/
+.pytest_cache/
 *.pyd
 .Python
 .pytest_cache/

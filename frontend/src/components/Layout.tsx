@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
+  Collapse,
   Toolbar,
   Typography,
   Drawer,
@@ -51,6 +52,10 @@ import {
   Search,
   School,
   Bolt,
+  ChevronLeft,
+  ChevronRight,
+  ExpandLess,
+  ExpandMore,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
@@ -61,7 +66,19 @@ import {
   SIDEBAR_TEXT, SIDEBAR_TEXT_SEL, SIDEBAR_TEXT_DIM,
 } from '../theme';
 
-const drawerWidth = 240;
+const DRAWER_OPEN = 240;
+const DRAWER_MINI = 64;
+
+// Группы меню: id → массив путей
+const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
+  { id: 'education', label: 'Обучение', paths: new Set(['/dashboard', '/trainer-cockpit', '/parent-dashboard', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades']) },
+  { id: 'finance',   label: 'Финансы',  paths: new Set(['/finance/overview', '/finance/projects', '/abonements', '/calculations', '/personal-finance']) },
+  { id: 'sales',     label: 'Продажи',  paths: new Set(['/sales/leads', '/sales/pipeline', '/sales/events', '/sales/dashboard', '/sales/reports', '/sales/managers']) },
+  { id: 'ops',       label: 'Операции', paths: new Set(['/sales/instructions', '/sales/absences', '/sales/debts', '/sales/tax-deduction', '/sales/program-makeup', '/manual-lessons']) },
+  { id: 'workspace', label: 'Задачник', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects', '/owner-workspace/reports', '/owner-workspace/notifications', '/owner-workspace/settings', '/owner-workspace/counterparties']) },
+  { id: 'b2b',       label: 'B2B',      paths: new Set(['/b2b-schools', '/b2b-schools/plan']) },
+  { id: 'system',    label: 'Система',  paths: new Set(['/trainers', '/roles', '/settings', '/sales/settings', '/settings/communications', '/persons', '/reports']) },
+];
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -82,6 +99,26 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [logoSaving, setLogoSaving] = useState(false);
   const [salesSearch, setSalesSearch] = useState('');
   const [salesAlertsCount, setSalesAlertsCount] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('sb_collapsed') === '1'; } catch { return false; }
+  });
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem('sb_groups') || '{}'); } catch { return {}; }
+  });
+  const drawerWidth = sidebarCollapsed ? DRAWER_MINI : DRAWER_OPEN;
+
+  const toggleSidebar = () => setSidebarCollapsed(v => {
+    const next = !v;
+    try { localStorage.setItem('sb_collapsed', next ? '1' : '0'); } catch {}
+    return next;
+  });
+  const toggleGroup = (id: string) => setExpandedGroups(prev => {
+    const next = { ...prev, [id]: prev[id] === false };
+    try { localStorage.setItem('sb_groups', JSON.stringify(next)); } catch {}
+    return next;
+  });
+  const isGroupOpen = (id: string) => expandedGroups[id] !== false;
+
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -340,82 +377,126 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     (isOwnerWorkspaceMainSection(location.pathname) ? 'Owner задачник' : null) ??
     'Портал управления обучением';
 
+  // Группируем видимые пункты меню
+  const allGroupedPaths = new Set(NAV_GROUPS.flatMap(g => [...g.paths]));
+  const grouped = NAV_GROUPS.map(g => ({
+    ...g,
+    items: visibleMenuItems.filter(item => g.paths.has(item.path)),
+  })).filter(g => g.items.length > 0);
+  const standalone = visibleMenuItems.filter(item => !allGroupedPaths.has(item.path));
+
+  const navItem = (item: { text: string; icon: React.ReactNode; path: string }, indent = false) => {
+    const selected = isDrawerItemSelected(item.path);
+    return (
+      <Tooltip key={item.text} title={sidebarCollapsed ? item.text : ''} placement="right" arrow>
+        <ListItemButton
+          selected={selected}
+          onClick={() => { navigate(item.path); setMobileOpen(false); }}
+          sx={{
+            mx: 0.5, mb: 0.2, borderRadius: 1.5, py: 0.65,
+            pl: sidebarCollapsed ? 0 : indent ? 2.5 : 1.5,
+            justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+            color: selected ? SIDEBAR_TEXT_SEL : SIDEBAR_TEXT,
+            bgcolor: selected ? SIDEBAR_ITEM_SEL : 'transparent',
+            '&:hover': { bgcolor: selected ? SIDEBAR_ITEM_SEL : SIDEBAR_ITEM_HO },
+            '&.Mui-selected': { bgcolor: SIDEBAR_ITEM_SEL, '&:hover': { bgcolor: SIDEBAR_ITEM_SEL } },
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: sidebarCollapsed ? 0 : 34, color: selected ? SIDEBAR_ICON_SEL : SIDEBAR_ICON, justifyContent: 'center' }}>
+            {item.icon}
+          </ListItemIcon>
+          {!sidebarCollapsed && (
+            <ListItemText
+              primary={item.text}
+              primaryTypographyProps={{ fontSize: '0.84rem', fontWeight: selected ? 600 : 500, color: selected ? SIDEBAR_TEXT_SEL : SIDEBAR_TEXT }}
+            />
+          )}
+        </ListItemButton>
+      </Tooltip>
+    );
+  };
+
   const drawer = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Toolbar-высота для совмещения с AppBar */}
-      <Toolbar>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
-          {logoUrl ? (
-            <Box
-              component="img"
-              src={logoUrl}
-              alt="Логотип школы"
-              sx={{ width: 32, height: 32, borderRadius: 1.5, objectFit: 'contain', flexShrink: 0 }}
-            />
-          ) : (
-            <Box sx={{
-              width: 32, height: 32, borderRadius: 1.5, flexShrink: 0,
-              background: 'linear-gradient(135deg, #818CF8 0%, #A78BFA 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16,
-            }}>
-              🎓
-            </Box>
-          )}
-          <Box sx={{ minWidth: 0 }}>
-            <Typography noWrap sx={{ fontWeight: 700, fontSize: '0.82rem', color: SIDEBAR_TEXT, letterSpacing: -0.1, lineHeight: 1.3 }}>
-              Learning Portal
-            </Typography>
-            <Typography noWrap sx={{ fontSize: '0.68rem', color: SIDEBAR_TEXT_DIM, lineHeight: 1.2 }}>
-              Управление обучением
-            </Typography>
+      {/* Brand header */}
+      <Toolbar sx={{ px: sidebarCollapsed ? 1 : 2, minHeight: '56px !important', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}>
+        {sidebarCollapsed ? (
+          <Box sx={{ width: 32, height: 32, borderRadius: 1.5, background: 'linear-gradient(135deg, #818CF8 0%, #A78BFA 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
+            🎓
           </Box>
-        </Box>
+        ) : (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+            {logoUrl ? (
+              <Box component="img" src={logoUrl} alt="Логотип" sx={{ width: 30, height: 30, borderRadius: 1.5, objectFit: 'contain', flexShrink: 0 }} />
+            ) : (
+              <Box sx={{ width: 30, height: 30, borderRadius: 1.5, flexShrink: 0, background: 'linear-gradient(135deg, #818CF8 0%, #A78BFA 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+                🎓
+              </Box>
+            )}
+            <Box sx={{ minWidth: 0 }}>
+              <Typography noWrap sx={{ fontWeight: 700, fontSize: '0.82rem', color: SIDEBAR_TEXT, letterSpacing: -0.1, lineHeight: 1.3 }}>
+                Learning Portal
+              </Typography>
+              <Typography noWrap sx={{ fontSize: '0.67rem', color: SIDEBAR_TEXT_DIM, lineHeight: 1.2 }}>
+                Управление обучением
+              </Typography>
+            </Box>
+          </Box>
+        )}
       </Toolbar>
 
-      <Box sx={{ mx: 1.5, height: '1px', bgcolor: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
+      <Box sx={{ mx: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
 
-      <List sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 0.5 }}>
-        {visibleMenuItems.map((item) => {
-          const selected = isDrawerItemSelected(item.path);
-          return (
-            <ListItemButton
-              key={item.text}
-              selected={selected}
-              onClick={() => { navigate(item.path); setMobileOpen(false); }}
-              sx={{
-                mx: 0.5,
-                mb: 0.25,
-                borderRadius: 1.5,
-                py: 0.7,
-                color: selected ? SIDEBAR_TEXT_SEL : SIDEBAR_TEXT,
-                bgcolor: selected ? SIDEBAR_ITEM_SEL : 'transparent',
-                '&:hover': { bgcolor: selected ? SIDEBAR_ITEM_SEL : SIDEBAR_ITEM_HO },
-                '&.Mui-selected': {
-                  bgcolor: SIDEBAR_ITEM_SEL,
-                  '&:hover': { bgcolor: SIDEBAR_ITEM_SEL },
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36, color: selected ? SIDEBAR_ICON_SEL : SIDEBAR_ICON }}>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText
-                primary={item.text}
-                primaryTypographyProps={{
-                  fontSize: '0.85rem',
-                  fontWeight: selected ? 600 : 500,
-                  color: selected ? SIDEBAR_TEXT_SEL : SIDEBAR_TEXT,
+      {/* Nav list */}
+      <List sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 0.25,
+        '&::-webkit-scrollbar': { width: 3 },
+        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 4 },
+      }}>
+        {/* Standalone items (guest, parent) */}
+        {standalone.map(item => navItem(item))}
+
+        {/* Grouped items */}
+        {grouped.map(g => (
+          <Box key={g.id}>
+            {/* Group header */}
+            {!sidebarCollapsed ? (
+              <ListItemButton
+                onClick={() => toggleGroup(g.id)}
+                sx={{ py: 0.4, px: 1.5, mb: 0.25, borderRadius: 1.5,
+                  '&:hover': { bgcolor: SIDEBAR_ITEM_HO },
                 }}
-              />
-            </ListItemButton>
-          );
-        })}
+              >
+                <ListItemText
+                  primary={g.label}
+                  primaryTypographyProps={{ fontSize: '0.68rem', fontWeight: 700, color: SIDEBAR_TEXT_DIM, textTransform: 'uppercase', letterSpacing: '0.08em' }}
+                />
+                {isGroupOpen(g.id)
+                  ? <ExpandLess sx={{ fontSize: 14, color: SIDEBAR_TEXT_DIM }} />
+                  : <ExpandMore sx={{ fontSize: 14, color: SIDEBAR_TEXT_DIM }} />}
+              </ListItemButton>
+            ) : (
+              <Box sx={{ mx: 1, my: 0.75, height: '1px', bgcolor: 'rgba(255,255,255,0.06)' }} />
+            )}
+
+            <Collapse in={sidebarCollapsed || isGroupOpen(g.id)} timeout={160} unmountOnExit>
+              {g.items.map(item => navItem(item, !sidebarCollapsed))}
+            </Collapse>
+          </Box>
+        ))}
       </List>
 
-      <Typography sx={{ px: 2, py: 1, fontSize: '0.68rem', color: SIDEBAR_TEXT_DIM }}>
-        v{new Date().getFullYear()}
-      </Typography>
+      <Box sx={{ mx: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.08)' }} />
+
+      {/* Collapse toggle */}
+      <Box sx={{ display: 'flex', justifyContent: sidebarCollapsed ? 'center' : 'flex-end', px: 1, py: 0.75 }}>
+        <Tooltip title={sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'} placement="right">
+          <IconButton onClick={toggleSidebar} size="small"
+            sx={{ color: SIDEBAR_TEXT_DIM, '&:hover': { bgcolor: SIDEBAR_ITEM_HO, color: SIDEBAR_TEXT } }}
+          >
+            {sidebarCollapsed ? <ChevronRight fontSize="small" /> : <ChevronLeft fontSize="small" />}
+          </IconButton>
+        </Tooltip>
+      </Box>
     </Box>
   );
 
@@ -426,6 +507,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         sx={{
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
+          transition: 'width 200ms ease, margin 200ms ease',
         }}
       >
         <Toolbar>
@@ -527,7 +609,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </AppBar>
       <Box
         component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
+        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 }, transition: 'width 200ms ease' }}
       >
         <Drawer
           variant="temporary"
@@ -541,6 +623,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: drawerWidth,
+              transition: 'width 200ms ease',
+              overflowX: 'hidden',
               bgcolor: SIDEBAR_BG,
             },
           }}
@@ -554,6 +638,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: drawerWidth,
+              transition: 'width 200ms ease',
+              overflowX: 'hidden',
               bgcolor: SIDEBAR_BG,
             },
           }}
@@ -568,6 +654,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           flexGrow: 1,
           p: { xs: 2, sm: 3 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
+          transition: 'width 200ms ease',
         }}
       >
         <Toolbar />

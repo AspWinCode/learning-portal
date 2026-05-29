@@ -251,7 +251,7 @@ npm --version
 
 **Windows (PowerShell):**
 ```powershell
-cd "C:\Users\direc\Downloads\new project\frontend"
+cd frontend
 ```
 
 **Linux/macOS:**

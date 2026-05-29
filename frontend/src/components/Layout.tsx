@@ -55,6 +55,11 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
+import {
+  SIDEBAR_BG, SIDEBAR_ITEM_HO, SIDEBAR_ITEM_SEL,
+  SIDEBAR_ICON, SIDEBAR_ICON_SEL,
+  SIDEBAR_TEXT, SIDEBAR_TEXT_SEL, SIDEBAR_TEXT_DIM,
+} from '../theme';
 
 const drawerWidth = 240;
 
@@ -336,72 +341,89 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     'Портал управления обучением';
 
   const drawer = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <Toolbar sx={{ flexShrink: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', bgcolor: SIDEBAR_BG }}>
+      {/* ── Brand header ── */}
+      <Box sx={{ px: 2, pt: 2.5, pb: 2, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {logoUrl ? (
             <Box
               component="img"
               src={logoUrl}
               alt="Логотип школы"
               sx={{
-                width: 34,
-                height: 34,
-                borderRadius: 2,
+                width: 34, height: 34, borderRadius: 1.5,
                 objectFit: 'contain',
-                border: '1px solid rgba(15, 23, 42, 0.08)',
-                backgroundColor: '#fff',
+                border: '1px solid rgba(255,255,255,0.12)',
+                bgcolor: 'rgba(255,255,255,0.08)',
               }}
             />
           ) : (
-            <Box
-              sx={{
-                width: 34,
-                height: 34,
-                borderRadius: 2,
-                backgroundImage:
-                  'linear-gradient(135deg, rgba(37,99,235,1) 0%, rgba(124,58,237,1) 100%)',
-                boxShadow: '0px 10px 30px rgba(15, 23, 42, 0.18)',
-              }}
-            />
+            <Box sx={{
+              width: 34, height: 34, borderRadius: 1.5, flexShrink: 0,
+              background: 'linear-gradient(135deg, #818CF8 0%, #A78BFA 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 17,
+            }}>
+              🎓
+            </Box>
           )}
-          <Box>
-            <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, letterSpacing: -0.2 }}>
-              Портал управления обучением
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography noWrap sx={{ fontWeight: 700, fontSize: '0.85rem', color: SIDEBAR_TEXT, letterSpacing: -0.1 }}>
               Learning Portal
+            </Typography>
+            <Typography noWrap sx={{ fontSize: '0.7rem', color: SIDEBAR_TEXT_DIM }}>
+              Управление обучением
             </Typography>
           </Box>
         </Box>
-      </Toolbar>
-      <List sx={{ flex: 1, overflow: 'auto', py: 0 }}>
-        {visibleMenuItems.map((item) => (
-          <ListItemButton
-            key={item.text}
-            selected={isDrawerItemSelected(item.path)}
-            onClick={() => {
-              navigate(item.path);
-              setMobileOpen(false);
-            }}
-            sx={{
-              mx: 1,
-              my: 0.5,
-              borderRadius: 2,
-              '&.Mui-selected': {
-                bgcolor: 'rgba(37, 99, 235, 0.10)',
-                color: 'text.primary',
-                '& .MuiListItemIcon-root': { color: 'primary.main' },
-              },
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 40, color: 'text.secondary' }}>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.text} />
-          </ListItemButton>
-        ))}
+      </Box>
+
+      <Box sx={{ mx: 2, mb: 1, height: 1, bgcolor: 'rgba(255,255,255,0.07)', flexShrink: 0 }} />
+
+      {/* ── Nav items ── */}
+      <List sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 1,
+        '&::-webkit-scrollbar': { width: 4 },
+        '&::-webkit-scrollbar-track': { background: 'transparent' },
+        '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.12)', borderRadius: 4 },
+      }}>
+        {visibleMenuItems.map((item) => {
+          const selected = isDrawerItemSelected(item.path);
+          return (
+            <ListItemButton
+              key={item.text}
+              selected={selected}
+              onClick={() => { navigate(item.path); setMobileOpen(false); }}
+              sx={{
+                borderRadius: 1.5,
+                mb: 0.25,
+                py: 0.75,
+                color: selected ? SIDEBAR_TEXT_SEL : SIDEBAR_TEXT,
+                bgcolor: selected ? SIDEBAR_ITEM_SEL : 'transparent',
+                '&:hover': {
+                  bgcolor: selected ? SIDEBAR_ITEM_SEL : SIDEBAR_ITEM_HO,
+                },
+                '&.Mui-selected': {
+                  bgcolor: SIDEBAR_ITEM_SEL,
+                  '&:hover': { bgcolor: SIDEBAR_ITEM_SEL },
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 36, color: selected ? SIDEBAR_ICON_SEL : SIDEBAR_ICON }}>
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText
+                primary={item.text}
+                primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: selected ? 600 : 500 }}
+              />
+            </ListItemButton>
+          );
+        })}
       </List>
-      <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 1, flexShrink: 0 }}>
-        Обновление 22.02
+
+      {/* ── Footer ── */}
+      <Box sx={{ mx: 2, mb: 1, height: 1, bgcolor: 'rgba(255,255,255,0.07)', flexShrink: 0 }} />
+      <Typography sx={{ px: 2, py: 1.5, fontSize: '0.7rem', color: SIDEBAR_TEXT_DIM, flexShrink: 0 }}>
+        v{new Date().getFullYear()}
       </Typography>
     </Box>
   );
@@ -434,12 +456,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 sx={{
                   display: 'flex',
                   alignItems: 'center',
-                  px: 1,
+                  px: 1.5,
                   borderRadius: 2,
-                  bgcolor: 'rgba(255,255,255,0.15)',
+                  bgcolor: 'rgba(79,70,229,0.08)',
+                  border: '1px solid rgba(79,70,229,0.15)',
                 }}
               >
-                <Search fontSize="small" />
+                <Search fontSize="small" sx={{ color: 'text.secondary' }} />
                 <InputBase
                   placeholder="Поиск лидов..."
                   value={salesSearch}
@@ -449,7 +472,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       navigate(`/sales/leads?q=${encodeURIComponent(salesSearch.trim())}`);
                     }
                   }}
-                  sx={{ ml: 1, color: '#fff', minWidth: 180 }}
+                  sx={{ ml: 1, color: 'text.primary', minWidth: 180, fontSize: '0.875rem' }}
                 />
               </Box>
               <Tooltip title="+ Лид">
@@ -475,8 +498,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 sx={{
                   width: 34,
                   height: 34,
-                  backgroundImage:
-                    'linear-gradient(135deg, rgba(37,99,235,1) 0%, rgba(124,58,237,1) 100%)',
+                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                  fontSize: '0.875rem',
+                  fontWeight: 700,
                 }}
               >
                 {user?.full_name?.charAt(0).toUpperCase()}

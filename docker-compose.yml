@@ -1,6 +1,7 @@
 x-app-common-env: &app_common_env
   APP_ENV: production
   REDIS_URL: redis://redis:6379/0
+  CACHE_REDIS_URL: redis://redis:6379/1
   DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
   SECRET_KEY: ${SECRET_KEY:-change_me_min_32_chars_change_me_min_32_chars}
   TOCHKA_CLIENT_ID: ${TOCHKA_CLIENT_ID:-}

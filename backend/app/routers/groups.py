@@ -1,7 +1,9 @@
 from datetime import date, time as dt_time, datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi_cache.decorator import cache
 from sqlalchemy.orm import Session, joinedload
+from app.cache import CACHE_NS_GROUPS, invalidate_namespace, user_role_key_builder
 from app.database import get_db
 from app import auth
 from app.schemas.groups import (
@@ -145,10 +147,12 @@ async def create_group(
     db.commit()
     db.refresh(db_group)
     log_action(db, current_user.id, "create", "group", db_group.id)
+    await invalidate_namespace(CACHE_NS_GROUPS)
     return _group_to_response(db, db_group)
 
 
 @router.get("/", response_model=List[GroupResponse])
+@cache(expire=120, namespace=CACHE_NS_GROUPS, key_builder=user_role_key_builder)
 async def read_groups(
     skip: int = 0,
     limit: int = 100,
@@ -326,6 +330,7 @@ async def update_group(
     db.refresh(db_group)
 
     log_action(db, current_user.id, "update", "group", group_id, {**update_data, "schedules_updated": group_update.schedules is not None})
+    await invalidate_namespace(CACHE_NS_GROUPS)
     return _group_to_response(db, db_group)
 
 
@@ -530,5 +535,6 @@ async def delete_group(
     db.commit()
     
     log_action(db, current_user.id, "archive", "group", group_id)
+    await invalidate_namespace(CACHE_NS_GROUPS)
     return {"message": "Group archived"}
 

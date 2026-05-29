@@ -9,6 +9,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.redis import RedisBackend
+from redis import asyncio as aioredis
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -303,6 +306,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if scheduler is not None:
             scheduler.start()
             app.state.legacy_scheduler = scheduler
+
+    cache_redis_url = (os.getenv("CACHE_REDIS_URL") or "redis://redis:6379/1").strip()
+    cache_redis = aioredis.from_url(cache_redis_url, encoding="utf8", decode_responses=True)
+    FastAPICache.init(RedisBackend(cache_redis), prefix="lp-cache")
 
     try:
         yield

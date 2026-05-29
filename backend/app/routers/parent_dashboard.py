@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi_cache.decorator import cache
 from sqlalchemy.orm import Session
 
 from app import auth
+from app.cache import CACHE_NS_PARENT_DASHBOARD
 from app.database import get_db
 from app.models import User
 from app.routers.action_log import log_action
@@ -28,7 +30,15 @@ def _require_parent(current_user: User) -> None:
     auth.ensure_permission(current_user, "parent_dashboard.access")
 
 
+def _parent_dashboard_key_builder(func, namespace="", *, request=None, response=None, args=(), kwargs={}):
+    from fastapi_cache import FastAPICache
+    user = kwargs.get("current_user")
+    user_id = getattr(user, "id", "anon")
+    return f"{FastAPICache.get_prefix()}:{CACHE_NS_PARENT_DASHBOARD}:summary:{user_id}"
+
+
 @router.get("/summary", response_model=ParentDashboardSummaryResponse)
+@cache(expire=60, namespace=CACHE_NS_PARENT_DASHBOARD, key_builder=_parent_dashboard_key_builder)
 async def get_parent_dashboard_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),

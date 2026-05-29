@@ -1,6 +1,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi_cache.decorator import cache
 from sqlalchemy.orm import Session
+from app.cache import CACHE_NS_ABONEMENTS, invalidate_namespace, shared_key_builder
 from app.database import get_db
 from app import auth
 from app.models import Abonement, AbonementStatus, DiscountType, User
@@ -23,6 +25,7 @@ def _validate_price(price: float) -> None:
 
 
 @router.get("/", response_model=List[AbonementResponse])
+@cache(expire=120, namespace=CACHE_NS_ABONEMENTS, key_builder=shared_key_builder)
 async def read_abonements(
     status_filter: Optional[AbonementStatus] = None,
     db: Session = Depends(get_db),
@@ -75,6 +78,7 @@ async def create_abonement(
     db.commit()
     db.refresh(db_abonement)
     log_action(db, current_user.id, "create", "abonement", db_abonement.id)
+    await invalidate_namespace(CACHE_NS_ABONEMENTS)
     return db_abonement
 
 
@@ -102,6 +106,7 @@ async def update_abonement(
     db.commit()
     db.refresh(db_abonement)
     log_action(db, current_user.id, "update", "abonement", abonement_id, update_data)
+    await invalidate_namespace(CACHE_NS_ABONEMENTS)
     return db_abonement
 
 
@@ -117,6 +122,7 @@ async def archive_abonement(
     db_abonement.status = AbonementStatus.ARCHIVED
     db.commit()
     log_action(db, current_user.id, "archive", "abonement", abonement_id)
+    await invalidate_namespace(CACHE_NS_ABONEMENTS)
     return {"message": "Abonement archived"}
 
 
@@ -132,6 +138,7 @@ async def unarchive_abonement(
     db_abonement.status = AbonementStatus.ACTIVE
     db.commit()
     log_action(db, current_user.id, "unarchive", "abonement", abonement_id)
+    await invalidate_namespace(CACHE_NS_ABONEMENTS)
     return {"message": "Abonement unarchived"}
 
 
@@ -155,5 +162,6 @@ async def delete_abonement(
     db.delete(db_abonement)
     db.commit()
     log_action(db, current_user.id, "delete", "abonement", abonement_id)
+    await invalidate_namespace(CACHE_NS_ABONEMENTS)
     return None
 

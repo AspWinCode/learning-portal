@@ -1,7 +1,9 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi_cache.decorator import cache
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
+from app.cache import CACHE_NS_PROGRAMS, invalidate_namespace, user_role_key_builder
 from app.database import get_db
 from app import auth
 from app.schemas.programs import ProgramCreate, ProgramListResponse, ProgramResponse, ProgramUpdate
@@ -108,12 +110,14 @@ async def create_program(
     
     db.commit()
     db.refresh(db_program)
-    
+
     log_action(db, current_user.id, "create", "program", db_program.id)
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
     return db_program
 
 
 @router.get("/", response_model=List[ProgramResponse])
+@cache(expire=120, namespace=CACHE_NS_PROGRAMS, key_builder=user_role_key_builder)
 async def read_programs(
     skip: int = 0,
     limit: int = 100,
@@ -407,6 +411,7 @@ async def update_program(
         db.refresh(db_program)
         
         log_action(db, current_user.id, "update", "program", program_id, update_data)
+        await invalidate_namespace(CACHE_NS_PROGRAMS)
         return db_program
 
 

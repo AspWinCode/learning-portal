@@ -341,51 +341,41 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     'Портал управления обучением';
 
   const drawer = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', bgcolor: SIDEBAR_BG }}>
-      {/* ── Brand header ── */}
-      <Box sx={{ px: 2, pt: 2.5, pb: 2, flexShrink: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Toolbar-высота для совмещения с AppBar */}
+      <Toolbar>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
           {logoUrl ? (
             <Box
               component="img"
               src={logoUrl}
               alt="Логотип школы"
-              sx={{
-                width: 34, height: 34, borderRadius: 1.5,
-                objectFit: 'contain',
-                border: '1px solid rgba(255,255,255,0.12)',
-                bgcolor: 'rgba(255,255,255,0.08)',
-              }}
+              sx={{ width: 32, height: 32, borderRadius: 1.5, objectFit: 'contain', flexShrink: 0 }}
             />
           ) : (
             <Box sx={{
-              width: 34, height: 34, borderRadius: 1.5, flexShrink: 0,
+              width: 32, height: 32, borderRadius: 1.5, flexShrink: 0,
               background: 'linear-gradient(135deg, #818CF8 0%, #A78BFA 100%)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 17,
+              fontSize: 16,
             }}>
               🎓
             </Box>
           )}
           <Box sx={{ minWidth: 0 }}>
-            <Typography noWrap sx={{ fontWeight: 700, fontSize: '0.85rem', color: SIDEBAR_TEXT, letterSpacing: -0.1 }}>
+            <Typography noWrap sx={{ fontWeight: 700, fontSize: '0.82rem', color: SIDEBAR_TEXT, letterSpacing: -0.1, lineHeight: 1.3 }}>
               Learning Portal
             </Typography>
-            <Typography noWrap sx={{ fontSize: '0.7rem', color: SIDEBAR_TEXT_DIM }}>
+            <Typography noWrap sx={{ fontSize: '0.68rem', color: SIDEBAR_TEXT_DIM, lineHeight: 1.2 }}>
               Управление обучением
             </Typography>
           </Box>
         </Box>
-      </Box>
+      </Toolbar>
 
-      <Box sx={{ mx: 2, mb: 1, height: 1, bgcolor: 'rgba(255,255,255,0.07)', flexShrink: 0 }} />
+      <Box sx={{ mx: 1.5, height: '1px', bgcolor: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
 
-      {/* ── Nav items ── */}
-      <List sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 1,
-        '&::-webkit-scrollbar': { width: 4 },
-        '&::-webkit-scrollbar-track': { background: 'transparent' },
-        '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.12)', borderRadius: 4 },
-      }}>
+      <List sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 0.5 }}>
         {visibleMenuItems.map((item) => {
           const selected = isDrawerItemSelected(item.path);
           return (
@@ -394,14 +384,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               selected={selected}
               onClick={() => { navigate(item.path); setMobileOpen(false); }}
               sx={{
-                borderRadius: 1.5,
+                mx: 0.5,
                 mb: 0.25,
-                py: 0.75,
+                borderRadius: 1.5,
+                py: 0.7,
                 color: selected ? SIDEBAR_TEXT_SEL : SIDEBAR_TEXT,
                 bgcolor: selected ? SIDEBAR_ITEM_SEL : 'transparent',
-                '&:hover': {
-                  bgcolor: selected ? SIDEBAR_ITEM_SEL : SIDEBAR_ITEM_HO,
-                },
+                '&:hover': { bgcolor: selected ? SIDEBAR_ITEM_SEL : SIDEBAR_ITEM_HO },
                 '&.Mui-selected': {
                   bgcolor: SIDEBAR_ITEM_SEL,
                   '&:hover': { bgcolor: SIDEBAR_ITEM_SEL },
@@ -424,9 +413,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         })}
       </List>
 
-      {/* ── Footer ── */}
-      <Box sx={{ mx: 2, mb: 1, height: 1, bgcolor: 'rgba(255,255,255,0.07)', flexShrink: 0 }} />
-      <Typography sx={{ px: 2, py: 1.5, fontSize: '0.7rem', color: SIDEBAR_TEXT_DIM, flexShrink: 0 }}>
+      <Typography sx={{ px: 2, py: 1, fontSize: '0.68rem', color: SIDEBAR_TEXT_DIM }}>
         v{new Date().getFullYear()}
       </Typography>
     </Box>

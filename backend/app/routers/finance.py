@@ -483,6 +483,23 @@ async def get_finance_analytics_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(dep_require_finance_access),
 ) -> FinanceAnalyticsSummaryResponse:
+    import traceback as _tb
+    try:
+        return _finance_analytics_impl(date_from, date_to, group_by, db)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import logging as _log
+        _log.getLogger(__name__).error("finance analytics error: %s\n%s", exc, _tb.format_exc())
+        raise HTTPException(status_code=500, detail=f"Ошибка аналитики: {type(exc).__name__}: {exc}")
+
+
+def _finance_analytics_impl(
+    date_from: Optional[date],
+    date_to: Optional[date],
+    group_by: str,
+    db: Session,
+) -> FinanceAnalyticsSummaryResponse:
     if date_to is None:
         date_to = date.today()
     if date_from is None:

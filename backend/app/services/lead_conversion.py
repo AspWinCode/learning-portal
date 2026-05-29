@@ -22,7 +22,11 @@ from app.models import (
     StudentCard,
     DiscountType,
 )
-from app.services.parent_invite import create_parent_user_no_invite
+from app.services.parent_invite import (
+    create_parent_with_invite,
+    create_invite_for_existing_parent,
+)
+from app.services.email_sender import is_email_configured, send_email
 from app.routers.action_log import log_action
 from app.utils.phone import normalize_phone
 from app.services.student_activity import log_student_activity
@@ -34,6 +38,9 @@ class ConvertLeadToStudentResult:
     """Результат конвертации лида в ученика."""
     student_id: int
     lead: Lead
+    invite_link: Optional[str] = None
+    parent_id: Optional[int] = None
+    parent_email: Optional[str] = None
 
 
 def _get_default_lead_status_option_id(db: Session, base_status: LeadStatus) -> Optional[int]:
@@ -144,6 +151,29 @@ def _find_or_create_student_card_for_lead(
     return card
 
 
+def _send_parent_invite_email(
+    parent_email: str,
+    parent_full_name: str,
+    student_full_name: str,
+    invite_link: str,
+) -> None:
+    """Отправляет email родителю со ссылкой на установку пароля. Не бросает исключений."""
+    if not is_email_configured():
+        return
+    try:
+        subject = f"Доступ к кабинету ученика — {student_full_name}"
+        body = (
+            f"Здравствуйте, {parent_full_name}!\n\n"
+            f"Для Вашего ребёнка {student_full_name} открыт доступ к личному кабинету ученика.\n\n"
+            f"Установите пароль для входа по ссылке:\n{invite_link}\n\n"
+            "Ссылка действительна 7 дней.\n\n"
+            "С уважением,\nКоманда школы"
+        )
+        send_email(to_email=parent_email, subject=subject, body=body)
+    except Exception:
+        pass
+
+
 def convert_lead_to_student(
     db: Session,
     lead_id: int,
@@ -178,7 +208,12 @@ def convert_lead_to_student(
     existing_parent = (
         db.query(User).filter(User.email == parent_email, User.role == UserRole.PARENT).first()
     )
+    invite_link: Optional[str] = None
+
     if existing_parent:
+        # Генерируем новый инвайт для уже существующего родителя (обновляем токен)
+        invite_link = create_invite_for_existing_parent(db, existing_parent)
+        db.flush()
         same_name = (
             db.query(Student)
             .filter(
@@ -200,11 +235,19 @@ def convert_lead_to_student(
             db.refresh(lead)
             db.refresh(same_name)
             log_action(db, actor_user_id, "convert_lead_to_student", "lead", lead.id, {"student_id": same_name.id})
-            return ConvertLeadToStudentResult(student_id=same_name.id, lead=lead)
+            _send_parent_invite_email(parent_email, parent_full_name, student_full_name, invite_link)
+            return ConvertLeadToStudentResult(
+                student_id=same_name.id,
+                lead=lead,
+                invite_link=invite_link,
+                parent_id=existing_parent.id,
+                parent_email=parent_email,
+            )
         parent_user = existing_parent
     else:
-        parent_user = create_parent_user_no_invite(db, parent_email, parent_full_name)
+        parent_user, invite_link = create_parent_with_invite(db, parent_email, parent_full_name)
         db.flush()
+
     sync_user_person(db, parent_user)
 
     student = Student(
@@ -233,4 +276,11 @@ def convert_lead_to_student(
     db.refresh(lead)
     db.refresh(student)
     log_action(db, actor_user_id, "convert_lead_to_student", "lead", lead.id, {"student_id": student.id})
-    return ConvertLeadToStudentResult(student_id=student.id, lead=lead)
+    _send_parent_invite_email(parent_email, parent_full_name, student_full_name, invite_link)
+    return ConvertLeadToStudentResult(
+        student_id=student.id,
+        lead=lead,
+        invite_link=invite_link,
+        parent_id=parent_user.id,
+        parent_email=parent_email,
+    )

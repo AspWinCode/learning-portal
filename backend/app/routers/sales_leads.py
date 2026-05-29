@@ -27,6 +27,7 @@ from app.models import (
     LeadTask,
     LeadTaskStatus,
     LeadTaskTemplate,
+    Student,
     StudentCard,
     Task,
     TaskStatus,
@@ -49,6 +50,8 @@ from app.schemas.sales import (
 )
 from app.services.ai_insights import build_lead_ai_insight
 from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
+from app.services.email_sender import is_email_configured, send_email
+from app.services.parent_invite import create_invite_for_existing_parent
 from app.services.person_sync import sync_lead_person, sync_student_card_person
 from app.utils.phone import normalize_phone, validate_phone_for_lead
 
@@ -945,4 +948,60 @@ async def convert_lead_to_student(
     return LeadConvertToStudentResponse(
         student_id=result.student_id,
         lead=_fix_lead_strings(result.lead),
+        invite_link=result.invite_link,
+        parent_id=result.parent_id,
+        parent_email=result.parent_email,
     )
+
+
+@router.post("/students/{student_id}/resend-parent-invite")
+async def resend_parent_invite(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """
+    Повторно генерирует ссылку для установки пароля родителем.
+    Используется когда первая ссылка истекла или была утеряна.
+    Возвращает новую ссылку и отправляет email если SMTP настроен.
+    """
+    auth.ensure_permission(current_user, "sales.access")
+
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+
+    parent = db.query(User).filter(User.id == student.parent_id).first() if student.parent_id else None
+    if not parent:
+        raise HTTPException(status_code=400, detail="У ученика не привязан родитель с email")
+
+    invite_link = create_invite_for_existing_parent(db, parent)
+    db.commit()
+
+    # Имя ученика из карточки если есть, иначе из Student
+    card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    student_name = (card.student_full_name if card else None) or student.full_name or "Ученик"
+    parent_name = parent.full_name or "Родитель"
+
+    email_sent = False
+    if parent.email:
+        try:
+            if is_email_configured():
+                subject = f"Ссылка для входа в кабинет ученика — {student_name}"
+                body = (
+                    f"Здравствуйте, {parent_name}!\n\n"
+                    f"Вы получили новую ссылку для доступа к кабинету ученика {student_name}.\n\n"
+                    f"Установите пароль по ссылке:\n{invite_link}\n\n"
+                    "Ссылка действительна 7 дней.\n\n"
+                    "С уважением,\nКоманда школы"
+                )
+                email_sent = send_email(to_email=parent.email, subject=subject, body=body)
+        except Exception:
+            pass
+
+    return {
+        "invite_link": invite_link,
+        "parent_email": parent.email,
+        "parent_id": parent.id,
+        "email_sent": email_sent,
+    }

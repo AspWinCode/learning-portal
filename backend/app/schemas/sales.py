@@ -658,6 +658,9 @@ class AnketaConvertConflictResponse(BaseModel):
 class LeadConvertToStudentResponse(BaseModel):
     student_id: int
     lead: LeadResponse
+    invite_link: Optional[str] = None
+    parent_id: Optional[int] = None
+    parent_email: Optional[str] = None
 
 
 class OpenParentCabinetResponse(BaseModel):

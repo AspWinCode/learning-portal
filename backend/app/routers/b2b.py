@@ -1,3 +1,4 @@
+import base64
 import csv
 from datetime import date, datetime, timedelta, time as dt_time
 from io import BytesIO, StringIO
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import auth
 from app.database import get_db
 from app.models import (
+    B2BDocument,
     B2BSchool,
     B2BSchoolContact,
     B2BSchoolEvent,
@@ -25,6 +27,8 @@ from app.models import (
     UserRole,
 )
 from app.schemas.b2b import (
+    B2BDocumentResponse,
+    B2BPartnershipUpdate,
     B2BSchoolContactCreate,
     B2BSchoolContactResponse,
     B2BSchoolContactUpdate,
@@ -1267,3 +1271,194 @@ async def delete_b2b_project(
     db.delete(project)
     db.commit()
     return None
+
+
+# ── Documents ─────────────────────────────────────────────────────────────────
+
+_ALLOWED_MIME = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/png",
+    "image/jpeg",
+}
+_MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _doc_to_response(doc: B2BDocument) -> B2BDocumentResponse:
+    return B2BDocumentResponse(
+        id=doc.id,
+        b2b_school_id=doc.b2b_school_id,
+        type=doc.type,
+        file_name=doc.file_name,
+        file_size_kb=doc.file_size_kb,
+        mime_type=doc.mime_type,
+        uploaded_by_id=doc.uploaded_by_id,
+        uploaded_by_name=doc.uploaded_by.full_name if doc.uploaded_by else None,
+        created_at=doc.created_at,
+    )
+
+
+def _recompute_active_partner(partnership: Dict[str, Any]) -> None:
+    """active_partner = signed_both AND icon_on_site."""
+    partnership["active_partner"] = bool(
+        partnership.get("signed_both") and partnership.get("icon_on_site")
+    )
+
+
+@router.get("/b2b-schools/{school_id}/documents", response_model=List[B2BDocumentResponse])
+async def list_school_documents(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
+):
+    docs = (
+        db.query(B2BDocument)
+        .filter(B2BDocument.b2b_school_id == school_id)
+        .options(joinedload(B2BDocument.uploaded_by))
+        .order_by(B2BDocument.created_at.desc())
+        .all()
+    )
+    return [_doc_to_response(d) for d in docs]
+
+
+@router.post("/b2b-schools/{school_id}/documents", response_model=B2BDocumentResponse, status_code=201)
+async def upload_school_document(
+    school_id: int,
+    file: UploadFile = File(...),
+    type: str = "other",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
+):
+    school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+
+    content = await file.read()
+    if len(content) > _MAX_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="max file size is 10MB")
+
+    mime = file.content_type or ""
+    if mime not in _ALLOWED_MIME:
+        raise HTTPException(status_code=415, detail="unsupported media type; allowed: pdf, docx, png, jpg")
+
+    doc_type = type.strip().lower()
+    file_data = f"data:{mime};base64,{base64.b64encode(content).decode()}"
+    size_kb = max(1, len(content) // 1024)
+
+    doc = B2BDocument(
+        b2b_school_id=school_id,
+        type=doc_type,
+        file_name=file.filename or "document",
+        file_data=file_data,
+        file_size_kb=size_kb,
+        mime_type=mime,
+        uploaded_by_id=current_user.id,
+    )
+    db.add(doc)
+
+    # Auto-update checklist
+    partnership = dict(school.partnership or {})
+    if doc_type == "agreement":
+        partnership["signed_school"] = True
+        _recompute_active_partner(partnership)
+    elif doc_type == "support_letter":
+        school.support_letter_status = "received"
+
+    school.partnership = partnership
+    db.commit()
+    db.refresh(doc)
+    db.refresh(doc, ["uploaded_by"])
+    return _doc_to_response(doc)
+
+
+@router.get("/b2b-schools/{school_id}/documents/{doc_id}/download")
+async def download_school_document(
+    school_id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
+):
+    from fastapi.responses import Response
+
+    doc = db.query(B2BDocument).filter(
+        B2BDocument.id == doc_id,
+        B2BDocument.b2b_school_id == school_id,
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Parse data URL: data:<mime>;base64,<data>
+    try:
+        header, encoded = doc.file_data.split(",", 1)
+        raw = base64.b64decode(encoded)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Stored file data is corrupted")
+
+    return Response(
+        content=raw,
+        media_type=doc.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{doc.file_name}"'},
+    )
+
+
+@router.delete("/b2b-schools/{school_id}/documents/{doc_id}", status_code=204)
+async def delete_school_document(
+    school_id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
+):
+    doc = db.query(B2BDocument).filter(
+        B2BDocument.id == doc_id,
+        B2BDocument.b2b_school_id == school_id,
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
+    if school and doc.type == "agreement":
+        partnership = dict(school.partnership or {})
+        partnership["signed_school"] = False
+        _recompute_active_partner(partnership)
+        school.partnership = partnership
+
+    db.delete(doc)
+    db.commit()
+    return None
+
+
+# ── Partnership checklist ──────────────────────────────────────────────────────
+
+_VALID_PARTNERSHIP_STEPS = {
+    "invited", "agreement_sent", "signed_school", "signed_both",
+    "originals_received", "icon_on_site", "active_partner",
+}
+
+
+@router.patch("/b2b-schools/{school_id}/partnership", response_model=B2BSchoolResponse)
+async def update_partnership_step(
+    school_id: int,
+    payload: B2BPartnershipUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
+):
+    if payload.step not in _VALID_PARTNERSHIP_STEPS:
+        raise HTTPException(status_code=400, detail=f"Unknown partnership step: {payload.step}")
+
+    school = _load_school_with_contacts(db, school_id)
+    previous = dict(school.partnership or {})
+    partnership = dict(previous)
+    partnership[payload.step] = payload.value
+
+    # active_partner is auto-computed; don't allow manual override
+    if payload.step != "active_partner":
+        _recompute_active_partner(partnership)
+
+    school.partnership = partnership
+    db.add(school)
+
+    _on_b2b_partnership_updated(db, school, previous, current_user.id)
+
+    db.commit()
+    db.refresh(school)
+    return _school_to_response(db, school)

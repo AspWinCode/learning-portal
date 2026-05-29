@@ -227,6 +227,25 @@ class B2BProjectResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class B2BDocumentResponse(BaseModel):
+    id: int
+    b2b_school_id: int
+    type: str
+    file_name: str
+    file_size_kb: Optional[int] = None
+    mime_type: Optional[str] = None
+    uploaded_by_id: int
+    uploaded_by_name: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class B2BPartnershipUpdate(BaseModel):
+    step: str
+    value: bool
+
+
 class CitySummaryItem(BaseModel):
     city: str
     schools_in_work: int

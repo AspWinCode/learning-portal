@@ -1743,6 +1743,7 @@ class B2BSchool(Base):
     interactions = relationship("B2BSchoolInteraction", back_populates="school", cascade="all, delete-orphan")
     school_events = relationship("B2BSchoolEvent", back_populates="school", cascade="all, delete-orphan")
     school_campaigns = relationship("SchoolCampaign", back_populates="school", cascade="all, delete-orphan")
+    documents = relationship("B2BDocument", back_populates="school", cascade="all, delete-orphan", order_by="B2BDocument.created_at.desc()")
 
 
 class B2BSchoolInteractionType(str, enum.Enum):
@@ -1792,6 +1793,26 @@ class B2BSchoolContact(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     school = relationship("B2BSchool", back_populates="school_contacts")
+
+
+class B2BDocument(Base):
+    """Документы, прикреплённые к B2B-школе (соглашения, логотипы, письма поддержки)."""
+    __tablename__ = "b2b_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id"), nullable=False, index=True)
+    # agreement / logo / support_letter / other
+    type = Column(String(32), nullable=False)
+    file_name = Column(String(256), nullable=False)
+    # base64 data URL (data:<mime>;base64,<data>)
+    file_data = Column(Text, nullable=False)
+    file_size_kb = Column(Integer, nullable=True)
+    mime_type = Column(String(128), nullable=True)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    school = relationship("B2BSchool", back_populates="documents")
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
 
 
 class B2BProject(Base):

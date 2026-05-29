@@ -82,6 +82,8 @@ class SchoolCampaignResponse(BaseModel):
     updated_at: Optional[datetime] = None
     school_name: Optional[str] = None
     school_city: Optional[str] = None
+    # Computed: most advanced active partnership step from B2BSchool.partnership
+    partnership_step: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

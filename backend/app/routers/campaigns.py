@@ -55,7 +55,24 @@ def _campaign_to_response(c: Campaign) -> CampaignResponse:
     )
 
 
+_PARTNERSHIP_STEPS = [
+    "invited", "agreement_sent", "signed_school", "signed_both",
+    "originals_received", "icon_on_site", "active_partner",
+]
+
+
+def _get_partnership_step(partnership: object) -> str | None:
+    if not isinstance(partnership, dict):
+        return None
+    last = None
+    for step in _PARTNERSHIP_STEPS:
+        if partnership.get(step):
+            last = step
+    return last
+
+
 def _school_campaign_to_response(sc: SchoolCampaign) -> SchoolCampaignResponse:
+    school_partnership = getattr(sc.school, "partnership", None) if sc.school else None
     return SchoolCampaignResponse(
         id=sc.id,
         b2b_school_id=sc.b2b_school_id,
@@ -67,6 +84,7 @@ def _school_campaign_to_response(sc: SchoolCampaign) -> SchoolCampaignResponse:
         updated_at=sc.updated_at,
         school_name=sc.school.name if sc.school else None,
         school_city=sc.school.city if sc.school else None,
+        partnership_step=_get_partnership_step(school_partnership),
     )
 
 

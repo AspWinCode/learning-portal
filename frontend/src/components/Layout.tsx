@@ -413,7 +413,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </ListItemIcon>
               <ListItemText
                 primary={item.text}
-                primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: selected ? 600 : 500 }}
+                primaryTypographyProps={{
+                  fontSize: '0.85rem',
+                  fontWeight: selected ? 600 : 500,
+                  color: selected ? SIDEBAR_TEXT_SEL : SIDEBAR_TEXT,
+                }}
               />
             </ListItemButton>
           );
@@ -550,7 +554,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: drawerWidth,
-              bgcolor: 'background.paper',
+              bgcolor: SIDEBAR_BG,
             },
           }}
         >
@@ -563,7 +567,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: drawerWidth,
-              bgcolor: 'background.paper',
+              bgcolor: SIDEBAR_BG,
             },
           }}
           open

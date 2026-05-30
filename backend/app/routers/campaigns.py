@@ -61,7 +61,7 @@ _PARTNERSHIP_STEPS = [
 ]
 
 
-def _get_partnership_step(partnership: object) -> str | None:
+def _get_partnership_step(partnership: object) -> "Optional[str]":
     if not isinstance(partnership, dict):
         return None
     last = None

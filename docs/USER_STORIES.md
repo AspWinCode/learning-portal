@@ -5,6 +5,54 @@
 
 ---
 
+## 🔄 Обновление от 30 Мая 2026
+
+### Проделанная работа
+
+#### P0 Phase (завершено)
+- ✅ Аутентификация (4 US)
+- ✅ Управление пользователями (3 US)
+- ✅ Ученики (5 US)
+- ✅ Финансы (4 US)
+
+#### P1 Phase (анализ и критические исправления)
+**Модули:** Groups, Grades, Characteristics, Programs, Tasks, Communications, B2B
+
+**Найдено и исправлено критических ошибок:**
+
+1. **Groups Module**
+   - 🔴 CRITICAL: Студенты не получали программы при добавлении в группу
+   - 🔴 CRITICAL: Отсутствовали endpoints для управления программами группы
+   - 🟡 MINOR: Отсутствовала проверка статуса программы
+
+2. **Programs Module**
+   - 🟡 MINOR: Архивированные программы можно было назначить студентам
+
+**Исправления реализованы:**
+- ✅ POST `/{group_id}/programs/{program_id}` — новый endpoint
+- ✅ DELETE `/{group_id}/programs/{program_id}` — новый endpoint
+- ✅ Auto-assignment программ студентам при добавлении в группу
+- ✅ Валидация ACTIVE статуса для программ
+- ✅ Email интеграция для parent invites (auth, users, leads)
+
+**Статус P1 модулей:**
+| Модуль | Endpoints | Bugs | Status |
+|--------|-----------|------|--------|
+| Groups | 10 | 0 | ✅ |
+| Grades | 5 | 0 | ✅ |
+| Characteristics | 11 | 0 | ✅ |
+| Programs | 10 | 0 | ✅ |
+| Tasks | 30+ | 0 | ✅ |
+| Communications | 3 | 0 | ✅ |
+| B2B | 30+ | 0 | ✅ |
+
+**See also:**
+- [P1 Fixes Summary](P1_FIXES_SUMMARY.md) — подробное описание исправлений
+- [P1 Module Status](P1_MODULE_STATUS.md) — полный анализ всех P1 модулей
+- [Phase 1 Inventory](PHASE_1_INVENTORY.md) — детальная инвентаризация с тест-кейсами
+
+---
+
 ## Содержание
 
 1. [Аутентификация](#1-аутентификация)

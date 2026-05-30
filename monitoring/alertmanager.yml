@@ -1,0 +1,85 @@
+global:
+  resolve_timeout: 5m
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+
+route:
+  # Root route: send all to default receiver
+  receiver: 'slack-default'
+  group_by: ['alertname', 'severity', 'component']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+
+  routes:
+    # CRITICAL alerts
+    - match:
+        severity: critical
+      receiver: 'slack-critical'
+      group_wait: 5s
+      repeat_interval: 1h
+
+    # WARNING alerts
+    - match:
+        severity: warning
+      receiver: 'slack-warnings'
+      group_wait: 15s
+      repeat_interval: 4h
+
+    # INFO alerts
+    - match:
+        severity: info
+      receiver: 'slack-info'
+      group_wait: 30s
+      repeat_interval: 24h
+
+receivers:
+  - name: 'slack-default'
+    slack_configs:
+      - channel: '#monitoring'
+        title: 'Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          Severity: {{ .GroupLabels.severity }}
+          Component: {{ .GroupLabels.component }}
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+        send_resolved: true
+
+  - name: 'slack-critical'
+    slack_configs:
+      - channel: '#alerts-critical'
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: |
+          Severity: {{ .GroupLabels.severity }}
+          Component: {{ .GroupLabels.component }}
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+        send_resolved: true
+
+  - name: 'slack-warnings'
+    slack_configs:
+      - channel: '#alerts-warnings'
+        title: '⚠️ WARNING: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+        send_resolved: true
+
+  - name: 'slack-info'
+    slack_configs:
+      - channel: '#alerts-info'
+        title: 'ℹ️ {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+        send_resolved: false
+
+inhibit_rules:
+  # Don't alert on warnings if critical is already firing
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['alertname', 'component']
+
+  # Don't alert on info if warning is already firing
+  - source_match:
+      severity: warning
+    target_match:
+      severity: info
+    equal: ['alertname', 'component']

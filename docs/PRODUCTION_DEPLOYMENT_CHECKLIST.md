@@ -1,7 +1,7 @@
 # Production Deployment Checklist
 
-**Current Status:** 92% ready ✅ (CRITICAL items complete)  
-**Timeline:** Ready for staging in 0-1 hours, production in 1 week  
+**Current Status:** 94% ready ✅ (CRITICAL items complete, Phase 1 optimization started)  
+**Timeline:** Ready for staging after baseline test (in 2-3 hours), production in 3-5 days  
 
 ---
 
@@ -97,14 +97,24 @@ docker-compose --profile observability up -d
 
 ---
 
-### 5. Phase 1 Performance Optimizations (8 hours)
+### 5. Phase 1 Performance Optimizations (8 hours) 🚧 IN PROGRESS
+- [x] Fix N+1 queries with eager loading (Step 1: student display names) ✅
 - [ ] Add database indexes (2 hours)
-- [ ] Fix N+1 queries with eager loading (2 hours)
+- [ ] Optimize dashboard queries (1.5 hours)
 - [ ] Implement pagination (1 hour)
-- [ ] Add query caching (2 hours)
-- [ ] Re-run load test
+- [ ] Re-run load test after all optimizations
 
-**Estimated time:** 8 hours
+**Plan:** See PHASE_1_OPTIMIZATION_PLAN.md
+
+**Progress:** 1/4 steps complete (25%)
+**Estimated remaining time:** 6 hours
+
+**Next Steps (in order):**
+1. Run baseline load test first (2 hours)
+2. Then apply remaining Phase 1 optimizations
+3. Re-run load test to measure improvement
+
+**Estimated time:** 8 hours total (6 remaining)
 
 ---
 

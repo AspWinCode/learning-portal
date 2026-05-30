@@ -400,7 +400,8 @@ async def read_students(
             students.append(s)
     if not students:
         return []
-    display_names = get_students_display_names(db, [s.id for s in students])
+    # Pass pre-loaded students to avoid N+1 query
+    display_names = get_students_display_names(db, [s.id for s in students], students=students)
     return [
         StudentResponse(
             **{

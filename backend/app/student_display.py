@@ -23,12 +23,22 @@ def get_student_display_name(db: Session, student: Student) -> str:
     return (student.full_name or "").strip() or "—"
 
 
-def get_students_display_names(db: Session, student_ids: List[int]) -> Dict[int, str]:
-    """Для списка student_id возвращает словарь {student_id: display_name}. Имена из карточек (не архивных), иначе из Student."""
+def get_students_display_names(db: Session, student_ids: List[int], students: Optional[List[Student]] = None) -> Dict[int, str]:
+    """Для списка student_id возвращает словарь {student_id: display_name}.
+
+    Если students передан, использует его вместо повторного query (N+1 fix).
+    Иначе кверирует studentov и карточки из БД.
+
+    Имена из карточек (не архивных), иначе из Student.
+    """
     if not student_ids:
         return {}
-    students = db.query(Student).filter(Student.id.in_(student_ids)).all()
+
+    if students is None:
+        students = db.query(Student).filter(Student.id.in_(student_ids)).all()
+
     student_map = {s.id: (s.full_name or "").strip() or "—" for s in students}
+
     cards = (
         db.query(StudentCard)
         .filter(

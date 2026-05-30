@@ -18,7 +18,7 @@ from app.schemas.students import (
     StudentWithParentCreate,
     StudentWithParentResponse,
 )
-from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group, StudentActivityLog
+from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group, StudentActivityLog, Grade, Program, ProgramStatus, Topic, Module
 from app.routers.action_log import log_action
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
@@ -339,7 +339,7 @@ async def read_students_paginated(
 @router.get("/", response_model=List[StudentResponse])
 async def read_students(
     skip: int = 0,
-    limit: int = 2000,
+    limit: int = 50,
     status_filter: Optional[StudentStatus] = Query(None, alias="status"),
     q: Optional[str] = Query(None, description="Поиск по ФИО (подстрока)"),
     ids: Optional[str] = Query(None, description="Список ID через запятую (вернуть только этих учеников)"),
@@ -579,6 +579,48 @@ async def get_student_program_options(
     return programs
 
 
+@router.post("/{student_id}/programs/{program_id}", status_code=status.HTTP_200_OK)
+async def assign_program_to_student(
+    student_id: int,
+    program_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("students.manage")),
+):
+    """Назначить программу ученику. Если назначение уже есть — реактивировать. Идемпотентно."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    program = db.query(Program).filter(Program.id == program_id).first()
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+    if program.status != ProgramStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Нельзя назначить архивную программу")
+
+    link = db.query(StudentProgram).filter(
+        StudentProgram.student_id == student_id,
+        StudentProgram.program_id == program_id,
+    ).first()
+
+    if link:
+        if link.status == StudentProgramLinkStatus.ACTIVE:
+            return {"message": "Program already assigned to this student"}
+        link.status = StudentProgramLinkStatus.ACTIVE
+        db.commit()
+        log_action(db, current_user.id, "reactivate_program", "student", student_id, {"program_id": program_id})
+        return {"message": "Program assignment reactivated"}
+
+    link = StudentProgram(
+        student_id=student_id,
+        program_id=program_id,
+        status=StudentProgramLinkStatus.ACTIVE,
+    )
+    db.add(link)
+    db.commit()
+    log_action(db, current_user.id, "assign_program", "student", student_id, {"program_id": program_id})
+    return {"message": "Program assigned to student"}
+
+
 @router.delete("/{student_id}/programs/{program_id}")
 async def unassign_program_from_student(
     student_id: int,
@@ -586,7 +628,7 @@ async def unassign_program_from_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("students.manage"))
 ):
-    """Архивировать назначение программы ученику (логика данных сохраняется)."""
+    """Снять программу с ученика. Запрещено если по программе уже есть оценки."""
     link = db.query(StudentProgram).filter(
         StudentProgram.student_id == student_id,
         StudentProgram.program_id == program_id,
@@ -595,6 +637,23 @@ async def unassign_program_from_student(
         raise HTTPException(status_code=404, detail="Program not assigned to this student")
     if link.status == StudentProgramLinkStatus.ARCHIVED:
         return {"message": "Program assignment already archived"}
+
+    has_grades = (
+        db.query(Grade)
+        .join(Topic, Grade.topic_id == Topic.id)
+        .join(Module, Topic.module_id == Module.id)
+        .filter(
+            Grade.student_id == student_id,
+            Module.program_id == program_id,
+        )
+        .first()
+    )
+    if has_grades:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя снять программу: по ней уже есть оценки у ученика",
+        )
+
     link.status = StudentProgramLinkStatus.ARCHIVED
     db.commit()
     log_action(db, current_user.id, "unassign_program", "student", student_id, {"program_id": program_id})

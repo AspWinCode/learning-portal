@@ -16,7 +16,7 @@ from app.schemas.groups import (
     LessonSlotExtraPolicyResponse,
 )
 from app.schemas.students import StudentResponse
-from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy
+from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, ProgramStatus, GroupProgram, Program
 from app.routers.action_log import log_action
 from app.services.student_activity import log_student_activity
 from app.student_display import get_students_display_names
@@ -451,13 +451,16 @@ async def add_student_to_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("groups.manage"))
 ):
-    """Добавление ученика в группу"""
+    """Добавление ученика в группу. При добавлении автоматически назначаются программы группы."""
     group = db.query(Group).filter(Group.id == group_id).first()
     student = db.query(Student).filter(Student.id == student_id).first()
-    
+
     if not group or not student:
         raise HTTPException(status_code=404, detail="Group or student not found")
-    
+
+    if student.status != StudentStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Student is not active")
+
     # Проверка, не добавлен ли уже (учитываем только текущее нахождение в группе, left_at IS NULL)
     existing = db.query(GroupStudent).filter(
         GroupStudent.group_id == group_id,
@@ -467,9 +470,28 @@ async def add_student_to_group(
 
     if existing:
         raise HTTPException(status_code=400, detail="Student already in group")
-    
+
     group_student = GroupStudent(group_id=group_id, student_id=student_id)
     db.add(group_student)
+    db.flush()
+
+    from app.models import StudentProgram, StudentProgramLinkStatus
+    for program in (group.programs or []):
+        if program.status == ProgramStatus.ACTIVE:
+            existing_link = db.query(StudentProgram).filter(
+                StudentProgram.student_id == student_id,
+                StudentProgram.program_id == program.id,
+            ).first()
+            if existing_link:
+                if existing_link.status == StudentProgramLinkStatus.ARCHIVED:
+                    existing_link.status = StudentProgramLinkStatus.ACTIVE
+            else:
+                db.add(StudentProgram(
+                    student_id=student_id,
+                    program_id=program.id,
+                    status=StudentProgramLinkStatus.ACTIVE,
+                ))
+
     log_student_activity(
         db,
         student_id=student_id,
@@ -480,7 +502,7 @@ async def add_student_to_group(
         payload_json={"group_id": group.id, "group_name": group.name},
     )
     db.commit()
-    
+
     log_action(db, current_user.id, "add_student", "group", group_id, {"student_id": student_id})
     return {"message": "Student added to group"}
 
@@ -518,6 +540,81 @@ async def remove_student_from_group(
     
     log_action(db, current_user.id, "remove_student", "group", group_id, {"student_id": student_id})
     return {"message": "Student removed from group"}
+
+
+@router.post("/{group_id}/programs/{program_id}")
+async def assign_program_to_group(
+    group_id: int,
+    program_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("groups.manage"))
+):
+    """Назначить программу группе. При назначении программы автоматически добавляются активным студентам группы."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    program = db.query(Program).filter(Program.id == program_id).first()
+
+    if not group or not program:
+        raise HTTPException(status_code=404, detail="Group or program not found")
+
+    if program.status != ProgramStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Cannot assign archived program to group")
+
+    existing = db.query(GroupProgram).filter(
+        GroupProgram.group_id == group_id,
+        GroupProgram.program_id == program_id,
+    ).first()
+
+    if existing:
+        return {"message": "Program already assigned to group"}
+
+    db.add(GroupProgram(group_id=group_id, program_id=program_id))
+    db.flush()
+
+    from app.models import StudentProgram, StudentProgramLinkStatus
+    for gs in (group.group_students or []):
+        if gs.student and gs.student.status == StudentStatus.ACTIVE and getattr(gs, "left_at", None) is None:
+            existing_link = db.query(StudentProgram).filter(
+                StudentProgram.student_id == gs.student_id,
+                StudentProgram.program_id == program_id,
+            ).first()
+            if existing_link:
+                if existing_link.status == StudentProgramLinkStatus.ARCHIVED:
+                    existing_link.status = StudentProgramLinkStatus.ACTIVE
+            else:
+                db.add(StudentProgram(
+                    student_id=gs.student_id,
+                    program_id=program_id,
+                    status=StudentProgramLinkStatus.ACTIVE,
+                ))
+
+    db.commit()
+    log_action(db, current_user.id, "assign_program", "group", group_id, {"program_id": program_id})
+    await invalidate_namespace(CACHE_NS_GROUPS)
+    return {"message": "Program assigned to group"}
+
+
+@router.delete("/{group_id}/programs/{program_id}")
+async def remove_program_from_group(
+    group_id: int,
+    program_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("groups.manage"))
+):
+    """Удалить программу из группы. Программы студентов остаются активными (удалить можно вручную через /students)."""
+    group_program = db.query(GroupProgram).filter(
+        GroupProgram.group_id == group_id,
+        GroupProgram.program_id == program_id,
+    ).first()
+
+    if not group_program:
+        raise HTTPException(status_code=404, detail="Program not assigned to group")
+
+    db.delete(group_program)
+    db.commit()
+
+    log_action(db, current_user.id, "remove_program", "group", group_id, {"program_id": program_id})
+    await invalidate_namespace(CACHE_NS_GROUPS)
+    return {"message": "Program removed from group"}
 
 
 @router.delete("/{group_id}")

@@ -37,6 +37,7 @@ class ParentInviteResponse(BaseModel):
     email: str
     full_name: str
     invite_link: str
+    email_sent: bool = False
 
 
 class SetPasswordByInvite(BaseModel):

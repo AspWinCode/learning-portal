@@ -23,6 +23,7 @@ from app.schemas.auth import (
 )
 from app.schemas.users import UserResponse
 from app.services.telegram import notify_user
+from app.services.email_sender import is_email_configured, send_email
 
 router = APIRouter()
 
@@ -128,7 +129,21 @@ async def _password_reset_request_impl(payload: PasswordReset, db: Session):
             except Exception:
                 pass
 
-    return {"message": "Если email существует, код для сброса пароля отправлен (в Telegram, если он привязан)"}
+        if is_email_configured():
+            try:
+                send_email(
+                    to_email=user.email,
+                    subject="Сброс пароля",
+                    body=(
+                        f"Ваш код для сброса пароля: {code}\n\n"
+                        f"Код действителен 15 минут.\n\n"
+                        f"Если вы не запрашивали сброс пароля — проигнорируйте это письмо."
+                    ),
+                )
+            except Exception:
+                pass
+
+    return {"message": "Если email существует, код для сброса пароля отправлен"}
 
 
 @router.post("/password-reset/request")

@@ -566,10 +566,13 @@ async def assign_program_to_student(
     program = db.query(Program).filter(Program.id == program_id).first()
     from app.models import Student
     student = db.query(Student).filter(Student.id == student_id).first()
-    
+
     if not program or not student:
         raise HTTPException(status_code=404, detail="Program or student not found")
-    
+
+    if program.status != ProgramStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Cannot assign archived program to student")
+
     existing = db.query(StudentProgram).filter(
         StudentProgram.student_id == student_id,
         StudentProgram.program_id == program_id,
@@ -582,7 +585,7 @@ async def assign_program_to_student(
         db.commit()
         log_action(db, current_user.id, "add_program", "student", student_id, {"program_id": program_id})
         return {"message": "Program added to student (reactivated)"}
-    
+
     student_program = StudentProgram(student_id=student_id, program_id=program_id)
     db.add(student_program)
 
@@ -595,7 +598,7 @@ async def assign_program_to_student(
         if tid:
             ensure_program_trainer(db, program_id, tid)
     db.commit()
-    
+
     log_action(db, current_user.id, "add_program", "student", student_id, {"program_id": program_id})
     return {"message": "Program added to student"}
 

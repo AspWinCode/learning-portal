@@ -7,7 +7,8 @@ from app.schemas.auth import ParentInviteRequest, ParentInviteResponse
 from app.schemas.users import UserCreate, UserListResponse, UserResponse, UserUpdate
 from app.models import User, UserRole, Role
 from app.routers.action_log import log_action
-from app.services.parent_invite import create_parent_with_invite
+from app.services.parent_invite import create_parent_with_invite, send_invite_email
+from app.services.email_sender import is_email_configured
 from app.services.person_sync import sync_user_person
 from app.utils.phone import normalize_phone
 
@@ -105,11 +106,13 @@ async def invite_parent(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     log_action(db, current_user.id, "invite_parent", "user", db_user.id)
+    email_sent = is_email_configured()
     return ParentInviteResponse(
         user_id=db_user.id,
         email=db_user.email,
         full_name=db_user.full_name,
         invite_link=invite_link,
+        email_sent=email_sent,
     )
 
 

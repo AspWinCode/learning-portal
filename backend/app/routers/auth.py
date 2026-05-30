@@ -40,7 +40,7 @@ def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
 
 
 @router.post("/login", response_model=Token)
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),

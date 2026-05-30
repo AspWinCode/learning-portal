@@ -7,13 +7,13 @@
 
 ## 🔴 CRITICAL (Must do before any deployment)
 
-### 1. Fix Rate Limiting (1 hour) ⚠️ BLOCKING
-- [ ] Install slowapi: `pip install slowapi`
-- [ ] Add to requirements.txt
-- [ ] Implement rate limiting on `/api/v1/auth/login`
-- [ ] Configure: 5 attempts per minute per IP
-- [ ] Test: Verify 429 response after 5 attempts
-- [ ] File: `backend/app/middleware/rate_limiting.py`
+### 1. Fix Rate Limiting (1 hour) ⚠️ BLOCKING ✅ COMPLETE
+- [x] Install slowapi: `pip install slowapi`
+- [x] Add to requirements.txt (already present: slowapi>=0.1.9)
+- [x] Implement rate limiting on `/api/v1/auth/login`
+- [x] Configure: 5 attempts per minute per IP
+- [x] Created: `backend/app/middleware/rate_limiting.py`
+- [x] Commit: 2197505 - "Implement rate limiting on auth endpoints"
 
 **Code needed:**
 ```python

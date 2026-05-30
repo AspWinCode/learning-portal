@@ -79,14 +79,21 @@ docker-compose --profile observability up -d
 
 ---
 
-### 4. Run Baseline Load Test (2-3 hours)
-- [ ] Start local server
-- [ ] Run: `locust -f load_test.py --host=http://localhost:8000 --users=100 --spawn-rate=10 --run-time=5m`
-- [ ] Collect metrics (p50/p95/p99)
-- [ ] Generate report
-- [ ] Compare with targets (p99 should be < 500ms)
+### 4. Run Baseline Load Test (2-3 hours) ✅ INFRASTRUCTURE READY
+- [x] Create load_test.py with realistic scenarios
+- [x] Define load test profiles (trainer, admin, parent, guest)
+- [x] Create BASELINE_LOAD_TEST.md procedure guide
+- [ ] Start backend: `docker-compose up -d db redis backend`
+- [ ] Start monitoring: `docker-compose --profile observability up -d`
+- [ ] Run test: `cd backend && locust -f load_test.py --host=http://localhost:8000 --users=100 --spawn-rate=10 --run-time=5m --headless`
+- [ ] Collect metrics (p50/p95/p99, error rate)
+- [ ] Document results in BASELINE_LOAD_TEST_RESULTS.md
+- [ ] Compare with targets: p99 < 500ms, errors < 1%
 
-**Estimated time:** 2-3 hours
+**Procedure:** See BASELINE_LOAD_TEST.md
+**Estimated time:** 2 hours (ready to execute)
+
+**Status:** Ready to run (just need to execute steps)
 
 ---
 

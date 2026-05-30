@@ -344,6 +344,16 @@ app.add_middleware(
 
 
 @app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+@app.middleware("http")
 async def catch_all_exceptions_middleware(request: Request, call_next):
     """Catch unhandled exceptions and return stable 500/503 JSON responses."""
     if _startup_config_error:

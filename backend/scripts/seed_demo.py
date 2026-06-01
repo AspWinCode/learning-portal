@@ -245,7 +245,10 @@ programs_data = [
 ]
 
 all_programs = []
-all_topics = []
+all_topics = []  # SimpleNamespace с .id и .module_id
+
+import sqlalchemy as _sa
+from types import SimpleNamespace as _NS
 
 for prog_name, modules_data in programs_data:
     prog = Program(name=prog_name, version=1)
@@ -253,20 +256,26 @@ for prog_name, modules_data in programs_data:
     db.flush()
     all_programs.append(prog)
 
-    for mod_order, (mod_name, topics) in enumerate(modules_data):
-        mod = Module(program_id=prog.id, name=mod_name, order=mod_order)
-        db.add(mod)
-        db.flush()
+    for mod_order, (mod_name, topic_names) in enumerate(modules_data):
+        # Raw SQL для модуля — обходим enum cast для status
+        mod_row = db.execute(_sa.text(
+            "INSERT INTO modules (program_id, name, \"order\") VALUES (:pid, :name, :ord) RETURNING id"
+        ), {"pid": prog.id, "name": mod_name, "ord": mod_order}).fetchone()
+        mod_id = mod_row[0]
 
-        for top_order, top_name in enumerate(topics):
-            t = Topic(
-                module_id=mod.id, name=top_name, order=top_order,
-                description=f"Тема «{top_name}» программы «{prog_name}»",
-                final_result=f"Ученик умеет применять {top_name.lower()} на практике",
-            )
-            db.add(t)
-            db.flush()  # по одному, чтобы избежать batch-insert с enum cast
-            all_topics.append(t)
+        for top_order, top_name in enumerate(topic_names):
+            # Raw SQL для темы — минуем TypeDecorator + batch-insert
+            t_row = db.execute(_sa.text(
+                "INSERT INTO topics (module_id, name, description, final_result, \"order\") "
+                "VALUES (:mid, :name, :desc, :fr, :ord) RETURNING id"
+            ), {
+                "mid": mod_id,
+                "name": top_name,
+                "desc": f"Тема «{top_name}» программы «{prog_name}»",
+                "fr": f"Ученик умеет применять {top_name.lower()} на практике",
+                "ord": top_order,
+            }).fetchone()
+            all_topics.append(_NS(id=t_row[0], module_id=mod_id, prog_id=prog.id))
 
 db.flush()
 print(f"  ✅ {len(all_programs)} программ, {len(all_topics)} тем")
@@ -400,15 +409,13 @@ for i, name in enumerate(STUDENT_NAMES):
         if gp_list:
             prog_id = gp_list[0].program_id
             sp = StudentProgram(
-                student_id=s.id, program_id=prog_id, status=StudentProgramLinkStatus.ACTIVE
+                student_id=s.id, program_id=prog_id,
             )
             db.add(sp)
             db.flush()
 
-            # Оценки по темам программы
-            topics_for_prog = [t for t in all_topics if t.module_id in [
-                m.id for m in db.query(Module).filter(Module.program_id == prog_id).all()
-            ]]
+            # Оценки по темам программы (all_topics — список SimpleNamespace)
+            topics_for_prog = [t for t in all_topics if t.prog_id == prog_id]
             graded_count = rng.randint(2, min(8, len(topics_for_prog)))
             for topic in topics_for_prog[:graded_count]:
                 grade_val = rng.randint(60, 100)

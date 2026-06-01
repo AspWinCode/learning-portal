@@ -108,7 +108,9 @@ def rand_past_dt(days_back: int = 180) -> datetime:
 
 existing = db.query(User).filter(User.email == "owner@demo.kz").first()
 if existing:
-    print("⚠️  Демо-данные уже существуют (owner@demo.kz найден). Пропускаю.")
+    print("⚠️  Демо-данные уже существуют (owner@demo.kz найден).")
+    print("   Чтобы сбросить — удалите пользователя owner@demo.kz из БД и запустите снова.")
+    print("   Для удаления: docker exec -it learning-portal-backend-1 psql $DATABASE_URL -c \"DELETE FROM users WHERE email LIKE '%@demo.kz';\"")
     sys.exit(0)
 
 print("🌱 Наполняю базу демо-данными...")
@@ -246,24 +248,24 @@ all_programs = []
 all_topics = []
 
 for prog_name, modules_data in programs_data:
-    prog = Program(name=prog_name, status=ProgramStatus.ACTIVE, version=1)
+    prog = Program(name=prog_name, version=1)
     db.add(prog)
     db.flush()
     all_programs.append(prog)
 
     for mod_order, (mod_name, topics) in enumerate(modules_data):
-        mod = Module(program_id=prog.id, name=mod_name, order=mod_order, status=ProgramStatus.ACTIVE)
+        mod = Module(program_id=prog.id, name=mod_name, order=mod_order)
         db.add(mod)
         db.flush()
 
         for top_order, top_name in enumerate(topics):
             t = Topic(
                 module_id=mod.id, name=top_name, order=top_order,
-                status=TopicStatus.ACTIVE,
                 description=f"Тема «{top_name}» программы «{prog_name}»",
                 final_result=f"Ученик умеет применять {top_name.lower()} на практике",
             )
             db.add(t)
+            db.flush()  # по одному, чтобы избежать batch-insert с enum cast
             all_topics.append(t)
 
 db.flush()
@@ -301,7 +303,6 @@ for i, (name, direction, prog_idx, trainer_idx) in enumerate(groups_data):
         name=name,
         direction=direction,
         trainer_id=trainers[trainer_idx].id,
-        status=GroupStatus.ACTIVE,
         lesson_format="individual" if "Индивидуальные" in name else "group",
         units_per_session=2 if direction == "first_step" else 1,
         start_date=date.today() - timedelta(days=rng.randint(30, 180)),
@@ -349,15 +350,22 @@ students_per_group = {g.id: [] for g in all_groups}
 for i, name in enumerate(STUDENT_NAMES):
     parent = parents[i % len(parents)]
     abo = abonements[i % 3]  # первые 3 абонемента
-    status = StudentStatus.ACTIVE if i < 30 else StudentStatus.ARCHIVED
+    is_archived = i >= 30
 
     s = Student(
         full_name=name,
         parent_id=parent.id,
         abonement_id=abo.id,
-        status=status,
         training_start_date=rand_date(300),
     )
+    db.add(s)
+    db.flush()
+    # Устанавливаем статус через raw SQL чтобы избежать enum cast проблемы
+    if is_archived:
+        db.execute(
+            __import__('sqlalchemy').text("UPDATE students SET status = 'archived' WHERE id = :id"),
+            {"id": s.id}
+        )
     db.add(s)
     db.flush()
     all_students.append(s)
@@ -368,7 +376,7 @@ for i, name in enumerate(STUDENT_NAMES):
     db.flush()
 
     # Несколько транзакций
-    if status == StudentStatus.ACTIVE:
+    if not is_archived:
         for _ in range(rng.randint(2, 6)):
             pay_amount = abo.price
             tx = StudentAccountTransaction(
@@ -381,7 +389,7 @@ for i, name in enumerate(STUDENT_NAMES):
 
     # Добавляем в группу
     group = all_groups[i % len(all_groups)]
-    if status == StudentStatus.ACTIVE and len(students_per_group[group.id]) < 8:
+    if not is_archived and len(students_per_group[group.id]) < 8:
         gs = GroupStudent(group_id=group.id, student_id=s.id)
         db.add(gs)
         students_per_group[group.id].append(s.id)

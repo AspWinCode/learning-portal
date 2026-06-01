@@ -448,51 +448,58 @@ lead_source3 = LeadSource(name="Рекомендация", is_active=True)
 db.add(lead_source3)
 db.flush()
 
+# Raw SQL статусы (enum в PG)
 lead_statuses_pool = [
-    LeadStatus.NEW, LeadStatus.NEW, LeadStatus.CONTACTED,
-    LeadStatus.NO_ANSWER, LeadStatus.DEMO, LeadStatus.THINKING,
-    LeadStatus.TRIAL_SCHEDULED, LeadStatus.INVOICE_SENT,
-    LeadStatus.WON, LeadStatus.LOST, LeadStatus.REFUSED,
+    "new", "new", "contacted", "no_answer", "demo", "thinking",
+    "trial_scheduled", "invoice_sent", "won", "lost", "refused",
 ]
+# Статусы при которых создаём задачу
+task_statuses = {"contacted", "no_answer", "demo", "thinking"}
 
 for i, name in enumerate(LEAD_NAMES):
-    parts = name.split()
     child_name = STUDENT_NAMES[i % len(STUDENT_NAMES)]
-    status = lead_statuses_pool[i % len(lead_statuses_pool)]
+    status_val = lead_statuses_pool[i % len(lead_statuses_pool)]
     source = [lead_source, lead_source2, lead_source3][i % 3]
+    comment = rng.choice([
+        "Интересуется курсом Python", "Хочет записать ребёнка на пробный урок",
+        "Спрашивала про расписание", "Уточняет стоимость", None, None,
+    ])
+    created = rand_past_dt(90)
 
-    lead = Lead(
-        owner_id=sales.id,
-        parent_name=name,
-        parent_phone=phone(5000 + i),
-        parent_email=f"lead{i+1}@example.kz",
-        child_name=child_name,
-        child_age=rng.randint(7, 16),
-        status=status,
-        source_id=source.id,
-        city="Алматы",
-        comment=rng.choice([
-            "Интересуется курсом Python", "Хочет записать ребёнка на пробный урок",
-            "Спрашивала про расписание", "Уточняет стоимость", None, None,
-        ]),
-        created_at=rand_past_dt(90),
-    )
-    db.add(lead)
-    db.flush()
+    # Raw SQL — обходим native enum cast для status
+    res = db.execute(_sa.text("""
+        INSERT INTO leads (owner_id, contact_name, phone, parent_full_name,
+            child_full_name, email, city, comment, source_id, created_at, status)
+        VALUES (:owner, :contact, :phone, :pfn, :cfn, :email, :city, :comment,
+            :source, :created, :status::leadstatus)
+        RETURNING id
+    """), {
+        "owner": sales.id,
+        "contact": name,
+        "phone": phone(5000 + i),
+        "pfn": name,
+        "cfn": child_name,
+        "email": f"lead{i+1}@example.kz",
+        "city": "Алматы",
+        "comment": comment,
+        "source": source.id,
+        "created": created,
+        "status": status_val,
+    })
+    lead_id = res.scalar()
 
-    # Задачи по лиду
-    if status in (LeadStatus.CONTACTED, LeadStatus.NO_ANSWER, LeadStatus.DEMO, LeadStatus.THINKING):
-        task = LeadTask(
-            lead_id=lead.id,
-            owner_id=sales.id,
-            title=rng.choice([
-                "Перезвонить завтра", "Отправить программу", "Записать на пробный урок",
-                "Уточнить возраст ребёнка", "Напомнить об оплате"
-            ]),
-            status=rng.choice([LeadTaskStatus.TODO, LeadTaskStatus.IN_PROGRESS]),
-            due_date=date.today() + timedelta(days=rng.randint(1, 14)),
-        )
-        db.add(task)
+    # Задача по лиду (raw SQL для обхода enum)
+    if status_val in task_statuses:
+        task_note = rng.choice([
+            "Перезвонить завтра", "Отправить программу", "Записать на пробный урок",
+            "Уточнить возраст ребёнка", "Напомнить об оплате"
+        ])
+        due = datetime.combine(date.today() + timedelta(days=rng.randint(1, 14)),
+                               datetime.min.time()).replace(tzinfo=timezone.utc)
+        db.execute(_sa.text("""
+            INSERT INTO lead_tasks (lead_id, owner_id, note, due_at, status)
+            VALUES (:lead, :owner, :note, :due, 'open'::leadtaskstatus)
+        """), {"lead": lead_id, "owner": sales.id, "note": task_note, "due": due})
 
 db.flush()
 print(f"  ✅ {len(LEAD_NAMES)} лидов создано")

@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from passlib.context import CryptContext
+from app.auth import get_password_hash
 
 from app.models import (
     User, UserRole, Student, StudentStatus, StudentAccount, StudentAccountTransaction,
@@ -47,7 +47,6 @@ DATABASE_URL = os.getenv(
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 db = Session()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 rng = random.Random(42)  # фиксированный seed для воспроизводимости
 
@@ -94,7 +93,7 @@ LEAD_NAMES = [
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
 def hashed(password: str) -> str:
-    return pwd_context.hash(password)
+    return get_password_hash(password)
 
 def phone(i: int) -> str:
     return f"+7701{i:07d}"

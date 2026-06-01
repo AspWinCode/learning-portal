@@ -1,4 +1,6 @@
-https://{$DOMAIN} {
+# Caddy слушает plain HTTP — SSL терминирует системный nginx
+# nginx проксирует tirskix.space → 127.0.0.1:8090 → этот контейнер
+http://{$DOMAIN} {
     encode gzip zstd
 
     # Backend API: все /api/* на backend без обрезки пути (path сохраняется)
@@ -15,16 +17,15 @@ https://{$DOMAIN} {
     }
 }
 
-gdevelop.tirskix.space {
+# GDevelop — plain HTTP, nginx проксирует gdevelop.tirskix.space → 127.0.0.1:8090
+http://gdevelop.tirskix.space {
     encode gzip zstd
 
-    # Наш сервер загрузки ресурсов
     handle_path /gdevelop-resources/* {
         reverse_proxy gdevelop-resources:3000
     }
 
-    # Сам редактор GDevelop (как и раньше по пути /gdevelop)
-    handle_path /gdevelop/* {
-        reverse_proxy gdevelop-web:80
+    handle {
+        reverse_proxy gdevelop-gdevelop-web:80
     }
 }

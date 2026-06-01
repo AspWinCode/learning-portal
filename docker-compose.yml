@@ -165,8 +165,8 @@ services:
       context: .
       dockerfile: ./frontend/Dockerfile
     ports:
-      - "80:80"
-      - "443:443"
+      # Только localhost — nginx проксирует снаружи, SSL на nginx
+      - "127.0.0.1:8090:80"
     environment:
       DOMAIN: ${DOMAIN:-example.com}
     volumes:

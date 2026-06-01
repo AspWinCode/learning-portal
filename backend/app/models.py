@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, Time, ForeignKey, Text, Float, Enum as SQLEnum, JSON, UniqueConstraint, LargeBinary
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, Time, ForeignKey, Text, Float, Numeric, Enum as SQLEnum, JSON, UniqueConstraint, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
@@ -903,11 +903,15 @@ class PersonalFinanceAccount(Base):
     name = Column(String(128), nullable=False, index=True)
     currency = Column(String(8), nullable=False, default="RUB")
     balance = Column(Float, nullable=False, default=0.0)
+    # Finance Hub: тип счёта и привязка к проекту (Finance Hub spec)
+    account_type = Column(String(16), nullable=False, default="other")  # bank|cash|crypto|other
+    project_id = Column(Integer, ForeignKey("finance_targets.id"), nullable=True, index=True)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     owner = relationship("User")
+    project = relationship("FinanceTarget", foreign_keys=[project_id])
 
 
 class PersonalFinanceCategory(Base):
@@ -942,6 +946,8 @@ class PersonalFinanceTransaction(Base):
     article = Column(String(255), nullable=True, index=True)
     description = Column(Text, nullable=True)
     occurred_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    # Finance Hub: статус транзакции (completed|pending|planned)
+    hub_status = Column(String(16), nullable=False, default="completed", index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -964,6 +970,56 @@ class PersonalFinanceRule(Base):
 
     owner = relationship("User")
     category = relationship("PersonalFinanceCategory", foreign_keys=[category_id])
+
+
+class FinanceHubDebt(Base):
+    """Долги и обязательства owner (Finance Hub — Блок 5)."""
+
+    __tablename__ = "finance_hub_debts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    debt_type = Column(String(8), nullable=False)            # "owe" (я должен) | "owed" (мне должны)
+    counterparty = Column(String(256), nullable=False)
+    amount = Column(Numeric(14, 2), nullable=False)
+    paid_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    currency = Column(String(8), nullable=False, default="KZT")
+    due_date = Column(Date, nullable=True, index=True)
+    description = Column(Text, nullable=True)
+    project_id = Column(Integer, ForeignKey("finance_targets.id"), nullable=True, index=True)
+    status = Column(String(16), nullable=False, default="active", index=True)  # active|partially_paid|closed
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User")
+    project = relationship("FinanceTarget", foreign_keys=[project_id])
+
+
+class FinanceHubAllocation(Base):
+    """Распределение средств между проектами/личным (Finance Hub — Блок 6).
+    Каждое распределение автоматически порождает две транзакции в personal_finance_transactions.
+    """
+
+    __tablename__ = "finance_hub_allocations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    amount = Column(Numeric(14, 2), nullable=False)
+    currency = Column(String(8), nullable=False, default="KZT")
+    from_account_id = Column(Integer, ForeignKey("personal_finance_accounts.id"), nullable=True, index=True)
+    to_type = Column(String(16), nullable=False)             # "project" | "personal"
+    to_project_id = Column(Integer, ForeignKey("finance_targets.id"), nullable=True)
+    to_account_id = Column(Integer, ForeignKey("personal_finance_accounts.id"), nullable=True)
+    date = Column(Date, nullable=False, index=True)
+    comment = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    from_account = relationship("PersonalFinanceAccount", foreign_keys=[from_account_id])
+    to_account = relationship("PersonalFinanceAccount", foreign_keys=[to_account_id])
+    to_project = relationship("FinanceTarget", foreign_keys=[to_project_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
 
 
 class LeadTaskTemplate(Base):

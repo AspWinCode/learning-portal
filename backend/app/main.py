@@ -28,6 +28,7 @@ from app.routers import (
     characteristics,
     communications,
     finance,
+    finance_hub,
     grades,
     groups,
     max_messenger,
@@ -430,6 +431,7 @@ app.include_router(trainer_lessons.router, prefix="/api/v1/trainer-lessons", tag
 app.include_router(student_accounts.router, prefix="/api/v1/student-accounts", tags=["student_accounts"])
 app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
 app.include_router(finance.router, prefix="/api/v1/finance", tags=["finance"])
+app.include_router(finance_hub.router, prefix="/api/v1/finance/hub", tags=["finance_hub"])
 app.include_router(personal_finance.router, prefix="/api/v1/personal-finance", tags=["personal_finance"])
 app.include_router(admin_tools.router, prefix="/api/v1/admin-tools", tags=["admin_tools"])
 app.include_router(sms.router, prefix="/api/v1", tags=["sms"])

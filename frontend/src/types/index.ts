@@ -1777,3 +1777,110 @@ export interface PersonAttachRecordRequest {
   entity_id: number;
 }
 
+// ─── Finance Hub ───────────────────────────────────────────────────────────
+
+export interface HubAccount {
+  id: number;
+  owner_id: number;
+  name: string;
+  account_type: 'bank' | 'cash' | 'crypto' | 'other';
+  currency: string;
+  balance: number;
+  project_id: number | null;
+  is_active: boolean;
+  created_at?: string | null;
+}
+
+export interface HubTransaction {
+  id: number;
+  account_id: number;
+  direction: 'income' | 'expense';
+  category: string | null;
+  amount: number;
+  currency: string;
+  transaction_date: string | null;
+  description: string | null;
+  project_id: number | null;
+  project_name: string | null;
+  hub_status: 'completed' | 'pending' | 'planned';
+  created_at?: string | null;
+}
+
+export interface HubDebt {
+  id: number;
+  owner_id: number;
+  debt_type: 'owe' | 'owed';
+  counterparty: string;
+  amount: number;
+  paid_amount: number;
+  debt_remaining: number;
+  currency: string;
+  due_date: string | null;
+  description: string | null;
+  project_id: number | null;
+  status: 'active' | 'partially_paid' | 'closed';
+  is_overdue: boolean;
+  days_until_due: number | null;
+  created_at?: string | null;
+}
+
+export interface HubAllocation {
+  id: number;
+  owner_id: number;
+  amount: number;
+  currency: string;
+  from_account_id: number | null;
+  from_account_name: string | null;
+  to_type: 'project' | 'personal';
+  to_project_id: number | null;
+  to_project_name: string | null;
+  to_account_id: number | null;
+  to_account_name: string | null;
+  date: string;
+  comment: string | null;
+  created_at?: string | null;
+}
+
+export interface HubSummary {
+  date_from: string;
+  date_to: string;
+  total_balance: number;
+  period_income: number;
+  period_expense: number;
+  net_flow: number;
+  forecast_balance: number;
+}
+
+export interface HubChartPoint {
+  period: string;
+  income: number;
+  expense: number;
+}
+
+export interface HubChart {
+  group_by: string;
+  points: HubChartPoint[];
+}
+
+export interface HubForecast {
+  current_balance: number;
+  planned_income: number;
+  planned_expense: number;
+  forecast_balance: number;
+  planned_transactions: HubTransaction[];
+}
+
+export interface HubTransactionByCategoryRow {
+  category: string;
+  total: number;
+  count: number;
+}
+
+export interface HubTransactionByProjectRow {
+  project_id: number | null;
+  project_name: string;
+  income: number;
+  expense: number;
+  net: number;
+}
+

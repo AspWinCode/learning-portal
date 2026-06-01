@@ -72,7 +72,7 @@ const DRAWER_MINI = 64;
 // Группы меню: id → массив путей
 const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: 'Обучение', paths: new Set(['/dashboard', '/trainer-cockpit', '/parent-dashboard', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades']) },
-  { id: 'finance',   label: 'Финансы',  paths: new Set(['/finance/overview', '/finance/projects', '/abonements', '/calculations', '/personal-finance']) },
+  { id: 'finance',   label: 'Финансы',  paths: new Set(['/finance', '/finance/overview', '/finance/projects', '/abonements', '/calculations', '/personal-finance']) },
   { id: 'sales',     label: 'Продажи',  paths: new Set(['/sales/leads', '/sales/pipeline', '/sales/events', '/sales/dashboard', '/sales/reports', '/sales/managers']) },
   { id: 'ops',       label: 'Операции', paths: new Set(['/sales/instructions', '/sales/absences', '/sales/debts', '/sales/tax-deduction', '/sales/program-makeup', '/manual-lessons']) },
   { id: 'workspace', label: 'Задачник', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects', '/owner-workspace/reports', '/owner-workspace/notifications', '/owner-workspace/settings', '/owner-workspace/counterparties']) },
@@ -294,6 +294,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (canAccessReports && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') {
       // Для владельца отчёты и финансовая модель доступны с главной страницы как вкладки.
+      items.push({ text: '💰 Finance Hub', icon: <AccountBalanceWallet />, path: '/finance' });
       items.push({ text: 'Финансы (журнал)', icon: <AccountBalanceWallet />, path: '/finance/overview' });
       items.push({ text: 'Проекты (финансы)', icon: <AccountBalanceWallet />, path: '/finance/projects' });
     }

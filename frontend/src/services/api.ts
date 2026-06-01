@@ -3278,5 +3278,121 @@ export const maxApi = {
   },
 };
 
+// ─── Finance Hub API ──────────────────────────────────────────────────────
+import type {
+  HubAccount, HubTransaction, HubDebt, HubAllocation,
+  HubSummary, HubChart, HubForecast,
+  HubTransactionByCategoryRow, HubTransactionByProjectRow,
+} from '../types';
+
+export const financeHubApi = {
+  // --- Summary & Chart ---
+  getSummary: async (params?: { date_from?: string; date_to?: string }): Promise<HubSummary> => {
+    const r = await api.get('/finance/hub/summary', { params });
+    return r.data;
+  },
+  getChart: async (params?: { date_from?: string; date_to?: string; group_by?: string }): Promise<HubChart> => {
+    const r = await api.get('/finance/hub/chart', { params });
+    return r.data;
+  },
+  getForecast: async (): Promise<HubForecast> => {
+    const r = await api.get('/finance/hub/forecast');
+    return r.data;
+  },
+  getPlanned: async (): Promise<HubTransaction[]> => {
+    const r = await api.get('/finance/hub/planned');
+    return r.data;
+  },
+
+  // --- Accounts ---
+  listAccounts: async (params?: { only_active?: boolean; project_id?: number }): Promise<HubAccount[]> => {
+    const r = await api.get('/finance/hub/accounts', { params });
+    return r.data;
+  },
+  createAccount: async (payload: Partial<HubAccount>): Promise<HubAccount> => {
+    const r = await api.post('/finance/hub/accounts', payload);
+    return r.data;
+  },
+  updateAccount: async (id: number, payload: Partial<HubAccount>): Promise<HubAccount> => {
+    const r = await api.patch(`/finance/hub/accounts/${id}`, payload);
+    return r.data;
+  },
+  deleteAccount: async (id: number): Promise<void> => {
+    await api.delete(`/finance/hub/accounts/${id}`);
+  },
+
+  // --- Transactions ---
+  listTransactions: async (params?: {
+    account_id?: number; project_id?: number; direction?: string;
+    category?: string; hub_status?: string; date_from?: string; date_to?: string;
+  }): Promise<HubTransaction[]> => {
+    const r = await api.get('/finance/hub/transactions', { params });
+    return r.data;
+  },
+  createTransaction: async (payload: {
+    account_id: number; direction: string; category: string;
+    amount: number; transaction_date: string; hub_status?: string; description?: string;
+  }): Promise<HubTransaction> => {
+    const r = await api.post('/finance/hub/transactions', payload);
+    return r.data;
+  },
+  updateTransaction: async (id: number, payload: Partial<HubTransaction>): Promise<HubTransaction> => {
+    const r = await api.patch(`/finance/hub/transactions/${id}`, payload);
+    return r.data;
+  },
+  deleteTransaction: async (id: number): Promise<void> => {
+    await api.delete(`/finance/hub/transactions/${id}`);
+  },
+  getByCategory: async (params?: { date_from?: string; date_to?: string; direction?: string }): Promise<HubTransactionByCategoryRow[]> => {
+    const r = await api.get('/finance/hub/transactions/by-category', { params });
+    return r.data;
+  },
+  getByProject: async (params?: { date_from?: string; date_to?: string }): Promise<HubTransactionByProjectRow[]> => {
+    const r = await api.get('/finance/hub/transactions/by-project', { params });
+    return r.data;
+  },
+
+  // --- Debts ---
+  listDebts: async (params?: { debt_type?: string; debt_status?: string }): Promise<HubDebt[]> => {
+    const r = await api.get('/finance/hub/debts', { params });
+    return r.data;
+  },
+  createDebt: async (payload: {
+    debt_type: string; counterparty: string; amount: number;
+    currency?: string; due_date?: string; description?: string; project_id?: number;
+  }): Promise<HubDebt> => {
+    const r = await api.post('/finance/hub/debts', payload);
+    return r.data;
+  },
+  updateDebt: async (id: number, payload: Partial<HubDebt>): Promise<HubDebt> => {
+    const r = await api.patch(`/finance/hub/debts/${id}`, payload);
+    return r.data;
+  },
+  payDebt: async (id: number, amount: number): Promise<HubDebt> => {
+    const r = await api.post(`/finance/hub/debts/${id}/payment`, { amount });
+    return r.data;
+  },
+  deleteDebt: async (id: number): Promise<void> => {
+    await api.delete(`/finance/hub/debts/${id}`);
+  },
+
+  // --- Allocations ---
+  listAllocations: async (params?: { date_from?: string; date_to?: string }): Promise<HubAllocation[]> => {
+    const r = await api.get('/finance/hub/allocations', { params });
+    return r.data;
+  },
+  createAllocation: async (payload: {
+    amount: number; currency?: string; from_account_id?: number;
+    to_type: string; to_project_id?: number; to_account_id?: number;
+    date: string; comment?: string;
+  }): Promise<HubAllocation> => {
+    const r = await api.post('/finance/hub/allocations', payload);
+    return r.data;
+  },
+  deleteAllocation: async (id: number): Promise<void> => {
+    await api.delete(`/finance/hub/allocations/${id}`);
+  },
+};
+
 export default api;
 

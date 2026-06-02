@@ -246,7 +246,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="schools" label="Школы" />
           <Tab value="cities" label="Города" />
           <Tab value="classes" label="Классы" />
-          <Tab value="b2b" label="B2B" />
+          <Tab value="b2b" label="Районы" />
           <Tab value="finance" label="Финансы" />
           <Tab value="leadSources" label="Источники" />
           <Tab value="tasks" label="Задачи" />

@@ -764,7 +764,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={sectionPaperSx('finance')}>
+        <Paper sx={sectionPaperSx('integrations')}>
           <Typography variant="h6" mb={1}>Точка Банк — ручной импорт платежей</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Загружает выписку за период и зачисляет входящие платежи на счета учеников по совпадению ФИО плательщика с родителем в карточке. Авто-импорт раз в 10 мин берёт только последние 3 дня; здесь можно указать любой период.

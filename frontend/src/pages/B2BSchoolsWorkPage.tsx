@@ -141,13 +141,12 @@ const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClo
       setForm(formFromSchool(full));
       setContacts(full.contacts ?? []);
       await loadDocuments(full.id);
-      onSaved(full);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить карточку школы'));
     } finally {
       setLoading(false);
     }
-  }, [loadDocuments, onSaved, school]);
+  }, [loadDocuments, school]);
 
   React.useEffect(() => {
     if (open && school) void loadSchoolCard();

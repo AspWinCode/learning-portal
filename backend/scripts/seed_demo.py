@@ -451,7 +451,7 @@ db.flush()
 # Raw SQL статусы (enum в PG)
 lead_statuses_pool = [
     "new", "new", "contacted", "no_answer", "demo", "thinking",
-    "trial_scheduled", "invoice_sent", "won", "lost", "refused",
+    "invoice_sent", "won", "lost", "thinking", "contacted",
 ]
 # Статусы при которых создаём задачу
 task_statuses = {"contacted", "no_answer", "demo", "thinking"}

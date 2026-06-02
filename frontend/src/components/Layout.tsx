@@ -76,7 +76,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/persons', '/operations/manual-lessons']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance', '/finance/overview', '/finance/projects', '/abonements', '/finance/payments', '/calculations', '/personal-finance', '/finance/tax-deduction']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects', '/owner-workspace/reports', '/owner-workspace/settings']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
@@ -288,10 +288,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         ...(canAccessPersons ? [{ text: 'Реестр Person', icon: <Search />, path: '/persons' }] : []),
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
-        { text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' },
-        { text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' },
+        { text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' },
         { text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' },
-        { text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' },
       ];
 
     const items = [
@@ -308,10 +306,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Оценки тренера', icon: <Grade />, path: '/trainer-grades' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
-      items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
-      items.push({ text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' });
+      items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
-      items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
 
     if (canAccessReports && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
@@ -334,10 +330,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Совместимость программ (отработки)', icon: <Assignment />, path: '/operations/program-makeup' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
-      items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
-      items.push({ text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' });
+      items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
-      items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
@@ -384,18 +378,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     ? permissionExpandedMenuItems
     : permissionExpandedMenuItems.filter((item) => !item.path.startsWith('/owner-workspace'));
 
-  /** Подсветка «Owner задачник» для любого `/owner-workspace/*`, кроме отдельных пунктов уведомлений и настроек. */
+  /** Подсветка «Таск трекер» для любого `/owner-workspace/*`, кроме отдельных пунктов уведомлений и контрагентов. */
   const isOwnerWorkspaceMainSection = (pathname: string) =>
     pathname.startsWith('/owner-workspace') &&
-    pathname !== '/owner-workspace/reports' &&
     pathname !== '/owner-workspace/notifications' &&
-    pathname !== '/owner-workspace/settings' &&
     pathname !== '/owner-workspace/counterparties';
 
   const isDrawerItemSelected = (itemPath: string) => {
-    if (itemPath === '/owner-workspace/reports') return location.pathname === '/owner-workspace/reports';
     if (itemPath === '/owner-workspace/notifications') return location.pathname === '/owner-workspace/notifications';
-    if (itemPath === '/owner-workspace/settings') return location.pathname === '/owner-workspace/settings';
     if (itemPath === '/owner-workspace/counterparties') return location.pathname === '/owner-workspace/counterparties';
     if (itemPath === '/owner-workspace/projects') return isOwnerWorkspaceMainSection(location.pathname);
     return location.pathname === itemPath;
@@ -403,7 +393,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const appBarPageTitle =
     effectiveMenuItems.find((item) => item.path === location.pathname)?.text ??
-    (isOwnerWorkspaceMainSection(location.pathname) ? 'Owner задачник' : null) ??
+    (isOwnerWorkspaceMainSection(location.pathname) ? 'Таск трекер' : null) ??
     'Портал управления обучением';
 
   // Группируем видимые пункты меню

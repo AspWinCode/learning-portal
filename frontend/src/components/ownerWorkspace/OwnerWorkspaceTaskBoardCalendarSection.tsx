@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   Box,
   Card,
@@ -104,14 +104,14 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
       <CardContent>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <IconButton
-            aria-label="РџСЂРµРґС‹РґСѓС‰РёР№ РјРµСЃСЏС†"
+            aria-label="Предыдущий месяц"
             onClick={() => onCalendarMonthChange((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() - 1, 1)))}
           >
             <ChevronLeftIcon />
           </IconButton>
           <Typography variant="h6">{format(calendarMonth, 'LLLL yyyy', { locale: ru })}</Typography>
           <IconButton
-            aria-label="РЎР»РµРґСѓСЋС‰РёР№ РјРµСЃСЏС†"
+            aria-label="Следующий месяц"
             onClick={() => onCalendarMonthChange((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() + 1, 1)))}
           >
             <ChevronRightIcon />
@@ -160,7 +160,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
                     <Chip
                       key={task.id}
                       size="small"
-                      label={task.title.length > 22 ? `${task.title.slice(0, 22)}вЂ¦` : task.title}
+                      label={task.title.length > 22 ? `${task.title.slice(0, 22)}…` : task.title}
                       onClick={() => void onOpenTask(task)}
                       sx={{ height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
                     />

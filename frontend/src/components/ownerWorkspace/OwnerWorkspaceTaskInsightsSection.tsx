@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   Alert,
   Button,
@@ -63,22 +63,22 @@ export function OwnerWorkspaceTaskInsightsSection({
         <Card variant="outlined">
           <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
             <Typography variant="subtitle2" gutterBottom>
-              РђРЅР°Р»РёС‚РёРєР° (РІР°С€Р° Р·РѕРЅР° РІРёРґРёРјРѕСЃС‚Рё)
+              Аналитика (ваша зона видимости)
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap" useFlexGap>
               <Typography variant="body2">
-                Р—Р°РІРµСЂС€РµРЅРѕ Р·Р° 7 РґРЅРµР№: <strong>{tasksAnalytics.completed_last_7_days}</strong>
+                Завершено за 7 дней: <strong>{tasksAnalytics.completed_last_7_days}</strong>
               </Typography>
               <Typography variant="body2">
-                Р—Р° 30 РґРЅРµР№: <strong>{tasksAnalytics.completed_last_30_days}</strong>
+                За 30 дней: <strong>{tasksAnalytics.completed_last_30_days}</strong>
               </Typography>
               <Typography variant="body2">
-                РЎСЂРµРґРЅРµРµ РІСЂРµРјСЏ РґРѕ Р·Р°РєСЂС‹С‚РёСЏ (Р·Р°РІРµСЂС€С‘РЅРЅС‹Рµ Р·Р° 30 РґРЅ.):{' '}
+                Среднее время до закрытия (завершённые за 30 дн.):{' '}
                 <strong>
                   {tasksAnalytics.avg_days_to_complete_last_30 != null &&
                   tasksAnalytics.avg_days_to_complete_last_30 !== undefined
-                    ? `${tasksAnalytics.avg_days_to_complete_last_30} РґРЅ.`
-                    : 'вЂ”'}
+                    ? `${tasksAnalytics.avg_days_to_complete_last_30} дн.`
+                    : '—'}
                 </strong>
               </Typography>
             </Stack>
@@ -90,28 +90,28 @@ export function OwnerWorkspaceTaskInsightsSection({
         <Card variant="outlined">
           <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
             <Stack spacing={1.5}>
-              <Typography variant="subtitle2">РќР°РіСЂСѓР·РєР° РїРѕ СЃРѕС‚СЂСѓРґРЅРёРєР°Рј</Typography>
+              <Typography variant="subtitle2">Нагрузка по сотрудникам</Typography>
               <Typography variant="body2" color="text.secondary">
-                Р‘Р»РѕРє СЃС‚СЂРѕРёС‚СЃСЏ РїРѕ С‚РµРєСѓС‰РµР№ РІРёРґРёРјРѕР№ РІС‹Р±РѕСЂРєРµ Р·Р°РґР°С‡ СЃ СѓС‡С‘С‚РѕРј Р°РєС‚РёРІРЅС‹С… С„РёР»СЊС‚СЂРѕРІ.
+                Блок строится по текущей видимой выборке задач с учётом активных фильтров.
               </Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
-                <Chip size="small" label={`РЎ Р°РєС‚РёРІРЅС‹РјРё Р·Р°РґР°С‡Р°РјРё: ${assigneeAnalyticsSummary.assigneesWithActiveTasks}`} />
+                <Chip size="small" label={`С активными задачами: ${assigneeAnalyticsSummary.assigneesWithActiveTasks}`} />
                 <Chip
                   size="small"
                   color={assigneeAnalyticsSummary.assigneesWithOverdueTasks > 0 ? 'warning' : 'default'}
-                  label={`РЎ РїСЂРѕСЃСЂРѕС‡РєРѕР№: ${assigneeAnalyticsSummary.assigneesWithOverdueTasks}`}
+                  label={`С просрочкой: ${assigneeAnalyticsSummary.assigneesWithOverdueTasks}`}
                 />
                 <Chip
                   size="small"
                   color={assigneeAnalyticsSummary.overloadedAssignees > 0 ? 'error' : 'default'}
                   variant={assigneeAnalyticsSummary.overloadedAssignees > 0 ? 'filled' : 'outlined'}
-                  label={`РџРµСЂРµРіСЂСѓР¶РµРЅС‹ (5+ Р°РєС‚РёРІРЅС‹С…): ${assigneeAnalyticsSummary.overloadedAssignees}`}
+                  label={`Перегружены (5+ активных): ${assigneeAnalyticsSummary.overloadedAssignees}`}
                 />
               </Stack>
               {assigneeAttentionRows.length > 0 && (
                 <Alert severity="warning">
                   <Typography variant="subtitle2" gutterBottom>
-                    Р—РѕРЅР° РІРЅРёРјР°РЅРёСЏ
+                    Зона внимания
                   </Typography>
                   <Stack spacing={0.5}>
                     {assigneeAttentionRows.map((row) => (
@@ -122,11 +122,11 @@ export function OwnerWorkspaceTaskInsightsSection({
                         alignItems={{ sm: 'center' }}
                       >
                         <Typography variant="body2">
-                          {row.assigneeName}: Р°РєС‚РёРІРЅС‹С… {row.activeCount}, РїСЂРѕСЃСЂРѕС‡РµРЅРѕ {row.overdueCount}
+                          {row.assigneeName}: активных {row.activeCount}, просрочено {row.overdueCount}
                         </Typography>
                         <Stack direction="row" spacing={1}>
                           <Button size="small" variant="outlined" onClick={() => void onDrillDownToAssigneeTasks(row.assigneeId)}>
-                            Р’СЃРµ Р°РєС‚РёРІРЅС‹Рµ
+                            Все активные
                           </Button>
                           {row.overdueCount > 0 && (
                             <Button
@@ -135,7 +135,7 @@ export function OwnerWorkspaceTaskInsightsSection({
                               color="warning"
                               onClick={() => void onDrillDownToAssigneeTasks(row.assigneeId, { overdueOnly: true })}
                             >
-                              РўРѕР»СЊРєРѕ РїСЂРѕСЃСЂРѕС‡РєР°
+                              Только просрочка
                             </Button>
                           )}
                         </Stack>
@@ -152,13 +152,13 @@ export function OwnerWorkspaceTaskInsightsSection({
                         <Stack spacing={1}>
                           <Typography variant="subtitle2">{row.assigneeName}</Typography>
                           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                            <Chip size="small" label={`РђРєС‚РёРІРЅС‹С…: ${row.activeCount}`} />
-                            <Chip size="small" color={row.overdueCount > 0 ? 'warning' : 'default'} label={`РџСЂРѕСЃСЂРѕС‡РµРЅРѕ: ${row.overdueCount}`} />
-                            <Chip size="small" color="success" variant="outlined" label={`Р—Р°РІРµСЂС€РµРЅРѕ: ${row.completedCount}`} />
+                            <Chip size="small" label={`Активных: ${row.activeCount}`} />
+                            <Chip size="small" color={row.overdueCount > 0 ? 'warning' : 'default'} label={`Просрочено: ${row.overdueCount}`} />
+                            <Chip size="small" color="success" variant="outlined" label={`Завершено: ${row.completedCount}`} />
                           </Stack>
                           <Typography variant="body2" color="text.secondary">
-                            РЎСЂРµРґРЅРµРµ РІСЂРµРјСЏ Р·Р°РєСЂС‹С‚РёСЏ:{' '}
-                            <strong>{row.avgDaysToComplete != null ? `${row.avgDaysToComplete} РґРЅ.` : 'вЂ”'}</strong>
+                            Среднее время закрытия:{' '}
+                            <strong>{row.avgDaysToComplete != null ? `${row.avgDaysToComplete} дн.` : '—'}</strong>
                           </Typography>
                           <Button
                             size="small"
@@ -166,7 +166,7 @@ export function OwnerWorkspaceTaskInsightsSection({
                             sx={{ alignSelf: 'flex-start' }}
                             onClick={() => void onDrillDownToAssigneeTasks(row.assigneeId)}
                           >
-                            РћС‚РєСЂС‹С‚СЊ Р·Р°РґР°С‡Рё
+                            Открыть задачи
                           </Button>
                         </Stack>
                       </CardContent>
@@ -186,19 +186,19 @@ export function OwnerWorkspaceTaskInsightsSection({
           exclusive
           onChange={(_, value) => value && onTaskViewModeChange(value)}
         >
-          <ToggleButton value="list">РЎРїРёСЃРѕРє</ToggleButton>
-          <ToggleButton value="kanban">РљР°РЅР±Р°РЅ</ToggleButton>
-          <ToggleButton value="calendar">РљР°Р»РµРЅРґР°СЂСЊ</ToggleButton>
+          <ToggleButton value="list">Список</ToggleButton>
+          <ToggleButton value="kanban">Канбан</ToggleButton>
+          <ToggleButton value="calendar">Календарь</ToggleButton>
         </ToggleButtonGroup>
         <Typography variant="caption" color="text.secondary">
-          Р’ РєР°РЅР±Р°РЅРµ РїРµСЂРµС‚Р°С‰РёС‚Рµ РєР°СЂС‚РѕС‡РєСѓ РЅР° РґСЂСѓРіСѓСЋ РєРѕР»РѕРЅРєСѓ, С‡С‚РѕР±С‹ СЃРјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ.
+          В канбане перетащите карточку на другую колонку, чтобы сменить статус.
         </Typography>
       </Stack>
 
       {taskViewMode !== 'list' && taskListTotal > taskFetchCap && (
         <Alert severity="warning">
-          Р—Р°РіСЂСѓР¶РµРЅРѕ РЅРµ Р±РѕР»РµРµ {taskFetchCap} Р·Р°РґР°С‡ РїСЂРё С‚РµРєСѓС‰РёС… С„РёР»СЊС‚СЂР°С… (РІСЃРµРіРѕ РїРѕ С„РёР»СЊС‚СЂСѓ: {taskListTotal}). РЈС‚РѕС‡РЅРёС‚Рµ С„РёР»СЊС‚СЂС‹ РёР»Рё
-          РїРµСЂРµРєР»СЋС‡РёС‚РµСЃСЊ РІ СЂРµР¶РёРј В«РЎРїРёСЃРѕРєВ» СЃ РїР°РіРёРЅР°С†РёРµР№.
+          Загружено не более {taskFetchCap} задач при текущих фильтрах (всего по фильтру: {taskListTotal}). Уточните фильтры или
+          переключитесь в режим «Список» с пагинацией.
         </Alert>
       )}
     </>

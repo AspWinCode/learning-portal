@@ -571,11 +571,7 @@ function App() {
             />
             <Route
               path="/owner-workspace/settings"
-              element={
-                <PrivateRoute requiredPermission="owner_workspace.access">
-                  <OwnerWorkspacePage />
-                </PrivateRoute>
-              }
+              element={<RedirectWithSearch to="/owner-workspace/projects" />}
             />
             <Route
               path="/owner-workspace/projects"
@@ -627,11 +623,7 @@ function App() {
             />
             <Route
               path="/owner-workspace/reports"
-              element={
-                <PrivateRoute requiredPermission="owner_workspace.access">
-                  <OwnerWorkspacePage />
-                </PrivateRoute>
-              }
+              element={<RedirectWithSearch to="/owner-workspace/projects" />}
             />
             <Route
               path="/owner-workspace/comms"

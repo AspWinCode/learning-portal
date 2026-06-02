@@ -644,7 +644,7 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
     case OW_TAB_NOTIFICATIONS:
       return '/owner-workspace/notifications';
     case OW_TAB_SETTINGS:
-      return '/owner-workspace/settings';
+      return '/owner-workspace/projects';
     case OW_TAB_PROJECTS:
       return '/owner-workspace/projects';
     case OW_TAB_CONTACTS:
@@ -652,7 +652,7 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
     case OW_TAB_TASKS:
       return '/owner-workspace/tasks';
     case OW_TAB_REPORTS:
-      return '/owner-workspace/reports';
+      return '/owner-workspace/projects';
     case OW_TAB_COMMS:
       return '/owner-workspace/comms';
     case OW_TAB_HISTORY:
@@ -664,12 +664,12 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
 
 function ownerWorkspacePathToTab(pathname: string): number | null {
   const p = pathname.replace(/\/$/, '') || pathname;
+  if (p === '/owner-workspace/settings') return OW_TAB_PROJECTS;
+  if (p === '/owner-workspace/reports') return OW_TAB_PROJECTS;
   if (p === '/owner-workspace/notifications') return OW_TAB_NOTIFICATIONS;
-  if (p === '/owner-workspace/settings') return OW_TAB_SETTINGS;
   if (p.startsWith('/owner-workspace/projects')) return OW_TAB_PROJECTS;
   if (p.startsWith('/owner-workspace/contacts')) return OW_TAB_CONTACTS;
   if (p.startsWith('/owner-workspace/tasks')) return OW_TAB_TASKS;
-  if (p === '/owner-workspace/reports') return OW_TAB_REPORTS;
   if (p === '/owner-workspace/comms') return OW_TAB_COMMS;
   if (p === '/owner-workspace/history') return OW_TAB_HISTORY;
   return null;
@@ -690,6 +690,7 @@ function ownerWorkspaceEntityFromPath(
 
 function tabIndexFromSlug(slug: string | null): number | null {
   if (!slug) return null;
+  if (slug === 'reports' || slug === 'settings') return OW_TAB_PROJECTS;
   const i = OW_TAB_SLUGS.indexOf(slug as (typeof OW_TAB_SLUGS)[number]);
   return i >= 0 ? i : null;
 }
@@ -2999,7 +3000,7 @@ const OwnerWorkspacePage: React.FC = () => {
         notify_task_mention: notifyTaskMention,
       });
       setError(null);
-      setMaxSyncResult('Настройки задачника сохранены в вашем профиле.');
+      setMaxSyncResult('Настройки таск трекера сохранены в вашем профиле.');
       void loadDigest();
       if (tab === OW_TAB_TASKS) void loadTasksFiltered();
     } catch (e: unknown) {
@@ -3530,7 +3531,7 @@ const OwnerWorkspacePage: React.FC = () => {
         await ownerWorkspaceApi.markNotificationRead(notificationId);
         await loadNotifications(200);
       } catch (err: unknown) {
-        setError(extractApiError(err, 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РјРµС‚РёС‚СЊ РїСЂРѕС‡РёС‚Р°РЅРЅС‹Рј'));
+        setError(extractApiError(err, 'Не удалось отметить прочитанным'));
       }
     },
     [loadNotifications]
@@ -4768,7 +4769,7 @@ const OwnerWorkspacePage: React.FC = () => {
     <Layout>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
         <Typography variant="h4" sx={{ flex: '1 1 auto' }}>
-          Owner: задачник
+          Таск трекер
         </Typography>
         <IconButton
           color="default"
@@ -4999,14 +5000,12 @@ const OwnerWorkspacePage: React.FC = () => {
       )}
 
       <Tabs value={tab} onChange={handleWorkspaceTabChange} sx={{ mb: 2 }}>
-        <Tab label={`Проекты (${projects.length})`} />
-        <Tab label={`Контакты (${contacts.length})`} />
-        <Tab label={`Задачи (${taskListTotal})`} />
-        <Tab label="Отчёты" />
-        <Tab label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
-        <Tab label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
-        <Tab label="Настройки" />
-        <Tab label="История" />
+        <Tab value={OW_TAB_PROJECTS} label={`Проекты (${projects.length})`} />
+        <Tab value={OW_TAB_CONTACTS} label={`Контакты (${contacts.length})`} />
+        <Tab value={OW_TAB_TASKS} label={`Задачи (${taskListTotal})`} />
+        <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
+        <Tab value={OW_TAB_NOTIFICATIONS} label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
+        <Tab value={OW_TAB_HISTORY} label="История" />
       </Tabs>
 
       {tab === OW_TAB_PROJECTS && (
@@ -5707,7 +5706,7 @@ const OwnerWorkspacePage: React.FC = () => {
         <Card variant="outlined">
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              Настройки задачника
+              Настройки таск трекера
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Параметры ниже сохраняются в вашем профиле и подставляются при следующем открытии Owner workspace. Изменения

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   Alert,
   Box,
@@ -72,9 +72,9 @@ export function OwnerWorkspaceProjectsTab({
         <Card variant="outlined">
           <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
             <Stack spacing={1.5}>
-              <Typography variant="subtitle2">РџСЂРѕРµРєС‚С‹ СЃ СЃР°РјРѕР№ Р±РѕР»СЊС€РѕР№ РїСЂРѕСЃСЂРѕС‡РєРѕР№</Typography>
+              <Typography variant="subtitle2">Проекты с самой большой просрочкой</Typography>
               <Typography variant="body2" color="text.secondary">
-                Р‘Р»РѕРє СЃС‚СЂРѕРёС‚СЃСЏ РїРѕ С‚РµРєСѓС‰РµР№ РІРёРґРёРјРѕР№ РІС‹Р±РѕСЂРєРµ РїСЂРѕРµРєС‚РѕРІ Рё РїРѕРјРѕРіР°РµС‚ Р±С‹СЃС‚СЂРѕ РїРµСЂРµР№С‚Рё Рє РїСЂРѕР±Р»РµРјРЅС‹Рј Р·Р°РґР°С‡Р°Рј.
+                Блок строится по текущей видимой выборке проектов и помогает быстро перейти к проблемным задачам.
               </Typography>
               <Grid container spacing={1.5}>
                 {topOverdueProjects.map((project) => (
@@ -84,16 +84,16 @@ export function OwnerWorkspaceProjectsTab({
                         <Stack spacing={1}>
                           <Typography variant="subtitle2">{project.name}</Typography>
                           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                            <Chip size="small" color="warning" label={`РџСЂРѕСЃСЂРѕС‡РµРЅРѕ: ${project.overdue_tasks_count ?? 0}`} />
-                            <Chip size="small" label={`РђРєС‚РёРІРЅС‹С…: ${project.active_tasks_count ?? 0}`} />
-                            <Chip size="small" variant="outlined" label={`Р’СЃРµРіРѕ: ${project.total_tasks_count ?? 0}`} />
+                            <Chip size="small" color="warning" label={`Просрочено: ${project.overdue_tasks_count ?? 0}`} />
+                            <Chip size="small" label={`Активных: ${project.active_tasks_count ?? 0}`} />
+                            <Chip size="small" variant="outlined" label={`Всего: ${project.total_tasks_count ?? 0}`} />
                           </Stack>
                           <Typography variant="body2" color="text.secondary">
-                            РћС‚РІРµС‚СЃС‚РІРµРЅРЅС‹Р№: <strong>{userName(project.owner_id)}</strong>
+                            Ответственный: <strong>{userName(project.owner_id)}</strong>
                           </Typography>
                           <Stack direction="row" spacing={1} flexWrap="wrap">
                             <Button size="small" variant="outlined" onClick={() => void onOpenProject(project)}>
-                              РћС‚РєСЂС‹С‚СЊ РїСЂРѕРµРєС‚
+                              Открыть проект
                             </Button>
                             <Button
                               size="small"
@@ -101,7 +101,7 @@ export function OwnerWorkspaceProjectsTab({
                               color="warning"
                               onClick={() => void onOpenProjectOverdueTasks(project.id)}
                             >
-                              РџСЂРѕСЃСЂРѕС‡РµРЅРЅС‹Рµ Р·Р°РґР°С‡Рё
+                              Просроченные задачи
                             </Button>
                           </Stack>
                         </Stack>
@@ -118,18 +118,18 @@ export function OwnerWorkspaceProjectsTab({
       <Card variant="outlined">
         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
           <Typography variant="subtitle2" gutterBottom>
-            Р¤РёР»СЊС‚СЂС‹ СЃРїРёСЃРєР° РїСЂРѕРµРєС‚РѕРІ
+            Фильтры списка проектов
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ md: 'center' }}>
             <TextField
               select
-              label="РЎС‚Р°С‚СѓСЃ"
+              label="Статус"
               size="small"
               sx={{ minWidth: 160 }}
               value={projectListStatus}
               onChange={(e) => onProjectListStatusChange(e.target.value)}
             >
-              <MenuItem value="">Р’СЃРµ</MenuItem>
+              <MenuItem value="">Все</MenuItem>
               {enabledProjectStatuses.map((status) => (
                 <MenuItem key={status} value={status}>
                   {projectStatusLabels[status] ?? status}
@@ -137,7 +137,7 @@ export function OwnerWorkspaceProjectsTab({
               ))}
             </TextField>
             <TextField
-              label="РџРѕРёСЃРє РїРѕ РЅР°Р·РІР°РЅРёСЋ/РѕРїРёСЃР°РЅРёСЋ"
+              label="Поиск по названию/описанию"
               size="small"
               sx={{ minWidth: 220, flex: 1 }}
               value={projectListSearchInput}
@@ -145,7 +145,7 @@ export function OwnerWorkspaceProjectsTab({
             />
             <TextField
               select
-              label="РћС‚РІРµС‚СЃС‚РІРµРЅРЅС‹Р№"
+              label="Ответственный"
               size="small"
               sx={{ minWidth: 200 }}
               value={projectListOwnerId === '' ? '' : String(projectListOwnerId)}
@@ -154,7 +154,7 @@ export function OwnerWorkspaceProjectsTab({
                 onProjectListOwnerIdChange(value === '' ? '' : Number(value));
               }}
             >
-              <MenuItem value="">Р’СЃРµ</MenuItem>
+              <MenuItem value="">Все</MenuItem>
               {userOptions.map((user) => (
                 <MenuItem key={user.id} value={String(user.id)}>
                   {user.full_name}
@@ -163,7 +163,7 @@ export function OwnerWorkspaceProjectsTab({
             </TextField>
             <FormControlLabel
               control={<Checkbox checked={projectListOverdueOnly} onChange={(_, checked) => onProjectListOverdueOnlyChange(checked)} />}
-              label="РўРѕР»СЊРєРѕ СЃ РїСЂРѕСЃСЂРѕС‡РµРЅРЅС‹РјРё Р°РєС‚РёРІРЅС‹РјРё Р·Р°РґР°С‡Р°РјРё"
+              label="Только с просроченными активными задачами"
             />
           </Stack>
         </CardContent>
@@ -174,23 +174,23 @@ export function OwnerWorkspaceProjectsTab({
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
             <TextField
               fullWidth
-              label="РќР°Р·РІР°РЅРёРµ РїСЂРѕРµРєС‚Р°"
+              label="Название проекта"
               value={projectName}
               onChange={(e) => onProjectNameChange(e.target.value)}
               disabled={!canCreateProjectUi}
             />
             <Button variant="contained" onClick={() => void onCreateProject()} disabled={!canCreateProjectUi}>
-              РЎРѕР·РґР°С‚СЊ
+              Создать
             </Button>
           </Stack>
           {!canCreateProjectUi && (
             <Alert severity="info" sx={{ mt: 1.5 }}>
-              РЎРѕР·РґР°РЅРёРµ РЅРѕРІС‹С… РїСЂРѕРµРєС‚РѕРІ РґРѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ admin / owner.
+              Создание новых проектов доступно только admin / owner.
             </Alert>
           )}
           {!isWorkspaceFullAccess && canCreateProjectUi && (
             <Alert severity="info" sx={{ mt: 1.5 }}>
-              РЎРѕР·РґР°РЅРёРµ РЅРѕРІС‹С… РїСЂРѕРµРєС‚РѕРІ СЂР°Р·СЂРµС€РµРЅРѕ РґР»СЏ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹С… СЂРѕР»РµР№ С‚РµРєСѓС‰РµР№ policy-РјРѕРґРµР»СЊСЋ.
+              Создание новых проектов разрешено для ограниченных ролей текущей policy-моделью.
             </Alert>
           )}
         </CardContent>
@@ -205,26 +205,26 @@ export function OwnerWorkspaceProjectsTab({
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="h6">{project.name}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                      РћС‚РІРµС‚СЃС‚РІРµРЅРЅС‹Р№: {userName(project.owner_id)}
+                      Ответственный: {userName(project.owner_id)}
                     </Typography>
                   </Box>
-                  <IconButton size="small" onClick={() => void onOpenProject(project)} aria-label="РћС‚РєСЂС‹С‚СЊ">
+                  <IconButton size="small" onClick={() => void onOpenProject(project)} aria-label="Открыть">
                     <OpenInNewIcon fontSize="small" />
                   </IconButton>
                 </Box>
                 <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
                   <Chip size="small" label={projectStatusLabels[project.status] ?? project.status} />
-                  <Chip size="small" label={`Р—Р°РґР°С‡ РІСЃРµРіРѕ: ${project.total_tasks_count ?? 0}`} />
-                  <Chip size="small" label={`РђРєС‚РёРІРЅ.: ${project.active_tasks_count}`} />
+                  <Chip size="small" label={`Задач всего: ${project.total_tasks_count ?? 0}`} />
+                  <Chip size="small" label={`Активн.: ${project.active_tasks_count}`} />
                   {(project.overdue_tasks_count ?? 0) > 0 && (
-                    <Chip size="small" color="warning" label={`РџСЂРѕСЃСЂРѕС‡.: ${project.overdue_tasks_count}`} />
+                    <Chip size="small" color="warning" label={`Просроч.: ${project.overdue_tasks_count}`} />
                   )}
-                  <Chip size="small" label={`РљРѕРЅС‚Р°РєС‚РѕРІ: ${project.contacts_count}`} />
-                  {project.subprojects_count > 0 && <Chip size="small" label={`РџРѕРґРїСЂРѕРµРєС‚РѕРІ: ${project.subprojects_count}`} />}
+                  <Chip size="small" label={`Контактов: ${project.contacts_count}`} />
+                  {project.subprojects_count > 0 && <Chip size="small" label={`Подпроектов: ${project.subprojects_count}`} />}
                 </Stack>
                 {project.updated_at ? (
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                    РћР±РЅРѕРІР»С‘РЅ:{' '}
+                    Обновлён:{' '}
                     {new Date(project.updated_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
                   </Typography>
                 ) : null}
@@ -235,7 +235,7 @@ export function OwnerWorkspaceProjectsTab({
         {projects.length === 0 && (
           <Grid item xs={12}>
             <Typography variant="body2" color="text.secondary">
-              РќРµС‚ РїСЂРѕРµРєС‚РѕРІ РїРѕ С‚РµРєСѓС‰РёРј С„РёР»СЊС‚СЂР°Рј.
+              Нет проектов по текущим фильтрам.
             </Typography>
           </Grid>
         )}

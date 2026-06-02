@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   Button,
   Card,
@@ -31,20 +31,20 @@ export function OwnerWorkspaceNotificationsTab({
     <Card variant="outlined">
       <CardContent>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
-          <Typography variant="subtitle1">Р’СЃРµ СѓРІРµРґРѕРјР»РµРЅРёСЏ</Typography>
+          <Typography variant="subtitle1">Все уведомления</Typography>
           <Button size="small" variant="outlined" onClick={() => void onRefresh(200)}>
-            РћР±РЅРѕРІРёС‚СЊ
+            Обновить
           </Button>
           <Typography variant="caption" color="text.secondary">
-            Р”РµРґР»Р°Р№РЅС‹ вЂ” РїСЂРё РѕС‚РєСЂС‹С‚РёРё СЃРїРёСЃРєР°; РЅР°Р·РЅР°С‡РµРЅРёСЏ, РєРѕРјРјРµРЅС‚Р°СЂРёРё, РѕР±РЅРѕРІР»РµРЅРёСЏ Р·Р°РґР°С‡ Рё РІС…РѕРґСЏС‰РёРµ РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ вЂ” РїРѕ
-            СЃРѕР±С‹С‚РёСЏРј.
+            Дедлайны — при открытии списка; назначения, комментарии, обновления задач и входящие по контакту — по
+            событиям.
           </Typography>
         </Stack>
         <Stack spacing={1} sx={{ maxHeight: 640, overflow: 'auto' }}>
           {(notifEnvelope?.items || []).length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              РџРѕРєР° РїСѓСЃС‚Рѕ. Р—РґРµСЃСЊ: РїСЂРѕСЃСЂРѕС‡РєРё Рё РґРµРґР»Р°Р№РЅС‹, РЅР°Р·РЅР°С‡РµРЅРёСЏ, РєРѕРјРјРµРЅС‚Р°СЂРёРё Рё РѕР±РЅРѕРІР»РµРЅРёСЏ Р·Р°РґР°С‡, РЅРѕРІС‹Рµ РІС…РѕРґСЏС‰РёРµ РїРѕ
-              РєРѕРЅС‚Р°РєС‚Р°Рј (РµСЃР»Рё РІС‹ РІРѕРІР»РµС‡РµРЅС‹ РІ Р·Р°РґР°С‡Рё РёР»Рё РїСЂРѕРµРєС‚С‹ РєРѕРЅС‚Р°РєС‚Р°).
+              Пока пусто. Здесь: просрочки и дедлайны, назначения, комментарии и обновления задач, новые входящие по
+              контактам (если вы вовлечены в задачи или проекты контакта).
             </Typography>
           )}
           {(notifEnvelope?.items || []).map((notification) => (
@@ -52,7 +52,7 @@ export function OwnerWorkspaceNotificationsTab({
               <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
                   <Chip size="small" label={notificationLabels[notification.kind] || notification.kind} />
-                  {!notification.read_at && <Chip size="small" color="warning" label="РќРѕРІРѕРµ" />}
+                  {!notification.read_at && <Chip size="small" color="warning" label="Новое" />}
                   <Typography variant="caption" color="text.secondary">
                     {notification.created_at ? new Date(notification.created_at).toLocaleString('ru-RU') : ''}
                   </Typography>
@@ -64,17 +64,17 @@ export function OwnerWorkspaceNotificationsTab({
                 <Stack direction="row" spacing={1} flexWrap="wrap">
                   {notification.task_id != null && (
                     <Button size="small" variant="contained" onClick={() => void onOpenTask(notification.task_id!)}>
-                      РћС‚РєСЂС‹С‚СЊ Р·Р°РґР°С‡Сѓ
+                      Открыть задачу
                     </Button>
                   )}
                   {notification.contact_id != null && (
                     <Button size="small" variant="outlined" onClick={() => void onOpenComms(notification.contact_id!)}>
-                      РџРµСЂРµРїРёСЃРєР°
+                      Переписка
                     </Button>
                   )}
                   {!notification.read_at && (
                     <Button size="small" variant="outlined" onClick={() => void onMarkRead(notification.id)}>
-                      РџСЂРѕС‡РёС‚Р°РЅРѕ
+                      Прочитано
                     </Button>
                   )}
                 </Stack>

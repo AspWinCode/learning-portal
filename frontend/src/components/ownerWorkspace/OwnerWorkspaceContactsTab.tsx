@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   Alert,
   Autocomplete,
@@ -80,11 +80,11 @@ export function OwnerWorkspaceContactsTab({
       <Card variant="outlined">
         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
           <Typography variant="subtitle2" gutterBottom>
-            Р¤РёР»СЊС‚СЂС‹ СЃРїРёСЃРєР° РєРѕРЅС‚Р°РєС‚РѕРІ
+            Фильтры списка контактов
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" alignItems={{ md: 'center' }}>
             <TextField
-              label="РџРѕРёСЃРє (Р¤РРћ, С‚РµР»РµС„РѕРЅ, РєРѕРјРїР°РЅРёСЏ)"
+              label="Поиск (ФИО, телефон, компания)"
               size="small"
               sx={{ minWidth: 240, flex: 1 }}
               value={contactListSearchInput}
@@ -92,7 +92,7 @@ export function OwnerWorkspaceContactsTab({
             />
             <TextField
               select
-              label="Р’ РїСЂРѕРµРєС‚Рµ"
+              label="В проекте"
               size="small"
               sx={{ minWidth: 220 }}
               value={contactListProjectId === '' ? '' : String(contactListProjectId)}
@@ -101,7 +101,7 @@ export function OwnerWorkspaceContactsTab({
                 onContactListProjectIdChange(value === '' ? '' : Number(value));
               }}
             >
-              <MenuItem value="">Р›СЋР±РѕР№</MenuItem>
+              <MenuItem value="">Любой</MenuItem>
               {projectsCatalogSorted.map((project) => (
                 <MenuItem key={project.id} value={String(project.id)}>
                   {project.name}
@@ -110,14 +110,14 @@ export function OwnerWorkspaceContactsTab({
             </TextField>
             <TextField
               select
-              label="РўРµРі"
+              label="Тег"
               size="small"
               sx={{ minWidth: 180 }}
               value={contactListTag}
               onChange={(e) => onContactListTagChange(e.target.value)}
-              helperText={contactListTagOptions.length === 0 ? 'РќРµС‚ С‚РµРіРѕРІ РІ РєР°С‚Р°Р»РѕРіРµ' : undefined}
+              helperText={contactListTagOptions.length === 0 ? 'Нет тегов в каталоге' : undefined}
             >
-              <MenuItem value="">Р›СЋР±РѕР№</MenuItem>
+              <MenuItem value="">Любой</MenuItem>
               {contactListTagOptions.map((tag) => (
                 <MenuItem key={tag} value={tag}>
                   {tag}
@@ -131,7 +131,7 @@ export function OwnerWorkspaceContactsTab({
                   onChange={(_, checked) => onContactListActiveTasksOnlyChange(checked)}
                 />
               }
-              label="РўРѕР»СЊРєРѕ СЃ Р°РєС‚РёРІРЅС‹РјРё Р·Р°РґР°С‡Р°РјРё"
+              label="Только с активными задачами"
             />
           </Stack>
         </CardContent>
@@ -140,8 +140,8 @@ export function OwnerWorkspaceContactsTab({
       <Card>
         <CardContent>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
-            <TextField fullWidth label="Р¤РРћ" value={contactName} onChange={(e) => onContactNameChange(e.target.value)} />
-            <TextField fullWidth label="РўРµР»РµС„РѕРЅ" value={contactPhone} onChange={(e) => onContactPhoneChange(e.target.value)} />
+            <TextField fullWidth label="ФИО" value={contactName} onChange={(e) => onContactNameChange(e.target.value)} />
+            <TextField fullWidth label="Телефон" value={contactPhone} onChange={(e) => onContactPhoneChange(e.target.value)} />
             {!isWorkspaceFullAccess && (
               <Autocomplete
                 sx={{ minWidth: 260, flex: 1 }}
@@ -149,7 +149,7 @@ export function OwnerWorkspaceContactsTab({
                 getOptionLabel={(option) => option.name}
                 value={projectsCatalogSorted.find((project) => project.id === newContactProjectId) || null}
                 onChange={(_, value) => onNewContactProjectIdChange(value ? value.id : '')}
-                renderInput={(params) => <TextField {...params} label="РџСЂРѕРµРєС‚ РґР»СЏ РїСЂРёРІСЏР·РєРё" />}
+                renderInput={(params) => <TextField {...params} label="Проект для привязки" />}
               />
             )}
             <Button
@@ -157,17 +157,17 @@ export function OwnerWorkspaceContactsTab({
               onClick={() => void onCreateContact()}
               disabled={!canCreateContactUi || (!isWorkspaceFullAccess && newContactProjectId === '')}
             >
-              РЎРѕР·РґР°С‚СЊ
+              Создать
             </Button>
           </Stack>
           {!isWorkspaceFullAccess && !canCreateContactUi && (
             <Alert severity="info" sx={{ mt: 1.5 }}>
-              РЎРѕР·РґР°РЅРёРµ РєРѕРЅС‚Р°РєС‚РѕРІ РґР»СЏ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹С… СЂРѕР»РµР№ СЃРµР№С‡Р°СЃ РѕС‚РєР»СЋС‡РµРЅРѕ policy-РјРѕРґРµР»СЊСЋ.
+              Создание контактов для ограниченных ролей сейчас отключено policy-моделью.
             </Alert>
           )}
           {!isWorkspaceFullAccess && canCreateContactUi && (
             <Alert severity="info" sx={{ mt: 1.5 }}>
-              Р”Р»СЏ sales / trainer РЅРѕРІС‹Р№ РєРѕРЅС‚Р°РєС‚ СЃРѕР·РґР°С‘С‚СЃСЏ С‚РѕР»СЊРєРѕ РІРјРµСЃС‚Рµ СЃ РїСЂРёРІСЏР·РєРѕР№ Рє РґРѕСЃС‚СѓРїРЅРѕРјСѓ РїСЂРѕРµРєС‚Сѓ.
+              Для sales / trainer новый контакт создаётся только вместе с привязкой к доступному проекту.
             </Alert>
           )}
         </CardContent>
@@ -201,7 +201,7 @@ export function OwnerWorkspaceContactsTab({
                     ) : null}
                     {contact.last_interaction_at ? (
                       <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.75 }}>
-                        РџРѕСЃР»РµРґРЅРµРµ РІР·Р°РёРјРѕРґРµР№СЃС‚РІРёРµ:{' '}
+                        Последнее взаимодействие:{' '}
                         {new Date(contact.last_interaction_at).toLocaleString('ru-RU', {
                           dateStyle: 'short',
                           timeStyle: 'short',
@@ -209,43 +209,43 @@ export function OwnerWorkspaceContactsTab({
                       </Typography>
                     ) : null}
                     <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                      <Chip size="small" label={`РђРєС‚РёРІРЅ. Р·Р°РґР°С‡: ${contact.active_tasks_count}`} />
+                      <Chip size="small" label={`Активн. задач: ${contact.active_tasks_count}`} />
                       {contact.linked_project_ids.length > 0 && (
-                        <Chip size="small" label={`РџСЂРѕРµРєС‚РѕРІ: ${contact.linked_project_ids.length}`} />
+                        <Chip size="small" label={`Проектов: ${contact.linked_project_ids.length}`} />
                       )}
                     </Stack>
                   </Box>
                   <Stack direction="row" spacing={0.25} alignItems="flex-start" flexWrap="wrap" useFlexGap>
-                    <Tooltip title="РљР°СЂС‚РѕС‡РєР° РєРѕРЅС‚Р°РєС‚Р°">
-                      <IconButton size="small" onClick={() => void onOpenContact(contact)} aria-label="РљР°СЂС‚РѕС‡РєР° РєРѕРЅС‚Р°РєС‚Р°">
+                    <Tooltip title="Карточка контакта">
+                      <IconButton size="small" onClick={() => void onOpenContact(contact)} aria-label="Карточка контакта">
                         <OpenInNewIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="РџРµСЂРµРїРёСЃРєР°">
+                    <Tooltip title="Переписка">
                       <IconButton
                         size="small"
                         onClick={() => void onOpenContactComms(contact.id)}
-                        aria-label="РћС‚РєСЂС‹С‚СЊ РїРµСЂРµРїРёСЃРєСѓ"
+                        aria-label="Открыть переписку"
                       >
                         <ChatBubbleOutlineIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Р—Р°РґР°С‡Рё РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ">
+                    <Tooltip title="Задачи по контакту">
                       <IconButton
                         size="small"
                         onClick={() => void onOpenContactTasks(contact.id)}
-                        aria-label="Р—Р°РґР°С‡Рё РїРѕ РєРѕРЅС‚Р°РєС‚Сѓ"
+                        aria-label="Задачи по контакту"
                       >
                         <AssignmentIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                     {contact.phone?.trim() ? (
-                      <Tooltip title="РџРѕР·РІРѕРЅРёС‚СЊ">
+                      <Tooltip title="Позвонить">
                         <IconButton
                           size="small"
                           component="a"
                           href={`tel:${contact.phone.replace(/\\s/g, '')}`}
-                          aria-label="РџРѕР·РІРѕРЅРёС‚СЊ"
+                          aria-label="Позвонить"
                           rel="noopener noreferrer"
                         >
                           <PhoneIphoneIcon fontSize="small" />
@@ -261,7 +261,7 @@ export function OwnerWorkspaceContactsTab({
         {contacts.length === 0 && (
           <Grid item xs={12}>
             <Typography variant="body2" color="text.secondary">
-              РќРµС‚ РєРѕРЅС‚Р°РєС‚РѕРІ РїРѕ С‚РµРєСѓС‰РёРј С„РёР»СЊС‚СЂР°Рј.
+              Нет контактов по текущим фильтрам.
             </Typography>
           </Grid>
         )}

@@ -106,27 +106,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem('sb_groups') || '{}'); } catch { return {}; }
   });
-  const navListRef = React.useRef<HTMLUListElement | null>(null);
+  const navListRef = React.useRef<HTMLElement | null>(null);
   const drawerWidth = sidebarCollapsed ? DRAWER_MINI : DRAWER_OPEN;
 
-  const saveSidebarScroll = React.useCallback(() => {
-    const node = navListRef.current;
+  const saveSidebarScroll = React.useCallback((node = navListRef.current) => {
     if (!node) return;
     try { sessionStorage.setItem(SIDEBAR_SCROLL_STORAGE_KEY, String(node.scrollTop)); } catch {}
   }, []);
 
-  const restoreSidebarScroll = React.useCallback((node: HTMLUListElement | null) => {
-    navListRef.current = node;
+  const restoreSidebarScroll = React.useCallback((node = navListRef.current) => {
     if (!node) return;
     try {
       const savedScroll = Number(sessionStorage.getItem(SIDEBAR_SCROLL_STORAGE_KEY) || 0);
       if (savedScroll > 0) {
-        requestAnimationFrame(() => {
-          node.scrollTop = savedScroll;
-        });
+        node.scrollTop = savedScroll;
       }
     } catch {}
   }, []);
+
+  const handleNavScrollRef = React.useCallback((node: HTMLElement | null) => {
+    navListRef.current = node;
+    if (!node) return;
+    requestAnimationFrame(() => restoreSidebarScroll(node));
+  }, [restoreSidebarScroll]);
 
   const toggleSidebar = () => setSidebarCollapsed(v => {
     const next = !v;
@@ -134,7 +136,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return next;
   });
   const toggleGroup = (id: string) => setExpandedGroups(prev => {
-    saveSidebarScroll();
     const next = { ...prev, [id]: prev[id] === false };
     try { localStorage.setItem('sb_groups', JSON.stringify(next)); } catch {}
     return next;
@@ -418,13 +419,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }).filter(g => g.items.length > 0);
   const standalone = visibleMenuItems.filter(item => !allGroupedPaths.has(item.path));
 
+  React.useLayoutEffect(() => {
+    requestAnimationFrame(() => restoreSidebarScroll());
+    const timer = window.setTimeout(() => restoreSidebarScroll(), 180);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname, grouped.length, standalone.length, restoreSidebarScroll]);
+
   const navItem = (item: { text: string; icon: React.ReactNode; path: string }, indent = false) => {
     const selected = isDrawerItemSelected(item.path);
     return (
       <Tooltip key={item.text} title={sidebarCollapsed ? item.text : ''} placement="right" arrow>
         <ListItemButton
           selected={selected}
-          onClick={() => { saveSidebarScroll(); navigate(item.path); setMobileOpen(false); }}
+          onClick={(event) => {
+            const scrollNode = event.currentTarget.closest('[data-sidebar-scroll]') as HTMLElement | null;
+            saveSidebarScroll(scrollNode);
+            navigate(item.path);
+            setMobileOpen(false);
+          }}
           sx={{
             mx: 0.5, mb: 0.2, borderRadius: 1.5, py: 0.65,
             pl: sidebarCollapsed ? 0 : indent ? 2.5 : 1.5,
@@ -481,10 +493,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Box sx={{ mx: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
 
       {/* Nav list */}
-      <List ref={restoreSidebarScroll} onScroll={saveSidebarScroll} sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 0.25,
+      <List
+        ref={handleNavScrollRef}
+        data-sidebar-scroll
+        onScroll={(event) => saveSidebarScroll(event.currentTarget)}
+        sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 0.25,
         '&::-webkit-scrollbar': { width: 3 },
         '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 4 },
-      }}>
+      }}
+      >
         {/* Standalone items (guest, parent) */}
         {standalone.map(item => navItem(item))}
 
@@ -494,7 +511,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             {/* Group header */}
             {!sidebarCollapsed ? (
               <ListItemButton
-                onClick={() => toggleGroup(g.id)}
+                onClick={(event) => {
+                  const scrollNode = event.currentTarget.closest('[data-sidebar-scroll]') as HTMLElement | null;
+                  saveSidebarScroll(scrollNode);
+                  toggleGroup(g.id);
+                }}
                 sx={{ py: 0.4, px: 1.5, mb: 0.25, borderRadius: 1.5,
                   '&:hover': { bgcolor: SIDEBAR_ITEM_HO },
                 }}

@@ -227,9 +227,6 @@ const SalesSettingsPage: React.FC = () => {
 
   return (
     <Layout>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
-        <Typography variant="h4">Настройки Sales</Typography>
-      </Stack>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}

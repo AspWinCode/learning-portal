@@ -597,6 +597,11 @@ export interface SalesCity {
 export interface SalesSchool {
   id: number;
   name: string;
+  city?: string | null;
+  director?: string | null;
+  email?: string | null;
+  address?: string | null;
+  phone?: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -1033,6 +1038,7 @@ export interface B2BSchool {
   id: number;
   name: string;
   director?: string | null;
+  email?: string | null;
   city?: string | null;
   address?: string | null;
   district?: string | null;
@@ -1883,4 +1889,3 @@ export interface HubTransactionByProjectRow {
   expense: number;
   net: number;
 }
-

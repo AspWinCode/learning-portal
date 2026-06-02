@@ -63,6 +63,7 @@ class B2BSchoolContactResponse(BaseModel):
 class B2BSchoolCreate(BaseModel):
     name: str
     director: Optional[str] = None
+    email: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
     district: Optional[str] = None
@@ -85,6 +86,7 @@ class B2BSchoolCreate(BaseModel):
 class B2BSchoolUpdate(BaseModel):
     name: Optional[str] = None
     director: Optional[str] = None
+    email: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
     district: Optional[str] = None
@@ -110,6 +112,7 @@ class B2BSchoolResponse(BaseModel):
     id: int
     name: str
     director: Optional[str] = None
+    email: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
     district: Optional[str] = None

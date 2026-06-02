@@ -11,6 +11,8 @@ import {
   Select,
   Stack,
   Switch,
+  Tab,
+  Tabs,
   Table,
   TableBody,
   TableCell,
@@ -78,7 +80,22 @@ const SalesSettingsPage: React.FC = () => {
   const [cities, setCities] = useState<SalesCity[]>([]);
   const [newCity, setNewCity] = useState('');
   const [schools, setSchools] = useState<SalesSchool[]>([]);
-  const [newSchool, setNewSchool] = useState('');
+  const [settingsTab, setSettingsTab] = useState('schools');
+  const [newSchool, setNewSchool] = useState({
+    name: '',
+    city: '',
+    director: '',
+    email: '',
+    address: '',
+    phone: '',
+  });
+  const [schoolImportFile, setSchoolImportFile] = useState<File | null>(null);
+  const [schoolImportResult, setSchoolImportResult] = useState<{
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: string[];
+  } | null>(null);
   const [classes, setClasses] = useState<SalesClass[]>([]);
   const [newClass, setNewClass] = useState('');
   const [tochkaDateFrom, setTochkaDateFrom] = useState('');
@@ -162,6 +179,58 @@ const SalesSettingsPage: React.FC = () => {
     }
   };
 
+  const isEmailValid = (email: string) => !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const sectionPaperSx = (section: string) => ({ p: 2, display: settingsTab === section ? 'block' : 'none' });
+
+  const createSchool = () =>
+    safeAction(async () => {
+      const name = newSchool.name.trim();
+      if (!name) return;
+      if (!isEmailValid(newSchool.email)) {
+        setError('Введите корректную почту школы.');
+        return;
+      }
+      await salesApi.createSalesSchool({
+        name,
+        city: newSchool.city.trim() || null,
+        director: newSchool.director.trim() || null,
+        email: newSchool.email.trim() || null,
+        address: newSchool.address.trim() || null,
+        phone: newSchool.phone.trim() || null,
+      });
+      setNewSchool({ name: '', city: '', director: '', email: '', address: '', phone: '' });
+      setSchoolImportResult(null);
+    });
+
+  const importSchools = async () => {
+    if (!schoolImportFile) return;
+    try {
+      const result = await salesApi.importSalesSchools(schoolImportFile);
+      setSchoolImportResult(result);
+      setSchoolImportFile(null);
+      setError('');
+      await loadData();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось импортировать школы'));
+    }
+  };
+
+  const exportSchools = async () => {
+    try {
+      const blob = await salesApi.exportSalesSchools();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'schools.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось экспортировать школы'));
+    }
+  };
+
   return (
     <Layout>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
@@ -182,10 +251,30 @@ const SalesSettingsPage: React.FC = () => {
         </Alert>
       )}
 
+      <Paper sx={{ mb: 2 }}>
+        <Tabs
+          value={settingsTab}
+          onChange={(_, value) => setSettingsTab(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab value="schools" label="Школы" />
+          <Tab value="cities" label="Города" />
+          <Tab value="classes" label="Классы" />
+          <Tab value="b2b" label="B2B" />
+          <Tab value="finance" label="Финансы" />
+          <Tab value="leadSources" label="Источники" />
+          <Tab value="tasks" label="Задачи" />
+          <Tab value="leadStatuses" label="Статусы лидов" />
+          <Tab value="templates" label="Шаблоны" />
+          <Tab value="integrations" label="Интеграции" />
+        </Tabs>
+      </Paper>
+
       <Stack spacing={2}>
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('cities')}>
           <Typography variant="h6" mb={1}>Города</Typography>
-          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
             <TextField
               size="small"
               label="Новый город "
@@ -226,7 +315,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('leadStatuses')}>
           <Typography variant="h6" mb={1}>Причины отказа (этап «Отказали»)</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Справочник причин отказа, которые выбираются в попапе при переносе лида на этап «Отказали».
@@ -293,30 +382,106 @@ const SalesSettingsPage: React.FC = () => {
           )}
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('schools')}>
           <Typography variant="h6" mb={1}>Школы</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
               size="small"
               label="Новая школа"
-              value={newSchool}
-              onChange={(e) => setNewSchool(e.target.value)}
+              value={newSchool.name}
+              onChange={(e) => setNewSchool((prev) => ({ ...prev, name: e.target.value }))}
+            />
+            <TextField
+              size="small"
+              label="Город"
+              value={newSchool.city}
+              onChange={(e) => setNewSchool((prev) => ({ ...prev, city: e.target.value }))}
+            />
+            <TextField
+              size="small"
+              label="Директор/ИО"
+              value={newSchool.director}
+              onChange={(e) => setNewSchool((prev) => ({ ...prev, director: e.target.value }))}
+            />
+            <TextField
+              size="small"
+              label="Почта"
+              type="email"
+              value={newSchool.email}
+              error={!isEmailValid(newSchool.email)}
+              onChange={(e) => setNewSchool((prev) => ({ ...prev, email: e.target.value }))}
+            />
+            <TextField
+              size="small"
+              label="Адрес"
+              value={newSchool.address}
+              onChange={(e) => setNewSchool((prev) => ({ ...prev, address: e.target.value }))}
+            />
+            <TextField
+              size="small"
+              label="Телефон"
+              value={newSchool.phone}
+              onChange={(e) => setNewSchool((prev) => ({ ...prev, phone: e.target.value }))}
             />
             <Button
               variant="contained"
               onClick={() => safeAction(async () => {
-                if (!newSchool.trim()) return;
-                await salesApi.createSalesSchool(newSchool.trim());
-                setNewSchool('');
+                if (!newSchool.name.trim()) return;
+                if (!isEmailValid(newSchool.email)) {
+                  setError('Введите корректную почту школы.');
+                  return;
+                }
+                await salesApi.createSalesSchool({
+                  name: newSchool.name.trim(),
+                  city: newSchool.city.trim() || null,
+                  director: newSchool.director.trim() || null,
+                  email: newSchool.email.trim() || null,
+                  address: newSchool.address.trim() || null,
+                  phone: newSchool.phone.trim() || null,
+                });
+                setNewSchool({ name: '', city: '', director: '', email: '', address: '', phone: '' });
               })}
             >
               Добавить
             </Button>
           </Box>
+          <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 1 }}>
+            <Button variant="outlined" component="label">
+              Импорт CSV/XLSX
+              <input
+                hidden
+                type="file"
+                accept=".csv,.xlsx"
+                onChange={(e) => setSchoolImportFile(e.target.files?.[0] ?? null)}
+              />
+            </Button>
+            <Button variant="outlined" onClick={importSchools} disabled={!schoolImportFile}>
+              Загрузить
+            </Button>
+            <Button variant="outlined" onClick={exportSchools}>
+              Экспорт CSV
+            </Button>
+            {schoolImportFile && (
+              <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                {schoolImportFile.name}
+              </Typography>
+            )}
+          </Stack>
+          {schoolImportResult && (
+            <Alert severity={schoolImportResult.errors.length ? 'warning' : 'success'} sx={{ mb: 1 }}>
+              Создано: {schoolImportResult.created}. Обновлено: {schoolImportResult.updated}. Пропущено: {schoolImportResult.skipped}.
+              {schoolImportResult.errors.length > 0 && ` Ошибки: ${schoolImportResult.errors.join('; ')}`}
+            </Alert>
+          )}
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Название</TableCell>
+                <TableCell>Город</TableCell>
+                <TableCell>Директор/ИО директора</TableCell>
+                <TableCell>Почта</TableCell>
+                <TableCell>Адрес</TableCell>
+                <TableCell>Телефон</TableCell>
                 <TableCell>Активна</TableCell>
               </TableRow>
             </TableHead>
@@ -324,6 +489,11 @@ const SalesSettingsPage: React.FC = () => {
               {schools.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell>{s.name}</TableCell>
+                  <TableCell>{s.city || '—'}</TableCell>
+                  <TableCell>{s.director || '—'}</TableCell>
+                  <TableCell>{s.email || '—'}</TableCell>
+                  <TableCell>{s.address || '—'}</TableCell>
+                  <TableCell>{s.phone || '—'}</TableCell>
                   <TableCell>
                     <Switch
                       checked={s.is_active}
@@ -336,7 +506,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('classes')}>
           <Typography variant="h6" mb={1}>Классы</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Справочник классов для выбора при создании/редактировании лидов (например: 1, 2, 7А, 10Б).
@@ -382,7 +552,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('b2b')}>
           <Typography variant="h6" mb={1}>Районы (B2B)</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Список районов для выбора во вкладке «Новая B2B школа».
@@ -448,7 +618,7 @@ const SalesSettingsPage: React.FC = () => {
           )}
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('finance')}>
           <Typography variant="h6" mb={1}>Абонементы для счетов</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Здесь можно завести типовые абонементы, которые потом будут использоваться при создании счетов ученика.
@@ -533,7 +703,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('finance')}>
           <Typography variant="h6" mb={1}>Шаблоны счетов</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Название и формат счёта (Групповой / Индивидуальный) для использования при создании счетов учеников.
@@ -609,7 +779,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('finance')}>
           <Typography variant="h6" mb={1}>Точка Банк — ручной импорт платежей</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Загружает выписку за период и зачисляет входящие платежи на счета учеников по совпадению ФИО плательщика с родителем в карточке. Авто-импорт раз в 10 мин берёт только последние 3 дня; здесь можно указать любой период.
@@ -672,7 +842,7 @@ const SalesSettingsPage: React.FC = () => {
           )}
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('integrations')}>
           <Typography variant="h6" mb={1}>MAX мессенджер — привязка личного аккаунта</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Сообщения из CRM могут уходить в MAX от вашего личного аккаунта (как от человека). Есть два варианта: <strong>GREEN-API (бесплатно)</strong> — тариф MAX Developer, до 3 чатов; или api-messenger.com (платно). Привязка по QR или в ЛК сервиса.
@@ -726,7 +896,7 @@ const SalesSettingsPage: React.FC = () => {
           )}
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('leadSources')}>
           <Typography variant="h6" mb={1}>Источники лида</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
@@ -769,7 +939,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('tasks')}>
           <Typography variant="h6" mb={1}>Список задач</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
@@ -812,7 +982,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('tasks')}>
           <Typography variant="h6" mb={1}>Список статусов задач</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
             <TextField
@@ -862,7 +1032,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('leadStatuses')}>
           <Typography variant="h6" mb={1}>Статусы лида </Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
             <TextField
@@ -923,7 +1093,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={sectionPaperSx('templates')}>
           <Typography variant="h6" mb={1}>Шаблоны отправки инфо</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
             <TextField

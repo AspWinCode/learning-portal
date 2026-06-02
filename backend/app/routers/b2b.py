@@ -81,6 +81,7 @@ def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
         id=school.id,
         name=school.name,
         director=school.director,
+        email=getattr(school, "email", None),
         city=school.city,
         address=school.address,
         district=getattr(school, "district", None),
@@ -976,6 +977,7 @@ async def create_b2b_school(
     school = B2BSchool(
         name=payload.name,
         director=payload.director,
+        email=payload.email,
         address=payload.address,
         city=payload.city,
         district=payload.district,

@@ -409,15 +409,30 @@ class SalesCityResponse(SalesCityBase):
 
 class SalesSchoolBase(BaseModel):
     name: str
+    city: Optional[str] = None
+    director: Optional[str] = None
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
     is_active: bool = True
 
 
 class SalesSchoolCreate(BaseModel):
     name: str
+    city: Optional[str] = None
+    director: Optional[str] = None
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
 
 
 class SalesSchoolUpdate(BaseModel):
     name: Optional[str] = None
+    city: Optional[str] = None
+    director: Optional[str] = None
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
     is_active: Optional[bool] = None
 
 

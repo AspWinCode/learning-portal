@@ -546,6 +546,11 @@ class SalesSchool(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True)
+    city = Column(String, nullable=True, index=True)
+    director = Column(String, nullable=True)
+    email = Column(String, nullable=True, index=True)
+    address = Column(Text, nullable=True)
+    phone = Column(String(64), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -1766,6 +1771,7 @@ class B2BSchool(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
     director = Column(String, nullable=True)
+    email = Column(String, nullable=True, index=True)
     address = Column(Text, nullable=True)
     city = Column(String, nullable=True, index=True)
     district = Column(String(256), nullable=True)

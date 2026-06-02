@@ -1,7 +1,10 @@
+import csv
 from datetime import date, datetime, time as dt_time, timedelta
+from io import BytesIO, StringIO
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from openpyxl import load_workbook
 from sqlalchemy import Text, cast, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -23,6 +26,7 @@ from app.models import (
     LeadTaskStatus,
     LeadTaskStatusOption as LeadTaskStatusOptionModel,
     LeadTaskTemplate,
+    B2BSchool,
     SalesCity,
     SalesClass,
     SalesSchool,
@@ -81,6 +85,73 @@ def _normalize_source_name(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
     return " ".join(name.strip().split())
+
+
+def _clean_optional_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = " ".join(str(value).strip().split())
+    return text or None
+
+
+def _sync_sales_school_to_b2b(db: Session, school: SalesSchool) -> B2BSchool:
+    b2b = db.query(B2BSchool).filter(cast(B2BSchool.name, Text).ilike(school.name)).first()
+    if not b2b:
+        b2b = B2BSchool(name=school.name, pipeline_stage="new")
+        db.add(b2b)
+    b2b.name = school.name
+    b2b.city = getattr(school, "city", None)
+    b2b.director = getattr(school, "director", None)
+    b2b.email = getattr(school, "email", None)
+    b2b.address = getattr(school, "address", None)
+    b2b.phone_school = getattr(school, "phone", None)
+    return b2b
+
+
+def _school_payload_from_row(row: Dict[str, object]) -> Dict[str, Optional[str]]:
+    normalized = {str(k).strip().lower(): v for k, v in row.items()}
+
+    def pick(*keys: str) -> Optional[str]:
+        for key in keys:
+            if key in normalized and normalized[key] is not None:
+                text = str(normalized[key]).strip()
+                if text:
+                    return text
+        return None
+
+    return {
+        "name": pick("название", "школа", "school", "name"),
+        "city": pick("город", "city"),
+        "director": pick("директор", "ио директора", "и.о. директора", "director"),
+        "email": pick("почта", "email", "e-mail"),
+        "address": pick("адрес", "address"),
+        "phone": pick("телефон", "phone"),
+    }
+
+
+def _parse_school_import(data: bytes, filename: str) -> List[Dict[str, Optional[str]]]:
+    lowered = filename.lower().strip()
+    if lowered.endswith(".xlsx"):
+        wb = load_workbook(filename=BytesIO(data), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return []
+        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+        result: List[Dict[str, Optional[str]]] = []
+        for values in rows[1:]:
+            raw = {headers[i]: values[i] if i < len(values) else None for i in range(len(headers))}
+            result.append(_school_payload_from_row(raw))
+        return result
+
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = data.decode("cp1251")
+    sample = text[:2048]
+    delimiter = ";" if sample.count(";") >= sample.count(",") else ","
+    reader = csv.DictReader(StringIO(text), delimiter=delimiter)
+    return [_school_payload_from_row(row) for row in reader]
 
 
 @router.get("/dashboard", response_model=SalesDashboardResponse)
@@ -648,6 +719,80 @@ async def list_sales_schools(
     return query.all()
 
 
+@router.get("/schools/export")
+async def export_sales_schools(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    output = StringIO()
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(["Название", "Город", "Директор/ИО директора", "Почта", "Адрес", "Телефон", "Активна"])
+    for school in db.query(SalesSchool).order_by(SalesSchool.name.asc()).all():
+        writer.writerow([
+            school.name,
+            getattr(school, "city", None) or "",
+            getattr(school, "director", None) or "",
+            getattr(school, "email", None) or "",
+            getattr(school, "address", None) or "",
+            getattr(school, "phone", None) or "",
+            "1" if school.is_active else "0",
+        ])
+    content = "\ufeff" + output.getvalue()
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="schools.csv"'},
+    )
+
+
+@router.post("/schools/import")
+async def import_sales_schools(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    filename = file.filename or ""
+    lowered = filename.lower().strip()
+    if not (lowered.endswith(".csv") or lowered.endswith(".xlsx")):
+        raise HTTPException(status_code=400, detail="Поддерживаются только CSV и XLSX")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+
+    rows = _parse_school_import(data, filename)
+    created = 0
+    updated = 0
+    skipped = 0
+    errors: List[str] = []
+    for index, row in enumerate(rows, start=2):
+        name = _normalize_source_name(row.get("name"))
+        if not name:
+            skipped += 1
+            continue
+        email = _clean_optional_text(row.get("email"))
+        if email and ("@" not in email or "." not in email.split("@")[-1]):
+            errors.append(f"Строка {index}: некорректная почта")
+            skipped += 1
+            continue
+        school = db.query(SalesSchool).filter(cast(SalesSchool.name, Text).ilike(name)).first()
+        if not school:
+            school = SalesSchool(name=name, is_active=True)
+            db.add(school)
+            created += 1
+        else:
+            updated += 1
+        school.city = _clean_optional_text(row.get("city"))
+        school.director = _clean_optional_text(row.get("director"))
+        school.email = email
+        school.address = _clean_optional_text(row.get("address"))
+        school.phone = _clean_optional_text(row.get("phone"))
+        _sync_sales_school_to_b2b(db, school)
+
+    db.commit()
+    log_action(db, current_user.id, "import", "sales_school", None, {"created": created, "updated": updated, "skipped": skipped})
+    return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
+
+
 @router.post("/schools", response_model=SalesSchoolResponse, status_code=status.HTTP_201_CREATED)
 async def create_sales_school(
     payload: SalesSchoolCreate,
@@ -660,8 +805,18 @@ async def create_sales_school(
     exists = db.query(SalesSchool).filter(cast(SalesSchool.name, Text).ilike(name)).first()
     if exists:
         raise HTTPException(status_code=400, detail="School already exists")
-    item = SalesSchool(name=name, is_active=True)
+    item = SalesSchool(
+        name=name,
+        city=_clean_optional_text(payload.city),
+        director=_clean_optional_text(payload.director),
+        email=str(payload.email) if payload.email else None,
+        address=_clean_optional_text(payload.address),
+        phone=_clean_optional_text(payload.phone),
+        is_active=True,
+    )
     db.add(item)
+    db.flush()
+    _sync_sales_school_to_b2b(db, item)
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "create", "sales_school", item.id, {"name": name})
@@ -684,8 +839,14 @@ async def update_sales_school(
         if not name:
             raise HTTPException(status_code=400, detail="School name is required")
         item.name = name
+    for field in ("city", "director", "address", "phone"):
+        if field in data:
+            setattr(item, field, _clean_optional_text(data[field]))
+    if "email" in data:
+        item.email = str(data["email"]) if data["email"] else None
     if "is_active" in data:
         item.is_active = data["is_active"]
+    _sync_sales_school_to_b2b(db, item)
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "update", "sales_school", item.id, data)

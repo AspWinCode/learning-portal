@@ -1791,12 +1791,40 @@ export const salesApi = {
     const response = await api.get('/api/sales/schools', { params: { active_only } });
     return response.data;
   },
-  createSalesSchool: async (name: string): Promise<SalesSchool> => {
-    const response = await api.post('/api/sales/schools', { name });
+  createSalesSchool: async (payload: string | {
+    name: string;
+    city?: string | null;
+    director?: string | null;
+    email?: string | null;
+    address?: string | null;
+    phone?: string | null;
+  }): Promise<SalesSchool> => {
+    const body = typeof payload === 'string' ? { name: payload } : payload;
+    const response = await api.post('/api/sales/schools', body);
     return response.data;
   },
-  updateSalesSchool: async (id: number, payload: { name?: string; is_active?: boolean }): Promise<SalesSchool> => {
+  updateSalesSchool: async (id: number, payload: {
+    name?: string;
+    city?: string | null;
+    director?: string | null;
+    email?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    is_active?: boolean;
+  }): Promise<SalesSchool> => {
     const response = await api.put(`/api/sales/schools/${id}`, payload);
+    return response.data;
+  },
+  importSalesSchools: async (file: File): Promise<{ created: number; updated: number; skipped: number; errors: string[] }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/api/sales/schools/import', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+  exportSalesSchools: async (): Promise<Blob> => {
+    const response = await api.get('/api/sales/schools/export', { responseType: 'blob' });
     return response.data;
   },
   listSalesClasses: async (active_only = true): Promise<SalesClass[]> => {
@@ -2267,6 +2295,7 @@ export const b2bApi = {
   createSchool: async (payload: {
     name: string;
     director?: string;
+    email?: string | null;
     city?: string;
     address?: string;
     district?: string;
@@ -2293,6 +2322,7 @@ export const b2bApi = {
     payload: Partial<{
       name: string;
       director: string;
+      email: string | null;
       city: string;
       address: string;
       district: string;

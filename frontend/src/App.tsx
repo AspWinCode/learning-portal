@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -96,6 +96,11 @@ const RouteFallback: React.FC = () => (
     <CircularProgress />
   </Box>
 );
+
+const RedirectWithSearch: React.FC<{ to: string }> = ({ to }) => {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}`} replace />;
+};
 
 function App() {
   return (
@@ -324,7 +329,7 @@ function App() {
               }
             />
             <Route
-              path="/sales/instructions"
+              path="/operations/instructions"
               element={
                 <PrivateRoute requiredPermission="sales.access">
                   <SectionBoundary>
@@ -334,7 +339,7 @@ function App() {
               }
             />
             <Route
-              path="/sales/absences"
+              path="/operations/absences"
               element={
                 <PrivateRoute requiredPermission="sales.access">
                   <SectionBoundary>
@@ -343,10 +348,12 @@ function App() {
                 </PrivateRoute>
               }
             />
+            <Route path="/sales/instructions" element={<RedirectWithSearch to="/operations/instructions" />} />
+            <Route path="/sales/absences" element={<RedirectWithSearch to="/operations/absences" />} />
             <Route path="/sales/student-cards" element={<Navigate to="/students?tab=ankety" replace />} />
             <Route path="/sales/ankety" element={<Navigate to="/students?tab=ankety" replace />} />
             <Route
-              path="/sales/debts"
+              path="/finance/payments"
               element={
                 <PrivateRoute requiredPermission="sales.access">
                   <SectionBoundary>
@@ -356,7 +363,7 @@ function App() {
               }
             />
             <Route
-              path="/sales/program-makeup"
+              path="/operations/program-makeup"
               element={
                 <PrivateRoute requiredPermission="settings.manage">
                   <SectionBoundary>
@@ -366,7 +373,7 @@ function App() {
               }
             />
             <Route
-              path="/sales/tax-deduction"
+              path="/finance/tax-deduction"
               element={
                 <PrivateRoute requiredPermission="sales.access">
                   <SectionBoundary>
@@ -376,7 +383,7 @@ function App() {
               }
             />
             <Route
-              path="/sales/manual-lessons"
+              path="/operations/manual-lessons"
               element={
                 <PrivateRoute requiredPermission="lessons.manage">
                   <SectionBoundary>
@@ -385,6 +392,10 @@ function App() {
                 </PrivateRoute>
               }
             />
+            <Route path="/sales/debts" element={<RedirectWithSearch to="/finance/payments" />} />
+            <Route path="/sales/program-makeup" element={<RedirectWithSearch to="/operations/program-makeup" />} />
+            <Route path="/sales/tax-deduction" element={<RedirectWithSearch to="/finance/tax-deduction" />} />
+            <Route path="/sales/manual-lessons" element={<RedirectWithSearch to="/operations/manual-lessons" />} />
             <Route
               path="/grades"
               element={
@@ -478,13 +489,14 @@ function App() {
               }
             />
             <Route
-              path="/sales/settings"
+              path="/admin/settings"
               element={
                 <PrivateRoute requiredPermission="settings.access">
                   <SalesSettingsPage />
                 </PrivateRoute>
               }
             />
+            <Route path="/sales/settings" element={<RedirectWithSearch to="/admin/settings" />} />
             <Route
               path="/roles"
               element={
@@ -682,4 +694,3 @@ function App() {
 }
 
 export default App;
-

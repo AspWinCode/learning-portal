@@ -74,11 +74,11 @@ const SIDEBAR_SCROLL_STORAGE_KEY = 'sb_scroll_top';
 const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan', '/owner-workspace/notifications']) },
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
-  { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/sales/absences', '/sales/program-makeup', '/sales/instructions', '/persons', '/sales/tax-deduction', '/sales/manual-lessons']) },
-  { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance', '/finance/overview', '/finance/projects', '/abonements', '/sales/debts', '/calculations', '/personal-finance']) },
+  { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/persons', '/operations/manual-lessons']) },
+  { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance', '/finance/overview', '/finance/projects', '/abonements', '/finance/payments', '/calculations', '/personal-finance', '/finance/tax-deduction']) },
   { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects', '/owner-workspace/reports', '/owner-workspace/settings']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
-  { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/sales/settings', '/settings/communications', '/roles', '/reports']) },
+  { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
 
 interface LayoutProps {
@@ -281,10 +281,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
         { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
-        { text: 'Инструкции', icon: <Description />, path: '/sales/instructions' },
-        { text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' },
-        { text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' },
-        { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/sales/tax-deduction' },
+        { text: 'Инструкции', icon: <Description />, path: '/operations/instructions' },
+        { text: 'Пропуски', icon: <PendingActions />, path: '/operations/absences' },
+        { text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' },
+        { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/finance/tax-deduction' },
         ...(canAccessPersons ? [{ text: 'Реестр Person', icon: <Search />, path: '/persons' }] : []),
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
@@ -321,17 +321,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Журнал', icon: <AccountBalanceWallet />, path: '/finance/overview' });
       items.push({ text: 'Проекты', icon: <AccountBalanceWallet />, path: '/finance/projects' });
       if (canAccessAbonements) items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
-      items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' });
+      items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' });
       if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
       items.push({ text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' });
     }
     if (isAdminLike) {
-      items.push({ text: 'Инструкции', icon: <Description />, path: '/sales/instructions' });
-      items.push({ text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' });
-      if (!items.some((item) => item.path === '/sales/debts')) {
-        items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' });
+      items.push({ text: 'Инструкции', icon: <Description />, path: '/operations/instructions' });
+      items.push({ text: 'Пропуски', icon: <PendingActions />, path: '/operations/absences' });
+      if (!items.some((item) => item.path === '/finance/payments')) {
+        items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' });
       }
-      items.push({ text: 'Совместимость программ (отработки)', icon: <Assignment />, path: '/sales/program-makeup' });
+      items.push({ text: 'Совместимость программ (отработки)', icon: <Assignment />, path: '/operations/program-makeup' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
@@ -339,7 +339,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
-    if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/sales/settings' });
+    if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
     if (canAccessRoles) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });
     if (canAccessPersons) items.push({ text: 'Реестр Person', icon: <Search />, path: '/persons' });

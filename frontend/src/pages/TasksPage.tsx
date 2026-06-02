@@ -1192,7 +1192,7 @@ const TasksPage: React.FC = () => {
                   <React.Fragment>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" sx={{ mb: 1 }}>
                       <Typography variant="subtitle1">Отработки</Typography>
-                      <Button size="small" variant="outlined" component={Link} to="/sales/absences">Открыть список пропусков</Button>
+                      <Button size="small" variant="outlined" component={Link} to="/operations/absences">Открыть список пропусков</Button>
                     </Stack>
                     <Stack
                       direction={{ xs: 'column', md: 'row' }}
@@ -1228,7 +1228,7 @@ const TasksPage: React.FC = () => {
                                     variant="outlined"
                                     sx={{ mt: 1 }}
                                     component={Link}
-                                    to="/sales/absences"
+                                    to="/operations/absences"
                                   >
                                     Открыть список пропусков
                                   </Button>
@@ -1646,7 +1646,7 @@ const TasksPage: React.FC = () => {
                                       size="small"
                                       variant="outlined"
                                       component={Link}
-                                      to="/sales/debts"
+                                      to="/finance/payments"
                                     >
                                       Долги и оплаты
                                     </Button>

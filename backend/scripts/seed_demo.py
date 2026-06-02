@@ -469,9 +469,9 @@ for i, name in enumerate(LEAD_NAMES):
     # Raw SQL — обходим native enum cast для status
     res = db.execute(_sa.text("""
         INSERT INTO leads (owner_id, contact_name, phone, parent_full_name,
-            child_full_name, email, city, comment, source_id, created_at, status)
+            child_full_name, email, city, comment, source_id, created_at, status, questionnaire_filled)
         VALUES (:owner, :contact, :phone, :pfn, :cfn, :email, :city, :comment,
-            :source, :created, :status::leadstatus)
+            :source, :created, CAST(:status AS leadstatus), false)
         RETURNING id
     """), {
         "owner": sales.id,
@@ -498,7 +498,7 @@ for i, name in enumerate(LEAD_NAMES):
                                datetime.min.time()).replace(tzinfo=timezone.utc)
         db.execute(_sa.text("""
             INSERT INTO lead_tasks (lead_id, owner_id, note, due_at, status)
-            VALUES (:lead, :owner, :note, :due, 'open'::leadtaskstatus)
+            VALUES (:lead, :owner, :note, :due, CAST('open' AS leadtaskstatus))
         """), {"lead": lead_id, "owner": sales.id, "note": task_note, "due": due})
 
 db.flush()

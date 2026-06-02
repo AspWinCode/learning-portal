@@ -71,13 +71,13 @@ const DRAWER_MINI = 64;
 
 // Группы меню: id → массив путей
 const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
-  { id: 'education', label: 'Обучение', paths: new Set(['/dashboard', '/trainer-cockpit', '/parent-dashboard', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades']) },
-  { id: 'finance',   label: 'Финансы',  paths: new Set(['/finance', '/finance/overview', '/finance/projects', '/abonements', '/calculations', '/personal-finance']) },
-  { id: 'sales',     label: 'Продажи',  paths: new Set(['/sales/leads', '/sales/pipeline', '/sales/events', '/sales/dashboard', '/sales/reports', '/sales/managers']) },
-  { id: 'ops',       label: 'Операции', paths: new Set(['/sales/instructions', '/sales/absences', '/sales/debts', '/sales/tax-deduction', '/sales/program-makeup', '/manual-lessons']) },
-  { id: 'workspace', label: 'Задачник', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects', '/owner-workspace/reports', '/owner-workspace/notifications', '/owner-workspace/settings', '/owner-workspace/counterparties']) },
-  { id: 'b2b',       label: 'B2B',      paths: new Set(['/b2b-schools', '/b2b-schools/plan']) },
-  { id: 'system',    label: 'Система',  paths: new Set(['/trainers', '/roles', '/settings', '/sales/settings', '/settings/communications', '/persons', '/reports']) },
+  { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan', '/owner-workspace/notifications']) },
+  { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
+  { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/sales/absences', '/sales/program-makeup', '/sales/instructions', '/persons', '/sales/tax-deduction', '/sales/manual-lessons']) },
+  { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance', '/finance/overview', '/finance/projects', '/abonements', '/sales/debts', '/calculations', '/personal-finance']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects', '/owner-workspace/reports', '/owner-workspace/settings']) },
+  { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
+  { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/sales/settings', '/settings/communications', '/roles', '/reports']) },
 ];
 
 interface LayoutProps {
@@ -267,7 +267,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' },
         { text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' },
-        { text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' },
+        { text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' },
         { text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' },
       ];
 
@@ -287,43 +287,48 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' });
-      items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
+      items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
 
     if (canAccessReports && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') {
-      // Для владельца отчёты и финансовая модель доступны с главной страницы как вкладки.
-      items.push({ text: '💰 Finance Hub', icon: <AccountBalanceWallet />, path: '/finance' });
-      items.push({ text: 'Финансы (журнал)', icon: <AccountBalanceWallet />, path: '/finance/overview' });
-      items.push({ text: 'Проекты (финансы)', icon: <AccountBalanceWallet />, path: '/finance/projects' });
+      // Для владельца финансовые представления сгруппированы в один раздел меню.
+      items.push({ text: 'Обзор', icon: <AccountBalanceWallet />, path: '/finance' });
+      items.push({ text: 'Журнал', icon: <AccountBalanceWallet />, path: '/finance/overview' });
+      items.push({ text: 'Проекты', icon: <AccountBalanceWallet />, path: '/finance/projects' });
+      if (canAccessAbonements) items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
+      items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' });
+      if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
+      items.push({ text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' });
     }
     if (isAdminLike) {
       items.push({ text: 'Инструкции', icon: <Description />, path: '/sales/instructions' });
       items.push({ text: 'Пропуски', icon: <PendingActions />, path: '/sales/absences' });
-      items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' });
+      if (!items.some((item) => item.path === '/sales/debts')) {
+        items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/sales/debts' });
+      }
       items.push({ text: 'Совместимость программ (отработки)', icon: <Assignment />, path: '/sales/program-makeup' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Owner задачник', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Отчёты задачника', icon: <Assessment />, path: '/owner-workspace/reports' });
-      items.push({ text: 'Уведомления задачника', icon: <Notifications />, path: '/owner-workspace/notifications' });
+      items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
       items.push({ text: 'Настройки задачника', icon: <Settings />, path: '/owner-workspace/settings' });
     }
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/sales/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
     if (canAccessRoles) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });
     if (canAccessPersons) items.push({ text: 'Реестр Person', icon: <Search />, path: '/persons' });
+    if (role === 'owner' && canAccessOwnerWorkspace) {
+      items.push({ text: 'Контрагенты', icon: <People />, path: '/owner-workspace/counterparties' });
+    }
     if (canAccessB2B) {
       items.push({ text: 'План на сегодня', icon: <Assignment />, path: '/b2b-schools/plan' });
       items.push({ text: 'Работа со школами', icon: <School />, path: '/b2b-schools' });
     }
     if (role === 'owner') {
-      items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
-      if (canAccessOwnerWorkspace) items.push({ text: 'Контрагенты', icon: <People />, path: '/owner-workspace/counterparties' });
-      if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
-      items.push({ text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' });
     }
     // У админа отдельная страница "Тренеры" убрана — доступ через объединённый раздел Ученики/группы при необходимости
     return items;
@@ -380,10 +385,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Группируем видимые пункты меню
   const allGroupedPaths = new Set(NAV_GROUPS.flatMap(g => [...g.paths]));
-  const grouped = NAV_GROUPS.map(g => ({
-    ...g,
-    items: visibleMenuItems.filter(item => g.paths.has(item.path)),
-  })).filter(g => g.items.length > 0);
+  const grouped = NAV_GROUPS.map(g => {
+    const pathOrder = new Map([...g.paths].map((path, index) => [path, index]));
+    return {
+      ...g,
+      items: visibleMenuItems
+        .filter(item => g.paths.has(item.path))
+        .sort((a, b) => (pathOrder.get(a.path) ?? 0) - (pathOrder.get(b.path) ?? 0)),
+    };
+  }).filter(g => g.items.length > 0);
   const standalone = visibleMenuItems.filter(item => !allGroupedPaths.has(item.path));
 
   const navItem = (item: { text: string; icon: React.ReactNode; path: string }, indent = false) => {

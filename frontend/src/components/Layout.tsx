@@ -68,6 +68,7 @@ import {
 
 const DRAWER_OPEN = 240;
 const DRAWER_MINI = 64;
+const SIDEBAR_SCROLL_STORAGE_KEY = 'sb_scroll_top';
 
 // Группы меню: id → массив путей
 const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
@@ -105,7 +106,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem('sb_groups') || '{}'); } catch { return {}; }
   });
+  const navListRef = React.useRef<HTMLUListElement | null>(null);
   const drawerWidth = sidebarCollapsed ? DRAWER_MINI : DRAWER_OPEN;
+
+  const saveSidebarScroll = React.useCallback(() => {
+    const node = navListRef.current;
+    if (!node) return;
+    try { sessionStorage.setItem(SIDEBAR_SCROLL_STORAGE_KEY, String(node.scrollTop)); } catch {}
+  }, []);
+
+  const restoreSidebarScroll = React.useCallback((node: HTMLUListElement | null) => {
+    navListRef.current = node;
+    if (!node) return;
+    try {
+      const savedScroll = Number(sessionStorage.getItem(SIDEBAR_SCROLL_STORAGE_KEY) || 0);
+      if (savedScroll > 0) {
+        requestAnimationFrame(() => {
+          node.scrollTop = savedScroll;
+        });
+      }
+    } catch {}
+  }, []);
 
   const toggleSidebar = () => setSidebarCollapsed(v => {
     const next = !v;
@@ -113,6 +134,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return next;
   });
   const toggleGroup = (id: string) => setExpandedGroups(prev => {
+    saveSidebarScroll();
     const next = { ...prev, [id]: prev[id] === false };
     try { localStorage.setItem('sb_groups', JSON.stringify(next)); } catch {}
     return next;
@@ -402,7 +424,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Tooltip key={item.text} title={sidebarCollapsed ? item.text : ''} placement="right" arrow>
         <ListItemButton
           selected={selected}
-          onClick={() => { navigate(item.path); setMobileOpen(false); }}
+          onClick={() => { saveSidebarScroll(); navigate(item.path); setMobileOpen(false); }}
           sx={{
             mx: 0.5, mb: 0.2, borderRadius: 1.5, py: 0.65,
             pl: sidebarCollapsed ? 0 : indent ? 2.5 : 1.5,
@@ -459,7 +481,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Box sx={{ mx: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
 
       {/* Nav list */}
-      <List sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 0.25,
+      <List ref={restoreSidebarScroll} onScroll={saveSidebarScroll} sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 0.25,
         '&::-webkit-scrollbar': { width: 3 },
         '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 4 },
       }}>

@@ -1034,6 +1034,24 @@ export interface B2BSchoolContact {
   created_at: string;
 }
 
+export interface B2BDocument {
+  id: number;
+  b2b_school_id: number;
+  type: string;
+  file_name: string;
+  file_size_kb?: number | null;
+  mime_type?: string | null;
+  uploaded_by_id: number;
+  uploaded_by_name?: string | null;
+  created_at: string;
+}
+
+export interface B2BSchoolCustomField {
+  name: string;
+  type: 'text' | 'number' | 'date' | 'checkbox';
+  value: string | number | boolean | null;
+}
+
 export interface B2BSchool {
   id: number;
   name: string;
@@ -1055,6 +1073,8 @@ export interface B2BSchool {
   preference?: string | null;  // online, offline, any
   support_letter_status?: string | null;
   partnership?: Record<string, boolean> | null;
+  comment?: string | null;
+  custom_fields?: B2BSchoolCustomField[] | null;
   event_dates?: string[] | null;
   meeting_scheduled_at?: string | null;
   meeting_outcomes?: string | null;

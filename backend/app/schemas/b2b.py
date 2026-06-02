@@ -77,6 +77,8 @@ class B2BSchoolCreate(BaseModel):
     source: Optional[str] = None
     priority: Optional[str] = None
     preference: Optional[str] = None
+    comment: Optional[str] = None
+    custom_fields: Optional[List[Dict[str, Any]]] = None
     event_dates: Optional[List[str]] = None
     meeting_scheduled_at: Optional[datetime] = None
     meeting_outcomes: Optional[str] = None
@@ -102,6 +104,8 @@ class B2BSchoolUpdate(BaseModel):
     preference: Optional[str] = None
     support_letter_status: Optional[str] = None
     partnership: Optional[Dict[str, Any]] = None
+    comment: Optional[str] = None
+    custom_fields: Optional[List[Dict[str, Any]]] = None
     event_dates: Optional[List[str]] = None
     meeting_scheduled_at: Optional[datetime] = None
     meeting_outcomes: Optional[str] = None
@@ -129,6 +133,8 @@ class B2BSchoolResponse(BaseModel):
     preference: Optional[str] = None
     support_letter_status: Optional[str] = None
     partnership: Optional[Dict[str, Any]] = None
+    comment: Optional[str] = None
+    custom_fields: Optional[List[Dict[str, Any]]] = None
     event_dates: Optional[List[str]] = None
     meeting_scheduled_at: Optional[datetime] = None
     meeting_outcomes: Optional[str] = None

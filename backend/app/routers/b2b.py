@@ -98,6 +98,8 @@ def _school_to_response(db: Session, school: B2BSchool) -> B2BSchoolResponse:
         preference=getattr(school, "preference", None),
         support_letter_status=getattr(school, "support_letter_status", None),
         partnership=getattr(school, "partnership", None),
+        comment=getattr(school, "comment", None),
+        custom_fields=getattr(school, "custom_fields", None),
         event_dates=school.event_dates,
         meeting_scheduled_at=school.meeting_scheduled_at,
         meeting_outcomes=school.meeting_outcomes,
@@ -991,6 +993,8 @@ async def create_b2b_school(
         source=payload.source,
         priority=payload.priority,
         preference=payload.preference,
+        comment=payload.comment,
+        custom_fields=payload.custom_fields,
         event_dates=payload.event_dates,
         meeting_scheduled_at=payload.meeting_scheduled_at,
         meeting_outcomes=payload.meeting_outcomes,
@@ -1278,6 +1282,7 @@ async def delete_b2b_project(
 # ── Documents ─────────────────────────────────────────────────────────────────
 
 _ALLOWED_MIME = {
+    "application/msword",
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "image/png",
@@ -1340,8 +1345,8 @@ async def upload_school_document(
         raise HTTPException(status_code=413, detail="max file size is 10MB")
 
     mime = file.content_type or ""
-    if mime not in _ALLOWED_MIME:
-        raise HTTPException(status_code=415, detail="unsupported media type; allowed: pdf, docx, png, jpg")
+    if mime not in _ALLOWED_MIME and not mime.startswith("image/"):
+        raise HTTPException(status_code=415, detail="unsupported media type; allowed: pdf, doc, docx, images")
 
     doc_type = type.strip().lower()
     file_data = f"data:{mime};base64,{base64.b64encode(content).decode()}"
@@ -1360,8 +1365,11 @@ async def upload_school_document(
 
     # Auto-update checklist
     partnership = dict(school.partnership or {})
-    if doc_type == "agreement":
+    if doc_type in ("agreement", "signed_agreement"):
         partnership["signed_school"] = True
+        _recompute_active_partner(partnership)
+    elif doc_type == "logo":
+        partnership["icon_on_site"] = True
         _recompute_active_partner(partnership)
     elif doc_type == "support_letter":
         school.support_letter_status = "received"
@@ -1418,9 +1426,24 @@ async def delete_school_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
-    if school and doc.type == "agreement":
+    if school and doc.type in ("agreement", "signed_agreement"):
         partnership = dict(school.partnership or {})
-        partnership["signed_school"] = False
+        has_signed_agreement = db.query(B2BDocument).filter(
+            B2BDocument.b2b_school_id == school_id,
+            B2BDocument.id != doc_id,
+            B2BDocument.type.in_(["agreement", "signed_agreement"]),
+        ).first()
+        partnership["signed_school"] = bool(has_signed_agreement)
+        _recompute_active_partner(partnership)
+        school.partnership = partnership
+    elif school and doc.type == "logo":
+        partnership = dict(school.partnership or {})
+        has_logo = db.query(B2BDocument).filter(
+            B2BDocument.b2b_school_id == school_id,
+            B2BDocument.id != doc_id,
+            B2BDocument.type == "logo",
+        ).first()
+        partnership["icon_on_site"] = bool(has_logo)
         _recompute_active_partner(partnership)
         school.partnership = partnership
 

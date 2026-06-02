@@ -1792,6 +1792,8 @@ class B2BSchool(Base):
     preference = Column(String(32), nullable=True)  # online, offline, any
     support_letter_status = Column(String(32), nullable=True)  # not_needed, requested, received, archive
     partnership = Column(JSON, nullable=True)  # checklist: {invited, agreement_sent, signed_school, signed_both, originals_received, icon_on_site, active_partner}
+    comment = Column(Text, nullable=True)
+    custom_fields = Column(JSON, nullable=True)
     event_dates = Column(JSON, nullable=True)
     meeting_scheduled_at = Column(DateTime(timezone=True), nullable=True)
     meeting_outcomes = Column(Text, nullable=True)

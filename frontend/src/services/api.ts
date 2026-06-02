@@ -36,6 +36,8 @@ import {
   B2BSchool,
   B2BSchoolPipelineStage,
   B2BSchoolContact,
+  B2BDocument,
+  B2BSchoolCustomField,
   B2BProject,
   OwnerFunnelTypeInfo,
   OwnerFunnelEvent,
@@ -2309,6 +2311,8 @@ export const b2bApi = {
     source?: string | null;
     priority?: string | null;
     preference?: string | null;
+    comment?: string | null;
+    custom_fields?: B2BSchoolCustomField[] | null;
     event_dates?: string[];
     meeting_scheduled_at?: string | null;
     meeting_outcomes?: string | null;
@@ -2338,6 +2342,8 @@ export const b2bApi = {
       preference: string | null;
       support_letter_status: string | null;
       partnership: Record<string, boolean> | null;
+      comment: string | null;
+      custom_fields: B2BSchoolCustomField[] | null;
       event_dates: string[];
       meeting_scheduled_at: string | null;
       meeting_outcomes: string | null;
@@ -2387,6 +2393,28 @@ export const b2bApi = {
   },
   deleteContact: async (schoolId: number, contactId: number): Promise<void> => {
     await api.delete(`/api/b2b-schools/${schoolId}/contacts/${contactId}`);
+  },
+  listDocuments: async (schoolId: number): Promise<B2BDocument[]> => {
+    const response = await api.get(`/api/b2b-schools/${schoolId}/documents`);
+    return response.data;
+  },
+  uploadDocument: async (schoolId: number, type: string, file: File): Promise<B2BDocument> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('type', type);
+    const response = await api.post(`/api/b2b-schools/${schoolId}/documents`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+  downloadDocument: async (schoolId: number, documentId: number): Promise<Blob> => {
+    const response = await api.get(`/api/b2b-schools/${schoolId}/documents/${documentId}/download`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+  deleteDocument: async (schoolId: number, documentId: number): Promise<void> => {
+    await api.delete(`/api/b2b-schools/${schoolId}/documents/${documentId}`);
   },
   listProjects: async (params?: { archived?: boolean }): Promise<B2BProject[]> => {
     const response = await api.get('/api/b2b-projects', { params });

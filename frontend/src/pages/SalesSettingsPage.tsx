@@ -248,9 +248,8 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="classes" label="Классы" />
           <Tab value="b2b" label="Районы" />
           <Tab value="finance" label="Финансы" />
-          <Tab value="leadSources" label="Источники" />
+          <Tab value="leads" label="Лиды" />
           <Tab value="tasks" label="Задачи" />
-          <Tab value="leadStatuses" label="Статусы лидов" />
           <Tab value="templates" label="Шаблоны" />
           <Tab value="integrations" label="Интеграции" />
         </Tabs>
@@ -300,7 +299,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={sectionPaperSx('leadStatuses')}>
+        <Paper sx={sectionPaperSx('leads')}>
           <Typography variant="h6" mb={1}>Причины отказа (этап «Отказали»)</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Справочник причин отказа, которые выбираются в попапе при переносе лида на этап «Отказали».
@@ -881,7 +880,7 @@ const SalesSettingsPage: React.FC = () => {
           )}
         </Paper>
 
-        <Paper sx={sectionPaperSx('leadSources')}>
+        <Paper sx={sectionPaperSx('leads')}>
           <Typography variant="h6" mb={1}>Источники лида</Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
@@ -1017,7 +1016,7 @@ const SalesSettingsPage: React.FC = () => {
           </Table>
         </Paper>
 
-        <Paper sx={sectionPaperSx('leadStatuses')}>
+        <Paper sx={sectionPaperSx('leads')}>
           <Typography variant="h6" mb={1}>Статусы лида </Typography>
           <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
             <TextField

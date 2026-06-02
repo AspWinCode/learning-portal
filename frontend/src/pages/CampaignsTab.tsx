@@ -337,9 +337,6 @@ export const CampaignsTab: React.FC = () => {
         </Box>
       ) : (
         <>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Откройте кампанию (кнопка «Открыть» или клик по строке) — появятся вкладки «Общая работа», «Джемы», «Матрица школ».
-          </Alert>
           <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h5">
               Кампании {showArchived ? '(архив)' : ''}

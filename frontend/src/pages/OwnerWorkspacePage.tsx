@@ -644,7 +644,7 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
     case OW_TAB_NOTIFICATIONS:
       return '/owner-workspace/notifications';
     case OW_TAB_SETTINGS:
-      return '/owner-workspace/projects';
+      return '/owner-workspace/settings';
     case OW_TAB_PROJECTS:
       return '/owner-workspace/projects';
     case OW_TAB_CONTACTS:
@@ -652,7 +652,7 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
     case OW_TAB_TASKS:
       return '/owner-workspace/tasks';
     case OW_TAB_REPORTS:
-      return '/owner-workspace/projects';
+      return '/owner-workspace/reports';
     case OW_TAB_COMMS:
       return '/owner-workspace/comms';
     case OW_TAB_HISTORY:
@@ -664,12 +664,12 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
 
 function ownerWorkspacePathToTab(pathname: string): number | null {
   const p = pathname.replace(/\/$/, '') || pathname;
-  if (p === '/owner-workspace/settings') return OW_TAB_PROJECTS;
-  if (p === '/owner-workspace/reports') return OW_TAB_PROJECTS;
   if (p === '/owner-workspace/notifications') return OW_TAB_NOTIFICATIONS;
+  if (p === '/owner-workspace/settings') return OW_TAB_SETTINGS;
   if (p.startsWith('/owner-workspace/projects')) return OW_TAB_PROJECTS;
   if (p.startsWith('/owner-workspace/contacts')) return OW_TAB_CONTACTS;
   if (p.startsWith('/owner-workspace/tasks')) return OW_TAB_TASKS;
+  if (p === '/owner-workspace/reports') return OW_TAB_REPORTS;
   if (p === '/owner-workspace/comms') return OW_TAB_COMMS;
   if (p === '/owner-workspace/history') return OW_TAB_HISTORY;
   return null;
@@ -690,7 +690,6 @@ function ownerWorkspaceEntityFromPath(
 
 function tabIndexFromSlug(slug: string | null): number | null {
   if (!slug) return null;
-  if (slug === 'reports' || slug === 'settings') return OW_TAB_PROJECTS;
   const i = OW_TAB_SLUGS.indexOf(slug as (typeof OW_TAB_SLUGS)[number]);
   return i >= 0 ? i : null;
 }
@@ -5003,8 +5002,10 @@ const OwnerWorkspacePage: React.FC = () => {
         <Tab value={OW_TAB_PROJECTS} label={`Проекты (${projects.length})`} />
         <Tab value={OW_TAB_CONTACTS} label={`Контакты (${contacts.length})`} />
         <Tab value={OW_TAB_TASKS} label={`Задачи (${taskListTotal})`} />
+        <Tab value={OW_TAB_REPORTS} label="Отчёты" />
         <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
         <Tab value={OW_TAB_NOTIFICATIONS} label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
+        <Tab value={OW_TAB_SETTINGS} label="Настройки" />
         <Tab value={OW_TAB_HISTORY} label="История" />
       </Tabs>
 

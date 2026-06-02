@@ -179,6 +179,7 @@ const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClo
       });
       onSaved(updated);
       setForm(formFromSchool(updated));
+      onClose();
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось сохранить школу'));
     } finally {
@@ -622,8 +623,21 @@ const B2BSchoolsDirectoryTab: React.FC = () => {
                 onClick={() => setSelectedSchool(school)}
                 sx={{
                   cursor: 'pointer',
-                  borderLeft: `4px solid ${meta.color}`,
-                  '& > td': { borderBottomColor: 'divider' },
+                  bgcolor: `${meta.color}12`,
+                  '& > td': {
+                    borderTop: `2px solid ${meta.color}`,
+                    borderBottom: `2px solid ${meta.color}`,
+                  },
+                  '& > td:first-of-type': {
+                    borderLeft: `6px solid ${meta.color}`,
+                    borderTopLeftRadius: 8,
+                    borderBottomLeftRadius: 8,
+                  },
+                  '& > td:last-of-type': {
+                    borderRight: `2px solid ${meta.color}`,
+                    borderTopRightRadius: 8,
+                    borderBottomRightRadius: 8,
+                  },
                 }}
               >
                 <TableCell>

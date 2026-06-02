@@ -1,5 +1,8 @@
 """Campaigns and SchoolCampaigns API. Owner only."""
 
+import json
+import re
+import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,11 +11,14 @@ from sqlalchemy.orm import Session, joinedload
 from app import auth
 from app.database import get_db
 from app.models import (
+    AppSetting,
     B2BSchool,
     Campaign,
+    CampaignDictionaryItem,
     CampaignEvent,
     SchoolCampaign,
     SchoolCampaignEvent,
+    SalesCity,
     Task,
     TaskStatus,
     User,
@@ -20,10 +26,14 @@ from app.models import (
 from app.schemas.campaigns import (
     AddSchoolsBody,
     CampaignCreate,
+    CampaignDictionaryCreate,
+    CampaignDictionaryItemResponse,
+    CampaignDictionaryUpdate,
     CampaignEventCreate,
     CampaignEventResponse,
     CampaignEventUpdate,
     CampaignResponse,
+    CampaignSettingsResponse,
     CampaignUpdate,
     SchoolCampaignEventBulkUpdate,
     SchoolCampaignEventResponse,
@@ -34,6 +44,46 @@ from app.schemas.campaigns import (
 )
 
 router = APIRouter()
+
+_CAMPAIGN_SETTING_CATEGORIES = {
+    "types": "campaign_type",
+    "formats": "campaign_format",
+    "scales": "campaign_scale",
+}
+_B2B_DISTRICTS_KEY = "b2b_districts"
+
+
+def _slugify_campaign_value(label: str) -> str:
+    value = re.sub(r"[^a-z0-9]+", "_", label.strip().lower())
+    value = value.strip("_")
+    value = value[:32].strip("_")
+    return value or f"item_{uuid.uuid4().hex[:8]}"
+
+
+def _campaign_dictionary_response(item: CampaignDictionaryItem) -> CampaignDictionaryItemResponse:
+    return CampaignDictionaryItemResponse(
+        id=item.id,
+        category=item.category,
+        value=item.value,
+        label=item.label,
+        is_active=item.is_active,
+        position=item.position,
+    )
+
+
+def _list_campaign_dictionary(db: Session, category: str, active_only: bool = False) -> List[CampaignDictionaryItemResponse]:
+    q = db.query(CampaignDictionaryItem).filter(CampaignDictionaryItem.category == category)
+    if active_only:
+        q = q.filter(CampaignDictionaryItem.is_active.is_(True))
+    items = q.order_by(CampaignDictionaryItem.position.asc(), CampaignDictionaryItem.id.asc()).all()
+    return [_campaign_dictionary_response(item) for item in items]
+
+
+def _category_from_path(category: str) -> str:
+    resolved = _CAMPAIGN_SETTING_CATEGORIES.get(category)
+    if not resolved:
+        raise HTTPException(status_code=400, detail="Unknown campaign setting category")
+    return resolved
 
 
 def _campaign_to_response(c: Campaign) -> CampaignResponse:
@@ -86,6 +136,109 @@ def _school_campaign_to_response(sc: SchoolCampaign) -> SchoolCampaignResponse:
         school_city=sc.school.city if sc.school else None,
         partnership_step=_get_partnership_step(school_partnership),
     )
+
+
+@router.get("/campaigns/settings", response_model=CampaignSettingsResponse)
+async def get_campaign_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
+):
+    cities = [
+        city.name
+        for city in db.query(SalesCity).filter(SalesCity.is_active.is_(True)).order_by(SalesCity.name.asc()).all()
+        if city.name
+    ]
+    districts_setting = db.query(AppSetting).filter(AppSetting.key == _B2B_DISTRICTS_KEY).first()
+    regions: List[str] = []
+    if districts_setting and (districts_setting.value or "").strip():
+        try:
+            parsed = json.loads(districts_setting.value)
+            if isinstance(parsed, list):
+                regions = [str(item).strip() for item in parsed if str(item).strip()]
+        except Exception:
+            regions = []
+    return CampaignSettingsResponse(
+        types=_list_campaign_dictionary(db, "campaign_type"),
+        formats=_list_campaign_dictionary(db, "campaign_format"),
+        scales=_list_campaign_dictionary(db, "campaign_scale"),
+        cities=cities,
+        regions=regions,
+    )
+
+
+@router.post("/campaigns/settings/{category}", response_model=CampaignDictionaryItemResponse, status_code=201)
+async def create_campaign_setting_item(
+    category: str,
+    payload: CampaignDictionaryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    resolved = _category_from_path(category)
+    label = payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="Label is required")
+    value = _slugify_campaign_value(label)
+    existing = db.query(CampaignDictionaryItem).filter(
+        CampaignDictionaryItem.category == resolved,
+        CampaignDictionaryItem.value == value,
+    ).first()
+    if existing:
+        value = f"{value[:27].strip('_')}_{uuid.uuid4().hex[:4]}"
+    max_position = db.query(CampaignDictionaryItem).filter(CampaignDictionaryItem.category == resolved).count() * 10 + 10
+    item = CampaignDictionaryItem(category=resolved, value=value, label=label, position=max_position)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _campaign_dictionary_response(item)
+
+
+@router.put("/campaigns/settings/{category}/{item_id}", response_model=CampaignDictionaryItemResponse)
+async def update_campaign_setting_item(
+    category: str,
+    item_id: int,
+    payload: CampaignDictionaryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    resolved = _category_from_path(category)
+    item = db.query(CampaignDictionaryItem).filter(
+        CampaignDictionaryItem.id == item_id,
+        CampaignDictionaryItem.category == resolved,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Campaign setting item not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "label" in data and data["label"] is not None:
+        label = str(data["label"]).strip()
+        if not label:
+            raise HTTPException(status_code=400, detail="Label is required")
+        item.label = label
+    if "is_active" in data:
+        item.is_active = bool(data["is_active"])
+    if "position" in data and data["position"] is not None:
+        item.position = int(data["position"])
+    db.commit()
+    db.refresh(item)
+    return _campaign_dictionary_response(item)
+
+
+@router.delete("/campaigns/settings/{category}/{item_id}", status_code=204)
+async def delete_campaign_setting_item(
+    category: str,
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    resolved = _category_from_path(category)
+    item = db.query(CampaignDictionaryItem).filter(
+        CampaignDictionaryItem.id == item_id,
+        CampaignDictionaryItem.category == resolved,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Campaign setting item not found")
+    db.delete(item)
+    db.commit()
+    return None
 
 
 @router.get("/campaigns", response_model=List[CampaignResponse])

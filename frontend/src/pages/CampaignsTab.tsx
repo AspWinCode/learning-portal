@@ -36,7 +36,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { b2bApi, campaignsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
-import type { Campaign, SchoolCampaign } from '../types';
+import type { Campaign, CampaignSettings, SchoolCampaign } from '../types';
 import {
   getStagesForCampaignType,
   CAMPAIGN_TYPES,
@@ -83,6 +83,30 @@ export const CampaignsTab: React.FC = () => {
   const [historySchoolCampaignId, setHistorySchoolCampaignId] = useState<number | null>(null);
   const [historyData, setHistoryData] = useState<Array<{ event_title: string | null; event_date: string | null; invite_status: string; participation_status: string; participant_count: number | null; host_status: string; notes: string | null }>>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [campaignSettings, setCampaignSettings] = useState<CampaignSettings | null>(null);
+
+  const campaignTypes = useMemo(() => {
+    const active = campaignSettings?.types.filter((item) => item.is_active) ?? [];
+    return active.length ? active : CAMPAIGN_TYPES;
+  }, [campaignSettings]);
+  const campaignFormats = useMemo(() => {
+    const active = campaignSettings?.formats.filter((item) => item.is_active) ?? [];
+    return active.length ? active : CAMPAIGN_FORMATS;
+  }, [campaignSettings]);
+  const campaignScales = useMemo(() => {
+    const active = campaignSettings?.scales.filter((item) => item.is_active) ?? [];
+    return active.length ? active : CAMPAIGN_MODES;
+  }, [campaignSettings]);
+  const campaignTypeLabel = useCallback((value: string) => {
+    return campaignSettings?.types.find((item) => item.value === value)?.label
+      ?? CAMPAIGN_TYPES.find((item) => item.value === value)?.label
+      ?? value;
+  }, [campaignSettings]);
+  const campaignFormatLabel = useCallback((value: string) => {
+    return campaignSettings?.formats.find((item) => item.value === value)?.label
+      ?? CAMPAIGN_FORMATS.find((item) => item.value === value)?.label
+      ?? value;
+  }, [campaignSettings]);
 
   const loadCampaigns = useCallback(async () => {
     setLoading(true);
@@ -103,8 +127,21 @@ export const CampaignsTab: React.FC = () => {
   }, [loadCampaigns]);
 
   useEffect(() => {
+    campaignsApi.getSettings().then(setCampaignSettings).catch(() => setCampaignSettings(null));
+  }, []);
+
+  useEffect(() => {
     if (createOpen) {
       b2bApi.listManagers().then(setManagers).catch(() => {});
+      campaignsApi.getSettings().then((settings) => {
+        setCampaignSettings(settings);
+        setCreateForm((form) => ({
+          ...form,
+          type: form.type || settings.types.find((item) => item.is_active)?.value || 'game_jam',
+          format: form.format || settings.formats.find((item) => item.is_active)?.value || 'offline',
+          mode: form.mode || settings.scales.find((item) => item.is_active)?.value || 'city',
+        }));
+      }).catch(() => {});
     }
   }, [createOpen]);
 
@@ -159,7 +196,18 @@ export const CampaignsTab: React.FC = () => {
         mode: createForm.mode,
       });
       setCreateOpen(false);
-      setCreateForm({ name: '', type: 'game_jam', format: 'offline', city: '', region: '', date_from: '', date_to: '', responsible_id: '', status: 'draft', mode: 'city' });
+      setCreateForm({
+        name: '',
+        type: campaignTypes[0]?.value || 'game_jam',
+        format: campaignFormats[0]?.value || 'offline',
+        city: '',
+        region: '',
+        date_from: '',
+        date_to: '',
+        responsible_id: '',
+        status: 'draft',
+        mode: campaignScales[0]?.value || 'city',
+      });
       loadCampaigns();
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось создать кампанию'));
@@ -258,7 +306,7 @@ export const CampaignsTab: React.FC = () => {
                 {campaignDetail.name}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {CAMPAIGN_TYPES.find((t) => t.value === campaignDetail.type)?.label} · {campaignDetail.format === 'offline' ? 'Офлайн' : 'Онлайн'}
+                {campaignTypeLabel(campaignDetail.type)} · {campaignFormatLabel(campaignDetail.format)}
                 {campaignDetail.city && ` · ${campaignDetail.city}`}
                 {campaignDetail.responsible_full_name && ` · Ответственный: ${campaignDetail.responsible_full_name}`}
               </Typography>
@@ -391,8 +439,8 @@ export const CampaignsTab: React.FC = () => {
                     visibleCampaigns.map((c) => (
                       <TableRow key={c.id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelectedCampaignId(c.id)}>
                         <TableCell>{c.name}</TableCell>
-                        <TableCell>{CAMPAIGN_TYPES.find((t) => t.value === c.type)?.label ?? c.type}</TableCell>
-                        <TableCell>{c.format === 'offline' ? 'Офлайн' : 'Онлайн'}</TableCell>
+                        <TableCell>{campaignTypeLabel(c.type)}</TableCell>
+                        <TableCell>{campaignFormatLabel(c.format)}</TableCell>
                         <TableCell>{c.city || '—'}</TableCell>
                         <TableCell>{c.responsible_full_name || '—'}</TableCell>
                         <TableCell>{CAMPAIGN_STATUSES.find((s) => s.value === c.status)?.label ?? c.status}</TableCell>
@@ -440,7 +488,7 @@ export const CampaignsTab: React.FC = () => {
                 value={createForm.type}
                 onChange={(e) => setCreateForm((f) => ({ ...f, type: e.target.value }))}
               >
-                {CAMPAIGN_TYPES.map((t) => (
+                {campaignTypes.map((t) => (
                   <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                 ))}
               </Select>
@@ -452,23 +500,37 @@ export const CampaignsTab: React.FC = () => {
                 value={createForm.format}
                 onChange={(e) => setCreateForm((f) => ({ ...f, format: e.target.value }))}
               >
-                {CAMPAIGN_FORMATS.map((f) => (
+                {campaignFormats.map((f) => (
                   <MenuItem key={f.value} value={f.value}>{f.label}</MenuItem>
                 ))}
               </Select>
             </FormControl>
-            <TextField
-              label="Город"
-              value={createForm.city}
-              onChange={(e) => setCreateForm((f) => ({ ...f, city: e.target.value }))}
-              fullWidth
-            />
-            <TextField
-              label="Регион"
-              value={createForm.region}
-              onChange={(e) => setCreateForm((f) => ({ ...f, region: e.target.value }))}
-              fullWidth
-            />
+            <FormControl fullWidth>
+              <InputLabel>Город</InputLabel>
+              <Select
+                label="Город"
+                value={createForm.city}
+                onChange={(e) => setCreateForm((f) => ({ ...f, city: e.target.value }))}
+              >
+                <MenuItem value="">Не выбран</MenuItem>
+                {(campaignSettings?.cities ?? []).map((city) => (
+                  <MenuItem key={city} value={city}>{city}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth>
+              <InputLabel>Регион</InputLabel>
+              <Select
+                label="Регион"
+                value={createForm.region}
+                onChange={(e) => setCreateForm((f) => ({ ...f, region: e.target.value }))}
+              >
+                <MenuItem value="">Не выбран</MenuItem>
+                {(campaignSettings?.regions ?? []).map((region) => (
+                  <MenuItem key={region} value={region}>{region}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <TextField
               label="Дата начала"
               type="date"
@@ -499,13 +561,13 @@ export const CampaignsTab: React.FC = () => {
               </Select>
             </FormControl>
             <FormControl fullWidth>
-              <InputLabel>Режим</InputLabel>
+              <InputLabel>Масштаб</InputLabel>
               <Select
-                label="Режим"
+                label="Масштаб"
                 value={createForm.mode}
                 onChange={(e) => setCreateForm((f) => ({ ...f, mode: e.target.value }))}
               >
-                {CAMPAIGN_MODES.map((m) => (
+                {campaignScales.map((m) => (
                   <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
                 ))}
               </Select>

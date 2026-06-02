@@ -2439,6 +2439,28 @@ export const b2bApi = {
 };
 
 export const campaignsApi = {
+  getSettings: async (): Promise<import('../types').CampaignSettings> => {
+    const response = await api.get('/api/campaigns/settings');
+    return response.data;
+  },
+  createSettingItem: async (
+    category: 'types' | 'formats' | 'scales',
+    label: string
+  ): Promise<import('../types').CampaignDictionaryItem> => {
+    const response = await api.post(`/api/campaigns/settings/${category}`, { label });
+    return response.data;
+  },
+  updateSettingItem: async (
+    category: 'types' | 'formats' | 'scales',
+    id: number,
+    payload: Partial<{ label: string; is_active: boolean; position: number }>
+  ): Promise<import('../types').CampaignDictionaryItem> => {
+    const response = await api.put(`/api/campaigns/settings/${category}/${id}`, payload);
+    return response.data;
+  },
+  deleteSettingItem: async (category: 'types' | 'formats' | 'scales', id: number): Promise<void> => {
+    await api.delete(`/api/campaigns/settings/${category}/${id}`);
+  },
   list: async (params?: { status?: string; city?: string; type?: string }): Promise<import('../types').Campaign[]> => {
     const response = await api.get('/api/campaigns', { params: params || {} });
     return response.data;

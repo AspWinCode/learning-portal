@@ -1114,6 +1114,23 @@ export interface Campaign {
   updated_at?: string | null;
 }
 
+export interface CampaignDictionaryItem {
+  id: number;
+  category: string;
+  value: string;
+  label: string;
+  is_active: boolean;
+  position: number;
+}
+
+export interface CampaignSettings {
+  types: CampaignDictionaryItem[];
+  formats: CampaignDictionaryItem[];
+  scales: CampaignDictionaryItem[];
+  cities: string[];
+  regions: string[];
+}
+
 export interface SchoolCampaign {
   id: number;
   b2b_school_id: number;

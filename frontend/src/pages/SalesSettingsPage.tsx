@@ -23,7 +23,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { abonementsApi, maxApi, salesApi, settingsApi } from '../services/api';
+import { abonementsApi, campaignsApi, maxApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
   Abonement,
@@ -39,6 +39,8 @@ import {
   SalesCity,
   SalesSchool,
   SalesClass,
+  CampaignDictionaryItem,
+  CampaignSettings,
 } from '../types';
 
 const leadStatusLabels: Record<LeadStatus, string> = {
@@ -113,6 +115,12 @@ const SalesSettingsPage: React.FC = () => {
   });
   const [b2bDistricts, setB2bDistricts] = useState<string[]>([]);
   const [newDistrict, setNewDistrict] = useState('');
+  const [campaignSettings, setCampaignSettings] = useState<CampaignSettings | null>(null);
+  const [newCampaignSetting, setNewCampaignSetting] = useState({
+    types: '',
+    formats: '',
+    scales: '',
+  });
   const [refusedReasons, setRefusedReasons] = useState<string[]>([]);
   const [newRefusedReason, setNewRefusedReason] = useState('');
   const [maxPersonalConfigured, setMaxPersonalConfigured] = useState(false);
@@ -143,6 +151,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
+      load('Работа со школами', () => campaignsApi.getSettings(), setCampaignSettings),
       load('Причины отказа', async () => (await settingsApi.getRefusedReasons()).items, setRefusedReasons),
     ]);
     maxApi.isConfigured().then((r) => {
@@ -175,6 +184,67 @@ const SalesSettingsPage: React.FC = () => {
 
   const isEmailValid = (email: string) => !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const sectionPaperSx = (section: string) => ({ p: 2, display: settingsTab === section ? 'block' : 'none' });
+  const campaignSettingTitles: Record<'types' | 'formats' | 'scales', string> = {
+    types: 'Тип кампании',
+    formats: 'Формат кампании',
+    scales: 'Масштаб',
+  };
+
+  const createCampaignSettingItem = (category: 'types' | 'formats' | 'scales') =>
+    safeAction(async () => {
+      const label = newCampaignSetting[category].trim();
+      if (!label) return;
+      await campaignsApi.createSettingItem(category, label);
+      setNewCampaignSetting((prev) => ({ ...prev, [category]: '' }));
+    });
+
+  const renderCampaignSettingBlock = (
+    category: 'types' | 'formats' | 'scales',
+    items: CampaignDictionaryItem[] = []
+  ) => (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Typography variant="h6" mb={1}>{campaignSettingTitles[category]}</Typography>
+      <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          label={`Новый пункт: ${campaignSettingTitles[category]}`}
+          value={newCampaignSetting[category]}
+          onChange={(e) => setNewCampaignSetting((prev) => ({ ...prev, [category]: e.target.value }))}
+          sx={{ minWidth: 280 }}
+        />
+        <Button variant="contained" onClick={() => createCampaignSettingItem(category)}>
+          Добавить
+        </Button>
+      </Box>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Название</TableCell>
+            <TableCell>Активен</TableCell>
+            <TableCell align="right">Действия</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {items.map((item) => (
+            <TableRow key={item.id}>
+              <TableCell>{item.label}</TableCell>
+              <TableCell>
+                <Switch
+                  checked={item.is_active}
+                  onChange={(e) => safeAction(() => campaignsApi.updateSettingItem(category, item.id, { is_active: e.target.checked }))}
+                />
+              </TableCell>
+              <TableCell align="right">
+                <Button color="error" onClick={() => safeAction(() => campaignsApi.deleteSettingItem(category, item.id))}>
+                  Удалить
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Paper>
+  );
 
   const createSchool = () =>
     safeAction(async () => {
@@ -244,6 +314,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="cities" label="Города" />
           <Tab value="classes" label="Классы" />
           <Tab value="b2b" label="Районы" />
+          <Tab value="schoolWork" label="Работа со школами" />
           <Tab value="finance" label="Финансы" />
           <Tab value="leads" label="Лиды" />
           <Tab value="tasks" label="Задачи" />
@@ -597,6 +668,18 @@ const SalesSettingsPage: React.FC = () => {
               </TableBody>
             </Table>
           )}
+        </Paper>
+
+        <Paper sx={sectionPaperSx('schoolWork')}>
+          <Typography variant="h6" mb={1}>Работа со школами</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Справочники для создания кампаний на странице «Работа со школами».
+          </Typography>
+          <Stack spacing={2}>
+            {renderCampaignSettingBlock('types', campaignSettings?.types)}
+            {renderCampaignSettingBlock('formats', campaignSettings?.formats)}
+            {renderCampaignSettingBlock('scales', campaignSettings?.scales)}
+          </Stack>
         </Paper>
 
         <Paper sx={sectionPaperSx('finance')}>

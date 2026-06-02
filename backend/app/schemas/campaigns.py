@@ -53,6 +53,35 @@ class CampaignResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CampaignDictionaryCreate(BaseModel):
+    label: str
+
+
+class CampaignDictionaryUpdate(BaseModel):
+    label: Optional[str] = None
+    is_active: Optional[bool] = None
+    position: Optional[int] = None
+
+
+class CampaignDictionaryItemResponse(BaseModel):
+    id: int
+    category: str
+    value: str
+    label: str
+    is_active: bool
+    position: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CampaignSettingsResponse(BaseModel):
+    types: List[CampaignDictionaryItemResponse]
+    formats: List[CampaignDictionaryItemResponse]
+    scales: List[CampaignDictionaryItemResponse]
+    cities: List[str]
+    regions: List[str]
+
+
 class SchoolCampaignBase(BaseModel):
     stage: Optional[str] = "not_contacted"
     support_letter_status: Optional[str] = None

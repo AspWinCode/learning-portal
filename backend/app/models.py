@@ -1893,6 +1893,22 @@ class B2BProject(Base):
 
 
 # ╨Т╨╛╤А╨╛╨╜╨║╨╕╨┤╨╗╤П╤А╨╛╨╗╨╕╤В╨╕╨┐╤Л╨╕╤Н╤В╨░╨┐╤Л╨╖╨░╨┤╨░╨╜╤Л╨▓╨║╨╛╨┤╨╡
+class CampaignDictionaryItem(Base):
+    __tablename__ = "campaign_dictionary_items"
+    __table_args__ = (
+        UniqueConstraint("category", "value", name="uq_campaign_dictionary_category_value"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String(32), nullable=False, index=True)
+    value = Column(String(64), nullable=False)
+    label = Column(String(256), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true", index=True)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class Campaign(Base):
     __tablename__ = "campaigns"
     id = Column(Integer, primary_key=True, index=True)

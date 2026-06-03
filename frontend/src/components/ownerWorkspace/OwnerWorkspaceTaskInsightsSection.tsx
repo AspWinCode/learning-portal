@@ -41,6 +41,8 @@ type OwnerWorkspaceTaskInsightsSectionProps = {
   taskViewMode: 'list' | 'kanban' | 'calendar';
   taskListTotal: number;
   taskFetchCap: number;
+  /** Скрыть переключатель вида и подсказку (когда они вынесены в общий тулбар). */
+  hideViewControls?: boolean;
   onTaskViewModeChange: (value: 'list' | 'kanban' | 'calendar') => void;
   onDrillDownToAssigneeTasks: (assigneeId: number | null, options?: { overdueOnly?: boolean }) => void | Promise<void>;
 };
@@ -54,6 +56,7 @@ export function OwnerWorkspaceTaskInsightsSection({
   taskViewMode,
   taskListTotal,
   taskFetchCap,
+  hideViewControls = false,
   onTaskViewModeChange,
   onDrillDownToAssigneeTasks,
 }: OwnerWorkspaceTaskInsightsSectionProps) {
@@ -179,23 +182,25 @@ export function OwnerWorkspaceTaskInsightsSection({
         </Card>
       )}
 
-      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-        <ToggleButtonGroup
-          size="small"
-          value={taskViewMode}
-          exclusive
-          onChange={(_, value) => value && onTaskViewModeChange(value)}
-        >
-          <ToggleButton value="list">Список</ToggleButton>
-          <ToggleButton value="kanban">Канбан</ToggleButton>
-          <ToggleButton value="calendar">Календарь</ToggleButton>
-        </ToggleButtonGroup>
-        <Typography variant="caption" color="text.secondary">
-          В канбане перетащите карточку на другую колонку, чтобы сменить статус.
-        </Typography>
-      </Stack>
+      {!hideViewControls && (
+        <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+          <ToggleButtonGroup
+            size="small"
+            value={taskViewMode}
+            exclusive
+            onChange={(_, value) => value && onTaskViewModeChange(value)}
+          >
+            <ToggleButton value="list">Список</ToggleButton>
+            <ToggleButton value="kanban">Канбан</ToggleButton>
+            <ToggleButton value="calendar">Календарь</ToggleButton>
+          </ToggleButtonGroup>
+          <Typography variant="caption" color="text.secondary">
+            В канбане перетащите карточку на другую колонку, чтобы сменить статус.
+          </Typography>
+        </Stack>
+      )}
 
-      {taskViewMode !== 'list' && taskListTotal > taskFetchCap && (
+      {!hideViewControls && taskViewMode !== 'list' && taskListTotal > taskFetchCap && (
         <Alert severity="warning">
           Загружено не более {taskFetchCap} задач при текущих фильтрах (всего по фильтру: {taskListTotal}). Уточните фильтры или
           переключитесь в режим «Список» с пагинацией.

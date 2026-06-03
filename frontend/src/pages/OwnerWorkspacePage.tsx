@@ -34,6 +34,7 @@ import {
   TextField,
   Typography,
   Checkbox,
+  Collapse,
   ToggleButton,
   ToggleButtonGroup,
   CircularProgress,
@@ -48,6 +49,9 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import AddIcon from '@mui/icons-material/Add';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import InsightsIcon from '@mui/icons-material/Insights';
 import {
   format,
   startOfMonth,
@@ -860,6 +864,37 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskActiveOnly, setTaskActiveOnly] = useState(false);
   const [taskAssigneeFilter, setTaskAssigneeFilter] = useState<number | ''>('');
   const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
+  // Сворачиваемые панели вкладки «Задачи» (уменьшают визуальный перегруз)
+  const [showCreatePanel, setShowCreatePanel] = useState(
+    () => localStorage.getItem('ow_tasks_panel_create') === '1'
+  );
+  const [showFiltersPanel, setShowFiltersPanel] = useState(
+    () => localStorage.getItem('ow_tasks_panel_filters') === '1'
+  );
+  const [showAnalyticsPanel, setShowAnalyticsPanel] = useState(
+    () => localStorage.getItem('ow_tasks_panel_analytics') === '1'
+  );
+  const activeTaskFilterCount = useMemo(
+    () =>
+      [
+        taskSearch.trim() !== '',
+        taskPriorityFilter !== '',
+        taskProjectFilter !== '',
+        taskContactFilter !== '',
+        taskAssigneeFilter !== '',
+        taskOverdueOnly,
+        taskActiveOnly,
+      ].filter(Boolean).length,
+    [
+      taskSearch,
+      taskPriorityFilter,
+      taskProjectFilter,
+      taskContactFilter,
+      taskAssigneeFilter,
+      taskOverdueOnly,
+      taskActiveOnly,
+    ]
+  );
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [bulkStatus, setBulkStatus] = useState<string>('');
@@ -5061,6 +5096,134 @@ const OwnerWorkspacePage: React.FC = () => {
 
       {tab === OW_TAB_TASKS && (
         <Stack spacing={2}>
+          {/* Компактный тулбар: вид + быстрые фильтры + переключатели панелей */}
+          <Card>
+            <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>
+              <Stack spacing={1.25}>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'stretch', md: 'center' }}
+                >
+                  <ToggleButtonGroup
+                    size="small"
+                    value={taskViewMode}
+                    exclusive
+                    onChange={(_, value) => value && setTaskViewMode(value)}
+                  >
+                    <ToggleButton value="list">Список</ToggleButton>
+                    <ToggleButton value="kanban">Канбан</ToggleButton>
+                    <ToggleButton value="calendar">Календарь</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    {canCreateTaskUi && (
+                      <Button
+                        size="small"
+                        variant={showCreatePanel ? 'contained' : 'outlined'}
+                        startIcon={<AddIcon />}
+                        onClick={() => setShowCreatePanel((v) => {
+                          const next = !v;
+                          localStorage.setItem('ow_tasks_panel_create', next ? '1' : '0');
+                          return next;
+                        })}
+                      >
+                        Задача
+                      </Button>
+                    )}
+                    <Button
+                      size="small"
+                      variant={showFiltersPanel ? 'contained' : 'outlined'}
+                      startIcon={
+                        <Badge color="primary" variant="dot" invisible={activeTaskFilterCount === 0}>
+                          <FilterListIcon />
+                        </Badge>
+                      }
+                      onClick={() => setShowFiltersPanel((v) => {
+                        const next = !v;
+                        localStorage.setItem('ow_tasks_panel_filters', next ? '1' : '0');
+                        return next;
+                      })}
+                    >
+                      Фильтры{activeTaskFilterCount > 0 ? ` · ${activeTaskFilterCount}` : ''}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={showAnalyticsPanel ? 'contained' : 'outlined'}
+                      startIcon={<InsightsIcon />}
+                      onClick={() => setShowAnalyticsPanel((v) => {
+                        const next = !v;
+                        localStorage.setItem('ow_tasks_panel_analytics', next ? '1' : '0');
+                        return next;
+                      })}
+                    >
+                      Аналитика
+                    </Button>
+                  </Stack>
+                </Stack>
+                {/* Быстрые фильтры по статусу + поиск — всегда видимы */}
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
+                  {taskStatusCounts != null && (
+                    <Stack direction="row" flexWrap="wrap" spacing={0.75} useFlexGap sx={{ flex: 1 }}>
+                      <Chip
+                        size="small"
+                        color={taskStatusFilter === '' ? 'primary' : 'default'}
+                        variant={taskStatusFilter === '' ? 'filled' : 'outlined'}
+                        label={`Все · ${taskStatusCounts.total}`}
+                        onClick={() => {
+                          setTaskStatusFilter('');
+                          void loadTasksFiltered({ statusFilter: '' });
+                        }}
+                      />
+                      {enabledStatuses.map((s) => {
+                        const n = taskStatusCounts.by_status[s] ?? 0;
+                        return (
+                          <Chip
+                            key={s}
+                            size="small"
+                            color={taskStatusFilter === s ? 'primary' : 'default'}
+                            variant={taskStatusFilter === s ? 'filled' : 'outlined'}
+                            label={`${statusLabels[s] ?? s} · ${n}`}
+                            onClick={() => {
+                              const next = taskStatusFilter === s ? '' : s;
+                              setTaskStatusFilter(next);
+                              void loadTasksFiltered({ statusFilter: next });
+                            }}
+                          />
+                        );
+                      })}
+                    </Stack>
+                  )}
+                  <TextField
+                    size="small"
+                    placeholder="Поиск задачи…"
+                    value={taskSearch}
+                    onChange={(e) => setTaskSearch(e.target.value)}
+                    onBlur={() => loadTasksFiltered()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void loadTasksFiltered();
+                    }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ minWidth: { xs: '100%', md: 260 } }}
+                  />
+                </Stack>
+                {taskViewMode !== 'list' && taskListTotal > OWNER_WS_TASKS_FETCH_CAP && (
+                  <Alert severity="warning" sx={{ py: 0 }}>
+                    Загружено не более {OWNER_WS_TASKS_FETCH_CAP} задач при текущих фильтрах (всего: {taskListTotal}).
+                    Уточните фильтры или вернитесь в режим «Список».
+                  </Alert>
+                )}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Collapse in={showCreatePanel} unmountOnExit>
           <Card>
             <CardContent>
                 <Typography variant="subtitle2" gutterBottom>
@@ -5136,43 +5299,14 @@ const OwnerWorkspacePage: React.FC = () => {
               </Stack>
             </CardContent>
           </Card>
+          </Collapse>
 
+          <Collapse in={showFiltersPanel} unmountOnExit>
           <Card>
             <CardContent>
               <Typography variant="subtitle2" gutterBottom>
                 Фильтры
               </Typography>
-              {taskStatusCounts != null && (
-                <Stack direction="row" flexWrap="wrap" spacing={0.75} sx={{ mb: 1.5 }} useFlexGap>
-                  <Chip
-                    size="small"
-                    color={taskStatusFilter === '' ? 'primary' : 'default'}
-                    variant={taskStatusFilter === '' ? 'filled' : 'outlined'}
-                    label={`Все · ${taskStatusCounts.total}`}
-                    onClick={() => {
-                      setTaskStatusFilter('');
-                      void loadTasksFiltered({ statusFilter: '' });
-                    }}
-                  />
-                  {enabledStatuses.map((s) => {
-                    const n = taskStatusCounts.by_status[s] ?? 0;
-                    return (
-                      <Chip
-                        key={s}
-                        size="small"
-                        color={taskStatusFilter === s ? 'primary' : 'default'}
-                        variant={taskStatusFilter === s ? 'filled' : 'outlined'}
-                        label={`${statusLabels[s] ?? s} · ${n}`}
-                        onClick={() => {
-                          const next = taskStatusFilter === s ? '' : s;
-                          setTaskStatusFilter(next);
-                          void loadTasksFiltered({ statusFilter: next });
-                        }}
-                      />
-                    );
-                  })}
-                </Stack>
-              )}
               <Grid container spacing={1}>
                 <Grid item xs={12} md={4}>
                   <TextField
@@ -5297,21 +5431,27 @@ const OwnerWorkspacePage: React.FC = () => {
               </Grid>
             </CardContent>
           </Card>
+          </Collapse>
 
-          <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
-            <OwnerWorkspaceTaskInsightsSection
-              tasksAnalytics={tasksAnalytics}
-              taskStatusCounts={taskStatusCounts}
-              assigneeAnalyticsRows={assigneeAnalyticsRows}
-              assigneeAnalyticsSummary={assigneeAnalyticsSummary}
-              assigneeAttentionRows={assigneeAttentionRows}
-              taskViewMode={taskViewMode}
-              taskListTotal={taskListTotal}
-              taskFetchCap={OWNER_WS_TASKS_FETCH_CAP}
-              onTaskViewModeChange={setTaskViewMode}
-              onDrillDownToAssigneeTasks={drillDownToAssigneeTasks}
-            />
-          </Suspense>
+          <Collapse in={showAnalyticsPanel} unmountOnExit>
+            <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+              <Stack spacing={2}>
+                <OwnerWorkspaceTaskInsightsSection
+                  tasksAnalytics={tasksAnalytics}
+                  taskStatusCounts={taskStatusCounts}
+                  assigneeAnalyticsRows={assigneeAnalyticsRows}
+                  assigneeAnalyticsSummary={assigneeAnalyticsSummary}
+                  assigneeAttentionRows={assigneeAttentionRows}
+                  taskViewMode={taskViewMode}
+                  taskListTotal={taskListTotal}
+                  taskFetchCap={OWNER_WS_TASKS_FETCH_CAP}
+                  hideViewControls
+                  onTaskViewModeChange={setTaskViewMode}
+                  onDrillDownToAssigneeTasks={drillDownToAssigneeTasks}
+                />
+              </Stack>
+            </Suspense>
+          </Collapse>
 
 
           {taskViewMode === 'list' && (

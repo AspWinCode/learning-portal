@@ -90,7 +90,7 @@ OwnerWorkspaceContactType = Literal["company", "ip", "individual"]
 
 class OwnerWorkspaceContactBase(BaseModel):
     full_name: str
-    type: OwnerWorkspaceContactType = "company"
+    type: OwnerWorkspaceContactType = "individual"
     phone: Optional[str] = None
     email: Optional[str] = None
     company: Optional[str] = None

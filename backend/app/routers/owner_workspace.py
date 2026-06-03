@@ -1111,6 +1111,7 @@ async def create_contact(
             detail="Укажите проект для привязки контакта",
         )
     row = OwnerWorkspaceContact(
+        type=getattr(payload, "type", "individual") or "individual",
         full_name=payload.full_name.strip(),
         phone=payload.phone.strip(),
         email=payload.email,

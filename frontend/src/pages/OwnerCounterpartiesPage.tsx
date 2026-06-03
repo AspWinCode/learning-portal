@@ -24,9 +24,12 @@ import {
   Delete as DeleteIcon,
   Download as DownloadIcon,
   Edit as EditIcon,
+  ExpandLess,
+  ExpandMore,
   RestoreFromTrash as RestoreIcon,
   UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
+import { Collapse } from '@mui/material';
 
 import Layout from '../components/Layout';
 import { ConfirmDialog, DataTable, EmptyState } from '../components/ui';
@@ -35,43 +38,28 @@ import type {
   OwnerWorkspaceCounterparty,
   OwnerWorkspaceCounterpartyCustomField,
   OwnerWorkspaceProject,
+  OwnerWorkspaceProjectDocument,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 
-const DOCUMENT_CATEGORIES = [
-  'contract',
-  'act',
-  'invoice',
-  'template',
-  'financial_model',
-  'tz',
-  'business_plan',
-] as const;
-
-type DocumentCategory = typeof DOCUMENT_CATEGORIES[number];
-
-const DOCUMENT_LABELS: Record<DocumentCategory, string> = {
-  contract: 'Договор',
-  act: 'Акт',
-  invoice: 'Счет',
-  template: 'Шаблон',
-  financial_model: 'Финансовая модель',
-  tz: 'ТЗ',
-  business_plan: 'Бизнес-план',
-};
 
 type CounterpartyFormState = {
   type: 'company' | 'ip' | 'individual';
   full_name: string;
   phone: string;
   email: string;
-  company: string;
-  position: string;
   tags: string;
   comment: string;
-  source: string;
-  project_ids: number[];
   custom_fields: OwnerWorkspaceCounterpartyCustomField[];
+};
+
+const PROJECT_STATUS_LABELS: Record<string, string> = {
+  new: 'Новый',
+  in_progress: 'В работе',
+  on_review: 'На проверке',
+  completed: 'Завершён',
+  archived: 'Архив',
+  active: 'Активный',
 };
 
 const emptyForm = (): CounterpartyFormState => ({
@@ -79,19 +67,14 @@ const emptyForm = (): CounterpartyFormState => ({
   full_name: '',
   phone: '',
   email: '',
-  company: '',
-  position: '',
   tags: '',
   comment: '',
-  source: '',
-  project_ids: [],
   custom_fields: [],
 });
 
 const OwnerCounterpartiesPage: React.FC = () => {
   const navigate = useNavigate();
   const [rows, setRows] = useState<OwnerWorkspaceCounterparty[]>([]);
-  const [projects, setProjects] = useState<OwnerWorkspaceProject[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -105,21 +88,24 @@ const OwnerCounterpartiesPage: React.FC = () => {
   const [form, setForm] = useState<CounterpartyFormState>(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<OwnerWorkspaceCounterparty | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<OwnerWorkspaceCounterparty | null>(null);
-  const [uploadingCategory, setUploadingCategory] = useState<string | null>(null);
+
+  const [counterpartyProjects, setCounterpartyProjects] = useState<OwnerWorkspaceProject[]>([]);
+  const [projectDocuments, setProjectDocuments] = useState<Record<number, OwnerWorkspaceProjectDocument[]>>({});
+  const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [savingProject, setSavingProject] = useState(false);
+  const [uploadingProjectDocId, setUploadingProjectDocId] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [counterparties, projectsData] = await Promise.all([
-        ownerWorkspaceApi.listCounterparties({
-          search: search.trim() || undefined,
-          archived: showArchived,
-        }),
-        ownerWorkspaceApi.listProjects({}),
-      ]);
+      const counterparties = await ownerWorkspaceApi.listCounterparties({
+        search: search.trim() || undefined,
+        archived: showArchived,
+      });
       setRows(counterparties);
-      setProjects(projectsData);
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось загрузить контрагентов.'));
     } finally {
@@ -149,10 +135,65 @@ const OwnerCounterpartiesPage: React.FC = () => {
     return visibleRows.slice(start, start + rowsPerPage);
   }, [page, rowsPerPage, visibleRows]);
 
-  const projectNameMap = useMemo(
-    () => new Map(projects.map((project) => [project.id, project.name])),
-    [projects]
-  );
+  const loadCounterpartyProjects = async (counterpartyId: number) => {
+    const projs = await ownerWorkspaceApi.listProjects({ counterparty_id: counterpartyId });
+    setCounterpartyProjects(projs);
+  };
+
+  const loadProjectDocs = async (projectId: number) => {
+    const docs = await ownerWorkspaceApi.listProjectDocuments(projectId);
+    setProjectDocuments((prev) => ({ ...prev, [projectId]: docs }));
+  };
+
+  const toggleProjectExpand = async (projectId: number) => {
+    if (expandedProjectId === projectId) {
+      setExpandedProjectId(null);
+    } else {
+      setExpandedProjectId(projectId);
+      if (!projectDocuments[projectId]) {
+        await loadProjectDocs(projectId);
+      }
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim() || !selected) return;
+    setSavingProject(true);
+    try {
+      await ownerWorkspaceApi.createProject({
+        name: newProjectName.trim(),
+        counterparty_id: selected.id,
+      });
+      setNewProjectName('');
+      setCreateProjectOpen(false);
+      await loadCounterpartyProjects(selected.id);
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось создать проект.'));
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const handleUploadProjectDoc = async (projectId: number, file: File) => {
+    setUploadingProjectDocId(projectId);
+    try {
+      await ownerWorkspaceApi.uploadProjectDocument(projectId, file);
+      await loadProjectDocs(projectId);
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось загрузить документ.'));
+    } finally {
+      setUploadingProjectDocId(null);
+    }
+  };
+
+  const handleDeleteProjectDoc = async (projectId: number, docId: number) => {
+    try {
+      await ownerWorkspaceApi.deleteProjectDocument(projectId, docId);
+      await loadProjectDocs(projectId);
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось удалить документ.'));
+    }
+  };
 
   const openCreateDialog = () => {
     setSelected(null);
@@ -173,14 +214,16 @@ const OwnerCounterpartiesPage: React.FC = () => {
         full_name: fresh.full_name || '',
         phone: fresh.phone || '',
         email: fresh.email || '',
-        company: fresh.company || '',
-        position: fresh.position || '',
         tags: (fresh.tags || []).join(', '),
         comment: fresh.comment || '',
-        source: fresh.source || '',
-        project_ids: fresh.linked_project_ids || [],
         custom_fields: Array.isArray(fresh.custom_fields) ? fresh.custom_fields : [],
       });
+      setCounterpartyProjects([]);
+      setProjectDocuments({});
+      setExpandedProjectId(null);
+      setCreateProjectOpen(false);
+      setNewProjectName('');
+      void loadCounterpartyProjects(fresh.id);
       setDialogOpen(true);
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось открыть карточку контрагента.'));
@@ -200,15 +243,11 @@ const OwnerCounterpartiesPage: React.FC = () => {
         full_name: form.full_name.trim(),
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
-        company: form.company.trim() || null,
-        position: form.position.trim() || null,
         tags: form.tags
           .split(',')
           .map((item) => item.trim())
           .filter(Boolean),
         comment: form.comment.trim() || null,
-        source: form.source.trim() || null,
-        project_ids: form.project_ids,
         custom_fields: form.custom_fields.map((field) => ({
           ...field,
           label: field.label.trim(),
@@ -303,62 +342,6 @@ const OwnerCounterpartiesPage: React.FC = () => {
     }));
   };
 
-  const refreshSelectedCounterparty = async (contactId: number) => {
-    const fresh = await ownerWorkspaceApi.getCounterparty(contactId);
-    setSelected(fresh);
-    setRows((prev) => prev.map((row) => (row.id === fresh.id ? fresh : row)));
-  };
-
-  const handleUploadDocument = async (category: DocumentCategory, file: File | null) => {
-    if (!selected || !file) return;
-    try {
-      setUploadingCategory(category);
-      await ownerWorkspaceApi.uploadCounterpartyDocument(selected.id, category, file);
-      await refreshSelectedCounterparty(selected.id);
-      setSuccess(`Документ "${DOCUMENT_LABELS[category]}" загружен.`);
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Не удалось загрузить документ.'));
-    } finally {
-      setUploadingCategory(null);
-    }
-  };
-
-  const pickDocument = (category: DocumentCategory) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.doc,.docx,.pdf,.xls,.xlsx';
-    input.onchange = () => {
-      const file = input.files?.[0] || null;
-      void handleUploadDocument(category, file);
-    };
-    input.click();
-  };
-
-  const handleDownloadDocument = async (category: DocumentCategory) => {
-    if (!selected) return;
-    try {
-      const { blob, filename } = await ownerWorkspaceApi.downloadCounterpartyDocument(selected.id, category);
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename || `${category}`;
-      anchor.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Не удалось скачать документ.'));
-    }
-  };
-
-  const handleDeleteDocument = async (category: DocumentCategory) => {
-    if (!selected) return;
-    try {
-      await ownerWorkspaceApi.deleteCounterpartyDocument(selected.id, category);
-      await refreshSelectedCounterparty(selected.id);
-      setSuccess(`Документ "${DOCUMENT_LABELS[category]}" удалён.`);
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Не удалось удалить документ.'));
-    }
-  };
 
   return (
     <Layout>
@@ -521,34 +504,12 @@ const OwnerCounterpartiesPage: React.FC = () => {
                 required
               />
             </Stack>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <TextField
-                label="Телефон"
-                value={form.phone}
-                onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-                fullWidth
-              />
-              <TextField
-                label="Компания"
-                value={form.company}
-                onChange={(e) => setForm((prev) => ({ ...prev, company: e.target.value }))}
-                fullWidth
-              />
-            </Stack>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <TextField
-                label="Должность"
-                value={form.position}
-                onChange={(e) => setForm((prev) => ({ ...prev, position: e.target.value }))}
-                fullWidth
-              />
-              <TextField
-                label="Источник"
-                value={form.source}
-                onChange={(e) => setForm((prev) => ({ ...prev, source: e.target.value }))}
-                fullWidth
-              />
-            </Stack>
+            <TextField
+              label="Телефон"
+              value={form.phone}
+              onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+              fullWidth
+            />
             <TextField
               label="Теги"
               value={form.tags}
@@ -564,25 +525,6 @@ const OwnerCounterpartiesPage: React.FC = () => {
               multiline
               minRows={3}
             />
-
-            <FormControl fullWidth>
-              <InputLabel>Проекты</InputLabel>
-              <Select
-                multiple
-                label="Проекты"
-                value={form.project_ids}
-                onChange={(e) => setForm((prev) => ({ ...prev, project_ids: e.target.value as number[] }))}
-                renderValue={(selectedIds) =>
-                  (selectedIds as number[]).map((id) => projectNameMap.get(id) || `#${id}`).join(', ')
-                }
-              >
-                {projects.map((project) => (
-                  <MenuItem key={project.id} value={project.id}>
-                    {project.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
 
             <Box>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
@@ -639,75 +581,144 @@ const OwnerCounterpartiesPage: React.FC = () => {
             </Box>
 
             {selected ? (
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-                <Button variant="outlined" onClick={() => navigate(`/owner-workspace/contacts/${selected.id}`)}>
-                  Открыть в задачнике
-                </Button>
-                <Button variant="outlined" onClick={() => navigate(`/owner-workspace/tasks?contact_id=${selected.id}`)}>
-                  Связанные задачи
-                </Button>
-              </Stack>
-            ) : null}
-
-            {selected ? (
               <Box>
-                <Typography variant="h6" sx={{ mb: 1 }}>
-                  Документы
-                </Typography>
-                <Stack spacing={1.25}>
-                  {DOCUMENT_CATEGORIES.map((category) => {
-                    const documentRow = selected.documents.find((item) => item.category === category);
-                    return (
-                      <Stack
-                        key={category}
-                        direction={{ xs: 'column', md: 'row' }}
-                        spacing={1.5}
-                        alignItems={{ xs: 'flex-start', md: 'center' }}
-                        justifyContent="space-between"
-                        sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
-                      >
-                        <Box>
-                          <Typography fontWeight={600}>{DOCUMENT_LABELS[category]}</Typography>
-                          <Chip
-                            size="small"
-                            color={documentRow?.uploaded ? 'success' : 'default'}
-                            label={documentRow?.uploaded ? 'Загружено' : 'Не загружено'}
-                            sx={{ mt: 0.5 }}
-                          />
-                          {documentRow?.filename ? (
-                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                              {documentRow.filename}
-                            </Typography>
-                          ) : null}
-                        </Box>
-                        <Stack direction="row" spacing={1}>
-                          <Button
-                            variant="outlined"
-                            startIcon={<UploadFileIcon />}
-                            disabled={uploadingCategory === category}
-                            onClick={() => pickDocument(category)}
-                          >
-                            {documentRow?.uploaded ? 'Заменить' : 'Загрузить'}
-                          </Button>
-                          {documentRow?.uploaded ? (
-                            <>
-                              <Button startIcon={<DownloadIcon />} onClick={() => void handleDownloadDocument(category)}>
-                                Скачать
-                              </Button>
-                              <Button color="error" onClick={() => void handleDeleteDocument(category)}>
-                                Удалить
-                              </Button>
-                            </>
-                          ) : null}
-                        </Stack>
-                      </Stack>
-                    );
-                  })}
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                  <Typography variant="h6">Проекты</Typography>
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => { setCreateProjectOpen(true); setNewProjectName(''); }}
+                  >
+                    Создать проект
+                  </Button>
                 </Stack>
+
+                <Collapse in={createProjectOpen}>
+                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                    <TextField
+                      size="small"
+                      label="Название проекта"
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      fullWidth
+                      autoFocus
+                    />
+                    <Button
+                      variant="contained"
+                      size="small"
+                      disabled={!newProjectName.trim() || savingProject}
+                      onClick={() => void handleCreateProject()}
+                    >
+                      {savingProject ? 'Создаём...' : 'Создать'}
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => { setCreateProjectOpen(false); setNewProjectName(''); }}
+                    >
+                      Отмена
+                    </Button>
+                  </Stack>
+                </Collapse>
+
+                {counterpartyProjects.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">Проектов нет. Нажмите «Создать проект».</Typography>
+                ) : (
+                  <Stack spacing={1}>
+                    {counterpartyProjects.map((project) => (
+                      <Box key={project.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          justifyContent="space-between"
+                          sx={{ p: 1.5, cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => void toggleProjectExpand(project.id)}
+                        >
+                          <Box>
+                            <Typography fontWeight={600}>{project.name}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {PROJECT_STATUS_LABELS[project.status] || project.status}
+                              {project.deadline_at ? ` · до ${new Date(project.deadline_at).toLocaleDateString('ru-RU')}` : ''}
+                              {` · документов: ${(projectDocuments[project.id] || []).length}`}
+                            </Typography>
+                          </Box>
+                          {expandedProjectId === project.id ? <ExpandLess /> : <ExpandMore />}
+                        </Stack>
+
+                        <Collapse in={expandedProjectId === project.id}>
+                          <Box sx={{ px: 2, pb: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                            <Typography variant="subtitle2" sx={{ mt: 1.5, mb: 1 }}>Документы проекта</Typography>
+                            {(projectDocuments[project.id] || []).length === 0 ? (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                Документов нет.
+                              </Typography>
+                            ) : (
+                              <Stack spacing={0.5} sx={{ mb: 1 }}>
+                                {(projectDocuments[project.id] || []).map((doc) => (
+                                  <Stack
+                                    key={doc.id}
+                                    direction="row"
+                                    alignItems="center"
+                                    justifyContent="space-between"
+                                    sx={{ py: 0.5, px: 1, bgcolor: 'grey.50', borderRadius: 1 }}
+                                  >
+                                    <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                                      {doc.filename}
+                                    </Typography>
+                                    <Stack direction="row" spacing={0.5} flexShrink={0}>
+                                      <Button
+                                        size="small"
+                                        startIcon={<DownloadIcon />}
+                                        onClick={() =>
+                                          window.open(
+                                            ownerWorkspaceApi.downloadProjectDocumentUrl(project.id, doc.id),
+                                            '_blank'
+                                          )
+                                        }
+                                      >
+                                        Скачать
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        color="error"
+                                        startIcon={<DeleteIcon />}
+                                        onClick={() => void handleDeleteProjectDoc(project.id, doc.id)}
+                                      >
+                                        Удалить
+                                      </Button>
+                                    </Stack>
+                                  </Stack>
+                                ))}
+                              </Stack>
+                            )}
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<UploadFileIcon />}
+                              component="label"
+                              disabled={uploadingProjectDocId === project.id}
+                            >
+                              {uploadingProjectDocId === project.id ? 'Загрузка...' : 'Загрузить документ'}
+                              <input
+                                type="file"
+                                hidden
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (!file) return;
+                                  await handleUploadProjectDoc(project.id, file);
+                                }}
+                              />
+                            </Button>
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
               </Box>
             ) : (
               <Alert severity="info">
-                Документы можно прикреплять сразу после создания контрагента.
+                Проекты и документы можно добавить сразу после создания контрагента.
               </Alert>
             )}
           </Stack>

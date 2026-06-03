@@ -12,8 +12,11 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
   FormControlLabel,
   Grid,
+  InputLabel,
+  Select,
   IconButton,
   InputAdornment,
   Badge,
@@ -851,6 +854,11 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskTitle, setTaskTitle] = useState('');
   const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [newTaskProjectId, setNewTaskProjectId] = useState<number | ''>('');
+  const [contactInlineTaskOpen, setContactInlineTaskOpen] = useState(false);
+  const [contactInlineTaskTitle, setContactInlineTaskTitle] = useState('');
+  const [contactInlineTaskDeadline, setContactInlineTaskDeadline] = useState('');
+  const [contactInlineTaskPriority, setContactInlineTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+  const [contactInlineTaskSaving, setContactInlineTaskSaving] = useState(false);
   const [newTaskContactId, setNewTaskContactId] = useState<number | ''>('');
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<number | ''>('');
   const [newTaskDeadline, setNewTaskDeadline] = useState('');
@@ -7324,21 +7332,89 @@ const OwnerWorkspacePage: React.FC = () => {
                 Добавить
               </Button>
             </Stack>
-            <Typography variant="subtitle2">Задачи по контакту</Typography>
-            <Button
-              variant="contained"
-              size="small"
-              sx={{ alignSelf: 'flex-start' }}
-              disabled={!canCreateTaskUi || !canEditContactDialogContent}
-              onClick={() => {
-                if (!contactDialog) return;
-                setNewTaskContactId(contactDialog.id);
-                handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
-                closeContactDialog();
-              }}
-            >
-              Создать задачу по этому контакту
-            </Button>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle2">Задачи по контакту</Typography>
+              {canCreateTaskUi && canEditContactDialogContent && !contactInlineTaskOpen && (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setContactInlineTaskOpen(true);
+                    setContactInlineTaskTitle('');
+                    setContactInlineTaskDeadline('');
+                    setContactInlineTaskPriority('medium');
+                  }}
+                >
+                  + Создать задачу
+                </Button>
+              )}
+            </Stack>
+            {contactInlineTaskOpen && (
+              <Stack spacing={1} sx={{ p: 1.5, border: '1px solid', borderColor: 'primary.light', borderRadius: 1 }}>
+                <TextField
+                  size="small"
+                  label="Название задачи"
+                  value={contactInlineTaskTitle}
+                  onChange={(e) => setContactInlineTaskTitle(e.target.value)}
+                  fullWidth
+                  autoFocus
+                />
+                <Stack direction="row" spacing={1}>
+                  <FormControl size="small" sx={{ minWidth: 130 }}>
+                    <InputLabel>Приоритет</InputLabel>
+                    <Select
+                      label="Приоритет"
+                      value={contactInlineTaskPriority}
+                      onChange={(e) => setContactInlineTaskPriority(e.target.value as typeof contactInlineTaskPriority)}
+                    >
+                      <MenuItem value="low">Низкий</MenuItem>
+                      <MenuItem value="medium">Средний</MenuItem>
+                      <MenuItem value="high">Высокий</MenuItem>
+                      <MenuItem value="critical">Критический</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    label="Срок"
+                    type="date"
+                    value={contactInlineTaskDeadline}
+                    onChange={(e) => setContactInlineTaskDeadline(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1 }}
+                  />
+                </Stack>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    disabled={!contactInlineTaskTitle.trim() || contactInlineTaskSaving}
+                    onClick={async () => {
+                      if (!contactDialog || !contactInlineTaskTitle.trim()) return;
+                      setContactInlineTaskSaving(true);
+                      try {
+                        await ownerWorkspaceApi.createTask({
+                          title: contactInlineTaskTitle.trim(),
+                          priority: contactInlineTaskPriority,
+                          deadline_at: contactInlineTaskDeadline || null,
+                          contact_id: contactDialog.id,
+                          status: 'new',
+                        });
+                        setContactInlineTaskOpen(false);
+                        setContactInlineTaskTitle('');
+                        const trows = await ownerWorkspaceApi.getContactTasks(contactDialog.id);
+                        setContactDialogTasks(trows);
+                      } catch {
+                        // ignore
+                      } finally {
+                        setContactInlineTaskSaving(false);
+                      }
+                    }}
+                  >
+                    {contactInlineTaskSaving ? 'Создаём...' : 'Создать'}
+                  </Button>
+                  <Button size="small" onClick={() => setContactInlineTaskOpen(false)}>Отмена</Button>
+                </Stack>
+              </Stack>
+            )}
             <Typography variant="caption" color="text.secondary">
               Активные: {contactDialogTasksActive.length} · завершённые / отменённые: {contactDialogTasksDone.length}
             </Typography>

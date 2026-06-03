@@ -4821,38 +4821,326 @@ const OwnerWorkspacePage: React.FC = () => {
 
   return (
     <Layout>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-        <Typography variant="h5" sx={{ flex: '1 1 auto', fontWeight: 800 }}>
-          Таск трекер
-        </Typography>
-        <IconButton
-          color="default"
-          aria-label="Уведомления по дедлайнам"
-          onClick={(e) => {
-            setNotifAnchor(e.currentTarget);
-            void loadNotifications(80);
-          }}
-        >
-          <Badge
-            color="error"
-            badgeContent={notifEnvelope?.unread_count || 0}
-            max={99}
-            invisible={!notifEnvelope || notifEnvelope.unread_count < 1}
+      <Box
+        sx={{
+          '--task-ink': '#111827',
+          '--task-graphite': '#475569',
+          '--task-porcelain': '#F6F7F4',
+          '--task-paper': '#FFFFFF',
+          '--task-cobalt': '#4F46E5',
+          '--task-moss': '#2F7D57',
+          '--task-amber': '#C47A1B',
+          '--task-rosewood': '#9F3A4A',
+          '--task-line': '#E3E7DE',
+          mb: { xs: 2, md: 3 },
+          p: { xs: 2, sm: 2.5, md: 3 },
+          border: '1px solid var(--task-line)',
+          borderRadius: { xs: 3, md: 4 },
+          color: 'var(--task-ink)',
+          background:
+            'linear-gradient(135deg, rgba(246,247,244,0.98) 0%, rgba(255,255,255,0.96) 48%, rgba(238,242,232,0.98) 100%)',
+          boxShadow: '0 24px 70px rgba(17, 24, 39, 0.08)',
+          position: 'relative',
+          overflow: 'hidden',
+          fontFamily: '"Manrope", system-ui, sans-serif',
+          animation: 'taskDockIn 420ms ease-out both',
+          '@keyframes taskDockIn': {
+            from: { opacity: 0, transform: 'translateY(10px)' },
+            to: { opacity: 1, transform: 'translateY(0)' },
+          },
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            inset: '0 auto auto 0',
+            width: '100%',
+            height: 5,
+            background:
+              digest && digest.overdue_count > 0
+                ? 'linear-gradient(90deg, var(--task-rosewood), var(--task-amber), var(--task-cobalt))'
+                : 'linear-gradient(90deg, var(--task-moss), var(--task-cobalt))',
+          },
+        }}
+      >
+        <Stack spacing={{ xs: 2, md: 2.5 }}>
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems={{ lg: 'flex-start' }}>
+            <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
+              <Typography
+                variant="overline"
+                sx={{
+                  color: 'var(--task-cobalt)',
+                  fontWeight: 800,
+                  letterSpacing: 0,
+                  lineHeight: 1.2,
+                }}
+              >
+                Операционный центр
+              </Typography>
+              <Typography
+                component="h1"
+                sx={{
+                  mt: 0.5,
+                  fontFamily: '"Fraunces", Georgia, serif',
+                  fontSize: 'clamp(2.25rem, 7vw, 4.75rem)',
+                  fontWeight: 760,
+                  letterSpacing: 0,
+                  lineHeight: 0.92,
+                }}
+              >
+                Таск трекер
+              </Typography>
+              <Typography
+                sx={{
+                  mt: 1.25,
+                  maxWidth: 780,
+                  color: 'var(--task-graphite)',
+                  fontSize: 'clamp(1rem, 2.4vw, 1.18rem)',
+                  lineHeight: 1.45,
+                }}
+              >
+                Сегодня: проекты, контакты, задачи, дедлайны и коммуникации.
+              </Typography>
+            </Box>
+            <Stack
+              direction={{ xs: 'row', sm: 'row' }}
+              spacing={1}
+              sx={{
+                flex: { lg: '0 0 auto' },
+                width: { xs: '100%', sm: 'auto' },
+                justifyContent: { xs: 'stretch', sm: 'flex-start' },
+              }}
+            >
+              <Button
+                variant="contained"
+                startIcon={<SearchIcon />}
+                onClick={() => {
+                  setSearchOpen(true);
+                  setSearchQuery('');
+                  setSearchResults(null);
+                }}
+                sx={{
+                  minHeight: 44,
+                  px: 2.25,
+                  flex: { xs: 1, sm: '0 0 auto' },
+                  borderRadius: 2,
+                  bgcolor: 'var(--task-ink)',
+                  color: 'var(--task-paper)',
+                  fontWeight: 800,
+                  boxShadow: '0 14px 30px rgba(17, 24, 39, 0.18)',
+                  '&:hover': { bgcolor: '#020617', transform: 'translateY(-1px)' },
+                  transition: 'transform 160ms ease, background-color 160ms ease',
+                }}
+              >
+                Поиск
+              </Button>
+              <IconButton
+                aria-label="Уведомления по дедлайнам"
+                onClick={(e) => {
+                  setNotifAnchor(e.currentTarget);
+                  void loadNotifications(80);
+                }}
+                sx={{
+                  minWidth: 44,
+                  minHeight: 44,
+                  border: '1px solid var(--task-line)',
+                  borderRadius: 2,
+                  bgcolor: 'var(--task-paper)',
+                  color: 'var(--task-ink)',
+                  boxShadow: '0 10px 24px rgba(17, 24, 39, 0.08)',
+                  '&:hover': { bgcolor: '#F9FAF7', transform: 'translateY(-1px)' },
+                  transition: 'transform 160ms ease, background-color 160ms ease',
+                }}
+              >
+                <Badge
+                  color="error"
+                  badgeContent={notifEnvelope?.unread_count || 0}
+                  max={99}
+                  invisible={!notifEnvelope || notifEnvelope.unread_count < 1}
+                >
+                  <NotificationsIcon />
+                </Badge>
+              </IconButton>
+            </Stack>
+          </Stack>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'repeat(2, minmax(0, 1fr))',
+                md: 'repeat(5, minmax(0, 1fr))',
+              },
+              gap: 1,
+            }}
           >
-            <NotificationsIcon />
-          </Badge>
-        </IconButton>
-        <Button
-          variant="outlined"
-          startIcon={<SearchIcon />}
-          onClick={() => {
-            setSearchOpen(true);
-            setSearchQuery('');
-            setSearchResults(null);
-          }}
-        >
-          Поиск
-        </Button>
+            {[
+              { label: 'Доступ', value: isWorkspaceFullAccess ? 'Полный' : 'Ограниченный', tone: isWorkspaceFullAccess ? 'var(--task-moss)' : 'var(--task-amber)' },
+              { label: 'Роль', value: currentWorkspaceRoleLabel, tone: 'var(--task-cobalt)' },
+              { label: 'Проекты', value: projects.length, tone: 'var(--task-ink)' },
+              { label: 'Контакты', value: contacts.length, tone: 'var(--task-ink)' },
+              { label: 'Задачи', value: taskListTotal, tone: 'var(--task-ink)' },
+            ].map((item) => (
+              <Box
+                key={item.label}
+                sx={{
+                  minHeight: 82,
+                  p: 1.5,
+                  borderRadius: 2,
+                  border: '1px solid rgba(227, 231, 222, 0.9)',
+                  bgcolor: 'rgba(255,255,255,0.76)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Typography sx={{ color: 'var(--task-graphite)', fontSize: 12, fontWeight: 800 }}>
+                  {item.label}
+                </Typography>
+                <Typography sx={{ color: item.tone, fontSize: 'clamp(1.08rem, 2.6vw, 1.5rem)', fontWeight: 800, lineHeight: 1.05 }}>
+                  {item.value}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+
+          <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.25} alignItems={{ xl: 'center' }}>
+            <ToggleButtonGroup
+              size="small"
+              value={digestScope}
+              exclusive
+              onChange={(_, v) => {
+                if (v != null) setDigestScope(v);
+              }}
+              sx={{
+                bgcolor: 'rgba(255,255,255,0.78)',
+                border: '1px solid var(--task-line)',
+                borderRadius: 2,
+                p: 0.35,
+                alignSelf: { xs: 'stretch', sm: 'flex-start' },
+                '& .MuiToggleButton-root': {
+                  minHeight: 44,
+                  px: 2,
+                  border: 0,
+                  borderRadius: 1.5,
+                  color: 'var(--task-graphite)',
+                  fontWeight: 800,
+                  flex: { xs: 1, sm: '0 0 auto' },
+                },
+                '& .Mui-selected': {
+                  bgcolor: 'var(--task-cobalt) !important',
+                  color: 'var(--task-paper) !important',
+                  boxShadow: '0 8px 18px rgba(79, 70, 229, 0.22)',
+                },
+              }}
+            >
+              <ToggleButton value="all">Все</ToggleButton>
+              <ToggleButton value="mine">Мои</ToggleButton>
+            </ToggleButtonGroup>
+            <TextField
+              select
+              size="small"
+              label="Проект"
+              sx={{
+                minWidth: { xs: '100%', md: 260 },
+                '& .MuiOutlinedInput-root': { minHeight: 44, bgcolor: 'rgba(255,255,255,0.78)', borderRadius: 2 },
+              }}
+              value={digestProjectFilter === '' ? '' : String(digestProjectFilter)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDigestProjectFilter(v === '' ? '' : Number(v));
+              }}
+            >
+              <MenuItem value="">Все проекты</MenuItem>
+              {projectsCatalogSorted.map((p) => (
+                <MenuItem key={p.id} value={String(p.id)}>
+                  {p.name}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label="Горизонт"
+              sx={{
+                minWidth: { xs: '100%', sm: 150 },
+                '& .MuiOutlinedInput-root': { minHeight: 44, bgcolor: 'rgba(255,255,255,0.78)', borderRadius: 2 },
+              }}
+              value={String(digestDueHours)}
+              onChange={(e) => setDigestDueHours(Number(e.target.value))}
+            >
+              <MenuItem value="24">24 ч</MenuItem>
+              <MenuItem value="48">48 ч</MenuItem>
+              <MenuItem value="72">72 ч</MenuItem>
+              <MenuItem value="168">7 дней</MenuItem>
+            </TextField>
+            {digest && digest.overdue_count > 0 && (
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
+                  setTaskOverdueOnly(true);
+                  setTaskActiveOnly(true);
+                }}
+                sx={{
+                  minHeight: 44,
+                  borderRadius: 2,
+                  borderColor: 'rgba(159,58,74,0.5)',
+                  color: 'var(--task-rosewood)',
+                  fontWeight: 800,
+                  bgcolor: 'rgba(159,58,74,0.06)',
+                }}
+              >
+                Просрочено: {digest.overdue_count}
+              </Button>
+            )}
+          </Stack>
+
+          {(isLimitedWorkspaceUser || (digest && (digest.overdue_tasks.length > 0 || digest.due_soon_tasks.length > 0))) && (
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+              {isLimitedWorkspaceUser && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={currentWorkspaceAccessSummary[0] || 'Ограниченный доступ по проектам'}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.68)' }}
+                />
+              )}
+              {digest?.overdue_tasks.slice(0, 4).map((t) => (
+                <Chip
+                  key={`overdue-${t.id}`}
+                  size="small"
+                  variant="outlined"
+                  label={`#${t.id} ${t.title.slice(0, 26)}${t.title.length > 26 ? '…' : ''}`}
+                  onClick={() => void openSearchHitTask(t.id)}
+                  sx={{
+                    cursor: 'pointer',
+                    minHeight: 32,
+                    borderColor: 'rgba(159,58,74,0.36)',
+                    color: 'var(--task-rosewood)',
+                    bgcolor: 'rgba(255,255,255,0.74)',
+                    fontWeight: 700,
+                  }}
+                />
+              ))}
+              {digest?.due_soon_tasks.slice(0, 4).map((t) => (
+                <Chip
+                  key={`soon-${t.id}`}
+                  size="small"
+                  variant="outlined"
+                  label={`Скоро: #${t.id} ${t.title.slice(0, 24)}${t.title.length > 24 ? '…' : ''}`}
+                  onClick={() => void openSearchHitTask(t.id)}
+                  sx={{
+                    cursor: 'pointer',
+                    minHeight: 32,
+                    borderColor: 'rgba(196,122,27,0.36)',
+                    color: 'var(--task-amber)',
+                    bgcolor: 'rgba(255,255,255,0.74)',
+                    fontWeight: 700,
+                  }}
+                />
+              ))}
+            </Stack>
+          )}
+        </Stack>
       </Box>
       <Menu
         anchorEl={notifAnchor}
@@ -4921,117 +5209,58 @@ const OwnerWorkspacePage: React.FC = () => {
           {maxSyncResult}
         </Alert>
       )}
-      <Card variant="outlined" sx={{ mb: 2 }}>
-        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-          <Stack spacing={1.5}>
-            <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
-                <Chip size="small" color={isWorkspaceFullAccess ? 'success' : 'warning'} label={isWorkspaceFullAccess ? 'Полный доступ' : 'Ограниченный доступ'} />
-                <Chip size="small" variant="outlined" label={`Роль: ${currentWorkspaceRoleLabel}`} />
-                <Chip size="small" variant="outlined" label={`Проекты: ${projects.length}`} />
-                <Chip size="small" variant="outlined" label={`Контакты: ${contacts.length}`} />
-                <Chip size="small" variant="outlined" label={`Задачи: ${taskListTotal}`} />
-                {digest && digest.overdue_count > 0 && (
-                  <Chip
-                    size="small"
-                    color="warning"
-                    label={`Просрочено: ${digest.overdue_count}`}
-                    onClick={() => {
-                      handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
-                      setTaskOverdueOnly(true);
-                      setTaskActiveOnly(true);
-                    }}
-                    sx={{ cursor: 'pointer' }}
-                  />
-                )}
-              </Stack>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <ToggleButtonGroup
-                  size="small"
-                  value={digestScope}
-                  exclusive
-                  onChange={(_, v) => {
-                    if (v != null) setDigestScope(v);
-                  }}
-                >
-                  <ToggleButton value="all">Все</ToggleButton>
-                  <ToggleButton value="mine">Мои</ToggleButton>
-                </ToggleButtonGroup>
-                <TextField
-                  select
-                  size="small"
-                  label="Проект"
-                  sx={{ minWidth: 180 }}
-                  value={digestProjectFilter === '' ? '' : String(digestProjectFilter)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setDigestProjectFilter(v === '' ? '' : Number(v));
-                  }}
-                >
-                  <MenuItem value="">Все проекты</MenuItem>
-                  {projectsCatalogSorted.map((p) => (
-                    <MenuItem key={p.id} value={String(p.id)}>
-                      {p.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  label="Горизонт"
-                  sx={{ minWidth: 120 }}
-                  value={String(digestDueHours)}
-                  onChange={(e) => setDigestDueHours(Number(e.target.value))}
-                >
-                  <MenuItem value="24">24 ч</MenuItem>
-                  <MenuItem value="48">48 ч</MenuItem>
-                  <MenuItem value="72">72 ч</MenuItem>
-                  <MenuItem value="168">7 дней</MenuItem>
-                </TextField>
-              </Stack>
-            </Stack>
-            {(isLimitedWorkspaceUser || (digest && (digest.overdue_tasks.length > 0 || digest.due_soon_tasks.length > 0))) && (
-              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                {isLimitedWorkspaceUser && (
-                  <Chip size="small" variant="outlined" label={currentWorkspaceAccessSummary[0] || 'Ограниченный доступ по проектам'} />
-                )}
-                {digest?.overdue_tasks.slice(0, 4).map((t) => (
-                  <Chip
-                    key={`overdue-${t.id}`}
-                    size="small"
-                    color="warning"
-                    variant="outlined"
-                    label={`#${t.id} ${t.title.slice(0, 26)}${t.title.length > 26 ? '…' : ''}`}
-                    onClick={() => void openSearchHitTask(t.id)}
-                    sx={{ cursor: 'pointer' }}
-                  />
-                ))}
-                {digest?.due_soon_tasks.slice(0, 4).map((t) => (
-                  <Chip
-                    key={`soon-${t.id}`}
-                    size="small"
-                    variant="outlined"
-                    label={`Скоро: #${t.id} ${t.title.slice(0, 24)}${t.title.length > 24 ? '…' : ''}`}
-                    onClick={() => void openSearchHitTask(t.id)}
-                    sx={{ cursor: 'pointer' }}
-                  />
-                ))}
-              </Stack>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Tabs value={tab} onChange={handleWorkspaceTabChange} sx={{ mb: 2 }}>
-        <Tab value={OW_TAB_PROJECTS} label={`Проекты (${projects.length})`} />
-        <Tab value={OW_TAB_CONTACTS} label={`Контакты (${contacts.length})`} />
-        <Tab value={OW_TAB_TASKS} label={`Задачи (${taskListTotal})`} />
-        <Tab value={OW_TAB_REPORTS} label="Отчёты" />
-        <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
-        <Tab value={OW_TAB_NOTIFICATIONS} label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
-        <Tab value={OW_TAB_SETTINGS} label="Настройки" />
-        <Tab value={OW_TAB_HISTORY} label="История" />
-      </Tabs>
+      <Box
+        sx={{
+          mb: 2.5,
+          overflowX: 'auto',
+          pb: 0.5,
+          '&::-webkit-scrollbar': { height: 6 },
+          '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(71,85,105,0.28)', borderRadius: 999 },
+        }}
+      >
+        <Tabs
+          value={tab}
+          onChange={handleWorkspaceTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            minHeight: 52,
+            px: 0.5,
+            border: '1px solid #E3E7DE',
+            borderRadius: 3,
+            bgcolor: 'rgba(255,255,255,0.82)',
+            boxShadow: '0 12px 30px rgba(17,24,39,0.05)',
+            '& .MuiTabs-indicator': {
+              height: 4,
+              borderRadius: 999,
+              bgcolor: '#4F46E5',
+            },
+            '& .MuiTab-root': {
+              minHeight: 52,
+              minWidth: { xs: 132, sm: 148 },
+              px: 1.75,
+              color: '#64748B',
+              fontFamily: '"Manrope", system-ui, sans-serif',
+              fontSize: '0.95rem',
+              fontWeight: 800,
+              letterSpacing: 0,
+              textTransform: 'none',
+            },
+            '& .Mui-selected': {
+              color: '#111827 !important',
+            },
+          }}
+        >
+          <Tab value={OW_TAB_PROJECTS} label={`Проекты (${projects.length})`} />
+          <Tab value={OW_TAB_CONTACTS} label={`Контакты (${contacts.length})`} />
+          <Tab value={OW_TAB_TASKS} label={`Задачи (${taskListTotal})`} />
+          <Tab value={OW_TAB_REPORTS} label="Отчёты" />
+          <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
+          <Tab value={OW_TAB_NOTIFICATIONS} label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
+          <Tab value={OW_TAB_SETTINGS} label="Настройки" />
+          <Tab value={OW_TAB_HISTORY} label="История" />
+        </Tabs>
+      </Box>
 
       {tab === OW_TAB_PROJECTS && (
         <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>

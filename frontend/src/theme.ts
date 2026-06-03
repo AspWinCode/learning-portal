@@ -31,11 +31,11 @@ export const appTheme = createTheme({
   shape: { borderRadius: 10 },
   typography: {
     fontFamily:
-      "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, 'Apple Color Emoji', sans-serif",
-    h4: { fontWeight: 800, letterSpacing: -0.5 },
-    h5: { fontWeight: 800, letterSpacing: -0.4 },
-    h6: { fontWeight: 700, letterSpacing: -0.2 },
-    subtitle1: { fontWeight: 600, letterSpacing: -0.1 },
+      "Manrope, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, 'Apple Color Emoji', sans-serif",
+    h4: { fontWeight: 800, letterSpacing: 0 },
+    h5: { fontWeight: 800, letterSpacing: 0 },
+    h6: { fontWeight: 700, letterSpacing: 0 },
+    subtitle1: { fontWeight: 600, letterSpacing: 0 },
     subtitle2: { fontWeight: 600 },
     button: { textTransform: 'none', fontWeight: 600, letterSpacing: 0 },
   },

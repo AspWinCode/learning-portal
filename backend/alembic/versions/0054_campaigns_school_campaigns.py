@@ -47,9 +47,9 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             sa.ForeignKeyConstraint(["responsible_id"], ["users.id"], ondelete="SET NULL"),
         )
-        op.create_index(op.f("ix_campaigns_city", if_not_exists=True), "campaigns", ["city"], unique=False)
-        op.create_index(op.f("ix_campaigns_status", if_not_exists=True), "campaigns", ["status"], unique=False)
-        op.create_index(op.f("ix_campaigns_type", if_not_exists=True), "campaigns", ["type"], unique=False)
+        op.create_index(op.f("ix_campaigns_city"), "campaigns", ["city"], unique=False)
+        op.create_index(op.f("ix_campaigns_status"), "campaigns", ["status"], unique=False)
+        op.create_index(op.f("ix_campaigns_type"), "campaigns", ["type"], unique=False)
 
     if not _table_exists(conn, "school_campaigns"):
         op.create_table(
@@ -67,9 +67,9 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["campaign_id"], ["campaigns.id"], ondelete="CASCADE"),
             sa.UniqueConstraint("b2b_school_id", "campaign_id", name="uq_school_campaigns_school_campaign"),
         )
-        op.create_index(op.f("ix_school_campaigns_b2b_school_id", if_not_exists=True), "school_campaigns", ["b2b_school_id"], unique=False)
-        op.create_index(op.f("ix_school_campaigns_campaign_id", if_not_exists=True), "school_campaigns", ["campaign_id"], unique=False)
-        op.create_index(op.f("ix_school_campaigns_stage", if_not_exists=True), "school_campaigns", ["stage"], unique=False)
+        op.create_index(op.f("ix_school_campaigns_b2b_school_id"), "school_campaigns", ["b2b_school_id"], unique=False)
+        op.create_index(op.f("ix_school_campaigns_campaign_id"), "school_campaigns", ["campaign_id"], unique=False)
+        op.create_index(op.f("ix_school_campaigns_stage"), "school_campaigns", ["stage"], unique=False)
 
 
 def downgrade() -> None:

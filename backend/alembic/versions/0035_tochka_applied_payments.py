@@ -34,9 +34,9 @@ def upgrade() -> None:
             name="uq_tochka_applied_account_date_amount_payer",
         ),
     )
-    op.create_index(op.f("ix_tochka_applied_payments_tochka_account_id", if_not_exists=True), "tochka_applied_payments", ["tochka_account_id"], unique=False)
-    op.create_index(op.f("ix_tochka_applied_payments_student_id", if_not_exists=True), "tochka_applied_payments", ["student_id"], unique=False)
-    op.create_index(op.f("ix_tochka_applied_payments_student_account_id", if_not_exists=True), "tochka_applied_payments", ["student_account_id"], unique=False)
+    op.create_index(op.f("ix_tochka_applied_payments_tochka_account_id"), "tochka_applied_payments", ["tochka_account_id"], unique=False)
+    op.create_index(op.f("ix_tochka_applied_payments_student_id"), "tochka_applied_payments", ["student_id"], unique=False)
+    op.create_index(op.f("ix_tochka_applied_payments_student_account_id"), "tochka_applied_payments", ["student_account_id"], unique=False)
 
 
 def downgrade() -> None:

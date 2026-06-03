@@ -45,10 +45,10 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             sa.ForeignKeyConstraint(["campaign_id"], ["campaigns.id"], ondelete="CASCADE"),
         )
-        op.create_index(op.f("ix_campaign_events_campaign_id", if_not_exists=True), "campaign_events", ["campaign_id"], unique=False)
-        op.create_index(op.f("ix_campaign_events_event_date", if_not_exists=True), "campaign_events", ["event_date"], unique=False)
-        op.create_index("ix_campaign_events_campaign_date", "campaign_events", ["campaign_id", "event_date"], unique=False, if_not_exists=True)
-        op.create_index(op.f("ix_campaign_events_status", if_not_exists=True), "campaign_events", ["status"], unique=False)
+        op.create_index(op.f("ix_campaign_events_campaign_id"), "campaign_events", ["campaign_id"], unique=False)
+        op.create_index(op.f("ix_campaign_events_event_date"), "campaign_events", ["event_date"], unique=False)
+        op.create_index("ix_campaign_events_campaign_date", "campaign_events", ["campaign_id", "event_date"], unique=False)
+        op.create_index(op.f("ix_campaign_events_status"), "campaign_events", ["status"], unique=False)
 
     if not _table_exists(conn, "school_campaign_events"):
         op.create_table(
@@ -68,11 +68,11 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["school_campaign_id"], ["school_campaigns.id"], ondelete="CASCADE"),
             sa.UniqueConstraint("campaign_event_id", "school_campaign_id", name="uq_school_campaign_event_event_school"),
         )
-        op.create_index(op.f("ix_school_campaign_events_campaign_event_id", if_not_exists=True), "school_campaign_events", ["campaign_event_id"], unique=False)
-        op.create_index(op.f("ix_school_campaign_events_school_campaign_id", if_not_exists=True), "school_campaign_events", ["school_campaign_id"], unique=False)
-        op.create_index(op.f("ix_school_campaign_events_invite_status", if_not_exists=True), "school_campaign_events", ["invite_status"], unique=False)
-        op.create_index(op.f("ix_school_campaign_events_participation_status", if_not_exists=True), "school_campaign_events", ["participation_status"], unique=False)
-        op.create_index(op.f("ix_school_campaign_events_host_status", if_not_exists=True), "school_campaign_events", ["host_status"], unique=False)
+        op.create_index(op.f("ix_school_campaign_events_campaign_event_id"), "school_campaign_events", ["campaign_event_id"], unique=False)
+        op.create_index(op.f("ix_school_campaign_events_school_campaign_id"), "school_campaign_events", ["school_campaign_id"], unique=False)
+        op.create_index(op.f("ix_school_campaign_events_invite_status"), "school_campaign_events", ["invite_status"], unique=False)
+        op.create_index(op.f("ix_school_campaign_events_participation_status"), "school_campaign_events", ["participation_status"], unique=False)
+        op.create_index(op.f("ix_school_campaign_events_host_status"), "school_campaign_events", ["host_status"], unique=False)
 
 
 def downgrade() -> None:

@@ -58,6 +58,18 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Ensure alembic_version.version_num is wide enough for long revision IDs.
+        # The alembic default is VARCHAR(32); our IDs can be up to ~50 chars.
+        try:
+            connection.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE alembic_version "
+                    "ALTER COLUMN version_num TYPE VARCHAR(200)"
+                )
+            )
+        except Exception:
+            pass  # Table doesn't exist yet on first run — that's fine.
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

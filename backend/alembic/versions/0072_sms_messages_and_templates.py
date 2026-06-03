@@ -43,11 +43,11 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT"),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index(op.f("ix_sms_messages_phone", if_not_exists=True), "sms_messages", ["phone"], unique=False)
-        op.create_index(op.f("ix_sms_messages_entity_type", if_not_exists=True), "sms_messages", ["entity_type"], unique=False)
-        op.create_index(op.f("ix_sms_messages_entity_id", if_not_exists=True), "sms_messages", ["entity_id"], unique=False)
-        op.create_index(op.f("ix_sms_messages_status", if_not_exists=True), "sms_messages", ["status"], unique=False)
-        op.create_index(op.f("ix_sms_messages_created_by", if_not_exists=True), "sms_messages", ["created_by"], unique=False)
+        op.create_index(op.f("ix_sms_messages_phone"), "sms_messages", ["phone"], unique=False)
+        op.create_index(op.f("ix_sms_messages_entity_type"), "sms_messages", ["entity_type"], unique=False)
+        op.create_index(op.f("ix_sms_messages_entity_id"), "sms_messages", ["entity_id"], unique=False)
+        op.create_index(op.f("ix_sms_messages_status"), "sms_messages", ["status"], unique=False)
+        op.create_index(op.f("ix_sms_messages_created_by"), "sms_messages", ["created_by"], unique=False)
     if not _table_exists(conn, "sms_templates"):
         op.create_table(
             "sms_templates",
@@ -59,9 +59,9 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index(op.f("ix_sms_templates_name", if_not_exists=True), "sms_templates", ["name"], unique=False)
-        op.create_index(op.f("ix_sms_templates_category", if_not_exists=True), "sms_templates", ["category"], unique=False)
-        op.create_index(op.f("ix_sms_templates_active", if_not_exists=True), "sms_templates", ["active"], unique=False)
+        op.create_index(op.f("ix_sms_templates_name"), "sms_templates", ["name"], unique=False)
+        op.create_index(op.f("ix_sms_templates_category"), "sms_templates", ["category"], unique=False)
+        op.create_index(op.f("ix_sms_templates_active"), "sms_templates", ["active"], unique=False)
 
     # Seed примеров шаблонов из ТЗ
     if _table_exists(conn, "sms_templates"):

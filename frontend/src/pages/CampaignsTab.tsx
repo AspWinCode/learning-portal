@@ -26,8 +26,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Tab,
-  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -64,8 +62,6 @@ import {
   CAMPAIGN_STATUSES,
 } from '../constants/campaignStages';
 import { getInviteLabel, getParticipationLabel, getHostLabel } from '../constants/campaignEventStages';
-import { CampaignEventsSubTab } from './CampaignEventsSubTab';
-import { CampaignMatrixSubTab } from './CampaignMatrixSubTab';
 import { GameJamKanban } from './GameJamKanban';
 
 // ---------------------------------------------------------------------------
@@ -345,7 +341,6 @@ export const CampaignsTab: React.FC = () => {
   const [schoolCampaigns, setSchoolCampaigns] = useState<SchoolCampaign[]>([]);
   const [stages, setStages] = useState<CampaignStage[]>([]);
   const [stagesDialogOpen, setStagesDialogOpen] = useState(false);
-  const [campaignDetailSubTab, setCampaignDetailSubTab] = useState<'work' | 'events' | 'matrix'>('work');
   const [eventCounts, setEventCounts] = useState<Record<string, { events_invited_count: number; events_participated_count: number; events_hosted_count: number }>>({});
 
   // --- add schools dialog ---
@@ -434,7 +429,6 @@ export const CampaignsTab: React.FC = () => {
       setSchoolCampaigns([]);
       setStages([]);
       setEventCounts({});
-      setCampaignDetailSubTab('work');
       return;
     }
     setCampaignDetail(null);
@@ -450,19 +444,16 @@ export const CampaignsTab: React.FC = () => {
         setCampaignDetail(c);
         setSchoolCampaigns(list);
         setStages(stageList);
-        if (!c.is_game_jam) {
-          setCampaignDetailSubTab('work');
-        }
       })
       .catch((err: any) => setError(extractApiError(err, 'Не удалось загрузить кампанию')));
   }, [selectedCampaignId]);
 
   useEffect(() => {
-    if (!selectedCampaignId || campaignDetailSubTab !== 'work') return;
+    if (!selectedCampaignId) return;
     campaignsApi.getCampaignSchoolEventCounts(selectedCampaignId)
       .then(setEventCounts)
       .catch(() => setEventCounts({}));
-  }, [selectedCampaignId, campaignDetailSubTab]);
+  }, [selectedCampaignId]);
 
   // ---------------------------------------------------------------------------
   // DnD для обычного канбана
@@ -614,16 +605,6 @@ export const CampaignsTab: React.FC = () => {
             К списку кампаний
           </Button>
 
-          {campaignDetail?.is_game_jam && (
-            <Box sx={{ border: '2px solid', borderColor: 'primary.main', borderRadius: 1, p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
-              <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} variant="fullWidth">
-                <Tab label="Общая работа" value="work" />
-                <Tab label="Джемы" value="events" />
-                <Tab label="Матрица школ" value="matrix" />
-              </Tabs>
-            </Box>
-          )}
-
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>
           )}
@@ -637,7 +618,7 @@ export const CampaignsTab: React.FC = () => {
                 {campaignDetail.responsible_full_name && ` · Ответственный: ${campaignDetail.responsible_full_name}`}
               </Typography>
 
-              {campaignDetailSubTab === 'work' && campaignDetail?.is_game_jam && (
+              {campaignDetail.is_game_jam && (
                 <GameJamKanban
                   campaignId={selectedCampaignId}
                   canManage={canManageCampaigns}
@@ -645,7 +626,7 @@ export const CampaignsTab: React.FC = () => {
                 />
               )}
 
-              {campaignDetailSubTab === 'work' && !campaignDetail?.is_game_jam && (
+              {!campaignDetail.is_game_jam && (
                 <>
                   <Stack direction="row" gap={1} sx={{ mb: 2 }} flexWrap="wrap">
                     {canManageCampaigns && (
@@ -717,13 +698,6 @@ export const CampaignsTab: React.FC = () => {
                     </DndContext>
                   )}
                 </>
-              )}
-
-              {campaignDetail.is_game_jam && campaignDetailSubTab === 'events' && (
-                <CampaignEventsSubTab campaignId={selectedCampaignId} onError={setError} canManage={canManageCampaigns} />
-              )}
-              {campaignDetail.is_game_jam && campaignDetailSubTab === 'matrix' && (
-                <CampaignMatrixSubTab campaignId={selectedCampaignId} onError={setError} canManage={canManageCampaigns} />
               )}
             </>
           ) : (

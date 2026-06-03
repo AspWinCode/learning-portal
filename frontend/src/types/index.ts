@@ -1161,6 +1161,7 @@ export interface SchoolCampaign {
   updated_at?: string | null;
   school_name?: string | null;
   school_city?: string | null;
+  school_district?: string | null;
 }
 
 export interface CampaignEvent {
@@ -1168,8 +1169,11 @@ export interface CampaignEvent {
   campaign_id: number;
   title: string;
   event_date: string;
+  description?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
+  trainer_id?: number | null;
+  trainer_full_name?: string | null;
   location?: string | null;
   city?: string | null;
   status: string;

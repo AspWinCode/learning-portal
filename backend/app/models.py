@@ -1985,6 +1985,7 @@ class CampaignEvent(Base):
     event_date = Column(Date, nullable=False, index=True)
     starts_at = Column(DateTime(timezone=True), nullable=True)
     ends_at = Column(DateTime(timezone=True), nullable=True)
+    trainer_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     location = Column(String(512), nullable=True)
     city = Column(String(256), nullable=True)
     status = Column(String(32), nullable=False, server_default=CampaignEventStatus.PLANNED.value, index=True)
@@ -2001,6 +2002,7 @@ class CampaignEvent(Base):
         order_by="CampaignEventStage.position",
     )
     host_school = relationship("B2BSchool", foreign_keys=[host_b2b_school_id])
+    trainer = relationship("User", foreign_keys=[trainer_id])
 
 
 class CampaignEventStage(Base):

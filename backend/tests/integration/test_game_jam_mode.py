@@ -20,7 +20,7 @@ from sqlalchemy.pool import StaticPool
 from app import auth
 from app.database import Base, get_db
 from app.main import app
-from app.models import B2BSchool, Campaign, CampaignEvent, SchoolCampaign
+from app.models import B2BSchool, Campaign, CampaignEvent, SchoolCampaign, User
 
 
 # ---------------------------------------------------------------------------
@@ -63,12 +63,28 @@ def _make_owner(db):
     return user
 
 
-def _make_school(db, name="School A"):
-    school = B2BSchool(name=name, pipeline_stage="new")
+def _make_school(db, name="School A", city=None, district=None):
+    school = B2BSchool(name=name, city=city, district=district, pipeline_stage="new")
     db.add(school)
     db.commit()
     db.refresh(school)
     return school
+
+
+def _make_trainer(db, email="trainer@x.com", full_name="Trainer"):
+    trainer = User(email=email, hashed_password="x", full_name=full_name, role="trainer")
+    db.add(trainer)
+    db.commit()
+    db.refresh(trainer)
+    return trainer
+
+
+def _make_user(db, email, role, full_name="User"):
+    user = User(email=email, hashed_password="x", full_name=full_name, role=role)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def _create_gj_campaign(client):
@@ -150,6 +166,53 @@ class TestEventHostSchool:
         })
         assert r.status_code == 200, r.text
         assert r.json()["host_b2b_school_id"] == school.id
+
+    def test_event_create_returns_extended_fields(self, client, db_session):
+        cid = _create_gj_campaign(client)["id"]
+        trainer = _make_trainer(db_session)
+        r = client.post(f"/api/v1/campaigns/{cid}/events", json={
+            "title": "Extended jam",
+            "description": "Jam description",
+            "event_date": "2026-09-10",
+            "starts_at": "2026-09-10T10:00:00",
+            "ends_at": "2026-09-10T12:00:00",
+            "trainer_id": trainer.id,
+            "location": "Main address",
+        })
+        assert r.status_code == 201, r.text
+        data = r.json()
+        assert data["description"] == "Jam description"
+        assert data["starts_at"].startswith("2026-09-10T10:00:00")
+        assert data["ends_at"].startswith("2026-09-10T12:00:00")
+        assert data["trainer_id"] == trainer.id
+        assert data["trainer_full_name"] == trainer.full_name
+        assert data["location"] == "Main address"
+
+    def test_event_rejects_non_trainer_user(self, client, db_session):
+        cid = _create_gj_campaign(client)["id"]
+        owner = _make_user(db_session, "not-trainer@x.com", "owner", "Not Trainer")
+        r = client.post(f"/api/v1/campaigns/{cid}/events", json={
+            "title": "Bad trainer",
+            "event_date": "2026-09-10",
+            "trainer_id": owner.id,
+        })
+        assert r.status_code == 400
+
+
+class TestAvailableSchoolFilters:
+    def test_available_schools_support_multi_city_and_district_filters(self, client, db_session):
+        cid = _create_gj_campaign(client)["id"]
+        school_a = _make_school(db_session, "A", city="City A", district="North")
+        school_b = _make_school(db_session, "B", city="City B", district="South")
+        _make_school(db_session, "C", city="City C", district="North")
+        r = client.get(
+            f"/api/v1/campaigns/{cid}/schools-available",
+            params={"cities": "City A,City B", "districts": "North,South"},
+        )
+        assert r.status_code == 200, r.text
+        ids = {school["id"] for school in r.json()}
+        assert ids == {school_a.id, school_b.id}
+        assert all("district" in school for school in r.json())
 
 
 # ---------------------------------------------------------------------------

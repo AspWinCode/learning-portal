@@ -2567,9 +2567,16 @@ export const campaignsApi = {
   },
   listSchoolsAvailable: async (
     campaignId: number,
-    params?: { city?: string; search?: string }
-  ): Promise<{ id: number; name: string; city: string | null }[]> => {
-    const response = await api.get(`/api/campaigns/${campaignId}/schools-available`, { params: params || {} });
+    params?: { city?: string; cities?: string[]; district?: string; districts?: string[]; search?: string }
+  ): Promise<{ id: number; name: string; city: string | null; district?: string | null }[]> => {
+    const query = {
+      ...(params?.city ? { city: params.city } : {}),
+      ...(params?.cities?.length ? { cities: params.cities.join(',') } : {}),
+      ...(params?.district ? { district: params.district } : {}),
+      ...(params?.districts?.length ? { districts: params.districts.join(',') } : {}),
+      ...(params?.search ? { search: params.search } : {}),
+    };
+    const response = await api.get(`/api/campaigns/${campaignId}/schools-available`, { params: query });
     return response.data;
   },
   updateSchoolCampaign: async (
@@ -2593,8 +2600,10 @@ export const campaignsApi = {
     payload: {
       title: string;
       event_date: string;
+      description?: string | null;
       starts_at?: string | null;
       ends_at?: string | null;
+      trainer_id?: number | null;
       location?: string | null;
       city?: string | null;
       status?: string;
@@ -2610,8 +2619,10 @@ export const campaignsApi = {
     payload: Partial<{
       title: string;
       event_date: string;
+      description: string | null;
       starts_at: string | null;
       ends_at: string | null;
+      trainer_id: number | null;
       location: string | null;
       city: string | null;
       status: string;

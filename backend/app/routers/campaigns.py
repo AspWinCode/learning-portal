@@ -25,6 +25,7 @@ from app.models import (
     Task,
     TaskStatus,
     User,
+    UserRole,
 )
 from app.schemas.campaigns import (
     AddSchoolsBody,
@@ -62,6 +63,12 @@ _CAMPAIGN_SETTING_CATEGORIES = {
     "scales": "campaign_scale",
 }
 _B2B_DISTRICTS_KEY = "b2b_districts"
+
+
+def _split_csv_filter(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 _DEFAULT_STAGES_GAME_JAM = [
@@ -204,6 +211,7 @@ def _school_campaign_to_response(sc: SchoolCampaign) -> SchoolCampaignResponse:
         updated_at=sc.updated_at,
         school_name=sc.school.name if sc.school else None,
         school_city=sc.school.city if sc.school else None,
+        school_district=sc.school.district if sc.school else None,
         partnership_step=_get_partnership_step(school_partnership),
     )
 
@@ -469,6 +477,9 @@ async def add_schools_to_campaign(
 async def list_schools_available_for_campaign(
     campaign_id: int,
     city: Optional[str] = Query(None),
+    cities: Optional[str] = Query(None),
+    district: Optional[str] = Query(None),
+    districts: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("campaigns.access")),
@@ -480,14 +491,18 @@ async def list_schools_available_for_campaign(
     q = db.query(B2BSchool)
     if already_ids:
         q = q.filter(~B2BSchool.id.in_(already_ids))
-    if city:
-        q = q.filter(B2BSchool.city == city)
+    city_values = _split_csv_filter(cities) or ([city.strip()] if city and city.strip() else [])
+    district_values = _split_csv_filter(districts) or ([district.strip()] if district and district.strip() else [])
+    if city_values:
+        q = q.filter(B2BSchool.city.in_(city_values))
+    if district_values:
+        q = q.filter(B2BSchool.district.in_(district_values))
     if search and search.strip():
         q = q.filter(
             B2BSchool.name.ilike(f"%{search.strip()}%")
         )
     schools = q.order_by(B2BSchool.name).limit(500).all()
-    return [{"id": s.id, "name": s.name, "city": s.city} for s in schools]
+    return [{"id": s.id, "name": s.name, "city": s.city, "district": s.district} for s in schools]
 
 
 @router.patch("/campaigns/{campaign_id}/school-campaigns/{sc_id}", response_model=SchoolCampaignResponse)
@@ -717,8 +732,11 @@ def _campaign_event_to_response(e: CampaignEvent) -> CampaignEventResponse:
         campaign_id=e.campaign_id,
         title=e.title,
         event_date=e.event_date,
+        description=e.notes,
         starts_at=e.starts_at,
         ends_at=e.ends_at,
+        trainer_id=e.trainer_id,
+        trainer_full_name=e.trainer.full_name if e.trainer else None,
         location=e.location,
         city=e.city,
         status=e.status,
@@ -757,16 +775,21 @@ async def create_campaign_event(
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    if payload.trainer_id is not None:
+        trainer = db.query(User).filter(User.id == payload.trainer_id, User.role == UserRole.TRAINER).first()
+        if not trainer:
+            raise HTTPException(status_code=400, detail="Trainer not found")
     event = CampaignEvent(
         campaign_id=campaign_id,
         title=payload.title,
         event_date=payload.event_date,
         starts_at=payload.starts_at,
         ends_at=payload.ends_at,
+        trainer_id=payload.trainer_id,
         location=payload.location,
         city=payload.city,
         status=payload.status or "planned",
-        notes=payload.notes,
+        notes=payload.description if payload.description is not None else payload.notes,
         host_b2b_school_id=payload.host_b2b_school_id,
     )
     db.add(event)
@@ -796,6 +819,12 @@ async def update_campaign_event(
     if not event:
         raise HTTPException(status_code=404, detail="Campaign event not found")
     data = payload.model_dump(exclude_unset=True)
+    if "trainer_id" in data and data["trainer_id"] is not None:
+        trainer = db.query(User).filter(User.id == data["trainer_id"], User.role == UserRole.TRAINER).first()
+        if not trainer:
+            raise HTTPException(status_code=400, detail="Trainer not found")
+    if "description" in data:
+        data["notes"] = data.pop("description")
     for k, v in data.items():
         setattr(event, k, v)
     db.commit()

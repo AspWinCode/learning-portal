@@ -10,10 +10,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -48,9 +50,25 @@ import {
   useDroppable,
   useDraggable,
 } from '@dnd-kit/core';
-import { campaignsApi } from '../services/api';
+import { b2bApi, campaignsApi, settingsApi, usersApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { CampaignEvent, CampaignEventStage, CampaignStage, SchoolCampaign } from '../types';
+import type { CampaignEvent, CampaignEventStage, CampaignStage, SchoolCampaign, User } from '../types';
+
+type AvailableSchool = { id: number; name: string; city: string | null; district?: string | null };
+
+const emptyEventForm = {
+  title: '',
+  description: '',
+  event_date: '',
+  start_time: '',
+  end_time: '',
+  trainer_id: '',
+  location: '',
+};
+
+const toEventDateTime = (date: string, time: string) => (
+  date && time ? `${date}T${time}:00` : null
+);
 
 // ---------------------------------------------------------------------------
 // Draggable school card
@@ -285,9 +303,9 @@ const JamInnerKanban: React.FC<JamInnerKanbanProps> = ({ campaignId, event, canM
 
   const handleDragStart = (event: DragStartEvent) => setActiveId(String(event.active.id));
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleDragEnd = async (dragEvent: DragEndEvent) => {
     setActiveId(null);
-    const { active, over } = event;
+    const { active, over } = dragEvent;
     if (!over || active.id === over.id) return;
     const scId = Number(active.id);
     const newStage = String(over.id).replace('col-', '');
@@ -296,7 +314,7 @@ const JamInnerKanban: React.FC<JamInnerKanbanProps> = ({ campaignId, event, canM
     // Optimistic update
     setSchools((prev) => prev.map((s) => s.school_campaign_id === scId ? { ...s, jam_stage: newStage } : s));
     try {
-      await campaignsApi.updateSchoolJamStage(campaignId, event.active.data?.current?.eventId ?? event.over?.id, scId, newStage);
+      await campaignsApi.updateSchoolJamStage(campaignId, event.id, scId, newStage);
     } catch (e: any) {
       onError(extractApiError(e, 'Не удалось обновить этап'));
       loadData(); // revert
@@ -419,7 +437,17 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
   const [campaignStages, setCampaignStages] = useState<CampaignStage[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CampaignEvent | null>(null);
   const [createEventOpen, setCreateEventOpen] = useState(false);
-  const [eventForm, setEventForm] = useState({ title: '', event_date: '' });
+  const [addSchoolsOpen, setAddSchoolsOpen] = useState(false);
+  const [eventForm, setEventForm] = useState(emptyEventForm);
+  const [trainers, setTrainers] = useState<User[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [districts, setDistricts] = useState<string[]>([]);
+  const [availableSchools, setAvailableSchools] = useState<AvailableSchool[]>([]);
+  const [selectedCities, setSelectedCities] = useState<string[]>([]);
+  const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
+  const [schoolSearch, setSchoolSearch] = useState('');
+  const [selectedSchoolIds, setSelectedSchoolIds] = useState<number[]>([]);
+  const [addSchoolsLoading, setAddSchoolsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [jamSchoolCounts, setJamSchoolCounts] = useState<Record<number, number>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -447,6 +475,67 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  useEffect(() => {
+    if (!addSchoolsOpen) return;
+    let cancelled = false;
+    const loadDictionaries = async () => {
+      try {
+        const [cityItems, districtItems] = await Promise.all([
+          b2bApi.listCities(),
+          settingsApi.getB2BDistricts(),
+        ]);
+        if (!cancelled) {
+          setCities(cityItems);
+          setDistricts(districtItems.items);
+        }
+      } catch (e: any) {
+        if (!cancelled) onError(extractApiError(e, 'Не удалось загрузить фильтры школ'));
+      }
+    };
+    void loadDictionaries();
+    return () => { cancelled = true; };
+  }, [addSchoolsOpen, onError]);
+
+  useEffect(() => {
+    if (!addSchoolsOpen) return;
+    let cancelled = false;
+    const loadAvailableSchools = async () => {
+      setAddSchoolsLoading(true);
+      try {
+        const rows = await campaignsApi.listSchoolsAvailable(campaignId, {
+          cities: selectedCities,
+          districts: selectedDistricts,
+          search: schoolSearch.trim() || undefined,
+        });
+        if (!cancelled) {
+          setAvailableSchools(rows);
+          setSelectedSchoolIds((prev) => prev.filter((id) => rows.some((school) => school.id === id)));
+        }
+      } catch (e: any) {
+        if (!cancelled) onError(extractApiError(e, 'Не удалось загрузить список школ'));
+      } finally {
+        if (!cancelled) setAddSchoolsLoading(false);
+      }
+    };
+    void loadAvailableSchools();
+    return () => { cancelled = true; };
+  }, [addSchoolsOpen, campaignId, onError, schoolSearch, selectedCities, selectedDistricts]);
+
+  useEffect(() => {
+    if (!createEventOpen) return;
+    let cancelled = false;
+    const loadTrainers = async () => {
+      try {
+        const rows = await usersApi.getAll('trainer');
+        if (!cancelled) setTrainers(rows);
+      } catch (e: any) {
+        if (!cancelled) onError(extractApiError(e, 'Не удалось загрузить тренеров'));
+      }
+    };
+    void loadTrainers();
+    return () => { cancelled = true; };
+  }, [createEventOpen, onError]);
+
   const activeSchool = useMemo(
     () => activeId ? schoolPool.find((sc) => String(sc.id) === activeId) : null,
     [activeId, schoolPool]
@@ -469,18 +558,67 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
     } catch (ex: any) { onError(extractApiError(ex, 'Не удалось добавить школу в джем')); }
   };
 
+  const openAddSchools = () => {
+    setSelectedCities([]);
+    setSelectedDistricts([]);
+    setSchoolSearch('');
+    setSelectedSchoolIds([]);
+    setAddSchoolsOpen(true);
+  };
+
+  const toggleSchoolSelection = (schoolId: number) => {
+    setSelectedSchoolIds((prev) => (
+      prev.includes(schoolId) ? prev.filter((id) => id !== schoolId) : [...prev, schoolId]
+    ));
+  };
+
+  const toggleAllFilteredSchools = () => {
+    const visibleIds = availableSchools.map((school) => school.id);
+    const selectedVisibleCount = visibleIds.filter((id) => selectedSchoolIds.includes(id)).length;
+    setSelectedSchoolIds((prev) => {
+      if (selectedVisibleCount === visibleIds.length) {
+        return prev.filter((id) => !visibleIds.includes(id));
+      }
+      return Array.from(new Set([...prev, ...visibleIds]));
+    });
+  };
+
+  const handleAddSchools = async () => {
+    if (!selectedSchoolIds.length) return;
+    setAddSchoolsLoading(true); onError(null);
+    try {
+      await campaignsApi.addSchools(campaignId, { school_ids: selectedSchoolIds });
+      setAddSchoolsOpen(false);
+      setSelectedSchoolIds([]);
+      await loadData();
+    } catch (ex: any) { onError(extractApiError(ex, 'Не удалось добавить школы')); }
+    finally { setAddSchoolsLoading(false); }
+  };
+
   const handleCreateEvent = async () => {
     if (!eventForm.title.trim() || !eventForm.event_date) return;
     onError(null);
     try {
-      await campaignsApi.createCampaignEvent(campaignId, { title: eventForm.title.trim(), event_date: eventForm.event_date });
+      await campaignsApi.createCampaignEvent(campaignId, {
+        title: eventForm.title.trim(),
+        description: eventForm.description.trim() || null,
+        event_date: eventForm.event_date,
+        starts_at: toEventDateTime(eventForm.event_date, eventForm.start_time),
+        ends_at: toEventDateTime(eventForm.event_date, eventForm.end_time),
+        trainer_id: eventForm.trainer_id ? Number(eventForm.trainer_id) : null,
+        location: eventForm.location.trim() || null,
+      });
       setCreateEventOpen(false);
-      setEventForm({ title: '', event_date: '' });
+      setEventForm(emptyEventForm);
       await loadData();
     } catch (ex: any) { onError(extractApiError(ex, 'Не удалось создать джем')); }
   };
 
   if (loading) return <Typography color="text.secondary">Загрузка…</Typography>;
+
+  const allFilteredSelected = availableSchools.length > 0
+    && availableSchools.every((school) => selectedSchoolIds.includes(school.id));
+  const someFilteredSelected = availableSchools.some((school) => selectedSchoolIds.includes(school.id));
 
   if (selectedEvent) {
     return (
@@ -500,6 +638,9 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
         <Stack direction="row" gap={1} sx={{ mb: 2 }}>
           <Button variant="contained" startIcon={<Add />} onClick={() => setCreateEventOpen(true)}>
             Создать джем
+          </Button>
+          <Button variant="outlined" startIcon={<Add />} onClick={openAddSchools}>
+            Добавить школы
           </Button>
         </Stack>
       )}
@@ -563,14 +704,135 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
         </DragOverlay>
       </DndContext>
 
-      <Dialog open={createEventOpen} onClose={() => setCreateEventOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={addSchoolsOpen} onClose={() => setAddSchoolsOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Добавить школы в пул</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+              <Autocomplete
+                multiple
+                disableCloseOnSelect
+                options={cities}
+                value={selectedCities}
+                onChange={(_, value) => setSelectedCities(value)}
+                renderInput={(params) => <TextField {...params} label="Города" />}
+                sx={{ flex: 1 }}
+              />
+              <Autocomplete
+                multiple
+                disableCloseOnSelect
+                options={districts}
+                value={selectedDistricts}
+                onChange={(_, value) => setSelectedDistricts(value)}
+                renderInput={(params) => <TextField {...params} label="Районы" />}
+                sx={{ flex: 1 }}
+              />
+            </Stack>
+            <TextField
+              label="Поиск по названию"
+              value={schoolSearch}
+              onChange={(e) => setSchoolSearch(e.target.value)}
+              fullWidth
+            />
+            <Stack direction="row" alignItems="center" gap={1}>
+              <Checkbox
+                checked={allFilteredSelected}
+                indeterminate={!allFilteredSelected && someFilteredSelected}
+                onChange={toggleAllFilteredSchools}
+                disabled={availableSchools.length === 0}
+              />
+              <Typography variant="body2" sx={{ flex: 1 }}>
+                Выбрать все отфильтрованные
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {selectedSchoolIds.length} из {availableSchools.length}
+              </Typography>
+            </Stack>
+            <Divider />
+            <Stack spacing={0.5} sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5 }}>
+              {availableSchools.map((school) => (
+                <Stack
+                  key={school.id}
+                  direction="row"
+                  alignItems="center"
+                  gap={1}
+                  sx={{ py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}
+                >
+                  <Checkbox
+                    checked={selectedSchoolIds.includes(school.id)}
+                    onChange={() => toggleSchoolSelection(school.id)}
+                  />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2">{school.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {[school.city, school.district].filter(Boolean).join(' · ') || 'Город не указан'}
+                    </Typography>
+                  </Box>
+                </Stack>
+              ))}
+              {!addSchoolsLoading && availableSchools.length === 0 && (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+                  Нет школ по выбранным фильтрам
+                </Typography>
+              )}
+              {addSchoolsLoading && (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+                  Загрузка...
+                </Typography>
+              )}
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddSchoolsOpen(false)}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={() => void handleAddSchools()}
+            disabled={selectedSchoolIds.length === 0 || addSchoolsLoading}
+          >
+            Добавить выбранные
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={createEventOpen} onClose={() => setCreateEventOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Новый джем</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="Название" required fullWidth value={eventForm.title}
               onChange={(e) => setEventForm((f) => ({ ...f, title: e.target.value }))} />
+            <TextField
+              label="Описание"
+              fullWidth
+              multiline
+              minRows={3}
+              value={eventForm.description}
+              onChange={(e) => setEventForm((f) => ({ ...f, description: e.target.value }))}
+            />
             <TextField label="Дата" type="date" required fullWidth InputLabelProps={{ shrink: true }} value={eventForm.event_date}
               onChange={(e) => setEventForm((f) => ({ ...f, event_date: e.target.value }))} />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField label="Начало" type="time" fullWidth InputLabelProps={{ shrink: true }} value={eventForm.start_time}
+                onChange={(e) => setEventForm((f) => ({ ...f, start_time: e.target.value }))} />
+              <TextField label="Окончание" type="time" fullWidth InputLabelProps={{ shrink: true }} value={eventForm.end_time}
+                onChange={(e) => setEventForm((f) => ({ ...f, end_time: e.target.value }))} />
+            </Stack>
+            <FormControl fullWidth>
+              <InputLabel id="game-jam-trainer-label">Тренер</InputLabel>
+              <Select
+                labelId="game-jam-trainer-label"
+                label="Тренер"
+                value={eventForm.trainer_id}
+                onChange={(e) => setEventForm((f) => ({ ...f, trainer_id: String(e.target.value) }))}
+              >
+                <MenuItem value="">Не выбран</MenuItem>
+                {trainers.map((trainer) => (
+                  <MenuItem key={trainer.id} value={trainer.id}>{trainer.full_name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField label="Локация проведения (адрес)" fullWidth value={eventForm.location}
+              onChange={(e) => setEventForm((f) => ({ ...f, location: e.target.value }))} />
           </Stack>
         </DialogContent>
         <DialogActions>

@@ -139,6 +139,7 @@ class SchoolCampaignResponse(BaseModel):
     updated_at: Optional[datetime] = None
     school_name: Optional[str] = None
     school_city: Optional[str] = None
+    school_district: Optional[str] = None
     # Computed: most advanced active partnership step from B2BSchool.partnership
     partnership_step: Optional[str] = None
 
@@ -173,8 +174,10 @@ class CampaignEventStageResponse(BaseModel):
 class CampaignEventCreate(BaseModel):
     title: str
     event_date: date
+    description: Optional[str] = None
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
+    trainer_id: Optional[int] = None
     location: Optional[str] = None
     city: Optional[str] = None
     status: Optional[str] = "planned"
@@ -185,8 +188,10 @@ class CampaignEventCreate(BaseModel):
 class CampaignEventUpdate(BaseModel):
     title: Optional[str] = None
     event_date: Optional[date] = None
+    description: Optional[str] = None
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
+    trainer_id: Optional[int] = None
     location: Optional[str] = None
     city: Optional[str] = None
     status: Optional[str] = None
@@ -199,8 +204,11 @@ class CampaignEventResponse(BaseModel):
     campaign_id: int
     title: str
     event_date: date
+    description: Optional[str] = None
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
+    trainer_id: Optional[int] = None
+    trainer_full_name: Optional[str] = None
     location: Optional[str] = None
     city: Optional[str] = None
     status: str

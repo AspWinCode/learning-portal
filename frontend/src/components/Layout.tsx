@@ -76,7 +76,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan', '/owner-workspace/notifications']) },
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/persons', '/operations/manual-lessons', '/projects']) },
-  { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance', '/finance/overview', '/abonements', '/finance/payments', '/calculations', '/personal-finance', '/finance/tax-deduction']) },
+  { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
   { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/disk']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
@@ -316,12 +316,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (canAccessReports && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
     if (role === 'owner') {
       // Для владельца финансовые представления сгруппированы в один раздел меню.
-      items.push({ text: 'Обзор', icon: <AccountBalanceWallet />, path: '/finance' });
       items.push({ text: 'Журнал', icon: <AccountBalanceWallet />, path: '/finance/overview' });
       if (canAccessAbonements) items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' });
       if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
-      items.push({ text: 'Личные финансы', icon: <AccountBalanceWallet />, path: '/personal-finance' });
     }
     if (isAdminLike) {
       items.push({ text: 'Инструкции', icon: <Description />, path: '/operations/instructions' });

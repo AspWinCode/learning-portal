@@ -65,8 +65,6 @@ const OwnerWorkspacePage = React.lazy(() => import('./pages/OwnerWorkspacePage')
 const OwnerCounterpartiesPage = React.lazy(() => import('./pages/OwnerCounterpartiesPage'));
 const CounterpartyDetailPage = React.lazy(() => import('./pages/CounterpartyDetailPage'));
 const ProjectDetailPage = React.lazy(() => import('./pages/ProjectDetailPage'));
-const PersonalFinancePage = React.lazy(() => import('./pages/PersonalFinancePage'));
-const FinanceHubPage = React.lazy(() => import('./pages/FinanceHubPage'));
 const FinanceOverviewPage = React.lazy(() => import('./pages/FinanceOverviewPage'));
 const RolesPage = React.lazy(() => import('./pages/RolesPage'));
 const PersonRegistryPage = React.lazy(() => import('./pages/PersonRegistryPage'));
@@ -296,16 +294,6 @@ function App() {
                 <PrivateRoute requiredPermission="reports.access">
                   <SectionBoundary>
                     <SalesReportsPage />
-                  </SectionBoundary>
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/finance"
-              element={
-                <PrivateRoute requiredPermission="personal_finance.access">
-                  <SectionBoundary>
-                    <FinanceHubPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }
@@ -677,16 +665,6 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="parent_dashboard.access">
                   <ParentDashboardPage />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/personal-finance"
-              element={
-                <PrivateRoute requiredPermission="personal_finance.access">
-                  <SectionBoundary>
-                    <PersonalFinancePage />
-                  </SectionBoundary>
                 </PrivateRoute>
               }
             />

@@ -60,15 +60,17 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         # Ensure alembic_version.version_num is wide enough for long revision IDs.
         # The alembic default is VARCHAR(32); our IDs can be up to ~50 chars.
+        # Use a SAVEPOINT so a failure (table not yet created) doesn't abort the transaction.
+        from sqlalchemy import text as _text
+        connection.execute(_text("SAVEPOINT _alter_version_num"))
         try:
-            connection.execute(
-                __import__("sqlalchemy").text(
-                    "ALTER TABLE alembic_version "
-                    "ALTER COLUMN version_num TYPE VARCHAR(200)"
-                )
-            )
+            connection.execute(_text(
+                "ALTER TABLE alembic_version "
+                "ALTER COLUMN version_num TYPE VARCHAR(200)"
+            ))
+            connection.execute(_text("RELEASE SAVEPOINT _alter_version_num"))
         except Exception:
-            pass  # Table doesn't exist yet on first run — that's fine.
+            connection.execute(_text("ROLLBACK TO SAVEPOINT _alter_version_num"))
 
         context.configure(
             connection=connection,

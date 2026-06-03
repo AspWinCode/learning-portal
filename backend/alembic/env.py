@@ -29,6 +29,10 @@ import app.models  # noqa: F401,E402
 
 target_metadata = Base.metadata
 
+# Our revision IDs can be up to ~50 chars; the alembic default PK is VARCHAR(32).
+# version_table_pk_length tells alembic to create alembic_version with a wider column.
+_VERSION_PK_LENGTH = 200
+
 
 def _get_database_url() -> str:
     return os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
@@ -41,6 +45,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_pk_length=_VERSION_PK_LENGTH,
     )
 
     with context.begin_transaction():
@@ -58,24 +63,11 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        # Ensure alembic_version.version_num is wide enough for long revision IDs.
-        # The alembic default is VARCHAR(32); our IDs can be up to ~50 chars.
-        # Use a SAVEPOINT so a failure (table not yet created) doesn't abort the transaction.
-        from sqlalchemy import text as _text
-        connection.execute(_text("SAVEPOINT _alter_version_num"))
-        try:
-            connection.execute(_text(
-                "ALTER TABLE alembic_version "
-                "ALTER COLUMN version_num TYPE VARCHAR(200)"
-            ))
-            connection.execute(_text("RELEASE SAVEPOINT _alter_version_num"))
-        except Exception:
-            connection.execute(_text("ROLLBACK TO SAVEPOINT _alter_version_num"))
-
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            version_table_pk_length=_VERSION_PK_LENGTH,
         )
 
         with context.begin_transaction():
@@ -86,5 +78,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
-

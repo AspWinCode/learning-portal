@@ -4787,7 +4787,7 @@ const OwnerWorkspacePage: React.FC = () => {
   return (
     <Layout>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-        <Typography variant="h4" sx={{ flex: '1 1 auto' }}>
+        <Typography variant="h5" sx={{ flex: '1 1 auto', fontWeight: 800 }}>
           Таск трекер
         </Typography>
         <IconButton
@@ -4876,18 +4876,6 @@ const OwnerWorkspacePage: React.FC = () => {
           ))
         )}
       </Menu>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Проекты (участники), контакты, задачи — список, канбан (в т.ч. отдельно «Выполнено» / «Отменено»), календарь,
-        массовые действия; единый поиск; сводка по дедлайнам; коммуникации и MAX (ручной импорт + опциональный
-        автосинк на сервере: OWNER_WORKSPACE_AUTO_SYNC_MAX=1).
-      </Typography>
-      {isLimitedWorkspaceUser && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Режим ограниченного доступа: вам доступны только ваши проекты, связанные контакты и собственные задачи. Создание новых
-          контактов требует явной привязки к доступному проекту.
-        </Alert>
-      )}
-
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
@@ -4900,123 +4888,104 @@ const OwnerWorkspacePage: React.FC = () => {
       )}
       <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-          <Stack spacing={1.25}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-              <Typography variant="subtitle2">Ваш доступ</Typography>
-              <Chip
-                size="small"
-                color={isWorkspaceFullAccess ? 'primary' : 'default'}
-                label={`Глобальная роль: ${currentWorkspaceRoleLabel}`}
-              />
-              <Chip
-                size="small"
-                variant={isWorkspaceFullAccess ? 'filled' : 'outlined'}
-                color={isWorkspaceFullAccess ? 'success' : 'warning'}
-                label={isWorkspaceFullAccess ? 'Полный доступ' : 'Ограниченный доступ'}
-              />
+          <Stack spacing={1.5}>
+            <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
+                <Chip size="small" color={isWorkspaceFullAccess ? 'success' : 'warning'} label={isWorkspaceFullAccess ? 'Полный доступ' : 'Ограниченный доступ'} />
+                <Chip size="small" variant="outlined" label={`Роль: ${currentWorkspaceRoleLabel}`} />
+                <Chip size="small" variant="outlined" label={`Проекты: ${projects.length}`} />
+                <Chip size="small" variant="outlined" label={`Контакты: ${contacts.length}`} />
+                <Chip size="small" variant="outlined" label={`Задачи: ${taskListTotal}`} />
+                {digest && digest.overdue_count > 0 && (
+                  <Chip
+                    size="small"
+                    color="warning"
+                    label={`Просрочено: ${digest.overdue_count}`}
+                    onClick={() => {
+                      handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
+                      setTaskOverdueOnly(true);
+                      setTaskActiveOnly(true);
+                    }}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                )}
+              </Stack>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <ToggleButtonGroup
+                  size="small"
+                  value={digestScope}
+                  exclusive
+                  onChange={(_, v) => {
+                    if (v != null) setDigestScope(v);
+                  }}
+                >
+                  <ToggleButton value="all">Все</ToggleButton>
+                  <ToggleButton value="mine">Мои</ToggleButton>
+                </ToggleButtonGroup>
+                <TextField
+                  select
+                  size="small"
+                  label="Проект"
+                  sx={{ minWidth: 180 }}
+                  value={digestProjectFilter === '' ? '' : String(digestProjectFilter)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDigestProjectFilter(v === '' ? '' : Number(v));
+                  }}
+                >
+                  <MenuItem value="">Все проекты</MenuItem>
+                  {projectsCatalogSorted.map((p) => (
+                    <MenuItem key={p.id} value={String(p.id)}>
+                      {p.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  size="small"
+                  label="Горизонт"
+                  sx={{ minWidth: 120 }}
+                  value={String(digestDueHours)}
+                  onChange={(e) => setDigestDueHours(Number(e.target.value))}
+                >
+                  <MenuItem value="24">24 ч</MenuItem>
+                  <MenuItem value="48">48 ч</MenuItem>
+                  <MenuItem value="72">72 ч</MenuItem>
+                  <MenuItem value="168">7 дней</MenuItem>
+                </TextField>
+              </Stack>
             </Stack>
-            <Stack spacing={0.5}>
-              {currentWorkspaceAccessSummary.map((item) => (
-                <Typography key={item} variant="body2" color="text.secondary">
-                  • {item}
-                </Typography>
-              ))}
-            </Stack>
-          </Stack>
-        </CardContent>
-      </Card>
-      <Card variant="outlined" sx={{ mb: 2 }}>
-        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} flexWrap="wrap">
-            <Typography variant="subtitle2">Сводка по дедлайнам</Typography>
-            <ToggleButtonGroup
-              size="small"
-              value={digestScope}
-              exclusive
-              onChange={(_, v) => {
-                if (v != null) setDigestScope(v);
-              }}
-            >
-              <ToggleButton value="all">Все задачи</ToggleButton>
-              <ToggleButton value="mine">Только мои</ToggleButton>
-            </ToggleButtonGroup>
-            <TextField
-              select
-              size="small"
-              label="Проект"
-              sx={{ minWidth: 200 }}
-              value={digestProjectFilter === '' ? '' : String(digestProjectFilter)}
-              onChange={(e) => {
-                const v = e.target.value;
-                setDigestProjectFilter(v === '' ? '' : Number(v));
-              }}
-            >
-              <MenuItem value="">Все проекты</MenuItem>
-              {projectsCatalogSorted.map((p) => (
-                <MenuItem key={p.id} value={String(p.id)}>
-                  {p.name}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              size="small"
-              label="Горизонт"
-              sx={{ minWidth: 140 }}
-              value={String(digestDueHours)}
-              onChange={(e) => setDigestDueHours(Number(e.target.value))}
-            >
-              <MenuItem value="24">24 ч</MenuItem>
-              <MenuItem value="48">48 ч</MenuItem>
-              <MenuItem value="72">72 ч</MenuItem>
-              <MenuItem value="168">7 дней</MenuItem>
-            </TextField>
-            {digestScope === 'mine' && user?.id == null && (
-              <Typography variant="caption" color="text.secondary">
-                Войдите, чтобы фильтр «Только мои» учитывал вашего пользователя.
-              </Typography>
+            {(isLimitedWorkspaceUser || (digest && (digest.overdue_tasks.length > 0 || digest.due_soon_tasks.length > 0))) && (
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                {isLimitedWorkspaceUser && (
+                  <Chip size="small" variant="outlined" label={currentWorkspaceAccessSummary[0] || 'Ограниченный доступ по проектам'} />
+                )}
+                {digest?.overdue_tasks.slice(0, 4).map((t) => (
+                  <Chip
+                    key={`overdue-${t.id}`}
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    label={`#${t.id} ${t.title.slice(0, 26)}${t.title.length > 26 ? '…' : ''}`}
+                    onClick={() => void openSearchHitTask(t.id)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+                {digest?.due_soon_tasks.slice(0, 4).map((t) => (
+                  <Chip
+                    key={`soon-${t.id}`}
+                    size="small"
+                    variant="outlined"
+                    label={`Скоро: #${t.id} ${t.title.slice(0, 24)}${t.title.length > 24 ? '…' : ''}`}
+                    onClick={() => void openSearchHitTask(t.id)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+              </Stack>
             )}
           </Stack>
         </CardContent>
       </Card>
-      {digest && digest.overdue_count > 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Просроченных активных задач: {digest.overdue_count}
-          </Typography>
-          <Stack direction="row" flexWrap="wrap" gap={0.5}>
-            {digest.overdue_tasks.slice(0, 8).map((t) => (
-              <Chip
-                key={t.id}
-                size="small"
-                label={`#${t.id} ${t.title.slice(0, 28)}${t.title.length > 28 ? '…' : ''}`}
-                onClick={() => void openSearchHitTask(t.id)}
-                sx={{ cursor: 'pointer' }}
-              />
-            ))}
-          </Stack>
-        </Alert>
-      )}
-      {digest && digest.due_soon_tasks.length > 0 && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Дедлайн в ближайшие {digestDueHours === 168 ? '7 дней' : `${digestDueHours} ч`}:{' '}
-            {digest.due_soon_tasks.length}
-            {digest.due_soon_tasks.length >= 25 ? '+' : ''}
-          </Typography>
-          <Stack direction="row" flexWrap="wrap" gap={0.5}>
-            {digest.due_soon_tasks.slice(0, 8).map((t) => (
-              <Chip
-                key={t.id}
-                size="small"
-                label={`#${t.id} ${t.title.length > 24 ? `${t.title.slice(0, 24)}…` : t.title}`}
-                onClick={() => void openSearchHitTask(t.id)}
-                sx={{ cursor: 'pointer' }}
-              />
-            ))}
-          </Stack>
-        </Alert>
-      )}
 
       <Tabs value={tab} onChange={handleWorkspaceTabChange} sx={{ mb: 2 }}>
         <Tab value={OW_TAB_PROJECTS} label={`Проекты (${projects.length})`} />

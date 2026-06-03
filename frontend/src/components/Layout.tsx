@@ -75,9 +75,9 @@ const SIDEBAR_SCROLL_STORAGE_KEY = 'sb_scroll_top';
 const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan', '/owner-workspace/notifications']) },
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
-  { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/persons', '/operations/manual-lessons']) },
+  { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/persons', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance', '/finance/overview', '/finance/projects', '/abonements', '/finance/payments', '/calculations', '/personal-finance', '/finance/tax-deduction']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects', '/disk']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/disk']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];

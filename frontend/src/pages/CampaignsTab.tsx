@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -505,19 +506,22 @@ export const CampaignsTab: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <FormControl fullWidth>
-              <InputLabel>Город</InputLabel>
-              <Select
-                label="Город"
-                value={createForm.city}
-                onChange={(e) => setCreateForm((f) => ({ ...f, city: e.target.value }))}
-              >
-                <MenuItem value="">Не выбран</MenuItem>
-                {(campaignSettings?.cities ?? []).map((city) => (
-                  <MenuItem key={city} value={city}>{city}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              options={campaignSettings?.cities ?? []}
+              value={createForm.city || null}
+              onChange={(_, value) => setCreateForm((f) => ({ ...f, city: value || '' }))}
+              onInputChange={(_, value, reason) => {
+                if (reason === 'input' || reason === 'clear') {
+                  setCreateForm((f) => ({ ...f, city: value }));
+                }
+              }}
+              renderInput={(params) => <TextField {...params} label="Город" fullWidth />}
+              noOptionsText="Город не найден"
+              clearText="Очистить"
+              openText="Открыть"
+              closeText="Закрыть"
+              autoHighlight
+            />
             <FormControl fullWidth>
               <InputLabel>Регион</InputLabel>
               <Select

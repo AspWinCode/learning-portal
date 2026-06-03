@@ -23,7 +23,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { abonementsApi, campaignsApi, maxApi, salesApi, settingsApi } from '../services/api';
+import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
   Abonement,
@@ -113,6 +113,8 @@ const SalesSettingsPage: React.FC = () => {
     name: '',
     format: '',
   });
+  const [importAccounts, setImportAccounts] = useState<Array<{ id: number; code: string; name: string; owner_scope: string }>>([]);
+  const [newImportAccount, setNewImportAccount] = useState({ name: '', code: '' });
   const [b2bDistricts, setB2bDistricts] = useState<string[]>([]);
   const [newDistrict, setNewDistrict] = useState('');
   const [campaignSettings, setCampaignSettings] = useState<CampaignSettings | null>(null);
@@ -150,6 +152,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Классы', () => salesApi.listSalesClasses(false), setClasses),
       load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
+      load('Счета для импорта', () => financeApi.listAccounts(), setImportAccounts),
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
       load('Работа со школами', () => campaignsApi.getSettings(), setCampaignSettings),
       load('Причины отказа', async () => (await settingsApi.getRefusedReasons()).items, setRefusedReasons),
@@ -839,6 +842,80 @@ const SalesSettingsPage: React.FC = () => {
                   </TableCell>
                 </TableRow>
               ))}
+            </TableBody>
+          </Table>
+        </Paper>
+
+        <Paper sx={sectionPaperSx('finance')}>
+          <Typography variant="h6" mb={1}>Счета для импорта</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Список банковских счетов, доступных для выбора при импорте CSV/XLSX в журнале операций.
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
+            <TextField
+              size="small"
+              label="Название счёта"
+              value={newImportAccount.name}
+              onChange={(e) => setNewImportAccount((prev) => ({ ...prev, name: e.target.value }))}
+              sx={{ flex: 2 }}
+            />
+            <TextField
+              size="small"
+              label="Код (латиница, без пробелов)"
+              value={newImportAccount.code}
+              onChange={(e) => setNewImportAccount((prev) => ({ ...prev, code: e.target.value }))}
+              sx={{ flex: 1 }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              disabled={!newImportAccount.name.trim() || !newImportAccount.code.trim()}
+              onClick={() =>
+                safeAction(async () => {
+                  if (!newImportAccount.name.trim() || !newImportAccount.code.trim()) return;
+                  await financeApi.createImportAccount({
+                    name: newImportAccount.name.trim(),
+                    code: newImportAccount.code.trim(),
+                    owner_scope: 'business',
+                  });
+                  setNewImportAccount({ name: '', code: '' });
+                })
+              }
+            >
+              Создать
+            </Button>
+          </Stack>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Код</TableCell>
+                <TableCell align="right">Действия</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {importAccounts.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell>{a.name}</TableCell>
+                  <TableCell>{a.code}</TableCell>
+                  <TableCell align="right">
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => safeAction(() => financeApi.deleteImportAccount(a.id))}
+                    >
+                      Удалить
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {importAccounts.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} align="center">
+                    <Typography variant="body2" color="text.secondary">Нет счетов</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </Paper>

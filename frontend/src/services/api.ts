@@ -505,6 +505,15 @@ export const financeApi = {
     const response = await api.get('/api/finance/accounts', { params: { only_active: true } });
     return response.data;
   },
+  createImportAccount: async (payload: { code: string; name: string; owner_scope?: string }): Promise<
+    { id: number; code: string; name: string; owner_scope: string; is_active: boolean }
+  > => {
+    const response = await api.post('/api/finance/accounts', payload);
+    return response.data;
+  },
+  deleteImportAccount: async (id: number): Promise<void> => {
+    await api.delete(`/api/finance/accounts/${id}`);
+  },
   listTargets: async (): Promise<Array<{ id: number; code: string; name: string; is_active: boolean }>> => {
     const response = await api.get('/api/finance/targets', { params: { only_active: true } });
     return response.data;

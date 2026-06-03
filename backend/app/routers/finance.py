@@ -17,6 +17,7 @@ from app.models import (
     UserRole,
     FinanceTransaction,
     FinanceAccount,
+    FinanceAccountOwnerScope,
     FinanceTarget,
     FinanceArticle,
     FinanceArticleDirection,
@@ -34,6 +35,7 @@ from app.schemas.finance import (
     BankTransactionApplyRequest,
     BankTransactionResponse,
     FinanceAccountBalance,
+    FinanceAccountCreate,
     FinanceAccountResponse,
     FinanceAnalyticsExpenseBreakdownRow,
     FinanceAnalyticsKpiBlock,
@@ -91,6 +93,49 @@ async def list_finance_accounts(
         )
         for a in accounts
     ]
+
+
+@router.post("/accounts", response_model=FinanceAccountResponse, status_code=201)
+async def create_finance_account(
+    payload: FinanceAccountCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceAccountResponse:
+    """Создать новый счёт для импорта выписок."""
+    _require_finance_access(current_user)
+    code = payload.code.strip().lower().replace(" ", "_")
+    if db.query(FinanceAccount).filter(FinanceAccount.code == code).first():
+        raise HTTPException(status_code=400, detail=f"Счёт с кодом '{code}' уже существует")
+    try:
+        scope = FinanceAccountOwnerScope(payload.owner_scope)
+    except ValueError:
+        scope = FinanceAccountOwnerScope.BUSINESS
+    account = FinanceAccount(code=code, name=payload.name.strip(), owner_scope=scope, is_active=True)
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return FinanceAccountResponse(
+        id=account.id,
+        code=account.code,
+        name=account.name,
+        owner_scope=str(getattr(account.owner_scope, "value", account.owner_scope)),
+        is_active=bool(account.is_active),
+    )
+
+
+@router.delete("/accounts/{account_id}", status_code=204)
+async def delete_finance_account(
+    account_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> None:
+    """Удалить (деактивировать) счёт для импорта."""
+    _require_finance_access(current_user)
+    account = db.query(FinanceAccount).filter(FinanceAccount.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Счёт не найден")
+    account.is_active = False
+    db.commit()
 
 
 @router.get("/targets", response_model=List[FinanceTargetResponse])

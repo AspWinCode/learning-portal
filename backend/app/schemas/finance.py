@@ -93,6 +93,12 @@ class FinanceAccountResponse(BaseModel):
     is_active: bool
 
 
+class FinanceAccountCreate(BaseModel):
+    code: str
+    name: str
+    owner_scope: str = "business"
+
+
 class FinanceTargetResponse(BaseModel):
     id: int
     code: str

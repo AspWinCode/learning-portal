@@ -102,6 +102,14 @@ def upgrade() -> None:
         sa.Column("paid_at", sa.DateTime(timezone=True), nullable=True),
     )
 
+    # Widen alembic_version.version_num so subsequent revision IDs > 32 chars fit.
+    # The next revision (0008_add_events_and_registrations) is 33 chars, which exceeds
+    # the alembic default of VARCHAR(32). This ALTER runs inside the migration transaction
+    # and takes effect before alembic writes the next version_num.
+    op.execute(
+        "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(200)"
+    )
+
 
 def downgrade() -> None:
     op.drop_table("invoices")

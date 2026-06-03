@@ -68,7 +68,6 @@ const ProjectDetailPage = React.lazy(() => import('./pages/ProjectDetailPage'));
 const PersonalFinancePage = React.lazy(() => import('./pages/PersonalFinancePage'));
 const FinanceHubPage = React.lazy(() => import('./pages/FinanceHubPage'));
 const FinanceOverviewPage = React.lazy(() => import('./pages/FinanceOverviewPage'));
-const FinanceProjectsPage = React.lazy(() => import('./pages/FinanceProjectsPage'));
 const RolesPage = React.lazy(() => import('./pages/RolesPage'));
 const PersonRegistryPage = React.lazy(() => import('./pages/PersonRegistryPage'));
 const UserDetailsPage = React.lazy(() => import('./pages/UserDetailsPage'));
@@ -317,16 +316,6 @@ function App() {
                 <PrivateRoute requiredPermission="finance.access">
                   <SectionBoundary>
                     <FinanceOverviewPage />
-                  </SectionBoundary>
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/finance/projects"
-              element={
-                <PrivateRoute requiredPermission="finance.access">
-                  <SectionBoundary>
-                    <FinanceProjectsPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

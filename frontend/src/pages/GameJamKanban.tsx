@@ -91,13 +91,18 @@ const DraggableCard: React.FC<DraggableCardProps> = ({ id, schoolName, schoolCit
       ref={setNodeRef}
       style={style}
       variant="outlined"
-      sx={{ bgcolor: 'background.paper', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+      sx={{
+        width: '100%',
+        bgcolor: 'background.paper',
+        cursor: isDragging ? 'grabbing' : 'grab',
+        touchAction: 'none',
+      }}
     >
-      <CardContent sx={{ py: 1, px: 1.5 }}>
-        <Stack direction="row" alignItems="center" gap={0.5}>
+      <CardContent sx={{ py: 0.75, px: 1 }}>
+        <Stack direction="row" alignItems="flex-start" gap={0.5}>
           <DragIndicator fontSize="small" sx={{ color: 'text.disabled', flexShrink: 0 }} {...attributes} {...listeners} />
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{schoolName}</Typography>
+            <Typography variant="body2" sx={{ overflowWrap: 'anywhere', lineHeight: 1.25 }}>{schoolName}</Typography>
             {schoolCity && <Typography variant="caption" color="text.secondary">{schoolCity}</Typography>}
             {extraLabel && <Typography variant="caption" display="block" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{extraLabel}</Typography>}
           </Box>
@@ -654,7 +659,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
                 {schoolPool.length} школ · перетащите в джем
               </Typography>
-              <Stack spacing={1} sx={{ maxHeight: 'calc(100vh - 300px)', minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
+              <Stack spacing={0.75} sx={{ maxHeight: 420, minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
                 {schoolPool.map((sc) => (
                   <DraggableCard
                     key={sc.id}

@@ -1,4 +1,5 @@
 import type {
+  LinkedPersonItem,
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceCounterparty,
   OwnerWorkspaceCounterpartyCustomField,
@@ -110,6 +111,7 @@ export const ownerWorkspaceApi = {
     source?: string | null;
     project_ids?: number[];
     custom_fields?: OwnerWorkspaceCounterpartyCustomField[];
+    linked_persons?: LinkedPersonItem[];
   }): Promise<OwnerWorkspaceCounterparty> => {
     const response = await api.post('/api/owner-workspace/counterparties', payload);
     return response.data;
@@ -127,6 +129,7 @@ export const ownerWorkspaceApi = {
       source?: string | null;
       project_ids?: number[];
       custom_fields?: OwnerWorkspaceCounterpartyCustomField[];
+      linked_persons?: LinkedPersonItem[];
     }
   ): Promise<OwnerWorkspaceCounterparty> => {
     const response = await api.patch(`/api/owner-workspace/counterparties/${contactId}`, payload);

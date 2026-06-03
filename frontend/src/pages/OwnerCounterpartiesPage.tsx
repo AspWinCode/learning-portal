@@ -33,8 +33,9 @@ import { Collapse } from '@mui/material';
 
 import Layout from '../components/Layout';
 import { ConfirmDialog, DataTable, EmptyState } from '../components/ui';
-import { ownerWorkspaceApi } from '../services/api';
+import { ownerWorkspaceApi, searchApi } from '../services/api';
 import type {
+  LinkedPersonItem,
   OwnerWorkspaceCounterparty,
   OwnerWorkspaceCounterpartyCustomField,
   OwnerWorkspaceProject,
@@ -51,6 +52,7 @@ type CounterpartyFormState = {
   tags: string;
   comment: string;
   custom_fields: OwnerWorkspaceCounterpartyCustomField[];
+  linked_persons: LinkedPersonItem[];
 };
 
 const PROJECT_STATUS_LABELS: Record<string, string> = {
@@ -70,6 +72,7 @@ const emptyForm = (): CounterpartyFormState => ({
   tags: '',
   comment: '',
   custom_fields: [],
+  linked_persons: [],
 });
 
 const OwnerCounterpartiesPage: React.FC = () => {
@@ -96,6 +99,9 @@ const OwnerCounterpartiesPage: React.FC = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const [savingProject, setSavingProject] = useState(false);
   const [uploadingProjectDocId, setUploadingProjectDocId] = useState<number | null>(null);
+  const [personSearch, setPersonSearch] = useState('');
+  const [personResults, setPersonResults] = useState<LinkedPersonItem[]>([]);
+  const [personSearching, setPersonSearching] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -217,7 +223,10 @@ const OwnerCounterpartiesPage: React.FC = () => {
         tags: (fresh.tags || []).join(', '),
         comment: fresh.comment || '',
         custom_fields: Array.isArray(fresh.custom_fields) ? fresh.custom_fields : [],
+        linked_persons: Array.isArray(fresh.linked_persons) ? fresh.linked_persons : [],
       });
+      setPersonSearch('');
+      setPersonResults([]);
       setCounterpartyProjects([]);
       setProjectDocuments({});
       setExpandedProjectId(null);
@@ -252,6 +261,7 @@ const OwnerCounterpartiesPage: React.FC = () => {
           ...field,
           label: field.label.trim(),
         })),
+        linked_persons: form.linked_persons,
       };
 
       if (selected) {
@@ -504,12 +514,21 @@ const OwnerCounterpartiesPage: React.FC = () => {
                 required
               />
             </Stack>
-            <TextField
-              label="Телефон"
-              value={form.phone}
-              onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-              fullWidth
-            />
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Телефон"
+                value={form.phone}
+                onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                fullWidth
+              />
+              <TextField
+                label="Email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                fullWidth
+              />
+            </Stack>
             <TextField
               label="Теги"
               value={form.tags}
@@ -578,6 +597,94 @@ const OwnerCounterpartiesPage: React.FC = () => {
                   </Typography>
                 ) : null}
               </Stack>
+            </Box>
+
+            <Box>
+              <Typography variant="h6" sx={{ mb: 1 }}>Контакты</Typography>
+              <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                <TextField
+                  size="small"
+                  label="Поиск по имени / телефону"
+                  value={personSearch}
+                  onChange={(e) => setPersonSearch(e.target.value)}
+                  fullWidth
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter' && personSearch.trim().length >= 2) {
+                      setPersonSearching(true);
+                      try {
+                        const res = await searchApi.searchPersons(personSearch.trim());
+                        setPersonResults(
+                          res.items.map((p) => ({
+                            id: p.id,
+                            full_name: p.full_name,
+                            phone: p.phone_normalized ?? null,
+                            email: p.email ?? null,
+                          }))
+                        );
+                      } finally {
+                        setPersonSearching(false);
+                      }
+                    }
+                  }}
+                  helperText="Нажмите Enter для поиска"
+                  InputProps={{ endAdornment: personSearching ? <Typography variant="caption">...</Typography> : null }}
+                />
+              </Stack>
+              {personResults.length > 0 && (
+                <Stack spacing={0.5} sx={{ mb: 1, maxHeight: 160, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
+                  {personResults.map((p) => (
+                    <Stack key={p.id} direction="row" alignItems="center" justifyContent="space-between">
+                      <Box>
+                        <Typography variant="body2" fontWeight={500}>{p.full_name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{[p.phone, p.email].filter(Boolean).join(' · ')}</Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        disabled={form.linked_persons.some((lp) => lp.id === p.id)}
+                        onClick={() => {
+                          setForm((prev) => ({
+                            ...prev,
+                            linked_persons: prev.linked_persons.some((lp) => lp.id === p.id)
+                              ? prev.linked_persons
+                              : [...prev.linked_persons, p],
+                          }));
+                          setPersonResults([]);
+                          setPersonSearch('');
+                        }}
+                      >
+                        {form.linked_persons.some((lp) => lp.id === p.id) ? 'Добавлен' : 'Добавить'}
+                      </Button>
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+              {form.linked_persons.length > 0 && (
+                <Stack spacing={0.5}>
+                  {form.linked_persons.map((p) => (
+                    <Stack key={p.id} direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                      <Box>
+                        <Typography variant="body2" fontWeight={500}>{p.full_name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{[p.phone, p.email].filter(Boolean).join(' · ')}</Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            linked_persons: prev.linked_persons.filter((lp) => lp.id !== p.id),
+                          }))
+                        }
+                      >
+                        Удалить
+                      </Button>
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+              {form.linked_persons.length === 0 && personResults.length === 0 && (
+                <Typography variant="body2" color="text.secondary">Нет привязанных контактов.</Typography>
+              )}
             </Box>
 
             {selected ? (

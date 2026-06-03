@@ -2237,6 +2237,7 @@ class OwnerWorkspaceContact(Base):
     comment = Column(Text, nullable=True)
     source = Column(String(128), nullable=True)
     custom_fields = Column(JSON, nullable=True)
+    linked_persons = Column(JSON, nullable=True)
     is_archived = Column(Boolean, nullable=False, server_default="false", index=True)
     archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -74,6 +74,7 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceHistoryStatsDayItem,
     OwnerWorkspaceHistoryStatsResponse,
     OwnerWorkspaceContactCreate,
+    LinkedPersonItem,
     OwnerWorkspaceCounterpartyCreate,
     OwnerWorkspaceCounterpartyCustomField,
     OwnerWorkspaceCounterpartyDocumentResponse,
@@ -495,6 +496,11 @@ def _counterparty_to_response(
         .filter(OwnerWorkspaceCounterpartyDocument.contact_id == contact.id)
         .all()
     }
+    raw_persons = contact.linked_persons or []
+    linked_persons = []
+    for p in raw_persons:
+        if isinstance(p, dict):
+            linked_persons.append(LinkedPersonItem(**{k: p.get(k) for k in ("id", "full_name", "phone", "email")}))
     return OwnerWorkspaceCounterpartyResponse(
         id=base.id,
         type=getattr(contact, "type", "company") or "company",
@@ -511,6 +517,7 @@ def _counterparty_to_response(
         projects_count=base.projects_count,
         last_interaction_at=base.last_interaction_at,
         custom_fields=_normalize_custom_fields(contact.custom_fields),
+        linked_persons=linked_persons,
         documents=[
             _counterparty_document_to_response(contact.id, category, docs.get(category))
             for category, _label in COUNTERPARTY_DOCUMENT_CATEGORIES
@@ -1283,6 +1290,7 @@ async def create_counterparty(
         comment=payload.comment,
         source=payload.source,
         custom_fields=[item.model_dump() for item in (payload.custom_fields or [])],
+        linked_persons=[item.model_dump() for item in (payload.linked_persons or [])],
         is_archived=False,
     )
     db.add(row)
@@ -1345,13 +1353,15 @@ async def update_counterparty(
             OwnerWorkspaceProjectContact.contact_id == contact_id
         ).all()],
     }
-    data = payload.model_dump(exclude_unset=True, exclude={"project_ids", "custom_fields"})
+    data = payload.model_dump(exclude_unset=True, exclude={"project_ids", "custom_fields", "linked_persons"})
     if "phone" in data:
         data["phone"] = (data["phone"] or "").strip() or None
     for k, v in data.items():
         setattr(row, k, v)
     if payload.custom_fields is not None:
         row.custom_fields = [item.model_dump() for item in payload.custom_fields]
+    if payload.linked_persons is not None:
+        row.linked_persons = [item.model_dump() for item in payload.linked_persons]
     if payload.project_ids is not None:
         _sync_counterparty_project_links(
             db,

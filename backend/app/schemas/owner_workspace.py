@@ -157,6 +157,13 @@ class OwnerWorkspaceCounterpartyDocumentResponse(BaseModel):
     download_url: Optional[str] = None
 
 
+class LinkedPersonItem(BaseModel):
+    id: int
+    full_name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+
 class OwnerWorkspaceCounterpartyCreate(BaseModel):
     type: OwnerWorkspaceContactType = "company"
     full_name: str
@@ -169,6 +176,7 @@ class OwnerWorkspaceCounterpartyCreate(BaseModel):
     source: Optional[str] = None
     project_ids: Optional[List[int]] = None
     custom_fields: Optional[List[OwnerWorkspaceCounterpartyCustomField]] = None
+    linked_persons: Optional[List[LinkedPersonItem]] = None
 
 
 class OwnerWorkspaceCounterpartyUpdate(BaseModel):
@@ -183,6 +191,7 @@ class OwnerWorkspaceCounterpartyUpdate(BaseModel):
     source: Optional[str] = None
     project_ids: Optional[List[int]] = None
     custom_fields: Optional[List[OwnerWorkspaceCounterpartyCustomField]] = None
+    linked_persons: Optional[List[LinkedPersonItem]] = None
 
 
 class OwnerWorkspaceCounterpartyResponse(BaseModel):
@@ -201,6 +210,7 @@ class OwnerWorkspaceCounterpartyResponse(BaseModel):
     projects_count: int = 0
     last_interaction_at: Optional[datetime] = None
     custom_fields: List[OwnerWorkspaceCounterpartyCustomField] = Field(default_factory=list)
+    linked_persons: List[LinkedPersonItem] = Field(default_factory=list)
     documents: List[OwnerWorkspaceCounterpartyDocumentResponse] = Field(default_factory=list)
     is_archived: bool = False
     archived_at: Optional[datetime] = None

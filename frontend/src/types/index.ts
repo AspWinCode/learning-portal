@@ -1740,8 +1740,16 @@ export interface OwnerWorkspaceCounterpartyDocument {
   download_url?: string | null;
 }
 
+export interface LinkedPersonItem {
+  id: number;
+  full_name: string;
+  phone?: string | null;
+  email?: string | null;
+}
+
 export interface OwnerWorkspaceCounterparty extends OwnerWorkspaceContact {
   custom_fields: OwnerWorkspaceCounterpartyCustomField[];
+  linked_persons: LinkedPersonItem[];
   documents: OwnerWorkspaceCounterpartyDocument[];
   is_archived: boolean;
   archived_at?: string | null;

@@ -46,16 +46,10 @@ def upgrade() -> None:
         "owner_workspace_projects",
         sa.Column("deadline_at", sa.DateTime(timezone=True), nullable=True),
     )
-    # Extend status: keep existing values; add new ones via server_default migration
-    # (existing rows stay as-is; new rows use "new" by default)
-    op.alter_column(
-        "owner_workspace_projects",
-        "status",
-        existing_type=sa.String(20),
-        new_column_name="status",
-        existing_server_default="active",
-        server_default="new",
-        nullable=False,
+    # Change default status value for new projects (existing rows keep their values)
+    op.execute(
+        "ALTER TABLE owner_workspace_projects "
+        "ALTER COLUMN status SET DEFAULT 'new'"
     )
 
     # 3. owner_workspace_project_documents table
@@ -114,12 +108,8 @@ def downgrade() -> None:
     op.drop_index("ix_owner_workspace_projects_counterparty_id", table_name="owner_workspace_projects")
     op.drop_column("owner_workspace_projects", "deadline_at")
     op.drop_column("owner_workspace_projects", "counterparty_id")
-    op.alter_column(
-        "owner_workspace_projects",
-        "status",
-        existing_type=sa.String(20),
-        new_column_name="status",
-        server_default="active",
-        nullable=False,
+    op.execute(
+        "ALTER TABLE owner_workspace_projects "
+        "ALTER COLUMN status SET DEFAULT 'active'"
     )
     op.drop_column("owner_workspace_contacts", "type")

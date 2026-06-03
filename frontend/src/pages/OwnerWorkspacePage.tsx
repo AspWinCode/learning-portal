@@ -5033,6 +5033,7 @@ const OwnerWorkspacePage: React.FC = () => {
         <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
           <OwnerWorkspaceProjectsTab
             projects={projects}
+            projectsCatalog={projectsCatalog}
             topOverdueProjects={topOverdueProjects}
             projectStatusLabels={projectStatusLabels}
             enabledProjectStatuses={enabledProjectStatuses}

@@ -15,12 +15,15 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import type { OwnerWorkspaceProject, User } from '../../types';
 
 type OwnerWorkspaceProjectsTabProps = {
   projects: OwnerWorkspaceProject[];
+  projectsCatalog: OwnerWorkspaceProject[];
   topOverdueProjects: OwnerWorkspaceProject[];
   projectStatusLabels: Record<string, string>;
   enabledProjectStatuses: string[];
@@ -45,6 +48,7 @@ type OwnerWorkspaceProjectsTabProps = {
 
 export function OwnerWorkspaceProjectsTab({
   projects,
+  projectsCatalog,
   topOverdueProjects,
   projectStatusLabels,
   enabledProjectStatuses,
@@ -66,6 +70,87 @@ export function OwnerWorkspaceProjectsTab({
   onOpenProject,
   onOpenProjectOverdueTasks,
 }: OwnerWorkspaceProjectsTabProps) {
+  const [expandedProjectIds, setExpandedProjectIds] = React.useState<number[]>([]);
+  const childProjectsByParent = React.useMemo(() => {
+    const map = new Map<number, OwnerWorkspaceProject[]>();
+    for (const project of projectsCatalog) {
+      if (project.parent_project_id == null) continue;
+      const children = map.get(project.parent_project_id) || [];
+      children.push(project);
+      map.set(project.parent_project_id, children);
+    }
+    for (const children of map.values()) {
+      children.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    }
+    return map;
+  }, [projectsCatalog]);
+  const toggleExpandedProject = (projectId: number) => {
+    setExpandedProjectIds((prev) => (
+      prev.includes(projectId) ? prev.filter((id) => id !== projectId) : [...prev, projectId]
+    ));
+  };
+
+  const renderProjectCard = (project: OwnerWorkspaceProject, depth = 0): React.ReactNode => {
+    const children = childProjectsByParent.get(project.id) || [];
+    const hasChildren = children.length > 0;
+    const expanded = expandedProjectIds.includes(project.id);
+
+    return (
+      <Card key={project.id} variant={depth > 0 ? 'outlined' : undefined} sx={{ mt: depth > 0 ? 1 : 0 }}>
+        <CardContent sx={{ pl: 3 + depth * 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+            <Box sx={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
+              {hasChildren ? (
+                <IconButton
+                  size="small"
+                  onClick={() => toggleExpandedProject(project.id)}
+                  aria-label={expanded ? 'Скрыть подпроекты' : 'Показать подпроекты'}
+                  sx={{ mt: 0.25 }}
+                >
+                  {expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+                </IconButton>
+              ) : (
+                <Box sx={{ width: 34, flex: '0 0 34px' }} />
+              )}
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant={depth > 0 ? 'subtitle1' : 'h6'}>
+                  {project.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                  Ответственный: {userName(project.owner_id)}
+                </Typography>
+              </Box>
+            </Box>
+            <IconButton size="small" onClick={() => void onOpenProject(project)} aria-label="Открыть">
+              <OpenInNewIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+            <Chip size="small" label={projectStatusLabels[project.status] ?? project.status} />
+            <Chip size="small" label={`Задач всего: ${project.total_tasks_count ?? 0}`} />
+            <Chip size="small" label={`Активн.: ${project.active_tasks_count}`} />
+            {(project.overdue_tasks_count ?? 0) > 0 && (
+              <Chip size="small" color="warning" label={`Просроч.: ${project.overdue_tasks_count}`} />
+            )}
+            <Chip size="small" label={`Контактов: ${project.contacts_count}`} />
+            {hasChildren && <Chip size="small" label={`Подпроектов: ${children.length}`} />}
+          </Stack>
+          {project.updated_at ? (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
+              Обновлён:{' '}
+              {new Date(project.updated_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+            </Typography>
+          ) : null}
+          {expanded && hasChildren && (
+            <Stack spacing={1} sx={{ mt: 1.5 }}>
+              {children.map((child) => renderProjectCard(child, depth + 1))}
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <Stack spacing={2}>
       {topOverdueProjects.length > 0 && (
@@ -199,37 +284,7 @@ export function OwnerWorkspaceProjectsTab({
       <Grid container spacing={2}>
         {projects.map((project) => (
           <Grid item xs={12} md={6} key={project.id}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="h6">{project.name}</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                      Ответственный: {userName(project.owner_id)}
-                    </Typography>
-                  </Box>
-                  <IconButton size="small" onClick={() => void onOpenProject(project)} aria-label="Открыть">
-                    <OpenInNewIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-                <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
-                  <Chip size="small" label={projectStatusLabels[project.status] ?? project.status} />
-                  <Chip size="small" label={`Задач всего: ${project.total_tasks_count ?? 0}`} />
-                  <Chip size="small" label={`Активн.: ${project.active_tasks_count}`} />
-                  {(project.overdue_tasks_count ?? 0) > 0 && (
-                    <Chip size="small" color="warning" label={`Просроч.: ${project.overdue_tasks_count}`} />
-                  )}
-                  <Chip size="small" label={`Контактов: ${project.contacts_count}`} />
-                  {project.subprojects_count > 0 && <Chip size="small" label={`Подпроектов: ${project.subprojects_count}`} />}
-                </Stack>
-                {project.updated_at ? (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                    Обновлён:{' '}
-                    {new Date(project.updated_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
-                  </Typography>
-                ) : null}
-              </CardContent>
-            </Card>
+            {renderProjectCard(project)}
           </Grid>
         ))}
         {projects.length === 0 && (

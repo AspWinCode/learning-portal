@@ -93,18 +93,19 @@ const DraggableCard: React.FC<DraggableCardProps> = ({ id, schoolName, schoolCit
       variant="outlined"
       sx={{
         width: '100%',
+        minHeight: 74,
         bgcolor: 'background.paper',
         cursor: isDragging ? 'grabbing' : 'grab',
         touchAction: 'none',
       }}
     >
-      <CardContent sx={{ py: 0.75, px: 1 }}>
-        <Stack direction="row" alignItems="flex-start" gap={0.5}>
-          <DragIndicator fontSize="small" sx={{ color: 'text.disabled', flexShrink: 0 }} {...attributes} {...listeners} />
+      <CardContent sx={{ py: 1.25, px: 1.5, '&:last-child': { pb: 1.25 } }}>
+        <Stack direction="row" alignItems="flex-start" gap={1}>
+          <DragIndicator fontSize="small" sx={{ color: 'text.disabled', flexShrink: 0, mt: 0.25 }} {...attributes} {...listeners} />
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="body2" sx={{ overflowWrap: 'anywhere', lineHeight: 1.25 }}>{schoolName}</Typography>
-            {schoolCity && <Typography variant="caption" color="text.secondary">{schoolCity}</Typography>}
-            {extraLabel && <Typography variant="caption" display="block" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{extraLabel}</Typography>}
+            <Typography variant="body2" sx={{ overflowWrap: 'anywhere', lineHeight: 1.35, fontWeight: 600 }}>{schoolName}</Typography>
+            {schoolCity && <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>{schoolCity}</Typography>}
+            {extraLabel && <Typography variant="caption" display="block" color="text.secondary" sx={{ overflowWrap: 'anywhere', mt: 0.25 }}>{extraLabel}</Typography>}
           </Box>
         </Stack>
       </CardContent>
@@ -662,7 +663,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
       <DndContext sensors={sensors} onDragStart={handlePoolDragStart} onDragEnd={(e) => void handlePoolDragEnd(e)}>
         <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', alignItems: 'flex-start', pb: 1 }}>
           {/* Пул школ — draggable */}
-          <Card variant="outlined" sx={{ width: 320, maxWidth: 320, flex: '0 0 320px', bgcolor: 'action.hover' }}>
+          <Card variant="outlined" sx={{ width: 460, maxWidth: 460, flex: '0 0 460px', bgcolor: 'action.hover' }}>
             <CardContent>
               <Typography variant="subtitle1" fontWeight={700} gutterBottom>Пул школ</Typography>
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
@@ -672,7 +673,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
                 Выбрать школы
               </Button>
               {schoolPool.length > 0 ? (
-                <Stack spacing={1} sx={{ mt: 1.5, maxHeight: 300, overflowY: 'auto', pr: 0.5 }}>
+                <Stack spacing={1.25} sx={{ mt: 1.5, maxHeight: 440, overflowY: 'auto', pr: 0.75 }}>
                   {schoolPool.map((school) => (
                     <DraggableCard
                       key={school.id}

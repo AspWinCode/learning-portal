@@ -100,16 +100,18 @@ const DraggableCard: React.FC<DraggableCardProps> = ({ id, schoolName, schoolCit
       variant="outlined"
       sx={{
         width: '100%',
+        boxSizing: 'border-box',
         minHeight: 74,
         bgcolor: 'background.paper',
         cursor: isDragging ? 'grabbing' : 'grab',
         touchAction: 'none',
+        overflow: 'hidden',
       }}
     >
       <CardContent sx={{ py: 1.25, px: 1.5, '&:last-child': { pb: 1.25 } }}>
         <Stack direction="row" alignItems="flex-start" gap={1}>
           <DragIndicator fontSize="small" sx={{ color: 'text.disabled', flexShrink: 0, mt: 0.25 }} {...attributes} {...listeners} />
-          <Box sx={{ minWidth: 0 }}>
+          <Box sx={{ minWidth: 0, maxWidth: '100%' }}>
             <Typography variant="body2" sx={{ overflowWrap: 'anywhere', lineHeight: 1.35, fontWeight: 600 }}>{schoolName}</Typography>
             {schoolCity && <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>{schoolCity}</Typography>}
             {extraLabel && <Typography variant="caption" display="block" color="text.secondary" sx={{ overflowWrap: 'anywhere', mt: 0.25 }}>{extraLabel}</Typography>}
@@ -140,15 +142,17 @@ const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, label, count, isT
       ref={setNodeRef}
       variant="outlined"
       sx={{
-        minWidth: 240,
-        flex: '0 0 auto',
+        width: 320,
+        minWidth: 320,
+        maxWidth: 320,
+        flex: '0 0 320px',
+        boxSizing: 'border-box',
         bgcolor: isOver ? 'action.selected' : highlight ? 'action.hover' : undefined,
-        transition: 'background-color 0.15s',
-        border: isOver ? '2px solid' : undefined,
-        borderColor: isOver ? 'primary.main' : undefined,
+        transition: 'background-color 0.15s, box-shadow 0.15s',
+        boxShadow: isOver ? 'inset 0 0 0 2px var(--mui-palette-primary-main)' : undefined,
       }}
     >
-      <CardContent>
+      <CardContent sx={{ minWidth: 0 }}>
         <Stack direction="row" alignItems="center" gap={0.5} mb={0.5}>
           <Typography variant="subtitle2" color="text.secondary" sx={{ flex: 1 }}>{label}</Typography>
           {isTerminal && <Chip label="финал" size="small" variant="outlined" />}
@@ -156,7 +160,7 @@ const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, label, count, isT
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
           {count} шт.
         </Typography>
-        <Stack spacing={1}>{children}</Stack>
+        <Stack spacing={1} sx={{ minWidth: 0 }}>{children}</Stack>
       </CardContent>
     </Card>
   );
@@ -352,7 +356,7 @@ const JamInnerKanban: React.FC<JamInnerKanbanProps> = ({ campaignId, event, canM
         <Alert severity="info">Этапы джема не настроены. Нажмите «Этапы» чтобы добавить.</Alert>
       ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={(e) => void handleDragEnd(e)}>
-          <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', pb: 1 }}>
+          <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', pb: 1, alignItems: 'flex-start' }}>
             {byStage.map((col) => (
               <DroppableColumn key={col.key} id={`col-${col.key}`} label={col.label} count={col.items.length} isTerminal={col.is_terminal}>
                 {col.items.map((sc) => (
@@ -368,10 +372,10 @@ const JamInnerKanban: React.FC<JamInnerKanbanProps> = ({ campaignId, event, canM
           </Box>
           <DragOverlay>
             {activeSchool && (
-              <Card variant="outlined" sx={{ minWidth: 200, opacity: 0.9, boxShadow: 4 }}>
+              <Card variant="outlined" sx={{ width: 300, maxWidth: 300, opacity: 0.9, boxShadow: 4, overflow: 'hidden' }}>
                 <CardContent sx={{ py: 1, px: 1.5 }}>
-                  <Typography variant="body2">{activeSchool.school_name}</Typography>
-                  <Typography variant="caption" color="text.secondary">{activeSchool.school_city}</Typography>
+                  <Typography variant="body2" sx={{ overflowWrap: 'anywhere', lineHeight: 1.35 }}>{activeSchool.school_name}</Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>{activeSchool.school_city}</Typography>
                 </CardContent>
               </Card>
             )}
@@ -804,10 +808,10 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
         </Box>
         <DragOverlay>
           {activePoolSchool && (
-            <Card variant="outlined" sx={{ width: 280, opacity: 0.95, boxShadow: 4 }}>
+            <Card variant="outlined" sx={{ width: 300, maxWidth: 300, opacity: 0.95, boxShadow: 4, overflow: 'hidden' }}>
               <CardContent sx={{ py: 1, px: 1.5 }}>
-                <Typography variant="body2">{activePoolSchool.school_name}</Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="body2" sx={{ overflowWrap: 'anywhere', lineHeight: 1.35 }}>{activePoolSchool.school_name}</Typography>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
                   {[activePoolSchool.school_city, activePoolSchool.school_district].filter(Boolean).join(' · ')}
                 </Typography>
               </CardContent>

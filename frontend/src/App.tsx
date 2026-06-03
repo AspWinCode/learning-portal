@@ -70,6 +70,7 @@ const FinanceProjectsPage = React.lazy(() => import('./pages/FinanceProjectsPage
 const RolesPage = React.lazy(() => import('./pages/RolesPage'));
 const PersonRegistryPage = React.lazy(() => import('./pages/PersonRegistryPage'));
 const UserDetailsPage = React.lazy(() => import('./pages/UserDetailsPage'));
+const DiskPage = React.lazy(() => import('./pages/DiskPage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -558,6 +559,16 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']} requiredPermission="owner_workspace.access">
                   <OwnerCounterpartiesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/disk"
+              element={
+                <PrivateRoute requiredPermission="owner_workspace.access">
+                  <SectionBoundary>
+                    <DiskPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />

@@ -2432,6 +2432,25 @@ class OwnerWorkspaceConversationRead(Base):
     contact = relationship("OwnerWorkspaceContact")
 
 
+class DiskItem(Base):
+    __tablename__ = "disk_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    item_type = Column(String(16), nullable=False, index=True)  # folder | file
+    parent_id = Column(Integer, ForeignKey("disk_items.id", ondelete="SET NULL"), nullable=True, index=True)
+    storage_key = Column(String(255), nullable=True, unique=True, index=True)
+    content_type = Column(String(128), nullable=True)
+    size_bytes = Column(BigInteger, nullable=False, server_default="0")
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    parent = relationship("DiskItem", remote_side=[id], backref="children")
+    owner = relationship("User", foreign_keys=[owner_id])
+
+
 class OwnerWorkspaceUserPreference(Base):
     """Персональные настройки UI задачника (JSON, merge при PATCH)."""
 

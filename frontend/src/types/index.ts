@@ -1721,6 +1721,24 @@ export interface OwnerWorkspaceCounterparty extends OwnerWorkspaceContact {
   archived_at?: string | null;
 }
 
+export interface DiskItem {
+  id: number;
+  name: string;
+  item_type: 'folder' | 'file';
+  parent_id?: number | null;
+  content_type?: string | null;
+  size_bytes: number;
+  owner_id?: number | null;
+  owner_name?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface DiskItemsResponse {
+  items: DiskItem[];
+  breadcrumbs: DiskItem[];
+}
+
 export interface PersonalFinanceCategory {
   id: number;
   owner_id: number;

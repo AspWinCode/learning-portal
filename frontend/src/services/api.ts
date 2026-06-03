@@ -92,6 +92,8 @@ import {
   PublicMakeupSlotsResponse,
   PhoneSearchResponse,
   PersonSearchResponse,
+  DiskItem,
+  DiskItemsResponse,
   PersonalFinanceAccount,
   PersonalFinanceCategory,
   PersonalFinanceRule,
@@ -3534,6 +3536,46 @@ export const financeHubApi = {
   },
   deleteAllocation: async (id: number): Promise<void> => {
     await api.delete(`/finance/hub/allocations/${id}`);
+  },
+};
+
+export const diskApi = {
+  listItems: async (params?: { parent_id?: number | null; search?: string }): Promise<DiskItemsResponse> => {
+    const response = await api.get('/disk/items', {
+      params: {
+        ...(params?.parent_id != null ? { parent_id: params.parent_id } : {}),
+        ...(params?.search ? { search: params.search } : {}),
+      },
+    });
+    return response.data;
+  },
+  createFolder: async (payload: { name: string; parent_id?: number | null }): Promise<DiskItem> => {
+    const response = await api.post('/disk/folders', payload);
+    return response.data;
+  },
+  uploadFile: async (file: File, parentId?: number | null): Promise<DiskItem> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/disk/files', form, {
+      params: parentId != null ? { parent_id: parentId } : {},
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    });
+    return response.data;
+  },
+  updateItem: async (itemId: number, payload: { name?: string; parent_id?: number | null }): Promise<DiskItem> => {
+    const response = await api.patch(`/disk/items/${itemId}`, payload);
+    return response.data;
+  },
+  downloadFile: async (itemId: number): Promise<{ blob: Blob; filename: string }> => {
+    const response = await api.get(`/disk/files/${itemId}/download`, { responseType: 'blob', timeout: 120000 });
+    const disposition = String(response.headers['content-disposition'] || '');
+    const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="([^"]+)"/);
+    const filename = match ? decodeURIComponent(match[1] || match[2] || 'file') : 'file';
+    return { blob: response.data, filename };
+  },
+  deleteItem: async (itemId: number): Promise<void> => {
+    await api.delete(`/disk/items/${itemId}`);
   },
 };
 

@@ -47,6 +47,7 @@ import {
   PendingActions,
   Assignment,
   Add,
+  Folder,
   NotificationsNone,
   Notifications,
   Search,
@@ -76,7 +77,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/persons', '/operations/manual-lessons']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance', '/finance/overview', '/finance/projects', '/abonements', '/finance/payments', '/calculations', '/personal-finance', '/finance/tax-deduction']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/projects', '/owner-workspace/projects', '/disk']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
@@ -289,6 +290,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' },
+        { text: 'Диск', icon: <Folder />, path: '/disk' },
         { text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' },
       ];
 
@@ -307,6 +309,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
+      items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
     }
 
@@ -331,6 +334,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
+      items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
     }
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
@@ -376,7 +380,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }
   const visibleMenuItems = canAccessOwnerWorkspace
     ? permissionExpandedMenuItems
-    : permissionExpandedMenuItems.filter((item) => !item.path.startsWith('/owner-workspace'));
+    : permissionExpandedMenuItems.filter((item) => !item.path.startsWith('/owner-workspace') && item.path !== '/disk');
 
   /** Подсветка «Таск трекер» для любого `/owner-workspace/*`, кроме отдельных пунктов уведомлений и контрагентов. */
   const isOwnerWorkspaceMainSection = (pathname: string) =>

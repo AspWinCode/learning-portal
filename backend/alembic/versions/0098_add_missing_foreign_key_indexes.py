@@ -6,6 +6,7 @@ Create Date: 2026-05-26
 """
 
 from alembic import op
+import sqlalchemy as sa
 
 
 revision = "0098_add_missing_foreign_key_indexes"
@@ -41,8 +42,18 @@ INDEXES = [
 ]
 
 
+def _table_exists(conn, name: str) -> bool:
+    return conn.execute(
+        sa.text("SELECT 1 FROM information_schema.tables WHERE table_name = :t"),
+        {"t": name},
+    ).scalar() is not None
+
+
 def upgrade():
+    conn = op.get_bind()
     for index_name, table_name, column_name in INDEXES:
+        if not _table_exists(conn, table_name):
+            continue  # skip indexes for tables that don't exist yet
         op.execute(f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}")')
 
 

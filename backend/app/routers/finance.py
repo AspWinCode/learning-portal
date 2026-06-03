@@ -37,6 +37,7 @@ from app.schemas.finance import (
     FinanceAccountBalance,
     FinanceAccountCreate,
     FinanceAccountResponse,
+    FinanceTargetCreate,
     FinanceAnalyticsExpenseBreakdownRow,
     FinanceAnalyticsKpiBlock,
     FinanceAnalyticsSummaryResponse,
@@ -159,6 +160,39 @@ async def list_finance_targets(
         )
         for t in targets
     ]
+
+
+@router.post("/targets", response_model=FinanceTargetResponse, status_code=201)
+async def create_finance_target(
+    payload: FinanceTargetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceTargetResponse:
+    """Создать новый проект/цель."""
+    _require_finance_access(current_user)
+    code = payload.code.strip().lower().replace(" ", "_")
+    if db.query(FinanceTarget).filter(FinanceTarget.code == code).first():
+        raise HTTPException(status_code=400, detail=f"Проект с кодом '{code}' уже существует")
+    target = FinanceTarget(code=code, name=payload.name.strip(), is_active=True)
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    return FinanceTargetResponse(id=target.id, code=target.code, name=target.name, is_active=bool(target.is_active))
+
+
+@router.delete("/targets/{target_id}", status_code=204)
+async def delete_finance_target(
+    target_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> None:
+    """Деактивировать проект/цель."""
+    _require_finance_access(current_user)
+    target = db.query(FinanceTarget).filter(FinanceTarget.id == target_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+    target.is_active = False
+    db.commit()
 
 
 @router.get("/articles", response_model=List[FinanceArticleResponse])

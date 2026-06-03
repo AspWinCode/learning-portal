@@ -99,6 +99,11 @@ class FinanceAccountCreate(BaseModel):
     owner_scope: str = "business"
 
 
+class FinanceTargetCreate(BaseModel):
+    code: str
+    name: str
+
+
 class FinanceTargetResponse(BaseModel):
     id: int
     code: str

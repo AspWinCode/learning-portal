@@ -518,6 +518,13 @@ export const financeApi = {
     const response = await api.get('/api/finance/targets', { params: { only_active: true } });
     return response.data;
   },
+  createTarget: async (payload: { code: string; name: string }): Promise<{ id: number; code: string; name: string; is_active: boolean }> => {
+    const response = await api.post('/api/finance/targets', payload);
+    return response.data;
+  },
+  deleteTarget: async (id: number): Promise<void> => {
+    await api.delete(`/api/finance/targets/${id}`);
+  },
   listArticles: async (params?: { scope?: string; direction?: string }): Promise<
     Array<{ id: number; name: string; direction: string; cost_kind: string; scope: string; is_active: boolean }>
   > => {

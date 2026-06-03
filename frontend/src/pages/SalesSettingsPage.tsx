@@ -115,6 +115,8 @@ const SalesSettingsPage: React.FC = () => {
   });
   const [importAccounts, setImportAccounts] = useState<Array<{ id: number; code: string; name: string; owner_scope: string }>>([]);
   const [newImportAccount, setNewImportAccount] = useState({ name: '', code: '' });
+  const [financeTargets, setFinanceTargets] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [newFinanceTarget, setNewFinanceTarget] = useState({ name: '', code: '' });
   const [b2bDistricts, setB2bDistricts] = useState<string[]>([]);
   const [newDistrict, setNewDistrict] = useState('');
   const [campaignSettings, setCampaignSettings] = useState<CampaignSettings | null>(null);
@@ -153,6 +155,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
       load('Счета для импорта', () => financeApi.listAccounts(), setImportAccounts),
+      load('Проекты (финансы)', () => financeApi.listTargets(), setFinanceTargets),
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
       load('Работа со школами', () => campaignsApi.getSettings(), setCampaignSettings),
       load('Причины отказа', async () => (await settingsApi.getRefusedReasons()).items, setRefusedReasons),
@@ -842,6 +845,79 @@ const SalesSettingsPage: React.FC = () => {
                   </TableCell>
                 </TableRow>
               ))}
+            </TableBody>
+          </Table>
+        </Paper>
+
+        <Paper sx={sectionPaperSx('finance')}>
+          <Typography variant="h6" mb={1}>Проекты</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Проекты (цели) для разбивки операций в журнале и ручных записях.
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
+            <TextField
+              size="small"
+              label="Название проекта"
+              value={newFinanceTarget.name}
+              onChange={(e) => setNewFinanceTarget((prev) => ({ ...prev, name: e.target.value }))}
+              sx={{ flex: 2 }}
+            />
+            <TextField
+              size="small"
+              label="Код (латиница, без пробелов)"
+              value={newFinanceTarget.code}
+              onChange={(e) => setNewFinanceTarget((prev) => ({ ...prev, code: e.target.value }))}
+              sx={{ flex: 1 }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              disabled={!newFinanceTarget.name.trim() || !newFinanceTarget.code.trim()}
+              onClick={() =>
+                safeAction(async () => {
+                  if (!newFinanceTarget.name.trim() || !newFinanceTarget.code.trim()) return;
+                  await financeApi.createTarget({
+                    name: newFinanceTarget.name.trim(),
+                    code: newFinanceTarget.code.trim(),
+                  });
+                  setNewFinanceTarget({ name: '', code: '' });
+                })
+              }
+            >
+              Создать
+            </Button>
+          </Stack>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Код</TableCell>
+                <TableCell align="right">Действия</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {financeTargets.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell>{t.name}</TableCell>
+                  <TableCell>{t.code}</TableCell>
+                  <TableCell align="right">
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => safeAction(() => financeApi.deleteTarget(t.id))}
+                    >
+                      Удалить
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {financeTargets.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} align="center">
+                    <Typography variant="body2" color="text.secondary">Нет проектов</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </Paper>

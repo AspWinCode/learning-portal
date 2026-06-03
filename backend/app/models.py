@@ -1922,11 +1922,37 @@ class Campaign(Base):
     responsible_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     status = Column(String(32), nullable=False, server_default="draft", index=True)
     mode = Column(String(32), nullable=False, server_default="city")
+    is_game_jam = Column(Boolean, nullable=False, server_default="false", default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     responsible = relationship("User", foreign_keys=[responsible_id])
     school_campaigns = relationship("SchoolCampaign", back_populates="campaign", cascade="all, delete-orphan")
     campaign_events = relationship("CampaignEvent", back_populates="campaign", cascade="all, delete-orphan")
+    stages = relationship(
+        "CampaignStage",
+        back_populates="campaign",
+        cascade="all, delete-orphan",
+        order_by="CampaignStage.position",
+    )
+
+
+class CampaignStage(Base):
+    """Произвольный этап воронки кампании (заменяет хардкод стадий)."""
+
+    __tablename__ = "campaign_stages"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "key", name="uq_campaign_stages_campaign_key"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(64), nullable=False)
+    label = Column(String(256), nullable=False)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
+    is_terminal = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    campaign = relationship("Campaign", back_populates="stages")
 
 
 class SchoolCampaign(Base):
@@ -1963,10 +1989,37 @@ class CampaignEvent(Base):
     city = Column(String(256), nullable=True)
     status = Column(String(32), nullable=False, server_default=CampaignEventStatus.PLANNED.value, index=True)
     notes = Column(Text, nullable=True)
+    host_b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     campaign = relationship("Campaign", back_populates="campaign_events")
     school_campaign_events = relationship("SchoolCampaignEvent", back_populates="campaign_event", cascade="all, delete-orphan")
+    jam_stages = relationship(
+        "CampaignEventStage",
+        back_populates="campaign_event",
+        cascade="all, delete-orphan",
+        order_by="CampaignEventStage.position",
+    )
+    host_school = relationship("B2BSchool", foreign_keys=[host_b2b_school_id])
+
+
+class CampaignEventStage(Base):
+    """Этап внутреннего канбана джема (Game Jam mode)."""
+
+    __tablename__ = "campaign_event_stages"
+    __table_args__ = (
+        UniqueConstraint("campaign_event_id", "key", name="uq_campaign_event_stages_event_key"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_event_id = Column(Integer, ForeignKey("campaign_events.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(64), nullable=False)
+    label = Column(String(256), nullable=False)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
+    is_terminal = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    campaign_event = relationship("CampaignEvent", back_populates="jam_stages")
 
 
 class InviteStatus(str, enum.Enum):
@@ -2009,6 +2062,7 @@ class SchoolCampaignEvent(Base):
     host_status = Column(
         String(32), nullable=False, server_default=HostStatus.NOT_HOST.value, index=True
     )
+    jam_stage = Column(String(64), nullable=True, index=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

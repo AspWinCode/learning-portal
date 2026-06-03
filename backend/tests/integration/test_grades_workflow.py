@@ -74,13 +74,16 @@ class FakeGradesDB:
     """Мок БД для тестов модуля grades."""
 
     def __init__(self, *, student=None, topic=None, group_student=None,
-                 student_program=None, group_program=None, program_trainer=None):
+                 student_program=None, group_program=None, program_trainer=None,
+                 block_access=False):
         self._student = student
         self._topic = topic
         self._group_student = group_student
         self._student_program = student_program
         self._group_program = group_program
         self._program_trainer = program_trainer
+        # Когда True — имитирует отсутствие доступа тренера к студенту
+        self._block_access = block_access
         self.added = []
         self.committed = False
 
@@ -93,6 +96,9 @@ class FakeGradesDB:
         if model is Topic:
             return FakeQuery(self._topic)
         if model is GroupStudent:
+            # block_access=True имитирует фильтр по trainer_id, который ничего не нашёл
+            if self._block_access:
+                return FakeQuery(None)
             return FakeQuery(self._group_student)
         if model is StudentProgram:
             return FakeQuery(self._student_program)
@@ -185,14 +191,10 @@ class TestCreateGrade:
         student = _make_student(2)
         topic = _make_topic(5)
 
-        # GroupStudent: студент в другой группе
-        group_student = SimpleNamespace(
-            group_id=99, student_id=2, left_at=None,
-            group=SimpleNamespace(trainer_id=999)
-        )
-
+        # block_access=True имитирует фильтр Group.trainer_id == 1,
+        # который не нашёл ни одной группы тренера для этого студента
         db = FakeGradesDB(
-            student=student, topic=topic, group_student=group_student
+            student=student, topic=topic, block_access=True
         )
         app.dependency_overrides[get_db] = lambda: db
         app.dependency_overrides[auth.get_current_active_user] = lambda: trainer
@@ -239,7 +241,12 @@ class TestCreateGrade:
     def test_returns_404_if_topic_not_found(self, client: TestClient, monkeypatch):
         trainer = _trainer_user(1)
         student = _make_student(2)
-        db = FakeGradesDB(student=student, topic=None)
+        # group_student нужен, чтобы access check прошёл и роутер дошёл до проверки темы
+        group_student = SimpleNamespace(
+            group_id=1, student_id=2, left_at=None,
+            group=SimpleNamespace(trainer_id=1)
+        )
+        db = FakeGradesDB(student=student, topic=None, group_student=group_student)
         app.dependency_overrides[get_db] = lambda: db
         app.dependency_overrides[auth.get_current_active_user] = lambda: trainer
         app.dependency_overrides[auth.require_permission("grades.manage")] = lambda: trainer

@@ -6,6 +6,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -16,6 +17,8 @@ from app.models import (
     Campaign,
     CampaignDictionaryItem,
     CampaignEvent,
+    CampaignEventStage,
+    CampaignStage,
     SchoolCampaign,
     SchoolCampaignEvent,
     SalesCity,
@@ -31,9 +34,17 @@ from app.schemas.campaigns import (
     CampaignDictionaryUpdate,
     CampaignEventCreate,
     CampaignEventResponse,
+    CampaignEventStageCreate,
+    CampaignEventStageReorder,
+    CampaignEventStageResponse,
+    CampaignEventStageUpdate,
     CampaignEventUpdate,
     CampaignResponse,
     CampaignSettingsResponse,
+    CampaignStageCreate,
+    CampaignStageReorder,
+    CampaignStageResponse,
+    CampaignStageUpdate,
     CampaignUpdate,
     SchoolCampaignEventBulkUpdate,
     SchoolCampaignEventResponse,
@@ -51,6 +62,64 @@ _CAMPAIGN_SETTING_CATEGORIES = {
     "scales": "campaign_scale",
 }
 _B2B_DISTRICTS_KEY = "b2b_districts"
+
+
+_DEFAULT_STAGES_GAME_JAM = [
+    {"key": "not_contacted", "label": "Не связались", "is_terminal": False},
+    {"key": "contact_established", "label": "Контакт установлен", "is_terminal": False},
+    {"key": "director_agreed", "label": "Директор согласен", "is_terminal": False},
+    {"key": "contact_person_received", "label": "Получен контакт ответственного", "is_terminal": False},
+    {"key": "agreed_to_class_visits", "label": "Согласованы обходы", "is_terminal": False},
+    {"key": "info_sent_to_parents", "label": "Инфо отправлено родителям", "is_terminal": False},
+    {"key": "declined", "label": "Отказ", "is_terminal": True},
+    {"key": "participated", "label": "Участвовали", "is_terminal": False},
+    {"key": "leads_received", "label": "Лиды получены", "is_terminal": True},
+]
+
+_DEFAULT_STAGES_ONLINE = [
+    {"key": "not_contacted", "label": "Не связались", "is_terminal": False},
+    {"key": "invited", "label": "Приглашены", "is_terminal": False},
+    {"key": "info_sent", "label": "Инфо отправлено", "is_terminal": False},
+    {"key": "confirmed", "label": "Подтвердили", "is_terminal": False},
+    {"key": "declined", "label": "Отказ", "is_terminal": True},
+    {"key": "participated", "label": "Участвовали", "is_terminal": False},
+]
+
+
+def default_stages_for_type(campaign_type: str) -> List[Dict[str, Any]]:
+    """Дефолтный набор этапов воронки по типу кампании.
+
+    Для онлайн-ивента — свой короткий набор; для остальных типов
+    (game_jam, olympiad, league, ...) — полный «джемовый» набор.
+    """
+    if campaign_type == "online_event":
+        return [dict(s) for s in _DEFAULT_STAGES_ONLINE]
+    return [dict(s) for s in _DEFAULT_STAGES_GAME_JAM]
+
+
+def _seed_campaign_stages(db: Session, campaign: Campaign) -> None:
+    """Создаёт дефолтные этапы для новой кампании."""
+    for index, stage in enumerate(default_stages_for_type(campaign.type)):
+        db.add(
+            CampaignStage(
+                campaign_id=campaign.id,
+                key=stage["key"],
+                label=stage["label"],
+                position=(index + 1) * 10,
+                is_terminal=stage["is_terminal"],
+            )
+        )
+
+
+def _stage_to_response(stage: CampaignStage) -> CampaignStageResponse:
+    return CampaignStageResponse(
+        id=stage.id,
+        campaign_id=stage.campaign_id,
+        key=stage.key,
+        label=stage.label,
+        position=stage.position,
+        is_terminal=stage.is_terminal,
+    )
 
 
 def _slugify_campaign_value(label: str) -> str:
@@ -100,6 +169,7 @@ def _campaign_to_response(c: Campaign) -> CampaignResponse:
         responsible_full_name=c.responsible.full_name if c.responsible else None,
         status=c.status,
         mode=c.mode,
+        is_game_jam=bool(c.is_game_jam),
         created_at=c.created_at,
         updated_at=c.updated_at,
     )
@@ -276,10 +346,13 @@ async def create_campaign(
         responsible_id=payload.responsible_id,
         status=payload.status or "draft",
         mode=payload.mode or "city",
+        is_game_jam=bool(payload.is_game_jam),
     )
     db.add(c)
     db.commit()
     db.refresh(c)
+    _seed_campaign_stages(db, c)
+    db.commit()
     c = db.query(Campaign).options(joinedload(Campaign.responsible)).filter(Campaign.id == c.id).first()
     return _campaign_to_response(c)
 
@@ -457,7 +530,187 @@ async def remove_school_from_campaign(
     db.commit()
 
 
+# --- CampaignStage (произвольные этапы воронки) ---
+def _require_campaign(db: Session, campaign_id: int) -> Campaign:
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return campaign
+
+
+@router.get("/campaigns/{campaign_id}/stages", response_model=List[CampaignStageResponse])
+async def list_campaign_stages(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
+):
+    _require_campaign(db, campaign_id)
+    stages = (
+        db.query(CampaignStage)
+        .filter(CampaignStage.campaign_id == campaign_id)
+        .order_by(CampaignStage.position.asc(), CampaignStage.id.asc())
+        .all()
+    )
+    return [_stage_to_response(s) for s in stages]
+
+
+@router.post("/campaigns/{campaign_id}/stages", response_model=CampaignStageResponse, status_code=201)
+async def create_campaign_stage(
+    campaign_id: int,
+    payload: CampaignStageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    _require_campaign(db, campaign_id)
+    label = payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="Label is required")
+    existing_keys = {
+        row[0]
+        for row in db.query(CampaignStage.key).filter(CampaignStage.campaign_id == campaign_id).all()
+    }
+    key = _slugify_campaign_value(label)
+    if key in existing_keys:
+        key = f"{key[:27].strip('_')}_{uuid.uuid4().hex[:4]}"
+    max_position = (
+        db.query(func.max(CampaignStage.position))
+        .filter(CampaignStage.campaign_id == campaign_id)
+        .scalar()
+        or 0
+    )
+    stage = CampaignStage(
+        campaign_id=campaign_id,
+        key=key,
+        label=label,
+        position=max_position + 10,
+        is_terminal=False,
+    )
+    db.add(stage)
+    db.commit()
+    db.refresh(stage)
+    return _stage_to_response(stage)
+
+
+@router.patch("/campaigns/{campaign_id}/stages/{stage_id}", response_model=CampaignStageResponse)
+async def update_campaign_stage(
+    campaign_id: int,
+    stage_id: int,
+    payload: CampaignStageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    stage = (
+        db.query(CampaignStage)
+        .filter(CampaignStage.id == stage_id, CampaignStage.campaign_id == campaign_id)
+        .first()
+    )
+    if not stage:
+        raise HTTPException(status_code=404, detail="Campaign stage not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "label" in data and data["label"] is not None:
+        label = str(data["label"]).strip()
+        if not label:
+            raise HTTPException(status_code=400, detail="Label is required")
+        stage.label = label
+    if "position" in data and data["position"] is not None:
+        stage.position = int(data["position"])
+    if "is_terminal" in data and data["is_terminal"] is not None:
+        stage.is_terminal = bool(data["is_terminal"])
+    db.commit()
+    db.refresh(stage)
+    return _stage_to_response(stage)
+
+
+@router.post("/campaigns/{campaign_id}/stages/reorder", response_model=List[CampaignStageResponse])
+async def reorder_campaign_stages(
+    campaign_id: int,
+    payload: CampaignStageReorder,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    _require_campaign(db, campaign_id)
+    stages = db.query(CampaignStage).filter(CampaignStage.campaign_id == campaign_id).all()
+    by_id = {s.id: s for s in stages}
+    for index, stage_id in enumerate(payload.ordered_ids):
+        stage = by_id.get(stage_id)
+        if stage:
+            stage.position = (index + 1) * 10
+    db.commit()
+    ordered = (
+        db.query(CampaignStage)
+        .filter(CampaignStage.campaign_id == campaign_id)
+        .order_by(CampaignStage.position.asc(), CampaignStage.id.asc())
+        .all()
+    )
+    return [_stage_to_response(s) for s in ordered]
+
+
+@router.delete("/campaigns/{campaign_id}/stages/{stage_id}", status_code=204)
+async def delete_campaign_stage(
+    campaign_id: int,
+    stage_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    stage = (
+        db.query(CampaignStage)
+        .filter(CampaignStage.id == stage_id, CampaignStage.campaign_id == campaign_id)
+        .first()
+    )
+    if not stage:
+        raise HTTPException(status_code=404, detail="Campaign stage not found")
+    remaining = (
+        db.query(CampaignStage)
+        .filter(CampaignStage.campaign_id == campaign_id, CampaignStage.id != stage_id)
+        .order_by(CampaignStage.position.asc(), CampaignStage.id.asc())
+        .all()
+    )
+    if not remaining:
+        raise HTTPException(status_code=400, detail="Cannot delete the last stage")
+    target_key = remaining[0].key
+    db.query(SchoolCampaign).filter(
+        SchoolCampaign.campaign_id == campaign_id,
+        SchoolCampaign.stage == stage.key,
+    ).update({SchoolCampaign.stage: target_key}, synchronize_session=False)
+    db.delete(stage)
+    db.commit()
+    return None
+
+
 # --- CampaignEvent (джемы внутри кампании) ---
+_DEFAULT_JAM_STAGES = [
+    {"key": "registered", "label": "Зарегистрированы", "is_terminal": False},
+    {"key": "briefed", "label": "Прошли брифинг", "is_terminal": False},
+    {"key": "working", "label": "В процессе", "is_terminal": False},
+    {"key": "submitted", "label": "Сдали работу", "is_terminal": False},
+    {"key": "judged", "label": "Оценены", "is_terminal": False},
+    {"key": "completed", "label": "Завершили", "is_terminal": True},
+]
+
+
+def _seed_jam_stages(db: Session, event: CampaignEvent) -> None:
+    """Засевает дефолтные этапы для нового джема."""
+    for index, stage in enumerate(_DEFAULT_JAM_STAGES):
+        db.add(CampaignEventStage(
+            campaign_event_id=event.id,
+            key=stage["key"],
+            label=stage["label"],
+            position=(index + 1) * 10,
+            is_terminal=stage["is_terminal"],
+        ))
+
+
+def _jam_stage_to_response(s: CampaignEventStage) -> CampaignEventStageResponse:
+    return CampaignEventStageResponse(
+        id=s.id,
+        campaign_event_id=s.campaign_event_id,
+        key=s.key,
+        label=s.label,
+        position=s.position,
+        is_terminal=s.is_terminal,
+    )
+
+
 def _campaign_event_to_response(e: CampaignEvent) -> CampaignEventResponse:
     return CampaignEventResponse(
         id=e.id,
@@ -470,6 +723,7 @@ def _campaign_event_to_response(e: CampaignEvent) -> CampaignEventResponse:
         city=e.city,
         status=e.status,
         notes=e.notes,
+        host_b2b_school_id=e.host_b2b_school_id,
         created_at=e.created_at,
         updated_at=e.updated_at,
     )
@@ -513,10 +767,15 @@ async def create_campaign_event(
         city=payload.city,
         status=payload.status or "planned",
         notes=payload.notes,
+        host_b2b_school_id=payload.host_b2b_school_id,
     )
     db.add(event)
     db.commit()
     db.refresh(event)
+    # Засеваем этапы джема для Game Jam кампаний
+    if campaign.is_game_jam:
+        _seed_jam_stages(db, event)
+        db.commit()
     return _campaign_event_to_response(event)
 
 
@@ -555,6 +814,158 @@ async def patch_campaign_event(
     return await update_campaign_event(campaign_id, event_id, payload, db, current_user)
 
 
+# --- CampaignEventStage (этапы внутреннего канбана джема) ---
+
+@router.get("/campaigns/{campaign_id}/events/{event_id}/stages", response_model=List[CampaignEventStageResponse])
+async def list_jam_stages(
+    campaign_id: int,
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
+):
+    _require_campaign(db, campaign_id)
+    event = db.query(CampaignEvent).filter(
+        CampaignEvent.id == event_id, CampaignEvent.campaign_id == campaign_id
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Campaign event not found")
+    stages = (
+        db.query(CampaignEventStage)
+        .filter(CampaignEventStage.campaign_event_id == event_id)
+        .order_by(CampaignEventStage.position.asc(), CampaignEventStage.id.asc())
+        .all()
+    )
+    return [_jam_stage_to_response(s) for s in stages]
+
+
+@router.post("/campaigns/{campaign_id}/events/{event_id}/stages", response_model=CampaignEventStageResponse, status_code=201)
+async def create_jam_stage(
+    campaign_id: int,
+    event_id: int,
+    payload: CampaignEventStageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    _require_campaign(db, campaign_id)
+    event = db.query(CampaignEvent).filter(
+        CampaignEvent.id == event_id, CampaignEvent.campaign_id == campaign_id
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Campaign event not found")
+    label = payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="Label is required")
+    existing_keys = {
+        row[0] for row in
+        db.query(CampaignEventStage.key).filter(CampaignEventStage.campaign_event_id == event_id).all()
+    }
+    key = _slugify_campaign_value(label)
+    if key in existing_keys:
+        key = f"{key[:27].strip('_')}_{uuid.uuid4().hex[:4]}"
+    max_pos = (
+        db.query(func.max(CampaignEventStage.position))
+        .filter(CampaignEventStage.campaign_event_id == event_id)
+        .scalar() or 0
+    )
+    stage = CampaignEventStage(
+        campaign_event_id=event_id,
+        key=key, label=label,
+        position=max_pos + 10,
+        is_terminal=False,
+    )
+    db.add(stage)
+    db.commit()
+    db.refresh(stage)
+    return _jam_stage_to_response(stage)
+
+
+@router.patch("/campaigns/{campaign_id}/events/{event_id}/stages/{stage_id}", response_model=CampaignEventStageResponse)
+async def update_jam_stage(
+    campaign_id: int,
+    event_id: int,
+    stage_id: int,
+    payload: CampaignEventStageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    stage = db.query(CampaignEventStage).filter(
+        CampaignEventStage.id == stage_id,
+        CampaignEventStage.campaign_event_id == event_id,
+    ).first()
+    if not stage:
+        raise HTTPException(status_code=404, detail="Jam stage not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "label" in data and data["label"] is not None:
+        label = str(data["label"]).strip()
+        if not label:
+            raise HTTPException(status_code=400, detail="Label is required")
+        stage.label = label
+    if "position" in data and data["position"] is not None:
+        stage.position = int(data["position"])
+    if "is_terminal" in data and data["is_terminal"] is not None:
+        stage.is_terminal = bool(data["is_terminal"])
+    db.commit()
+    db.refresh(stage)
+    return _jam_stage_to_response(stage)
+
+
+@router.post("/campaigns/{campaign_id}/events/{event_id}/stages/reorder", response_model=List[CampaignEventStageResponse])
+async def reorder_jam_stages(
+    campaign_id: int,
+    event_id: int,
+    payload: CampaignEventStageReorder,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    _require_campaign(db, campaign_id)
+    stages = db.query(CampaignEventStage).filter(CampaignEventStage.campaign_event_id == event_id).all()
+    by_id = {s.id: s for s in stages}
+    for index, sid in enumerate(payload.ordered_ids):
+        s = by_id.get(sid)
+        if s:
+            s.position = (index + 1) * 10
+    db.commit()
+    ordered = (
+        db.query(CampaignEventStage)
+        .filter(CampaignEventStage.campaign_event_id == event_id)
+        .order_by(CampaignEventStage.position.asc(), CampaignEventStage.id.asc())
+        .all()
+    )
+    return [_jam_stage_to_response(s) for s in ordered]
+
+
+@router.delete("/campaigns/{campaign_id}/events/{event_id}/stages/{stage_id}", status_code=204)
+async def delete_jam_stage(
+    campaign_id: int,
+    event_id: int,
+    stage_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    stage = db.query(CampaignEventStage).filter(
+        CampaignEventStage.id == stage_id,
+        CampaignEventStage.campaign_event_id == event_id,
+    ).first()
+    if not stage:
+        raise HTTPException(status_code=404, detail="Jam stage not found")
+    remaining = (
+        db.query(CampaignEventStage)
+        .filter(CampaignEventStage.campaign_event_id == event_id, CampaignEventStage.id != stage_id)
+        .order_by(CampaignEventStage.position.asc(), CampaignEventStage.id.asc())
+        .all()
+    )
+    if not remaining:
+        raise HTTPException(status_code=400, detail="Cannot delete the last jam stage")
+    target_key = remaining[0].key
+    db.query(SchoolCampaignEvent).filter(
+        SchoolCampaignEvent.campaign_event_id == event_id,
+        SchoolCampaignEvent.jam_stage == stage.key,
+    ).update({SchoolCampaignEvent.jam_stage: target_key}, synchronize_session=False)
+    db.delete(stage)
+    db.commit()
+    return None
+
+
 # --- SchoolCampaignEvent (матрица и детали по джему) ---
 def _sce_to_response(sce: SchoolCampaignEvent) -> SchoolCampaignEventResponse:
     return SchoolCampaignEventResponse(
@@ -565,6 +976,7 @@ def _sce_to_response(sce: SchoolCampaignEvent) -> SchoolCampaignEventResponse:
         participation_status=sce.participation_status,
         participant_count=sce.participant_count,
         host_status=sce.host_status,
+        jam_stage=sce.jam_stage,
         notes=sce.notes,
         created_at=sce.created_at,
         updated_at=sce.updated_at,
@@ -634,7 +1046,6 @@ async def get_campaign_school_event_counts(
     event_ids = [row[0] for row in db.query(CampaignEvent.id).filter(CampaignEvent.campaign_id == campaign_id).all()]
     if not event_ids:
         return {str(sid): {"events_invited_count": 0, "events_participated_count": 0, "events_hosted_count": 0} for sid in sc_ids}
-    from sqlalchemy import func
     invited = (
         db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
         .filter(
@@ -722,11 +1133,31 @@ async def list_event_schools(
                 "participation_status": sce.participation_status if sce else "not_planned",
                 "participant_count": sce.participant_count if sce else None,
                 "host_status": sce.host_status if sce else "not_host",
+                "jam_stage": sce.jam_stage if sce else None,
                 "notes": sce.notes if sce else None,
                 "school_campaign_event_id": sce.id if sce else None,
             }
         )
     return result
+
+
+@router.patch(
+    "/campaigns/{campaign_id}/events/{event_id}/schools/{school_campaign_id}",
+    response_model=SchoolCampaignEventResponse,
+)
+async def patch_school_campaign_event(
+    campaign_id: int,
+    event_id: int,
+    school_campaign_id: int,
+    payload: SchoolCampaignEventUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    """Частичное обновление записи школы в джеме (jam_stage и другие поля)."""
+    return await upsert_school_campaign_event(
+        campaign_id, event_id, school_campaign_id, payload,
+        False, False, False, db, current_user,
+    )
 
 
 @router.put(
@@ -775,11 +1206,21 @@ async def upsert_school_campaign_event(
         for k, v in data.items():
             setattr(sce, k, v)
     else:
-        defaults = {
+        defaults: Dict[str, Any] = {
             "invite_status": "not_invited",
             "participation_status": "not_planned",
             "host_status": "not_host",
         }
+        # Для Game Jam кампаний: ставим первый этап джема по умолчанию
+        if campaign.is_game_jam and "jam_stage" not in data:
+            first_stage = (
+                db.query(CampaignEventStage)
+                .filter(CampaignEventStage.campaign_event_id == event_id)
+                .order_by(CampaignEventStage.position.asc(), CampaignEventStage.id.asc())
+                .first()
+            )
+            if first_stage:
+                defaults["jam_stage"] = first_stage.key
         defaults.update(data)
         sce = SchoolCampaignEvent(
             campaign_event_id=event_id,

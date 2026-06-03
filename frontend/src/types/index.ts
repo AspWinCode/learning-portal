@@ -1110,8 +1110,27 @@ export interface Campaign {
   responsible_full_name?: string | null;
   status: string;
   mode: string;
+  is_game_jam: boolean;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface CampaignStage {
+  id: number;
+  campaign_id: number;
+  key: string;
+  label: string;
+  position: number;
+  is_terminal: boolean;
+}
+
+export interface CampaignEventStage {
+  id: number;
+  campaign_event_id: number;
+  key: string;
+  label: string;
+  position: number;
+  is_terminal: boolean;
 }
 
 export interface CampaignDictionaryItem {
@@ -1155,6 +1174,7 @@ export interface CampaignEvent {
   city?: string | null;
   status: string;
   notes?: string | null;
+  host_b2b_school_id?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

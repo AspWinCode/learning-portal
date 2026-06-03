@@ -45,23 +45,24 @@ async def create_grade(
     auth.ensure_permission(current_user, "grades.manage")
     if _grades_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can create grades")
-    
-    # Проверка, что тренер имеет доступ к ученику
+
+    # 1. Студент существует?
+    student = db.query(Student).filter(Student.id == grade.student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # 2. Тренер имеет доступ к ученику (состоит в одной группе)?
     has_access = db.query(GroupStudent).join(Group).filter(
         GroupStudent.student_id == grade.student_id,
         Group.trainer_id == current_user.id
     ).first()
-    
     if not has_access:
         raise HTTPException(status_code=403, detail="No access to this student")
 
-    student = db.query(Student).filter(Student.id == grade.student_id).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
     if student.status != StudentStatus.ACTIVE:
         raise HTTPException(status_code=400, detail="Cannot grade archived student")
-    
-    # Проверка темы
+
+    # 3. Тема существует?
     topic = db.query(Topic).filter(Topic.id == grade.topic_id).first()
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")

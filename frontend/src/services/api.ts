@@ -2480,6 +2480,7 @@ export const campaignsApi = {
     responsible_id?: number | null;
     status?: string;
     mode?: string;
+    is_game_jam?: boolean;
   }): Promise<import('../types').Campaign> => {
     const response = await api.post('/api/campaigns', payload);
     return response.data;
@@ -2504,6 +2505,54 @@ export const campaignsApi = {
   },
   delete: async (id: number): Promise<void> => {
     await api.delete(`/api/campaigns/${id}`);
+  },
+  listStages: async (campaignId: number): Promise<import('../types').CampaignStage[]> => {
+    const response = await api.get(`/api/campaigns/${campaignId}/stages`);
+    return response.data;
+  },
+  createStage: async (campaignId: number, label: string): Promise<import('../types').CampaignStage> => {
+    const response = await api.post(`/api/campaigns/${campaignId}/stages`, { label });
+    return response.data;
+  },
+  updateStage: async (
+    campaignId: number,
+    stageId: number,
+    payload: Partial<{ label: string; position: number; is_terminal: boolean }>
+  ): Promise<import('../types').CampaignStage> => {
+    const response = await api.patch(`/api/campaigns/${campaignId}/stages/${stageId}`, payload);
+    return response.data;
+  },
+  deleteStage: async (campaignId: number, stageId: number): Promise<void> => {
+    await api.delete(`/api/campaigns/${campaignId}/stages/${stageId}`);
+  },
+  reorderStages: async (campaignId: number, orderedIds: number[]): Promise<import('../types').CampaignStage[]> => {
+    const response = await api.post(`/api/campaigns/${campaignId}/stages/reorder`, { ordered_ids: orderedIds });
+    return response.data;
+  },
+  // Jam stage endpoints (внутренние этапы джема)
+  listJamStages: async (campaignId: number, eventId: number): Promise<import('../types').CampaignEventStage[]> => {
+    const response = await api.get(`/api/campaigns/${campaignId}/events/${eventId}/stages`);
+    return response.data;
+  },
+  createJamStage: async (campaignId: number, eventId: number, label: string): Promise<import('../types').CampaignEventStage> => {
+    const response = await api.post(`/api/campaigns/${campaignId}/events/${eventId}/stages`, { label });
+    return response.data;
+  },
+  updateJamStage: async (
+    campaignId: number, eventId: number, stageId: number,
+    payload: Partial<{ label: string; position: number; is_terminal: boolean }>
+  ): Promise<import('../types').CampaignEventStage> => {
+    const response = await api.patch(`/api/campaigns/${campaignId}/events/${eventId}/stages/${stageId}`, payload);
+    return response.data;
+  },
+  deleteJamStage: async (campaignId: number, eventId: number, stageId: number): Promise<void> => {
+    await api.delete(`/api/campaigns/${campaignId}/events/${eventId}/stages/${stageId}`);
+  },
+  updateSchoolJamStage: async (
+    campaignId: number, eventId: number, scId: number, jamStage: string
+  ): Promise<import('../types').SchoolCampaignEvent> => {
+    const response = await api.patch(`/api/campaigns/${campaignId}/events/${eventId}/schools/${scId}`, { jam_stage: jamStage });
+    return response.data;
   },
   listSchoolCampaigns: async (campaignId: number): Promise<import('../types').SchoolCampaign[]> => {
     const response = await api.get(`/api/campaigns/${campaignId}/school-campaigns`);

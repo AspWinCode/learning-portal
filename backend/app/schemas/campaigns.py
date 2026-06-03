@@ -15,6 +15,7 @@ class CampaignBase(BaseModel):
     responsible_id: Optional[int] = None
     status: Optional[str] = "draft"
     mode: Optional[str] = "city"
+    is_game_jam: Optional[bool] = False
 
 
 class CampaignCreate(CampaignBase):
@@ -32,6 +33,7 @@ class CampaignUpdate(BaseModel):
     responsible_id: Optional[int] = None
     status: Optional[str] = None
     mode: Optional[str] = None
+    is_game_jam: Optional[bool] = None
 
 
 class CampaignResponse(BaseModel):
@@ -47,6 +49,7 @@ class CampaignResponse(BaseModel):
     responsible_full_name: Optional[str] = None
     status: str
     mode: str
+    is_game_jam: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -80,6 +83,31 @@ class CampaignSettingsResponse(BaseModel):
     scales: List[CampaignDictionaryItemResponse]
     cities: List[str]
     regions: List[str]
+
+
+class CampaignStageCreate(BaseModel):
+    label: str
+
+
+class CampaignStageUpdate(BaseModel):
+    label: Optional[str] = None
+    position: Optional[int] = None
+    is_terminal: Optional[bool] = None
+
+
+class CampaignStageReorder(BaseModel):
+    ordered_ids: List[int]
+
+
+class CampaignStageResponse(BaseModel):
+    id: int
+    campaign_id: int
+    key: str
+    label: str
+    position: int
+    is_terminal: bool
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SchoolCampaignBase(BaseModel):
@@ -117,6 +145,31 @@ class SchoolCampaignResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CampaignEventStageCreate(BaseModel):
+    label: str
+
+
+class CampaignEventStageUpdate(BaseModel):
+    label: Optional[str] = None
+    position: Optional[int] = None
+    is_terminal: Optional[bool] = None
+
+
+class CampaignEventStageReorder(BaseModel):
+    ordered_ids: List[int]
+
+
+class CampaignEventStageResponse(BaseModel):
+    id: int
+    campaign_event_id: int
+    key: str
+    label: str
+    position: int
+    is_terminal: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CampaignEventCreate(BaseModel):
     title: str
     event_date: date
@@ -126,6 +179,7 @@ class CampaignEventCreate(BaseModel):
     city: Optional[str] = None
     status: Optional[str] = "planned"
     notes: Optional[str] = None
+    host_b2b_school_id: Optional[int] = None
 
 
 class CampaignEventUpdate(BaseModel):
@@ -137,6 +191,7 @@ class CampaignEventUpdate(BaseModel):
     city: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    host_b2b_school_id: Optional[int] = None
 
 
 class CampaignEventResponse(BaseModel):
@@ -150,6 +205,7 @@ class CampaignEventResponse(BaseModel):
     city: Optional[str] = None
     status: str
     notes: Optional[str] = None
+    host_b2b_school_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -161,6 +217,7 @@ class SchoolCampaignEventUpdate(BaseModel):
     participation_status: Optional[str] = None
     host_status: Optional[str] = None
     participant_count: Optional[int] = None
+    jam_stage: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -172,6 +229,7 @@ class SchoolCampaignEventResponse(BaseModel):
     participation_status: str
     participant_count: Optional[int] = None
     host_status: str
+    jam_stage: Optional[str] = None
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

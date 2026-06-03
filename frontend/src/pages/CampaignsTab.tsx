@@ -51,7 +51,7 @@ import {
 import History from '@mui/icons-material/History';
 import SettingsOutlined from '@mui/icons-material/SettingsOutlined';
 import { useAuth } from '../contexts/AuthContext';
-import { b2bApi, campaignsApi } from '../services/api';
+import { b2bApi, campaignsApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
 import type { Campaign, CampaignSettings, CampaignStage, SchoolCampaign } from '../types';
@@ -63,6 +63,8 @@ import {
 } from '../constants/campaignStages';
 import { getInviteLabel, getParticipationLabel, getHostLabel } from '../constants/campaignEventStages';
 import { GameJamKanban } from './GameJamKanban';
+
+type AvailableCampaignSchool = { id: number; name: string; city: string | null; district?: string | null };
 
 // ---------------------------------------------------------------------------
 // Канбан-колонка (Droppable) для обычного канбана
@@ -345,9 +347,14 @@ export const CampaignsTab: React.FC = () => {
 
   // --- add schools dialog ---
   const [addSchoolsOpen, setAddSchoolsOpen] = useState(false);
-  const [availableSchools, setAvailableSchools] = useState<{ id: number; name: string; city: string | null }[]>([]);
-  const [addSchoolCity, setAddSchoolCity] = useState('');
+  const [availableSchools, setAvailableSchools] = useState<AvailableCampaignSchool[]>([]);
+  const [schoolFilterCities, setSchoolFilterCities] = useState<string[]>([]);
+  const [schoolFilterDistricts, setSchoolFilterDistricts] = useState<string[]>([]);
+  const [selectedSchoolCities, setSelectedSchoolCities] = useState<string[]>([]);
+  const [selectedSchoolDistricts, setSelectedSchoolDistricts] = useState<string[]>([]);
+  const [schoolSearch, setSchoolSearch] = useState('');
   const [selectedSchoolIds, setSelectedSchoolIds] = useState<number[]>([]);
+  const [addSchoolsLoading, setAddSchoolsLoading] = useState(false);
   const [createContactTask, setCreateContactTask] = useState(true);
 
   // --- archive / history ---
@@ -421,6 +428,42 @@ export const CampaignsTab: React.FC = () => {
       }).catch(() => {});
     }
   }, [createOpen]);
+
+  useEffect(() => {
+    if (!addSchoolsOpen) return;
+    let cancelled = false;
+    Promise.all([
+      b2bApi.listCities(),
+      settingsApi.getB2BDistricts(),
+    ]).then(([cities, districts]) => {
+      if (cancelled) return;
+      setSchoolFilterCities(cities);
+      setSchoolFilterDistricts(districts.items);
+    }).catch((err: any) => {
+      if (!cancelled) setError(extractApiError(err, 'Не удалось загрузить фильтры школ'));
+    });
+    return () => { cancelled = true; };
+  }, [addSchoolsOpen]);
+
+  useEffect(() => {
+    if (!addSchoolsOpen || !selectedCampaignId) return;
+    let cancelled = false;
+    setAddSchoolsLoading(true);
+    campaignsApi.listSchoolsAvailable(selectedCampaignId, {
+      cities: selectedSchoolCities,
+      districts: selectedSchoolDistricts,
+      search: schoolSearch.trim() || undefined,
+    }).then((rows) => {
+      if (cancelled) return;
+      setAvailableSchools(rows);
+      setSelectedSchoolIds((prev) => prev.filter((id) => rows.some((school) => school.id === id)));
+    }).catch((err: any) => {
+      if (!cancelled) setError(extractApiError(err, 'Не удалось загрузить список школ'));
+    }).finally(() => {
+      if (!cancelled) setAddSchoolsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [addSchoolsOpen, selectedCampaignId, selectedSchoolCities, selectedSchoolDistricts, schoolSearch]);
 
   // Load campaign detail + school-campaigns + stages when selecting a campaign
   useEffect(() => {
@@ -533,27 +576,43 @@ export const CampaignsTab: React.FC = () => {
 
   const openAddSchools = () => {
     if (!selectedCampaignId) return;
-    setAddSchoolCity('');
+    setSelectedSchoolCities([]);
+    setSelectedSchoolDistricts([]);
+    setSchoolSearch('');
     setSelectedSchoolIds([]);
-    campaignsApi.listSchoolsAvailable(selectedCampaignId).then(setAvailableSchools).catch(() => setAvailableSchools([]));
     setAddSchoolsOpen(true);
   };
 
-  const loadAvailableByCity = () => {
-    if (!selectedCampaignId) return;
-    campaignsApi.listSchoolsAvailable(selectedCampaignId, { city: addSchoolCity || undefined })
-      .then(setAvailableSchools).catch(() => setAvailableSchools([]));
+  const toggleSchoolSelection = (schoolId: number) => {
+    setSelectedSchoolIds((prev) => (
+      prev.includes(schoolId) ? prev.filter((id) => id !== schoolId) : [...prev, schoolId]
+    ));
+  };
+
+  const toggleAllFilteredSchools = () => {
+    const visibleIds = availableSchools.map((school) => school.id);
+    const selectedVisibleCount = visibleIds.filter((id) => selectedSchoolIds.includes(id)).length;
+    setSelectedSchoolIds((prev) => {
+      if (selectedVisibleCount === visibleIds.length) {
+        return prev.filter((id) => !visibleIds.includes(id));
+      }
+      return Array.from(new Set([...prev, ...visibleIds]));
+    });
   };
 
   const handleAddSchools = async () => {
     if (!selectedCampaignId || selectedSchoolIds.length === 0) return;
     setError(null);
+    setAddSchoolsLoading(true);
     try {
       await campaignsApi.addSchools(selectedCampaignId, { school_ids: selectedSchoolIds, create_contact_task: createContactTask });
       setAddSchoolsOpen(false);
+      setSelectedSchoolIds([]);
       setSchoolCampaigns(await campaignsApi.listSchoolCampaigns(selectedCampaignId));
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось добавить школы'));
+    } finally {
+      setAddSchoolsLoading(false);
     }
   };
 
@@ -593,6 +652,9 @@ export const CampaignsTab: React.FC = () => {
   const activeCampaigns = useMemo(() => campaigns.filter((c) => c.status === 'draft' || c.status === 'active'), [campaigns]);
   const archivedCampaigns = useMemo(() => campaigns.filter((c) => c.status === 'done' || c.status === 'canceled'), [campaigns]);
   const visibleCampaigns = showArchived ? archivedCampaigns : activeCampaigns;
+  const allFilteredSchoolsSelected = availableSchools.length > 0
+    && availableSchools.every((school) => selectedSchoolIds.includes(school.id));
+  const someFilteredSchoolsSelected = availableSchools.some((school) => selectedSchoolIds.includes(school.id));
 
   // ---------------------------------------------------------------------------
   // Render
@@ -872,29 +934,83 @@ export const CampaignsTab: React.FC = () => {
       </Dialog>
 
       {/* ---- Диалог добавления школ ---- */}
-      <Dialog open={addSchoolsOpen} onClose={() => setAddSchoolsOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={addSchoolsOpen} onClose={() => setAddSchoolsOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Добавить школы в кампанию</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+              <Autocomplete
+                multiple
+                disableCloseOnSelect
+                options={schoolFilterCities}
+                value={selectedSchoolCities}
+                onChange={(_, value) => setSelectedSchoolCities(value)}
+                renderInput={(params) => <TextField {...params} label="Города" />}
+                sx={{ flex: 1 }}
+              />
+              <Autocomplete
+                multiple
+                disableCloseOnSelect
+                options={schoolFilterDistricts}
+                value={selectedSchoolDistricts}
+                onChange={(_, value) => setSelectedSchoolDistricts(value)}
+                renderInput={(params) => <TextField {...params} label="Районы" />}
+                sx={{ flex: 1 }}
+              />
+            </Stack>
             <TextField
-              label="Фильтр по городу" value={addSchoolCity} fullWidth size="small"
-              onChange={(e) => setAddSchoolCity(e.target.value)}
-              onBlur={loadAvailableByCity}
+              label="Поиск по названию"
+              value={schoolSearch}
+              onChange={(e) => setSchoolSearch(e.target.value)}
+              fullWidth
             />
-            <Button size="small" variant="outlined" onClick={loadAvailableByCity}>Показать школы</Button>
-            <Typography variant="body2" color="text.secondary">
-              Выберите школы (уже добавленные не показываются). При добавлении можно создать задачу «Связаться со школой».
-            </Typography>
-            <FormControl fullWidth>
-              <InputLabel>Школы</InputLabel>
-              <Select multiple label="Школы" value={selectedSchoolIds}
-                onChange={(e) => setSelectedSchoolIds(e.target.value as number[])}
-                renderValue={(ids) => `${ids.length} выбрано`}>
-                {availableSchools.map((s) => (
-                  <MenuItem key={s.id} value={s.id}>{s.name} {s.city ? `(${s.city})` : ''}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Stack direction="row" alignItems="center" gap={1}>
+              <Checkbox
+                checked={allFilteredSchoolsSelected}
+                indeterminate={!allFilteredSchoolsSelected && someFilteredSchoolsSelected}
+                onChange={toggleAllFilteredSchools}
+                disabled={availableSchools.length === 0}
+              />
+              <Typography variant="body2" sx={{ flex: 1 }}>
+                Выбрать все отфильтрованные
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {selectedSchoolIds.length} из {availableSchools.length}
+              </Typography>
+            </Stack>
+            <Divider />
+            <Stack spacing={0.5} sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5 }}>
+              {availableSchools.map((school) => (
+                <Stack
+                  key={school.id}
+                  direction="row"
+                  alignItems="center"
+                  gap={1}
+                  sx={{ py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}
+                >
+                  <Checkbox
+                    checked={selectedSchoolIds.includes(school.id)}
+                    onChange={() => toggleSchoolSelection(school.id)}
+                  />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{school.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {[school.city, school.district].filter(Boolean).join(' · ') || 'Город не указан'}
+                    </Typography>
+                  </Box>
+                </Stack>
+              ))}
+              {!addSchoolsLoading && availableSchools.length === 0 && (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+                  Нет школ по выбранным фильтрам
+                </Typography>
+              )}
+              {addSchoolsLoading && (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+                  Загрузка...
+                </Typography>
+              )}
+            </Stack>
             <FormControlLabel
               control={<Checkbox checked={createContactTask} onChange={(e) => setCreateContactTask(e.target.checked)} />}
               label="Создать задачу «Связаться со школой» для каждой"
@@ -903,7 +1019,7 @@ export const CampaignsTab: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddSchoolsOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={handleAddSchools} disabled={selectedSchoolIds.length === 0}>Добавить</Button>
+          <Button variant="contained" onClick={handleAddSchools} disabled={selectedSchoolIds.length === 0 || addSchoolsLoading}>Добавить</Button>
         </DialogActions>
       </Dialog>
 

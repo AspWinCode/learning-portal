@@ -59,6 +59,7 @@ from app.models import (
     OwnerWorkspaceNotification,
     OwnerWorkspaceProject,
     OwnerWorkspaceProjectContact,
+    OwnerWorkspaceProjectDocument,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
     OwnerWorkspaceTaskComment,
@@ -95,6 +96,7 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceUserPreferencesResponse,
     OwnerWorkspaceProjectContactAdd,
     OwnerWorkspaceProjectCreate,
+    OwnerWorkspaceProjectDocumentResponse,
     OwnerWorkspaceProjectParticipantAdd,
     OwnerWorkspaceProjectParticipantRolePatch,
     OwnerWorkspaceProjectResponse,
@@ -270,7 +272,7 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
     ).all()
     active_tasks_count = db.query(OwnerWorkspaceTask).filter(
         OwnerWorkspaceTask.project_id == project.id,
-        OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
+        OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting", "on_review"]),
     ).count()
     total_tasks_count = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.project_id == project.id).count()
     completed_tasks_count = db.query(OwnerWorkspaceTask).filter(
@@ -282,7 +284,7 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
         OwnerWorkspaceTask.project_id == project.id,
         OwnerWorkspaceTask.deadline_at.isnot(None),
         OwnerWorkspaceTask.deadline_at < now,
-        OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
+        OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting", "on_review"]),
     ).count()
     contacts_count = db.query(OwnerWorkspaceProjectContact).filter(
         OwnerWorkspaceProjectContact.project_id == project.id
@@ -290,14 +292,41 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
     subprojects_count = db.query(OwnerWorkspaceProject).filter(
         OwnerWorkspaceProject.parent_project_id == project.id
     ).count()
+    documents_count = db.query(OwnerWorkspaceProjectDocument).filter(
+        OwnerWorkspaceProjectDocument.project_id == project.id
+    ).count()
     role_by_uid = {int(p.user_id): (p.role or "member").strip().lower() or "member" for p in participants}
+    # Resolve counterparty name
+    counterparty_name: Optional[str] = None
+    counterparty_id = getattr(project, "counterparty_id", None)
+    if counterparty_id:
+        cp = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == counterparty_id).first()
+        if cp:
+            counterparty_name = cp.full_name
+    # Resolve parent project name
+    parent_project_name: Optional[str] = None
+    if project.parent_project_id:
+        pp = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project.parent_project_id).first()
+        if pp:
+            parent_project_name = pp.name
+    # Resolve owner name
+    owner_name: Optional[str] = None
+    if project.owner_id:
+        owner = db.query(User).filter(User.id == project.owner_id).first()
+        if owner:
+            owner_name = owner.full_name
     return OwnerWorkspaceProjectResponse(
         id=project.id,
         name=project.name,
         description=project.description,
         status=project.status,
         owner_id=project.owner_id,
+        owner_name=owner_name,
         parent_project_id=project.parent_project_id,
+        parent_project_name=parent_project_name,
+        counterparty_id=counterparty_id,
+        counterparty_name=counterparty_name,
+        deadline_at=getattr(project, "deadline_at", None),
         participants=[p.user_id for p in participants],
         participant_roles=role_by_uid,
         active_tasks_count=active_tasks_count,
@@ -306,6 +335,7 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
         overdue_tasks_count=overdue_tasks_count,
         contacts_count=contacts_count,
         subprojects_count=subprojects_count,
+        documents_count=documents_count,
         created_at=project.created_at,
         updated_at=project.updated_at,
         archived_at=project.archived_at,
@@ -387,8 +417,12 @@ def _contact_to_response(
         message_max_by_id=message_max_by_id,
         task_max_by_id=task_max_by_id,
     )
+    projects_count = db.query(OwnerWorkspaceProject).filter(
+        OwnerWorkspaceProject.counterparty_id == contact.id
+    ).count()
     return OwnerWorkspaceContactResponse(
         id=contact.id,
+        type=getattr(contact, "type", "company") or "company",
         full_name=contact.full_name,
         phone=contact.phone,
         email=contact.email,
@@ -399,9 +433,11 @@ def _contact_to_response(
         source=contact.source,
         linked_project_ids=[x.project_id for x in linked],
         active_tasks_count=active_tasks_count,
+        projects_count=projects_count,
         last_interaction_at=last_interaction_at,
         created_at=contact.created_at,
         updated_at=contact.updated_at,
+        is_archived=getattr(contact, "is_archived", False),
     )
 
 
@@ -461,6 +497,7 @@ def _counterparty_to_response(
     }
     return OwnerWorkspaceCounterpartyResponse(
         id=base.id,
+        type=getattr(contact, "type", "company") or "company",
         full_name=base.full_name,
         phone=base.phone,
         email=base.email,
@@ -471,6 +508,7 @@ def _counterparty_to_response(
         source=base.source,
         linked_project_ids=base.linked_project_ids,
         active_tasks_count=base.active_tasks_count,
+        projects_count=base.projects_count,
         last_interaction_at=base.last_interaction_at,
         custom_fields=_normalize_custom_fields(contact.custom_fields),
         documents=[
@@ -537,6 +575,7 @@ def _message_to_response(db: Session, message: OwnerWorkspaceMessage) -> OwnerWo
 async def list_projects(
     status_filter: Optional[str] = Query(None),
     parent_project_id: Optional[int] = Query(None),
+    counterparty_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     owner_id: Optional[int] = Query(None),
     has_overdue_tasks: bool = Query(False),
@@ -548,6 +587,8 @@ async def list_projects(
         q = q.filter(OwnerWorkspaceProject.status == status_filter)
     if parent_project_id is not None:
         q = q.filter(OwnerWorkspaceProject.parent_project_id == parent_project_id)
+    if counterparty_id is not None:
+        q = q.filter(OwnerWorkspaceProject.counterparty_id == counterparty_id)
     if owner_id is not None:
         q = q.filter(OwnerWorkspaceProject.owner_id == owner_id)
     if has_overdue_tasks:
@@ -585,9 +626,11 @@ async def create_project(
     row = OwnerWorkspaceProject(
         name=payload.name.strip(),
         description=(payload.description or "").strip() or None,
-        status=payload.status or "active",
+        status=payload.status or "new",
         owner_id=payload.owner_id or ctx.user.id,
         parent_project_id=payload.parent_project_id,
+        counterparty_id=getattr(payload, "counterparty_id", None),
+        deadline_at=getattr(payload, "deadline_at", None),
     )
     db.add(row)
     db.flush()
@@ -857,6 +900,141 @@ async def remove_contact_from_project(
     return None
 
 
+# ── Project Documents ──────────────────────────────────────────────────────
+
+@router.get("/projects/{project_id}/documents", response_model=List[OwnerWorkspaceProjectDocumentResponse])
+async def list_project_documents(
+    project_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    rows = (
+        db.query(OwnerWorkspaceProjectDocument)
+        .filter(OwnerWorkspaceProjectDocument.project_id == project_id)
+        .order_by(OwnerWorkspaceProjectDocument.created_at.desc())
+        .all()
+    )
+    result = []
+    for r in rows:
+        uploader_name: Optional[str] = None
+        if r.uploaded_by_id:
+            u = db.query(User).filter(User.id == r.uploaded_by_id).first()
+            uploader_name = u.full_name if u else None
+        result.append(OwnerWorkspaceProjectDocumentResponse(
+            id=r.id,
+            project_id=r.project_id,
+            filename=r.filename,
+            content_type=r.content_type,
+            size_bytes=r.size_bytes,
+            uploaded_by_id=r.uploaded_by_id,
+            uploaded_by_name=uploader_name,
+            created_at=r.created_at,
+        ))
+    return result
+
+
+@router.post("/projects/{project_id}/documents", response_model=OwnerWorkspaceProjectDocumentResponse, status_code=status.HTTP_201_CREATED)
+async def upload_project_document(
+    project_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_edit_project_content(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    data = await file.read()
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Файл слишком большой (максимум 50 МБ)")
+    row = OwnerWorkspaceProjectDocument(
+        project_id=project_id,
+        filename=file.filename or "document",
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=len(data),
+        data=data,
+        uploaded_by_id=ctx.user.id,
+    )
+    db.add(row)
+    _log_audit(
+        db,
+        entity_type="project",
+        entity_id=project_id,
+        action_type="document_upload",
+        author_id=ctx.user.id,
+        new_value={"filename": row.filename, "size_bytes": row.size_bytes},
+    )
+    db.commit()
+    db.refresh(row)
+    return OwnerWorkspaceProjectDocumentResponse(
+        id=row.id,
+        project_id=row.project_id,
+        filename=row.filename,
+        content_type=row.content_type,
+        size_bytes=row.size_bytes,
+        uploaded_by_id=row.uploaded_by_id,
+        uploaded_by_name=ctx.user.full_name,
+        created_at=row.created_at,
+    )
+
+
+@router.get("/projects/{project_id}/documents/{document_id}/download")
+async def download_project_document(
+    project_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    row = db.query(OwnerWorkspaceProjectDocument).filter(
+        OwnerWorkspaceProjectDocument.id == document_id,
+        OwnerWorkspaceProjectDocument.project_id == project_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    from urllib.parse import quote
+    encoded = quote(row.filename, safe="")
+    return StreamingResponse(
+        BytesIO(row.data),
+        media_type=row.content_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"},
+    )
+
+
+@router.delete("/projects/{project_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project_document(
+    project_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_edit_project_content(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    row = db.query(OwnerWorkspaceProjectDocument).filter(
+        OwnerWorkspaceProjectDocument.id == document_id,
+        OwnerWorkspaceProjectDocument.project_id == project_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    filename = row.filename
+    db.delete(row)
+    _log_audit(
+        db,
+        entity_type="project",
+        entity_id=project_id,
+        action_type="document_delete",
+        author_id=ctx.user.id,
+        old_value={"filename": filename},
+    )
+    db.commit()
+    return None
+
+
 @router.get("/contacts", response_model=List[OwnerWorkspaceContactResponse])
 async def list_contacts(
     search: Optional[str] = Query(None),
@@ -1095,6 +1273,7 @@ async def create_counterparty(
     if not ctx.full and not permission_policy["limited_can_create_contacts"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     row = OwnerWorkspaceContact(
+        type=getattr(payload, "type", "company") or "company",
         full_name=payload.full_name.strip(),
         phone=(payload.phone or "").strip() or None,
         email=payload.email,

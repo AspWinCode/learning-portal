@@ -63,6 +63,8 @@ const ProjectsPage = React.lazy(() => import('./pages/ProjectsPage'));
 const ProjectKanbanPage = React.lazy(() => import('./pages/ProjectKanbanPage'));
 const OwnerWorkspacePage = React.lazy(() => import('./pages/OwnerWorkspacePage'));
 const OwnerCounterpartiesPage = React.lazy(() => import('./pages/OwnerCounterpartiesPage'));
+const CounterpartyDetailPage = React.lazy(() => import('./pages/CounterpartyDetailPage'));
+const ProjectDetailPage = React.lazy(() => import('./pages/ProjectDetailPage'));
 const PersonalFinancePage = React.lazy(() => import('./pages/PersonalFinancePage'));
 const FinanceHubPage = React.lazy(() => import('./pages/FinanceHubPage'));
 const FinanceOverviewPage = React.lazy(() => import('./pages/FinanceOverviewPage'));
@@ -559,6 +561,26 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']} requiredPermission="owner_workspace.access">
                   <OwnerCounterpartiesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/counterparties/:id"
+              element={
+                <PrivateRoute requiredPermission="owner_workspace.access">
+                  <SectionBoundary>
+                    <CounterpartyDetailPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner-workspace/projects/:id"
+              element={
+                <PrivateRoute requiredPermission="owner_workspace.access">
+                  <SectionBoundary>
+                    <ProjectDetailPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />

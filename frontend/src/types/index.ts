@@ -1334,30 +1334,54 @@ export interface TaskResponse {
 }
 
 // Owner workspace task manager
+export type OwnerWorkspaceProjectStatus =
+  | 'new' | 'in_progress' | 'on_review' | 'completed' | 'archived'
+  | 'active' // legacy
+  | string;
+
 export interface OwnerWorkspaceProject {
   id: number;
   name: string;
   description?: string | null;
-  status: 'active' | 'completed' | 'archived' | string;
+  status: OwnerWorkspaceProjectStatus;
   owner_id?: number | null;
+  owner_name?: string | null;
   parent_project_id?: number | null;
+  parent_project_name?: string | null;
+  counterparty_id?: number | null;
+  counterparty_name?: string | null;
+  deadline_at?: string | null;
   participants: number[];
   /** user id (строка в JSON) → member | manager */
   participant_roles?: Record<string, 'member' | 'manager' | string>;
   active_tasks_count: number;
-  /** всего задач с project_id = этот проект */
   total_tasks_count?: number;
   completed_tasks_count?: number;
   overdue_tasks_count?: number;
   contacts_count: number;
   subprojects_count: number;
+  documents_count?: number;
   created_at?: string | null;
   updated_at?: string | null;
   archived_at?: string | null;
 }
 
+export interface OwnerWorkspaceProjectDocument {
+  id: number;
+  project_id: number;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  uploaded_by_id?: number | null;
+  uploaded_by_name?: string | null;
+  created_at?: string | null;
+}
+
+export type OwnerWorkspaceContactType = 'company' | 'ip' | 'individual';
+
 export interface OwnerWorkspaceContact {
   id: number;
+  type: OwnerWorkspaceContactType;
   full_name: string;
   phone?: string | null;
   email?: string | null;
@@ -1368,10 +1392,12 @@ export interface OwnerWorkspaceContact {
   source?: string | null;
   linked_project_ids: number[];
   active_tasks_count: number;
+  projects_count?: number;
   /** ISO datetime: max(сообщение, задача, updated_at карточки) */
   last_interaction_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  is_archived?: boolean;
 }
 
 export interface OwnerWorkspaceTask {

@@ -17,12 +17,17 @@ class OwnerWorkspaceProjectContactAdd(BaseModel):
     contact_id: int
 
 
+OwnerWorkspaceProjectStatus = Literal["new", "in_progress", "on_review", "completed", "archived", "active"]
+
+
 class OwnerWorkspaceProjectBase(BaseModel):
     name: str
     description: Optional[str] = None
-    status: Optional[Literal["active", "completed", "archived"]] = "active"
+    status: Optional[OwnerWorkspaceProjectStatus] = "new"
     owner_id: Optional[int] = None
     parent_project_id: Optional[int] = None
+    counterparty_id: Optional[int] = None
+    deadline_at: Optional[datetime] = None
 
 
 class OwnerWorkspaceProjectCreate(OwnerWorkspaceProjectBase):
@@ -32,9 +37,11 @@ class OwnerWorkspaceProjectCreate(OwnerWorkspaceProjectBase):
 class OwnerWorkspaceProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[Literal["active", "completed", "archived"]] = None
+    status: Optional[OwnerWorkspaceProjectStatus] = None
     owner_id: Optional[int] = None
     parent_project_id: Optional[int] = None
+    counterparty_id: Optional[int] = None
+    deadline_at: Optional[datetime] = None
 
 
 class OwnerWorkspaceProjectResponse(BaseModel):
@@ -43,7 +50,12 @@ class OwnerWorkspaceProjectResponse(BaseModel):
     description: Optional[str] = None
     status: str
     owner_id: Optional[int] = None
+    owner_name: Optional[str] = None
     parent_project_id: Optional[int] = None
+    parent_project_name: Optional[str] = None
+    counterparty_id: Optional[int] = None
+    counterparty_name: Optional[str] = None
+    deadline_at: Optional[datetime] = None
     participants: List[int] = []
     participant_roles: Dict[int, str] = Field(default_factory=dict)
     active_tasks_count: int = 0
@@ -52,6 +64,7 @@ class OwnerWorkspaceProjectResponse(BaseModel):
     overdue_tasks_count: int = 0
     contacts_count: int = 0
     subprojects_count: int = 0
+    documents_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     archived_at: Optional[datetime] = None
@@ -59,8 +72,25 @@ class OwnerWorkspaceProjectResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class OwnerWorkspaceProjectDocumentResponse(BaseModel):
+    id: int
+    project_id: int
+    filename: str
+    content_type: str
+    size_bytes: int
+    uploaded_by_id: Optional[int] = None
+    uploaded_by_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+OwnerWorkspaceContactType = Literal["company", "ip", "individual"]
+
+
 class OwnerWorkspaceContactBase(BaseModel):
     full_name: str
+    type: OwnerWorkspaceContactType = "company"
     phone: Optional[str] = None
     email: Optional[str] = None
     company: Optional[str] = None
@@ -76,6 +106,7 @@ class OwnerWorkspaceContactCreate(OwnerWorkspaceContactBase):
 
 class OwnerWorkspaceContactUpdate(BaseModel):
     full_name: Optional[str] = None
+    type: Optional[OwnerWorkspaceContactType] = None
     phone: Optional[str] = None
     email: Optional[str] = None
     company: Optional[str] = None
@@ -87,6 +118,7 @@ class OwnerWorkspaceContactUpdate(BaseModel):
 
 class OwnerWorkspaceContactResponse(BaseModel):
     id: int
+    type: str = "company"
     full_name: str
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -97,9 +129,11 @@ class OwnerWorkspaceContactResponse(BaseModel):
     source: Optional[str] = None
     linked_project_ids: List[int] = []
     active_tasks_count: int = 0
+    projects_count: int = 0
     last_interaction_at: Optional[datetime] = Field(None)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    is_archived: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -124,6 +158,7 @@ class OwnerWorkspaceCounterpartyDocumentResponse(BaseModel):
 
 
 class OwnerWorkspaceCounterpartyCreate(BaseModel):
+    type: OwnerWorkspaceContactType = "company"
     full_name: str
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -137,6 +172,7 @@ class OwnerWorkspaceCounterpartyCreate(BaseModel):
 
 
 class OwnerWorkspaceCounterpartyUpdate(BaseModel):
+    type: Optional[OwnerWorkspaceContactType] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -151,6 +187,7 @@ class OwnerWorkspaceCounterpartyUpdate(BaseModel):
 
 class OwnerWorkspaceCounterpartyResponse(BaseModel):
     id: int
+    type: str = "company"
     full_name: str
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -161,6 +198,7 @@ class OwnerWorkspaceCounterpartyResponse(BaseModel):
     source: Optional[str] = None
     linked_project_ids: List[int] = []
     active_tasks_count: int = 0
+    projects_count: int = 0
     last_interaction_at: Optional[datetime] = None
     custom_fields: List[OwnerWorkspaceCounterpartyCustomField] = Field(default_factory=list)
     documents: List[OwnerWorkspaceCounterpartyDocumentResponse] = Field(default_factory=list)

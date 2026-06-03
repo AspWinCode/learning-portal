@@ -10,6 +10,7 @@ import type {
   OwnerWorkspaceMessage,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceProject,
+  OwnerWorkspaceProjectDocument,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskComment,
@@ -26,6 +27,7 @@ export const ownerWorkspaceApi = {
   listProjects: async (params?: {
     status_filter?: string;
     parent_project_id?: number;
+    counterparty_id?: number;
     search?: string;
     owner_id?: number;
     has_overdue_tasks?: boolean;
@@ -37,18 +39,50 @@ export const ownerWorkspaceApi = {
     const response = await api.get(`/api/owner-workspace/projects/${projectId}`);
     return response.data;
   },
+  createProject: async (payload: {
+    name: string;
+    description?: string | null;
+    status?: string;
+    owner_id?: number | null;
+    parent_project_id?: number | null;
+    counterparty_id?: number | null;
+    deadline_at?: string | null;
+  }): Promise<OwnerWorkspaceProject> => {
+    const response = await api.post('/api/owner-workspace/projects', payload);
+    return response.data;
+  },
   updateProject: async (
     projectId: number,
     payload: {
       name?: string;
       description?: string | null;
-      status?: 'active' | 'completed' | 'archived';
+      status?: string;
       owner_id?: number | null;
       parent_project_id?: number | null;
+      counterparty_id?: number | null;
+      deadline_at?: string | null;
     }
   ): Promise<OwnerWorkspaceProject> => {
     const response = await api.patch(`/api/owner-workspace/projects/${projectId}`, payload);
     return response.data;
+  },
+  // Project Documents
+  listProjectDocuments: async (projectId: number): Promise<OwnerWorkspaceProjectDocument[]> => {
+    const response = await api.get(`/api/owner-workspace/projects/${projectId}/documents`);
+    return response.data;
+  },
+  uploadProjectDocument: async (projectId: number, file: File): Promise<OwnerWorkspaceProjectDocument> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post(`/api/owner-workspace/projects/${projectId}/documents`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+  downloadProjectDocumentUrl: (projectId: number, documentId: number): string =>
+    `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download`,
+  deleteProjectDocument: async (projectId: number, documentId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/projects/${projectId}/documents/${documentId}`);
   },
   archiveProject: async (projectId: number): Promise<void> => {
     await api.delete(`/api/owner-workspace/projects/${projectId}`);
@@ -179,16 +213,6 @@ export const ownerWorkspaceApi = {
     const response = await api.get('/api/owner-workspace/search', {
       params: { q, ...(limit != null ? { limit } : {}) },
     });
-    return response.data;
-  },
-  createProject: async (payload: {
-    name: string;
-    description?: string | null;
-    status?: 'active' | 'completed' | 'archived';
-    owner_id?: number | null;
-    parent_project_id?: number | null;
-  }): Promise<OwnerWorkspaceProject> => {
-    const response = await api.post('/api/owner-workspace/projects', payload);
     return response.data;
   },
   listContacts: async (params?: {

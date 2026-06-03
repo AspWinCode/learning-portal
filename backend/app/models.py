@@ -2189,15 +2189,20 @@ class OwnerWorkspaceProject(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    status = Column(String(20), nullable=False, server_default="active", index=True)  # active | completed | archived
+    # new | in_progress | on_review | completed | archived (legacy: active)
+    status = Column(String(20), nullable=False, server_default="new", index=True)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     parent_project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    counterparty_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="SET NULL"), nullable=True, index=True)
+    deadline_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     archived_at = Column(DateTime(timezone=True), nullable=True)
 
     owner = relationship("User", foreign_keys=[owner_id])
     parent_project = relationship("OwnerWorkspaceProject", remote_side=[id], backref="subprojects")
+    counterparty = relationship("OwnerWorkspaceContact", foreign_keys=[counterparty_id])
+    documents = relationship("OwnerWorkspaceProjectDocument", back_populates="project", cascade="all, delete-orphan")
 
 
 class OwnerWorkspaceProjectParticipant(Base):
@@ -2221,6 +2226,8 @@ class OwnerWorkspaceContact(Base):
     __tablename__ = "owner_workspace_contacts"
 
     id = Column(Integer, primary_key=True, index=True)
+    # type: company | ip | individual (контрагент)
+    type = Column(String(32), nullable=False, server_default="company")
     full_name = Column(String(255), nullable=False, index=True)
     phone = Column(String(64), nullable=True, index=True)
     email = Column(String(255), nullable=True, index=True)
@@ -2234,6 +2241,8 @@ class OwnerWorkspaceContact(Base):
     archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    projects = relationship("OwnerWorkspaceProject", foreign_keys="OwnerWorkspaceProject.counterparty_id", back_populates="counterparty")
 
 
 class OwnerWorkspaceProjectContact(Base):
@@ -2268,6 +2277,23 @@ class OwnerWorkspaceCounterpartyDocument(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     contact = relationship("OwnerWorkspaceContact")
+
+
+class OwnerWorkspaceProjectDocument(Base):
+    """Документы, прикреплённые к проекту (бинарные данные в БД)."""
+    __tablename__ = "owner_workspace_project_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(128), nullable=False)
+    size_bytes = Column(Integer, nullable=False, server_default="0")
+    data = Column(LargeBinary, nullable=False)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    project = relationship("OwnerWorkspaceProject", back_populates="documents")
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
 
 
 class OwnerWorkspaceTask(Base):

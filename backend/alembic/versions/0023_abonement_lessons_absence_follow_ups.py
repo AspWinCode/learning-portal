@@ -40,11 +40,11 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         )
-        op.create_index("ix_absence_follow_ups_lesson_attendance_id", "absence_follow_ups", ["lesson_attendance_id"], unique=True)
-        op.create_index("ix_absence_follow_ups_student_id", "absence_follow_ups", ["student_id"])
-        op.create_index("ix_absence_follow_ups_group_id", "absence_follow_ups", ["group_id"])
-        op.create_index("ix_absence_follow_ups_lesson_date", "absence_follow_ups", ["lesson_date"])
-        op.create_index("ix_absence_follow_ups_stage", "absence_follow_ups", ["stage"])
+        op.create_index("ix_absence_follow_ups_lesson_attendance_id", "absence_follow_ups", ["lesson_attendance_id"], unique=True, if_not_exists=True)
+        op.create_index("ix_absence_follow_ups_student_id", "absence_follow_ups", ["student_id"], if_not_exists=True)
+        op.create_index("ix_absence_follow_ups_group_id", "absence_follow_ups", ["group_id"], if_not_exists=True)
+        op.create_index("ix_absence_follow_ups_lesson_date", "absence_follow_ups", ["lesson_date"], if_not_exists=True)
+        op.create_index("ix_absence_follow_ups_stage", "absence_follow_ups", ["stage"], if_not_exists=True)
 
 
 def downgrade() -> None:

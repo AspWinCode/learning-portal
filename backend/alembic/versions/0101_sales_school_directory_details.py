@@ -19,11 +19,11 @@ def upgrade() -> None:
     op.add_column("sales_schools", sa.Column("email", sa.String(), nullable=True))
     op.add_column("sales_schools", sa.Column("address", sa.Text(), nullable=True))
     op.add_column("sales_schools", sa.Column("phone", sa.String(length=64), nullable=True))
-    op.create_index("ix_sales_schools_city", "sales_schools", ["city"], unique=False)
-    op.create_index("ix_sales_schools_email", "sales_schools", ["email"], unique=False)
+    op.create_index("ix_sales_schools_city", "sales_schools", ["city"], unique=False, if_not_exists=True)
+    op.create_index("ix_sales_schools_email", "sales_schools", ["email"], unique=False, if_not_exists=True)
 
     op.add_column("b2b_schools", sa.Column("email", sa.String(), nullable=True))
-    op.create_index("ix_b2b_schools_email", "b2b_schools", ["email"], unique=False)
+    op.create_index("ix_b2b_schools_email", "b2b_schools", ["email"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

@@ -39,10 +39,10 @@ def upgrade() -> None:
         op.add_column("b2b_schools", sa.Column("next_step", sa.Text(), nullable=True))
     if not _column_exists(conn, "b2b_schools", "next_step_date"):
         op.add_column("b2b_schools", sa.Column("next_step_date", sa.Date(), nullable=True))
-        op.create_index("ix_b2b_schools_next_step_date", "b2b_schools", ["next_step_date"])
+        op.create_index("ix_b2b_schools_next_step_date", "b2b_schools", ["next_step_date"], if_not_exists=True)
     if not _column_exists(conn, "b2b_schools", "manager_id"):
         op.add_column("b2b_schools", sa.Column("manager_id", sa.Integer(), nullable=True))
-        op.create_index("ix_b2b_schools_manager_id", "b2b_schools", ["manager_id"])
+        op.create_index("ix_b2b_schools_manager_id", "b2b_schools", ["manager_id"], if_not_exists=True)
         op.create_foreign_key(
             "fk_b2b_schools_manager_id_users",
             "b2b_schools",

@@ -17,7 +17,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("tasks", sa.Column("category", sa.String(20), nullable=False, server_default="schools"))
-    op.create_index("ix_tasks_category", "tasks", ["category"], unique=False)
+    op.create_index("ix_tasks_category", "tasks", ["category"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

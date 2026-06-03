@@ -29,10 +29,10 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
         sa.UniqueConstraint("user_id", "dedupe_key", name="uq_owner_workspace_notification_user_dedupe"),
     )
-    op.create_index("ix_owner_workspace_notifications_user_id", "owner_workspace_notifications", ["user_id"])
-    op.create_index("ix_owner_workspace_notifications_kind", "owner_workspace_notifications", ["kind"])
-    op.create_index("ix_owner_workspace_notifications_task_id", "owner_workspace_notifications", ["task_id"])
-    op.create_index("ix_owner_workspace_notifications_created_at", "owner_workspace_notifications", ["created_at"])
+    op.create_index("ix_owner_workspace_notifications_user_id", "owner_workspace_notifications", ["user_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_notifications_kind", "owner_workspace_notifications", ["kind"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_notifications_task_id", "owner_workspace_notifications", ["task_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_notifications_created_at", "owner_workspace_notifications", ["created_at"], if_not_exists=True)
 
 
 def downgrade() -> None:

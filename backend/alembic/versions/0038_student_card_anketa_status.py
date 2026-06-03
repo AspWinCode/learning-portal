@@ -36,7 +36,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("'converted'"),
         )
-        op.create_index("ix_student_cards_anketa_status", "student_cards", ["anketa_status"], unique=False)
+        op.create_index("ix_student_cards_anketa_status", "student_cards", ["anketa_status"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

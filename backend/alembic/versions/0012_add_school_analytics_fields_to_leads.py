@@ -20,9 +20,9 @@ def upgrade() -> None:
     op.add_column("leads", sa.Column("school_class", sa.String(), nullable=True))
     op.add_column("leads", sa.Column("outreach_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("leads", sa.Column("outreach_minutes", sa.Integer(), nullable=True))
-    op.create_index("ix_leads_school_name", "leads", ["school_name"], unique=False)
-    op.create_index("ix_leads_school_class", "leads", ["school_class"], unique=False)
-    op.create_index("ix_leads_outreach_at", "leads", ["outreach_at"], unique=False)
+    op.create_index("ix_leads_school_name", "leads", ["school_name"], unique=False, if_not_exists=True)
+    op.create_index("ix_leads_school_class", "leads", ["school_class"], unique=False, if_not_exists=True)
+    op.create_index("ix_leads_outreach_at", "leads", ["outreach_at"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

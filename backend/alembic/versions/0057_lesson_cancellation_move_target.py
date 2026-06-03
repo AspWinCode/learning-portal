@@ -40,6 +40,7 @@ def upgrade() -> None:
             "lesson_cancellations",
             ["moved_to_date"],
             unique=False,
+            if_not_exists=True,
         )
 
 

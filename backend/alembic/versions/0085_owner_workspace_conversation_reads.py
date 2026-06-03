@@ -33,6 +33,7 @@ def upgrade() -> None:
         "ix_owner_workspace_conversation_reads_user_id",
         "owner_workspace_conversation_reads",
         ["user_id"],
+        if_not_exists=True,
     )
 
 

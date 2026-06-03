@@ -36,6 +36,7 @@ def upgrade() -> None:
             "lesson_attendance",
             ["trainer_id"],
             unique=False,
+            if_not_exists=True,
         )
 
 

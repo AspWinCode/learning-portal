@@ -41,6 +41,7 @@ def upgrade() -> None:
         "owner_workspace_notifications",
         ["web_push_delivery_status"],
         unique=False,
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -62,18 +63,21 @@ def upgrade() -> None:
         "owner_workspace_web_push_subscriptions",
         ["id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_owner_workspace_web_push_subscriptions_user_id",
         "owner_workspace_web_push_subscriptions",
         ["user_id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_owner_workspace_web_push_subscriptions_created_at",
         "owner_workspace_web_push_subscriptions",
         ["created_at"],
         unique=False,
+        if_not_exists=True,
     )
 
 

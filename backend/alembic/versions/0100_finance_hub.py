@@ -23,14 +23,14 @@ def upgrade():
         "personal_finance_accounts",
         sa.Column("project_id", sa.Integer(), sa.ForeignKey("finance_targets.id", ondelete="SET NULL"), nullable=True),
     )
-    op.create_index("ix_personal_finance_accounts_project_id", "personal_finance_accounts", ["project_id"])
+    op.create_index("ix_personal_finance_accounts_project_id", "personal_finance_accounts", ["project_id"], if_not_exists=True)
 
     # --- personal_finance_transactions: add hub_status ---
     op.add_column(
         "personal_finance_transactions",
         sa.Column("hub_status", sa.String(16), nullable=False, server_default="completed"),
     )
-    op.create_index("ix_personal_finance_transactions_hub_status", "personal_finance_transactions", ["hub_status"])
+    op.create_index("ix_personal_finance_transactions_hub_status", "personal_finance_transactions", ["hub_status"], if_not_exists=True)
 
     # --- finance_hub_debts ---
     op.create_table(
@@ -49,9 +49,9 @@ def upgrade():
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), onupdate=sa.func.now()),
     )
-    op.create_index("ix_finance_hub_debts_owner_id", "finance_hub_debts", ["owner_id"])
-    op.create_index("ix_finance_hub_debts_status", "finance_hub_debts", ["status"])
-    op.create_index("ix_finance_hub_debts_due_date", "finance_hub_debts", ["due_date"])
+    op.create_index("ix_finance_hub_debts_owner_id", "finance_hub_debts", ["owner_id"], if_not_exists=True)
+    op.create_index("ix_finance_hub_debts_status", "finance_hub_debts", ["status"], if_not_exists=True)
+    op.create_index("ix_finance_hub_debts_due_date", "finance_hub_debts", ["due_date"], if_not_exists=True)
 
     # --- finance_hub_allocations ---
     op.create_table(
@@ -69,9 +69,9 @@ def upgrade():
         sa.Column("created_by_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_finance_hub_allocations_owner_id", "finance_hub_allocations", ["owner_id"])
-    op.create_index("ix_finance_hub_allocations_date", "finance_hub_allocations", ["date"])
-    op.create_index("ix_finance_hub_allocations_from_account_id", "finance_hub_allocations", ["from_account_id"])
+    op.create_index("ix_finance_hub_allocations_owner_id", "finance_hub_allocations", ["owner_id"], if_not_exists=True)
+    op.create_index("ix_finance_hub_allocations_date", "finance_hub_allocations", ["date"], if_not_exists=True)
+    op.create_index("ix_finance_hub_allocations_from_account_id", "finance_hub_allocations", ["from_account_id"], if_not_exists=True)
 
 
 def downgrade():

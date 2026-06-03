@@ -33,14 +33,14 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["parent_id"], ["disk_items.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_disk_items_id", "disk_items", ["id"], unique=False)
-    op.create_index("ix_disk_items_name", "disk_items", ["name"], unique=False)
-    op.create_index("ix_disk_items_item_type", "disk_items", ["item_type"], unique=False)
-    op.create_index("ix_disk_items_parent_id", "disk_items", ["parent_id"], unique=False)
-    op.create_index("ix_disk_items_storage_key", "disk_items", ["storage_key"], unique=True)
-    op.create_index("ix_disk_items_owner_id", "disk_items", ["owner_id"], unique=False)
-    op.create_index("ix_disk_items_created_at", "disk_items", ["created_at"], unique=False)
-    op.create_index("ix_disk_items_deleted_at", "disk_items", ["deleted_at"], unique=False)
+    op.create_index("ix_disk_items_id", "disk_items", ["id"], unique=False, if_not_exists=True)
+    op.create_index("ix_disk_items_name", "disk_items", ["name"], unique=False, if_not_exists=True)
+    op.create_index("ix_disk_items_item_type", "disk_items", ["item_type"], unique=False, if_not_exists=True)
+    op.create_index("ix_disk_items_parent_id", "disk_items", ["parent_id"], unique=False, if_not_exists=True)
+    op.create_index("ix_disk_items_storage_key", "disk_items", ["storage_key"], unique=True, if_not_exists=True)
+    op.create_index("ix_disk_items_owner_id", "disk_items", ["owner_id"], unique=False, if_not_exists=True)
+    op.create_index("ix_disk_items_created_at", "disk_items", ["created_at"], unique=False, if_not_exists=True)
+    op.create_index("ix_disk_items_deleted_at", "disk_items", ["deleted_at"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

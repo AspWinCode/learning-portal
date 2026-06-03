@@ -107,4 +107,13 @@ def downgrade() -> None:
     op.drop_table("invoices")
     op.drop_table("lead_tasks")
     op.drop_table("leads")
-    # Enum removals are omitted (PostgreSQL limitation)
+    # Drop sales-domain enum types (tables are gone, no dependencies).
+    op.execute("DROP TYPE IF EXISTS leadstatus")
+    op.execute("DROP TYPE IF EXISTS leadtaskstatus")
+    op.execute("DROP TYPE IF EXISTS invoicestatus")
+    # Remove 'sales' from userrole by recreating the type.
+    op.execute("UPDATE users SET role = 'admin' WHERE role = 'sales'")
+    op.execute("ALTER TABLE users ALTER COLUMN role TYPE text USING role::text")
+    op.execute("DROP TYPE IF EXISTS userrole")
+    op.execute("CREATE TYPE userrole AS ENUM ('admin', 'trainer', 'parent', 'guest', 'owner')")
+    op.execute("ALTER TABLE users ALTER COLUMN role TYPE userrole USING role::userrole")

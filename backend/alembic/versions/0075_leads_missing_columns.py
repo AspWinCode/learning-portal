@@ -31,7 +31,7 @@ def upgrade() -> None:
         op.add_column("leads", sa.Column("communication_channel", sa.String(), nullable=True))
     if not _column_exists(conn, "leads", "status_option_id"):
         op.add_column("leads", sa.Column("status_option_id", sa.Integer(), nullable=True))
-        op.create_index("ix_leads_status_option_id", "leads", ["status_option_id"])
+        op.create_index("ix_leads_status_option_id", "leads", ["status_option_id"], if_not_exists=True)
         op.create_foreign_key(
             "fk_leads_status_option_id_lead_statuses",
             "leads", "lead_statuses",
@@ -40,13 +40,13 @@ def upgrade() -> None:
         )
     if not _column_exists(conn, "leads", "no_answer_attempt"):
         op.add_column("leads", sa.Column("no_answer_attempt", sa.Integer(), nullable=True))
-        op.create_index("ix_leads_no_answer_attempt", "leads", ["no_answer_attempt"])
+        op.create_index("ix_leads_no_answer_attempt", "leads", ["no_answer_attempt"], if_not_exists=True)
     if not _column_exists(conn, "leads", "questionnaire_filled"):
         op.add_column("leads", sa.Column("questionnaire_filled", sa.Boolean(), nullable=False, server_default=sa.false()))
-        op.create_index("ix_leads_questionnaire_filled", "leads", ["questionnaire_filled"])
+        op.create_index("ix_leads_questionnaire_filled", "leads", ["questionnaire_filled"], if_not_exists=True)
     if not _column_exists(conn, "leads", "b2b_school_id"):
         op.add_column("leads", sa.Column("b2b_school_id", sa.Integer(), nullable=True))
-        op.create_index("ix_leads_b2b_school_id", "leads", ["b2b_school_id"])
+        op.create_index("ix_leads_b2b_school_id", "leads", ["b2b_school_id"], if_not_exists=True)
         op.create_foreign_key(
             "fk_leads_b2b_school_id_b2b_schools",
             "leads", "b2b_schools",

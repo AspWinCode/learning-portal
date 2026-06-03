@@ -51,9 +51,9 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_events_starts_at", "events", ["starts_at"])
-    op.create_index("ix_events_status", "events", ["status"])
-    op.create_index("ix_events_created_by", "events", ["created_by"])
+    op.create_index("ix_events_starts_at", "events", ["starts_at"], if_not_exists=True)
+    op.create_index("ix_events_status", "events", ["status"], if_not_exists=True)
+    op.create_index("ix_events_created_by", "events", ["created_by"], if_not_exists=True)
 
     op.create_table(
         "event_registrations",
@@ -67,10 +67,10 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint("event_id", "lead_id", name="uq_event_lead_registration"),
     )
-    op.create_index("ix_event_registrations_event_id", "event_registrations", ["event_id"])
-    op.create_index("ix_event_registrations_lead_id", "event_registrations", ["lead_id"])
-    op.create_index("ix_event_registrations_owner_id", "event_registrations", ["owner_id"])
-    op.create_index("ix_event_registrations_status", "event_registrations", ["status"])
+    op.create_index("ix_event_registrations_event_id", "event_registrations", ["event_id"], if_not_exists=True)
+    op.create_index("ix_event_registrations_lead_id", "event_registrations", ["lead_id"], if_not_exists=True)
+    op.create_index("ix_event_registrations_owner_id", "event_registrations", ["owner_id"], if_not_exists=True)
+    op.create_index("ix_event_registrations_status", "event_registrations", ["status"], if_not_exists=True)
 
 
 def downgrade() -> None:

@@ -23,8 +23,8 @@ def upgrade():
     )
     op.add_column("owner_workspace_contacts", sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True))
     op.alter_column("owner_workspace_contacts", "phone", existing_type=sa.String(length=64), nullable=True)
-    op.create_index("ix_owner_workspace_contacts_is_archived", "owner_workspace_contacts", ["is_archived"], unique=False)
-    op.create_index("ix_owner_workspace_contacts_archived_at", "owner_workspace_contacts", ["archived_at"], unique=False)
+    op.create_index("ix_owner_workspace_contacts_is_archived", "owner_workspace_contacts", ["is_archived"], unique=False, if_not_exists=True)
+    op.create_index("ix_owner_workspace_contacts_archived_at", "owner_workspace_contacts", ["archived_at"], unique=False, if_not_exists=True)
 
     op.create_table(
         "owner_workspace_counterparty_documents",
@@ -48,12 +48,14 @@ def upgrade():
         "owner_workspace_counterparty_documents",
         ["contact_id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_owner_workspace_counterparty_documents_category",
         "owner_workspace_counterparty_documents",
         ["category"],
         unique=False,
+        if_not_exists=True,
     )
 
 

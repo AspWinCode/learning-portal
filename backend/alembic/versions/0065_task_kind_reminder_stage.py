@@ -18,7 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column("tasks", sa.Column("task_kind", sa.String(length=64), nullable=True))
     op.add_column("tasks", sa.Column("reminder_stage", sa.Integer(), nullable=True))
-    op.create_index("ix_tasks_task_kind", "tasks", ["task_kind"], unique=False)
+    op.create_index("ix_tasks_task_kind", "tasks", ["task_kind"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

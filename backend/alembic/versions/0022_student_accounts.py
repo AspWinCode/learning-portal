@@ -32,7 +32,7 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         )
-        op.create_index("ix_student_accounts_student_id", "student_accounts", ["student_id"])
+        op.create_index("ix_student_accounts_student_id", "student_accounts", ["student_id"], if_not_exists=True)
     if not _table_exists(conn, "student_account_transactions"):
         op.create_table(
             "student_account_transactions",
@@ -46,8 +46,8 @@ def upgrade() -> None:
             sa.Column("lesson_attendance_id", sa.Integer(), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         )
-        op.create_index("ix_student_account_transactions_account_id", "student_account_transactions", ["account_id"])
-        op.create_index("ix_student_account_transactions_lesson_attendance_id", "student_account_transactions", ["lesson_attendance_id"])
+        op.create_index("ix_student_account_transactions_account_id", "student_account_transactions", ["account_id"], if_not_exists=True)
+        op.create_index("ix_student_account_transactions_lesson_attendance_id", "student_account_transactions", ["lesson_attendance_id"], if_not_exists=True)
 
 
 def downgrade() -> None:

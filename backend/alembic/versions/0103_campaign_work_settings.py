@@ -28,9 +28,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("category", "value", name="uq_campaign_dictionary_category_value"),
     )
-    op.create_index("ix_campaign_dictionary_items_category", "campaign_dictionary_items", ["category"], unique=False)
-    op.create_index("ix_campaign_dictionary_items_id", "campaign_dictionary_items", ["id"], unique=False)
-    op.create_index("ix_campaign_dictionary_items_is_active", "campaign_dictionary_items", ["is_active"], unique=False)
+    op.create_index("ix_campaign_dictionary_items_category", "campaign_dictionary_items", ["category"], unique=False, if_not_exists=True)
+    op.create_index("ix_campaign_dictionary_items_id", "campaign_dictionary_items", ["id"], unique=False, if_not_exists=True)
+    op.create_index("ix_campaign_dictionary_items_is_active", "campaign_dictionary_items", ["is_active"], unique=False, if_not_exists=True)
 
     items = [
         ("campaign_type", "game_jam", "Game Jam", 10),

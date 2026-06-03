@@ -23,7 +23,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # PostgreSQL does not support removing enum values directly.
-    # To downgrade, you would need to recreate the type without these values,
-    # which requires migrating all data away from them first.
-    pass
+    # Migrate leads using the removed values to a safe default, then recreate the enum.
+    op.execute("""
+        UPDATE leads SET status = 'new'
+        WHERE status IN ('no_answer', 'event_registered', 'decided_immediately', 'thinking')
+    """)
+    op.execute("ALTER TABLE leads ALTER COLUMN status TYPE text USING status::text")
+    op.execute("DROP TYPE IF EXISTS leadstatus")
+    op.execute("""
+        CREATE TYPE leadstatus AS ENUM ('new', 'contacted', 'demo', 'invoice_sent', 'won', 'lost')
+    """)
+    op.execute("ALTER TABLE leads ALTER COLUMN status TYPE leadstatus USING status::leadstatus")

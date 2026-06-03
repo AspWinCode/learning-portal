@@ -26,11 +26,11 @@ def upgrade() -> None:
         ["host_b2b_school_id"], ["id"],
         ondelete="SET NULL",
     )
-    op.create_index("ix_campaign_events_host_b2b_school_id", "campaign_events", ["host_b2b_school_id"], unique=False)
+    op.create_index("ix_campaign_events_host_b2b_school_id", "campaign_events", ["host_b2b_school_id"], unique=False, if_not_exists=True)
 
     # 3. SchoolCampaignEvent.jam_stage
     op.add_column("school_campaign_events", sa.Column("jam_stage", sa.String(length=64), nullable=True))
-    op.create_index("ix_school_campaign_events_jam_stage", "school_campaign_events", ["jam_stage"], unique=False)
+    op.create_index("ix_school_campaign_events_jam_stage", "school_campaign_events", ["jam_stage"], unique=False, if_not_exists=True)
 
     # 4. Таблица этапов джема
     op.create_table(
@@ -47,8 +47,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("campaign_event_id", "key", name="uq_campaign_event_stages_event_key"),
     )
-    op.create_index("ix_campaign_event_stages_id", "campaign_event_stages", ["id"], unique=False)
-    op.create_index("ix_campaign_event_stages_campaign_event_id", "campaign_event_stages", ["campaign_event_id"], unique=False)
+    op.create_index("ix_campaign_event_stages_id", "campaign_event_stages", ["id"], unique=False, if_not_exists=True)
+    op.create_index("ix_campaign_event_stages_campaign_event_id", "campaign_event_stages", ["campaign_event_id"], unique=False, if_not_exists=True)
 
     # 5. Backfill: засеять этапы для уже существующих Game Jam кампаний
     _DEFAULT_JAM_STAGES = [

@@ -19,6 +19,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # PostgreSQL doesn't support removing enum values without recreating the type.
-    pass
+    # Reassign any 'owner' users to 'admin', then recreate the enum without 'owner'.
+    op.execute("UPDATE users SET role = 'admin' WHERE role = 'owner'")
+    op.execute("ALTER TABLE users ALTER COLUMN role TYPE text USING role::text")
+    op.execute("DROP TYPE IF EXISTS userrole")
+    op.execute("CREATE TYPE userrole AS ENUM ('admin', 'trainer', 'parent', 'guest')")
+    op.execute("ALTER TABLE users ALTER COLUMN role TYPE userrole USING role::userrole")
 

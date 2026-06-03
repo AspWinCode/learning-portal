@@ -44,11 +44,11 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["student_id"], ["students.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_student_activity_log_id", "student_activity_log", ["id"], unique=False)
-    op.create_index("ix_student_activity_log_student_id", "student_activity_log", ["student_id"], unique=False)
-    op.create_index("ix_student_activity_log_type", "student_activity_log", ["type"], unique=False)
-    op.create_index("ix_student_activity_log_created_by", "student_activity_log", ["created_by"], unique=False)
-    op.create_index("ix_student_activity_log_created_at", "student_activity_log", ["created_at"], unique=False)
+    op.create_index("ix_student_activity_log_id", "student_activity_log", ["id"], unique=False, if_not_exists=True)
+    op.create_index("ix_student_activity_log_student_id", "student_activity_log", ["student_id"], unique=False, if_not_exists=True)
+    op.create_index("ix_student_activity_log_type", "student_activity_log", ["type"], unique=False, if_not_exists=True)
+    op.create_index("ix_student_activity_log_created_by", "student_activity_log", ["created_by"], unique=False, if_not_exists=True)
+    op.create_index("ix_student_activity_log_created_at", "student_activity_log", ["created_at"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

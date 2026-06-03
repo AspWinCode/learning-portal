@@ -24,7 +24,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint("key", name="uq_app_settings_key"),
     )
-    op.create_index("ix_app_settings_key", "app_settings", ["key"])
+    op.create_index("ix_app_settings_key", "app_settings", ["key"], if_not_exists=True)
 
 
 def downgrade() -> None:

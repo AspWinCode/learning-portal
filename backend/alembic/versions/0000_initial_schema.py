@@ -42,10 +42,10 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint("email", name="uq_users_email"),
     )
-    op.create_index("ix_users_email", "users", ["email"])
-    op.create_index("ix_users_telegram_chat_id", "users", ["telegram_chat_id"])
-    op.create_index("ix_users_telegram_link_code", "users", ["telegram_link_code"])
-    op.create_index("ix_users_password_reset_code_hash", "users", ["password_reset_code_hash"])
+    op.create_index("ix_users_email", "users", ["email"], if_not_exists=True)
+    op.create_index("ix_users_telegram_chat_id", "users", ["telegram_chat_id"], if_not_exists=True)
+    op.create_index("ix_users_telegram_link_code", "users", ["telegram_link_code"], if_not_exists=True)
+    op.create_index("ix_users_password_reset_code_hash", "users", ["password_reset_code_hash"], if_not_exists=True)
 
     op.create_table(
         "students",
@@ -56,7 +56,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_students_parent_id", "students", ["parent_id"])
+    op.create_index("ix_students_parent_id", "students", ["parent_id"], if_not_exists=True)
 
     op.create_table(
         "groups",
@@ -67,7 +67,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_groups_trainer_id", "groups", ["trainer_id"])
+    op.create_index("ix_groups_trainer_id", "groups", ["trainer_id"], if_not_exists=True)
 
     op.create_table(
         "group_students",
@@ -76,8 +76,8 @@ def upgrade() -> None:
         sa.Column("student_id", sa.Integer(), sa.ForeignKey("students.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
     )
-    op.create_index("ix_group_students_group_id", "group_students", ["group_id"])
-    op.create_index("ix_group_students_student_id", "group_students", ["student_id"])
+    op.create_index("ix_group_students_group_id", "group_students", ["group_id"], if_not_exists=True)
+    op.create_index("ix_group_students_student_id", "group_students", ["student_id"], if_not_exists=True)
 
     op.create_table(
         "programs",
@@ -89,7 +89,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_programs_parent_program_id", "programs", ["parent_program_id"])
+    op.create_index("ix_programs_parent_program_id", "programs", ["parent_program_id"], if_not_exists=True)
 
     op.create_table(
         "modules",
@@ -100,7 +100,7 @@ def upgrade() -> None:
         sa.Column("status", program_status, nullable=True, server_default=sa.text("'active'")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
     )
-    op.create_index("ix_modules_program_id", "modules", ["program_id"])
+    op.create_index("ix_modules_program_id", "modules", ["program_id"], if_not_exists=True)
 
     op.create_table(
         "topics",
@@ -113,7 +113,7 @@ def upgrade() -> None:
         sa.Column("status", topic_status, nullable=True, server_default=sa.text("'active'")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
     )
-    op.create_index("ix_topics_module_id", "topics", ["module_id"])
+    op.create_index("ix_topics_module_id", "topics", ["module_id"], if_not_exists=True)
 
     op.create_table(
         "program_trainers",
@@ -122,8 +122,8 @@ def upgrade() -> None:
         sa.Column("trainer_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
     )
-    op.create_index("ix_program_trainers_program_id", "program_trainers", ["program_id"])
-    op.create_index("ix_program_trainers_trainer_id", "program_trainers", ["trainer_id"])
+    op.create_index("ix_program_trainers_program_id", "program_trainers", ["program_id"], if_not_exists=True)
+    op.create_index("ix_program_trainers_trainer_id", "program_trainers", ["trainer_id"], if_not_exists=True)
 
     op.create_table(
         "group_programs",
@@ -132,8 +132,8 @@ def upgrade() -> None:
         sa.Column("program_id", sa.Integer(), sa.ForeignKey("programs.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
     )
-    op.create_index("ix_group_programs_group_id", "group_programs", ["group_id"])
-    op.create_index("ix_group_programs_program_id", "group_programs", ["program_id"])
+    op.create_index("ix_group_programs_group_id", "group_programs", ["group_id"], if_not_exists=True)
+    op.create_index("ix_group_programs_program_id", "group_programs", ["program_id"], if_not_exists=True)
 
     op.create_table(
         "student_programs",
@@ -142,8 +142,8 @@ def upgrade() -> None:
         sa.Column("program_id", sa.Integer(), sa.ForeignKey("programs.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
     )
-    op.create_index("ix_student_programs_student_id", "student_programs", ["student_id"])
-    op.create_index("ix_student_programs_program_id", "student_programs", ["program_id"])
+    op.create_index("ix_student_programs_student_id", "student_programs", ["student_id"], if_not_exists=True)
+    op.create_index("ix_student_programs_program_id", "student_programs", ["program_id"], if_not_exists=True)
 
     op.create_table(
         "lesson_attendance",
@@ -160,9 +160,9 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
         sa.UniqueConstraint("group_id", "lesson_date", "student_id", name="uq_lesson_attendance_group_date_student"),
     )
-    op.create_index("ix_lesson_attendance_group_id", "lesson_attendance", ["group_id"])
-    op.create_index("ix_lesson_attendance_student_id", "lesson_attendance", ["student_id"])
-    op.create_index("ix_lesson_attendance_lesson_date", "lesson_attendance", ["lesson_date"])
+    op.create_index("ix_lesson_attendance_group_id", "lesson_attendance", ["group_id"], if_not_exists=True)
+    op.create_index("ix_lesson_attendance_student_id", "lesson_attendance", ["student_id"], if_not_exists=True)
+    op.create_index("ix_lesson_attendance_lesson_date", "lesson_attendance", ["lesson_date"], if_not_exists=True)
 
     op.create_table(
         "grades",
@@ -175,9 +175,9 @@ def upgrade() -> None:
         sa.Column("date", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
     )
-    op.create_index("ix_grades_student_id", "grades", ["student_id"])
-    op.create_index("ix_grades_topic_id", "grades", ["topic_id"])
-    op.create_index("ix_grades_trainer_id", "grades", ["trainer_id"])
+    op.create_index("ix_grades_student_id", "grades", ["student_id"], if_not_exists=True)
+    op.create_index("ix_grades_topic_id", "grades", ["topic_id"], if_not_exists=True)
+    op.create_index("ix_grades_trainer_id", "grades", ["trainer_id"], if_not_exists=True)
 
     op.create_table(
         "characteristics",
@@ -193,8 +193,8 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_characteristics_student_id", "characteristics", ["student_id"])
-    op.create_index("ix_characteristics_trainer_id", "characteristics", ["trainer_id"])
+    op.create_index("ix_characteristics_student_id", "characteristics", ["student_id"], if_not_exists=True)
+    op.create_index("ix_characteristics_trainer_id", "characteristics", ["trainer_id"], if_not_exists=True)
 
     op.create_table(
         "characteristic_templates",
@@ -215,7 +215,7 @@ def upgrade() -> None:
         sa.Column("details", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
     )
-    op.create_index("ix_action_logs_user_id", "action_logs", ["user_id"])
+    op.create_index("ix_action_logs_user_id", "action_logs", ["user_id"], if_not_exists=True)
 
 
 def downgrade() -> None:

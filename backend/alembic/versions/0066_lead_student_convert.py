@@ -24,7 +24,7 @@ def upgrade() -> None:
         ["from_lead_id"],
         ["id"],
     )
-    op.create_index("ix_students_from_lead_id", "students", ["from_lead_id"], unique=False)
+    op.create_index("ix_students_from_lead_id", "students", ["from_lead_id"], unique=False, if_not_exists=True)
 
     op.add_column("leads", sa.Column("converted_to_student_id", sa.Integer(), nullable=True))
     op.create_foreign_key(
@@ -34,7 +34,7 @@ def upgrade() -> None:
         ["converted_to_student_id"],
         ["id"],
     )
-    op.create_index("ix_leads_converted_to_student_id", "leads", ["converted_to_student_id"], unique=False)
+    op.create_index("ix_leads_converted_to_student_id", "leads", ["converted_to_student_id"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

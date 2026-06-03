@@ -26,8 +26,8 @@ def upgrade():
         sa.Column("uploaded_by_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_b2b_documents_b2b_school_id", "b2b_documents", ["b2b_school_id"])
-    op.create_index("ix_b2b_documents_uploaded_by_id", "b2b_documents", ["uploaded_by_id"])
+    op.create_index("ix_b2b_documents_b2b_school_id", "b2b_documents", ["b2b_school_id"], if_not_exists=True)
+    op.create_index("ix_b2b_documents_uploaded_by_id", "b2b_documents", ["uploaded_by_id"], if_not_exists=True)
 
 
 def downgrade():

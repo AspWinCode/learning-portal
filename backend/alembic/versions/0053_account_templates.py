@@ -24,7 +24,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_account_templates_name"), "account_templates", ["name"], unique=False)
+    op.create_index(op.f("ix_account_templates_name", if_not_exists=True), "account_templates", ["name"], unique=False)
 
 
 def downgrade() -> None:

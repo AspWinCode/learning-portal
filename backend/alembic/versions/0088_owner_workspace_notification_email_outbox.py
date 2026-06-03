@@ -41,6 +41,7 @@ def upgrade() -> None:
         "owner_workspace_notifications",
         ["email_delivery_status"],
         unique=False,
+        if_not_exists=True,
     )
 
 

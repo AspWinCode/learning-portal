@@ -69,16 +69,16 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["template_id"], ["sms_templates.id"]),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index("ix_communication_queue_recipient_type", "communication_queue", ["recipient_type"], unique=False)
-        op.create_index("ix_communication_queue_recipient_id", "communication_queue", ["recipient_id"], unique=False)
-        op.create_index("ix_communication_queue_channel", "communication_queue", ["channel"], unique=False)
-        op.create_index("ix_communication_queue_template_id", "communication_queue", ["template_id"], unique=False)
-        op.create_index("ix_communication_queue_status", "communication_queue", ["status"], unique=False)
-        op.create_index("ix_communication_queue_last_attempt_at", "communication_queue", ["last_attempt_at"], unique=False)
-        op.create_index("ix_communication_queue_sent_at", "communication_queue", ["sent_at"], unique=False)
-        op.create_index("ix_communication_queue_dedupe_key", "communication_queue", ["dedupe_key"], unique=False)
-        op.create_index("ix_communication_queue_created_at", "communication_queue", ["created_at"], unique=False)
-        op.create_index("ix_communication_queue_created_by", "communication_queue", ["created_by"], unique=False)
+        op.create_index("ix_communication_queue_recipient_type", "communication_queue", ["recipient_type"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_recipient_id", "communication_queue", ["recipient_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_channel", "communication_queue", ["channel"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_template_id", "communication_queue", ["template_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_status", "communication_queue", ["status"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_last_attempt_at", "communication_queue", ["last_attempt_at"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_sent_at", "communication_queue", ["sent_at"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_dedupe_key", "communication_queue", ["dedupe_key"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_created_at", "communication_queue", ["created_at"], unique=False, if_not_exists=True)
+        op.create_index("ix_communication_queue_created_by", "communication_queue", ["created_by"], unique=False, if_not_exists=True)
 
     seed_rows = [
         {

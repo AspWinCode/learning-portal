@@ -99,7 +99,7 @@ def upgrade() -> None:
     if _table_exists(conn, "leads") and not _column_exists(conn, "leads", "student_card_id"):
         op.add_column("leads", sa.Column("student_card_id", sa.Integer(), nullable=True))
         op.create_foreign_key("fk_leads_student_card_id", "leads", "student_cards", ["student_card_id"], ["id"])
-        op.create_index("ix_leads_student_card_id", "leads", ["student_card_id"], unique=False)
+        op.create_index("ix_leads_student_card_id", "leads", ["student_card_id"], unique=False, if_not_exists=True)
 
     if _table_exists(conn, "student_cards") and not _column_exists(conn, "student_cards", "phone_normalized"):
         op.add_column("student_cards", sa.Column("phone_normalized", sa.String(length=32), nullable=True))

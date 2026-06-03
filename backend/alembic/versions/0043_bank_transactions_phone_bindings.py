@@ -38,10 +38,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("operation_id", name="uq_bank_transactions_operation_id"),
     )
-    op.create_index(op.f("ix_bank_transactions_operation_id"), "bank_transactions", ["operation_id"], unique=True)
-    op.create_index(op.f("ix_bank_transactions_payer_phone"), "bank_transactions", ["payer_phone"], unique=False)
-    op.create_index(op.f("ix_bank_transactions_status"), "bank_transactions", ["status"], unique=False)
-    op.create_index(op.f("ix_bank_transactions_tochka_account_id"), "bank_transactions", ["tochka_account_id"], unique=False)
+    op.create_index(op.f("ix_bank_transactions_operation_id", if_not_exists=True), "bank_transactions", ["operation_id"], unique=True)
+    op.create_index(op.f("ix_bank_transactions_payer_phone", if_not_exists=True), "bank_transactions", ["payer_phone"], unique=False)
+    op.create_index(op.f("ix_bank_transactions_status", if_not_exists=True), "bank_transactions", ["status"], unique=False)
+    op.create_index(op.f("ix_bank_transactions_tochka_account_id", if_not_exists=True), "bank_transactions", ["tochka_account_id"], unique=False)
 
     op.create_table(
         "phone_payment_bindings",
@@ -53,8 +53,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("payer_phone_normalized", name="uq_phone_payment_bindings_phone"),
     )
-    op.create_index(op.f("ix_phone_payment_bindings_payer_phone_normalized"), "phone_payment_bindings", ["payer_phone_normalized"], unique=True)
-    op.create_index(op.f("ix_phone_payment_bindings_parent_id"), "phone_payment_bindings", ["parent_id"], unique=False)
+    op.create_index(op.f("ix_phone_payment_bindings_payer_phone_normalized", if_not_exists=True), "phone_payment_bindings", ["payer_phone_normalized"], unique=True)
+    op.create_index(op.f("ix_phone_payment_bindings_parent_id", if_not_exists=True), "phone_payment_bindings", ["parent_id"], unique=False)
 
 
 def downgrade() -> None:

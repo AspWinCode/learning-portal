@@ -19,7 +19,7 @@ def upgrade() -> None:
     op.add_column("leads", sa.Column("post_visit_stage", sa.String(length=64), nullable=True))
     op.add_column("leads", sa.Column("post_visit_review", sa.Text(), nullable=True))
     op.add_column("leads", sa.Column("post_visit_project_date", sa.DateTime(timezone=True), nullable=True))
-    op.create_index("ix_leads_post_visit_stage", "leads", ["post_visit_stage"])
+    op.create_index("ix_leads_post_visit_stage", "leads", ["post_visit_stage"], if_not_exists=True)
     # Заполнить стартовую стадию для лидов, по которым уже нажимали «Пришел» на мероприятии
     op.execute(
         """

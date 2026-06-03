@@ -28,10 +28,10 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_owner_workspace_projects_name", "owner_workspace_projects", ["name"])
-    op.create_index("ix_owner_workspace_projects_status", "owner_workspace_projects", ["status"])
-    op.create_index("ix_owner_workspace_projects_owner_id", "owner_workspace_projects", ["owner_id"])
-    op.create_index("ix_owner_workspace_projects_parent_project_id", "owner_workspace_projects", ["parent_project_id"])
+    op.create_index("ix_owner_workspace_projects_name", "owner_workspace_projects", ["name"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_projects_status", "owner_workspace_projects", ["status"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_projects_owner_id", "owner_workspace_projects", ["owner_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_projects_parent_project_id", "owner_workspace_projects", ["parent_project_id"], if_not_exists=True)
 
     op.create_table(
         "owner_workspace_project_participants",
@@ -41,8 +41,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("project_id", "user_id", name="uq_owner_workspace_project_participant"),
     )
-    op.create_index("ix_owner_workspace_project_participants_project_id", "owner_workspace_project_participants", ["project_id"])
-    op.create_index("ix_owner_workspace_project_participants_user_id", "owner_workspace_project_participants", ["user_id"])
+    op.create_index("ix_owner_workspace_project_participants_project_id", "owner_workspace_project_participants", ["project_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_project_participants_user_id", "owner_workspace_project_participants", ["user_id"], if_not_exists=True)
 
     op.create_table(
         "owner_workspace_contacts",
@@ -58,10 +58,10 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_owner_workspace_contacts_full_name", "owner_workspace_contacts", ["full_name"])
-    op.create_index("ix_owner_workspace_contacts_phone", "owner_workspace_contacts", ["phone"])
-    op.create_index("ix_owner_workspace_contacts_email", "owner_workspace_contacts", ["email"])
-    op.create_index("ix_owner_workspace_contacts_company", "owner_workspace_contacts", ["company"])
+    op.create_index("ix_owner_workspace_contacts_full_name", "owner_workspace_contacts", ["full_name"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_contacts_phone", "owner_workspace_contacts", ["phone"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_contacts_email", "owner_workspace_contacts", ["email"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_contacts_company", "owner_workspace_contacts", ["company"], if_not_exists=True)
 
     op.create_table(
         "owner_workspace_project_contacts",
@@ -71,8 +71,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("project_id", "contact_id", name="uq_owner_workspace_project_contact"),
     )
-    op.create_index("ix_owner_workspace_project_contacts_project_id", "owner_workspace_project_contacts", ["project_id"])
-    op.create_index("ix_owner_workspace_project_contacts_contact_id", "owner_workspace_project_contacts", ["contact_id"])
+    op.create_index("ix_owner_workspace_project_contacts_project_id", "owner_workspace_project_contacts", ["project_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_project_contacts_contact_id", "owner_workspace_project_contacts", ["contact_id"], if_not_exists=True)
 
     op.create_table(
         "owner_workspace_tasks",
@@ -95,16 +95,16 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_owner_workspace_tasks_title", "owner_workspace_tasks", ["title"])
-    op.create_index("ix_owner_workspace_tasks_status", "owner_workspace_tasks", ["status"])
-    op.create_index("ix_owner_workspace_tasks_priority", "owner_workspace_tasks", ["priority"])
-    op.create_index("ix_owner_workspace_tasks_deadline_at", "owner_workspace_tasks", ["deadline_at"])
-    op.create_index("ix_owner_workspace_tasks_completed_at", "owner_workspace_tasks", ["completed_at"])
-    op.create_index("ix_owner_workspace_tasks_assignee_id", "owner_workspace_tasks", ["assignee_id"])
-    op.create_index("ix_owner_workspace_tasks_creator_id", "owner_workspace_tasks", ["creator_id"])
-    op.create_index("ix_owner_workspace_tasks_project_id", "owner_workspace_tasks", ["project_id"])
-    op.create_index("ix_owner_workspace_tasks_contact_id", "owner_workspace_tasks", ["contact_id"])
-    op.create_index("ix_owner_workspace_tasks_previous_task_id", "owner_workspace_tasks", ["previous_task_id"])
+    op.create_index("ix_owner_workspace_tasks_title", "owner_workspace_tasks", ["title"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_status", "owner_workspace_tasks", ["status"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_priority", "owner_workspace_tasks", ["priority"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_deadline_at", "owner_workspace_tasks", ["deadline_at"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_completed_at", "owner_workspace_tasks", ["completed_at"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_assignee_id", "owner_workspace_tasks", ["assignee_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_creator_id", "owner_workspace_tasks", ["creator_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_project_id", "owner_workspace_tasks", ["project_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_contact_id", "owner_workspace_tasks", ["contact_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_tasks_previous_task_id", "owner_workspace_tasks", ["previous_task_id"], if_not_exists=True)
 
     op.create_table(
         "owner_workspace_task_comments",
@@ -114,8 +114,8 @@ def upgrade() -> None:
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_owner_workspace_task_comments_task_id", "owner_workspace_task_comments", ["task_id"])
-    op.create_index("ix_owner_workspace_task_comments_author_id", "owner_workspace_task_comments", ["author_id"])
+    op.create_index("ix_owner_workspace_task_comments_task_id", "owner_workspace_task_comments", ["task_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_task_comments_author_id", "owner_workspace_task_comments", ["author_id"], if_not_exists=True)
 
     op.create_table(
         "owner_workspace_messages",
@@ -130,13 +130,13 @@ def upgrade() -> None:
         sa.Column("received_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_owner_workspace_messages_contact_id", "owner_workspace_messages", ["contact_id"])
-    op.create_index("ix_owner_workspace_messages_external_chat_id", "owner_workspace_messages", ["external_chat_id"])
-    op.create_index("ix_owner_workspace_messages_external_message_id", "owner_workspace_messages", ["external_message_id"])
-    op.create_index("ix_owner_workspace_messages_direction", "owner_workspace_messages", ["direction"])
-    op.create_index("ix_owner_workspace_messages_sent_at", "owner_workspace_messages", ["sent_at"])
-    op.create_index("ix_owner_workspace_messages_received_at", "owner_workspace_messages", ["received_at"])
-    op.create_index("ix_owner_workspace_messages_created_at", "owner_workspace_messages", ["created_at"])
+    op.create_index("ix_owner_workspace_messages_contact_id", "owner_workspace_messages", ["contact_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_messages_external_chat_id", "owner_workspace_messages", ["external_chat_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_messages_external_message_id", "owner_workspace_messages", ["external_message_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_messages_direction", "owner_workspace_messages", ["direction"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_messages_sent_at", "owner_workspace_messages", ["sent_at"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_messages_received_at", "owner_workspace_messages", ["received_at"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_messages_created_at", "owner_workspace_messages", ["created_at"], if_not_exists=True)
 
     op.create_table(
         "owner_workspace_task_messages",
@@ -146,8 +146,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("task_id", "message_id", name="uq_owner_workspace_task_message"),
     )
-    op.create_index("ix_owner_workspace_task_messages_task_id", "owner_workspace_task_messages", ["task_id"])
-    op.create_index("ix_owner_workspace_task_messages_message_id", "owner_workspace_task_messages", ["message_id"])
+    op.create_index("ix_owner_workspace_task_messages_task_id", "owner_workspace_task_messages", ["task_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_task_messages_message_id", "owner_workspace_task_messages", ["message_id"], if_not_exists=True)
 
     op.create_table(
         "owner_workspace_audit_logs",
@@ -160,11 +160,11 @@ def upgrade() -> None:
         sa.Column("author_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_owner_workspace_audit_logs_entity_type", "owner_workspace_audit_logs", ["entity_type"])
-    op.create_index("ix_owner_workspace_audit_logs_entity_id", "owner_workspace_audit_logs", ["entity_id"])
-    op.create_index("ix_owner_workspace_audit_logs_action_type", "owner_workspace_audit_logs", ["action_type"])
-    op.create_index("ix_owner_workspace_audit_logs_author_id", "owner_workspace_audit_logs", ["author_id"])
-    op.create_index("ix_owner_workspace_audit_logs_created_at", "owner_workspace_audit_logs", ["created_at"])
+    op.create_index("ix_owner_workspace_audit_logs_entity_type", "owner_workspace_audit_logs", ["entity_type"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_audit_logs_entity_id", "owner_workspace_audit_logs", ["entity_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_audit_logs_action_type", "owner_workspace_audit_logs", ["action_type"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_audit_logs_author_id", "owner_workspace_audit_logs", ["author_id"], if_not_exists=True)
+    op.create_index("ix_owner_workspace_audit_logs_created_at", "owner_workspace_audit_logs", ["created_at"], if_not_exists=True)
 
 
 def downgrade() -> None:

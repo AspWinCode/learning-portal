@@ -29,6 +29,7 @@ def upgrade() -> None:
         "ix_owner_workspace_notifications_contact_id",
         "owner_workspace_notifications",
         ["contact_id"],
+        if_not_exists=True,
     )
 
 

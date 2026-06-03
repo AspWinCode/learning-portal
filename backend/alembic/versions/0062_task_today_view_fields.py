@@ -20,9 +20,9 @@ def upgrade() -> None:
     op.add_column("tasks", sa.Column("due_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("tasks", sa.Column("priority", sa.String(20), nullable=False, server_default="normal"))
     op.add_column("tasks", sa.Column("pinned_today", sa.Boolean(), nullable=False, server_default="false"))
-    op.create_index("ix_tasks_scheduled_for", "tasks", ["scheduled_for"], unique=False)
-    op.create_index("ix_tasks_due_at", "tasks", ["due_at"], unique=False)
-    op.create_index("ix_tasks_priority", "tasks", ["priority"], unique=False)
+    op.create_index("ix_tasks_scheduled_for", "tasks", ["scheduled_for"], unique=False, if_not_exists=True)
+    op.create_index("ix_tasks_due_at", "tasks", ["due_at"], unique=False, if_not_exists=True)
+    op.create_index("ix_tasks_priority", "tasks", ["priority"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

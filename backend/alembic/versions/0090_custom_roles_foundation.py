@@ -43,11 +43,11 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_roles_id", "roles", ["id"], unique=False)
-    op.create_index("ix_roles_key", "roles", ["key"], unique=True)
+    op.create_index("ix_roles_id", "roles", ["id"], unique=False, if_not_exists=True)
+    op.create_index("ix_roles_key", "roles", ["key"], unique=True, if_not_exists=True)
 
     op.add_column("users", sa.Column("custom_role_id", sa.Integer(), nullable=True))
-    op.create_index("ix_users_custom_role_id", "users", ["custom_role_id"], unique=False)
+    op.create_index("ix_users_custom_role_id", "users", ["custom_role_id"], unique=False, if_not_exists=True)
     op.create_foreign_key(
         "fk_users_custom_role_id_roles",
         "users",

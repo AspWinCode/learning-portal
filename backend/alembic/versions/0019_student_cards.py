@@ -46,9 +46,9 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         )
-        op.create_index("ix_student_cards_student_full_name", "student_cards", ["student_full_name"])
-        op.create_index("ix_student_cards_archived", "student_cards", ["archived"])
-        op.create_index("ix_student_cards_abonement_id", "student_cards", ["abonement_id"])
+        op.create_index("ix_student_cards_student_full_name", "student_cards", ["student_full_name"], if_not_exists=True)
+        op.create_index("ix_student_cards_archived", "student_cards", ["archived"], if_not_exists=True)
+        op.create_index("ix_student_cards_abonement_id", "student_cards", ["abonement_id"], if_not_exists=True)
 
 
 def downgrade() -> None:

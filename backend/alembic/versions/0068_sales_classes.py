@@ -23,8 +23,8 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
     )
-    op.create_index("ix_sales_classes_name", "sales_classes", ["name"], unique=True)
-    op.create_index("ix_sales_classes_is_active", "sales_classes", ["is_active"], unique=False)
+    op.create_index("ix_sales_classes_name", "sales_classes", ["name"], unique=True, if_not_exists=True)
+    op.create_index("ix_sales_classes_is_active", "sales_classes", ["is_active"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

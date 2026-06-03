@@ -37,7 +37,7 @@ def upgrade() -> None:
         )
         op.execute("DROP INDEX IF EXISTS ix_sales_cities_name")
         op.execute("DROP INDEX IF EXISTS ix_sales_cities_is_active")
-        op.create_index("ix_sales_cities_name", "sales_cities", ["name"], unique=True)
+        op.create_index("ix_sales_cities_name", "sales_cities", ["name"], unique=True, if_not_exists=True)
 
     if not _table_exists(conn, "sales_schools"):
         op.create_table(
@@ -49,8 +49,8 @@ def upgrade() -> None:
         )
         op.execute("DROP INDEX IF EXISTS ix_sales_schools_name")
         op.execute("DROP INDEX IF EXISTS ix_sales_schools_is_active")
-        op.create_index("ix_sales_schools_name", "sales_schools", ["name"], unique=True)
-        op.create_index("ix_sales_schools_is_active", "sales_schools", ["is_active"], unique=False)
+        op.create_index("ix_sales_schools_name", "sales_schools", ["name"], unique=True, if_not_exists=True)
+        op.create_index("ix_sales_schools_is_active", "sales_schools", ["is_active"], unique=False, if_not_exists=True)
 
     if not _table_exists(conn, "lead_statuses"):
         op.create_table(
@@ -64,9 +64,9 @@ def upgrade() -> None:
         op.execute("DROP INDEX IF EXISTS ix_lead_statuses_name")
         op.execute("DROP INDEX IF EXISTS ix_lead_statuses_base_status")
         op.execute("DROP INDEX IF EXISTS ix_lead_statuses_is_active")
-        op.create_index("ix_lead_statuses_name", "lead_statuses", ["name"], unique=True)
-        op.create_index("ix_lead_statuses_base_status", "lead_statuses", ["base_status"], unique=False)
-        op.create_index("ix_lead_statuses_is_active", "lead_statuses", ["is_active"], unique=False)
+        op.create_index("ix_lead_statuses_name", "lead_statuses", ["name"], unique=True, if_not_exists=True)
+        op.create_index("ix_lead_statuses_base_status", "lead_statuses", ["base_status"], unique=False, if_not_exists=True)
+        op.create_index("ix_lead_statuses_is_active", "lead_statuses", ["is_active"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

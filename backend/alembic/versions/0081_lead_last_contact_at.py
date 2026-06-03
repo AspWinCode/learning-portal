@@ -24,7 +24,7 @@ def upgrade() -> None:
             "leads",
             sa.Column("last_contact_at", sa.DateTime(timezone=True), nullable=True),
         )
-        op.create_index("ix_leads_last_contact_at", "leads", ["last_contact_at"], unique=False)
+        op.create_index("ix_leads_last_contact_at", "leads", ["last_contact_at"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

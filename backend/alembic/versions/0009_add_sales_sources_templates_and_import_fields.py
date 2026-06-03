@@ -24,8 +24,8 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
     )
-    op.create_index("ix_lead_sources_name", "lead_sources", ["name"], unique=True)
-    op.create_index("ix_lead_sources_is_active", "lead_sources", ["is_active"], unique=False)
+    op.create_index("ix_lead_sources_name", "lead_sources", ["name"], unique=True, if_not_exists=True)
+    op.create_index("ix_lead_sources_is_active", "lead_sources", ["is_active"], unique=False, if_not_exists=True)
 
     op.create_table(
         "lead_task_templates",
@@ -34,8 +34,8 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
     )
-    op.create_index("ix_lead_task_templates_name", "lead_task_templates", ["name"], unique=True)
-    op.create_index("ix_lead_task_templates_is_active", "lead_task_templates", ["is_active"], unique=False)
+    op.create_index("ix_lead_task_templates_name", "lead_task_templates", ["name"], unique=True, if_not_exists=True)
+    op.create_index("ix_lead_task_templates_is_active", "lead_task_templates", ["is_active"], unique=False, if_not_exists=True)
 
     op.create_table(
         "lead_task_statuses",
@@ -45,9 +45,9 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
     )
-    op.create_index("ix_lead_task_statuses_name", "lead_task_statuses", ["name"], unique=True)
-    op.create_index("ix_lead_task_statuses_is_closed", "lead_task_statuses", ["is_closed"], unique=False)
-    op.create_index("ix_lead_task_statuses_is_active", "lead_task_statuses", ["is_active"], unique=False)
+    op.create_index("ix_lead_task_statuses_name", "lead_task_statuses", ["name"], unique=True, if_not_exists=True)
+    op.create_index("ix_lead_task_statuses_is_closed", "lead_task_statuses", ["is_closed"], unique=False, if_not_exists=True)
+    op.create_index("ix_lead_task_statuses_is_active", "lead_task_statuses", ["is_active"], unique=False, if_not_exists=True)
 
     op.add_column("leads", sa.Column("parent_full_name", sa.String(), nullable=True))
     op.add_column("leads", sa.Column("child_full_name", sa.String(), nullable=True))
@@ -55,13 +55,13 @@ def upgrade() -> None:
     op.add_column("leads", sa.Column("child_phone", sa.String(), nullable=True))
     op.add_column("leads", sa.Column("source_id", sa.Integer(), nullable=True))
     op.add_column("leads", sa.Column("referral_name", sa.String(), nullable=True))
-    op.create_index("ix_leads_source_id", "leads", ["source_id"], unique=False)
+    op.create_index("ix_leads_source_id", "leads", ["source_id"], unique=False, if_not_exists=True)
     op.create_foreign_key("fk_leads_source_id", "leads", "lead_sources", ["source_id"], ["id"])
 
     op.add_column("lead_tasks", sa.Column("template_id", sa.Integer(), nullable=True))
     op.add_column("lead_tasks", sa.Column("status_option_id", sa.Integer(), nullable=True))
-    op.create_index("ix_lead_tasks_template_id", "lead_tasks", ["template_id"], unique=False)
-    op.create_index("ix_lead_tasks_status_option_id", "lead_tasks", ["status_option_id"], unique=False)
+    op.create_index("ix_lead_tasks_template_id", "lead_tasks", ["template_id"], unique=False, if_not_exists=True)
+    op.create_index("ix_lead_tasks_status_option_id", "lead_tasks", ["status_option_id"], unique=False, if_not_exists=True)
     op.create_foreign_key("fk_lead_tasks_template_id", "lead_tasks", "lead_task_templates", ["template_id"], ["id"])
     op.create_foreign_key("fk_lead_tasks_status_option_id", "lead_tasks", "lead_task_statuses", ["status_option_id"], ["id"])
 

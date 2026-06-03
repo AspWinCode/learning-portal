@@ -55,8 +55,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("campaign_id", "key", name="uq_campaign_stages_campaign_key"),
     )
-    op.create_index("ix_campaign_stages_id", "campaign_stages", ["id"], unique=False)
-    op.create_index("ix_campaign_stages_campaign_id", "campaign_stages", ["campaign_id"], unique=False)
+    op.create_index("ix_campaign_stages_id", "campaign_stages", ["id"], unique=False, if_not_exists=True)
+    op.create_index("ix_campaign_stages_campaign_id", "campaign_stages", ["campaign_id"], unique=False, if_not_exists=True)
 
     # --- Backfill: засеять этапы для уже существующих кампаний ---
     bind = op.get_bind()

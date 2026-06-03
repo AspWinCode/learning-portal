@@ -29,6 +29,7 @@ def upgrade() -> None:
         "lesson_cancellations",
         ["group_id", "lesson_date", "start_time", "end_time"],
         unique=True,
+        if_not_exists=True,
     )
 
 

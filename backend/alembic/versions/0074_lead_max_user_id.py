@@ -17,7 +17,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("leads", sa.Column("max_user_id", sa.Integer(), nullable=True))
-    op.create_index(op.f("ix_leads_max_user_id"), "leads", ["max_user_id"], unique=False)
+    op.create_index(op.f("ix_leads_max_user_id", if_not_exists=True), "leads", ["max_user_id"], unique=False)
 
 
 def downgrade() -> None:

@@ -44,11 +44,11 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["target_trainer_id"], ["users.id"]),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index("ix_parent_questions_parent_user_id", "parent_questions", ["parent_user_id"], unique=False)
-        op.create_index("ix_parent_questions_student_id", "parent_questions", ["student_id"], unique=False)
-        op.create_index("ix_parent_questions_target_trainer_id", "parent_questions", ["target_trainer_id"], unique=False)
-        op.create_index("ix_parent_questions_status", "parent_questions", ["status"], unique=False)
-        op.create_index("ix_parent_questions_created_at", "parent_questions", ["created_at"], unique=False)
+        op.create_index("ix_parent_questions_parent_user_id", "parent_questions", ["parent_user_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_parent_questions_student_id", "parent_questions", ["student_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_parent_questions_target_trainer_id", "parent_questions", ["target_trainer_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_parent_questions_status", "parent_questions", ["status"], unique=False, if_not_exists=True)
+        op.create_index("ix_parent_questions_created_at", "parent_questions", ["created_at"], unique=False, if_not_exists=True)
 
     exists = conn.execute(
         sa.text(

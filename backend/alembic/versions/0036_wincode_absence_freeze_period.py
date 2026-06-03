@@ -64,8 +64,8 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["student_id"], ["students.id"], ondelete="CASCADE"),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index("ix_student_freezes_student_id", "student_freezes", ["student_id"])
-        op.create_index("ix_student_freezes_freeze_end", "student_freezes", ["freeze_end"])
+        op.create_index("ix_student_freezes_student_id", "student_freezes", ["student_id"], if_not_exists=True)
+        op.create_index("ix_student_freezes_freeze_end", "student_freezes", ["freeze_end"], if_not_exists=True)
 
     # program_makeup_compatibility: конфигурируемая матрица для подбора отработок
     if not _table_exists(conn, "program_makeup_compatibility"):
@@ -79,7 +79,7 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("source_program_id", "target_program_id", name="uq_makeup_compat_source_target"),
         )
-        op.create_index("ix_program_makeup_compatibility_source", "program_makeup_compatibility", ["source_program_id"])
+        op.create_index("ix_program_makeup_compatibility_source", "program_makeup_compatibility", ["source_program_id"], if_not_exists=True)
 
 
 def downgrade() -> None:

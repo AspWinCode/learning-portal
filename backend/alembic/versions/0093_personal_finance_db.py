@@ -52,9 +52,9 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["owner_id"], ["users.id"]),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index("ix_personal_finance_accounts_owner_id", "personal_finance_accounts", ["owner_id"], unique=False)
-        op.create_index("ix_personal_finance_accounts_name", "personal_finance_accounts", ["name"], unique=False)
-        op.create_index("ix_personal_finance_accounts_is_active", "personal_finance_accounts", ["is_active"], unique=False)
+        op.create_index("ix_personal_finance_accounts_owner_id", "personal_finance_accounts", ["owner_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_accounts_name", "personal_finance_accounts", ["name"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_accounts_is_active", "personal_finance_accounts", ["is_active"], unique=False, if_not_exists=True)
 
     if not _table_exists(conn, "personal_finance_categories"):
         op.create_table(
@@ -69,9 +69,9 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["owner_id"], ["users.id"]),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index("ix_personal_finance_categories_owner_id", "personal_finance_categories", ["owner_id"], unique=False)
-        op.create_index("ix_personal_finance_categories_name", "personal_finance_categories", ["name"], unique=False)
-        op.create_index("ix_personal_finance_categories_is_active", "personal_finance_categories", ["is_active"], unique=False)
+        op.create_index("ix_personal_finance_categories_owner_id", "personal_finance_categories", ["owner_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_categories_name", "personal_finance_categories", ["name"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_categories_is_active", "personal_finance_categories", ["is_active"], unique=False, if_not_exists=True)
 
     if not _table_exists(conn, "personal_finance_rules"):
         op.create_table(
@@ -88,9 +88,9 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["category_id"], ["personal_finance_categories.id"]),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index("ix_personal_finance_rules_owner_id", "personal_finance_rules", ["owner_id"], unique=False)
-        op.create_index("ix_personal_finance_rules_pattern", "personal_finance_rules", ["pattern"], unique=False)
-        op.create_index("ix_personal_finance_rules_is_active", "personal_finance_rules", ["is_active"], unique=False)
+        op.create_index("ix_personal_finance_rules_owner_id", "personal_finance_rules", ["owner_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_rules_pattern", "personal_finance_rules", ["pattern"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_rules_is_active", "personal_finance_rules", ["is_active"], unique=False, if_not_exists=True)
 
     if not _table_exists(conn, "personal_finance_transactions"):
         op.create_table(
@@ -111,11 +111,11 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["category_id"], ["personal_finance_categories.id"]),
             sa.PrimaryKeyConstraint("id"),
         )
-        op.create_index("ix_personal_finance_transactions_owner_id", "personal_finance_transactions", ["owner_id"], unique=False)
-        op.create_index("ix_personal_finance_transactions_account_id", "personal_finance_transactions", ["account_id"], unique=False)
-        op.create_index("ix_personal_finance_transactions_category_id", "personal_finance_transactions", ["category_id"], unique=False)
-        op.create_index("ix_personal_finance_transactions_article", "personal_finance_transactions", ["article"], unique=False)
-        op.create_index("ix_personal_finance_transactions_occurred_at", "personal_finance_transactions", ["occurred_at"], unique=False)
+        op.create_index("ix_personal_finance_transactions_owner_id", "personal_finance_transactions", ["owner_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_transactions_account_id", "personal_finance_transactions", ["account_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_transactions_category_id", "personal_finance_transactions", ["category_id"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_transactions_article", "personal_finance_transactions", ["article"], unique=False, if_not_exists=True)
+        op.create_index("ix_personal_finance_transactions_occurred_at", "personal_finance_transactions", ["occurred_at"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

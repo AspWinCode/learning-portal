@@ -26,8 +26,8 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
     )
-    op.create_index("ix_lead_info_templates_name", "lead_info_templates", ["name"], unique=True)
-    op.create_index("ix_lead_info_templates_is_active", "lead_info_templates", ["is_active"], unique=False)
+    op.create_index("ix_lead_info_templates_name", "lead_info_templates", ["name"], unique=True, if_not_exists=True)
+    op.create_index("ix_lead_info_templates_is_active", "lead_info_templates", ["is_active"], unique=False, if_not_exists=True)
 
     op.create_table(
         "lead_communications",
@@ -44,10 +44,10 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["sent_by"], ["users.id"]),
         sa.ForeignKeyConstraint(["template_id"], ["lead_info_templates.id"]),
     )
-    op.create_index("ix_lead_communications_lead_id", "lead_communications", ["lead_id"], unique=False)
-    op.create_index("ix_lead_communications_sent_by", "lead_communications", ["sent_by"], unique=False)
-    op.create_index("ix_lead_communications_template_id", "lead_communications", ["template_id"], unique=False)
-    op.create_index("ix_lead_communications_follow_up_at", "lead_communications", ["follow_up_at"], unique=False)
+    op.create_index("ix_lead_communications_lead_id", "lead_communications", ["lead_id"], unique=False, if_not_exists=True)
+    op.create_index("ix_lead_communications_sent_by", "lead_communications", ["sent_by"], unique=False, if_not_exists=True)
+    op.create_index("ix_lead_communications_template_id", "lead_communications", ["template_id"], unique=False, if_not_exists=True)
+    op.create_index("ix_lead_communications_follow_up_at", "lead_communications", ["follow_up_at"], unique=False, if_not_exists=True)
 
     op.execute(
         """

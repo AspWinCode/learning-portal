@@ -33,7 +33,7 @@ def upgrade() -> None:
             "student_cards",
             sa.Column("student_id", sa.Integer(), sa.ForeignKey("students.id"), nullable=True),
         )
-        op.create_index("ix_student_cards_student_id", "student_cards", ["student_id"], unique=True)
+        op.create_index("ix_student_cards_student_id", "student_cards", ["student_id"], unique=True, if_not_exists=True)
 
 
 def downgrade() -> None:

@@ -20,7 +20,7 @@ def upgrade() -> None:
       "b2b_projects",
       sa.Column("archived", sa.Boolean(), nullable=False, server_default=sa.false()),
   )
-  op.create_index("ix_b2b_projects_archived", "b2b_projects", ["archived"], unique=False)
+  op.create_index("ix_b2b_projects_archived", "b2b_projects", ["archived"], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

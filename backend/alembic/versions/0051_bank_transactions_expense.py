@@ -17,7 +17,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("bank_transactions", sa.Column("expense_category", sa.String(64), nullable=True))
-    op.create_index(op.f("ix_bank_transactions_expense_category"), "bank_transactions", ["expense_category"], unique=False)
+    op.create_index(op.f("ix_bank_transactions_expense_category", if_not_exists=True), "bank_transactions", ["expense_category"], unique=False)
 
 
 def downgrade() -> None:

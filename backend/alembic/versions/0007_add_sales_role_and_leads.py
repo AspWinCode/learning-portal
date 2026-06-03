@@ -16,8 +16,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Extend userrole enum
-    op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'sales'")
+    # Extend userrole enum — must run outside the current transaction.
+    conn = op.get_bind()
+    conn.execute(__import__("sqlalchemy").text("COMMIT"))
+    conn.execute(__import__("sqlalchemy").text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'sales'"))
 
     # Create enum types for sales domain
     op.execute(

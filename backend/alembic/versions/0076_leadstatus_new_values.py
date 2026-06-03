@@ -16,10 +16,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE leadstatus ADD VALUE IF NOT EXISTS 'no_answer'")
-    op.execute("ALTER TYPE leadstatus ADD VALUE IF NOT EXISTS 'event_registered'")
-    op.execute("ALTER TYPE leadstatus ADD VALUE IF NOT EXISTS 'decided_immediately'")
-    op.execute("ALTER TYPE leadstatus ADD VALUE IF NOT EXISTS 'thinking'")
+    # ADD VALUE must run outside the current transaction in PostgreSQL.
+    conn = op.get_bind()
+    conn.execute(sa.text("COMMIT"))
+    conn.execute(sa.text("ALTER TYPE leadstatus ADD VALUE IF NOT EXISTS 'no_answer'"))
+    conn.execute(sa.text("ALTER TYPE leadstatus ADD VALUE IF NOT EXISTS 'event_registered'"))
+    conn.execute(sa.text("ALTER TYPE leadstatus ADD VALUE IF NOT EXISTS 'decided_immediately'"))
+    conn.execute(sa.text("ALTER TYPE leadstatus ADD VALUE IF NOT EXISTS 'thinking'"))
 
 
 def downgrade() -> None:

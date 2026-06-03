@@ -14,8 +14,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add new enum value for PostgreSQL userrole type.
-    op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'owner'")
+    # ALTER TYPE ... ADD VALUE must run outside the current transaction in PostgreSQL
+    # because the new enum value cannot be used in the same txn it was added in.
+    conn = op.get_bind()
+    conn.execute(__import__("sqlalchemy").text("COMMIT"))
+    conn.execute(__import__("sqlalchemy").text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'owner'"))
 
 
 def downgrade() -> None:

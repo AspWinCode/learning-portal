@@ -665,7 +665,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
             <CardContent>
               <Typography variant="subtitle1" fontWeight={700} gutterBottom>Пул школ</Typography>
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                {schoolPool.length} школ · перетащите в джем
+                {schoolPool.length} школ в пуле кампании
               </Typography>
               {schoolPool.length > 0 && (
                 <Button
@@ -679,7 +679,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
                 </Button>
               )}
               {schoolPoolExpanded && (
-                <Stack spacing={0.75} sx={{ maxHeight: 280, minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
+                <Stack spacing={0.75} sx={{ maxHeight: 160, overflowY: 'auto', pr: 0.5 }}>
                   {schoolPool.map((sc) => (
                     <DraggableCard
                       key={sc.id}

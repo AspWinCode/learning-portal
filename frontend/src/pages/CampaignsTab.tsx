@@ -437,6 +437,10 @@ export const CampaignsTab: React.FC = () => {
       setCampaignDetailSubTab('work');
       return;
     }
+    setCampaignDetail(null);
+    setSchoolCampaigns([]);
+    setStages([]);
+    setEventCounts({});
     Promise.all([
       campaignsApi.get(selectedCampaignId),
       campaignsApi.listSchoolCampaigns(selectedCampaignId),
@@ -446,6 +450,9 @@ export const CampaignsTab: React.FC = () => {
         setCampaignDetail(c);
         setSchoolCampaigns(list);
         setStages(stageList);
+        if (!c.is_game_jam) {
+          setCampaignDetailSubTab('work');
+        }
       })
       .catch((err: any) => setError(extractApiError(err, 'Не удалось загрузить кампанию')));
   }, [selectedCampaignId]);
@@ -607,13 +614,15 @@ export const CampaignsTab: React.FC = () => {
             К списку кампаний
           </Button>
 
-          <Box sx={{ border: '2px solid', borderColor: 'primary.main', borderRadius: 1, p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
-            <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} variant="fullWidth">
-              <Tab label="Общая работа" value="work" />
-              <Tab label="Джемы" value="events" />
-              <Tab label="Матрица школ" value="matrix" />
-            </Tabs>
-          </Box>
+          {campaignDetail?.is_game_jam && (
+            <Box sx={{ border: '2px solid', borderColor: 'primary.main', borderRadius: 1, p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
+              <Tabs value={campaignDetailSubTab} onChange={(_, v: 'work' | 'events' | 'matrix') => setCampaignDetailSubTab(v)} variant="fullWidth">
+                <Tab label="Общая работа" value="work" />
+                <Tab label="Джемы" value="events" />
+                <Tab label="Матрица школ" value="matrix" />
+              </Tabs>
+            </Box>
+          )}
 
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>
@@ -710,10 +719,10 @@ export const CampaignsTab: React.FC = () => {
                 </>
               )}
 
-              {campaignDetailSubTab === 'events' && (
+              {campaignDetail.is_game_jam && campaignDetailSubTab === 'events' && (
                 <CampaignEventsSubTab campaignId={selectedCampaignId} onError={setError} canManage={canManageCampaigns} />
               )}
-              {campaignDetailSubTab === 'matrix' && (
+              {campaignDetail.is_game_jam && campaignDetailSubTab === 'matrix' && (
                 <CampaignMatrixSubTab campaignId={selectedCampaignId} onError={setError} canManage={canManageCampaigns} />
               )}
             </>

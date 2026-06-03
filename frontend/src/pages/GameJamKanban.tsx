@@ -96,10 +96,10 @@ const DraggableCard: React.FC<DraggableCardProps> = ({ id, schoolName, schoolCit
       <CardContent sx={{ py: 1, px: 1.5 }}>
         <Stack direction="row" alignItems="center" gap={0.5}>
           <DragIndicator fontSize="small" sx={{ color: 'text.disabled', flexShrink: 0 }} {...attributes} {...listeners} />
-          <Box>
-            <Typography variant="body2">{schoolName}</Typography>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{schoolName}</Typography>
             {schoolCity && <Typography variant="caption" color="text.secondary">{schoolCity}</Typography>}
-            {extraLabel && <Typography variant="caption" display="block" color="text.secondary">{extraLabel}</Typography>}
+            {extraLabel && <Typography variant="caption" display="block" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{extraLabel}</Typography>}
           </Box>
         </Stack>
       </CardContent>
@@ -648,13 +648,13 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={(e) => void handleDragEnd(e)}>
         <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', alignItems: 'flex-start', pb: 1 }}>
           {/* Пул школ — draggable */}
-          <Card variant="outlined" sx={{ minWidth: 280, flex: '0 0 auto', bgcolor: 'action.hover' }}>
+          <Card variant="outlined" sx={{ width: 320, maxWidth: 320, flex: '0 0 320px', bgcolor: 'action.hover' }}>
             <CardContent>
               <Typography variant="subtitle1" fontWeight={700} gutterBottom>Пул школ</Typography>
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
                 {schoolPool.length} школ · перетащите в джем
               </Typography>
-              <Stack spacing={1}>
+              <Stack spacing={1} sx={{ maxHeight: 'calc(100vh - 300px)', minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
                 {schoolPool.map((sc) => (
                   <DraggableCard
                     key={sc.id}

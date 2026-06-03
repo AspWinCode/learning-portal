@@ -466,15 +466,19 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
         campaignsApi.listCampaignEvents(campaignId),
         campaignsApi.listSchoolCampaigns(campaignId),
       ]);
-      setEvents(evs); setSchoolPool(pool);
+      setEvents(evs);
       const counts: Record<number, number> = {};
+      const assignedSchoolIds = new Set<number>();
       await Promise.all(evs.map(async (ev) => {
         try {
-          const rows = await campaignsApi.listEventSchools(campaignId, ev.id) as Array<{ school_campaign_event_id?: number | null }>;
-          counts[ev.id] = rows.filter((row) => row.school_campaign_event_id).length;
+          const rows = await campaignsApi.listEventSchools(campaignId, ev.id) as Array<{ school_campaign_id: number; school_campaign_event_id?: number | null }>;
+          const assignedRows = rows.filter((row) => row.school_campaign_event_id);
+          assignedRows.forEach((row) => assignedSchoolIds.add(row.school_campaign_id));
+          counts[ev.id] = assignedRows.length;
         }
         catch { counts[ev.id] = 0; }
       }));
+      setSchoolPool(pool.filter((school) => !assignedSchoolIds.has(school.id)));
       setJamSchoolCounts(counts);
     } catch (e: any) { onError(extractApiError(e, 'Не удалось загрузить данные')); }
     finally { setLoading(false); }
@@ -620,6 +624,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
 
     onError(null);
     setJamSchoolCounts((prev) => ({ ...prev, [eventId]: (prev[eventId] ?? 0) + 1 }));
+    setSchoolPool((prev) => prev.filter((school) => school.id !== schoolCampaignId));
     try {
       await campaignsApi.upsertSchoolCampaignEvent(campaignId, eventId, schoolCampaignId, {});
       await loadData();

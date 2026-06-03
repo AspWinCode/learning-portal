@@ -1541,7 +1541,7 @@ const OwnerWorkspacePage: React.FC = () => {
         cFiltered = cAll;
       }
 
-      setProjects(pFiltered);
+      setProjects(pFiltered.filter((project) => project.parent_project_id == null));
       setProjectsCatalog(pAll);
       setContacts(cFiltered);
       setContactsCatalog(cAll);
@@ -2699,14 +2699,34 @@ const OwnerWorkspacePage: React.FC = () => {
       return;
     }
     try {
-      await ownerWorkspaceApi.createProject({
+      const createdSubproject = await ownerWorkspaceApi.createProject({
         name: subprojectName.trim(),
         parent_project_id: projectDialog.id,
       });
+      if (canCreateTaskUi) {
+        await ownerWorkspaceApi.createTask({
+          title: `Подпроект: ${createdSubproject.name}`,
+          description: `Создан подпроект #${createdSubproject.id}. Откройте карточку проекта, чтобы вести дерево подпроектов.`,
+          priority: 'medium',
+          project_id: projectDialog.id,
+          tags: ['subproject'],
+        });
+      }
       setSubprojectName('');
       await loadProjectsAndContacts();
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);
       setProjectDialog(updated);
+      try {
+        const taskPage = await ownerWorkspaceApi.listTasks({
+          project_id: projectDialog.id,
+          limit: OWNER_WS_TASKS_FETCH_CAP,
+        });
+        setProjectDialogTasks(taskPage.items);
+      } catch {
+        setProjectDialogTasks([]);
+      }
+      await loadTasksFiltered();
+      void loadDigest();
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось создать подпроект'));
     }

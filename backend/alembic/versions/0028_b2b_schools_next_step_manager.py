@@ -33,7 +33,32 @@ def _column_exists(conn, table, column):
 def upgrade() -> None:
     conn = op.get_bind()
     if not _table_exists(conn, "b2b_schools"):
-        return
+        # Table was missing from the initial schema — create it now.
+        # Columns added by later migrations (0029, 0033, 0060, 0061, 0101, 0102)
+        # are NOT included here; those migrations will ADD them.
+        op.create_table(
+            "b2b_schools",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("name", sa.String(), nullable=False),
+            sa.Column("director", sa.String(), nullable=True),
+            sa.Column("city", sa.String(), nullable=True),
+            sa.Column("address", sa.Text(), nullable=True),
+            sa.Column("student_count", sa.Integer(), nullable=True),
+            sa.Column("friendship_degree", sa.String(32), nullable=True),
+            sa.Column(
+                "pipeline_stage",
+                sa.String(32),
+                nullable=False,
+                server_default="new",
+            ),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index("ix_b2b_schools_name", "b2b_schools", ["name"], unique=False, if_not_exists=True)
+        op.create_index("ix_b2b_schools_pipeline_stage", "b2b_schools", ["pipeline_stage"], unique=False, if_not_exists=True)
+        op.create_index("ix_b2b_schools_friendship_degree", "b2b_schools", ["friendship_degree"], unique=False, if_not_exists=True)
+        op.create_index("ix_b2b_schools_city", "b2b_schools", ["city"], unique=False, if_not_exists=True)
     # Add conveyor fields for owner workflow (idempotent)
     if not _column_exists(conn, "b2b_schools", "next_step"):
         op.add_column("b2b_schools", sa.Column("next_step", sa.Text(), nullable=True))

@@ -52,7 +52,7 @@ import {
 } from '@dnd-kit/core';
 import { b2bApi, campaignsApi, settingsApi, usersApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { CampaignEvent, CampaignEventStage, CampaignStage, SchoolCampaign, User } from '../types';
+import type { CampaignEvent, CampaignEventStage, SchoolCampaign, User } from '../types';
 
 type AvailableSchool = { id: number; name: string; city: string | null; district?: string | null };
 
@@ -393,17 +393,11 @@ interface JamEventColumnProps {
 }
 
 const JamEventColumn: React.FC<JamEventColumnProps> = ({ event, schoolCount, onOpen }) => {
-  const { setNodeRef, isOver } = useDroppable({ id: `jam-${event.id}` });
   return (
     <Card
-      ref={setNodeRef}
       variant="outlined"
       sx={{
         minWidth: 260, flex: '0 0 auto',
-        bgcolor: isOver ? 'action.selected' : undefined,
-        border: isOver ? '2px solid' : undefined,
-        borderColor: isOver ? 'primary.main' : undefined,
-        transition: 'background-color 0.15s',
       }}
     >
       <CardContent>
@@ -439,7 +433,6 @@ interface GameJamKanbanProps {
 export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canManage, onError }) => {
   const [events, setEvents] = useState<CampaignEvent[]>([]);
   const [schoolPool, setSchoolPool] = useState<SchoolCampaign[]>([]);
-  const [campaignStages, setCampaignStages] = useState<CampaignStage[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CampaignEvent | null>(null);
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [addSchoolsOpen, setAddSchoolsOpen] = useState(false);
@@ -453,22 +446,16 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
   const [schoolSearch, setSchoolSearch] = useState('');
   const [selectedSchoolIds, setSelectedSchoolIds] = useState<number[]>([]);
   const [addSchoolsLoading, setAddSchoolsLoading] = useState(false);
-  const [schoolPoolExpanded, setSchoolPoolExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [jamSchoolCounts, setJamSchoolCounts] = useState<Record<number, number>>({});
-  const [activeId, setActiveId] = useState<string | null>(null);
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-
   const loadData = useCallback(async () => {
     setLoading(true); onError(null);
     try {
-      const [evs, pool, stages] = await Promise.all([
+      const [evs, pool] = await Promise.all([
         campaignsApi.listCampaignEvents(campaignId),
         campaignsApi.listSchoolCampaigns(campaignId),
-        campaignsApi.listStages(campaignId),
       ]);
-      setEvents(evs); setSchoolPool(pool); setCampaignStages(stages);
+      setEvents(evs); setSchoolPool(pool);
       const counts: Record<number, number> = {};
       await Promise.all(evs.map(async (ev) => {
         try {
@@ -544,32 +531,6 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
     void loadTrainers();
     return () => { cancelled = true; };
   }, [createEventOpen, onError]);
-
-  const activeSchool = useMemo(
-    () => activeId ? schoolPool.find((sc) => String(sc.id) === activeId) : null,
-    [activeId, schoolPool]
-  );
-
-  const handleDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
-
-  const handleDragEnd = async (e: DragEndEvent) => {
-    setActiveId(null);
-    const { active, over } = e;
-    if (!over) return;
-    const scId = Number(active.id);
-    const overId = String(over.id);
-    if (!overId.startsWith('jam-')) return;
-    const eventId = Number(overId.replace('jam-', ''));
-    if (!eventId) return;
-    try {
-      await campaignsApi.upsertSchoolCampaignEvent(campaignId, eventId, scId, {});
-      const rows = await campaignsApi.listEventSchools(campaignId, eventId) as Array<{ school_campaign_event_id?: number | null }>;
-      setJamSchoolCounts((prev) => ({
-        ...prev,
-        [eventId]: rows.filter((row) => row.school_campaign_event_id).length,
-      }));
-    } catch (ex: any) { onError(extractApiError(ex, 'Не удалось добавить школу в джем')); }
-  };
 
   const openAddSchools = () => {
     setSelectedCities([]);
@@ -658,8 +619,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
         </Stack>
       )}
 
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={(e) => void handleDragEnd(e)}>
-        <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', alignItems: 'flex-start', pb: 1 }}>
+      <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', alignItems: 'flex-start', pb: 1 }}>
           {/* Пул школ — draggable */}
           <Card variant="outlined" sx={{ width: 320, maxWidth: 320, flex: '0 0 320px', bgcolor: 'action.hover' }}>
             <CardContent>
@@ -667,30 +627,9 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
                 {schoolPool.length} школ в пуле кампании
               </Typography>
-              {schoolPool.length > 0 && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  fullWidth
-                  onClick={() => setSchoolPoolExpanded((value) => !value)}
-                  sx={{ mb: schoolPoolExpanded ? 1 : 0 }}
-                >
-                  {schoolPoolExpanded ? 'Скрыть школы' : 'Показать школы'}
-                </Button>
-              )}
-              {schoolPoolExpanded && (
-                <Stack spacing={0.75} sx={{ maxHeight: 160, overflowY: 'auto', pr: 0.5 }}>
-                  {schoolPool.map((sc) => (
-                    <DraggableCard
-                      key={sc.id}
-                      id={String(sc.id)}
-                      schoolName={sc.school_name || `Школа #${sc.b2b_school_id}`}
-                      schoolCity={sc.school_city}
-                      extraLabel={campaignStages.find((s) => s.key === sc.stage)?.label}
-                    />
-                  ))}
-                </Stack>
-              )}
+              <Button size="small" variant="outlined" fullWidth onClick={openAddSchools} disabled={!canManage}>
+                Выбрать школы
+              </Button>
               {schoolPool.length === 0 && (
                 <Typography variant="caption" color="text.secondary">Школы не добавлены</Typography>
               )}
@@ -716,19 +655,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
               </CardContent>
             </Card>
           )}
-        </Box>
-
-        <DragOverlay>
-          {activeSchool && (
-            <Card variant="outlined" sx={{ minWidth: 200, opacity: 0.9, boxShadow: 4 }}>
-              <CardContent sx={{ py: 1, px: 1.5 }}>
-                <Typography variant="body2">{activeSchool.school_name || `#${activeSchool.id}`}</Typography>
-                <Typography variant="caption" color="text.secondary">{activeSchool.school_city}</Typography>
-              </CardContent>
-            </Card>
-          )}
-        </DragOverlay>
-      </DndContext>
+      </Box>
 
       <Dialog open={addSchoolsOpen} onClose={() => setAddSchoolsOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Добавить школы в пул</DialogTitle>

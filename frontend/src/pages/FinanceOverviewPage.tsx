@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   Box,
   Typography,
   Paper,
@@ -20,29 +19,15 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Grid,
 } from '@mui/material';
 import { Delete as DeleteIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { financeApi, studentsApi } from '../services/api';
-import type { FinanceAccountBalance, FinanceLedgerBankRow, FinanceAnalyticsSummary, Student } from '../types';
-import { EmptyState, FilterPanel, FormDialog, LoadingSkeleton } from '../components/ui';
+import type { FinanceLedgerBankRow, Student } from '../types';
+import { FilterPanel, FormDialog } from '../components/ui';
 
 const FinanceOverviewPageContent: React.FC = () => {
-  const [tab, setTab] = useState<'analytics' | 'overview' | 'all' | 'unclassified'>('analytics');
-  const [asOf, setAsOf] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  const [balances, setBalances] = useState<FinanceAccountBalance[]>([]);
-  const [balancesLoading, setBalancesLoading] = useState(false);
-  const [balancesError, setBalancesError] = useState<string | null>(null);
-
-  const [pnlFrom, setPnlFrom] = useState<string>(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-01-01`;
-  });
-  const [pnlTo, setPnlTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  const [analytics, setAnalytics] = useState<FinanceAnalyticsSummary | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [tab, setTab] = useState<'all' | 'unclassified'>('all');
 
   const [journalRows, setJournalRows] = useState<FinanceLedgerBankRow[]>([]);
   const [journalLoading, setJournalLoading] = useState(false);
@@ -79,37 +64,6 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [manualError, setManualError] = useState<string | null>(null);
 
   useEffect(() => {
-    setBalancesLoading(true);
-    setBalancesError(null);
-    financeApi
-      .getBalances(asOf ? { as_of: asOf } : undefined)
-      .then(setBalances)
-      .catch((err: any) => {
-        setBalancesError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить остатки по счетам');
-      })
-      .finally(() => setBalancesLoading(false));
-  }, [asOf]);
-
-
-  useEffect(() => {
-    if (tab !== 'analytics') return;
-    setAnalyticsLoading(true);
-    setAnalyticsError(null);
-    financeApi
-      .getAnalyticsSummary({
-        date_from: pnlFrom || undefined,
-        date_to: pnlTo || undefined,
-        group_by: 'month',
-      })
-      .then(setAnalytics)
-      .catch((err: any) => {
-        setAnalyticsError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить финансовую аналитику');
-        setAnalytics(null);
-      })
-      .finally(() => setAnalyticsLoading(false));
-  }, [tab, pnlFrom, pnlTo]);
-
-  useEffect(() => {
     if (!applyDialogOpen || !studentSearch.trim()) {
       setStudentOptions([]);
       return;
@@ -124,7 +78,6 @@ const FinanceOverviewPageContent: React.FC = () => {
   }, [applyDialogOpen, studentSearch]);
 
   useEffect(() => {
-    if (tab === 'overview') return;
     // Загружаем справочники один раз при первом открытии вкладки журнала
     if (!targets.length) {
       financeApi
@@ -237,275 +190,12 @@ const FinanceOverviewPageContent: React.FC = () => {
           value={tab}
           onChange={(_, v) => setTab(v)}
         >
-          <Tab value="overview" label="Обзор" />
           <Tab value="all" label="Все операции" />
           <Tab value="unclassified" label="Неразобранные" />
-          <Tab value="analytics" label="Аналитика" />
         </Tabs>
       </Box>
 
-      {tab === 'analytics' && (
-        <Box>
-          <Typography variant="h6" sx={{ mb: 1 }}>
-            Управленческая финансовая аналитика
-          </Typography>
-          <FilterPanel>
-            <TextField
-              label="С"
-              type="date"
-              size="small"
-              value={pnlFrom}
-              onChange={(e) => setPnlFrom(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-            <TextField
-              label="По"
-              type="date"
-              size="small"
-              value={pnlTo}
-              onChange={(e) => setPnlTo(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-            {analyticsLoading && (
-              <Typography variant="body2" color="text.secondary">
-                Загрузка...
-              </Typography>
-            )}
-          </FilterPanel>
-
-          {analyticsError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {analyticsError}
-            </Alert>
-          )}
-
-          {analyticsLoading && <LoadingSkeleton rows={4} />}
-
-          {!analyticsLoading && !analyticsError && !analytics && (
-            <EmptyState
-              title="Финансовая аналитика недоступна"
-              description="Выберите период или дождитесь загрузки данных."
-            />
-          )}
-
-          {analytics && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={3}>
-                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Typography variant="caption" color="text.secondary">Доходы</Typography>
-                    <Typography variant="h5" sx={{ mt: 1 }}>{analytics.kpi.income_total.toFixed(2)}</Typography>
-                    <Typography variant="body2" color={analytics.kpi.income_delta >= 0 ? 'success.main' : 'error.main'}>
-                      Δ {analytics.kpi.income_delta >= 0 ? '+' : ''}{analytics.kpi.income_delta.toFixed(2)}
-                    </Typography>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Typography variant="caption" color="text.secondary">Расходы</Typography>
-                    <Typography variant="h5" sx={{ mt: 1 }}>{analytics.kpi.expense_total.toFixed(2)}</Typography>
-                    <Typography variant="body2" color={analytics.kpi.expense_delta <= 0 ? 'success.main' : 'error.main'}>
-                      Δ {analytics.kpi.expense_delta >= 0 ? '+' : ''}{analytics.kpi.expense_delta.toFixed(2)}
-                    </Typography>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Typography variant="caption" color="text.secondary">Прибыль</Typography>
-                    <Typography variant="h5" sx={{ mt: 1 }}>{analytics.kpi.profit_total.toFixed(2)}</Typography>
-                    <Typography variant="body2" color={analytics.kpi.profit_delta >= 0 ? 'success.main' : 'error.main'}>
-                      Δ {analytics.kpi.profit_delta >= 0 ? '+' : ''}{analytics.kpi.profit_delta.toFixed(2)}
-                    </Typography>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Typography variant="caption" color="text.secondary">Контроль качества</Typography>
-                    <Typography variant="h5" sx={{ mt: 1 }}>
-                      {analytics.kpi.overdue_payments_3_count} / {analytics.kpi.unclassified_transactions_count}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Просрочки 10+: {analytics.kpi.overdue_payments_10_count}, неразобранное: {analytics.kpi.unclassified_transactions_amount.toFixed(2)}
-                    </Typography>
-                  </Paper>
-                </Grid>
-              </Grid>
-
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle1" sx={{ mb: 1 }}>P&L по периоду</Typography>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Период</TableCell>
-                      <TableCell align="right">Доходы</TableCell>
-                      <TableCell align="right">Расходы</TableCell>
-                      <TableCell align="right">Прибыль</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {analytics.pnl.map((row) => (
-                      <TableRow key={row.period}>
-                        <TableCell>{row.period}</TableCell>
-                        <TableCell align="right">{row.income.toFixed(2)}</TableCell>
-                        <TableCell align="right">{row.expense.toFixed(2)}</TableCell>
-                        <TableCell align="right" sx={{ color: row.profit >= 0 ? 'success.main' : 'error.main', fontWeight: 600 }}>
-                          {row.profit.toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Paper>
-
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Typography variant="subtitle1" sx={{ mb: 1 }}>По проектам</Typography>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Проект</TableCell>
-                          <TableCell align="right">Доходы</TableCell>
-                          <TableCell align="right">Расходы</TableCell>
-                          <TableCell align="right">Прибыль</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {analytics.target_breakdown.map((row) => (
-                          <TableRow key={row.target_code}>
-                            <TableCell>{row.target_name}</TableCell>
-                            <TableCell align="right">{row.income.toFixed(2)}</TableCell>
-                            <TableCell align="right">{row.expense.toFixed(2)}</TableCell>
-                            <TableCell align="right" sx={{ color: row.profit >= 0 ? 'success.main' : 'error.main', fontWeight: 600 }}>
-                              {row.profit.toFixed(2)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Typography variant="subtitle1" sx={{ mb: 1 }}>Топ расходов по статьям</Typography>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Статья</TableCell>
-                          <TableCell>Тип</TableCell>
-                          <TableCell align="right">Сумма</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {analytics.expense_breakdown.map((row) => (
-                          <TableRow key={`${row.article_id ?? 'none'}-${row.article_name}`}>
-                            <TableCell>{row.article_name}</TableCell>
-                            <TableCell>{row.cost_kind || '—'}</TableCell>
-                            <TableCell align="right">{row.amount.toFixed(2)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </Paper>
-                </Grid>
-              </Grid>
-
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle1" sx={{ mb: 1 }}>Остатки по счетам</Typography>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Счёт</TableCell>
-                      <TableCell align="right">Доходы</TableCell>
-                      <TableCell align="right">Расходы</TableCell>
-                      <TableCell align="right">Остаток</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {analytics.account_balances.map((row) => (
-                      <TableRow key={row.account_id}>
-                        <TableCell>{row.account_name}{row.account_code ? ` (${row.account_code})` : ''}</TableCell>
-                        <TableCell align="right">{row.income_total.toFixed(2)}</TableCell>
-                        <TableCell align="right">{row.expense_total.toFixed(2)}</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>{row.balance.toFixed(2)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Paper>
-            </Box>
-          )}
-        </Box>
-      )}
-
-      {tab === 'overview' && (
-        <Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Остатки по счетам
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-          <TextField
-            label="На дату"
-            type="date"
-            size="small"
-            value={asOf}
-            onChange={(e) => setAsOf(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-          />
-          {balancesLoading && (
-            <Typography variant="body2" color="text.secondary">
-              Загрузка…
-            </Typography>
-          )}
-          {balancesError && (
-            <Typography variant="body2" color="error">
-              {balancesError}
-            </Typography>
-          )}
-        </Box>
-        <Paper variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Счёт</TableCell>
-                <TableCell align="right">Доходы</TableCell>
-                <TableCell align="right">Расходы</TableCell>
-                <TableCell align="right">Остаток</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {balances.map((row) => (
-                <TableRow key={row.account_id}>
-                  <TableCell>
-                    {row.account_name}
-                    {row.account_code ? ` (${row.account_code})` : ''}
-                  </TableCell>
-                  <TableCell align="right" sx={{ color: 'success.main' }}>
-                    {row.income_total.toFixed(2)}
-                  </TableCell>
-                  <TableCell align="right" sx={{ color: 'error.main' }}>
-                    {row.expense_total.toFixed(2)}
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600 }}>
-                    {row.balance.toFixed(2)}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {balances.length === 0 && !balancesLoading && (
-                <TableRow>
-                  <TableCell colSpan={4} align="center">
-                    Нет данных по остаткам.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Paper>
-        </Box>
-      )}
-
-      {tab !== 'overview' && (
-        <Box>
+      <Box>
         <Typography variant="h6" sx={{ mb: 1 }}>
           {tab === 'all' ? 'Все операции журнала' : 'Неразобранные операции журнала'}
         </Typography>
@@ -891,7 +581,6 @@ const FinanceOverviewPageContent: React.FC = () => {
           </Table>
         </Paper>
       </Box>
-      )}
 
       <FormDialog
         open={applyDialogOpen && !!selectedJournalTx}

@@ -5285,7 +5285,7 @@ const OwnerWorkspacePage: React.FC = () => {
             onProjectListOverdueOnlyChange={setProjectListOverdueOnly}
             onProjectNameChange={setProjectName}
             onCreateProject={createProject}
-            onOpenProject={openProjectDialog}
+            onOpenProject={(project) => navigate(`/owner-workspace/projects/${project.id}`)}
             onOpenProjectOverdueTasks={(projectId) => drillDownToProjectTasks(projectId, { overdueOnly: true })}
           />
         </Suspense>
@@ -5315,7 +5315,7 @@ const OwnerWorkspacePage: React.FC = () => {
             onContactPhoneChange={setContactPhone}
             onNewContactProjectIdChange={setNewContactProjectId}
             onCreateContact={createContact}
-            onOpenContact={openContactDialog}
+            onOpenContact={(contact) => navigate(`/owner-workspace/counterparties/${contact.id}`)}
             onOpenContactComms={openContactQuickComms}
             onOpenContactTasks={openContactQuickTasks}
           />

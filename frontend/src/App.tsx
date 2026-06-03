@@ -618,14 +618,7 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route
-              path="/owner-workspace/projects/:projectId"
-              element={
-                <PrivateRoute requiredPermission="owner_workspace.access">
-                  <OwnerWorkspacePage />
-                </PrivateRoute>
-              }
-            />
+            {/* /owner-workspace/projects/:id → ProjectDetailPage (defined above) */}
             <Route
               path="/owner-workspace/contacts"
               element={

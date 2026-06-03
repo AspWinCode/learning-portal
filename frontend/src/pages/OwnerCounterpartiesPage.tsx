@@ -61,6 +61,7 @@ const DOCUMENT_LABELS: Record<DocumentCategory, string> = {
 };
 
 type CounterpartyFormState = {
+  type: 'company' | 'ip' | 'individual';
   full_name: string;
   phone: string;
   email: string;
@@ -74,6 +75,7 @@ type CounterpartyFormState = {
 };
 
 const emptyForm = (): CounterpartyFormState => ({
+  type: 'company',
   full_name: '',
   phone: '',
   email: '',
@@ -167,6 +169,7 @@ const OwnerCounterpartiesPage: React.FC = () => {
       const fresh = await ownerWorkspaceApi.getCounterparty(row.id);
       setSelected(fresh);
       setForm({
+        type: ((fresh as any).type as CounterpartyFormState['type']) || 'company',
         full_name: fresh.full_name || '',
         phone: fresh.phone || '',
         email: fresh.email || '',
@@ -193,6 +196,7 @@ const OwnerCounterpartiesPage: React.FC = () => {
     setError('');
     try {
       const payload = {
+        type: form.type,
         full_name: form.full_name.trim(),
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
@@ -401,6 +405,7 @@ const OwnerCounterpartiesPage: React.FC = () => {
         </Stack>
 
         <DataTable
+          onRowClick={(row) => navigate(`/owner-workspace/counterparties/${row.id}`)}
           columns={[
             {
               key: 'name',
@@ -409,48 +414,38 @@ const OwnerCounterpartiesPage: React.FC = () => {
                 <Box>
                   <Typography fontWeight={600}>{row.full_name}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {row.company || row.email || row.phone || 'Без дополнительных данных'}
+                    {row.company || row.email || row.phone || '—'}
                   </Typography>
                 </Box>
               ),
             },
             {
-              key: 'projects',
-              header: 'Проекты',
-              render: (row) => (
-                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                  {(row.linked_project_ids || []).length ? (
-                    (row.linked_project_ids || []).map((id) => (
-                      <Chip
-                        key={id}
-                        size="small"
-                        label={projectNameMap.get(id) || `#${id}`}
-                        onClick={() => navigate(`/owner-workspace/projects/${id}`)}
-                      />
-                    ))
-                  ) : (
-                    <Typography variant="body2">—</Typography>
-                  )}
-                </Stack>
-              ),
-            },
-            {
-              key: 'documents',
-              header: 'Документы',
-              align: 'center',
+              key: 'type',
+              header: 'Тип',
               render: (row) => {
-                const uploaded = (row.documents || []).filter((item) => item.uploaded).length;
-                return <Chip size="small" color={uploaded > 0 ? 'success' : 'default'} label={`${uploaded}/7`} />;
+                const labels: Record<string, string> = { company: 'Компания', ip: 'ИП', individual: 'Физлицо' };
+                return <Chip size="small" variant="outlined" label={labels[(row as any).type] || 'Компания'} />;
               },
             },
             {
-              key: 'tasks',
-              header: 'Активные задачи',
+              key: 'projects',
+              header: 'Проектов',
               align: 'center',
               render: (row) => (
-                <Button size="small" onClick={() => navigate(`/owner-workspace/tasks?contact_id=${row.id}`)}>
-                  {row.active_tasks_count || 0}
-                </Button>
+                <Chip
+                  size="small"
+                  color={(row as any).projects_count > 0 ? 'primary' : 'default'}
+                  variant={(row as any).projects_count > 0 ? 'filled' : 'outlined'}
+                  label={(row as any).projects_count ?? (row.linked_project_ids || []).length}
+                />
+              ),
+            },
+            {
+              key: 'tasks',
+              header: 'Задач',
+              align: 'center',
+              render: (row) => (
+                <Chip size="small" variant="outlined" label={row.active_tasks_count || 0} />
               ),
             },
             {
@@ -470,7 +465,7 @@ const OwnerCounterpartiesPage: React.FC = () => {
               header: '',
               align: 'right',
               render: (row) => (
-                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                <Stack direction="row" spacing={0.5} justifyContent="flex-end" onClick={(e) => e.stopPropagation()}>
                   <IconButton size="small" onClick={() => void openEditDialog(row)}>
                     <EditIcon fontSize="small" />
                   </IconButton>
@@ -506,24 +501,31 @@ const OwnerCounterpartiesPage: React.FC = () => {
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth>
+                <InputLabel>Тип контрагента</InputLabel>
+                <Select
+                  value={form.type}
+                  label="Тип контрагента"
+                  onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value as CounterpartyFormState['type'] }))}
+                >
+                  <MenuItem value="company">Компания</MenuItem>
+                  <MenuItem value="ip">ИП</MenuItem>
+                  <MenuItem value="individual">Физическое лицо</MenuItem>
+                </Select>
+              </FormControl>
               <TextField
-                label="Название"
+                label="Наименование / ФИО"
                 value={form.full_name}
                 onChange={(e) => setForm((prev) => ({ ...prev, full_name: e.target.value }))}
                 fullWidth
-              />
-              <TextField
-                label="Телефон"
-                value={form.phone}
-                onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-                fullWidth
+                required
               />
             </Stack>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
               <TextField
-                label="Email"
-                value={form.email}
-                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                label="Телефон"
+                value={form.phone}
+                onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
                 fullWidth
               />
               <TextField

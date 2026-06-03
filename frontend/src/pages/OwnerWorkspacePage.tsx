@@ -5997,7 +5997,7 @@ const OwnerWorkspacePage: React.FC = () => {
                                 Ответственный: <strong>{userName(project.owner_id)}</strong>
                               </Typography>
                               <Stack direction="row" spacing={1} flexWrap="wrap">
-                                <Button size="small" variant="outlined" onClick={() => openProjectDialog(project)}>
+                                <Button size="small" variant="outlined" onClick={() => navigate(`/owner-workspace/projects/${project.id}`)}>
                                   Открыть проект
                                 </Button>
                                 <Button

@@ -27,6 +27,7 @@ interface DataTableProps<T> {
   getRowKey: (row: T) => React.Key;
   loading?: boolean;
   emptyState?: React.ReactNode;
+  onRowClick?: (row: T) => void;
   pagination?: {
     page: number;
     rowsPerPage: number;
@@ -43,6 +44,7 @@ export function DataTable<T>({
   getRowKey,
   loading = false,
   emptyState,
+  onRowClick,
   pagination,
 }: DataTableProps<T>) {
   return (
@@ -79,7 +81,12 @@ export function DataTable<T>({
               </TableRow>
             ) : (
               rows.map((row) => (
-                <TableRow hover key={getRowKey(row)}>
+                <TableRow
+                  hover
+                  key={getRowKey(row)}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  sx={onRowClick ? { cursor: 'pointer' } : undefined}
+                >
                   {columns.map((column) => (
                     <TableCell key={column.key} align={column.align}>
                       {column.render(row)}

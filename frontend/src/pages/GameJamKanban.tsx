@@ -453,6 +453,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
   const [schoolSearch, setSchoolSearch] = useState('');
   const [selectedSchoolIds, setSelectedSchoolIds] = useState<number[]>([]);
   const [addSchoolsLoading, setAddSchoolsLoading] = useState(false);
+  const [schoolPoolExpanded, setSchoolPoolExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [jamSchoolCounts, setJamSchoolCounts] = useState<Record<number, number>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -470,7 +471,10 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
       setEvents(evs); setSchoolPool(pool); setCampaignStages(stages);
       const counts: Record<number, number> = {};
       await Promise.all(evs.map(async (ev) => {
-        try { counts[ev.id] = (await campaignsApi.listEventSchools(campaignId, ev.id)).length; }
+        try {
+          const rows = await campaignsApi.listEventSchools(campaignId, ev.id) as Array<{ school_campaign_event_id?: number | null }>;
+          counts[ev.id] = rows.filter((row) => row.school_campaign_event_id).length;
+        }
         catch { counts[ev.id] = 0; }
       }));
       setJamSchoolCounts(counts);
@@ -559,7 +563,11 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
     if (!eventId) return;
     try {
       await campaignsApi.upsertSchoolCampaignEvent(campaignId, eventId, scId, {});
-      setJamSchoolCounts((prev) => ({ ...prev, [eventId]: (prev[eventId] ?? 0) + 1 }));
+      const rows = await campaignsApi.listEventSchools(campaignId, eventId) as Array<{ school_campaign_event_id?: number | null }>;
+      setJamSchoolCounts((prev) => ({
+        ...prev,
+        [eventId]: rows.filter((row) => row.school_campaign_event_id).length,
+      }));
     } catch (ex: any) { onError(extractApiError(ex, 'Не удалось добавить школу в джем')); }
   };
 
@@ -659,20 +667,33 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
                 {schoolPool.length} школ · перетащите в джем
               </Typography>
-              <Stack spacing={0.75} sx={{ maxHeight: 420, minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
-                {schoolPool.map((sc) => (
-                  <DraggableCard
-                    key={sc.id}
-                    id={String(sc.id)}
-                    schoolName={sc.school_name || `Школа #${sc.b2b_school_id}`}
-                    schoolCity={sc.school_city}
-                    extraLabel={campaignStages.find((s) => s.key === sc.stage)?.label}
-                  />
-                ))}
-                {schoolPool.length === 0 && (
-                  <Typography variant="caption" color="text.secondary">Школы не добавлены</Typography>
-                )}
-              </Stack>
+              {schoolPool.length > 0 && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  fullWidth
+                  onClick={() => setSchoolPoolExpanded((value) => !value)}
+                  sx={{ mb: schoolPoolExpanded ? 1 : 0 }}
+                >
+                  {schoolPoolExpanded ? 'Скрыть школы' : 'Показать школы'}
+                </Button>
+              )}
+              {schoolPoolExpanded && (
+                <Stack spacing={0.75} sx={{ maxHeight: 280, minHeight: 120, overflowY: 'auto', pr: 0.5 }}>
+                  {schoolPool.map((sc) => (
+                    <DraggableCard
+                      key={sc.id}
+                      id={String(sc.id)}
+                      schoolName={sc.school_name || `Школа #${sc.b2b_school_id}`}
+                      schoolCity={sc.school_city}
+                      extraLabel={campaignStages.find((s) => s.key === sc.stage)?.label}
+                    />
+                  ))}
+                </Stack>
+              )}
+              {schoolPool.length === 0 && (
+                <Typography variant="caption" color="text.secondary">Школы не добавлены</Typography>
+              )}
             </CardContent>
           </Card>
 

@@ -102,6 +102,12 @@ const OwnerCounterpartiesPage: React.FC = () => {
   const [personSearch, setPersonSearch] = useState('');
   const [personResults, setPersonResults] = useState<LinkedPersonItem[]>([]);
   const [personSearching, setPersonSearching] = useState(false);
+  const [contactTasks, setContactTasks] = useState<Array<{ id: number; title: string; status: string; priority: string; deadline_at?: string | null }>>([]);
+  const [taskFormOpen, setTaskFormOpen] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDeadline, setNewTaskDeadline] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+  const [savingTask, setSavingTask] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -201,6 +207,40 @@ const OwnerCounterpartiesPage: React.FC = () => {
     }
   };
 
+  const loadContactTasks = async (contactId: number) => {
+    try {
+      const res = await ownerWorkspaceApi.listTasks({ contact_id: contactId, limit: 50 });
+      setContactTasks(res.items.map((t) => ({
+        id: t.id, title: t.title, status: t.status, priority: t.priority, deadline_at: t.deadline_at,
+      })));
+    } catch {
+      setContactTasks([]);
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!newTaskTitle.trim() || !selected) return;
+    setSavingTask(true);
+    try {
+      await ownerWorkspaceApi.createTask({
+        title: newTaskTitle.trim(),
+        priority: newTaskPriority,
+        deadline_at: newTaskDeadline || null,
+        contact_id: selected.id,
+        status: 'new',
+      });
+      setNewTaskTitle('');
+      setNewTaskDeadline('');
+      setNewTaskPriority('medium');
+      setTaskFormOpen(false);
+      await loadContactTasks(selected.id);
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось создать задачу.'));
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
   const openCreateDialog = () => {
     setSelected(null);
     setForm(emptyForm());
@@ -233,6 +273,11 @@ const OwnerCounterpartiesPage: React.FC = () => {
       setCreateProjectOpen(false);
       setNewProjectName('');
       void loadCounterpartyProjects(fresh.id);
+      void loadContactTasks(fresh.id);
+      setTaskFormOpen(false);
+      setNewTaskTitle('');
+      setNewTaskDeadline('');
+      setNewTaskPriority('medium');
       setDialogOpen(true);
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось открыть карточку контрагента.'));
@@ -686,6 +731,86 @@ const OwnerCounterpartiesPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary">Нет привязанных контактов.</Typography>
               )}
             </Box>
+
+            {selected ? (
+              <Box>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                  <Typography variant="h6">Задачи</Typography>
+                  <Button size="small" startIcon={<AddIcon />} onClick={() => { setTaskFormOpen(true); setNewTaskTitle(''); setNewTaskDeadline(''); setNewTaskPriority('medium'); }}>
+                    Создать задачу
+                  </Button>
+                </Stack>
+
+                <Collapse in={taskFormOpen}>
+                  <Stack spacing={1.5} sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'primary.light', borderRadius: 1 }}>
+                    <TextField
+                      size="small"
+                      label="Название задачи"
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      fullWidth
+                      autoFocus
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <FormControl size="small" sx={{ minWidth: 140 }}>
+                        <InputLabel>Приоритет</InputLabel>
+                        <Select
+                          label="Приоритет"
+                          value={newTaskPriority}
+                          onChange={(e) => setNewTaskPriority(e.target.value as typeof newTaskPriority)}
+                        >
+                          <MenuItem value="low">Низкий</MenuItem>
+                          <MenuItem value="medium">Средний</MenuItem>
+                          <MenuItem value="high">Высокий</MenuItem>
+                          <MenuItem value="critical">Критический</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        size="small"
+                        label="Срок"
+                        type="date"
+                        value={newTaskDeadline}
+                        onChange={(e) => setNewTaskDeadline(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ flex: 1 }}
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1}>
+                      <Button variant="contained" size="small" disabled={!newTaskTitle.trim() || savingTask} onClick={() => void handleCreateTask()}>
+                        {savingTask ? 'Создаём...' : 'Создать'}
+                      </Button>
+                      <Button size="small" onClick={() => setTaskFormOpen(false)}>Отмена</Button>
+                    </Stack>
+                  </Stack>
+                </Collapse>
+
+                {contactTasks.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Задач нет.</Typography>
+                ) : (
+                  <Stack spacing={0.5} sx={{ mb: 2 }}>
+                    {contactTasks.map((t) => {
+                      const priorityColor: Record<string, string> = { low: '#9e9e9e', medium: '#1976d2', high: '#ed6c02', critical: '#d32f2f' };
+                      const statusLabel: Record<string, string> = { new: 'Новая', in_progress: 'В работе', waiting: 'Ожидание', completed: 'Выполнена', cancelled: 'Отменена' };
+                      return (
+                        <Stack key={t.id} direction="row" alignItems="center" justifyContent="space-between"
+                          sx={{ px: 1.5, py: 1, bgcolor: t.status === 'completed' ? 'grey.50' : 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ textDecoration: t.status === 'completed' ? 'line-through' : 'none', color: t.status === 'completed' ? 'text.disabled' : 'text.primary' }}>
+                              {t.title}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {statusLabel[t.status] || t.status}
+                              {t.deadline_at ? ` · до ${new Date(t.deadline_at).toLocaleDateString('ru-RU')}` : ''}
+                            </Typography>
+                          </Box>
+                          <Chip size="small" label={t.priority} sx={{ bgcolor: priorityColor[t.priority] || '#9e9e9e', color: '#fff', fontSize: 11 }} />
+                        </Stack>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </Box>
+            ) : null}
 
             {selected ? (
               <Box>

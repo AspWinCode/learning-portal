@@ -39,6 +39,7 @@ import type {
   OwnerWorkspaceCounterparty,
   OwnerWorkspaceProject,
   OwnerWorkspaceProjectStatus,
+  OwnerWorkspaceTask,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 
@@ -143,6 +144,15 @@ const CounterpartyDetailPage: React.FC = () => {
   const [history, setHistory] = useState<OwnerWorkspaceAuditLog[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Tasks tab
+  const [tasks, setTasks] = useState<OwnerWorkspaceTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [taskFormOpen, setTaskFormOpen] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDeadline, setNewTaskDeadline] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+  const [savingTask, setSavingTask] = useState(false);
+
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<CounterpartyFormState>({
@@ -215,11 +225,49 @@ const CounterpartyDetailPage: React.FC = () => {
     }
   }, [counterpartyId]);
 
+  // ─── Load tasks ───────────────────────────────────────────────────────────
+
+  const loadTasks = useCallback(async () => {
+    setTasksLoading(true);
+    try {
+      const res = await ownerWorkspaceApi.listTasks({ contact_id: counterpartyId, limit: 200 });
+      setTasks(res.items);
+    } catch {
+      setTasks([]);
+    } finally {
+      setTasksLoading(false);
+    }
+  }, [counterpartyId]);
+
+  const handleCreateTask = async () => {
+    if (!newTaskTitle.trim()) return;
+    setSavingTask(true);
+    try {
+      await ownerWorkspaceApi.createTask({
+        title: newTaskTitle.trim(),
+        priority: newTaskPriority,
+        deadline_at: newTaskDeadline || null,
+        contact_id: counterpartyId,
+        status: 'new',
+      });
+      setNewTaskTitle('');
+      setNewTaskDeadline('');
+      setNewTaskPriority('medium');
+      setTaskFormOpen(false);
+      await loadTasks();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось создать задачу.'));
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
   // Load tab data lazily
   useEffect(() => {
     if (tab === 1) void loadProjects();
-    if (tab === 2) void loadHistory();
-  }, [tab, loadProjects, loadHistory]);
+    if (tab === 2) void loadTasks();
+    if (tab === 3) void loadHistory();
+  }, [tab, loadProjects, loadTasks, loadHistory]);
 
   // ─── Edit handlers ────────────────────────────────────────────────────────
 
@@ -400,6 +448,7 @@ const CounterpartyDetailPage: React.FC = () => {
           <Tabs value={tab} onChange={(_, v: number) => setTab(v)}>
             <Tab label="Основное" />
             <Tab label="Проекты" />
+            <Tab label="Задачи" />
             <Tab label="История" />
           </Tabs>
         </Box>
@@ -515,8 +564,108 @@ const CounterpartyDetailPage: React.FC = () => {
           />
         </TabPanel>
 
-        {/* Tab: История */}
+        {/* Tab: Задачи */}
         <TabPanel value={tab} index={2}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => { setTaskFormOpen(true); setNewTaskTitle(''); setNewTaskDeadline(''); setNewTaskPriority('medium'); }}
+            >
+              Создать задачу
+            </Button>
+          </Box>
+
+          {taskFormOpen && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+              <Stack spacing={2}>
+                <TextField
+                  label="Название задачи"
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  fullWidth
+                  autoFocus
+                  size="small"
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <FormControl size="small" sx={{ minWidth: 160 }}>
+                    <InputLabel>Приоритет</InputLabel>
+                    <Select
+                      label="Приоритет"
+                      value={newTaskPriority}
+                      onChange={(e) => setNewTaskPriority(e.target.value as typeof newTaskPriority)}
+                    >
+                      <MenuItem value="low">Низкий</MenuItem>
+                      <MenuItem value="medium">Средний</MenuItem>
+                      <MenuItem value="high">Высокий</MenuItem>
+                      <MenuItem value="critical">Критический</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    label="Срок"
+                    type="date"
+                    value={newTaskDeadline}
+                    onChange={(e) => setNewTaskDeadline(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1 }}
+                  />
+                </Stack>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="contained"
+                    disabled={!newTaskTitle.trim() || savingTask}
+                    onClick={() => void handleCreateTask()}
+                  >
+                    {savingTask ? 'Создаём...' : 'Создать'}
+                  </Button>
+                  <Button onClick={() => setTaskFormOpen(false)}>Отмена</Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          )}
+
+          {tasksLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : tasks.length === 0 ? (
+            <EmptyState title="Нет задач" description="Создайте первую задачу для этого контакта." />
+          ) : (
+            <Stack spacing={1}>
+              {tasks.map((t) => {
+                const priorityColors: Record<string, string> = { low: 'default', medium: 'primary', high: 'warning', critical: 'error' };
+                const statusLabel: Record<string, string> = { new: 'Новая', in_progress: 'В работе', waiting: 'Ожидание', completed: 'Выполнена', cancelled: 'Отменена' };
+                return (
+                  <Paper key={t.id} variant="outlined" sx={{ p: 2, opacity: ['completed', 'cancelled'].includes(t.status) ? 0.6 : 1 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
+                      <Box>
+                        <Typography
+                          fontWeight={500}
+                          sx={{ textDecoration: ['completed', 'cancelled'].includes(t.status) ? 'line-through' : 'none' }}
+                        >
+                          {t.title}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {statusLabel[t.status] || t.status}
+                          {t.deadline_at ? ` · до ${new Date(t.deadline_at).toLocaleDateString('ru-RU')}` : ''}
+                        </Typography>
+                      </Box>
+                      <Chip
+                        size="small"
+                        label={{ low: 'Низкий', medium: 'Средний', high: 'Высокий', critical: 'Критический' }[t.priority] || t.priority}
+                        color={(priorityColors[t.priority] || 'default') as any}
+                      />
+                    </Stack>
+                  </Paper>
+                );
+              })}
+            </Stack>
+          )}
+        </TabPanel>
+
+        {/* Tab: История */}
+        <TabPanel value={tab} index={3}>
           {historyLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />

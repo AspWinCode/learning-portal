@@ -2632,6 +2632,9 @@ export const campaignsApi = {
     const response = await api.put(`/api/campaigns/${campaignId}/events/${eventId}`, payload);
     return response.data;
   },
+  deleteCampaignEvent: async (campaignId: number, eventId: number): Promise<void> => {
+    await api.delete(`/api/campaigns/${campaignId}/events/${eventId}`);
+  },
   getSchoolsEventsMatrix: async (
     campaignId: number
   ): Promise<import('../types').SchoolsEventsMatrix> => {

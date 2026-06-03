@@ -33,6 +33,7 @@ import {
   Typography,
 } from '@mui/material';
 import Add from '@mui/icons-material/Add';
+import ArchiveOutlined from '@mui/icons-material/ArchiveOutlined';
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import DragIndicator from '@mui/icons-material/DragIndicator';
@@ -69,6 +70,12 @@ const emptyEventForm = {
 const toEventDateTime = (date: string, time: string) => (
   date && time ? `${date}T${time}:00` : null
 );
+
+const toTimeValue = (value?: string | null) => {
+  if (!value) return '';
+  const match = value.match(/T(\d{2}:\d{2})/);
+  return match ? match[1] : '';
+};
 
 // ---------------------------------------------------------------------------
 // Draggable school card
@@ -391,9 +398,13 @@ interface JamEventColumnProps {
   event: CampaignEvent;
   schoolCount: number;
   onOpen: (ev: CampaignEvent) => void;
+  canManage: boolean;
+  onEdit: (ev: CampaignEvent) => void;
+  onArchive: (ev: CampaignEvent) => void;
+  onDelete: (ev: CampaignEvent) => void;
 }
 
-const JamEventColumn: React.FC<JamEventColumnProps> = ({ event, schoolCount, onOpen }) => {
+const JamEventColumn: React.FC<JamEventColumnProps> = ({ event, schoolCount, onOpen, canManage, onEdit, onArchive, onDelete }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `event-${event.id}` });
 
   return (
@@ -401,7 +412,8 @@ const JamEventColumn: React.FC<JamEventColumnProps> = ({ event, schoolCount, onO
       ref={setNodeRef}
       variant="outlined"
       sx={{
-        minWidth: 260, flex: '0 0 auto',
+        width: 390,
+        maxWidth: '100%',
         bgcolor: isOver ? 'action.selected' : 'background.paper',
         borderColor: isOver ? 'primary.main' : undefined,
         transition: 'background-color 0.15s, border-color 0.15s',
@@ -410,6 +422,19 @@ const JamEventColumn: React.FC<JamEventColumnProps> = ({ event, schoolCount, onO
       <CardContent>
         <Stack direction="row" alignItems="center" gap={0.5} mb={0.5}>
           <Typography variant="subtitle2" sx={{ flex: 1 }} fontWeight={700}>{event.title}</Typography>
+          {canManage && (
+            <>
+              <Tooltip title="Редактировать джем">
+                <IconButton size="small" onClick={() => onEdit(event)}><DriveFileRenameOutline fontSize="small" /></IconButton>
+              </Tooltip>
+              <Tooltip title="Архивировать джем">
+                <IconButton size="small" onClick={() => onArchive(event)}><ArchiveOutlined fontSize="small" /></IconButton>
+              </Tooltip>
+              <Tooltip title="Удалить джем">
+                <IconButton size="small" color="error" onClick={() => onDelete(event)}><DeleteOutline fontSize="small" /></IconButton>
+              </Tooltip>
+            </>
+          )}
           <Tooltip title="Открыть канбан джема">
             <IconButton size="small" onClick={() => onOpen(event)}><OpenInNew fontSize="small" /></IconButton>
           </Tooltip>
@@ -442,6 +467,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
   const [schoolPool, setSchoolPool] = useState<SchoolCampaign[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CampaignEvent | null>(null);
   const [createEventOpen, setCreateEventOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CampaignEvent | null>(null);
   const [addSchoolsOpen, setAddSchoolsOpen] = useState(false);
   const [eventForm, setEventForm] = useState(emptyEventForm);
   const [trainers, setTrainers] = useState<User[]>([]);
@@ -462,10 +488,11 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
   const loadData = useCallback(async () => {
     setLoading(true); onError(null);
     try {
-      const [evs, pool] = await Promise.all([
+      const [allEvents, pool] = await Promise.all([
         campaignsApi.listCampaignEvents(campaignId),
         campaignsApi.listSchoolCampaigns(campaignId),
       ]);
+      const evs = allEvents.filter((event) => event.status !== 'archived');
       setEvents(evs);
       const counts: Record<number, number> = {};
       const assignedSchoolIds = new Set<number>();
@@ -555,6 +582,26 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
     setAddSchoolsOpen(true);
   };
 
+  const openCreateEvent = () => {
+    setEditingEvent(null);
+    setEventForm(emptyEventForm);
+    setCreateEventOpen(true);
+  };
+
+  const openEditEvent = (event: CampaignEvent) => {
+    setEditingEvent(event);
+    setEventForm({
+      title: event.title || '',
+      description: event.description || event.notes || '',
+      event_date: event.event_date || '',
+      start_time: toTimeValue(event.starts_at),
+      end_time: toTimeValue(event.ends_at),
+      trainer_id: event.trainer_id ? String(event.trainer_id) : '',
+      location: event.location || '',
+    });
+    setCreateEventOpen(true);
+  };
+
   const toggleSchoolSelection = (schoolId: number) => {
     setSelectedSchoolIds((prev) => (
       prev.includes(schoolId) ? prev.filter((id) => id !== schoolId) : [...prev, schoolId]
@@ -584,23 +631,55 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
     finally { setAddSchoolsLoading(false); }
   };
 
-  const handleCreateEvent = async () => {
+  const handleSaveEvent = async () => {
     if (!eventForm.title.trim() || !eventForm.event_date) return;
     onError(null);
+    const payload = {
+      title: eventForm.title.trim(),
+      description: eventForm.description.trim() || null,
+      event_date: eventForm.event_date,
+      starts_at: toEventDateTime(eventForm.event_date, eventForm.start_time),
+      ends_at: toEventDateTime(eventForm.event_date, eventForm.end_time),
+      trainer_id: eventForm.trainer_id ? Number(eventForm.trainer_id) : null,
+      location: eventForm.location.trim() || null,
+    };
     try {
-      await campaignsApi.createCampaignEvent(campaignId, {
-        title: eventForm.title.trim(),
-        description: eventForm.description.trim() || null,
-        event_date: eventForm.event_date,
-        starts_at: toEventDateTime(eventForm.event_date, eventForm.start_time),
-        ends_at: toEventDateTime(eventForm.event_date, eventForm.end_time),
-        trainer_id: eventForm.trainer_id ? Number(eventForm.trainer_id) : null,
-        location: eventForm.location.trim() || null,
-      });
+      if (editingEvent) {
+        await campaignsApi.updateCampaignEvent(campaignId, editingEvent.id, payload);
+      } else {
+        await campaignsApi.createCampaignEvent(campaignId, payload);
+      }
       setCreateEventOpen(false);
+      setEditingEvent(null);
       setEventForm(emptyEventForm);
       await loadData();
-    } catch (ex: any) { onError(extractApiError(ex, 'Не удалось создать джем')); }
+    } catch (ex: any) { onError(extractApiError(ex, editingEvent ? 'Не удалось сохранить джем' : 'Не удалось создать джем')); }
+  };
+
+  const handleArchiveEvent = async (event: CampaignEvent) => {
+    if (!window.confirm(`Архивировать джем «${event.title}»?`)) return;
+    onError(null);
+    setEvents((prev) => prev.filter((item) => item.id !== event.id));
+    try {
+      await campaignsApi.updateCampaignEvent(campaignId, event.id, { status: 'archived' });
+      await loadData();
+    } catch (ex: any) {
+      onError(extractApiError(ex, 'Не удалось архивировать джем'));
+      await loadData();
+    }
+  };
+
+  const handleDeleteEvent = async (event: CampaignEvent) => {
+    if (!window.confirm(`Удалить джем «${event.title}»? Все школы внутри этого джема вернутся в пул.`)) return;
+    onError(null);
+    setEvents((prev) => prev.filter((item) => item.id !== event.id));
+    try {
+      await campaignsApi.deleteCampaignEvent(campaignId, event.id);
+      await loadData();
+    } catch (ex: any) {
+      onError(extractApiError(ex, 'Не удалось удалить джем'));
+      await loadData();
+    }
   };
 
   const activePoolSchool = useMemo(
@@ -656,7 +735,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
     <Box>
       {canManage && (
         <Stack direction="row" gap={1} sx={{ mb: 2 }}>
-          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateEventOpen(true)}>
+          <Button variant="contained" startIcon={<Add />} onClick={openCreateEvent}>
             Создать джем
           </Button>
           <Button variant="outlined" startIcon={<Add />} onClick={openAddSchools}>
@@ -666,7 +745,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
       )}
 
       <DndContext sensors={sensors} onDragStart={handlePoolDragStart} onDragEnd={(e) => void handlePoolDragEnd(e)}>
-        <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', alignItems: 'flex-start', pb: 1 }}>
+        <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', pb: 1, flexWrap: { xs: 'wrap', lg: 'nowrap' } }}>
           {/* Пул школ — draggable */}
           <Card variant="outlined" sx={{ width: 460, maxWidth: 460, flex: '0 0 460px', bgcolor: 'action.hover' }}>
             <CardContent>
@@ -698,24 +777,30 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
           </Card>
 
           {/* Колонки-джемы — droppable */}
-          {events.map((ev) => (
-            <JamEventColumn
-              key={ev.id}
-              event={ev}
-              schoolCount={jamSchoolCounts[ev.id] ?? 0}
-              onOpen={setSelectedEvent}
-            />
-          ))}
+          <Stack spacing={2} sx={{ width: 420, maxWidth: '100%' }}>
+            {events.map((ev) => (
+              <JamEventColumn
+                key={ev.id}
+                event={ev}
+                schoolCount={jamSchoolCounts[ev.id] ?? 0}
+                onOpen={setSelectedEvent}
+                canManage={canManage}
+                onEdit={openEditEvent}
+                onArchive={(event) => void handleArchiveEvent(event)}
+                onDelete={(event) => void handleDeleteEvent(event)}
+              />
+            ))}
 
-          {events.length === 0 && (
-            <Card variant="outlined" sx={{ minWidth: 220, bgcolor: 'action.selected' }}>
+            {events.length === 0 && (
+            <Card variant="outlined" sx={{ width: 390, maxWidth: '100%', bgcolor: 'action.selected' }}>
               <CardContent>
                 <Typography variant="body2" color="text.secondary" align="center">
                   Нет джемов. Создайте первый.
                 </Typography>
               </CardContent>
             </Card>
-          )}
+            )}
+          </Stack>
         </Box>
         <DragOverlay>
           {activePoolSchool && (
@@ -727,7 +812,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
                 </Typography>
               </CardContent>
             </Card>
-          )}
+            )}
         </DragOverlay>
       </DndContext>
 
@@ -822,8 +907,8 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
         </DialogActions>
       </Dialog>
 
-      <Dialog open={createEventOpen} onClose={() => setCreateEventOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Новый джем</DialogTitle>
+      <Dialog open={createEventOpen} onClose={() => { setCreateEventOpen(false); setEditingEvent(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingEvent ? 'Редактировать джем' : 'Новый джем'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="Название" required fullWidth value={eventForm.title}
@@ -863,10 +948,10 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateEventOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void handleCreateEvent()}
+          <Button onClick={() => { setCreateEventOpen(false); setEditingEvent(null); }}>Отмена</Button>
+          <Button variant="contained" onClick={() => void handleSaveEvent()}
             disabled={!eventForm.title.trim() || !eventForm.event_date}>
-            Создать
+            {editingEvent ? 'Сохранить' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>

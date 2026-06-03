@@ -842,6 +842,24 @@ async def patch_campaign_event(
 ):
     return await update_campaign_event(campaign_id, event_id, payload, db, current_user)
 
+@router.delete("/campaigns/{campaign_id}/events/{event_id}", status_code=204)
+async def delete_campaign_event(
+    campaign_id: int,
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    event = db.query(CampaignEvent).filter(
+        CampaignEvent.id == event_id, CampaignEvent.campaign_id == campaign_id
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Campaign event not found")
+    db.delete(event)
+    db.commit()
+
 
 # --- CampaignEventStage (этапы внутреннего канбана джема) ---
 

@@ -127,7 +127,6 @@ from app.services.owner_workspace_counterparties import (
     COUNTERPARTY_DOCUMENT_CATEGORIES,
     COUNTERPARTY_DOCUMENT_CATEGORY_LABELS,
     COUNTERPARTY_DOCUMENT_CATEGORY_SET,
-    create_default_counterparty_tasks,
 )
 
 router = APIRouter()
@@ -1389,12 +1388,6 @@ async def create_counterparty(
         ctx=ctx,
         counterparty_id=row.id,
         project_ids=list(payload.project_ids or []),
-    )
-    create_default_counterparty_tasks(
-        db,
-        counterparty=row,
-        project_ids=list(payload.project_ids or [None]),
-        creator_id=ctx.user.id,
     )
     _log_audit(
         db,

@@ -82,6 +82,8 @@ OWNER_WS_NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
 OWNER_WS_TASK_TAGS_KEY = "owner_workspace_task_tag_dictionary"
 OWNER_WS_CONTACT_TAGS_KEY = "owner_workspace_contact_tag_dictionary"
 OWNER_WS_CONTACT_SOURCES_KEY = "owner_workspace_contact_source_dictionary"
+OWNER_WS_COUNTERPARTY_ROLES_KEY = "owner_workspace_counterparty_role_dictionary"
+OWNER_WS_COUNTERPARTY_INDUSTRIES_KEY = "owner_workspace_counterparty_industry_dictionary"
 PARENT_WEEKLY_DIGEST_SETTINGS_KEY = "parent_weekly_digest_settings"
 OWNER_WS_SETTINGS_BUNDLE_VERSION = 1
 OWNER_WS_SETTINGS_SNAPSHOTS_KEY = "owner_workspace_settings_snapshots"
@@ -328,6 +330,8 @@ def _build_owner_ws_settings_bundle(db: Session) -> dict:
         "task_tags": {"items": _get_owner_ws_tag_dictionary(db, OWNER_WS_TASK_TAGS_KEY)},
         "contact_tags": {"items": _get_owner_ws_tag_dictionary(db, OWNER_WS_CONTACT_TAGS_KEY)},
         "contact_sources": {"items": _get_owner_ws_tag_dictionary(db, OWNER_WS_CONTACT_SOURCES_KEY)},
+        "counterparty_roles": {"items": _get_owner_ws_tag_dictionary(db, OWNER_WS_COUNTERPARTY_ROLES_KEY)},
+        "counterparty_industries": {"items": _get_owner_ws_tag_dictionary(db, OWNER_WS_COUNTERPARTY_INDUSTRIES_KEY)},
     }
 
 
@@ -340,6 +344,8 @@ def _build_owner_ws_settings_bundle_summary(bundle: dict) -> dict:
         "task_tags": len(bundle["task_tags"]["items"]),
         "contact_tags": len(bundle["contact_tags"]["items"]),
         "contact_sources": len(bundle["contact_sources"]["items"]),
+        "counterparty_roles": len(bundle["counterparty_roles"]["items"]),
+        "counterparty_industries": len(bundle["counterparty_industries"]["items"]),
     }
 
 
@@ -408,6 +414,8 @@ def _normalize_owner_ws_settings_bundle(body: OwnerWorkspaceSettingsBundleUpdate
         "task_tags": {"items": _normalize_owner_ws_tag_items(body.task_tags.items)},
         "contact_tags": {"items": _normalize_owner_ws_tag_items(body.contact_tags.items)},
         "contact_sources": {"items": _normalize_owner_ws_tag_items(body.contact_sources.items)},
+        "counterparty_roles": {"items": _normalize_owner_ws_tag_items(getattr(body, "counterparty_roles", None) and body.counterparty_roles.items or [])},
+        "counterparty_industries": {"items": _normalize_owner_ws_tag_items(getattr(body, "counterparty_industries", None) and body.counterparty_industries.items or [])},
     }
 
 
@@ -419,6 +427,8 @@ def _apply_owner_ws_settings_bundle(db: Session, bundle: dict) -> None:
     _set_json_setting(db, OWNER_WS_TASK_TAGS_KEY, bundle["task_tags"]["items"])
     _set_json_setting(db, OWNER_WS_CONTACT_TAGS_KEY, bundle["contact_tags"]["items"])
     _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, bundle["contact_sources"]["items"])
+    _set_json_setting(db, OWNER_WS_COUNTERPARTY_ROLES_KEY, bundle.get("counterparty_roles", {}).get("items", []))
+    _set_json_setting(db, OWNER_WS_COUNTERPARTY_INDUSTRIES_KEY, bundle.get("counterparty_industries", {}).get("items", []))
 
 
 def _extract_owner_ws_settings_bundle_update(raw_body: Any) -> OwnerWorkspaceSettingsBundleUpdate:
@@ -870,6 +880,46 @@ async def set_owner_workspace_contact_sources(
 ):
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, items)
+    db.commit()
+    return OwnerWorkspaceTagDictionaryResponse(items=items)
+
+
+@router.get("/owner-workspace-counterparty-roles", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def get_owner_workspace_counterparty_roles(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    return OwnerWorkspaceTagDictionaryResponse(items=_get_owner_ws_tag_dictionary(db, OWNER_WS_COUNTERPARTY_ROLES_KEY))
+
+
+@router.post("/owner-workspace-counterparty-roles", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def set_owner_workspace_counterparty_roles(
+    body: OwnerWorkspaceTagDictionaryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    items = _normalize_owner_ws_tag_items(body.items)
+    _set_json_setting(db, OWNER_WS_COUNTERPARTY_ROLES_KEY, items)
+    db.commit()
+    return OwnerWorkspaceTagDictionaryResponse(items=items)
+
+
+@router.get("/owner-workspace-counterparty-industries", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def get_owner_workspace_counterparty_industries(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    return OwnerWorkspaceTagDictionaryResponse(items=_get_owner_ws_tag_dictionary(db, OWNER_WS_COUNTERPARTY_INDUSTRIES_KEY))
+
+
+@router.post("/owner-workspace-counterparty-industries", response_model=OwnerWorkspaceTagDictionaryResponse)
+async def set_owner_workspace_counterparty_industries(
+    body: OwnerWorkspaceTagDictionaryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    items = _normalize_owner_ws_tag_items(body.items)
+    _set_json_setting(db, OWNER_WS_COUNTERPARTY_INDUSTRIES_KEY, items)
     db.commit()
     return OwnerWorkspaceTagDictionaryResponse(items=items)
 

@@ -33,7 +33,7 @@ import {
 
 import Layout from '../components/Layout';
 import { ConfirmDialog, DataTable, EmptyState } from '../components/ui';
-import { ownerWorkspaceApi } from '../services/api';
+import { ownerWorkspaceApi, settingsApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceCounterparty,
@@ -155,6 +155,14 @@ const CounterpartyDetailPage: React.FC = () => {
   const [counterparty, setCounterparty] = useState<OwnerWorkspaceCounterparty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [roleOptions, setRoleOptions] = useState<string[]>([]);
+  const [industryOptions, setIndustryOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    void settingsApi.getOwnerWorkspaceCounterpartyRoles().then((d) => setRoleOptions(d.items)).catch(() => {});
+    void settingsApi.getOwnerWorkspaceCounterpartyIndustries().then((d) => setIndustryOptions(d.items)).catch(() => {});
+  }, []);
+
   const [success, setSuccess] = useState('');
 
   const [tab, setTab] = useState(0);
@@ -902,8 +910,8 @@ const CounterpartyDetailPage: React.FC = () => {
                     onChange={(e) => setEditForm((prev) => ({ ...prev, counterparty_role: e.target.value }))}
                   >
                     <MenuItem value=""><em>Не указана</em></MenuItem>
-                    {COUNTERPARTY_ROLE_OPTIONS.map((o) => (
-                      <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                    {roleOptions.map((r) => (
+                      <MenuItem key={r} value={r}>{r}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -918,12 +926,19 @@ const CounterpartyDetailPage: React.FC = () => {
                   fullWidth
                   placeholder="https://example.com"
                 />
-                <TextField
-                  label="Отрасль"
-                  value={editForm.industry}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, industry: e.target.value }))}
-                  fullWidth
-                />
+                <FormControl fullWidth>
+                  <InputLabel>Отрасль</InputLabel>
+                  <Select
+                    label="Отрасль"
+                    value={editForm.industry}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, industry: e.target.value }))}
+                  >
+                    <MenuItem value=""><em>Не указана</em></MenuItem>
+                    {industryOptions.map((i) => (
+                      <MenuItem key={i} value={i}>{i}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Stack>
             )}
             <TextField

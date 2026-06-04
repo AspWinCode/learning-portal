@@ -1420,6 +1420,26 @@ export const settingsApi = {
     const response = await api.post('/api/settings/owner-workspace-contact-sources', payload);
     return response.data;
   },
+  getOwnerWorkspaceCounterpartyRoles: async (): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.get('/api/settings/owner-workspace-counterparty-roles');
+    return response.data;
+  },
+  setOwnerWorkspaceCounterpartyRoles: async (
+    payload: OwnerWorkspaceTagDictionary
+  ): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.post('/api/settings/owner-workspace-counterparty-roles', payload);
+    return response.data;
+  },
+  getOwnerWorkspaceCounterpartyIndustries: async (): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.get('/api/settings/owner-workspace-counterparty-industries');
+    return response.data;
+  },
+  setOwnerWorkspaceCounterpartyIndustries: async (
+    payload: OwnerWorkspaceTagDictionary
+  ): Promise<OwnerWorkspaceTagDictionary> => {
+    const response = await api.post('/api/settings/owner-workspace-counterparty-industries', payload);
+    return response.data;
+  },
   getOwnerWorkspaceSettingsBundle: async (): Promise<OwnerWorkspaceSettingsBundleEnvelope> => {
     const response = await api.get('/api/settings/owner-workspace-settings-bundle');
     return response.data;

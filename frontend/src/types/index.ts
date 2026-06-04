@@ -1669,6 +1669,8 @@ export interface OwnerWorkspaceSettingsBundle {
   task_tags: OwnerWorkspaceTagDictionary;
   contact_tags: OwnerWorkspaceTagDictionary;
   contact_sources: OwnerWorkspaceTagDictionary;
+  counterparty_roles?: OwnerWorkspaceTagDictionary;
+  counterparty_industries?: OwnerWorkspaceTagDictionary;
 }
 
 export interface OwnerWorkspaceSettingsBundleSummary {
@@ -1679,6 +1681,8 @@ export interface OwnerWorkspaceSettingsBundleSummary {
   task_tags: number;
   contact_tags: number;
   contact_sources: number;
+  counterparty_roles?: number;
+  counterparty_industries?: number;
 }
 
 export interface OwnerWorkspaceSettingsBundleMeta {

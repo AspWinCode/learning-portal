@@ -943,6 +943,12 @@ const OwnerWorkspacePage: React.FC = () => {
   const [contactSourceDictionary, setContactSourceDictionary] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
   const [contactSourceDictionaryDraft, setContactSourceDictionaryDraft] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
   const [contactSourceDictionarySaving, setContactSourceDictionarySaving] = useState(false);
+  const [counterpartyRoleDictionary, setCounterpartyRoleDictionary] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
+  const [counterpartyRoleDictionaryDraft, setCounterpartyRoleDictionaryDraft] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
+  const [counterpartyRoleDictionarySaving, setCounterpartyRoleDictionarySaving] = useState(false);
+  const [counterpartyIndustryDictionary, setCounterpartyIndustryDictionary] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
+  const [counterpartyIndustryDictionaryDraft, setCounterpartyIndustryDictionaryDraft] = useState<OwnerWorkspaceTagDictionary>({ items: [] });
+  const [counterpartyIndustryDictionarySaving, setCounterpartyIndustryDictionarySaving] = useState(false);
   const [permissionPolicy, setPermissionPolicy] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicyDraft, setPermissionPolicyDraft] = useState<OwnerWorkspacePermissionPolicy>(DEFAULT_OWNER_WS_PERMISSION_POLICY);
   const [permissionPolicySaving, setPermissionPolicySaving] = useState(false);
@@ -1694,13 +1700,21 @@ const OwnerWorkspacePage: React.FC = () => {
     setContactTagDictionaryDraft(bundle.contact_tags);
     setContactSourceDictionary(bundle.contact_sources);
     setContactSourceDictionaryDraft(bundle.contact_sources);
+    if (bundle.counterparty_roles) {
+      setCounterpartyRoleDictionary(bundle.counterparty_roles);
+      setCounterpartyRoleDictionaryDraft(bundle.counterparty_roles);
+    }
+    if (bundle.counterparty_industries) {
+      setCounterpartyIndustryDictionary(bundle.counterparty_industries);
+      setCounterpartyIndustryDictionaryDraft(bundle.counterparty_industries);
+    }
     setPermissionPolicy(bundle.permission_policy);
     setPermissionPolicyDraft(bundle.permission_policy);
   }, []);
 
   const loadMeta = useCallback(async () => {
     try {
-      const [conv, u, cfg, projectCfg, permissionCfg, notificationCfg, taskTagsCfg, contactTagsCfg, contactSourcesCfg] = await Promise.all([
+      const [conv, u, cfg, projectCfg, permissionCfg, notificationCfg, taskTagsCfg, contactTagsCfg, contactSourcesCfg, cpRolesCfg, cpIndustriesCfg] = await Promise.all([
         ownerWorkspaceApi.listConversations(),
         usersApi.getAll(),
         settingsApi.getOwnerWorkspaceTaskConfig(),
@@ -1710,6 +1724,8 @@ const OwnerWorkspacePage: React.FC = () => {
         settingsApi.getOwnerWorkspaceTaskTags(),
         settingsApi.getOwnerWorkspaceContactTags(),
         settingsApi.getOwnerWorkspaceContactSources(),
+        settingsApi.getOwnerWorkspaceCounterpartyRoles(),
+        settingsApi.getOwnerWorkspaceCounterpartyIndustries(),
       ]);
       setConversations(conv);
       setUsers(Array.isArray(u) ? u : []);
@@ -1721,6 +1737,8 @@ const OwnerWorkspacePage: React.FC = () => {
         task_tags: taskTagsCfg,
         contact_tags: contactTagsCfg,
         contact_sources: contactSourcesCfg,
+        counterparty_roles: cpRolesCfg,
+        counterparty_industries: cpIndustriesCfg,
       });
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось загрузить вспомогательные данные'));
@@ -6145,6 +6163,10 @@ const OwnerWorkspacePage: React.FC = () => {
                 contactTagDictionarySaving={contactTagDictionarySaving}
                 contactSourceDictionaryDraft={contactSourceDictionaryDraft}
                 contactSourceDictionarySaving={contactSourceDictionarySaving}
+                counterpartyRoleDictionaryDraft={counterpartyRoleDictionaryDraft}
+                counterpartyRoleDictionarySaving={counterpartyRoleDictionarySaving}
+                counterpartyIndustryDictionaryDraft={counterpartyIndustryDictionaryDraft}
+                counterpartyIndustryDictionarySaving={counterpartyIndustryDictionarySaving}
                 onTaskViewModeChange={setTaskViewMode}
                 onTaskListRowsPerPageChange={setTaskListRowsPerPage}
                 onDigestDueHoursChange={setDigestDueHours}
@@ -6274,6 +6296,28 @@ const OwnerWorkspacePage: React.FC = () => {
                 onContactSourceDictionaryDraftChange={(items) => setContactSourceDictionaryDraft({ items })}
                 onSaveWorkspaceContactSourceDictionary={saveWorkspaceContactSourceDictionary}
                 onResetContactSourceDictionary={() => setContactSourceDictionaryDraft(contactSourceDictionary)}
+                onCounterpartyRoleDictionaryDraftChange={(items) => setCounterpartyRoleDictionaryDraft({ items })}
+                onSaveCounterpartyRoleDictionary={async () => {
+                  setCounterpartyRoleDictionarySaving(true);
+                  try {
+                    const saved = await settingsApi.setOwnerWorkspaceCounterpartyRoles(counterpartyRoleDictionaryDraft);
+                    setCounterpartyRoleDictionary(saved);
+                    setCounterpartyRoleDictionaryDraft(saved);
+                  } catch (e: unknown) { setError(extractApiError(e, 'Не удалось сохранить роли контрагентов')); }
+                  finally { setCounterpartyRoleDictionarySaving(false); }
+                }}
+                onResetCounterpartyRoleDictionary={() => setCounterpartyRoleDictionaryDraft(counterpartyRoleDictionary)}
+                onCounterpartyIndustryDictionaryDraftChange={(items) => setCounterpartyIndustryDictionaryDraft({ items })}
+                onSaveCounterpartyIndustryDictionary={async () => {
+                  setCounterpartyIndustryDictionarySaving(true);
+                  try {
+                    const saved = await settingsApi.setOwnerWorkspaceCounterpartyIndustries(counterpartyIndustryDictionaryDraft);
+                    setCounterpartyIndustryDictionary(saved);
+                    setCounterpartyIndustryDictionaryDraft(saved);
+                  } catch (e: unknown) { setError(extractApiError(e, 'Не удалось сохранить отрасли')); }
+                  finally { setCounterpartyIndustryDictionarySaving(false); }
+                }}
+                onResetCounterpartyIndustryDictionary={() => setCounterpartyIndustryDictionaryDraft(counterpartyIndustryDictionary)}
               />
             </Suspense>
             {isWorkspaceFullAccess && workspaceSettingsBundle && (

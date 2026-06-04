@@ -80,6 +80,10 @@ type OwnerWorkspaceSettingsConfigSectionProps = {
   contactTagDictionarySaving: boolean;
   contactSourceDictionaryDraft: OwnerWorkspaceTagDictionary;
   contactSourceDictionarySaving: boolean;
+  counterpartyRoleDictionaryDraft: OwnerWorkspaceTagDictionary;
+  counterpartyRoleDictionarySaving: boolean;
+  counterpartyIndustryDictionaryDraft: OwnerWorkspaceTagDictionary;
+  counterpartyIndustryDictionarySaving: boolean;
   onTaskViewModeChange: (value: 'list' | 'kanban' | 'calendar') => void;
   onTaskListRowsPerPageChange: (value: number) => void;
   onDigestDueHoursChange: (value: number) => void;
@@ -121,6 +125,12 @@ type OwnerWorkspaceSettingsConfigSectionProps = {
   onContactSourceDictionaryDraftChange: (items: string[]) => void;
   onSaveWorkspaceContactSourceDictionary: () => void | Promise<void>;
   onResetContactSourceDictionary: () => void;
+  onCounterpartyRoleDictionaryDraftChange: (items: string[]) => void;
+  onSaveCounterpartyRoleDictionary: () => void | Promise<void>;
+  onResetCounterpartyRoleDictionary: () => void;
+  onCounterpartyIndustryDictionaryDraftChange: (items: string[]) => void;
+  onSaveCounterpartyIndustryDictionary: () => void | Promise<void>;
+  onResetCounterpartyIndustryDictionary: () => void;
 };
 
 export function OwnerWorkspaceSettingsConfigSection({
@@ -161,6 +171,10 @@ export function OwnerWorkspaceSettingsConfigSection({
   contactTagDictionarySaving,
   contactSourceDictionaryDraft,
   contactSourceDictionarySaving,
+  counterpartyRoleDictionaryDraft,
+  counterpartyRoleDictionarySaving,
+  counterpartyIndustryDictionaryDraft,
+  counterpartyIndustryDictionarySaving,
   onTaskViewModeChange,
   onTaskListRowsPerPageChange,
   onDigestDueHoursChange,
@@ -202,6 +216,12 @@ export function OwnerWorkspaceSettingsConfigSection({
   onContactSourceDictionaryDraftChange,
   onSaveWorkspaceContactSourceDictionary,
   onResetContactSourceDictionary,
+  onCounterpartyRoleDictionaryDraftChange,
+  onSaveCounterpartyRoleDictionary,
+  onResetCounterpartyRoleDictionary,
+  onCounterpartyIndustryDictionaryDraftChange,
+  onSaveCounterpartyIndustryDictionary,
+  onResetCounterpartyIndustryDictionary,
 }: OwnerWorkspaceSettingsConfigSectionProps) {
   return (
     <>
@@ -836,6 +856,80 @@ export function OwnerWorkspaceSettingsConfigSection({
                       {contactSourceDictionarySaving ? 'Сохранение...' : 'Сохранить'}
                     </Button>
                     <Button variant="outlined" disabled={contactSourceDictionarySaving} onClick={onResetContactSourceDictionary}>
+                      Сбросить
+                    </Button>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Контрагенты: роли */}
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined">
+              <CardContent>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle2">Роли контрагентов</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Список ролей для выбора при создании/редактировании контрагента (клиент, лид, партнёр и т.д.)
+                  </Typography>
+                  <Autocomplete
+                    multiple
+                    freeSolo
+                    options={[] as string[]}
+                    value={counterpartyRoleDictionaryDraft.items}
+                    onChange={(_, value) => onCounterpartyRoleDictionaryDraftChange(value.map(String))}
+                    renderTags={(value, getTagProps) =>
+                      value.map((option, index) => <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />)
+                    }
+                    renderInput={(params) => <TextField {...params} label="Роли контрагентов" placeholder="Ввод и Enter" />}
+                  />
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Button
+                      variant="contained"
+                      disabled={counterpartyRoleDictionarySaving}
+                      onClick={() => void onSaveCounterpartyRoleDictionary()}
+                    >
+                      {counterpartyRoleDictionarySaving ? 'Сохранение...' : 'Сохранить'}
+                    </Button>
+                    <Button variant="outlined" disabled={counterpartyRoleDictionarySaving} onClick={onResetCounterpartyRoleDictionary}>
+                      Сбросить
+                    </Button>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Контрагенты: отрасли */}
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined">
+              <CardContent>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle2">Отрасли деятельности</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Список отраслей для выбора при создании/редактировании контрагента (ИТ, Строительство и т.д.)
+                  </Typography>
+                  <Autocomplete
+                    multiple
+                    freeSolo
+                    options={[] as string[]}
+                    value={counterpartyIndustryDictionaryDraft.items}
+                    onChange={(_, value) => onCounterpartyIndustryDictionaryDraftChange(value.map(String))}
+                    renderTags={(value, getTagProps) =>
+                      value.map((option, index) => <Chip variant="outlined" label={option} {...getTagProps({ index })} key={`${option}-${index}`} />)
+                    }
+                    renderInput={(params) => <TextField {...params} label="Отрасли деятельности" placeholder="Ввод и Enter" />}
+                  />
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Button
+                      variant="contained"
+                      disabled={counterpartyIndustryDictionarySaving}
+                      onClick={() => void onSaveCounterpartyIndustryDictionary()}
+                    >
+                      {counterpartyIndustryDictionarySaving ? 'Сохранение...' : 'Сохранить'}
+                    </Button>
+                    <Button variant="outlined" disabled={counterpartyIndustryDictionarySaving} onClick={onResetCounterpartyIndustryDictionary}>
                       Сбросить
                     </Button>
                   </Stack>

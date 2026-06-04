@@ -34,7 +34,7 @@ import { Collapse } from '@mui/material';
 
 import Layout from '../components/Layout';
 import { ConfirmDialog, DataTable, EmptyState } from '../components/ui';
-import { ownerWorkspaceApi } from '../services/api';
+import { ownerWorkspaceApi, settingsApi } from '../services/api';
 import type {
   OwnerWorkspaceCounterparty,
   OwnerWorkspaceCounterpartyCustomField,
@@ -130,6 +130,13 @@ const OwnerCounterpartiesPage: React.FC = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const [savingProject, setSavingProject] = useState(false);
   const [uploadingProjectDocId, setUploadingProjectDocId] = useState<number | null>(null);
+  const [roleOptions, setRoleOptions] = useState<string[]>([]);
+  const [industryOptions, setIndustryOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    void settingsApi.getOwnerWorkspaceCounterpartyRoles().then((d) => setRoleOptions(d.items)).catch(() => {});
+    void settingsApi.getOwnerWorkspaceCounterpartyIndustries().then((d) => setIndustryOptions(d.items)).catch(() => {});
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -603,8 +610,8 @@ const OwnerCounterpartiesPage: React.FC = () => {
                       onChange={(e) => setForm((prev) => ({ ...prev, counterparty_role: e.target.value }))}
                     >
                       <MenuItem value=""><em>Не указана</em></MenuItem>
-                      {COUNTERPARTY_ROLE_OPTIONS.map((o) => (
-                        <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                      {roleOptions.map((r) => (
+                        <MenuItem key={r} value={r}>{r}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -615,12 +622,19 @@ const OwnerCounterpartiesPage: React.FC = () => {
                     fullWidth
                     placeholder="https://example.com"
                   />
-                  <TextField
-                    label="Отрасль"
-                    value={form.industry}
-                    onChange={(e) => setForm((prev) => ({ ...prev, industry: e.target.value }))}
-                    fullWidth
-                  />
+                  <FormControl fullWidth>
+                    <InputLabel>Отрасль</InputLabel>
+                    <Select
+                      label="Отрасль"
+                      value={form.industry}
+                      onChange={(e) => setForm((prev) => ({ ...prev, industry: e.target.value }))}
+                    >
+                      <MenuItem value=""><em>Не указана</em></MenuItem>
+                      {industryOptions.map((i) => (
+                        <MenuItem key={i} value={i}>{i}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Stack>
 
                 <Divider />

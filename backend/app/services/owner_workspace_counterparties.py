@@ -5,7 +5,7 @@ from typing import Iterable, List
 
 from sqlalchemy.orm import Session
 
-from app.models import OwnerWorkspaceContact, OwnerWorkspaceTask
+from app.models import OwnerWorkspaceCounterparty, OwnerWorkspaceTask
 
 
 COUNTERPARTY_DOCUMENT_CATEGORIES = [
@@ -38,7 +38,7 @@ COUNTERPARTY_DEFAULT_TASKS = [
 def create_default_counterparty_tasks(
     db: Session,
     *,
-    counterparty: OwnerWorkspaceContact,
+    counterparty: OwnerWorkspaceCounterparty,
     project_ids: Iterable[int | None],
     creator_id: int,
 ) -> List[OwnerWorkspaceTask]:
@@ -56,7 +56,7 @@ def create_default_counterparty_tasks(
                 deadline_at=now + timedelta(days=days_offset),
                 creator_id=creator_id,
                 project_id=project_id,
-                contact_id=counterparty.id,
+                counterparty_id=counterparty.id,
                 tags=[
                     "counterparty",
                     f"counterparty:{counterparty.id}",

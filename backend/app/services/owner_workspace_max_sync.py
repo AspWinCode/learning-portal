@@ -4,7 +4,7 @@ from typing import Dict, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.models import MaxMessage, OwnerWorkspaceContact, OwnerWorkspaceMessage
+from app.models import MaxMessage, OwnerWorkspaceCounterparty, OwnerWorkspaceMessage
 from app.utils.phone import normalize_phone
 
 
@@ -13,8 +13,8 @@ def sync_max_messages_into_owner_workspace(db: Session, *, limit: int = 500) -> 
     Возвращает (imported, skipped).
     Дубликаты: external_message_id = max:<uuid записи max_messages>.
     """
-    contacts = db.query(OwnerWorkspaceContact).all()
-    phone_to_contact: Dict[str, OwnerWorkspaceContact] = {}
+    contacts = db.query(OwnerWorkspaceCounterparty).all()
+    phone_to_contact: Dict[str, OwnerWorkspaceCounterparty] = {}
     for c in contacts:
         n = normalize_phone(c.phone or "")
         if n and n not in phone_to_contact:

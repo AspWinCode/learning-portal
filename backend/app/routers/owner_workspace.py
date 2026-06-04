@@ -29,6 +29,7 @@ from app.services.owner_workspace_access import (
     can_update_task_content,
     can_manage_project_team,
     contact_visible,
+    counterparty_visible,
     filter_tasks_query,
     get_owner_workspace_permission_policy,
     is_project_manager,
@@ -53,12 +54,14 @@ from app.services.owner_workspace_task_order import normalize_task_sort_params
 from app.models import (
     OwnerWorkspaceAuditLog,
     OwnerWorkspaceContact,
+    OwnerWorkspaceCounterparty,
     OwnerWorkspaceCounterpartyDocument,
     OwnerWorkspaceConversationRead,
     OwnerWorkspaceMessage,
     OwnerWorkspaceNotification,
     OwnerWorkspaceProject,
     OwnerWorkspaceProjectContact,
+    OwnerWorkspaceProjectCounterparty,
     OwnerWorkspaceProjectDocument,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
@@ -352,16 +355,15 @@ def _last_message_time_by_contact_ids(db: Session, contact_ids: List[int]) -> Di
     if not contact_ids:
         return {}
     rows = (
-        db.query(OwnerWorkspaceMessage.contact_id, func.max(OwnerWorkspaceMessage.created_at))
-        .filter(OwnerWorkspaceMessage.contact_id.in_(contact_ids))
-        .group_by(OwnerWorkspaceMessage.contact_id)
+        db.query(OwnerWorkspaceTask.contact_id, func.max(OwnerWorkspaceTask.updated_at))
+        .filter(
+            OwnerWorkspaceTask.contact_id.in_(contact_ids),
+            OwnerWorkspaceTask.contact_id.isnot(None),
+        )
+        .group_by(OwnerWorkspaceTask.contact_id)
         .all()
     )
-    out: Dict[int, datetime] = {}
-    for cid, ts in rows:
-        if cid is not None and ts is not None:
-            out[int(cid)] = ts
-    return out
+    return {int(cid): ts for cid, ts in rows if cid is not None and ts is not None}
 
 
 def _last_task_activity_by_contact_ids(db: Session, contact_ids: List[int]) -> Dict[int, datetime]:
@@ -374,6 +376,37 @@ def _last_task_activity_by_contact_ids(db: Session, contact_ids: List[int]) -> D
             OwnerWorkspaceTask.contact_id.isnot(None),
         )
         .group_by(OwnerWorkspaceTask.contact_id)
+        .all()
+    )
+    return {int(cid): ts for cid, ts in rows if cid is not None and ts is not None}
+
+
+def _last_message_time_by_counterparty_ids(db: Session, counterparty_ids: List[int]) -> Dict[int, datetime]:
+    if not counterparty_ids:
+        return {}
+    rows = (
+        db.query(OwnerWorkspaceMessage.contact_id, func.max(OwnerWorkspaceMessage.created_at))
+        .filter(OwnerWorkspaceMessage.contact_id.in_(counterparty_ids))
+        .group_by(OwnerWorkspaceMessage.contact_id)
+        .all()
+    )
+    out: Dict[int, datetime] = {}
+    for cid, ts in rows:
+        if cid is not None and ts is not None:
+            out[int(cid)] = ts
+    return out
+
+
+def _last_task_activity_by_counterparty_ids(db: Session, counterparty_ids: List[int]) -> Dict[int, datetime]:
+    if not counterparty_ids:
+        return {}
+    rows = (
+        db.query(OwnerWorkspaceTask.counterparty_id, func.max(OwnerWorkspaceTask.updated_at))
+        .filter(
+            OwnerWorkspaceTask.counterparty_id.in_(counterparty_ids),
+            OwnerWorkspaceTask.counterparty_id.isnot(None),
+        )
+        .group_by(OwnerWorkspaceTask.counterparty_id)
         .all()
     )
     return {int(cid): ts for cid, ts in rows if cid is not None and ts is not None}
@@ -393,6 +426,25 @@ def _contact_last_interaction_at(
         task_max_by_id = _last_task_activity_by_contact_ids(db, [cid])
     return _max_datetimes(
         contact.updated_at,
+        message_max_by_id.get(cid),
+        task_max_by_id.get(cid),
+    )
+
+
+def _counterparty_last_interaction_at(
+    db: Session,
+    counterparty: OwnerWorkspaceCounterparty,
+    *,
+    message_max_by_id: Optional[Dict[int, datetime]] = None,
+    task_max_by_id: Optional[Dict[int, datetime]] = None,
+) -> Optional[datetime]:
+    cid = counterparty.id
+    if message_max_by_id is None:
+        message_max_by_id = _last_message_time_by_counterparty_ids(db, [cid])
+    if task_max_by_id is None:
+        task_max_by_id = _last_task_activity_by_counterparty_ids(db, [cid])
+    return _max_datetimes(
+        counterparty.updated_at,
         message_max_by_id.get(cid),
         task_max_by_id.get(cid),
     )
@@ -418,12 +470,12 @@ def _contact_to_response(
         message_max_by_id=message_max_by_id,
         task_max_by_id=task_max_by_id,
     )
-    projects_count = db.query(OwnerWorkspaceProject).filter(
-        OwnerWorkspaceProject.counterparty_id == contact.id
+    projects_count = db.query(OwnerWorkspaceProjectContact).filter(
+        OwnerWorkspaceProjectContact.contact_id == contact.id
     ).count()
     return OwnerWorkspaceContactResponse(
         id=contact.id,
-        type=getattr(contact, "type", "company") or "company",
+        type=contact.type or "individual",
         full_name=contact.full_name,
         phone=contact.phone,
         email=contact.email,
@@ -442,7 +494,7 @@ def _contact_to_response(
     )
 
 
-def _counterparty_document_to_response(contact_id: int, category: str, row: Optional[OwnerWorkspaceCounterpartyDocument]):
+def _counterparty_document_to_response(counterparty_id: int, category: str, row: Optional[OwnerWorkspaceCounterpartyDocument]):
     label = COUNTERPARTY_DOCUMENT_CATEGORY_LABELS.get(category, category)
     if row is None:
         return OwnerWorkspaceCounterpartyDocumentResponse(
@@ -479,53 +531,63 @@ def _normalize_custom_fields(fields: Optional[List[dict]]) -> List[OwnerWorkspac
 
 def _counterparty_to_response(
     db: Session,
-    contact: OwnerWorkspaceContact,
+    counterparty: OwnerWorkspaceCounterparty,
     *,
     message_max_by_id: Optional[Dict[int, datetime]] = None,
     task_max_by_id: Optional[Dict[int, datetime]] = None,
 ) -> OwnerWorkspaceCounterpartyResponse:
-    base = _contact_to_response(
+    linked = db.query(OwnerWorkspaceProjectCounterparty).filter(
+        OwnerWorkspaceProjectCounterparty.counterparty_id == counterparty.id
+    ).all()
+    active_tasks_count = db.query(OwnerWorkspaceTask).filter(
+        OwnerWorkspaceTask.counterparty_id == counterparty.id,
+        OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
+    ).count()
+    projects_count = db.query(OwnerWorkspaceProject).filter(
+        OwnerWorkspaceProject.counterparty_id == counterparty.id
+    ).count()
+    last_interaction_at = _counterparty_last_interaction_at(
         db,
-        contact,
+        counterparty,
         message_max_by_id=message_max_by_id,
         task_max_by_id=task_max_by_id,
     )
     docs = {
         row.category: row
         for row in db.query(OwnerWorkspaceCounterpartyDocument)
-        .filter(OwnerWorkspaceCounterpartyDocument.contact_id == contact.id)
+        .filter(OwnerWorkspaceCounterpartyDocument.counterparty_id == counterparty.id)
         .all()
     }
-    raw_persons = contact.linked_persons or []
+    raw_persons = counterparty.linked_persons or []
     linked_persons = []
     for p in raw_persons:
         if isinstance(p, dict):
             linked_persons.append(LinkedPersonItem(**{k: p.get(k) for k in ("id", "full_name", "phone", "email")}))
     return OwnerWorkspaceCounterpartyResponse(
-        id=base.id,
-        type=getattr(contact, "type", "company") or "company",
-        full_name=base.full_name,
-        phone=base.phone,
-        email=base.email,
-        company=base.company,
-        position=base.position,
-        tags=base.tags,
-        comment=base.comment,
-        source=base.source,
-        linked_project_ids=base.linked_project_ids,
-        active_tasks_count=base.active_tasks_count,
-        projects_count=base.projects_count,
-        last_interaction_at=base.last_interaction_at,
-        custom_fields=_normalize_custom_fields(contact.custom_fields),
+        id=counterparty.id,
+        type=counterparty.type or "company",
+        full_name=counterparty.full_name,
+        phone=counterparty.phone,
+        email=counterparty.email,
+        company=counterparty.company,
+        position=counterparty.position,
+        tags=counterparty.tags,
+        comment=counterparty.comment,
+        source=counterparty.source,
+        linked_project_ids=[x.project_id for x in linked],
+        active_tasks_count=active_tasks_count,
+        projects_count=projects_count,
+        last_interaction_at=last_interaction_at,
+        custom_fields=_normalize_custom_fields(counterparty.custom_fields),
         linked_persons=linked_persons,
         documents=[
-            _counterparty_document_to_response(contact.id, category, docs.get(category))
+            _counterparty_document_to_response(counterparty.id, category, docs.get(category))
             for category, _label in COUNTERPARTY_DOCUMENT_CATEGORIES
         ],
-        is_archived=bool(contact.is_archived),
-        archived_at=contact.archived_at,
-        created_at=base.created_at,
-        updated_at=base.updated_at,
+        is_archived=bool(counterparty.is_archived),
+        archived_at=counterparty.archived_at,
+        created_at=counterparty.created_at,
+        updated_at=counterparty.updated_at,
     )
 
 
@@ -1191,7 +1253,7 @@ def _sync_counterparty_project_links(
     db: Session,
     *,
     ctx: OwnerWorkspaceAccessContext,
-    contact_id: int,
+    counterparty_id: int,
     project_ids: List[int],
 ) -> None:
     normalized_ids = []
@@ -1213,8 +1275,8 @@ def _sync_counterparty_project_links(
         normalized_ids.append(project_id)
         seen.add(project_id)
 
-    existing = db.query(OwnerWorkspaceProjectContact).filter(
-        OwnerWorkspaceProjectContact.contact_id == contact_id
+    existing = db.query(OwnerWorkspaceProjectCounterparty).filter(
+        OwnerWorkspaceProjectCounterparty.counterparty_id == counterparty_id
     ).all()
     existing_ids = {row.project_id for row in existing}
 
@@ -1223,7 +1285,7 @@ def _sync_counterparty_project_links(
             db.delete(row)
     for project_id in normalized_ids:
         if project_id not in existing_ids:
-            db.add(OwnerWorkspaceProjectContact(project_id=project_id, contact_id=contact_id))
+            db.add(OwnerWorkspaceProjectCounterparty(project_id=project_id, counterparty_id=counterparty_id))
 
 
 @router.get("/counterparties", response_model=List[OwnerWorkspaceCounterpartyResponse])
@@ -1236,35 +1298,35 @@ async def list_counterparties(
 ):
     if project_id is not None and not ctx.full and not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
-    q = db.query(OwnerWorkspaceContact)
+    q = db.query(OwnerWorkspaceCounterparty)
     if not ctx.full:
-        if not ctx.contact_ids:
+        if not ctx.counterparty_ids:
             return []
-        q = q.filter(OwnerWorkspaceContact.id.in_(list(ctx.contact_ids)))
+        q = q.filter(OwnerWorkspaceCounterparty.id.in_(list(ctx.counterparty_ids)))
     if archived is not None:
-        q = q.filter(OwnerWorkspaceContact.is_archived.is_(bool(archived)))
+        q = q.filter(OwnerWorkspaceCounterparty.is_archived.is_(bool(archived)))
     if search:
         like = f"%{search.strip()}%"
         q = q.filter(
             or_(
-                OwnerWorkspaceContact.full_name.ilike(like),
-                OwnerWorkspaceContact.company.ilike(like),
-                OwnerWorkspaceContact.phone.ilike(like),
-                OwnerWorkspaceContact.email.ilike(like),
+                OwnerWorkspaceCounterparty.full_name.ilike(like),
+                OwnerWorkspaceCounterparty.company.ilike(like),
+                OwnerWorkspaceCounterparty.phone.ilike(like),
+                OwnerWorkspaceCounterparty.email.ilike(like),
             )
         )
-    rows = q.order_by(OwnerWorkspaceContact.created_at.desc()).all()
+    rows = q.order_by(OwnerWorkspaceCounterparty.created_at.desc()).all()
     if project_id is not None:
         linked_ids = {
-            x.contact_id
-            for x in db.query(OwnerWorkspaceProjectContact).filter(
-                OwnerWorkspaceProjectContact.project_id == project_id
+            x.counterparty_id
+            for x in db.query(OwnerWorkspaceProjectCounterparty).filter(
+                OwnerWorkspaceProjectCounterparty.project_id == project_id
             ).all()
         }
         rows = [r for r in rows if r.id in linked_ids]
     ids = [r.id for r in rows]
-    msg_max = _last_message_time_by_contact_ids(db, ids)
-    task_max = _last_task_activity_by_contact_ids(db, ids)
+    msg_max = _last_message_time_by_counterparty_ids(db, ids)
+    task_max = _last_task_activity_by_counterparty_ids(db, ids)
     return [
         _counterparty_to_response(db, row, message_max_by_id=msg_max, task_max_by_id=task_max)
         for row in rows
@@ -1280,8 +1342,8 @@ async def create_counterparty(
     permission_policy = get_owner_workspace_permission_policy(db)
     if not ctx.full and not permission_policy["limited_can_create_contacts"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
-    row = OwnerWorkspaceContact(
-        type=getattr(payload, "type", "company") or "company",
+    row = OwnerWorkspaceCounterparty(
+        type=payload.type or "company",
         full_name=payload.full_name.strip(),
         phone=(payload.phone or "").strip() or None,
         email=payload.email,
@@ -1299,7 +1361,7 @@ async def create_counterparty(
     _sync_counterparty_project_links(
         db,
         ctx=ctx,
-        contact_id=row.id,
+        counterparty_id=row.id,
         project_ids=list(payload.project_ids or []),
     )
     create_default_counterparty_tasks(
@@ -1310,7 +1372,7 @@ async def create_counterparty(
     )
     _log_audit(
         db,
-        entity_type="contact",
+        entity_type="counterparty",
         entity_id=row.id,
         action_type="counterparty_create",
         author_id=ctx.user.id,
@@ -1327,8 +1389,8 @@ async def get_counterparty(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row or not contact_visible(ctx, contact_id):
+    row = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == contact_id).first()
+    if not row or not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     return _counterparty_to_response(db, row)
 
@@ -1340,8 +1402,8 @@ async def update_counterparty(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row or not contact_visible(ctx, contact_id):
+    row = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == contact_id).first()
+    if not row or not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     if not can_update_contact_content(db, ctx, contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
@@ -1350,8 +1412,8 @@ async def update_counterparty(
         "full_name": row.full_name,
         "phone": row.phone,
         "company": row.company,
-        "project_ids": [x.project_id for x in db.query(OwnerWorkspaceProjectContact).filter(
-            OwnerWorkspaceProjectContact.contact_id == contact_id
+        "project_ids": [x.project_id for x in db.query(OwnerWorkspaceProjectCounterparty).filter(
+            OwnerWorkspaceProjectCounterparty.counterparty_id == contact_id
         ).all()],
     }
     data = payload.model_dump(exclude_unset=True, exclude={"project_ids", "custom_fields", "linked_persons"})
@@ -1367,12 +1429,12 @@ async def update_counterparty(
         _sync_counterparty_project_links(
             db,
             ctx=ctx,
-            contact_id=row.id,
+            counterparty_id=row.id,
             project_ids=list(payload.project_ids),
         )
     _log_audit(
         db,
-        entity_type="contact",
+        entity_type="counterparty",
         entity_id=row.id,
         action_type="counterparty_update",
         author_id=ctx.user.id,
@@ -1390,8 +1452,8 @@ async def archive_counterparty(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row or not contact_visible(ctx, contact_id):
+    row = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == contact_id).first()
+    if not row or not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     if not can_update_contact_content(db, ctx, contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
@@ -1399,7 +1461,7 @@ async def archive_counterparty(
     row.archived_at = datetime.now(timezone.utc)
     _log_audit(
         db,
-        entity_type="contact",
+        entity_type="counterparty",
         entity_id=row.id,
         action_type="counterparty_archive",
         author_id=ctx.user.id,
@@ -1415,8 +1477,8 @@ async def unarchive_counterparty(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row or not contact_visible(ctx, contact_id):
+    row = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == contact_id).first()
+    if not row or not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     if not can_update_contact_content(db, ctx, contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
@@ -1424,7 +1486,7 @@ async def unarchive_counterparty(
     row.archived_at = None
     _log_audit(
         db,
-        entity_type="contact",
+        entity_type="counterparty",
         entity_id=row.id,
         action_type="counterparty_unarchive",
         author_id=ctx.user.id,
@@ -1440,15 +1502,15 @@ async def delete_counterparty(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row or not contact_visible(ctx, contact_id):
+    row = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == contact_id).first()
+    if not row or not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     if not can_update_contact_content(db, ctx, contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     db.delete(row)
     _log_audit(
         db,
-        entity_type="contact",
+        entity_type="counterparty",
         entity_id=contact_id,
         action_type="counterparty_delete",
         author_id=ctx.user.id,
@@ -1470,8 +1532,8 @@ async def list_counterparty_documents(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row or not contact_visible(ctx, contact_id):
+    row = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == contact_id).first()
+    if not row or not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     return _counterparty_to_response(db, row).documents
 
@@ -1484,8 +1546,8 @@ async def upload_counterparty_document(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
-    if not row or not contact_visible(ctx, contact_id):
+    row = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == contact_id).first()
+    if not row or not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     if not can_update_contact_content(db, ctx, contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
@@ -1498,12 +1560,12 @@ async def upload_counterparty_document(
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
     existing = db.query(OwnerWorkspaceCounterpartyDocument).filter(
-        OwnerWorkspaceCounterpartyDocument.contact_id == contact_id,
+        OwnerWorkspaceCounterpartyDocument.counterparty_id == contact_id,
         OwnerWorkspaceCounterpartyDocument.category == normalized_category,
     ).first()
     if existing is None:
         existing = OwnerWorkspaceCounterpartyDocument(
-            contact_id=contact_id,
+            counterparty_id=contact_id,
             category=normalized_category,
             filename=filename or f"{normalized_category}.{ext}",
             content_type=file.content_type or "application/octet-stream",
@@ -1518,7 +1580,7 @@ async def upload_counterparty_document(
         existing.data = data
     _log_audit(
         db,
-        entity_type="contact",
+        entity_type="counterparty",
         entity_id=contact_id,
         action_type="counterparty_document_upload",
         author_id=ctx.user.id,
@@ -1536,11 +1598,11 @@ async def download_counterparty_document(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    if not contact_visible(ctx, contact_id):
+    if not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     normalized_category = _validate_counterparty_document_category(category)
     row = db.query(OwnerWorkspaceCounterpartyDocument).filter(
-        OwnerWorkspaceCounterpartyDocument.contact_id == contact_id,
+        OwnerWorkspaceCounterpartyDocument.counterparty_id == contact_id,
         OwnerWorkspaceCounterpartyDocument.category == normalized_category,
     ).first()
     if not row:
@@ -1559,20 +1621,20 @@ async def delete_counterparty_document(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
-    if not contact_visible(ctx, contact_id):
+    if not counterparty_visible(ctx, contact_id):
         raise HTTPException(status_code=404, detail="Counterparty not found")
     if not can_update_contact_content(db, ctx, contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     normalized_category = _validate_counterparty_document_category(category)
     row = db.query(OwnerWorkspaceCounterpartyDocument).filter(
-        OwnerWorkspaceCounterpartyDocument.contact_id == contact_id,
+        OwnerWorkspaceCounterpartyDocument.counterparty_id == contact_id,
         OwnerWorkspaceCounterpartyDocument.category == normalized_category,
     ).first()
     if row:
         db.delete(row)
         _log_audit(
             db,
-            entity_type="contact",
+            entity_type="counterparty",
             entity_id=contact_id,
             action_type="counterparty_document_delete",
             author_id=ctx.user.id,
@@ -1812,7 +1874,7 @@ async def create_task(
         msg = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
         if not msg:
             continue
-        if not ctx.full and not contact_visible(ctx, msg.contact_id):
+        if not ctx.full and not counterparty_visible(ctx, msg.contact_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к сообщению")
     row = OwnerWorkspaceTask(
         title=payload.title.strip(),
@@ -2194,7 +2256,7 @@ async def link_message_to_task(
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == payload.message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
-    if not ctx.full and not contact_visible(ctx, message.contact_id):
+    if not ctx.full and not counterparty_visible(ctx, message.contact_id):
         raise HTTPException(status_code=404, detail="Message not found")
     exists = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == task_id,
@@ -2236,7 +2298,7 @@ async def list_messages(
 ):
     q = db.query(OwnerWorkspaceMessage)
     if contact_id is not None:
-        if not contact_visible(ctx, contact_id):
+        if not counterparty_visible(ctx, contact_id):
             raise HTTPException(status_code=404, detail="Contact not found")
         q = q.filter(OwnerWorkspaceMessage.contact_id == contact_id)
     elif not ctx.full:
@@ -2325,14 +2387,14 @@ async def create_message(
     permission_policy = get_owner_workspace_permission_policy(db)
     if payload.direction != "incoming" and not ctx.full and not permission_policy["limited_can_send_messages"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
-    contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
-    if not contact or not contact_visible(ctx, payload.contact_id):
+    contact = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == payload.contact_id).first()
+    if not contact or not counterparty_visible(ctx, payload.contact_id):
         raise HTTPException(status_code=404, detail="Contact not found")
     if not ctx.full:
         linked_project_ids = {
             row.project_id
-            for row in db.query(OwnerWorkspaceProjectContact.project_id)
-            .filter(OwnerWorkspaceProjectContact.contact_id == payload.contact_id)
+            for row in db.query(OwnerWorkspaceProjectCounterparty.project_id)
+            .filter(OwnerWorkspaceProjectCounterparty.counterparty_id == payload.contact_id)
             .all()
         }
         if linked_project_ids and not any(can_edit_project_content(db, ctx, pid) for pid in linked_project_ids):
@@ -2376,7 +2438,7 @@ async def create_task_from_message(
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
-    if not ctx.full and not contact_visible(ctx, message.contact_id):
+    if not ctx.full and not counterparty_visible(ctx, message.contact_id):
         raise HTTPException(status_code=404, detail="Message not found")
     if not can_edit_contact_content(db, ctx, message.contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
@@ -2422,7 +2484,7 @@ async def link_message_with_task(
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
-    if not ctx.full and not contact_visible(ctx, message.contact_id):
+    if not ctx.full and not counterparty_visible(ctx, message.contact_id):
         raise HTTPException(status_code=404, detail="Message not found")
     task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == payload.task_id).first()
     if not task or not task_visible(ctx, task):
@@ -2748,26 +2810,26 @@ async def owner_workspace_unified_search(
     else:
         prow = prow_q.order_by(OwnerWorkspaceProject.created_at.desc()).limit(limit).all()
         projects = [OwnerWorkspaceSearchProjectHit(id=r.id, name=r.name, status=r.status) for r in prow]
-    crow_q = db.query(OwnerWorkspaceContact).filter(
+    crow_q = db.query(OwnerWorkspaceCounterparty).filter(
         or_(
-            OwnerWorkspaceContact.full_name.ilike(like),
-            OwnerWorkspaceContact.phone.ilike(like),
-            OwnerWorkspaceContact.company.ilike(like),
-            func.coalesce(OwnerWorkspaceContact.comment, "").ilike(like),
+            OwnerWorkspaceCounterparty.full_name.ilike(like),
+            OwnerWorkspaceCounterparty.phone.ilike(like),
+            OwnerWorkspaceCounterparty.company.ilike(like),
+            func.coalesce(OwnerWorkspaceCounterparty.comment, "").ilike(like),
         )
     )
     if not ctx.full:
-        if not ctx.contact_ids:
+        if not ctx.counterparty_ids:
             contacts = []
             crow = []
         else:
-            crow_q = crow_q.filter(OwnerWorkspaceContact.id.in_(list(ctx.contact_ids)))
-            crow = crow_q.order_by(OwnerWorkspaceContact.created_at.desc()).limit(limit).all()
+            crow_q = crow_q.filter(OwnerWorkspaceCounterparty.id.in_(list(ctx.counterparty_ids)))
+            crow = crow_q.order_by(OwnerWorkspaceCounterparty.created_at.desc()).limit(limit).all()
             contacts = [
                 OwnerWorkspaceSearchContactHit(id=r.id, full_name=r.full_name, phone=r.phone or "") for r in crow
             ]
     else:
-        crow = crow_q.order_by(OwnerWorkspaceContact.created_at.desc()).limit(limit).all()
+        crow = crow_q.order_by(OwnerWorkspaceCounterparty.created_at.desc()).limit(limit).all()
         contacts = [
             OwnerWorkspaceSearchContactHit(id=r.id, full_name=r.full_name, phone=r.phone or "") for r in crow
         ]

@@ -15,8 +15,10 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.models import (
     OwnerWorkspaceContact,
+    OwnerWorkspaceCounterparty,
     OwnerWorkspaceProject,
     OwnerWorkspaceProjectContact,
+    OwnerWorkspaceProjectCounterparty,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
     AppSetting,
@@ -59,6 +61,7 @@ class OwnerWorkspaceAccessContext:
     full: bool
     project_ids: FrozenSet[int]
     contact_ids: FrozenSet[int]
+    counterparty_ids: FrozenSet[int] = frozenset()
 
 
 OWNER_WORKSPACE_HISTORY_ENTITY_TYPES: FrozenSet[str] = frozenset({"project", "contact", "task"})
@@ -166,6 +169,36 @@ def visible_contact_ids_limited(db: Session, user_id: int, project_ids: Set[int]
     return contact_ids_linked_to_projects(db, project_ids) | contact_ids_from_user_tasks(db, user_id)
 
 
+def counterparty_ids_linked_to_projects(db: Session, project_ids: Set[int]) -> Set[int]:
+    if not project_ids:
+        return set()
+    return {
+        r[0]
+        for r in db.query(OwnerWorkspaceProjectCounterparty.counterparty_id)
+        .filter(OwnerWorkspaceProjectCounterparty.project_id.in_(project_ids))
+        .all()
+    }
+
+
+def counterparty_ids_from_user_tasks(db: Session, user_id: int) -> Set[int]:
+    auth.ensure_persisted_user_id(user_id)
+    rows = (
+        db.query(OwnerWorkspaceTask.counterparty_id)
+        .filter(
+            OwnerWorkspaceTask.counterparty_id.isnot(None),
+            (OwnerWorkspaceTask.assignee_id == user_id) | (OwnerWorkspaceTask.creator_id == user_id),
+        )
+        .distinct()
+        .all()
+    )
+    return {r[0] for r in rows if r[0] is not None}
+
+
+def visible_counterparty_ids_limited(db: Session, user_id: int, project_ids: Set[int]) -> Set[int]:
+    auth.ensure_persisted_user_id(user_id)
+    return counterparty_ids_linked_to_projects(db, project_ids) | counterparty_ids_from_user_tasks(db, user_id)
+
+
 def build_owner_workspace_access_context(db: Session, user: User) -> OwnerWorkspaceAccessContext:
     if is_full_workspace_user(user):
         return OwnerWorkspaceAccessContext(
@@ -173,14 +206,17 @@ def build_owner_workspace_access_context(db: Session, user: User) -> OwnerWorksp
             full=True,
             project_ids=frozenset(),
             contact_ids=frozenset(),
+            counterparty_ids=frozenset(),
         )
     pids = accessible_project_ids(db, user.id)
     cids = visible_contact_ids_limited(db, user.id, pids)
+    cpids = visible_counterparty_ids_limited(db, user.id, pids)
     return OwnerWorkspaceAccessContext(
         user=user,
         full=False,
         project_ids=frozenset(pids),
         contact_ids=frozenset(cids),
+        counterparty_ids=frozenset(cpids),
     )
 
 
@@ -235,6 +271,12 @@ def contact_visible(ctx: OwnerWorkspaceAccessContext, contact_id: int) -> bool:
     if ctx.full:
         return True
     return contact_id in ctx.contact_ids
+
+
+def counterparty_visible(ctx: OwnerWorkspaceAccessContext, counterparty_id: int) -> bool:
+    if ctx.full:
+        return True
+    return counterparty_id in ctx.counterparty_ids
 
 
 def project_visible(ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:

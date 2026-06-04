@@ -203,7 +203,7 @@ def build_notification_target_path(notification: OwnerWorkspaceNotification) -> 
     if notification.task_id:
         return f"/owner-workspace/tasks/{notification.task_id}"
     if notification.contact_id:
-        return f"/owner-workspace/contacts/{notification.contact_id}"
+        return f"/owner-workspace/counterparties/{notification.contact_id}"
     return "/owner-workspace/notifications"
 
 

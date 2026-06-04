@@ -2193,7 +2193,7 @@ class OwnerWorkspaceProject(Base):
     status = Column(String(20), nullable=False, server_default="new", index=True)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     parent_project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True)
-    counterparty_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="SET NULL"), nullable=True, index=True)
+    counterparty_id = Column(Integer, ForeignKey("owner_workspace_counterparties.id", ondelete="SET NULL"), nullable=True, index=True)
     deadline_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -2201,7 +2201,7 @@ class OwnerWorkspaceProject(Base):
 
     owner = relationship("User", foreign_keys=[owner_id])
     parent_project = relationship("OwnerWorkspaceProject", remote_side=[id], backref="subprojects")
-    counterparty = relationship("OwnerWorkspaceContact", foreign_keys=[counterparty_id])
+    counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[counterparty_id])
     documents = relationship("OwnerWorkspaceProjectDocument", back_populates="project", cascade="all, delete-orphan")
 
 
@@ -2222,11 +2222,11 @@ class OwnerWorkspaceProjectParticipant(Base):
     user = relationship("User")
 
 
-class OwnerWorkspaceContact(Base):
-    __tablename__ = "owner_workspace_contacts"
+class OwnerWorkspaceCounterparty(Base):
+    """Контрагент — юридическое лицо / ИП / физлицо как бизнес-субъект."""
+    __tablename__ = "owner_workspace_counterparties"
 
     id = Column(Integer, primary_key=True, index=True)
-    # type: company | ip | individual (контрагент)
     type = Column(String(32), nullable=False, server_default="company")
     full_name = Column(String(255), nullable=False, index=True)
     phone = Column(String(64), nullable=True, index=True)
@@ -2246,7 +2246,30 @@ class OwnerWorkspaceContact(Base):
     projects = relationship("OwnerWorkspaceProject", foreign_keys="OwnerWorkspaceProject.counterparty_id", back_populates="counterparty")
 
 
+class OwnerWorkspaceContact(Base):
+    """Простой контакт — физическое лицо из таск-трекера."""
+    __tablename__ = "owner_workspace_contacts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String(32), nullable=False, server_default="individual")
+    full_name = Column(String(255), nullable=False, index=True)
+    phone = Column(String(64), nullable=True, index=True)
+    email = Column(String(255), nullable=True, index=True)
+    company = Column(String(255), nullable=True, index=True)
+    position = Column(String(255), nullable=True)
+    tags = Column(JSON, nullable=True)
+    comment = Column(Text, nullable=True)
+    source = Column(String(128), nullable=True)
+    custom_fields = Column(JSON, nullable=True)
+    linked_persons = Column(JSON, nullable=True)
+    is_archived = Column(Boolean, nullable=False, server_default="false", index=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class OwnerWorkspaceProjectContact(Base):
+    """Связь проект ↔ простой контакт."""
     __tablename__ = "owner_workspace_project_contacts"
     __table_args__ = (
         UniqueConstraint("project_id", "contact_id", name="uq_owner_workspace_project_contact"),
@@ -2261,14 +2284,30 @@ class OwnerWorkspaceProjectContact(Base):
     contact = relationship("OwnerWorkspaceContact")
 
 
-class OwnerWorkspaceCounterpartyDocument(Base):
-    __tablename__ = "owner_workspace_counterparty_documents"
+class OwnerWorkspaceProjectCounterparty(Base):
+    """Связь проект ↔ контрагент."""
+    __tablename__ = "owner_workspace_project_counterparties"
     __table_args__ = (
-        UniqueConstraint("contact_id", "category", name="uq_owner_workspace_counterparty_document_contact_category"),
+        UniqueConstraint("project_id", "counterparty_id", name="uq_owner_workspace_project_counterparty"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    counterparty_id = Column(Integer, ForeignKey("owner_workspace_counterparties.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("OwnerWorkspaceProject")
+    counterparty = relationship("OwnerWorkspaceCounterparty")
+
+
+class OwnerWorkspaceCounterpartyDocument(Base):
+    __tablename__ = "owner_workspace_counterparty_documents"
+    __table_args__ = (
+        UniqueConstraint("counterparty_id", "category", name="uq_owner_workspace_counterparty_document_counterparty_category"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    counterparty_id = Column(Integer, ForeignKey("owner_workspace_counterparties.id", ondelete="CASCADE"), nullable=False, index=True)
     category = Column(String(64), nullable=False, index=True)
     filename = Column(String(255), nullable=False)
     content_type = Column(String(128), nullable=False)
@@ -2277,7 +2316,7 @@ class OwnerWorkspaceCounterpartyDocument(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    contact = relationship("OwnerWorkspaceContact")
+    counterparty = relationship("OwnerWorkspaceCounterparty")
 
 
 class OwnerWorkspaceProjectDocument(Base):
@@ -2312,6 +2351,7 @@ class OwnerWorkspaceTask(Base):
     creator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True)
     contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="SET NULL"), nullable=True, index=True)
+    counterparty_id = Column(Integer, ForeignKey("owner_workspace_counterparties.id", ondelete="SET NULL"), nullable=True, index=True)
     tags = Column(JSON, nullable=True)
     checklist = Column(JSON, nullable=True)
     attachments = Column(JSON, nullable=True)
@@ -2322,7 +2362,8 @@ class OwnerWorkspaceTask(Base):
     assignee = relationship("User", foreign_keys=[assignee_id])
     creator = relationship("User", foreign_keys=[creator_id])
     project = relationship("OwnerWorkspaceProject")
-    contact = relationship("OwnerWorkspaceContact")
+    contact = relationship("OwnerWorkspaceContact", foreign_keys=[contact_id])
+    counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[counterparty_id])
     previous_task = relationship("OwnerWorkspaceTask", remote_side=[id], backref="next_tasks")
 
 
@@ -2343,7 +2384,7 @@ class OwnerWorkspaceMessage(Base):
     __tablename__ = "owner_workspace_messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    contact_id = Column(Integer, ForeignKey("owner_workspace_counterparties.id", ondelete="CASCADE"), nullable=False, index=True)
     external_chat_id = Column(String(128), nullable=True, index=True)
     external_message_id = Column(String(128), nullable=True, index=True)
     direction = Column(String(16), nullable=False, server_default="incoming", index=True)  # incoming | outgoing
@@ -2353,7 +2394,7 @@ class OwnerWorkspaceMessage(Base):
     received_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    contact = relationship("OwnerWorkspaceContact")
+    counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[contact_id])
 
 
 class OwnerWorkspaceTaskMessage(Base):
@@ -2400,7 +2441,7 @@ class OwnerWorkspaceNotification(Base):
     task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="CASCADE"), nullable=True, index=True)
     contact_id = Column(
         Integer,
-        ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"),
+        ForeignKey("owner_workspace_counterparties.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -2420,7 +2461,7 @@ class OwnerWorkspaceNotification(Base):
 
     user = relationship("User")
     task = relationship("OwnerWorkspaceTask")
-    contact = relationship("OwnerWorkspaceContact")
+    counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[contact_id])
 
 
 class OwnerWorkspaceWebPushSubscription(Base):
@@ -2449,14 +2490,14 @@ class OwnerWorkspaceConversationRead(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
     contact_id = Column(
         Integer,
-        ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"),
+        ForeignKey("owner_workspace_counterparties.id", ondelete="CASCADE"),
         primary_key=True,
     )
     last_read_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user = relationship("User")
-    contact = relationship("OwnerWorkspaceContact")
+    counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[contact_id])
 
 
 class DiskItem(Base):

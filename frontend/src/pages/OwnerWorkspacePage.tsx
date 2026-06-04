@@ -2742,19 +2742,10 @@ const OwnerWorkspacePage: React.FC = () => {
       return;
     }
     try {
-      const createdSubproject = await ownerWorkspaceApi.createProject({
+      await ownerWorkspaceApi.createProject({
         name: subprojectName.trim(),
         parent_project_id: projectDialog.id,
       });
-      if (canCreateTaskUi) {
-        await ownerWorkspaceApi.createTask({
-          title: `Подпроект: ${createdSubproject.name}`,
-          description: `Создан подпроект #${createdSubproject.id}. Откройте карточку проекта, чтобы вести дерево подпроектов.`,
-          priority: 'medium',
-          project_id: projectDialog.id,
-          tags: ['subproject'],
-        });
-      }
       setSubprojectName('');
       await loadProjectsAndContacts();
       const updated = await ownerWorkspaceApi.getProject(projectDialog.id);

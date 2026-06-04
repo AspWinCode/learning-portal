@@ -383,7 +383,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const isOwnerWorkspaceMainSection = (pathname: string) =>
     pathname.startsWith('/owner-workspace') &&
     pathname !== '/owner-workspace/notifications' &&
-    pathname !== '/owner-workspace/counterparties';
+    !pathname.startsWith('/owner-workspace/counterparties');
 
   const isDrawerItemSelected = (itemPath: string) => {
     if (itemPath === '/owner-workspace/notifications') return location.pathname === '/owner-workspace/notifications';
@@ -394,6 +394,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const appBarPageTitle =
     effectiveMenuItems.find((item) => item.path === location.pathname)?.text ??
+    (location.pathname.startsWith('/owner-workspace/counterparties') ? 'Контрагенты' : null) ??
     (isOwnerWorkspaceMainSection(location.pathname) ? 'Таск трекер' : null) ??
     'Портал управления обучением';
 

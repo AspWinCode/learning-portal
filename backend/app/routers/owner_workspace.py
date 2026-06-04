@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Dict, List, Optional
 
+from pydantic import BaseModel
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import String, and_, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
@@ -1661,6 +1663,89 @@ async def delete_counterparty_document(
         )
         db.commit()
     return _counterparty_document_to_response(contact_id, normalized_category, None)
+
+
+# ── Contacts linked to a counterparty ──────────────────────────────────────
+
+@router.get("/counterparties/{counterparty_id}/contacts", response_model=List[OwnerWorkspaceContactResponse])
+async def list_counterparty_contacts(
+    counterparty_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    cp = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == counterparty_id).first()
+    if not cp or not counterparty_visible(ctx, counterparty_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    rows = db.query(OwnerWorkspaceContact).filter(
+        OwnerWorkspaceContact.counterparty_id == counterparty_id
+    ).order_by(OwnerWorkspaceContact.full_name).all()
+    return [
+        OwnerWorkspaceContactResponse(
+            id=c.id,
+            type=c.type or "individual",
+            full_name=c.full_name,
+            phone=c.phone,
+            email=c.email,
+            company=c.company,
+            position=c.position,
+            tags=c.tags,
+            comment=c.comment,
+            source=c.source,
+            linked_project_ids=[],
+            active_tasks_count=db.query(OwnerWorkspaceTask).filter(
+                OwnerWorkspaceTask.contact_id == c.id,
+                OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
+            ).count(),
+            projects_count=0,
+            counterparty_id=c.counterparty_id,
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+            is_archived=bool(c.is_archived),
+        )
+        for c in rows
+    ]
+
+
+class CounterpartyContactLinkPayload(BaseModel):
+    contact_id: int
+
+
+@router.post("/counterparties/{counterparty_id}/contacts", status_code=status.HTTP_204_NO_CONTENT)
+async def link_contact_to_counterparty(
+    counterparty_id: int,
+    payload: CounterpartyContactLinkPayload,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    cp = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == counterparty_id).first()
+    if not cp or not counterparty_visible(ctx, counterparty_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    contact.counterparty_id = counterparty_id
+    db.commit()
+    return None
+
+
+@router.delete("/counterparties/{counterparty_id}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink_contact_from_counterparty(
+    counterparty_id: int,
+    contact_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not counterparty_visible(ctx, counterparty_id):
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    contact = db.query(OwnerWorkspaceContact).filter(
+        OwnerWorkspaceContact.id == contact_id,
+        OwnerWorkspaceContact.counterparty_id == counterparty_id,
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    contact.counterparty_id = None
+    db.commit()
+    return None
 
 
 @router.get("/contacts/{contact_id}/tasks", response_model=List[OwnerWorkspaceTaskResponse])

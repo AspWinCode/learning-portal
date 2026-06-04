@@ -180,6 +180,16 @@ export const ownerWorkspaceApi = {
     const match = disposition.match(/filename="?([^"]+)"?/i);
     return { blob: response.data, filename: match ? match[1] : null };
   },
+  listCounterpartyContacts: async (counterpartyId: number): Promise<OwnerWorkspaceContact[]> => {
+    const response = await api.get(`/api/owner-workspace/counterparties/${counterpartyId}/contacts`);
+    return response.data;
+  },
+  linkContactToCounterparty: async (counterpartyId: number, contactId: number): Promise<void> => {
+    await api.post(`/api/owner-workspace/counterparties/${counterpartyId}/contacts`, { contact_id: contactId });
+  },
+  unlinkContactFromCounterparty: async (counterpartyId: number, contactId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/counterparties/${counterpartyId}/contacts/${contactId}`);
+  },
   getContact: async (contactId: number): Promise<OwnerWorkspaceContact> => {
     const response = await api.get(`/api/owner-workspace/contacts/${contactId}`);
     return response.data;

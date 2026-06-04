@@ -102,6 +102,7 @@ class OwnerWorkspaceContactBase(BaseModel):
 
 class OwnerWorkspaceContactCreate(OwnerWorkspaceContactBase):
     project_ids: Optional[List[int]] = None
+    counterparty_id: Optional[int] = None
 
 
 class OwnerWorkspaceContactUpdate(BaseModel):
@@ -114,11 +115,12 @@ class OwnerWorkspaceContactUpdate(BaseModel):
     tags: Optional[List[str]] = None
     comment: Optional[str] = None
     source: Optional[str] = None
+    counterparty_id: Optional[int] = None
 
 
 class OwnerWorkspaceContactResponse(BaseModel):
     id: int
-    type: str = "company"
+    type: str = "individual"
     full_name: str
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -134,6 +136,7 @@ class OwnerWorkspaceContactResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     is_archived: bool = False
+    counterparty_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

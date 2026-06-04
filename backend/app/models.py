@@ -2278,10 +2278,13 @@ class OwnerWorkspaceContact(Base):
     source = Column(String(128), nullable=True)
     custom_fields = Column(JSON, nullable=True)
     linked_persons = Column(JSON, nullable=True)
+    counterparty_id = Column(Integer, ForeignKey("owner_workspace_counterparties.id", ondelete="SET NULL"), nullable=True, index=True)
     is_archived = Column(Boolean, nullable=False, server_default="false", index=True)
     archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[counterparty_id])
 
 
 class OwnerWorkspaceProjectContact(Base):

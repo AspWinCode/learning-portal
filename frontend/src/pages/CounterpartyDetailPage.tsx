@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
+  Autocomplete,
+  Avatar,
   Box,
   Breadcrumbs,
   Button,
@@ -13,8 +15,13 @@ import {
   DialogTitle,
   Divider,
   FormControl,
+  IconButton,
   InputLabel,
   Link,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
   MenuItem,
   Paper,
   Select,
@@ -22,6 +29,7 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -29,6 +37,8 @@ import {
   Edit as EditIcon,
   NavigateNext as NavigateNextIcon,
   Add as AddIcon,
+  LinkOff as LinkOffIcon,
+  PersonAdd as PersonAddIcon,
 } from '@mui/icons-material';
 
 import Layout from '../components/Layout';
@@ -36,6 +46,7 @@ import { ConfirmDialog, DataTable, EmptyState } from '../components/ui';
 import { ownerWorkspaceApi, settingsApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
+  OwnerWorkspaceContact,
   OwnerWorkspaceCounterparty,
   OwnerWorkspaceProject,
   OwnerWorkspaceProjectStatus,
@@ -175,6 +186,13 @@ const CounterpartyDetailPage: React.FC = () => {
   const [history, setHistory] = useState<OwnerWorkspaceAuditLog[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Contacts tab
+  const [contacts, setContacts] = useState<OwnerWorkspaceContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [allContacts, setAllContacts] = useState<OwnerWorkspaceContact[]>([]);
+  const [contactToLink, setContactToLink] = useState<OwnerWorkspaceContact | null>(null);
+  const [linkingContact, setLinkingContact] = useState(false);
+
   // Tasks tab
   const [tasks, setTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -236,6 +254,52 @@ const CounterpartyDetailPage: React.FC = () => {
   useEffect(() => {
     void loadCounterparty();
   }, [loadCounterparty]);
+
+  // ─── Load contacts ────────────────────────────────────────────────────────
+
+  const loadContacts = useCallback(async () => {
+    setContactsLoading(true);
+    try {
+      const data = await ownerWorkspaceApi.listCounterpartyContacts(counterpartyId);
+      setContacts(data);
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось загрузить контакты.'));
+    } finally {
+      setContactsLoading(false);
+    }
+  }, [counterpartyId]);
+
+  const loadAllContacts = useCallback(async () => {
+    try {
+      const data = await ownerWorkspaceApi.listContacts({});
+      setAllContacts(data);
+    } catch {
+      setAllContacts([]);
+    }
+  }, []);
+
+  const handleLinkContact = async () => {
+    if (!contactToLink) return;
+    setLinkingContact(true);
+    try {
+      await ownerWorkspaceApi.linkContactToCounterparty(counterpartyId, contactToLink.id);
+      setContactToLink(null);
+      await loadContacts();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось привязать контакт.'));
+    } finally {
+      setLinkingContact(false);
+    }
+  };
+
+  const handleUnlinkContact = async (contactId: number) => {
+    try {
+      await ownerWorkspaceApi.unlinkContactFromCounterparty(counterpartyId, contactId);
+      await loadContacts();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось отвязать контакт.'));
+    }
+  };
 
   // ─── Load projects ────────────────────────────────────────────────────────
 
@@ -310,8 +374,9 @@ const CounterpartyDetailPage: React.FC = () => {
   useEffect(() => {
     if (tab === 1) void loadProjects();
     if (tab === 2) void loadTasks();
-    if (tab === 3) void loadHistory();
-  }, [tab, loadProjects, loadTasks, loadHistory]);
+    if (tab === 3) { void loadContacts(); void loadAllContacts(); }
+    if (tab === 4) void loadHistory();
+  }, [tab, loadProjects, loadTasks, loadContacts, loadAllContacts, loadHistory]);
 
   // ─── Edit handlers ────────────────────────────────────────────────────────
 
@@ -519,6 +584,7 @@ const CounterpartyDetailPage: React.FC = () => {
             <Tab label="Основное" />
             <Tab label="Проекты" />
             <Tab label="Задачи" />
+            <Tab label="Контакты" />
             <Tab label="История" />
           </Tabs>
         </Box>
@@ -734,6 +800,77 @@ const CounterpartyDetailPage: React.FC = () => {
           />
         </TabPanel>
 
+        {/* Tab: Контакты */}
+        <TabPanel value={tab} index={3}>
+          <Stack spacing={2}>
+            {/* Привязать контакт */}
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Привязать существующий контакт</Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="flex-start">
+                <Autocomplete
+                  sx={{ flex: 1 }}
+                  options={allContacts.filter((c) => !contacts.some((lc) => lc.id === c.id))}
+                  getOptionLabel={(o) => `${o.full_name}${o.phone ? ` · ${o.phone}` : ''}`}
+                  value={contactToLink}
+                  onChange={(_, v) => setContactToLink(v)}
+                  renderInput={(params) => <TextField {...params} label="Контакт" size="small" placeholder="Имя или телефон..." />}
+                  isOptionEqualToValue={(a, b) => a.id === b.id}
+                  noOptionsText="Контакты не найдены"
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<PersonAddIcon />}
+                  disabled={!contactToLink || linkingContact}
+                  onClick={() => void handleLinkContact()}
+                  sx={{ whiteSpace: 'nowrap' }}
+                >
+                  Привязать
+                </Button>
+              </Stack>
+            </Paper>
+
+            {/* Список привязанных контактов */}
+            {contactsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress size={28} />
+              </Box>
+            ) : contacts.length === 0 ? (
+              <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
+                <Typography color="text.secondary">Контакты не привязаны. Найдите контакт выше и нажмите «Привязать».</Typography>
+              </Paper>
+            ) : (
+              <Paper variant="outlined">
+                <List disablePadding>
+                  {contacts.map((c, idx) => (
+                    <React.Fragment key={c.id}>
+                      {idx > 0 && <Divider />}
+                      <ListItem
+                        secondaryAction={
+                          <Tooltip title="Отвязать от контрагента">
+                            <IconButton size="small" color="error" onClick={() => void handleUnlinkContact(c.id)}>
+                              <LinkOffIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        }
+                      >
+                        <ListItemAvatar>
+                          <Avatar sx={{ width: 36, height: 36, fontSize: 14 }}>
+                            {c.full_name.charAt(0).toUpperCase()}
+                          </Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={c.full_name}
+                          secondary={[c.position, c.phone, c.email].filter(Boolean).join(' · ') || undefined}
+                        />
+                      </ListItem>
+                    </React.Fragment>
+                  ))}
+                </List>
+              </Paper>
+            )}
+          </Stack>
+        </TabPanel>
+
         {/* Tab: Задачи */}
         <TabPanel value={tab} index={2}>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
@@ -835,7 +972,7 @@ const CounterpartyDetailPage: React.FC = () => {
         </TabPanel>
 
         {/* Tab: История */}
-        <TabPanel value={tab} index={3}>
+        <TabPanel value={tab} index={4}>
           {historyLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />

@@ -5323,7 +5323,7 @@ const OwnerWorkspacePage: React.FC = () => {
             onContactPhoneChange={setContactPhone}
             onNewContactProjectIdChange={setNewContactProjectId}
             onCreateContact={createContact}
-            onOpenContact={(contact) => navigate(`/owner-workspace/counterparties/${contact.id}`)}
+            onOpenContact={(contact) => void openContactDialog(contact)}
             onOpenContactComms={openContactQuickComms}
             onOpenContactTasks={openContactQuickTasks}
           />

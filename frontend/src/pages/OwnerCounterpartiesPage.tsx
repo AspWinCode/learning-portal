@@ -9,6 +9,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControl,
   IconButton,
   InputLabel,
@@ -43,6 +44,13 @@ import type {
 import { extractApiError } from '../utils/extractApiError';
 
 
+const COUNTERPARTY_ROLE_OPTIONS = [
+  { value: 'client',   label: 'Клиент' },
+  { value: 'lead',     label: 'Лид' },
+  { value: 'partner',  label: 'Партнёр' },
+  { value: 'supplier', label: 'Поставщик' },
+];
+
 type CounterpartyFormState = {
   type: 'company' | 'ip' | 'individual';
   full_name: string;
@@ -51,6 +59,19 @@ type CounterpartyFormState = {
   tags: string;
   comment: string;
   custom_fields: OwnerWorkspaceCounterpartyCustomField[];
+  counterparty_role: string;
+  inn: string;
+  kpp: string;
+  ogrn: string;
+  legal_address: string;
+  actual_address: string;
+  website: string;
+  industry: string;
+  bank_account: string;
+  bank_corr_account: string;
+  bank_bik: string;
+  bank_name: string;
+  bank_currency: string;
 };
 
 const PROJECT_STATUS_LABELS: Record<string, string> = {
@@ -70,6 +91,19 @@ const emptyForm = (): CounterpartyFormState => ({
   tags: '',
   comment: '',
   custom_fields: [],
+  counterparty_role: '',
+  inn: '',
+  kpp: '',
+  ogrn: '',
+  legal_address: '',
+  actual_address: '',
+  website: '',
+  industry: '',
+  bank_account: '',
+  bank_corr_account: '',
+  bank_bik: '',
+  bank_name: '',
+  bank_currency: '',
 });
 
 const OwnerCounterpartiesPage: React.FC = () => {
@@ -217,6 +251,19 @@ const OwnerCounterpartiesPage: React.FC = () => {
         tags: (fresh.tags || []).join(', '),
         comment: fresh.comment || '',
         custom_fields: Array.isArray(fresh.custom_fields) ? fresh.custom_fields : [],
+        counterparty_role: fresh.counterparty_role || '',
+        inn: fresh.inn || '',
+        kpp: fresh.kpp || '',
+        ogrn: fresh.ogrn || '',
+        legal_address: fresh.legal_address || '',
+        actual_address: fresh.actual_address || '',
+        website: fresh.website || '',
+        industry: fresh.industry || '',
+        bank_account: fresh.bank_account || '',
+        bank_corr_account: fresh.bank_corr_account || '',
+        bank_bik: fresh.bank_bik || '',
+        bank_name: fresh.bank_name || '',
+        bank_currency: fresh.bank_currency || '',
       });
       setCounterpartyProjects([]);
       setProjectDocuments({});
@@ -243,15 +290,22 @@ const OwnerCounterpartiesPage: React.FC = () => {
         full_name: form.full_name.trim(),
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
-        tags: form.tags
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
+        tags: form.tags.split(',').map((item) => item.trim()).filter(Boolean),
         comment: form.comment.trim() || null,
-        custom_fields: form.custom_fields.map((field) => ({
-          ...field,
-          label: field.label.trim(),
-        })),
+        custom_fields: form.custom_fields.map((field) => ({ ...field, label: field.label.trim() })),
+        counterparty_role: form.counterparty_role || null,
+        inn: form.inn.trim() || null,
+        kpp: form.kpp.trim() || null,
+        ogrn: form.ogrn.trim() || null,
+        legal_address: form.legal_address.trim() || null,
+        actual_address: form.actual_address.trim() || null,
+        website: form.website.trim() || null,
+        industry: form.industry.trim() || null,
+        bank_account: form.bank_account.trim() || null,
+        bank_corr_account: form.bank_corr_account.trim() || null,
+        bank_bik: form.bank_bik.trim() || null,
+        bank_name: form.bank_name.trim() || null,
+        bank_currency: form.bank_currency.trim() || null,
       };
 
       if (selected) {
@@ -532,8 +586,127 @@ const OwnerCounterpartiesPage: React.FC = () => {
               onChange={(e) => setForm((prev) => ({ ...prev, comment: e.target.value }))}
               fullWidth
               multiline
-              minRows={3}
+              minRows={2}
             />
+
+            {/* Роль + Реквизиты — только для company и ip */}
+            {form.type !== 'individual' && (
+              <>
+                <Divider />
+                <Typography variant="subtitle2" color="text.secondary">Общее</Typography>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <FormControl fullWidth>
+                    <InputLabel>Роль контрагента</InputLabel>
+                    <Select
+                      label="Роль контрагента"
+                      value={form.counterparty_role}
+                      onChange={(e) => setForm((prev) => ({ ...prev, counterparty_role: e.target.value }))}
+                    >
+                      <MenuItem value=""><em>Не указана</em></MenuItem>
+                      {COUNTERPARTY_ROLE_OPTIONS.map((o) => (
+                        <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="Сайт"
+                    value={form.website}
+                    onChange={(e) => setForm((prev) => ({ ...prev, website: e.target.value }))}
+                    fullWidth
+                    placeholder="https://example.com"
+                  />
+                  <TextField
+                    label="Отрасль"
+                    value={form.industry}
+                    onChange={(e) => setForm((prev) => ({ ...prev, industry: e.target.value }))}
+                    fullWidth
+                  />
+                </Stack>
+
+                <Divider />
+                <Typography variant="subtitle2" color="text.secondary">Реквизиты</Typography>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <TextField
+                    label="ИНН"
+                    value={form.inn}
+                    onChange={(e) => setForm((prev) => ({ ...prev, inn: e.target.value }))}
+                    fullWidth
+                  />
+                  {form.type === 'company' && (
+                    <TextField
+                      label="КПП"
+                      value={form.kpp}
+                      onChange={(e) => setForm((prev) => ({ ...prev, kpp: e.target.value }))}
+                      fullWidth
+                    />
+                  )}
+                  <TextField
+                    label={form.type === 'ip' ? 'ОГРНИП' : 'ОГРН'}
+                    value={form.ogrn}
+                    onChange={(e) => setForm((prev) => ({ ...prev, ogrn: e.target.value }))}
+                    fullWidth
+                  />
+                </Stack>
+                {form.type === 'company' && (
+                  <TextField
+                    label="Юридический адрес"
+                    value={form.legal_address}
+                    onChange={(e) => setForm((prev) => ({ ...prev, legal_address: e.target.value }))}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                  />
+                )}
+                <TextField
+                  label={form.type === 'ip' ? 'Адрес регистрации' : 'Фактический адрес'}
+                  value={form.actual_address}
+                  onChange={(e) => setForm((prev) => ({ ...prev, actual_address: e.target.value }))}
+                  fullWidth
+                  multiline
+                  minRows={2}
+                />
+
+                <Divider />
+                <Typography variant="subtitle2" color="text.secondary">Банковские реквизиты</Typography>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <TextField
+                    label="Расчётный счёт"
+                    value={form.bank_account}
+                    onChange={(e) => setForm((prev) => ({ ...prev, bank_account: e.target.value }))}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Корр. счёт"
+                    value={form.bank_corr_account}
+                    onChange={(e) => setForm((prev) => ({ ...prev, bank_corr_account: e.target.value }))}
+                    fullWidth
+                  />
+                </Stack>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <TextField
+                    label="БИК банка"
+                    value={form.bank_bik}
+                    onChange={(e) => setForm((prev) => ({ ...prev, bank_bik: e.target.value }))}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Наименование банка"
+                    value={form.bank_name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, bank_name: e.target.value }))}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Валюта"
+                    value={form.bank_currency}
+                    onChange={(e) => setForm((prev) => ({ ...prev, bank_currency: e.target.value }))}
+                    fullWidth
+                    placeholder="RUB"
+                    sx={{ maxWidth: 120 }}
+                  />
+                </Stack>
+                <Divider />
+              </>
+            )}
 
             <Box>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>

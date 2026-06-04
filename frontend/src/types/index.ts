@@ -1753,6 +1753,19 @@ export interface OwnerWorkspaceCounterparty extends OwnerWorkspaceContact {
   documents: OwnerWorkspaceCounterpartyDocument[];
   is_archived: boolean;
   archived_at?: string | null;
+  counterparty_role?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  ogrn?: string | null;
+  legal_address?: string | null;
+  actual_address?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  bank_account?: string | null;
+  bank_corr_account?: string | null;
+  bank_bik?: string | null;
+  bank_name?: string | null;
+  bank_currency?: string | null;
 }
 
 export interface DiskItem {

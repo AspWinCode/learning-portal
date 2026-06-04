@@ -177,6 +177,19 @@ class OwnerWorkspaceCounterpartyCreate(BaseModel):
     project_ids: Optional[List[int]] = None
     custom_fields: Optional[List[OwnerWorkspaceCounterpartyCustomField]] = None
     linked_persons: Optional[List[LinkedPersonItem]] = None
+    counterparty_role: Optional[str] = None
+    inn: Optional[str] = None
+    kpp: Optional[str] = None
+    ogrn: Optional[str] = None
+    legal_address: Optional[str] = None
+    actual_address: Optional[str] = None
+    website: Optional[str] = None
+    industry: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_corr_account: Optional[str] = None
+    bank_bik: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_currency: Optional[str] = None
 
 
 class OwnerWorkspaceCounterpartyUpdate(BaseModel):
@@ -192,6 +205,19 @@ class OwnerWorkspaceCounterpartyUpdate(BaseModel):
     project_ids: Optional[List[int]] = None
     custom_fields: Optional[List[OwnerWorkspaceCounterpartyCustomField]] = None
     linked_persons: Optional[List[LinkedPersonItem]] = None
+    counterparty_role: Optional[str] = None
+    inn: Optional[str] = None
+    kpp: Optional[str] = None
+    ogrn: Optional[str] = None
+    legal_address: Optional[str] = None
+    actual_address: Optional[str] = None
+    website: Optional[str] = None
+    industry: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_corr_account: Optional[str] = None
+    bank_bik: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_currency: Optional[str] = None
 
 
 class OwnerWorkspaceCounterpartyResponse(BaseModel):
@@ -216,6 +242,19 @@ class OwnerWorkspaceCounterpartyResponse(BaseModel):
     archived_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    counterparty_role: Optional[str] = None
+    inn: Optional[str] = None
+    kpp: Optional[str] = None
+    ogrn: Optional[str] = None
+    legal_address: Optional[str] = None
+    actual_address: Optional[str] = None
+    website: Optional[str] = None
+    industry: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_corr_account: Optional[str] = None
+    bank_bik: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_currency: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

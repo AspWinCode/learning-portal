@@ -98,6 +98,16 @@ const emptyProjectForm = (): ProjectFormState => ({
 
 // ─── Edit-counterparty form ─────────────────────────────────────────────────
 
+const COUNTERPARTY_ROLE_OPTIONS = [
+  { value: 'client',   label: 'Клиент' },
+  { value: 'lead',     label: 'Лид' },
+  { value: 'partner',  label: 'Партнёр' },
+  { value: 'supplier', label: 'Поставщик' },
+];
+const COUNTERPARTY_ROLE_LABELS: Record<string, string> = Object.fromEntries(
+  COUNTERPARTY_ROLE_OPTIONS.map((o) => [o.value, o.label])
+);
+
 type CounterpartyFormState = {
   full_name: string;
   phone: string;
@@ -106,6 +116,19 @@ type CounterpartyFormState = {
   position: string;
   comment: string;
   type: string;
+  counterparty_role: string;
+  inn: string;
+  kpp: string;
+  ogrn: string;
+  legal_address: string;
+  actual_address: string;
+  website: string;
+  industry: string;
+  bank_account: string;
+  bank_corr_account: string;
+  bank_bik: string;
+  bank_name: string;
+  bank_currency: string;
 };
 
 // ─── Tab panel helper ────────────────────────────────────────────────────────
@@ -162,7 +185,20 @@ const CounterpartyDetailPage: React.FC = () => {
     company: '',
     position: '',
     comment: '',
-    type: 'individual',
+    type: 'company',
+    counterparty_role: '',
+    inn: '',
+    kpp: '',
+    ogrn: '',
+    legal_address: '',
+    actual_address: '',
+    website: '',
+    industry: '',
+    bank_account: '',
+    bank_corr_account: '',
+    bank_bik: '',
+    bank_name: '',
+    bank_currency: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -280,7 +316,20 @@ const CounterpartyDetailPage: React.FC = () => {
       company: counterparty.company || '',
       position: counterparty.position || '',
       comment: counterparty.comment || '',
-      type: counterparty.type || 'individual',
+      type: counterparty.type || 'company',
+      counterparty_role: counterparty.counterparty_role || '',
+      inn: counterparty.inn || '',
+      kpp: counterparty.kpp || '',
+      ogrn: counterparty.ogrn || '',
+      legal_address: counterparty.legal_address || '',
+      actual_address: counterparty.actual_address || '',
+      website: counterparty.website || '',
+      industry: counterparty.industry || '',
+      bank_account: counterparty.bank_account || '',
+      bank_corr_account: counterparty.bank_corr_account || '',
+      bank_bik: counterparty.bank_bik || '',
+      bank_name: counterparty.bank_name || '',
+      bank_currency: counterparty.bank_currency || '',
     });
     setError('');
     setSuccess('');
@@ -302,6 +351,19 @@ const CounterpartyDetailPage: React.FC = () => {
         company: editForm.company.trim() || null,
         position: editForm.position.trim() || null,
         comment: editForm.comment.trim() || null,
+        counterparty_role: editForm.counterparty_role.trim() || null,
+        inn: editForm.inn.trim() || null,
+        kpp: editForm.kpp.trim() || null,
+        ogrn: editForm.ogrn.trim() || null,
+        legal_address: editForm.legal_address.trim() || null,
+        actual_address: editForm.actual_address.trim() || null,
+        website: editForm.website.trim() || null,
+        industry: editForm.industry.trim() || null,
+        bank_account: editForm.bank_account.trim() || null,
+        bank_corr_account: editForm.bank_corr_account.trim() || null,
+        bank_bik: editForm.bank_bik.trim() || null,
+        bank_name: editForm.bank_name.trim() || null,
+        bank_currency: editForm.bank_currency.trim() || null,
       });
       setSuccess('Контрагент обновлён.');
       setEditOpen(false);
@@ -455,38 +517,138 @@ const CounterpartyDetailPage: React.FC = () => {
 
         {/* Tab: Основное */}
         <TabPanel value={tab} index={0}>
-          <Paper variant="outlined" sx={{ p: 3 }}>
-            <Stack spacing={2} divider={<Divider />}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Typography fontWeight={600} sx={{ minWidth: 180 }}>Тип</Typography>
-                <Typography>{typeLabel || '—'}</Typography>
+          <Stack spacing={2}>
+            {/* Базовые данные */}
+            <Paper variant="outlined" sx={{ p: 3 }}>
+              <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', textTransform: 'uppercase', fontSize: 11, letterSpacing: 1 }}>
+                Общие сведения
+              </Typography>
+              <Stack spacing={2} divider={<Divider />}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Typography fontWeight={600} sx={{ minWidth: 200 }}>Тип</Typography>
+                  <Typography>{typeLabel || '—'}</Typography>
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Typography fontWeight={600} sx={{ minWidth: 200 }}>Роль контрагента</Typography>
+                  <Typography>{counterparty.counterparty_role ? (COUNTERPARTY_ROLE_LABELS[counterparty.counterparty_role] ?? counterparty.counterparty_role) : '—'}</Typography>
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Typography fontWeight={600} sx={{ minWidth: 200 }}>ФИО / Название</Typography>
+                  <Typography>{counterparty.full_name || '—'}</Typography>
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Typography fontWeight={600} sx={{ minWidth: 200 }}>Телефон</Typography>
+                  <Typography>{counterparty.phone || '—'}</Typography>
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Typography fontWeight={600} sx={{ minWidth: 200 }}>Email</Typography>
+                  <Typography>{counterparty.email || '—'}</Typography>
+                </Stack>
+                {counterparty.type !== 'individual' && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Компания</Typography>
+                    <Typography>{counterparty.company || '—'}</Typography>
+                  </Stack>
+                )}
+                {counterparty.type === 'individual' && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Должность</Typography>
+                    <Typography>{counterparty.position || '—'}</Typography>
+                  </Stack>
+                )}
+                {counterparty.type !== 'individual' && counterparty.website && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Сайт</Typography>
+                    <Link href={counterparty.website.startsWith('http') ? counterparty.website : `https://${counterparty.website}`} target="_blank" rel="noopener">
+                      {counterparty.website}
+                    </Link>
+                  </Stack>
+                )}
+                {counterparty.type !== 'individual' && counterparty.industry && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Отрасль</Typography>
+                    <Typography>{counterparty.industry}</Typography>
+                  </Stack>
+                )}
+                {counterparty.comment && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Комментарий</Typography>
+                    <Typography sx={{ whiteSpace: 'pre-wrap' }}>{counterparty.comment}</Typography>
+                  </Stack>
+                )}
               </Stack>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Typography fontWeight={600} sx={{ minWidth: 180 }}>ФИО / Название</Typography>
-                <Typography>{counterparty.full_name || '—'}</Typography>
-              </Stack>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Typography fontWeight={600} sx={{ minWidth: 180 }}>Телефон</Typography>
-                <Typography>{counterparty.phone || '—'}</Typography>
-              </Stack>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Typography fontWeight={600} sx={{ minWidth: 180 }}>Email</Typography>
-                <Typography>{counterparty.email || '—'}</Typography>
-              </Stack>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Typography fontWeight={600} sx={{ minWidth: 180 }}>Компания</Typography>
-                <Typography>{counterparty.company || '—'}</Typography>
-              </Stack>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Typography fontWeight={600} sx={{ minWidth: 180 }}>Должность</Typography>
-                <Typography>{counterparty.position || '—'}</Typography>
-              </Stack>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Typography fontWeight={600} sx={{ minWidth: 180 }}>Комментарий</Typography>
-                <Typography sx={{ whiteSpace: 'pre-wrap' }}>{counterparty.comment || '—'}</Typography>
-              </Stack>
-            </Stack>
-          </Paper>
+            </Paper>
+
+            {/* Реквизиты — только для company и ip */}
+            {counterparty.type !== 'individual' && (
+              <Paper variant="outlined" sx={{ p: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', textTransform: 'uppercase', fontSize: 11, letterSpacing: 1 }}>
+                  Реквизиты
+                </Typography>
+                <Stack spacing={2} divider={<Divider />}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>ИНН</Typography>
+                    <Typography>{counterparty.inn || '—'}</Typography>
+                  </Stack>
+                  {counterparty.type === 'company' && (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Typography fontWeight={600} sx={{ minWidth: 200 }}>КПП</Typography>
+                      <Typography>{counterparty.kpp || '—'}</Typography>
+                    </Stack>
+                  )}
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>
+                      {counterparty.type === 'ip' ? 'ОГРНИП' : 'ОГРН'}
+                    </Typography>
+                    <Typography>{counterparty.ogrn || '—'}</Typography>
+                  </Stack>
+                  {counterparty.type === 'company' && (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Typography fontWeight={600} sx={{ minWidth: 200 }}>Юридический адрес</Typography>
+                      <Typography sx={{ whiteSpace: 'pre-wrap' }}>{counterparty.legal_address || '—'}</Typography>
+                    </Stack>
+                  )}
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>
+                      {counterparty.type === 'ip' ? 'Адрес регистрации' : 'Фактический адрес'}
+                    </Typography>
+                    <Typography sx={{ whiteSpace: 'pre-wrap' }}>{counterparty.actual_address || '—'}</Typography>
+                  </Stack>
+                </Stack>
+              </Paper>
+            )}
+
+            {/* Банковские реквизиты — только для company и ip */}
+            {counterparty.type !== 'individual' && (
+              <Paper variant="outlined" sx={{ p: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary', textTransform: 'uppercase', fontSize: 11, letterSpacing: 1 }}>
+                  Банковские реквизиты
+                </Typography>
+                <Stack spacing={2} divider={<Divider />}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Расчётный счёт</Typography>
+                    <Typography>{counterparty.bank_account || '—'}</Typography>
+                  </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Корр. счёт</Typography>
+                    <Typography>{counterparty.bank_corr_account || '—'}</Typography>
+                  </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>БИК банка</Typography>
+                    <Typography>{counterparty.bank_bik || '—'}</Typography>
+                  </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Наименование банка</Typography>
+                    <Typography>{counterparty.bank_name || '—'}</Typography>
+                  </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <Typography fontWeight={600} sx={{ minWidth: 200 }}>Валюта счёта</Typography>
+                    <Typography>{counterparty.bank_currency || '—'}</Typography>
+                  </Stack>
+                </Stack>
+              </Paper>
+            )}
+          </Stack>
         </TabPanel>
 
         {/* Tab: Проекты */}
@@ -697,10 +859,12 @@ const CounterpartyDetailPage: React.FC = () => {
       </Box>
 
       {/* Edit dialog */}
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Редактировать контрагента</DialogTitle>
         <DialogContent dividers>
-          <Stack spacing={2} sx={{ mt: 1 }}>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            {/* Общие */}
+            <Typography variant="subtitle2" color="text.secondary">Общие сведения</Typography>
             <TextField
               label="ФИО / Название"
               value={editForm.full_name}
@@ -722,28 +886,146 @@ const CounterpartyDetailPage: React.FC = () => {
                 fullWidth
               />
             </Stack>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Компания"
-                value={editForm.company}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, company: e.target.value }))}
-                fullWidth
-              />
-              <TextField
-                label="Должность"
-                value={editForm.position}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, position: e.target.value }))}
-                fullWidth
-              />
-            </Stack>
+            {editForm.type !== 'individual' && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField
+                  label="Компания"
+                  value={editForm.company}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, company: e.target.value }))}
+                  fullWidth
+                />
+                <FormControl fullWidth>
+                  <InputLabel>Роль контрагента</InputLabel>
+                  <Select
+                    label="Роль контрагента"
+                    value={editForm.counterparty_role}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, counterparty_role: e.target.value }))}
+                  >
+                    <MenuItem value=""><em>Не указана</em></MenuItem>
+                    {COUNTERPARTY_ROLE_OPTIONS.map((o) => (
+                      <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Stack>
+            )}
+            {editForm.type !== 'individual' && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField
+                  label="Сайт"
+                  value={editForm.website}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, website: e.target.value }))}
+                  fullWidth
+                  placeholder="https://example.com"
+                />
+                <TextField
+                  label="Отрасль"
+                  value={editForm.industry}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, industry: e.target.value }))}
+                  fullWidth
+                />
+              </Stack>
+            )}
             <TextField
               label="Комментарий"
               value={editForm.comment}
               onChange={(e) => setEditForm((prev) => ({ ...prev, comment: e.target.value }))}
               fullWidth
               multiline
-              minRows={3}
+              minRows={2}
             />
+
+            {/* Реквизиты */}
+            {editForm.type !== 'individual' && (
+              <>
+                <Divider />
+                <Typography variant="subtitle2" color="text.secondary">Реквизиты</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <TextField
+                    label="ИНН"
+                    value={editForm.inn}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, inn: e.target.value }))}
+                    fullWidth
+                  />
+                  {editForm.type === 'company' && (
+                    <TextField
+                      label="КПП"
+                      value={editForm.kpp}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, kpp: e.target.value }))}
+                      fullWidth
+                    />
+                  )}
+                  <TextField
+                    label={editForm.type === 'ip' ? 'ОГРНИП' : 'ОГРН'}
+                    value={editForm.ogrn}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, ogrn: e.target.value }))}
+                    fullWidth
+                  />
+                </Stack>
+                {editForm.type === 'company' && (
+                  <TextField
+                    label="Юридический адрес"
+                    value={editForm.legal_address}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, legal_address: e.target.value }))}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                  />
+                )}
+                <TextField
+                  label={editForm.type === 'ip' ? 'Адрес регистрации' : 'Фактический адрес'}
+                  value={editForm.actual_address}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, actual_address: e.target.value }))}
+                  fullWidth
+                  multiline
+                  minRows={2}
+                />
+              </>
+            )}
+
+            {/* Банковские реквизиты */}
+            {editForm.type !== 'individual' && (
+              <>
+                <Divider />
+                <Typography variant="subtitle2" color="text.secondary">Банковские реквизиты</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <TextField
+                    label="Расчётный счёт"
+                    value={editForm.bank_account}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, bank_account: e.target.value }))}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Корр. счёт"
+                    value={editForm.bank_corr_account}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, bank_corr_account: e.target.value }))}
+                    fullWidth
+                  />
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <TextField
+                    label="БИК банка"
+                    value={editForm.bank_bik}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, bank_bik: e.target.value }))}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Наименование банка"
+                    value={editForm.bank_name}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, bank_name: e.target.value }))}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Валюта счёта"
+                    value={editForm.bank_currency}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, bank_currency: e.target.value }))}
+                    fullWidth
+                    placeholder="RUB"
+                    sx={{ maxWidth: 120 }}
+                  />
+                </Stack>
+              </>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>

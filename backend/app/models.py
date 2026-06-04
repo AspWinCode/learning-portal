@@ -2238,6 +2238,22 @@ class OwnerWorkspaceCounterparty(Base):
     source = Column(String(128), nullable=True)
     custom_fields = Column(JSON, nullable=True)
     linked_persons = Column(JSON, nullable=True)
+    # Роль контрагента: клиент | лид | партнер | поставщик
+    counterparty_role = Column(String(64), nullable=True)
+    # Реквизиты
+    inn               = Column(String(20),  nullable=True)
+    kpp               = Column(String(20),  nullable=True)   # только юрлица
+    ogrn              = Column(String(20),  nullable=True)   # ОГРН / ОГРНИП
+    legal_address     = Column(Text,        nullable=True)
+    actual_address    = Column(Text,        nullable=True)
+    website           = Column(String(255), nullable=True)
+    industry          = Column(String(255), nullable=True)
+    # Банковские реквизиты
+    bank_account      = Column(String(64),  nullable=True)
+    bank_corr_account = Column(String(64),  nullable=True)
+    bank_bik          = Column(String(20),  nullable=True)
+    bank_name         = Column(String(255), nullable=True)
+    bank_currency     = Column(String(10),  nullable=True)
     is_archived = Column(Boolean, nullable=False, server_default="false", index=True)
     archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

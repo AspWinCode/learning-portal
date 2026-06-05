@@ -6360,7 +6360,7 @@ const OwnerWorkspacePage: React.FC = () => {
 
       {loading && <Typography sx={{ mt: 2 }}>Загрузка…</Typography>}
 
-      <Dialog open={Boolean(projectDialog)} onClose={closeProjectDialog} maxWidth="md" fullWidth>
+      <Dialog open={Boolean(projectDialog)} onClose={closeProjectDialog} maxWidth="md" fullWidth disableEnforceFocus={createTaskDialogOpen}>
         <DialogTitle>Проект: {projectDialog?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -7113,7 +7113,7 @@ const OwnerWorkspacePage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(contactDialog)} onClose={closeContactDialog} maxWidth="md" fullWidth>
+      <Dialog open={Boolean(contactDialog)} onClose={closeContactDialog} maxWidth="md" fullWidth disableEnforceFocus={createTaskDialogOpen}>
         <DialogTitle>{contactDialog?.full_name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>

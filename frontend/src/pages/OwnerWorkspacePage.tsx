@@ -5451,20 +5451,6 @@ const OwnerWorkspacePage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <OwnerWorkspaceTaskCreateDialog
-            open={createTaskDialogOpen}
-            onClose={() => { setCreateTaskDialogOpen(false); setCreateTaskDialogProjectId(null); setCreateTaskDialogContactId(null); }}
-            onSubmit={handleCreateTaskDialog}
-            users={userOptions}
-            projectName={
-              createTaskDialogProjectId
-                ? projects.find((p) => p.id === createTaskDialogProjectId)?.name
-                : createTaskDialogContactId
-                ? contacts.find((c) => c.id === createTaskDialogContactId)?.full_name
-                : undefined
-            }
-          />
-
           <Collapse in={showFiltersPanel} unmountOnExit>
           <Card>
             <CardContent>
@@ -7882,6 +7868,20 @@ const OwnerWorkspacePage: React.FC = () => {
           summarizeWorkspaceSettingsBundle={summarizeWorkspaceSettingsBundle}
         />
       </Suspense>
+
+      <OwnerWorkspaceTaskCreateDialog
+        open={createTaskDialogOpen}
+        onClose={() => { setCreateTaskDialogOpen(false); setCreateTaskDialogProjectId(null); setCreateTaskDialogContactId(null); }}
+        onSubmit={handleCreateTaskDialog}
+        users={userOptions}
+        projectName={
+          createTaskDialogProjectId
+            ? projects.find((p) => p.id === createTaskDialogProjectId)?.name
+            : createTaskDialogContactId
+            ? contacts.find((c) => c.id === createTaskDialogContactId)?.full_name
+            : undefined
+        }
+      />
     </Layout>
   );
 };

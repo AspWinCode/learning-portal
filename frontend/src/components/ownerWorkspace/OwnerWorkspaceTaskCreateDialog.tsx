@@ -38,7 +38,7 @@ import { ownerWorkspaceApi } from '../../services/api';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Priority = 'high' | 'medium' | 'low';
-type TaskStatus = 'new' | 'in_progress' | 'on_review' | 'blocked';
+type TaskStatus = 'new' | 'in_progress' | 'waiting';
 
 interface ChecklistItem {
   id: string;
@@ -105,8 +105,7 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; color: string }> = {
 const STATUS_CONFIG: Record<TaskStatus, string> = {
   new:        'Новая',
   in_progress:'В работе',
-  on_review:  'Ревью',
-  blocked:    'Блокирована',
+  waiting:    'Ожидает',
 };
 
 function initials(name: string): string {
@@ -197,6 +196,7 @@ export function OwnerWorkspaceTaskCreateDialog({
 
   // Submit state
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const tagInputRef = useRef<HTMLInputElement>(null);
 
@@ -220,6 +220,7 @@ export function OwnerWorkspaceTaskCreateDialog({
       setEffortOpen(false); setEffortHours(''); setEffortMinutes('');
       setRepeatOpen(false); setRepeat({ enabled: false, frequency: 'weekly', interval: 1, days: [], end_type: 'never' });
       setSelectedTemplateId(''); setShowSaveTemplate(false); setSaveTemplateName('');
+      setSubmitError('');
     }
   }, [open]);
 
@@ -316,6 +317,7 @@ export function OwnerWorkspaceTaskCreateDialog({
   const handleSubmit = async () => {
     if (!title.trim() || submitting) return;
     setSubmitting(true);
+    setSubmitError('');
     try {
       await onSubmit({
         title: title.trim(),
@@ -342,8 +344,10 @@ export function OwnerWorkspaceTaskCreateDialog({
         } : null,
       });
       onClose();
-    } catch {}
-    finally { setSubmitting(false); }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Не удалось создать задачу';
+      setSubmitError(msg);
+    } finally { setSubmitting(false); }
   };
 
   const completion = completionPercent(title, description, priority, assigneeId, deadline, tags, checklist);
@@ -936,6 +940,11 @@ export function OwnerWorkspaceTaskCreateDialog({
 
         {/* Footer */}
         <Box sx={{ px: 3, py: 2 }}>
+          {submitError && (
+            <Box sx={{ mb: 1.5, p: 1.5, bgcolor: '#FEF2F2', borderRadius: 2, border: '1px solid #FECACA' }}>
+              <Typography variant="caption" color="error.main">{submitError}</Typography>
+            </Box>
+          )}
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
             <Typography variant="caption" color="text.secondary" sx={{ minWidth: 60 }}>Заполнено</Typography>
             <LinearProgress

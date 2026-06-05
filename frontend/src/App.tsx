@@ -579,14 +579,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route
-              path="/owner-workspace/settings"
-              element={
-                <PrivateRoute requiredPermission="owner_workspace.access">
-                  <OwnerWorkspacePage />
-                </PrivateRoute>
-              }
-            />
+            {/* Настройки таск трекера и контрагентов переехали в общий раздел настроек */}
+            <Route path="/owner-workspace/settings" element={<RedirectWithSearch to="/admin/settings?tab=ownerWorkspace" />} />
             <Route
               path="/owner-workspace/projects"
               element={

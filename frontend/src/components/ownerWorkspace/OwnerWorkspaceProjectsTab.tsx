@@ -15,8 +15,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import type { OwnerWorkspaceProject, User } from '../../types';
@@ -70,56 +68,27 @@ export function OwnerWorkspaceProjectsTab({
   onOpenProject,
   onOpenProjectOverdueTasks,
 }: OwnerWorkspaceProjectsTabProps) {
-  const [expandedProjectIds, setExpandedProjectIds] = React.useState<number[]>([]);
-  const childProjectsByParent = React.useMemo(() => {
-    const map = new Map<number, OwnerWorkspaceProject[]>();
+  const subprojectsCountByProject = React.useMemo(() => {
+    const map = new Map<number, number>();
     for (const project of projectsCatalog) {
       if (project.parent_project_id == null) continue;
-      const children = map.get(project.parent_project_id) || [];
-      children.push(project);
-      map.set(project.parent_project_id, children);
-    }
-    for (const children of map.values()) {
-      children.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+      map.set(project.parent_project_id, (map.get(project.parent_project_id) ?? 0) + 1);
     }
     return map;
   }, [projectsCatalog]);
-  const toggleExpandedProject = (projectId: number) => {
-    setExpandedProjectIds((prev) => (
-      prev.includes(projectId) ? prev.filter((id) => id !== projectId) : [...prev, projectId]
-    ));
-  };
 
-  const renderProjectCard = (project: OwnerWorkspaceProject, depth = 0): React.ReactNode => {
-    const children = childProjectsByParent.get(project.id) || [];
-    const hasChildren = children.length > 0;
-    const expanded = expandedProjectIds.includes(project.id);
+  const renderProjectCard = (project: OwnerWorkspaceProject): React.ReactNode => {
+    const subCount = subprojectsCountByProject.get(project.id) ?? project.subprojects_count ?? 0;
 
     return (
-      <Card key={project.id} variant={depth > 0 ? 'outlined' : undefined} sx={{ mt: depth > 0 ? 1 : 0 }}>
-        <CardContent sx={{ pl: 3 + depth * 2 }}>
+      <Card key={project.id}>
+        <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-            <Box sx={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
-              {hasChildren ? (
-                <IconButton
-                  size="small"
-                  onClick={() => toggleExpandedProject(project.id)}
-                  aria-label={expanded ? 'Скрыть подпроекты' : 'Показать подпроекты'}
-                  sx={{ mt: 0.25 }}
-                >
-                  {expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
-                </IconButton>
-              ) : (
-                <Box sx={{ width: 34, flex: '0 0 34px' }} />
-              )}
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant={depth > 0 ? 'subtitle1' : 'h6'}>
-                  {project.name}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                  Ответственный: {userName(project.owner_id)}
-                </Typography>
-              </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="h6">{project.name}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Ответственный: {userName(project.owner_id)}
+              </Typography>
             </Box>
             <IconButton size="small" onClick={() => void onOpenProject(project)} aria-label="Открыть">
               <OpenInNewIcon fontSize="small" />
@@ -133,7 +102,7 @@ export function OwnerWorkspaceProjectsTab({
               <Chip size="small" color="warning" label={`Просроч.: ${project.overdue_tasks_count}`} />
             )}
             <Chip size="small" label={`Контактов: ${project.contacts_count}`} />
-            {hasChildren && <Chip size="small" label={`Подпроектов: ${children.length}`} />}
+            {subCount > 0 && <Chip size="small" variant="outlined" label={`Подпроектов: ${subCount}`} />}
           </Stack>
           {project.updated_at ? (
             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
@@ -141,11 +110,6 @@ export function OwnerWorkspaceProjectsTab({
               {new Date(project.updated_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
             </Typography>
           ) : null}
-          {expanded && hasChildren && (
-            <Stack spacing={1} sx={{ mt: 1.5 }}>
-              {children.map((child) => renderProjectCard(child, depth + 1))}
-            </Stack>
-          )}
         </CardContent>
       </Card>
     );

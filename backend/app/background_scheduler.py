@@ -10,6 +10,7 @@ from app.background_tasks import (
     task_owner_workspace_max_sync,
     task_owner_workspace_notification_email_dispatch,
     task_owner_workspace_notification_web_push_dispatch,
+    task_owner_workspace_task_reminders,
     task_parent_weekly_digests,
     task_payment_overdue_tasks,
     task_payment_reminder_notifications,
@@ -41,6 +42,7 @@ def main() -> None:
     scheduler.add_job(lambda: task_owner_workspace_max_sync.send(), "interval", minutes=30, id="owner_workspace_max_sync", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_notification_email_dispatch.send(), "interval", minutes=1, id="owner_workspace_notification_email_dispatch", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_notification_web_push_dispatch.send(), "interval", minutes=1, id="owner_workspace_notification_web_push_dispatch", max_instances=1)
+    scheduler.add_job(lambda: task_owner_workspace_task_reminders.send(), "interval", minutes=1, id="owner_workspace_task_reminders", max_instances=1)
     scheduler.add_job(lambda: task_student_class_autopromo.send(), "cron", month=9, day=1, hour=3, id="student_class_autopromo", max_instances=1)
     scheduler.add_job(lambda: task_absence_link_tasks.send(), "cron", hour=8, minute=0, id="absence_link_tasks", max_instances=1)
     logger.info("Starting background scheduler")

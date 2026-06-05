@@ -69,6 +69,8 @@ from app.models import (
     OwnerWorkspaceTask,
     OwnerWorkspaceTaskComment,
     OwnerWorkspaceTaskMessage,
+    OwnerWorkspaceTaskTemplate,
+    OwnerWorkspaceTaskWatcher,
     OwnerWorkspaceWebPushSubscription,
     User,
 )
@@ -124,6 +126,9 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceTaskMessageLink,
     OwnerWorkspaceTaskResponse,
     OwnerWorkspaceTaskUpdate,
+    OwnerWorkspaceTaskTemplateCreate,
+    OwnerWorkspaceTaskTemplateUpdate,
+    OwnerWorkspaceTaskTemplateResponse,
 )
 from app.services.owner_workspace_counterparties import (
     COUNTERPARTY_DOCUMENT_CATEGORIES,
@@ -607,6 +612,7 @@ def _counterparty_to_response(
 
 def _task_to_response(db: Session, task: OwnerWorkspaceTask) -> OwnerWorkspaceTaskResponse:
     linked = db.query(OwnerWorkspaceTaskMessage).filter(OwnerWorkspaceTaskMessage.task_id == task.id).all()
+    watchers = db.query(OwnerWorkspaceTaskWatcher).filter(OwnerWorkspaceTaskWatcher.task_id == task.id).all()
     return OwnerWorkspaceTaskResponse(
         id=task.id,
         title=task.title,
@@ -625,6 +631,19 @@ def _task_to_response(db: Session, task: OwnerWorkspaceTask) -> OwnerWorkspaceTa
         checklist=task.checklist,
         attachments=task.attachments,
         previous_task_id=task.previous_task_id,
+        effort_hours=getattr(task, "effort_hours", None),
+        effort_minutes=getattr(task, "effort_minutes", None),
+        repeat_enabled=bool(getattr(task, "repeat_enabled", False)),
+        repeat_frequency=getattr(task, "repeat_frequency", None),
+        repeat_interval=getattr(task, "repeat_interval", None),
+        repeat_days=getattr(task, "repeat_days", None),
+        repeat_end_type=getattr(task, "repeat_end_type", None),
+        repeat_end_after_count=getattr(task, "repeat_end_after_count", None),
+        repeat_end_until=getattr(task, "repeat_end_until", None),
+        repeat_count=int(getattr(task, "repeat_count", 0) or 0),
+        watcher_ids=[w.user_id for w in watchers],
+        reminder_at=getattr(task, "reminder_at", None),
+        reminder_sent=bool(getattr(task, "reminder_sent", False)),
         created_at=task.created_at,
         updated_at=task.updated_at,
     )
@@ -1980,6 +1999,7 @@ async def create_task(
             continue
         if not ctx.full and not counterparty_visible(ctx, msg.contact_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к сообщению")
+    rpt = payload.repeat
     row = OwnerWorkspaceTask(
         title=payload.title.strip(),
         description=(payload.description or "").strip() or None,
@@ -1995,6 +2015,18 @@ async def create_task(
         checklist=payload.checklist,
         attachments=payload.attachments,
         previous_task_id=payload.previous_task_id,
+        effort_hours=payload.effort_hours,
+        effort_minutes=payload.effort_minutes,
+        repeat_enabled=rpt.enabled if rpt else False,
+        repeat_frequency=rpt.frequency if rpt else None,
+        repeat_interval=rpt.interval if rpt else None,
+        repeat_days=rpt.days if rpt else None,
+        repeat_end_type=rpt.end_type if rpt else None,
+        repeat_end_after_count=rpt.end_after_count if rpt else None,
+        repeat_end_until=rpt.end_until if rpt else None,
+        repeat_count=0,
+        reminder_at=payload.reminder_at,
+        reminder_sent=False,
     )
     if row.status == "completed":
         row.completed_at = datetime.now(timezone.utc)
@@ -2004,6 +2036,12 @@ async def create_task(
         exists = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
         if exists:
             db.add(OwnerWorkspaceTaskMessage(task_id=row.id, message_id=message_id))
+    # Сохраняем наблюдателей
+    for uid in payload.watcher_ids or []:
+        if uid != ctx.user.id:  # создатель не нужен как наблюдатель по умолчанию
+            watcher = db.query(OwnerWorkspaceTaskWatcher).filter_by(task_id=row.id, user_id=uid).first()
+            if not watcher:
+                db.add(OwnerWorkspaceTaskWatcher(task_id=row.id, user_id=uid))
     _log_audit(
         db,
         entity_type="task",
@@ -2203,7 +2241,65 @@ async def complete_task(
         author_id=ctx.user.id,
     )
 
+    # ── Авто-создание следующей задачи при периодичности ──────────────────────
     new_task_row: Optional[OwnerWorkspaceTask] = None
+    if getattr(row, "repeat_enabled", False) and payload.action != "close_and_create_next":
+        repeat_count = int(getattr(row, "repeat_count", 0) or 0)
+        end_type = getattr(row, "repeat_end_type", "never") or "never"
+        can_repeat = True
+        if end_type == "after_count":
+            max_c = getattr(row, "repeat_end_after_count", None)
+            can_repeat = max_c is None or repeat_count < max_c
+        elif end_type == "until_date":
+            until = getattr(row, "repeat_end_until", None)
+            can_repeat = until is None or datetime.now(timezone.utc) < until
+        if can_repeat:
+            from dateutil.relativedelta import relativedelta
+            freq = getattr(row, "repeat_frequency", "daily") or "daily"
+            interval = int(getattr(row, "repeat_interval", 1) or 1)
+            base = row.deadline_at or datetime.now(timezone.utc)
+            if freq == "daily":
+                next_deadline = base + relativedelta(days=interval)
+            elif freq == "weekly":
+                next_deadline = base + relativedelta(weeks=interval)
+            elif freq == "monthly":
+                next_deadline = base + relativedelta(months=interval)
+            else:  # custom = every N days
+                next_deadline = base + relativedelta(days=interval)
+            # reset checklist items to undone
+            checklist = getattr(row, "checklist", None)
+            if checklist:
+                checklist = [dict(item, done=False) for item in checklist]
+            new_task_row = OwnerWorkspaceTask(
+                title=row.title,
+                description=row.description,
+                status="new",
+                priority=row.priority,
+                deadline_at=next_deadline,
+                start_at=None,
+                assignee_id=row.assignee_id,
+                creator_id=ctx.user.id,
+                project_id=row.project_id,
+                contact_id=row.contact_id,
+                tags=row.tags,
+                checklist=checklist,
+                effort_hours=getattr(row, "effort_hours", None),
+                effort_minutes=getattr(row, "effort_minutes", None),
+                repeat_enabled=True,
+                repeat_frequency=getattr(row, "repeat_frequency", None),
+                repeat_interval=getattr(row, "repeat_interval", None),
+                repeat_days=getattr(row, "repeat_days", None),
+                repeat_end_type=getattr(row, "repeat_end_type", None),
+                repeat_end_after_count=getattr(row, "repeat_end_after_count", None),
+                repeat_end_until=getattr(row, "repeat_end_until", None),
+                repeat_count=repeat_count + 1,
+                previous_task_id=row.id,
+            )
+            db.add(new_task_row)
+            db.flush()
+            _log_audit(db, entity_type="task", entity_id=new_task_row.id, action_type="repeat_create",
+                       author_id=ctx.user.id, new_value={"previous_task_id": row.id})
+
     if payload.action == "close_and_create_next":
         permission_policy = get_owner_workspace_permission_policy(db)
         if not ctx.full and not permission_policy["limited_can_create_tasks"]:
@@ -3220,3 +3316,119 @@ async def history_stats(
     )
 
 
+
+
+# ── Task Templates ─────────────────────────────────────────────────────────────
+
+@router.get("/task-templates", response_model=List[OwnerWorkspaceTaskTemplateResponse])
+async def list_task_templates(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    """Список шаблонов задач (видят все, у кого есть доступ к workspace)."""
+    rows = db.query(OwnerWorkspaceTaskTemplate).order_by(OwnerWorkspaceTaskTemplate.name).all()
+    return rows
+
+
+@router.post("/task-templates", response_model=OwnerWorkspaceTaskTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_task_template(
+    payload: OwnerWorkspaceTaskTemplateCreate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = OwnerWorkspaceTaskTemplate(
+        name=payload.name.strip(),
+        description=payload.description,
+        priority=payload.priority,
+        tags=payload.tags or [],
+        checklist=payload.checklist or [],
+        effort_hours=payload.effort_hours,
+        effort_minutes=payload.effort_minutes,
+        owner_id=ctx.user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/task-templates/{template_id}", response_model=OwnerWorkspaceTaskTemplateResponse)
+async def update_task_template(
+    template_id: int,
+    payload: OwnerWorkspaceTaskTemplateUpdate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceTaskTemplate).filter(OwnerWorkspaceTaskTemplate.id == template_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if not ctx.full and row.owner_id != ctx.user.id:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/task-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceTaskTemplate).filter(OwnerWorkspaceTaskTemplate.id == template_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if not ctx.full and row.owner_id != ctx.user.id:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    db.delete(row)
+    db.commit()
+
+
+# ── Task Watchers ──────────────────────────────────────────────────────────────
+
+@router.get("/tasks/{task_id}/watchers", response_model=List[int])
+async def list_task_watchers(
+    task_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
+    if not task or not task_visible(ctx, task):
+        raise HTTPException(status_code=404, detail="Task not found")
+    rows = db.query(OwnerWorkspaceTaskWatcher).filter(OwnerWorkspaceTaskWatcher.task_id == task_id).all()
+    return [r.user_id for r in rows]
+
+
+@router.post("/tasks/{task_id}/watchers/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def add_task_watcher(
+    task_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
+    if not task or not task_visible(ctx, task):
+        raise HTTPException(status_code=404, detail="Task not found")
+    existing = db.query(OwnerWorkspaceTaskWatcher).filter_by(task_id=task_id, user_id=user_id).first()
+    if not existing:
+        db.add(OwnerWorkspaceTaskWatcher(task_id=task_id, user_id=user_id))
+        db.commit()
+
+
+@router.delete("/tasks/{task_id}/watchers/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_task_watcher(
+    task_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    task = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
+    if not task or not task_visible(ctx, task):
+        raise HTTPException(status_code=404, detail="Task not found")
+    row = db.query(OwnerWorkspaceTaskWatcher).filter_by(task_id=task_id, user_id=user_id).first()
+    if row:
+        db.delete(row)
+        db.commit()

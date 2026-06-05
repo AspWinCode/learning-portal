@@ -38,7 +38,8 @@ import {
 
 import Layout from '../components/Layout';
 import { ConfirmDialog, DataTable, EmptyState } from '../components/ui';
-import { ownerWorkspaceApi } from '../services/api';
+import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
+import { ownerWorkspaceApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceContact,
@@ -46,6 +47,7 @@ import type {
   OwnerWorkspaceProjectDocument,
   OwnerWorkspaceProjectStatus,
   OwnerWorkspaceTask,
+  User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 
@@ -234,10 +236,11 @@ const ProjectDetailPage: React.FC = () => {
   // Archive confirm
   const [archiveOpen, setArchiveOpen] = useState(false);
 
-  // Task dialog
+  // Task dialog (new)
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskForm, setTaskForm] = useState<TaskForm>(emptyTaskForm());
   const [taskSaving, setTaskSaving] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
 
   // Subproject dialog
   const [subprojectDialogOpen, setSubprojectDialogOpen] = useState(false);
@@ -261,6 +264,8 @@ const ProjectDetailPage: React.FC = () => {
 
   useEffect(() => {
     void loadProject();
+    // Load users for assignee picker
+    usersApi.getAll().then(setUsers).catch(() => {});
   }, [loadProject]);
 
   // ─── Load tasks ───────────────────────────────────────────────────────────
@@ -403,31 +408,24 @@ const ProjectDetailPage: React.FC = () => {
 
   // ─── Create task ──────────────────────────────────────────────────────────
 
-  const handleCreateTask = async () => {
-    if (!taskForm.title.trim()) {
-      setError('Укажите название задачи.');
-      return;
-    }
-    setTaskSaving(true);
-    setError('');
-    try {
-      await ownerWorkspaceApi.createTask({
-        title: taskForm.title.trim(),
-        description: taskForm.description.trim() || null,
-        status: taskForm.status as 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled',
-        priority: taskForm.priority as 'low' | 'medium' | 'high' | 'critical',
-        assignee_id: taskForm.assignee_id ? Number(taskForm.assignee_id) : null,
-        deadline_at: taskForm.deadline_at || null,
-        project_id: projectId,
-      });
-      setSuccess('Задача создана.');
-      setTaskDialogOpen(false);
-      await loadTasks();
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Не удалось создать задачу.'));
-    } finally {
-      setTaskSaving(false);
-    }
+  const handleCreateTask = async (payload: TaskCreatePayload) => {
+    await ownerWorkspaceApi.createTask({
+      title: payload.title,
+      description: payload.description || null,
+      status: payload.status as 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled',
+      priority: payload.priority as 'low' | 'medium' | 'high' | 'critical',
+      start_at: payload.start_at ?? null,
+      assignee_id: payload.assignee_id ?? null,
+      deadline_at: payload.deadline_at ?? null,
+      tags: payload.tags,
+      checklist: payload.checklist,
+      project_id: projectId,
+      watcher_ids: payload.watcher_ids,
+      reminder_at: payload.reminder_at ?? null,
+      ...(payload.repeat ? { repeat: payload.repeat } : {}),
+    });
+    setSuccess('Задача создана.');
+    await loadTasks();
   };
 
   // ─── Documents ────────────────────────────────────────────────────────────
@@ -501,11 +499,9 @@ const ProjectDetailPage: React.FC = () => {
         parent_project_id: projectId,
         counterparty_id: project?.counterparty_id ?? null,
       });
-      setSuccess('Подпроект создан.');
       setSubprojectDialogOpen(false);
-      void loadSubprojects();
-      void loadProject();
-      navigate(`/owner-workspace/projects/${created.id}`);
+      await loadSubprojects();
+      setSuccess('Подпроект создан.');
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось создать подпроект.'));
     } finally {
@@ -1115,83 +1111,14 @@ const ProjectDetailPage: React.FC = () => {
       />
 
       {/* Create task dialog */}
-      <Dialog open={taskDialogOpen} onClose={() => setTaskDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Создать задачу</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="Название"
-              value={taskForm.title}
-              onChange={(e) => setTaskForm((prev) => ({ ...prev, title: e.target.value }))}
-              fullWidth
-              required
-            />
-            <TextField
-              label="Описание"
-              value={taskForm.description}
-              onChange={(e) => setTaskForm((prev) => ({ ...prev, description: e.target.value }))}
-              fullWidth
-              multiline
-              minRows={2}
-            />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <FormControl fullWidth>
-                <InputLabel>Статус</InputLabel>
-                <Select
-                  label="Статус"
-                  value={taskForm.status}
-                  onChange={(e) => setTaskForm((prev) => ({ ...prev, status: e.target.value }))}
-                >
-                  {Object.entries(TASK_STATUS_LABELS).map(([key, label]) => (
-                    <MenuItem key={key} value={key}>
-                      {label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl fullWidth>
-                <InputLabel>Приоритет</InputLabel>
-                <Select
-                  label="Приоритет"
-                  value={taskForm.priority}
-                  onChange={(e) => setTaskForm((prev) => ({ ...prev, priority: e.target.value }))}
-                >
-                  {Object.entries(TASK_PRIORITY_LABELS).map(([key, label]) => (
-                    <MenuItem key={key} value={key}>
-                      {label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Stack>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Исполнитель (ID)"
-                value={taskForm.assignee_id}
-                onChange={(e) => setTaskForm((prev) => ({ ...prev, assignee_id: e.target.value }))}
-                fullWidth
-                type="number"
-              />
-              <TextField
-                label="Дедлайн"
-                value={taskForm.deadline_at}
-                onChange={(e) =>
-                  setTaskForm((prev) => ({ ...prev, deadline_at: e.target.value }))
-                }
-                fullWidth
-                type="date"
-                InputLabelProps={{ shrink: true }}
-              />
-            </Stack>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTaskDialogOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void handleCreateTask()} disabled={taskSaving}>
-            Создать
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* New task creation dialog */}
+      <OwnerWorkspaceTaskCreateDialog
+        open={taskDialogOpen}
+        onClose={() => setTaskDialogOpen(false)}
+        onSubmit={handleCreateTask}
+        projectName={project?.name}
+        users={users}
+      />
 
       {/* Delete document confirm */}
       <ConfirmDialog

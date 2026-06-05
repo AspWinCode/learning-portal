@@ -299,6 +299,11 @@ export const ownerWorkspaceApi = {
     attachments?: Array<Record<string, unknown>>;
     linked_message_ids?: number[];
     previous_task_id?: number | null;
+    watcher_ids?: number[];
+    reminder_at?: string | null;
+    repeat?: Record<string, unknown> | null;
+    effort_hours?: number | null;
+    effort_minutes?: number | null;
   }): Promise<OwnerWorkspaceTask> => {
     const response = await api.post('/api/owner-workspace/tasks', payload);
     return response.data;
@@ -500,5 +505,41 @@ export const ownerWorkspaceApi = {
       }
     );
     return response.data;
+  },
+
+  // ── Task Templates ──────────────────────────────────────────────────────────
+  listTaskTemplates: async (): Promise<import('../../types').OwnerWorkspaceTaskTemplate[]> => {
+    const response = await api.get('/api/owner-workspace/task-templates');
+    return response.data;
+  },
+  createTaskTemplate: async (payload: {
+    name: string;
+    description?: string | null;
+    priority?: string | null;
+    tags?: string[];
+    checklist?: Array<{ text: string; done?: boolean }>;
+    effort_hours?: number | null;
+    effort_minutes?: number | null;
+  }): Promise<import('../../types').OwnerWorkspaceTaskTemplate> => {
+    const response = await api.post('/api/owner-workspace/task-templates', payload);
+    return response.data;
+  },
+  updateTaskTemplate: async (
+    id: number,
+    payload: {
+      name?: string;
+      description?: string | null;
+      priority?: string | null;
+      tags?: string[];
+      checklist?: Array<{ text: string; done?: boolean }>;
+      effort_hours?: number | null;
+      effort_minutes?: number | null;
+    }
+  ): Promise<import('../../types').OwnerWorkspaceTaskTemplate> => {
+    const response = await api.patch(`/api/owner-workspace/task-templates/${id}`, payload);
+    return response.data;
+  },
+  deleteTaskTemplate: async (id: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/task-templates/${id}`);
   },
 };

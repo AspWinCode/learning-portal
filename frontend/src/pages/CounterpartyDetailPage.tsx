@@ -43,7 +43,8 @@ import {
 
 import Layout from '../components/Layout';
 import { ConfirmDialog, DataTable, EmptyState } from '../components/ui';
-import { ownerWorkspaceApi, settingsApi } from '../services/api';
+import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
+import { ownerWorkspaceApi, settingsApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceContact,
@@ -51,6 +52,7 @@ import type {
   OwnerWorkspaceProject,
   OwnerWorkspaceProjectStatus,
   OwnerWorkspaceTask,
+  User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 
@@ -196,11 +198,8 @@ const CounterpartyDetailPage: React.FC = () => {
   // Tasks tab
   const [tasks, setTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [taskFormOpen, setTaskFormOpen] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDeadline, setNewTaskDeadline] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
-  const [savingTask, setSavingTask] = useState(false);
+  const [taskCreateDialogOpen, setTaskCreateDialogOpen] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
 
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
@@ -253,6 +252,7 @@ const CounterpartyDetailPage: React.FC = () => {
 
   useEffect(() => {
     void loadCounterparty();
+    usersApi.getAll().then(setUsers).catch(() => {});
   }, [loadCounterparty]);
 
   // ─── Load contacts ────────────────────────────────────────────────────────
@@ -347,27 +347,25 @@ const CounterpartyDetailPage: React.FC = () => {
     }
   }, [counterpartyId]);
 
-  const handleCreateTask = async () => {
-    if (!newTaskTitle.trim()) return;
-    setSavingTask(true);
-    try {
-      await ownerWorkspaceApi.createTask({
-        title: newTaskTitle.trim(),
-        priority: newTaskPriority,
-        deadline_at: newTaskDeadline || null,
-        contact_id: counterpartyId,
-        status: 'new',
-      });
-      setNewTaskTitle('');
-      setNewTaskDeadline('');
-      setNewTaskPriority('medium');
-      setTaskFormOpen(false);
-      await loadTasks();
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Не удалось создать задачу.'));
-    } finally {
-      setSavingTask(false);
-    }
+  const handleCreateTask = async (payload: TaskCreatePayload) => {
+    await ownerWorkspaceApi.createTask({
+      title: payload.title,
+      description: payload.description || null,
+      status: payload.status as 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled',
+      priority: payload.priority as 'low' | 'medium' | 'high' | 'critical',
+      start_at: payload.start_at ?? null,
+      deadline_at: payload.deadline_at ?? null,
+      assignee_id: payload.assignee_id ?? null,
+      watcher_ids: payload.watcher_ids,
+      tags: payload.tags,
+      checklist: payload.checklist,
+      effort_hours: payload.effort_hours ?? null,
+      effort_minutes: payload.effort_minutes ?? null,
+      reminder_at: payload.reminder_at ?? null,
+      repeat: payload.repeat ?? null,
+      contact_id: counterpartyId,
+    });
+    await loadTasks();
   };
 
   // Load tab data lazily
@@ -877,60 +875,18 @@ const CounterpartyDetailPage: React.FC = () => {
             <Button
               variant="contained"
               startIcon={<AddIcon />}
-              onClick={() => { setTaskFormOpen(true); setNewTaskTitle(''); setNewTaskDeadline(''); setNewTaskPriority('medium'); }}
+              onClick={() => setTaskCreateDialogOpen(true)}
             >
               Создать задачу
             </Button>
           </Box>
 
-          {taskFormOpen && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-              <Stack spacing={2}>
-                <TextField
-                  label="Название задачи"
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  fullWidth
-                  autoFocus
-                  size="small"
-                />
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <FormControl size="small" sx={{ minWidth: 160 }}>
-                    <InputLabel>Приоритет</InputLabel>
-                    <Select
-                      label="Приоритет"
-                      value={newTaskPriority}
-                      onChange={(e) => setNewTaskPriority(e.target.value as typeof newTaskPriority)}
-                    >
-                      <MenuItem value="low">Низкий</MenuItem>
-                      <MenuItem value="medium">Средний</MenuItem>
-                      <MenuItem value="high">Высокий</MenuItem>
-                      <MenuItem value="critical">Критический</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <TextField
-                    size="small"
-                    label="Срок"
-                    type="date"
-                    value={newTaskDeadline}
-                    onChange={(e) => setNewTaskDeadline(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ flex: 1 }}
-                  />
-                </Stack>
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    variant="contained"
-                    disabled={!newTaskTitle.trim() || savingTask}
-                    onClick={() => void handleCreateTask()}
-                  >
-                    {savingTask ? 'Создаём...' : 'Создать'}
-                  </Button>
-                  <Button onClick={() => setTaskFormOpen(false)}>Отмена</Button>
-                </Stack>
-              </Stack>
-            </Paper>
-          )}
+          <OwnerWorkspaceTaskCreateDialog
+            open={taskCreateDialogOpen}
+            onClose={() => setTaskCreateDialogOpen(false)}
+            onSubmit={handleCreateTask}
+            users={users}
+          />
 
           {tasksLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>

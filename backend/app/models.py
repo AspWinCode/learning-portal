@@ -2375,6 +2375,18 @@ class OwnerWorkspaceTask(Base):
     checklist = Column(JSON, nullable=True)
     attachments = Column(JSON, nullable=True)
     previous_task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Периодичность
+    repeat_enabled = Column(Boolean, nullable=False, server_default="false")
+    repeat_frequency = Column(String(20), nullable=True)   # daily | weekly | monthly | custom
+    repeat_interval = Column(Integer, nullable=True)       # каждые N единиц (дней/недель/месяцев)
+    repeat_days = Column(JSON, nullable=True)              # [0..6] — дни недели для weekly
+    repeat_end_type = Column(String(20), nullable=True)    # never | after_count | until_date
+    repeat_end_after_count = Column(Integer, nullable=True)
+    repeat_end_until = Column(DateTime(timezone=True), nullable=True)
+    repeat_count = Column(Integer, nullable=False, server_default="0")  # сколько раз уже повторилась
+    # Напоминание
+    reminder_at = Column(DateTime(timezone=True), nullable=True, index=True)  # когда отправить напоминание
+    reminder_sent = Column(Boolean, nullable=False, server_default="false")   # уже отправлено
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -2384,6 +2396,37 @@ class OwnerWorkspaceTask(Base):
     contact = relationship("OwnerWorkspaceContact", foreign_keys=[contact_id])
     counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[counterparty_id])
     previous_task = relationship("OwnerWorkspaceTask", remote_side=[id], backref="next_tasks")
+
+
+class OwnerWorkspaceTaskTemplate(Base):
+    """Шаблон задачи таск-трекера. Хранит предустановленные поля для быстрого создания задач."""
+    __tablename__ = "owner_workspace_task_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(512), nullable=False)            # название шаблона
+    description = Column(Text, nullable=True)             # описание задачи
+    priority = Column(String(20), nullable=True)          # low | medium | high | critical
+    tags = Column(JSON, nullable=True)                    # ["tag1", "tag2"]
+    checklist = Column(JSON, nullable=True)               # [{"text": "...", "done": false}]
+    effort_hours = Column(Integer, nullable=True)         # оценка трудозатрат (часы)
+    effort_minutes = Column(Integer, nullable=True)       # оценка трудозатрат (минуты)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User", foreign_keys=[owner_id])
+
+
+class OwnerWorkspaceTaskWatcher(Base):
+    """Наблюдатель задачи — получает уведомления об обновлениях, но не является исполнителем."""
+    __tablename__ = "owner_workspace_task_watchers"
+
+    task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    added_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    task = relationship("OwnerWorkspaceTask", backref="watchers")
+    user = relationship("User")
 
 
 class OwnerWorkspaceTaskComment(Base):

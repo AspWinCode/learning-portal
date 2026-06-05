@@ -8,6 +8,7 @@ from app.background_jobs import (
     run_owner_workspace_max_sync,
     run_owner_workspace_notification_email_dispatch,
     run_owner_workspace_notification_web_push_dispatch,
+    run_owner_workspace_task_reminders,
     run_parent_weekly_digests,
     run_payment_overdue_tasks,
     run_payment_reminder_notifications,
@@ -71,3 +72,8 @@ def task_owner_workspace_notification_email_dispatch() -> None:
 @dramatiq.actor(queue_name="delivery")
 def task_owner_workspace_notification_web_push_dispatch() -> None:
     run_owner_workspace_notification_web_push_dispatch()
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_owner_workspace_task_reminders() -> None:
+    run_owner_workspace_task_reminders()

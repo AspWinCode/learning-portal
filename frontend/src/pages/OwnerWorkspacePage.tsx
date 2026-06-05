@@ -63,6 +63,7 @@ import { ru } from 'date-fns/locale';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
+import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
 import { ownerWorkspaceApi, settingsApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
@@ -426,6 +427,7 @@ const OwnerWorkspaceSubprojectTreeRow: React.FC<{
   onApplied,
   setError,
 }) => {
+  const navigate = useNavigate();
   const p = node.project;
   const canReparent = isWorkspaceFullAccess || (currentUserId != null && p.owner_id === currentUserId);
   const parentOptions = useMemo(
@@ -457,9 +459,14 @@ const OwnerWorkspaceSubprojectTreeRow: React.FC<{
         alignItems={{ sm: 'center' }}
         sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}
       >
-        <Typography variant="body2" sx={{ minWidth: 0, flex: '1 1 140px' }}>
-          {p.name}
-        </Typography>
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, flex: '1 1 140px' }}>
+          <Typography variant="body2" sx={{ minWidth: 0 }}>
+            {p.name}
+          </Typography>
+          <IconButton size="small" onClick={() => navigate(`/owner-workspace/projects/${p.id}`)} aria-label="Открыть подпроект">
+            <OpenInNewIcon fontSize="small" />
+          </IconButton>
+        </Stack>
         <Chip size="small" label={p.status} sx={{ alignSelf: 'flex-start' }} />
         {canReparent ? (
           <>
@@ -851,17 +858,13 @@ const OwnerWorkspacePage: React.FC = () => {
     role: OwnerWorkspaceProjectParticipantRole;
   } | null>(null);
 
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
-  const [newTaskProjectId, setNewTaskProjectId] = useState<number | ''>('');
+  const [createTaskDialogOpen, setCreateTaskDialogOpen] = useState(false);
+  const [createTaskDialogProjectId, setCreateTaskDialogProjectId] = useState<number | null>(null);
   const [contactInlineTaskOpen, setContactInlineTaskOpen] = useState(false);
   const [contactInlineTaskTitle, setContactInlineTaskTitle] = useState('');
   const [contactInlineTaskDeadline, setContactInlineTaskDeadline] = useState('');
   const [contactInlineTaskPriority, setContactInlineTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [contactInlineTaskSaving, setContactInlineTaskSaving] = useState(false);
-  const [newTaskContactId, setNewTaskContactId] = useState<number | ''>('');
-  const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<number | ''>('');
-  const [newTaskDeadline, setNewTaskDeadline] = useState('');
 
   const [taskSearch, setTaskSearch] = useState('');
   const [taskStatusFilter, setTaskStatusFilter] = useState<string>('');
@@ -873,9 +876,6 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskAssigneeFilter, setTaskAssigneeFilter] = useState<number | ''>('');
   const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
   // Сворачиваемые панели вкладки «Задачи» (уменьшают визуальный перегруз)
-  const [showCreatePanel, setShowCreatePanel] = useState(
-    () => localStorage.getItem('ow_tasks_panel_create') === '1'
-  );
   const [showFiltersPanel, setShowFiltersPanel] = useState(
     () => localStorage.getItem('ow_tasks_panel_filters') === '1'
   );
@@ -1509,10 +1509,6 @@ const OwnerWorkspacePage: React.FC = () => {
     [enabledPriorities, taskEditPriority]
   );
 
-  const createPriorityOptions = useMemo(
-    () => ensureTaskOption(enabledPriorities, taskPriority),
-    [enabledPriorities, taskPriority]
-  );
   const editProjectStatusOptions = useMemo(
     () => ensureTaskOption(enabledProjectStatuses, coerceProjectStatus(projectEditStatus)),
     [enabledProjectStatuses, projectEditStatus]
@@ -2269,32 +2265,27 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
-  const createTask = async () => {
-    if (!canCreateTaskUi) {
-      setError('Создание задачи запрещено текущей policy-моделью.');
-      return;
-    }
-    if (!taskTitle.trim()) return;
-    try {
-      await ownerWorkspaceApi.createTask({
-        title: taskTitle.trim(),
-        priority: taskPriority,
-        project_id: newTaskProjectId === '' ? null : newTaskProjectId,
-        contact_id: newTaskContactId === '' ? null : newTaskContactId,
-        assignee_id: newTaskAssigneeId === '' ? null : newTaskAssigneeId,
-        deadline_at: localInputToIso(newTaskDeadline),
-      });
-      setTaskTitle('');
-      setTaskPriority('medium');
-      setNewTaskProjectId('');
-      setNewTaskContactId('');
-      setNewTaskAssigneeId('');
-      setNewTaskDeadline('');
-      await loadTasksFiltered();
-      void loadDigest();
-    } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось создать задачу'));
-    }
+  const handleCreateTaskDialog = async (payload: TaskCreatePayload) => {
+    await ownerWorkspaceApi.createTask({
+      title: payload.title,
+      description: payload.description || null,
+      status: payload.status as 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled',
+      priority: payload.priority as 'low' | 'medium' | 'high' | 'critical',
+      start_at: payload.start_at ?? null,
+      deadline_at: payload.deadline_at ?? null,
+      assignee_id: payload.assignee_id ?? null,
+      project_id: createTaskDialogProjectId,
+      watcher_ids: payload.watcher_ids,
+      tags: payload.tags,
+      checklist: payload.checklist,
+      effort_hours: payload.effort_hours ?? null,
+      effort_minutes: payload.effort_minutes ?? null,
+      reminder_at: payload.reminder_at ?? null,
+      repeat: payload.repeat ?? null,
+    });
+    setCreateTaskDialogProjectId(null);
+    await loadTasksFiltered();
+    void loadDigest();
   };
 
   const openTaskDialog = async (t: OwnerWorkspaceTask, options?: { syncUrl?: boolean }) => {
@@ -4410,14 +4401,6 @@ const OwnerWorkspacePage: React.FC = () => {
     [canEditTaskDialogContent, canEditTaskFieldsUi]
   );
 
-  const canCreateNewTaskInSelectedContext = useMemo(() => {
-    if (!canCreateTaskUi) return false;
-    const selectedProjectOk =
-      newTaskProjectId === '' ? true : canEditProjectContentUi(Number(newTaskProjectId));
-    const selectedContactOk =
-      newTaskContactId === '' ? true : canEditContactContentUi(Number(newTaskContactId));
-    return selectedProjectOk && selectedContactOk;
-  }, [canCreateTaskUi, canEditContactContentUi, canEditProjectContentUi, newTaskContactId, newTaskProjectId]);
 
   const canCreateTaskFromMessageUi = useMemo(() => {
     if (!messageTaskDialog) return false;
@@ -5274,7 +5257,6 @@ const OwnerWorkspacePage: React.FC = () => {
           <Tab value={OW_TAB_REPORTS} label="Отчёты" />
           <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
           <Tab value={OW_TAB_NOTIFICATIONS} label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
-          <Tab value={OW_TAB_SETTINGS} label="Настройки" />
           <Tab value={OW_TAB_HISTORY} label="История" />
         </Tabs>
       </Box>
@@ -5366,13 +5348,9 @@ const OwnerWorkspacePage: React.FC = () => {
                     {canCreateTaskUi && (
                       <Button
                         size="small"
-                        variant={showCreatePanel ? 'contained' : 'outlined'}
+                        variant="outlined"
                         startIcon={<AddIcon />}
-                        onClick={() => setShowCreatePanel((v) => {
-                          const next = !v;
-                          localStorage.setItem('ow_tasks_panel_create', next ? '1' : '0');
-                          return next;
-                        })}
+                        onClick={() => setCreateTaskDialogOpen(true)}
                       >
                         Задача
                       </Button>
@@ -5469,83 +5447,13 @@ const OwnerWorkspacePage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Collapse in={showCreatePanel} unmountOnExit>
-          <Card>
-            <CardContent>
-                <Typography variant="subtitle2" gutterBottom>
-                  Новая задача
-                </Typography>
-                <Stack spacing={1}>
-                  {!canCreateTaskUi && (
-                    <Alert severity="info">
-                      Создание задач для ограниченных ролей сейчас отключено policy-моделью.
-                    </Alert>
-                  )}
-                  {canCreateTaskUi && !canCreateNewTaskInSelectedContext && (
-                    <Alert severity="info">
-                      Выбранный проект или контакт доступны только для просмотра. Создание задачи в этом контексте отключено.
-                    </Alert>
-                  )}
-                <TextField fullWidth label="Название" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-                  <TextField
-                    select
-                    label="Приоритет"
-                    value={taskPriority}
-                    onChange={(e) => setTaskPriority(e.target.value as typeof taskPriority)}
-                    sx={{ minWidth: 160 }}
-                  >
-                    {createPriorityOptions.map((p) => (
-                      <MenuItem key={p} value={p}>
-                        {priorityLabels[p] ?? p}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <Autocomplete
-                    options={projectsCatalogSorted}
-                    getOptionLabel={(o) => o.name}
-                    value={projectsCatalogSorted.find((p) => p.id === newTaskProjectId) || null}
-                    onChange={(_, v) => setNewTaskProjectId(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Проект (необяз.)" />}
-                    sx={{ flex: 1 }}
-                  />
-                  <Autocomplete
-                    options={contactsCatalogSorted}
-                    getOptionLabel={(o) => `${o.full_name} · ${o.phone}`}
-                    value={contactsCatalogSorted.find((c) => c.id === newTaskContactId) || null}
-                    onChange={(_, v) => setNewTaskContactId(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Контакт (необяз.)" />}
-                    sx={{ flex: 1 }}
-                  />
-                  <Autocomplete
-                    options={userOptions}
-                    getOptionLabel={(o) => o.full_name}
-                    value={userOptions.find((u) => u.id === newTaskAssigneeId) || null}
-                    onChange={(_, v) => setNewTaskAssigneeId(v ? v.id : '')}
-                    renderInput={(params) => <TextField {...params} label="Исполнитель" />}
-                    sx={{ flex: 1 }}
-                  />
-                </Stack>
-                <TextField
-                  label="Дедлайн"
-                  type="datetime-local"
-                  value={newTaskDeadline}
-                  onChange={(e) => setNewTaskDeadline(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ maxWidth: 280 }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={createTask}
-                  sx={{ alignSelf: 'flex-start' }}
-                  disabled={!canCreateNewTaskInSelectedContext}
-                >
-                  Создать задачу
-                </Button>
-              </Stack>
-            </CardContent>
-          </Card>
-          </Collapse>
+          <OwnerWorkspaceTaskCreateDialog
+            open={createTaskDialogOpen}
+            onClose={() => { setCreateTaskDialogOpen(false); setCreateTaskDialogProjectId(null); }}
+            onSubmit={handleCreateTaskDialog}
+            users={userOptions}
+            projectName={createTaskDialogProjectId ? projects.find((p) => p.id === createTaskDialogProjectId)?.name : undefined}
+          />
 
           <Collapse in={showFiltersPanel} unmountOnExit>
           <Card>
@@ -6391,6 +6299,7 @@ const OwnerWorkspacePage: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
       {tab === OW_TAB_HISTORY && (
         <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
           <OwnerWorkspaceHistoryTab
@@ -6589,9 +6498,8 @@ const OwnerWorkspacePage: React.FC = () => {
               disabled={!canCreateTaskUi || !canEditProjectDialogContent}
               onClick={() => {
                 if (!projectDialog) return;
-                setNewTaskProjectId(projectDialog.id);
-                handleWorkspaceTabChange({} as React.SyntheticEvent, OW_TAB_TASKS);
-                closeProjectDialog();
+                setCreateTaskDialogProjectId(projectDialog.id);
+                setCreateTaskDialogOpen(true);
               }}
             >
               Создать задачу в этом проекте

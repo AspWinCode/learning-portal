@@ -20,6 +20,7 @@ from app.models import (
     OwnerWorkspaceProjectContact,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
+    OwnerWorkspaceTaskWatcher,
     OwnerWorkspaceWebPushSubscription,
     User,
 )
@@ -450,6 +451,10 @@ def notify_task_updated(
         recipients.add(int(task.assignee_id))
     if task.creator_id and int(task.creator_id) != actor_id:
         recipients.add(int(task.creator_id))
+    # Наблюдатели
+    for w in db.query(OwnerWorkspaceTaskWatcher).filter(OwnerWorkspaceTaskWatcher.task_id == task.id).all():
+        if w.user_id != actor_id:
+            recipients.add(w.user_id)
     if not recipients:
         return
     ts_ms = int(time.time() * 1000)
@@ -537,6 +542,10 @@ def notify_task_comment_added(
         recipients.add(task.assignee_id)
     if task.creator_id and task.creator_id != author_id:
         recipients.add(task.creator_id)
+    # Наблюдатели
+    for w in db.query(OwnerWorkspaceTaskWatcher).filter(OwnerWorkspaceTaskWatcher.task_id == task.id).all():
+        if w.user_id != author_id:
+            recipients.add(w.user_id)
 
     for user_id in recipients:
         if not notifications_enabled_for_user(db, user_id, KIND_TASK_COMMENT):

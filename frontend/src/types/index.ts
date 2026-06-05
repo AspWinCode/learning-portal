@@ -1400,6 +1400,20 @@ export interface OwnerWorkspaceContact {
   is_archived?: boolean;
 }
 
+export interface OwnerWorkspaceTaskTemplate {
+  id: number;
+  name: string;
+  description?: string | null;
+  priority?: 'low' | 'medium' | 'high' | 'critical' | null;
+  tags?: string[];
+  checklist?: Array<{ text: string; done?: boolean }>;
+  effort_hours?: number | null;
+  effort_minutes?: number | null;
+  owner_id?: number | null;
+  created_at?: string;
+  updated_at?: string | null;
+}
+
 export interface OwnerWorkspaceTask {
   id: number;
   title: string;
@@ -1418,6 +1432,17 @@ export interface OwnerWorkspaceTask {
   checklist?: Array<Record<string, unknown>> | null;
   attachments?: Array<Record<string, unknown>> | null;
   previous_task_id?: number | null;
+  effort_hours?: number | null;
+  effort_minutes?: number | null;
+  repeat_enabled?: boolean;
+  repeat_frequency?: string | null;
+  repeat_interval?: number | null;
+  repeat_days?: number[] | null;
+  repeat_end_type?: string | null;
+  repeat_end_after_count?: number | null;
+  repeat_end_until?: string | null;
+  repeat_count?: number;
+  watcher_ids?: number[];
   created_at?: string | null;
   updated_at?: string | null;
 }

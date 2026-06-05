@@ -22,7 +22,9 @@ import {
   Typography,
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
+import { useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
+import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
 import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import {
@@ -76,7 +78,8 @@ const SalesSettingsPage: React.FC = () => {
   const [cities, setCities] = useState<SalesCity[]>([]);
   const [newCity, setNewCity] = useState('');
   const [schools, setSchools] = useState<SalesSchool[]>([]);
-  const [settingsTab, setSettingsTab] = useState('schools');
+  const [searchParams] = useSearchParams();
+  const [settingsTab, setSettingsTab] = useState(searchParams.get('tab') || 'schools');
   const [newSchool, setNewSchool] = useState({
     name: '',
     city: '',
@@ -324,6 +327,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="finance" label="Финансы" />
           <Tab value="leads" label="Лиды" />
           <Tab value="tasks" label="Задачи" />
+          <Tab value="ownerWorkspace" label="Таск трекер" />
           <Tab value="templates" label="Шаблоны" />
           <Tab value="integrations" label="Интеграции" />
         </Tabs>
@@ -1365,6 +1369,13 @@ const SalesSettingsPage: React.FC = () => {
             </TableBody>
           </Table>
         </Paper>
+
+        {settingsTab === 'ownerWorkspace' && (
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" mb={1}>Настройки контрагентов и таск трекера</Typography>
+            <OwnerWorkspaceSettingsSection />
+          </Paper>
+        )}
       </Stack>
     </Layout>
   );

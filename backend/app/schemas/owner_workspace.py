@@ -262,6 +262,17 @@ class OwnerWorkspaceCounterpartyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class OwnerWorkspaceTaskRepeatSettings(BaseModel):
+    """Настройки периодичности задачи."""
+    enabled: bool = False
+    frequency: Optional[Literal["daily", "weekly", "monthly", "custom"]] = None
+    interval: Optional[int] = None          # каждые N единиц
+    days: Optional[List[int]] = None        # [0..6] — дни недели
+    end_type: Optional[Literal["never", "after_count", "until_date"]] = "never"
+    end_after_count: Optional[int] = None
+    end_until: Optional[datetime] = None
+
+
 class OwnerWorkspaceTaskBase(BaseModel):
     title: str
     description: Optional[str] = None
@@ -277,6 +288,11 @@ class OwnerWorkspaceTaskBase(BaseModel):
     attachments: Optional[List[Dict[str, Any]]] = None
     linked_message_ids: Optional[List[int]] = None
     previous_task_id: Optional[int] = None
+    effort_hours: Optional[int] = None
+    effort_minutes: Optional[int] = None
+    repeat: Optional[OwnerWorkspaceTaskRepeatSettings] = None
+    watcher_ids: Optional[List[int]] = None
+    reminder_at: Optional[datetime] = None
 
 
 class OwnerWorkspaceTaskCreate(OwnerWorkspaceTaskBase):
@@ -298,6 +314,9 @@ class OwnerWorkspaceTaskUpdate(BaseModel):
     attachments: Optional[List[Dict[str, Any]]] = None
     linked_message_ids: Optional[List[int]] = None
     previous_task_id: Optional[int] = None
+    effort_hours: Optional[int] = None
+    effort_minutes: Optional[int] = None
+    repeat: Optional[OwnerWorkspaceTaskRepeatSettings] = None
 
 
 class OwnerWorkspaceTaskCompleteRequest(BaseModel):
@@ -348,6 +367,19 @@ class OwnerWorkspaceTaskResponse(BaseModel):
     checklist: Optional[List[Dict[str, Any]]] = None
     attachments: Optional[List[Dict[str, Any]]] = None
     previous_task_id: Optional[int] = None
+    effort_hours: Optional[int] = None
+    effort_minutes: Optional[int] = None
+    repeat_enabled: bool = False
+    repeat_frequency: Optional[str] = None
+    repeat_interval: Optional[int] = None
+    repeat_days: Optional[List[int]] = None
+    repeat_end_type: Optional[str] = None
+    repeat_end_after_count: Optional[int] = None
+    repeat_end_until: Optional[datetime] = None
+    repeat_count: int = 0
+    watcher_ids: List[int] = []
+    reminder_at: Optional[datetime] = None
+    reminder_sent: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -578,6 +610,44 @@ class OwnerWorkspaceWebPushStatusResponse(BaseModel):
     configured: bool
     public_key: Optional[str] = None
     subscription_count: int = 0
+
+
+# ── Task Templates ────────────────────────────────────────────────────────────
+
+class OwnerWorkspaceTaskTemplateCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[dict]] = None
+    effort_hours: Optional[int] = None
+    effort_minutes: Optional[int] = None
+
+
+class OwnerWorkspaceTaskTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[dict]] = None
+    effort_hours: Optional[int] = None
+    effort_minutes: Optional[int] = None
+
+
+class OwnerWorkspaceTaskTemplateResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    tags: Optional[List[str]] = None
+    checklist: Optional[List[dict]] = None
+    effort_hours: Optional[int] = None
+    effort_minutes: Optional[int] = None
+    owner_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

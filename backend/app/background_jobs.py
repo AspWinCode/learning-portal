@@ -140,3 +140,8 @@ def run_owner_workspace_notification_web_push_dispatch() -> None:
             logger.info("Sent owner-workspace web push notifications: %s", sent)
 
     _run_db_job("owner_workspace_notification_web_push_dispatch", _job)
+
+
+def run_owner_workspace_task_reminders() -> None:
+    from app.services.owner_workspace_reminders import dispatch_task_reminders
+    _run_db_job("owner_workspace_task_reminders", dispatch_task_reminders)

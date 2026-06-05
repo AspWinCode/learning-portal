@@ -168,10 +168,10 @@ const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClo
     try {
       const updated = await b2bApi.updateSchool(school.id, {
         name: form.name.trim(),
-        city: form.city.trim() || null,
-        director: form.director.trim() || null,
+        city: form.city.trim() || undefined,
+        director: form.director.trim() || undefined,
         email: form.email.trim() || null,
-        address: form.address.trim() || null,
+        address: form.address.trim() || undefined,
         phone_school: form.phone_school.trim() || null,
         friendship_degree: form.friendship_degree,
         comment: form.comment,
@@ -528,7 +528,7 @@ const B2BSchoolsDirectoryTab: React.FC = () => {
 
     const logoEntries = await Promise.all(
       docsEntries.map(async ([schoolId, docs]) => {
-        const logo = latestDoc(docs, 'logo');
+        const logo = latestDoc(docs as B2BDocument[], 'logo');
         if (!logo) return [schoolId, ''] as const;
         try {
           const blob = await b2bApi.downloadDocument(schoolId, logo.id);

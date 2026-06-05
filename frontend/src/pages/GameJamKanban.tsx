@@ -768,7 +768,7 @@ export const GameJamKanban: React.FC<GameJamKanbanProps> = ({ campaignId, canMan
                       id={String(school.id)}
                       schoolName={school.school_name || `#${school.id}`}
                       schoolCity={school.school_city}
-                      extraLabel={school.school_district}
+                      extraLabel={school.school_district ?? undefined}
                     />
                   ))}
                 </Stack>

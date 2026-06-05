@@ -300,7 +300,7 @@ function parseBankStatement(
 
 async function readWorksheetRows(file: File): Promise<unknown[][]> {
   const rows = await readXlsxFile(file);
-  return rows as unknown[][];
+  return rows as unknown as unknown[][];
 }
 
 export async function parseFinanceXlsx(file: File): Promise<ParseXlsxResult> {

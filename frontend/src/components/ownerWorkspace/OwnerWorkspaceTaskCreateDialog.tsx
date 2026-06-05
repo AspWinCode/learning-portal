@@ -349,7 +349,7 @@ export function OwnerWorkspaceTaskCreateDialog({
   const completion = completionPercent(title, description, priority, assigneeId, deadline, tags, checklist);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }} sx={{ zIndex: 1400 }}>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth disableEnforceFocus PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }} sx={{ zIndex: 1400 }}>
       <DialogContent sx={{ p: 0 }}>
         {/* Header */}
         <Box sx={{ px: 3, pt: 2.5, pb: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

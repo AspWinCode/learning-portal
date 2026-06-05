@@ -860,11 +860,7 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const [createTaskDialogOpen, setCreateTaskDialogOpen] = useState(false);
   const [createTaskDialogProjectId, setCreateTaskDialogProjectId] = useState<number | null>(null);
-  const [contactInlineTaskOpen, setContactInlineTaskOpen] = useState(false);
-  const [contactInlineTaskTitle, setContactInlineTaskTitle] = useState('');
-  const [contactInlineTaskDeadline, setContactInlineTaskDeadline] = useState('');
-  const [contactInlineTaskPriority, setContactInlineTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
-  const [contactInlineTaskSaving, setContactInlineTaskSaving] = useState(false);
+  const [createTaskDialogContactId, setCreateTaskDialogContactId] = useState<number | null>(null);
 
   const [taskSearch, setTaskSearch] = useState('');
   const [taskStatusFilter, setTaskStatusFilter] = useState<string>('');
@@ -2275,6 +2271,7 @@ const OwnerWorkspacePage: React.FC = () => {
       deadline_at: payload.deadline_at ?? null,
       assignee_id: payload.assignee_id ?? null,
       project_id: createTaskDialogProjectId,
+      contact_id: createTaskDialogContactId,
       watcher_ids: payload.watcher_ids,
       tags: payload.tags,
       checklist: payload.checklist,
@@ -2283,7 +2280,14 @@ const OwnerWorkspacePage: React.FC = () => {
       reminder_at: payload.reminder_at ?? null,
       repeat: payload.repeat ?? null,
     });
+    if (createTaskDialogContactId) {
+      try {
+        const trows = await ownerWorkspaceApi.getContactTasks(createTaskDialogContactId);
+        setContactDialogTasks(trows);
+      } catch { /* ignore */ }
+    }
     setCreateTaskDialogProjectId(null);
+    setCreateTaskDialogContactId(null);
     await loadTasksFiltered();
     void loadDigest();
   };
@@ -5449,10 +5453,16 @@ const OwnerWorkspacePage: React.FC = () => {
 
           <OwnerWorkspaceTaskCreateDialog
             open={createTaskDialogOpen}
-            onClose={() => { setCreateTaskDialogOpen(false); setCreateTaskDialogProjectId(null); }}
+            onClose={() => { setCreateTaskDialogOpen(false); setCreateTaskDialogProjectId(null); setCreateTaskDialogContactId(null); }}
             onSubmit={handleCreateTaskDialog}
             users={userOptions}
-            projectName={createTaskDialogProjectId ? projects.find((p) => p.id === createTaskDialogProjectId)?.name : undefined}
+            projectName={
+              createTaskDialogProjectId
+                ? projects.find((p) => p.id === createTaskDialogProjectId)?.name
+                : createTaskDialogContactId
+                ? contacts.find((c) => c.id === createTaskDialogContactId)?.full_name
+                : undefined
+            }
           />
 
           <Collapse in={showFiltersPanel} unmountOnExit>
@@ -7277,87 +7287,19 @@ const OwnerWorkspacePage: React.FC = () => {
             </Stack>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography variant="subtitle2">Задачи по контакту</Typography>
-              {canCreateTaskUi && canEditContactDialogContent && !contactInlineTaskOpen && (
+              {canCreateTaskUi && canEditContactDialogContent && (
                 <Button
                   size="small"
                   onClick={() => {
-                    setContactInlineTaskOpen(true);
-                    setContactInlineTaskTitle('');
-                    setContactInlineTaskDeadline('');
-                    setContactInlineTaskPriority('medium');
+                    if (!contactDialog) return;
+                    setCreateTaskDialogContactId(contactDialog.id);
+                    setCreateTaskDialogOpen(true);
                   }}
                 >
                   + Создать задачу
                 </Button>
               )}
             </Stack>
-            {contactInlineTaskOpen && (
-              <Stack spacing={1} sx={{ p: 1.5, border: '1px solid', borderColor: 'primary.light', borderRadius: 1 }}>
-                <TextField
-                  size="small"
-                  label="Название задачи"
-                  value={contactInlineTaskTitle}
-                  onChange={(e) => setContactInlineTaskTitle(e.target.value)}
-                  fullWidth
-                  autoFocus
-                />
-                <Stack direction="row" spacing={1}>
-                  <FormControl size="small" sx={{ minWidth: 130 }}>
-                    <InputLabel>Приоритет</InputLabel>
-                    <Select
-                      label="Приоритет"
-                      value={contactInlineTaskPriority}
-                      onChange={(e) => setContactInlineTaskPriority(e.target.value as typeof contactInlineTaskPriority)}
-                    >
-                      <MenuItem value="low">Низкий</MenuItem>
-                      <MenuItem value="medium">Средний</MenuItem>
-                      <MenuItem value="high">Высокий</MenuItem>
-                      <MenuItem value="critical">Критический</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <TextField
-                    size="small"
-                    label="Срок"
-                    type="date"
-                    value={contactInlineTaskDeadline}
-                    onChange={(e) => setContactInlineTaskDeadline(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ flex: 1 }}
-                  />
-                </Stack>
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    disabled={!contactInlineTaskTitle.trim() || contactInlineTaskSaving}
-                    onClick={async () => {
-                      if (!contactDialog || !contactInlineTaskTitle.trim()) return;
-                      setContactInlineTaskSaving(true);
-                      try {
-                        await ownerWorkspaceApi.createTask({
-                          title: contactInlineTaskTitle.trim(),
-                          priority: contactInlineTaskPriority,
-                          deadline_at: contactInlineTaskDeadline || null,
-                          contact_id: contactDialog.id,
-                          status: 'new',
-                        });
-                        setContactInlineTaskOpen(false);
-                        setContactInlineTaskTitle('');
-                        const trows = await ownerWorkspaceApi.getContactTasks(contactDialog.id);
-                        setContactDialogTasks(trows);
-                      } catch {
-                        // ignore
-                      } finally {
-                        setContactInlineTaskSaving(false);
-                      }
-                    }}
-                  >
-                    {contactInlineTaskSaving ? 'Создаём...' : 'Создать'}
-                  </Button>
-                  <Button size="small" onClick={() => setContactInlineTaskOpen(false)}>Отмена</Button>
-                </Stack>
-              </Stack>
-            )}
             <Typography variant="caption" color="text.secondary">
               Активные: {contactDialogTasksActive.length} · завершённые / отменённые: {contactDialogTasksDone.length}
             </Typography>

@@ -376,7 +376,7 @@ export function OwnerWorkspaceTaskCreateDialog({
               onChange={(e) => handleTemplateChange(e.target.value as number | '')}
               sx={{ flex: 1, fontSize: '0.875rem' }}
               renderValue={(val) => {
-                if (val === '') return <Typography color="text.secondary" variant="body2">Из шаблона...</Typography>;
+                if (!val) return <Typography color="text.secondary" variant="body2">Из шаблона...</Typography>;
                 const tpl = templates.find((t) => t.id === val);
                 return tpl?.name ?? '';
               }}

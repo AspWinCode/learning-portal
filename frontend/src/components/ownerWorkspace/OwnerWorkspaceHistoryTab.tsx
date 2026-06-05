@@ -479,7 +479,7 @@ export function OwnerWorkspaceHistoryTab({
                     label={userName(h.author_id)}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onApplyHistoryAuthorQuickFilter(h.author_id);
+                      if (h.author_id != null) onApplyHistoryAuthorQuickFilter(h.author_id);
                     }}
                   />
                 )}

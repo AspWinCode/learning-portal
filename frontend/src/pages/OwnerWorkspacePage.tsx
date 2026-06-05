@@ -5966,7 +5966,7 @@ const OwnerWorkspacePage: React.FC = () => {
             commsContactId={commsContactId}
             commsMessages={commsMessages}
             commsMessagesFiltered={commsMessagesFiltered}
-            commsSelectedContact={commsSelectedContact}
+            commsSelectedContact={commsSelectedContact ?? undefined}
             canCreateTaskUi={canCreateTaskUi}
             canEditContactContentUi={canEditContactContentUi}
             onSyncMaxIntoWorkspace={syncMaxIntoWorkspace}
@@ -6326,7 +6326,7 @@ const OwnerWorkspacePage: React.FC = () => {
             historyLogs={historyLogs}
             historyStats={historyStats}
             historyStatsLoading={historyStatsLoading}
-            historyStatsLoadedAt={historyStatsLoadedAt}
+            historyStatsLoadedAt={historyStatsLoadedAt ?? ''}
             historyVisibleSummary={historyVisibleSummary}
             historyExpandedIds={historyExpandedIds}
             historyDayMax={historyDayMax}

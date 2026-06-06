@@ -420,8 +420,8 @@ export function OwnerWorkspaceContactsTab({
   };
 
   const filtersBlock = (
-    <Grid container spacing={1} alignItems="flex-start">
-      <Grid item xs={12} sm={6} lg={4}>
+    <Grid container columnSpacing={1.25} rowSpacing={1.75} alignItems="flex-start">
+      <Grid item xs={12} sm={6} lg={2.4}>
         <Autocomplete
           multiple
           size="small"
@@ -437,7 +437,7 @@ export function OwnerWorkspaceContactsTab({
           renderInput={(params) => <TextField {...params} label="Проекты" />}
         />
       </Grid>
-      <Grid item xs={12} sm={6} lg={4}>
+      <Grid item xs={12} sm={6} lg={2.4}>
         <Autocomplete
           multiple
           size="small"
@@ -449,7 +449,7 @@ export function OwnerWorkspaceContactsTab({
           renderInput={(params) => <TextField {...params} label="Ответственный" />}
         />
       </Grid>
-      <Grid item xs={12} sm={6} lg={4}>
+      <Grid item xs={12} sm={6} lg={2.4}>
         <Autocomplete
           multiple
           freeSolo
@@ -465,7 +465,7 @@ export function OwnerWorkspaceContactsTab({
           renderInput={(params) => <TextField {...params} label="Теги" />}
         />
       </Grid>
-      <Grid item xs={12} sm={6} lg={4}>
+      <Grid item xs={12} sm={6} lg={2.4}>
         <TextField
           select
           fullWidth
@@ -480,7 +480,7 @@ export function OwnerWorkspaceContactsTab({
           <MenuItem value="stale_90">Без активности более 90 дней</MenuItem>
         </TextField>
       </Grid>
-      <Grid item xs={12} sm={6} lg={4}>
+      <Grid item xs={12} sm={6} lg={2.4}>
         <TextField
           select
           fullWidth
@@ -533,28 +533,22 @@ export function OwnerWorkspaceContactsTab({
       <Card variant="outlined">
         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
           <Stack spacing={1.25}>
-            <Grid container spacing={1.25} alignItems="flex-start">
-              <Grid item xs={12} md={5}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Поиск по ФИО, телефону, email, компании, тегам"
-                  value={contactListSearchInput}
-                  onChange={(e) => onContactListSearchInputChange(e.target.value)}
-                />
-              </Grid>
+            <Stack spacing={1.75}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Поиск по ФИО, телефону, email, компании, тегам"
+                value={contactListSearchInput}
+                onChange={(e) => onContactListSearchInputChange(e.target.value)}
+              />
               {isMobile ? (
-                <Grid item xs={12}>
-                  <Button fullWidth variant="outlined" startIcon={<FilterListIcon />} onClick={() => setFiltersOpen(true)}>
-                    Фильтры
-                  </Button>
-                </Grid>
+                <Button fullWidth variant="outlined" startIcon={<FilterListIcon />} onClick={() => setFiltersOpen(true)}>
+                  Фильтры
+                </Button>
               ) : (
-                <Grid item xs={12} md={7}>
-                  {filtersBlock}
-                </Grid>
+                filtersBlock
               )}
-            </Grid>
+            </Stack>
             {!isWorkspaceFullAccess && !canCreateContactUi && (
               <Alert severity="info">Создание контактов для ограниченных ролей сейчас отключено policy-моделью.</Alert>
             )}

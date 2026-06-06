@@ -2384,6 +2384,9 @@ class OwnerWorkspaceTask(Base):
     repeat_end_after_count = Column(Integer, nullable=True)
     repeat_end_until = Column(DateTime(timezone=True), nullable=True)
     repeat_count = Column(Integer, nullable=False, server_default="0")  # сколько раз уже повторилась
+    # Трудозатраты
+    effort_hours = Column(Integer, nullable=True)
+    effort_minutes = Column(Integer, nullable=True)
     # Напоминание
     reminder_at = Column(DateTime(timezone=True), nullable=True, index=True)  # когда отправить напоминание
     reminder_sent = Column(Boolean, nullable=False, server_default="false")   # уже отправлено

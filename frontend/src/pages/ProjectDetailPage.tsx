@@ -116,6 +116,10 @@ function formatDate(iso?: string | null): string {
   });
 }
 
+function dateInputToDateTime(value: string): string | null {
+  return value ? `${value}T00:00:00` : null;
+}
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`;
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} КБ`;
@@ -381,7 +385,7 @@ const ProjectDetailPage: React.FC = () => {
         status: editForm.status,
         description: editForm.description.trim() || null,
         owner_id: editForm.owner_id ? Number(editForm.owner_id) : null,
-        deadline_at: editForm.deadline_at || null,
+        deadline_at: dateInputToDateTime(editForm.deadline_at),
       });
       setSuccess('Проект обновлён.');
       setEditOpen(false);
@@ -494,7 +498,7 @@ const ProjectDetailPage: React.FC = () => {
         name: subprojectForm.name.trim(),
         status: subprojectForm.status as string,
         owner_id: subprojectForm.owner_id ? Number(subprojectForm.owner_id) : null,
-        deadline_at: subprojectForm.deadline_at || null,
+        deadline_at: dateInputToDateTime(subprojectForm.deadline_at),
         description: subprojectForm.description.trim() || null,
         parent_project_id: projectId,
         counterparty_id: project?.counterparty_id ?? null,

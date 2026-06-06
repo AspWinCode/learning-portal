@@ -91,6 +91,10 @@ function formatDate(iso?: string | null): string {
   return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function dateInputToDateTime(value: string): string | null {
+  return value ? `${value}T00:00:00` : null;
+}
+
 // ─── Create-project form ────────────────────────────────────────────────────
 
 type ProjectFormState = {
@@ -484,7 +488,7 @@ const CounterpartyDetailPage: React.FC = () => {
       await ownerWorkspaceApi.createProject({
         name: projectForm.name.trim(),
         status: projectForm.status as string,
-        deadline_at: projectForm.deadline_at || null,
+        deadline_at: dateInputToDateTime(projectForm.deadline_at),
         description: projectForm.description.trim() || null,
         counterparty_id: counterpartyId,
         owner_id: projectForm.owner_id ? Number(projectForm.owner_id) : null,

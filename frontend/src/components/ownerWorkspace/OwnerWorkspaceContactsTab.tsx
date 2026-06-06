@@ -420,68 +420,85 @@ export function OwnerWorkspaceContactsTab({
   };
 
   const filtersBlock = (
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} flexWrap="wrap">
-      <Autocomplete
-        multiple
-        size="small"
-        sx={{ minWidth: { xs: '100%', md: 240 } }}
-        options={projectsCatalogSorted}
-        getOptionLabel={(option) => option.name}
-        value={projectsCatalogSorted.filter((project) => projectFilterIds.includes(project.id))}
-        onChange={(_, value) => {
-          const ids = value.map((project) => project.id);
-          setProjectFilterIds(ids);
-          onContactListProjectIdChange(ids.length === 1 ? ids[0] : '');
-        }}
-        renderInput={(params) => <TextField {...params} label="Проекты" />}
-      />
-      <Autocomplete
-        multiple
-        size="small"
-        sx={{ minWidth: { xs: '100%', md: 220 } }}
-        options={userOptions}
-        getOptionLabel={(option) => option.full_name}
-        value={userOptions.filter((manager) => managerFilterIds.includes(manager.id))}
-        onChange={(_, value) => setManagerFilterIds(value.map((manager) => manager.id))}
-        renderInput={(params) => <TextField {...params} label="Ответственный" />}
-      />
-      <Autocomplete
-        multiple
-        freeSolo
-        size="small"
-        sx={{ minWidth: { xs: '100%', md: 220 } }}
-        options={contactListTagOptions}
-        value={tagFilters}
-        onChange={(_, value) => {
-          const tags = value.map(String);
-          setTagFilters(tags);
-          onContactListTagChange(tags.length === 1 ? tags[0] : '');
-        }}
-        renderInput={(params) => <TextField {...params} label="Теги" />}
-      />
-      <TextField select size="small" label="Активность" sx={{ minWidth: 210 }} value={activityFilter} onChange={(e) => setActivityFilter(e.target.value as ActivityFilter)}>
-        <MenuItem value="all">Все</MenuItem>
-        <MenuItem value="active">Активные</MenuItem>
-        <MenuItem value="stale_30">Без активности более 30 дней</MenuItem>
-        <MenuItem value="stale_90">Без активности более 90 дней</MenuItem>
-      </TextField>
-      <TextField
-        select
-        size="small"
-        label="Активные задачи"
-        sx={{ minWidth: 190 }}
-        value={activeTaskFilter}
-        onChange={(e) => {
-          const value = e.target.value as ActiveTaskFilter;
-          setActiveTaskFilter(value);
-          onContactListActiveTasksOnlyChange(value === 'has');
-        }}
-      >
-        <MenuItem value="all">Все</MenuItem>
-        <MenuItem value="has">Есть активные задачи</MenuItem>
-        <MenuItem value="none">Нет активных задач</MenuItem>
-      </TextField>
-    </Stack>
+    <Grid container spacing={1} alignItems="flex-start">
+      <Grid item xs={12} sm={6} lg={4}>
+        <Autocomplete
+          multiple
+          size="small"
+          fullWidth
+          options={projectsCatalogSorted}
+          getOptionLabel={(option) => option.name}
+          value={projectsCatalogSorted.filter((project) => projectFilterIds.includes(project.id))}
+          onChange={(_, value) => {
+            const ids = value.map((project) => project.id);
+            setProjectFilterIds(ids);
+            onContactListProjectIdChange(ids.length === 1 ? ids[0] : '');
+          }}
+          renderInput={(params) => <TextField {...params} label="Проекты" />}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} lg={4}>
+        <Autocomplete
+          multiple
+          size="small"
+          fullWidth
+          options={userOptions}
+          getOptionLabel={(option) => option.full_name}
+          value={userOptions.filter((manager) => managerFilterIds.includes(manager.id))}
+          onChange={(_, value) => setManagerFilterIds(value.map((manager) => manager.id))}
+          renderInput={(params) => <TextField {...params} label="Ответственный" />}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} lg={4}>
+        <Autocomplete
+          multiple
+          freeSolo
+          size="small"
+          fullWidth
+          options={contactListTagOptions}
+          value={tagFilters}
+          onChange={(_, value) => {
+            const tags = value.map(String);
+            setTagFilters(tags);
+            onContactListTagChange(tags.length === 1 ? tags[0] : '');
+          }}
+          renderInput={(params) => <TextField {...params} label="Теги" />}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} lg={4}>
+        <TextField
+          select
+          fullWidth
+          size="small"
+          label="Активность"
+          value={activityFilter}
+          onChange={(e) => setActivityFilter(e.target.value as ActivityFilter)}
+        >
+          <MenuItem value="all">Все</MenuItem>
+          <MenuItem value="active">Активные</MenuItem>
+          <MenuItem value="stale_30">Без активности более 30 дней</MenuItem>
+          <MenuItem value="stale_90">Без активности более 90 дней</MenuItem>
+        </TextField>
+      </Grid>
+      <Grid item xs={12} sm={6} lg={4}>
+        <TextField
+          select
+          fullWidth
+          size="small"
+          label="Активные задачи"
+          value={activeTaskFilter}
+          onChange={(e) => {
+            const value = e.target.value as ActiveTaskFilter;
+            setActiveTaskFilter(value);
+            onContactListActiveTasksOnlyChange(value === 'has');
+          }}
+        >
+          <MenuItem value="all">Все</MenuItem>
+          <MenuItem value="has">Есть активные задачи</MenuItem>
+          <MenuItem value="none">Нет активных задач</MenuItem>
+        </TextField>
+      </Grid>
+    </Grid>
   );
 
   return (
@@ -516,20 +533,28 @@ export function OwnerWorkspaceContactsTab({
       <Card variant="outlined">
         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
           <Stack spacing={1.25}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
-              <TextField
-                size="small"
-                label="Поиск по ФИО, телефону, email, компании, тегам"
-                value={contactListSearchInput}
-                onChange={(e) => onContactListSearchInputChange(e.target.value)}
-                sx={{ flex: 1, minWidth: { xs: '100%', md: 420 } }}
-              />
+            <Grid container spacing={1.25} alignItems="flex-start">
+              <Grid item xs={12} md={5}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Поиск по ФИО, телефону, email, компании, тегам"
+                  value={contactListSearchInput}
+                  onChange={(e) => onContactListSearchInputChange(e.target.value)}
+                />
+              </Grid>
               {isMobile ? (
-                <Button variant="outlined" startIcon={<FilterListIcon />} onClick={() => setFiltersOpen(true)}>
-                  Фильтры
-                </Button>
-              ) : filtersBlock}
-            </Stack>
+                <Grid item xs={12}>
+                  <Button fullWidth variant="outlined" startIcon={<FilterListIcon />} onClick={() => setFiltersOpen(true)}>
+                    Фильтры
+                  </Button>
+                </Grid>
+              ) : (
+                <Grid item xs={12} md={7}>
+                  {filtersBlock}
+                </Grid>
+              )}
+            </Grid>
             {!isWorkspaceFullAccess && !canCreateContactUi && (
               <Alert severity="info">Создание контактов для ограниченных ролей сейчас отключено policy-моделью.</Alert>
             )}

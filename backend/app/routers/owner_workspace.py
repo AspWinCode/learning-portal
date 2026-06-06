@@ -809,13 +809,23 @@ async def list_meetings(
     if not ctx.full:
         visible_project_ids = list(ctx.project_ids or [])
         visible_contact_ids = list(ctx.contact_ids or [])
-        q = q.outerjoin(OwnerWorkspaceMeetingContact).outerjoin(OwnerWorkspaceMeetingUser).filter(
+        q = q.filter(
             or_(
                 OwnerWorkspaceMeeting.created_by == ctx.user.id,
                 OwnerWorkspaceMeeting.responsible_user_id == ctx.user.id,
-                OwnerWorkspaceMeetingUser.user_id == ctx.user.id,
+                exists().where(
+                    and_(
+                        OwnerWorkspaceMeetingUser.meeting_id == OwnerWorkspaceMeeting.id,
+                        OwnerWorkspaceMeetingUser.user_id == ctx.user.id,
+                    )
+                ),
                 OwnerWorkspaceMeeting.project_id.in_(visible_project_ids) if visible_project_ids else False,
-                OwnerWorkspaceMeetingContact.contact_id.in_(visible_contact_ids) if visible_contact_ids else False,
+                exists().where(
+                    and_(
+                        OwnerWorkspaceMeetingContact.meeting_id == OwnerWorkspaceMeeting.id,
+                        OwnerWorkspaceMeetingContact.contact_id.in_(visible_contact_ids),
+                    )
+                ) if visible_contact_ids else False,
             )
         )
     if search:
@@ -867,7 +877,7 @@ async def list_meetings(
         q = q.filter(OwnerWorkspaceMeeting.meeting_date <= date_to)
     if overdue_only:
         q = q.filter(OwnerWorkspaceMeeting.status == "planned", OwnerWorkspaceMeeting.meeting_date < datetime.now(timezone.utc).date())
-    rows = q.distinct().order_by(asc(OwnerWorkspaceMeeting.meeting_date), asc(OwnerWorkspaceMeeting.meeting_time)).offset(offset).limit(limit).all()
+    rows = q.order_by(asc(OwnerWorkspaceMeeting.meeting_date), asc(OwnerWorkspaceMeeting.meeting_time)).offset(offset).limit(limit).all()
     return [_meeting_to_response(db, row) for row in rows]
 
 

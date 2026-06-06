@@ -806,7 +806,7 @@ async def list_meetings(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     q = db.query(OwnerWorkspaceMeeting)
-    if ctx.access_role != "full":
+    if not ctx.full:
         visible_project_ids = list(ctx.project_ids or [])
         visible_contact_ids = list(ctx.contact_ids or [])
         q = q.outerjoin(OwnerWorkspaceMeetingContact).outerjoin(OwnerWorkspaceMeetingUser).filter(

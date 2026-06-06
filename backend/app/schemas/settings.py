@@ -5,7 +5,7 @@ from app.schemas.parent_dashboard import (
     ParentWeeklyDigestSettingsResponse,
     ParentWeeklyDigestSettingsUpdate,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LogoResponse(BaseModel):
@@ -122,6 +122,12 @@ class OwnerWorkspaceSettingsBundleResponse(BaseModel):
     task_tags: OwnerWorkspaceTagDictionaryResponse
     contact_tags: OwnerWorkspaceTagDictionaryResponse
     contact_sources: OwnerWorkspaceTagDictionaryResponse
+    counterparty_roles: OwnerWorkspaceTagDictionaryResponse = Field(
+        default_factory=lambda: OwnerWorkspaceTagDictionaryResponse(items=[])
+    )
+    counterparty_industries: OwnerWorkspaceTagDictionaryResponse = Field(
+        default_factory=lambda: OwnerWorkspaceTagDictionaryResponse(items=[])
+    )
 
 
 class OwnerWorkspaceSettingsBundleUpdate(BaseModel):
@@ -132,6 +138,12 @@ class OwnerWorkspaceSettingsBundleUpdate(BaseModel):
     task_tags: OwnerWorkspaceTagDictionaryUpdate
     contact_tags: OwnerWorkspaceTagDictionaryUpdate
     contact_sources: OwnerWorkspaceTagDictionaryUpdate
+    counterparty_roles: OwnerWorkspaceTagDictionaryUpdate = Field(
+        default_factory=lambda: OwnerWorkspaceTagDictionaryUpdate(items=[])
+    )
+    counterparty_industries: OwnerWorkspaceTagDictionaryUpdate = Field(
+        default_factory=lambda: OwnerWorkspaceTagDictionaryUpdate(items=[])
+    )
 
 
 class OwnerWorkspaceSettingsBundleSummaryResponse(BaseModel):
@@ -142,6 +154,8 @@ class OwnerWorkspaceSettingsBundleSummaryResponse(BaseModel):
     task_tags: int
     contact_tags: int
     contact_sources: int
+    counterparty_roles: int = 0
+    counterparty_industries: int = 0
 
 
 class OwnerWorkspaceSettingsBundleMetaResponse(BaseModel):

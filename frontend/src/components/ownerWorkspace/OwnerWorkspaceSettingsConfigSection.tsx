@@ -876,6 +876,7 @@ export function OwnerWorkspaceSettingsConfigSection({
                   <Autocomplete
                     multiple
                     freeSolo
+                    autoSelect
                     options={[] as string[]}
                     value={counterpartyRoleDictionaryDraft.items}
                     onChange={(_, value) => onCounterpartyRoleDictionaryDraftChange(value.map(String))}
@@ -913,6 +914,7 @@ export function OwnerWorkspaceSettingsConfigSection({
                   <Autocomplete
                     multiple
                     freeSolo
+                    autoSelect
                     options={[] as string[]}
                     value={counterpartyIndustryDictionaryDraft.items}
                     onChange={(_, value) => onCounterpartyIndustryDictionaryDraftChange(value.map(String))}

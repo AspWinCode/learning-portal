@@ -1350,6 +1350,7 @@ export interface OwnerWorkspaceProject {
   parent_project_name?: string | null;
   counterparty_id?: number | null;
   counterparty_name?: string | null;
+  start_at?: string | null;
   deadline_at?: string | null;
   participants: number[];
   /** user id (строка в JSON) → member | manager */

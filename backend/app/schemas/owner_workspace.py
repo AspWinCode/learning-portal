@@ -27,6 +27,7 @@ class OwnerWorkspaceProjectBase(BaseModel):
     owner_id: Optional[int] = None
     parent_project_id: Optional[int] = None
     counterparty_id: Optional[int] = None
+    start_at: Optional[datetime] = None
     deadline_at: Optional[datetime] = None
 
 
@@ -41,6 +42,7 @@ class OwnerWorkspaceProjectUpdate(BaseModel):
     owner_id: Optional[int] = None
     parent_project_id: Optional[int] = None
     counterparty_id: Optional[int] = None
+    start_at: Optional[datetime] = None
     deadline_at: Optional[datetime] = None
 
 
@@ -55,6 +57,7 @@ class OwnerWorkspaceProjectResponse(BaseModel):
     parent_project_name: Optional[str] = None
     counterparty_id: Optional[int] = None
     counterparty_name: Optional[str] = None
+    start_at: Optional[datetime] = None
     deadline_at: Optional[datetime] = None
     participants: List[int] = []
     participant_roles: Dict[int, str] = Field(default_factory=dict)

@@ -2194,6 +2194,7 @@ class OwnerWorkspaceProject(Base):
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     parent_project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True)
     counterparty_id = Column(Integer, ForeignKey("owner_workspace_counterparties.id", ondelete="SET NULL"), nullable=True, index=True)
+    start_at = Column(DateTime(timezone=True), nullable=True)
     deadline_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

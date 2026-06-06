@@ -101,6 +101,7 @@ type ProjectFormState = {
   name: string;
   status: OwnerWorkspaceProjectStatus;
   owner_id: string;
+  start_at: string;
   deadline_at: string;
   description: string;
 };
@@ -109,6 +110,7 @@ const emptyProjectForm = (): ProjectFormState => ({
   name: '',
   status: 'new',
   owner_id: '',
+  start_at: '',
   deadline_at: '',
   description: '',
 });
@@ -488,6 +490,7 @@ const CounterpartyDetailPage: React.FC = () => {
       await ownerWorkspaceApi.createProject({
         name: projectForm.name.trim(),
         status: projectForm.status as string,
+        start_at: dateInputToDateTime(projectForm.start_at),
         deadline_at: dateInputToDateTime(projectForm.deadline_at),
         description: projectForm.description.trim() || null,
         counterparty_id: counterpartyId,
@@ -765,6 +768,11 @@ const CounterpartyDetailPage: React.FC = () => {
                 key: 'owner',
                 header: 'Ответственный',
                 render: (row) => <Typography variant="body2">{row.owner_name || '—'}</Typography>,
+              },
+              {
+                key: 'start',
+                header: 'Начало',
+                render: (row) => <Typography variant="body2">{formatDate(row.start_at)}</Typography>,
               },
               {
                 key: 'deadline',
@@ -1200,14 +1208,24 @@ const CounterpartyDetailPage: React.FC = () => {
               fullWidth
               type="number"
             />
-            <TextField
-              label="Дедлайн"
-              value={projectForm.deadline_at}
-              onChange={(e) => setProjectForm((prev) => ({ ...prev, deadline_at: e.target.value }))}
-              fullWidth
-              type="date"
-              InputLabelProps={{ shrink: true }}
-            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Начало проекта"
+                value={projectForm.start_at}
+                onChange={(e) => setProjectForm((prev) => ({ ...prev, start_at: e.target.value }))}
+                fullWidth
+                type="date"
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="Дедлайн"
+                value={projectForm.deadline_at}
+                onChange={(e) => setProjectForm((prev) => ({ ...prev, deadline_at: e.target.value }))}
+                fullWidth
+                type="date"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Stack>
             <TextField
               label="Описание"
               value={projectForm.description}

@@ -147,6 +147,7 @@ type ProjectEditForm = {
   status: OwnerWorkspaceProjectStatus;
   description: string;
   owner_id: string;
+  start_at: string;
   deadline_at: string;
 };
 
@@ -172,6 +173,7 @@ type SubprojectForm = {
   name: string;
   status: OwnerWorkspaceProjectStatus;
   owner_id: string;
+  start_at: string;
   deadline_at: string;
   description: string;
 };
@@ -180,6 +182,7 @@ const emptySubprojectForm = (): SubprojectForm => ({
   name: '',
   status: 'new',
   owner_id: '',
+  start_at: '',
   deadline_at: '',
   description: '',
 });
@@ -233,6 +236,7 @@ const ProjectDetailPage: React.FC = () => {
     status: 'new',
     description: '',
     owner_id: '',
+    start_at: '',
     deadline_at: '',
   });
   const [saving, setSaving] = useState(false);
@@ -365,6 +369,7 @@ const ProjectDetailPage: React.FC = () => {
       status: project.status,
       description: project.description || '',
       owner_id: project.owner_id != null ? String(project.owner_id) : '',
+      start_at: project.start_at ? project.start_at.slice(0, 10) : '',
       deadline_at: project.deadline_at ? project.deadline_at.slice(0, 10) : '',
     });
     setError('');
@@ -385,6 +390,7 @@ const ProjectDetailPage: React.FC = () => {
         status: editForm.status,
         description: editForm.description.trim() || null,
         owner_id: editForm.owner_id ? Number(editForm.owner_id) : null,
+        start_at: dateInputToDateTime(editForm.start_at),
         deadline_at: dateInputToDateTime(editForm.deadline_at),
       });
       setSuccess('Проект обновлён.');
@@ -498,6 +504,7 @@ const ProjectDetailPage: React.FC = () => {
         name: subprojectForm.name.trim(),
         status: subprojectForm.status as string,
         owner_id: subprojectForm.owner_id ? Number(subprojectForm.owner_id) : null,
+        start_at: dateInputToDateTime(subprojectForm.start_at),
         deadline_at: dateInputToDateTime(subprojectForm.deadline_at),
         description: subprojectForm.description.trim() || null,
         parent_project_id: projectId,
@@ -714,6 +721,12 @@ const ProjectDetailPage: React.FC = () => {
                   Ответственный
                 </Typography>
                 <Typography>{project.owner_name || '—'}</Typography>
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Typography fontWeight={600} sx={{ minWidth: 200 }}>
+                  Начало проекта
+                </Typography>
+                <Typography>{formatDate(project.start_at)}</Typography>
               </Stack>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <Typography fontWeight={600} sx={{ minWidth: 200 }}>
@@ -991,6 +1004,20 @@ const ProjectDetailPage: React.FC = () => {
                   <Typography variant="body2">{row.owner_name || '—'}</Typography>
                 ),
               },
+              {
+                key: 'start',
+                header: 'Начало',
+                render: (row) => (
+                  <Typography variant="body2">{formatDate(row.start_at)}</Typography>
+                ),
+              },
+              {
+                key: 'deadline',
+                header: 'Дедлайн',
+                render: (row) => (
+                  <Typography variant="body2">{formatDate(row.deadline_at)}</Typography>
+                ),
+              },
             ]}
             rows={subprojects}
             getRowKey={(row) => row.id}
@@ -1079,14 +1106,24 @@ const ProjectDetailPage: React.FC = () => {
               fullWidth
               type="number"
             />
-            <TextField
-              label="Дедлайн"
-              value={editForm.deadline_at}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, deadline_at: e.target.value }))}
-              fullWidth
-              type="date"
-              InputLabelProps={{ shrink: true }}
-            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Начало проекта"
+                value={editForm.start_at}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, start_at: e.target.value }))}
+                fullWidth
+                type="date"
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="Дедлайн"
+                value={editForm.deadline_at}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, deadline_at: e.target.value }))}
+                fullWidth
+                type="date"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Stack>
             <TextField
               label="Описание"
               value={editForm.description}
@@ -1227,6 +1264,18 @@ const ProjectDetailPage: React.FC = () => {
                 }
                 fullWidth
                 type="number"
+              />
+            </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Начало проекта"
+                value={subprojectForm.start_at}
+                onChange={(e) =>
+                  setSubprojectForm((prev) => ({ ...prev, start_at: e.target.value }))
+                }
+                fullWidth
+                type="date"
+                InputLabelProps={{ shrink: true }}
               />
               <TextField
                 label="Дедлайн"

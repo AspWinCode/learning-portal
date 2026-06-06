@@ -347,6 +347,7 @@ def _project_to_response(db: Session, project: OwnerWorkspaceProject) -> OwnerWo
         parent_project_name=parent_project_name,
         counterparty_id=counterparty_id,
         counterparty_name=counterparty_name,
+        start_at=getattr(project, "start_at", None),
         deadline_at=getattr(project, "deadline_at", None),
         participants=[p.user_id for p in participants],
         participant_roles=role_by_uid,
@@ -1154,6 +1155,7 @@ async def create_project(
         owner_id=payload.owner_id or ctx.user.id,
         parent_project_id=payload.parent_project_id,
         counterparty_id=getattr(payload, "counterparty_id", None),
+        start_at=getattr(payload, "start_at", None),
         deadline_at=getattr(payload, "deadline_at", None),
     )
     db.add(row)

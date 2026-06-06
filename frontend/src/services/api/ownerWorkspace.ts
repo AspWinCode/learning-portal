@@ -48,6 +48,7 @@ export const ownerWorkspaceApi = {
     owner_id?: number | null;
     parent_project_id?: number | null;
     counterparty_id?: number | null;
+    start_at?: string | null;
     deadline_at?: string | null;
   }): Promise<OwnerWorkspaceProject> => {
     const response = await api.post('/api/owner-workspace/projects', payload);
@@ -62,6 +63,7 @@ export const ownerWorkspaceApi = {
       owner_id?: number | null;
       parent_project_id?: number | null;
       counterparty_id?: number | null;
+      start_at?: string | null;
       deadline_at?: string | null;
     }
   ): Promise<OwnerWorkspaceProject> => {

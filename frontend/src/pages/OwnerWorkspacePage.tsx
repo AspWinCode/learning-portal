@@ -223,6 +223,10 @@ function localInputToIso(local: string): string | null {
   return d.toISOString();
 }
 
+function dateInputToDateTime(value: string): string | null {
+  return value ? `${value}T00:00:00` : null;
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const normalized = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -1408,6 +1412,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [projectEditName, setProjectEditName] = useState('');
   const [projectEditDescription, setProjectEditDescription] = useState('');
   const [projectEditStatus, setProjectEditStatus] = useState<OwnerWorkspaceProjectStatus>('active');
+  const [projectEditStartAt, setProjectEditStartAt] = useState('');
+  const [projectEditDeadlineAt, setProjectEditDeadlineAt] = useState('');
   const [subprojectName, setSubprojectName] = useState('');
   const [linkContactId, setLinkContactId] = useState<OwnerWorkspaceContact | null>(null);
 
@@ -2040,6 +2046,8 @@ const OwnerWorkspacePage: React.FC = () => {
     setProjectEditName(projectDialog.name);
     setProjectEditDescription(projectDialog.description ?? '');
     setProjectEditStatus(coerceProjectStatus(String(projectDialog.status || 'active')));
+    setProjectEditStartAt(projectDialog.start_at ? projectDialog.start_at.slice(0, 10) : '');
+    setProjectEditDeadlineAt(projectDialog.deadline_at ? projectDialog.deadline_at.slice(0, 10) : '');
   }, [projectDialog]);
 
   useEffect(() => {
@@ -2716,6 +2724,8 @@ const OwnerWorkspacePage: React.FC = () => {
         name,
         description: projectEditDescription.trim() || null,
         status: projectEditStatus,
+        start_at: dateInputToDateTime(projectEditStartAt),
+        deadline_at: dateInputToDateTime(projectEditDeadlineAt),
       });
       setProjectDialog(updated);
       setError(null);
@@ -6803,6 +6813,12 @@ const OwnerWorkspacePage: React.FC = () => {
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Контакты: {projectDialog?.contacts_count ?? 0} · Подпроекты: {projectDialog?.subprojects_count ?? 0}
+              {projectDialog?.start_at
+                ? ` · Начало: ${new Date(projectDialog.start_at).toLocaleDateString('ru-RU')}`
+                : ''}
+              {projectDialog?.deadline_at
+                ? ` · Дедлайн: ${new Date(projectDialog.deadline_at).toLocaleDateString('ru-RU')}`
+                : ''}
               {projectDialog?.updated_at
                 ? ` · Обновлён: ${new Date(projectDialog.updated_at).toLocaleString('ru-RU')}`
                 : ''}
@@ -6854,6 +6870,26 @@ const OwnerWorkspacePage: React.FC = () => {
                   </MenuItem>
                 ))}
               </TextField>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField
+                  fullWidth
+                  label="Начало проекта"
+                  type="date"
+                  value={projectEditStartAt}
+                  onChange={(e) => setProjectEditStartAt(e.target.value)}
+                  disabled={!canEditProjectDialogMeta}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  fullWidth
+                  label="Дедлайн"
+                  type="date"
+                  value={projectEditDeadlineAt}
+                  onChange={(e) => setProjectEditDeadlineAt(e.target.value)}
+                  disabled={!canEditProjectDialogMeta}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Stack>
             {projectEditStatus === 'archived' && projectDialog?.status !== 'archived' && (
               <Alert severity="info">
                 При сохранении откроется отдельное подтверждение архива с проверкой активных и просроченных задач.

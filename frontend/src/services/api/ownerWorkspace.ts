@@ -223,6 +223,9 @@ export const ownerWorkspaceApi = {
     const response = await api.patch(`/api/owner-workspace/contacts/${contactId}`, payload);
     return response.data;
   },
+  deleteContact: async (contactId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/contacts/${contactId}`);
+  },
   getContactTasks: async (contactId: number): Promise<OwnerWorkspaceTask[]> => {
     const response = await api.get(`/api/owner-workspace/contacts/${contactId}/tasks`);
     return response.data;

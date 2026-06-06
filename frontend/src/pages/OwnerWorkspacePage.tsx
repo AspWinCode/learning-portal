@@ -2261,6 +2261,69 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
+  const createContactDraft = async (payload: {
+    full_name: string;
+    phone: string;
+    email?: string | null;
+    company?: string | null;
+    tags?: string[];
+    comment?: string | null;
+    project_ids?: number[];
+  }) => {
+    if (!canCreateContactUi) {
+      setError('Создание контакта запрещено текущей policy-моделью.');
+      return;
+    }
+    if (!isWorkspaceFullAccess && !(payload.project_ids || []).length) {
+      setError('Для создания контакта выберите проект, к которому он будет привязан.');
+      return;
+    }
+    try {
+      await ownerWorkspaceApi.createContact(payload);
+      setContactName('');
+      setContactPhone('');
+      setNewContactProjectId('');
+      await loadProjectsAndContacts();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось создать контакт'));
+    }
+  };
+
+  const deleteContact = async (contact: OwnerWorkspaceContact) => {
+    try {
+      await ownerWorkspaceApi.deleteContact(contact.id);
+      if (contactDialog?.id === contact.id) closeContactDialog();
+      await loadProjectsAndContacts();
+      await loadTasksFiltered();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось удалить контакт'));
+    }
+  };
+
+  const bulkAddContactTag = async (rows: OwnerWorkspaceContact[], tag: string) => {
+    const normalized = tag.trim();
+    if (!normalized) return;
+    try {
+      await Promise.all(rows.map((contact) => {
+        const tags = Array.from(new Set([...(contact.tags ?? []), normalized]));
+        return ownerWorkspaceApi.updateContact(contact.id, { tags });
+      }));
+      await loadProjectsAndContacts();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось добавить тег'));
+    }
+  };
+
+  const bulkDeleteContacts = async (rows: OwnerWorkspaceContact[]) => {
+    try {
+      await Promise.all(rows.map((contact) => ownerWorkspaceApi.deleteContact(contact.id)));
+      await loadProjectsAndContacts();
+      await loadTasksFiltered();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось удалить выбранные контакты'));
+    }
+  };
+
   const handleCreateTaskDialog = async (payload: TaskCreatePayload) => {
     await ownerWorkspaceApi.createTask({
       title: payload.title,
@@ -5310,6 +5373,7 @@ const OwnerWorkspacePage: React.FC = () => {
         <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
           <OwnerWorkspaceContactsTab
             contacts={contacts}
+            contactsCatalog={contactsCatalog}
             projectsCatalogSorted={projectsCatalogSorted}
             contactListTagOptions={contactListTagOptions}
             contactListSearchInput={contactListSearchInput}
@@ -5319,8 +5383,12 @@ const OwnerWorkspacePage: React.FC = () => {
             contactName={contactName}
             contactPhone={contactPhone}
             newContactProjectId={newContactProjectId}
+            loading={loading}
+            loadError={error}
             canCreateContactUi={canCreateContactUi}
             isWorkspaceFullAccess={isWorkspaceFullAccess}
+            userOptions={userOptions}
+            userName={userName}
             onContactListSearchInputChange={setContactListSearchInput}
             onContactListProjectIdChange={setContactListProjectId}
             onContactListTagChange={setContactListTag}
@@ -5329,9 +5397,21 @@ const OwnerWorkspacePage: React.FC = () => {
             onContactPhoneChange={setContactPhone}
             onNewContactProjectIdChange={setNewContactProjectId}
             onCreateContact={createContact}
+            onCreateContactDraft={createContactDraft}
             onOpenContact={(contact) => void openContactDialog(contact)}
+            onEditContact={(contact) => void openContactDialog(contact, { syncUrl: false })}
+            onCreateTaskForContact={(contact) => {
+              setCreateTaskDialogProjectId(null);
+              setCreateTaskDialogContactId(contact.id);
+              setCreateTaskDialogOpen(true);
+            }}
+            onAddCommentToContact={(contact) => void openContactDialog(contact, { syncUrl: false })}
             onOpenContactComms={openContactQuickComms}
             onOpenContactTasks={openContactQuickTasks}
+            onDeleteContact={deleteContact}
+            onBulkAddTag={bulkAddContactTag}
+            onBulkDelete={bulkDeleteContacts}
+            onRetryLoad={loadProjectsAndContacts}
           />
         </Suspense>
       )}

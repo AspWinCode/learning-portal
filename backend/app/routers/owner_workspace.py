@@ -1282,6 +1282,38 @@ async def update_contact(
     return _contact_to_response(db, row)
 
 
+@router.delete("/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contact(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+    if not row or not contact_visible(ctx, contact_id):
+        raise HTTPException(status_code=404, detail="Contact not found")
+    if not can_update_contact_content(db, ctx, contact_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+
+    db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.contact_id == contact_id).update(
+        {OwnerWorkspaceTask.contact_id: None},
+        synchronize_session=False,
+    )
+    db.query(OwnerWorkspaceProjectContact).filter(
+        OwnerWorkspaceProjectContact.contact_id == contact_id
+    ).delete(synchronize_session=False)
+    _log_audit(
+        db,
+        entity_type="contact",
+        entity_id=contact_id,
+        action_type="delete",
+        author_id=ctx.user.id,
+        old_value={"full_name": row.full_name, "phone": row.phone},
+    )
+    db.delete(row)
+    db.commit()
+    return None
+
+
 def _sync_counterparty_project_links(
     db: Session,
     *,

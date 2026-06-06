@@ -787,6 +787,7 @@ const ProjectDetailPage: React.FC = () => {
             ]}
             rows={tasks}
             getRowKey={(row) => row.id}
+            onRowClick={(row) => navigate(`/owner-workspace/tasks/${row.id}`)}
             loading={tasksLoading}
             emptyState={
               <EmptyState title="Нет задач" description="Создайте первую задачу для проекта." />

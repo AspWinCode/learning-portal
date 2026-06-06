@@ -2477,6 +2477,101 @@ class OwnerWorkspaceTaskMessage(Base):
     message = relationship("OwnerWorkspaceMessage")
 
 
+class OwnerWorkspaceMeeting(Base):
+    __tablename__ = "owner_workspace_meetings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False, index=True)
+    agenda = Column(Text, nullable=True)
+    meeting_result = Column(Text, nullable=True)
+    next_steps = Column(Text, nullable=True)
+    meeting_date = Column(Date, nullable=False, index=True)
+    meeting_time = Column(Time, nullable=False)
+    status = Column(String(32), nullable=False, server_default="planned", index=True)
+    responsible_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    meeting_type = Column(String(32), nullable=False, server_default="online", index=True)
+    address = Column(Text, nullable=True)
+    online_url = Column(String(512), nullable=True)
+    recurrence_type = Column(String(32), nullable=False, server_default="none")
+    reminder_type = Column(String(32), nullable=True)
+    previous_meeting_id = Column(Integer, ForeignKey("owner_workspace_meetings.id", ondelete="SET NULL"), nullable=True, index=True)
+    next_meeting_id = Column(Integer, ForeignKey("owner_workspace_meetings.id", ondelete="SET NULL"), nullable=True, index=True)
+    attachments = Column(JSON, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+
+    responsible_user = relationship("User", foreign_keys=[responsible_user_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    project = relationship("OwnerWorkspaceProject")
+    previous_meeting = relationship("OwnerWorkspaceMeeting", foreign_keys=[previous_meeting_id], remote_side=[id])
+    next_meeting = relationship("OwnerWorkspaceMeeting", foreign_keys=[next_meeting_id], remote_side=[id])
+
+
+class OwnerWorkspaceMeetingContact(Base):
+    __tablename__ = "owner_workspace_meeting_contacts"
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "contact_id", name="uq_owner_workspace_meeting_contact"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    meeting_id = Column(Integer, ForeignKey("owner_workspace_meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    meeting = relationship("OwnerWorkspaceMeeting")
+    contact = relationship("OwnerWorkspaceContact")
+
+
+class OwnerWorkspaceMeetingUser(Base):
+    __tablename__ = "owner_workspace_meeting_users"
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "user_id", name="uq_owner_workspace_meeting_user"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    meeting_id = Column(Integer, ForeignKey("owner_workspace_meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    meeting = relationship("OwnerWorkspaceMeeting")
+    user = relationship("User")
+
+
+class OwnerWorkspaceMeetingTask(Base):
+    __tablename__ = "owner_workspace_meeting_tasks"
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "task_id", name="uq_owner_workspace_meeting_task"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    meeting_id = Column(Integer, ForeignKey("owner_workspace_meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_id = Column(Integer, ForeignKey("owner_workspace_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    meeting = relationship("OwnerWorkspaceMeeting")
+    task = relationship("OwnerWorkspaceTask")
+
+
+class OwnerWorkspaceMeetingReschedule(Base):
+    __tablename__ = "owner_workspace_meeting_reschedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    meeting_id = Column(Integer, ForeignKey("owner_workspace_meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    old_date = Column(Date, nullable=False)
+    old_time = Column(Time, nullable=False)
+    new_date = Column(Date, nullable=False)
+    new_time = Column(Time, nullable=False)
+    reason = Column(Text, nullable=True)
+    changed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    meeting = relationship("OwnerWorkspaceMeeting")
+    user = relationship("User", foreign_keys=[changed_by])
+
+
 class OwnerWorkspaceAuditLog(Base):
     __tablename__ = "owner_workspace_audit_logs"
 

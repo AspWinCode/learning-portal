@@ -9,6 +9,7 @@ import type {
   OwnerWorkspaceDigest,
   OwnerWorkspaceHistoryStats,
   OwnerWorkspaceMessage,
+  OwnerWorkspaceMeeting,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceProject,
   OwnerWorkspaceProjectDocument,
@@ -236,6 +237,90 @@ export const ownerWorkspaceApi = {
     project_id?: number;
   }): Promise<OwnerWorkspaceDigest> => {
     const response = await api.get('/api/owner-workspace/digest', { params: params || {} });
+    return response.data;
+  },
+  listMeetings: async (params?: {
+    search?: string;
+    status_filter?: string;
+    project_id?: number;
+    contact_id?: number;
+    responsible_user_id?: number;
+    meeting_type?: string;
+    date_from?: string;
+    date_to?: string;
+    overdue_only?: boolean;
+    completed_only?: boolean;
+    cancelled_only?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<OwnerWorkspaceMeeting[]> => {
+    const response = await api.get('/api/owner-workspace/meetings', { params: params || {} });
+    return response.data;
+  },
+  createMeeting: async (payload: {
+    title: string;
+    meeting_date: string;
+    meeting_time: string;
+    responsible_user_id?: number | null;
+    project_id?: number | null;
+    contact_ids?: number[];
+    participant_user_ids?: number[];
+    meeting_type?: string;
+    address?: string | null;
+    online_url?: string | null;
+    recurrence_type?: string;
+    reminder_type?: string | null;
+    agenda?: string | null;
+    meeting_result?: string | null;
+    next_steps?: string | null;
+  }): Promise<OwnerWorkspaceMeeting> => {
+    const response = await api.post('/api/owner-workspace/meetings', payload);
+    return response.data;
+  },
+  updateMeeting: async (
+    meetingId: number,
+    payload: Partial<{
+      title: string;
+      meeting_date: string;
+      meeting_time: string;
+      status: string;
+      responsible_user_id: number | null;
+      project_id: number | null;
+      contact_ids: number[];
+      participant_user_ids: number[];
+      meeting_type: string;
+      address: string | null;
+      online_url: string | null;
+      recurrence_type: string;
+      reminder_type: string | null;
+      agenda: string | null;
+      meeting_result: string | null;
+      next_steps: string | null;
+    }>
+  ): Promise<OwnerWorkspaceMeeting> => {
+    const response = await api.patch(`/api/owner-workspace/meetings/${meetingId}`, payload);
+    return response.data;
+  },
+  deleteMeeting: async (meetingId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/meetings/${meetingId}`);
+  },
+  closeMeeting: async (meetingId: number, payload: { meeting_result: string; next_steps?: string | null }): Promise<OwnerWorkspaceMeeting> => {
+    const response = await api.post(`/api/owner-workspace/meetings/${meetingId}/close`, payload);
+    return response.data;
+  },
+  cancelMeeting: async (meetingId: number): Promise<OwnerWorkspaceMeeting> => {
+    const response = await api.post(`/api/owner-workspace/meetings/${meetingId}/cancel`);
+    return response.data;
+  },
+  rescheduleMeeting: async (meetingId: number, payload: { meeting_date: string; meeting_time: string; reason?: string | null }): Promise<OwnerWorkspaceMeeting> => {
+    const response = await api.post(`/api/owner-workspace/meetings/${meetingId}/reschedule`, payload);
+    return response.data;
+  },
+  createTaskFromMeeting: async (
+    meetingId: number,
+    payload: { title: string; description?: string | null; assignee_id?: number | null; deadline_at?: string | null; priority?: string }
+  ): Promise<OwnerWorkspaceTask> => {
+    const response = await api.post(`/api/owner-workspace/meetings/${meetingId}/tasks`, payload);
     return response.data;
   },
   unifiedSearch: async (q: string, limit?: number): Promise<OwnerWorkspaceSearchResult> => {

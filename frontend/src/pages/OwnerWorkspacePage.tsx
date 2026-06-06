@@ -119,6 +119,12 @@ const OwnerWorkspaceContactsTab = React.lazy(
       default: module.OwnerWorkspaceContactsTab,
     }))
 );
+const OwnerWorkspaceMeetingsTab = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceMeetingsTab').then((module) => ({
+      default: module.OwnerWorkspaceMeetingsTab,
+    }))
+);
 const OwnerWorkspaceTaskInsightsSection = React.lazy(
   () =>
     import('../components/ownerWorkspace/OwnerWorkspaceTaskInsightsSection').then((module) => ({
@@ -676,16 +682,17 @@ type OwnerWorkspaceAssigneeAnalyticsRow = {
 const OW_TAB_PROJECTS = 0;
 const OW_TAB_CONTACTS = 1;
 const OW_TAB_TASKS = 2;
-const OW_TAB_REPORTS = 3;
-const OW_TAB_COMMS = 4;
-const OW_TAB_NOTIFICATIONS = 5;
-const OW_TAB_SETTINGS = 6;
-const OW_TAB_HISTORY = 7;
+const OW_TAB_MEETINGS = 3;
+const OW_TAB_REPORTS = 4;
+const OW_TAB_COMMS = 5;
+const OW_TAB_NOTIFICATIONS = 6;
+const OW_TAB_SETTINGS = 7;
+const OW_TAB_HISTORY = 8;
 const OWNER_WS_HISTORY_LIMIT_OPTIONS = [100, 200, 300, 500, 1000] as const;
 const OWNER_WS_HISTORY_QUERY_KEYS = ['h_entity', 'h_entity_id', 'h_action', 'h_author', 'h_from', 'h_to', 'h_limit', 'h_sort'] as const;
 
 /** Слаги для deep-link: `/owner-workspace?tab=<slug>&task=<id>` (совместимость) и пути `/owner-workspace/<slug>`. */
-const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'reports', 'comms', 'notifications', 'settings', 'history'] as const;
+const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'meetings', 'reports', 'comms', 'notifications', 'settings', 'history'] as const;
 
 /** Путь вкладки (§16): отдельные URL как у `/notifications` и `/settings`. */
 function ownerWorkspaceTabPathname(tabIndex: number): string {
@@ -700,6 +707,8 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
       return '/owner-workspace/contacts';
     case OW_TAB_TASKS:
       return '/owner-workspace/tasks';
+    case OW_TAB_MEETINGS:
+      return '/owner-workspace/meetings';
     case OW_TAB_REPORTS:
       return '/owner-workspace/reports';
     case OW_TAB_COMMS:
@@ -718,6 +727,7 @@ function ownerWorkspacePathToTab(pathname: string): number | null {
   if (p.startsWith('/owner-workspace/projects')) return OW_TAB_PROJECTS;
   if (p.startsWith('/owner-workspace/contacts')) return OW_TAB_CONTACTS;
   if (p.startsWith('/owner-workspace/tasks')) return OW_TAB_TASKS;
+  if (p === '/owner-workspace/meetings') return OW_TAB_MEETINGS;
   if (p === '/owner-workspace/reports') return OW_TAB_REPORTS;
   if (p === '/owner-workspace/comms') return OW_TAB_COMMS;
   if (p === '/owner-workspace/history') return OW_TAB_HISTORY;
@@ -5447,6 +5457,7 @@ const OwnerWorkspacePage: React.FC = () => {
           <Tab value={OW_TAB_PROJECTS} label={`Проекты (${projects.length})`} />
           <Tab value={OW_TAB_CONTACTS} label={`Контакты (${contacts.length})`} />
           <Tab value={OW_TAB_TASKS} label={`Задачи (${taskListTotal})`} />
+          <Tab value={OW_TAB_MEETINGS} label="Мероприятия" />
           <Tab value={OW_TAB_REPORTS} label="Отчёты" />
           <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
           <Tab value={OW_TAB_NOTIFICATIONS} label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
@@ -6148,6 +6159,17 @@ const OwnerWorkspacePage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {tab === OW_TAB_MEETINGS && (
+        <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+          <OwnerWorkspaceMeetingsTab
+            projects={projectsCatalog}
+            contacts={contactsCatalog}
+            users={userOptions}
+            canCreate={isWorkspaceFullAccess}
+          />
+        </Suspense>
+      )}
 
       {tab === OW_TAB_REPORTS && (
         <Stack spacing={2}>

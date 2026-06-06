@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from typing import Dict, List, Optional
 
@@ -59,6 +59,11 @@ from app.models import (
     OwnerWorkspaceCounterparty,
     OwnerWorkspaceCounterpartyDocument,
     OwnerWorkspaceConversationRead,
+    OwnerWorkspaceMeeting,
+    OwnerWorkspaceMeetingContact,
+    OwnerWorkspaceMeetingReschedule,
+    OwnerWorkspaceMeetingTask,
+    OwnerWorkspaceMeetingUser,
     OwnerWorkspaceMessage,
     OwnerWorkspaceNotification,
     OwnerWorkspaceProject,
@@ -95,6 +100,12 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceMessageCreateTaskRequest,
     OwnerWorkspaceMessageLinkTaskRequest,
     OwnerWorkspaceMessageResponse,
+    OwnerWorkspaceMeetingCloseRequest,
+    OwnerWorkspaceMeetingCreate,
+    OwnerWorkspaceMeetingRescheduleRequest,
+    OwnerWorkspaceMeetingResponse,
+    OwnerWorkspaceMeetingTaskCreate,
+    OwnerWorkspaceMeetingUpdate,
     OwnerWorkspaceNotificationsEnvelope,
     OwnerWorkspaceNotificationResponse,
     OwnerWorkspaceWebPushStatusResponse,
@@ -671,6 +682,400 @@ def _message_to_response(db: Session, message: OwnerWorkspaceMessage) -> OwnerWo
         linked_task_ids=[x.task_id for x in links],
         created_at=message.created_at,
     )
+
+
+def _sync_meeting_links(
+    db: Session,
+    *,
+    meeting_id: int,
+    contact_ids: Optional[List[int]] = None,
+    participant_user_ids: Optional[List[int]] = None,
+) -> None:
+    if contact_ids is not None:
+        db.query(OwnerWorkspaceMeetingContact).filter(OwnerWorkspaceMeetingContact.meeting_id == meeting_id).delete()
+        for contact_id in dict.fromkeys(contact_ids):
+            contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+            if not contact:
+                raise HTTPException(status_code=404, detail="РљРѕРЅС‚Р°РєС‚ РЅРµ РЅР°Р№РґРµРЅ")
+            db.add(OwnerWorkspaceMeetingContact(meeting_id=meeting_id, contact_id=contact_id))
+    if participant_user_ids is not None:
+        db.query(OwnerWorkspaceMeetingUser).filter(OwnerWorkspaceMeetingUser.meeting_id == meeting_id).delete()
+        for user_id in dict.fromkeys(participant_user_ids):
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="РЈС‡Р°СЃС‚РЅРёРє РЅРµ РЅР°Р№РґРµРЅ")
+            db.add(OwnerWorkspaceMeetingUser(meeting_id=meeting_id, user_id=user_id))
+
+
+def _meeting_to_response(db: Session, meeting: OwnerWorkspaceMeeting) -> OwnerWorkspaceMeetingResponse:
+    contact_links = db.query(OwnerWorkspaceMeetingContact).filter(
+        OwnerWorkspaceMeetingContact.meeting_id == meeting.id
+    ).all()
+    user_links = db.query(OwnerWorkspaceMeetingUser).filter(
+        OwnerWorkspaceMeetingUser.meeting_id == meeting.id
+    ).all()
+    task_links = db.query(OwnerWorkspaceMeetingTask).filter(
+        OwnerWorkspaceMeetingTask.meeting_id == meeting.id
+    ).all()
+    contact_ids = [x.contact_id for x in contact_links]
+    user_ids = [x.user_id for x in user_links]
+    contact_names = [
+        x.full_name
+        for x in db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id.in_(contact_ids)).all()
+    ] if contact_ids else []
+    user_names = [
+        x.full_name
+        for x in db.query(User).filter(User.id.in_(user_ids)).all()
+    ] if user_ids else []
+    responsible_user_name = None
+    if meeting.responsible_user_id:
+        user = db.query(User).filter(User.id == meeting.responsible_user_id).first()
+        responsible_user_name = user.full_name if user else None
+    project_name = None
+    if meeting.project_id:
+        project = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == meeting.project_id).first()
+        project_name = project.name if project else None
+    return OwnerWorkspaceMeetingResponse(
+        id=meeting.id,
+        title=meeting.title,
+        agenda=meeting.agenda,
+        meeting_result=meeting.meeting_result,
+        next_steps=meeting.next_steps,
+        meeting_date=meeting.meeting_date,
+        meeting_time=meeting.meeting_time,
+        status=meeting.status,
+        responsible_user_id=meeting.responsible_user_id,
+        responsible_user_name=responsible_user_name,
+        project_id=meeting.project_id,
+        project_name=project_name,
+        contact_ids=contact_ids,
+        contact_names=contact_names,
+        participant_user_ids=user_ids,
+        participant_user_names=user_names,
+        task_ids=[x.task_id for x in task_links],
+        tasks_count=len(task_links),
+        meeting_type=meeting.meeting_type,
+        address=meeting.address,
+        online_url=meeting.online_url,
+        recurrence_type=meeting.recurrence_type,
+        reminder_type=meeting.reminder_type,
+        previous_meeting_id=meeting.previous_meeting_id,
+        next_meeting_id=meeting.next_meeting_id,
+        attachments=meeting.attachments,
+        created_by=meeting.created_by,
+        created_at=meeting.created_at,
+        updated_at=meeting.updated_at,
+        closed_at=meeting.closed_at,
+    )
+
+
+def _assert_meeting_refs_visible(
+    db: Session,
+    ctx: OwnerWorkspaceAccessContext,
+    *,
+    project_id: Optional[int] = None,
+    contact_ids: Optional[List[int]] = None,
+) -> None:
+    if project_id is not None:
+        project = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
+        if not project or not project_visible(ctx, project_id):
+            raise HTTPException(status_code=404, detail="РџСЂРѕРµРєС‚ РЅРµ РЅР°Р№РґРµРЅ")
+    if contact_ids:
+        for contact_id in contact_ids:
+            contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
+            if not contact or not contact_visible(ctx, contact_id):
+                raise HTTPException(status_code=404, detail="РљРѕРЅС‚Р°РєС‚ РЅРµ РЅР°Р№РґРµРЅ")
+
+
+@router.get("/meetings", response_model=List[OwnerWorkspaceMeetingResponse])
+async def list_meetings(
+    search: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None),
+    project_id: Optional[int] = Query(None),
+    contact_id: Optional[int] = Query(None),
+    responsible_user_id: Optional[int] = Query(None),
+    meeting_type: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    overdue_only: bool = Query(False),
+    completed_only: bool = Query(False),
+    cancelled_only: bool = Query(False),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    q = db.query(OwnerWorkspaceMeeting)
+    if ctx.access_role != "full":
+        visible_project_ids = list(ctx.project_ids or [])
+        visible_contact_ids = list(ctx.contact_ids or [])
+        q = q.outerjoin(OwnerWorkspaceMeetingContact).outerjoin(OwnerWorkspaceMeetingUser).filter(
+            or_(
+                OwnerWorkspaceMeeting.created_by == ctx.user.id,
+                OwnerWorkspaceMeeting.responsible_user_id == ctx.user.id,
+                OwnerWorkspaceMeetingUser.user_id == ctx.user.id,
+                OwnerWorkspaceMeeting.project_id.in_(visible_project_ids) if visible_project_ids else False,
+                OwnerWorkspaceMeetingContact.contact_id.in_(visible_contact_ids) if visible_contact_ids else False,
+            )
+        )
+    if search:
+        needle = f"%{search.strip().lower()}%"
+        contact_exists = exists().where(
+            and_(
+                OwnerWorkspaceMeetingContact.meeting_id == OwnerWorkspaceMeeting.id,
+                OwnerWorkspaceContact.id == OwnerWorkspaceMeetingContact.contact_id,
+                func.lower(OwnerWorkspaceContact.full_name).like(needle),
+            )
+        )
+        project_exists = exists().where(
+            and_(
+                OwnerWorkspaceProject.id == OwnerWorkspaceMeeting.project_id,
+                func.lower(OwnerWorkspaceProject.name).like(needle),
+            )
+        )
+        q = q.filter(or_(
+            func.lower(OwnerWorkspaceMeeting.title).like(needle),
+            func.lower(func.coalesce(OwnerWorkspaceMeeting.address, "")).like(needle),
+            func.lower(func.coalesce(OwnerWorkspaceMeeting.meeting_result, "")).like(needle),
+            contact_exists,
+            project_exists,
+        ))
+    if status_filter:
+        q = q.filter(OwnerWorkspaceMeeting.status == status_filter)
+    if completed_only:
+        q = q.filter(OwnerWorkspaceMeeting.status == "completed")
+    if cancelled_only:
+        q = q.filter(OwnerWorkspaceMeeting.status == "cancelled")
+    if project_id is not None:
+        q = q.filter(OwnerWorkspaceMeeting.project_id == project_id)
+    if contact_id is not None:
+        q = q.join(OwnerWorkspaceMeetingContact).filter(OwnerWorkspaceMeetingContact.contact_id == contact_id)
+    if responsible_user_id is not None:
+        q = q.filter(OwnerWorkspaceMeeting.responsible_user_id == responsible_user_id)
+    if meeting_type:
+        q = q.filter(OwnerWorkspaceMeeting.meeting_type == meeting_type)
+    if date_from is not None:
+        q = q.filter(OwnerWorkspaceMeeting.meeting_date >= date_from)
+    if date_to is not None:
+        q = q.filter(OwnerWorkspaceMeeting.meeting_date <= date_to)
+    if overdue_only:
+        q = q.filter(OwnerWorkspaceMeeting.status == "planned", OwnerWorkspaceMeeting.meeting_date < datetime.now(timezone.utc).date())
+    rows = q.order_by(asc(OwnerWorkspaceMeeting.meeting_date), asc(OwnerWorkspaceMeeting.meeting_time)).offset(offset).limit(limit).all()
+    return [_meeting_to_response(db, row) for row in rows]
+
+
+@router.post("/meetings", response_model=OwnerWorkspaceMeetingResponse, status_code=status.HTTP_201_CREATED)
+async def create_meeting(
+    payload: OwnerWorkspaceMeetingCreate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    _assert_meeting_refs_visible(db, ctx, project_id=payload.project_id, contact_ids=payload.contact_ids)
+    row = OwnerWorkspaceMeeting(
+        title=payload.title.strip(),
+        agenda=payload.agenda,
+        meeting_result=payload.meeting_result,
+        next_steps=payload.next_steps,
+        meeting_date=payload.meeting_date,
+        meeting_time=payload.meeting_time,
+        status="planned",
+        responsible_user_id=payload.responsible_user_id,
+        project_id=payload.project_id,
+        meeting_type=payload.meeting_type,
+        address=payload.address if payload.meeting_type == "offline" else None,
+        online_url=payload.online_url if payload.meeting_type == "online" else None,
+        recurrence_type=payload.recurrence_type,
+        reminder_type=payload.reminder_type,
+        previous_meeting_id=payload.previous_meeting_id,
+        next_meeting_id=payload.next_meeting_id,
+        attachments=payload.attachments,
+        created_by=ctx.user.id,
+    )
+    db.add(row)
+    db.flush()
+    _sync_meeting_links(db, meeting_id=row.id, contact_ids=payload.contact_ids, participant_user_ids=payload.participant_user_ids)
+    _log_audit(db, entity_type="meeting", entity_id=row.id, action_type="create", author_id=ctx.user.id, new_value=payload.model_dump(mode="json"))
+    db.commit()
+    db.refresh(row)
+    return _meeting_to_response(db, row)
+
+
+@router.get("/meetings/{meeting_id}", response_model=OwnerWorkspaceMeetingResponse)
+async def get_meeting(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+    return _meeting_to_response(db, row)
+
+
+@router.patch("/meetings/{meeting_id}", response_model=OwnerWorkspaceMeetingResponse)
+async def update_meeting(
+    meeting_id: int,
+    payload: OwnerWorkspaceMeetingUpdate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+    data = payload.model_dump(exclude_unset=True)
+    _assert_meeting_refs_visible(db, ctx, project_id=data.get("project_id"), contact_ids=data.get("contact_ids"))
+    contact_ids = data.pop("contact_ids", None)
+    participant_user_ids = data.pop("participant_user_ids", None)
+    old_value = _meeting_to_response(db, row).model_dump(mode="json")
+    for key, value in data.items():
+        setattr(row, key, value)
+    if row.meeting_type == "online":
+        row.address = None
+    if row.meeting_type == "offline":
+        row.online_url = None
+    _sync_meeting_links(db, meeting_id=row.id, contact_ids=contact_ids, participant_user_ids=participant_user_ids)
+    _log_audit(db, entity_type="meeting", entity_id=row.id, action_type="update", author_id=ctx.user.id, old_value=old_value, new_value=payload.model_dump(exclude_unset=True, mode="json"))
+    db.commit()
+    db.refresh(row)
+    return _meeting_to_response(db, row)
+
+
+@router.post("/meetings/{meeting_id}/reschedule", response_model=OwnerWorkspaceMeetingResponse)
+async def reschedule_meeting(
+    meeting_id: int,
+    payload: OwnerWorkspaceMeetingRescheduleRequest,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+    db.add(OwnerWorkspaceMeetingReschedule(
+        meeting_id=row.id,
+        old_date=row.meeting_date,
+        old_time=row.meeting_time,
+        new_date=payload.meeting_date,
+        new_time=payload.meeting_time,
+        reason=payload.reason,
+        changed_by=ctx.user.id,
+    ))
+    row.meeting_date = payload.meeting_date
+    row.meeting_time = payload.meeting_time
+    row.status = "planned"
+    _log_audit(db, entity_type="meeting", entity_id=row.id, action_type="reschedule", author_id=ctx.user.id, new_value=payload.model_dump(mode="json"))
+    db.commit()
+    db.refresh(row)
+    return _meeting_to_response(db, row)
+
+
+@router.post("/meetings/{meeting_id}/close", response_model=OwnerWorkspaceMeetingResponse)
+async def close_meeting(
+    meeting_id: int,
+    payload: OwnerWorkspaceMeetingCloseRequest,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+    if not payload.meeting_result.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Р—Р°РїРѕР»РЅРёС‚Рµ РёС‚РѕРіРё РІСЃС‚СЂРµС‡Рё")
+    row.meeting_result = payload.meeting_result
+    row.next_steps = payload.next_steps
+    row.status = "completed"
+    row.closed_at = datetime.now(timezone.utc)
+    _log_audit(db, entity_type="meeting", entity_id=row.id, action_type="complete", author_id=ctx.user.id, new_value=payload.model_dump(mode="json"))
+    db.commit()
+    db.refresh(row)
+    return _meeting_to_response(db, row)
+
+
+@router.post("/meetings/{meeting_id}/cancel", response_model=OwnerWorkspaceMeetingResponse)
+async def cancel_meeting(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+    row.status = "cancelled"
+    _log_audit(db, entity_type="meeting", entity_id=row.id, action_type="cancel", author_id=ctx.user.id)
+    db.commit()
+    db.refresh(row)
+    return _meeting_to_response(db, row)
+
+
+@router.delete("/meetings/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_meeting(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+    db.delete(row)
+    _log_audit(db, entity_type="meeting", entity_id=meeting_id, action_type="delete", author_id=ctx.user.id)
+    db.commit()
+    return None
+
+
+@router.post("/meetings/{meeting_id}/tasks", response_model=OwnerWorkspaceTaskResponse, status_code=status.HTTP_201_CREATED)
+async def create_task_from_meeting(
+    meeting_id: int,
+    payload: OwnerWorkspaceMeetingTaskCreate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    meeting = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+    contact_link = db.query(OwnerWorkspaceMeetingContact).filter(OwnerWorkspaceMeetingContact.meeting_id == meeting.id).first()
+    task = OwnerWorkspaceTask(
+        title=payload.title.strip(),
+        description=payload.description or meeting.meeting_result,
+        status="new",
+        priority=payload.priority or "medium",
+        deadline_at=payload.deadline_at,
+        assignee_id=payload.assignee_id or meeting.responsible_user_id,
+        creator_id=ctx.user.id,
+        project_id=meeting.project_id,
+        contact_id=contact_link.contact_id if contact_link else None,
+    )
+    db.add(task)
+    db.flush()
+    db.add(OwnerWorkspaceMeetingTask(meeting_id=meeting.id, task_id=task.id))
+    _log_audit(db, entity_type="meeting", entity_id=meeting.id, action_type="create_task", author_id=ctx.user.id, new_value={"task_id": task.id})
+    _log_audit(db, entity_type="task", entity_id=task.id, action_type="create_from_meeting", author_id=ctx.user.id, new_value={"meeting_id": meeting.id})
+    db.commit()
+    db.refresh(task)
+    return _task_to_response(db, task)
+
+
+@router.get("/meetings/{meeting_id}/tasks", response_model=List[OwnerWorkspaceTaskResponse])
+async def list_meeting_tasks(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    meeting = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+    rows = (
+        db.query(OwnerWorkspaceTask)
+        .join(OwnerWorkspaceMeetingTask, OwnerWorkspaceMeetingTask.task_id == OwnerWorkspaceTask.id)
+        .filter(OwnerWorkspaceMeetingTask.meeting_id == meeting_id)
+        .all()
+    )
+    return [_task_to_response(db, row) for row in rows if task_visible(ctx, row)]
 
 
 @router.get("/projects", response_model=List[OwnerWorkspaceProjectResponse])

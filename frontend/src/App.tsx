@@ -623,6 +623,14 @@ function App() {
               }
             />
             <Route
+              path="/owner-workspace/meetings"
+              element={
+                <PrivateRoute requiredPermission="owner_workspace.access">
+                  <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/owner-workspace/reports"
               element={
                 <PrivateRoute requiredPermission="owner_workspace.access">

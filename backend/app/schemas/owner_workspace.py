@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -647,6 +647,113 @@ class OwnerWorkspaceTaskTemplateResponse(BaseModel):
     owner_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+OwnerWorkspaceMeetingStatus = Literal["planned", "completed", "cancelled"]
+OwnerWorkspaceMeetingType = Literal["online", "offline"]
+OwnerWorkspaceMeetingRecurrence = Literal["none", "daily", "weekly", "monthly"]
+OwnerWorkspaceMeetingReminder = Literal["15m", "30m", "1h", "1d"]
+
+
+class OwnerWorkspaceMeetingBase(BaseModel):
+    title: str
+    meeting_date: date
+    meeting_time: time
+    responsible_user_id: Optional[int] = None
+    project_id: Optional[int] = None
+    contact_ids: List[int] = Field(default_factory=list)
+    participant_user_ids: List[int] = Field(default_factory=list)
+    meeting_type: OwnerWorkspaceMeetingType = "online"
+    address: Optional[str] = None
+    online_url: Optional[str] = None
+    recurrence_type: OwnerWorkspaceMeetingRecurrence = "none"
+    reminder_type: Optional[OwnerWorkspaceMeetingReminder] = None
+    agenda: Optional[str] = None
+    meeting_result: Optional[str] = None
+    next_steps: Optional[str] = None
+    previous_meeting_id: Optional[int] = None
+    next_meeting_id: Optional[int] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+
+
+class OwnerWorkspaceMeetingCreate(OwnerWorkspaceMeetingBase):
+    pass
+
+
+class OwnerWorkspaceMeetingUpdate(BaseModel):
+    title: Optional[str] = None
+    meeting_date: Optional[date] = None
+    meeting_time: Optional[time] = None
+    status: Optional[OwnerWorkspaceMeetingStatus] = None
+    responsible_user_id: Optional[int] = None
+    project_id: Optional[int] = None
+    contact_ids: Optional[List[int]] = None
+    participant_user_ids: Optional[List[int]] = None
+    meeting_type: Optional[OwnerWorkspaceMeetingType] = None
+    address: Optional[str] = None
+    online_url: Optional[str] = None
+    recurrence_type: Optional[OwnerWorkspaceMeetingRecurrence] = None
+    reminder_type: Optional[OwnerWorkspaceMeetingReminder] = None
+    agenda: Optional[str] = None
+    meeting_result: Optional[str] = None
+    next_steps: Optional[str] = None
+    previous_meeting_id: Optional[int] = None
+    next_meeting_id: Optional[int] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+
+
+class OwnerWorkspaceMeetingRescheduleRequest(BaseModel):
+    meeting_date: date
+    meeting_time: time
+    reason: Optional[str] = None
+
+
+class OwnerWorkspaceMeetingCloseRequest(BaseModel):
+    meeting_result: str
+    next_steps: Optional[str] = None
+
+
+class OwnerWorkspaceMeetingTaskCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    assignee_id: Optional[int] = None
+    deadline_at: Optional[datetime] = None
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = "medium"
+
+
+class OwnerWorkspaceMeetingResponse(BaseModel):
+    id: int
+    title: str
+    agenda: Optional[str] = None
+    meeting_result: Optional[str] = None
+    next_steps: Optional[str] = None
+    meeting_date: date
+    meeting_time: time
+    status: str
+    responsible_user_id: Optional[int] = None
+    responsible_user_name: Optional[str] = None
+    project_id: Optional[int] = None
+    project_name: Optional[str] = None
+    contact_ids: List[int] = Field(default_factory=list)
+    contact_names: List[str] = Field(default_factory=list)
+    participant_user_ids: List[int] = Field(default_factory=list)
+    participant_user_names: List[str] = Field(default_factory=list)
+    task_ids: List[int] = Field(default_factory=list)
+    tasks_count: int = 0
+    meeting_type: str
+    address: Optional[str] = None
+    online_url: Optional[str] = None
+    recurrence_type: str
+    reminder_type: Optional[str] = None
+    previous_meeting_id: Optional[int] = None
+    next_meeting_id: Optional[int] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

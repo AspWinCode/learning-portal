@@ -1447,6 +1447,44 @@ export interface OwnerWorkspaceTask {
   updated_at?: string | null;
 }
 
+export type OwnerWorkspaceMeetingStatus = 'planned' | 'completed' | 'cancelled' | string;
+export type OwnerWorkspaceMeetingType = 'online' | 'offline';
+export type OwnerWorkspaceMeetingRecurrence = 'none' | 'daily' | 'weekly' | 'monthly';
+export type OwnerWorkspaceMeetingReminder = '15m' | '30m' | '1h' | '1d';
+
+export interface OwnerWorkspaceMeeting {
+  id: number;
+  title: string;
+  agenda?: string | null;
+  meeting_result?: string | null;
+  next_steps?: string | null;
+  meeting_date: string;
+  meeting_time: string;
+  status: OwnerWorkspaceMeetingStatus;
+  responsible_user_id?: number | null;
+  responsible_user_name?: string | null;
+  project_id?: number | null;
+  project_name?: string | null;
+  contact_ids: number[];
+  contact_names: string[];
+  participant_user_ids: number[];
+  participant_user_names: string[];
+  task_ids: number[];
+  tasks_count: number;
+  meeting_type: OwnerWorkspaceMeetingType | string;
+  address?: string | null;
+  online_url?: string | null;
+  recurrence_type: OwnerWorkspaceMeetingRecurrence | string;
+  reminder_type?: OwnerWorkspaceMeetingReminder | string | null;
+  previous_meeting_id?: number | null;
+  next_meeting_id?: number | null;
+  attachments?: Array<Record<string, unknown>> | null;
+  created_by?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  closed_at?: string | null;
+}
+
 /** Ответ GET /api/owner-workspace/tasks (пагинация). */
 export interface OwnerWorkspaceTaskListPage {
   items: OwnerWorkspaceTask[];

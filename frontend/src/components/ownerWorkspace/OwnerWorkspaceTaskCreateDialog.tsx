@@ -170,6 +170,8 @@ export function OwnerWorkspaceTaskCreateDialog({
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [newCheckItem, setNewCheckItem] = useState('');
   const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [deadlineTime, setDeadlineTime] = useState('');
   const [reminderPreset, setReminderPreset] = useState<string>('');  // '30m'|'1h'|'3h'|'1d'|'custom'
   const [reminderCustom, setReminderCustom] = useState('');           // datetime-local value
   const [effortOpen, setEffortOpen] = useState(false);
@@ -302,7 +304,7 @@ export function OwnerWorkspaceTaskCreateDialog({
     if (reminderPreset === 'custom') {
       return reminderCustom ? new Date(reminderCustom).toISOString() : null;
     }
-    const base = deadline ? new Date(deadline) : null;
+    const base = deadline ? new Date(deadline + 'T' + (deadlineTime || '00:00')) : null;
     if (!base || isNaN(base.getTime())) return null;
     const offsetMs: Record<string, number> = {
       '30m': 30 * 60 * 1000,
@@ -324,8 +326,8 @@ export function OwnerWorkspaceTaskCreateDialog({
         description: description.trim() || undefined,
         status: taskStatus,
         priority,
-        start_at: startDate ? new Date(startDate).toISOString() : null,
-        deadline_at: deadline ? new Date(deadline).toISOString() : null,
+        start_at: startDate ? new Date(startDate + 'T' + (startTime || '00:00')).toISOString() : null,
+        deadline_at: deadline ? new Date(deadline + 'T' + (deadlineTime || '00:00')).toISOString() : null,
         assignee_id: assigneeId,
         watcher_ids: watcherIds.length ? watcherIds : undefined,
         tags: tags.length ? tags : undefined,
@@ -528,27 +530,49 @@ export function OwnerWorkspaceTaskCreateDialog({
                 <Typography variant="caption" color="text.secondary" fontWeight={600} letterSpacing={0.5} sx={{ textTransform: 'uppercase', fontSize: '0.7rem', mb: 0.5, display: 'block' }}>
                   Начало
                 </Typography>
-                <TextField
-                  type="date"
-                  size="small"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: '100%', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
+                <Stack direction="row" spacing={1}>
+                  <TextField
+                    type="date"
+                    size="small"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
+                  <TextField
+                    type="time"
+                    size="small"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    disabled={!startDate}
+                    sx={{ width: 110, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
+                </Stack>
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary" fontWeight={600} letterSpacing={0.5} sx={{ textTransform: 'uppercase', fontSize: '0.7rem', mb: 0.5, display: 'block' }}>
                   Дедлайн
                 </Typography>
-                <TextField
-                  type="date"
-                  size="small"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: '100%', '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
+                <Stack direction="row" spacing={1}>
+                  <TextField
+                    type="date"
+                    size="small"
+                    value={deadline}
+                    onChange={(e) => setDeadline(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
+                  <TextField
+                    type="time"
+                    size="small"
+                    value={deadlineTime}
+                    onChange={(e) => setDeadlineTime(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    disabled={!deadline}
+                    sx={{ width: 110, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
+                </Stack>
               </Box>
             </Stack>
           </Stack>

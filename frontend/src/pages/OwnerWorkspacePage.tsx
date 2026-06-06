@@ -702,7 +702,7 @@ const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'meetings', 'reports', 'c
 function ownerWorkspaceTabPathname(tabIndex: number): string {
   switch (tabIndex) {
     case OW_TAB_NOTIFICATIONS:
-      return '/owner-workspace/notifications';
+      return '/owner-workspace/projects';
     case OW_TAB_SETTINGS:
       return '/owner-workspace/settings';
     case OW_TAB_PROJECTS:
@@ -726,7 +726,7 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
 
 function ownerWorkspacePathToTab(pathname: string): number | null {
   const p = pathname.replace(/\/$/, '') || pathname;
-  if (p === '/owner-workspace/notifications') return OW_TAB_NOTIFICATIONS;
+  if (p === '/owner-workspace/notifications') return OW_TAB_PROJECTS;
   if (p === '/owner-workspace/settings') return OW_TAB_SETTINGS;
   if (p.startsWith('/owner-workspace/projects')) return OW_TAB_PROJECTS;
   if (p.startsWith('/owner-workspace/contacts')) return OW_TAB_CONTACTS;
@@ -753,6 +753,7 @@ function ownerWorkspaceEntityFromPath(
 
 function tabIndexFromSlug(slug: string | null): number | null {
   if (!slug) return null;
+  if (slug === 'notifications') return null;
   const i = OW_TAB_SLUGS.indexOf(slug as (typeof OW_TAB_SLUGS)[number]);
   return i >= 0 ? i : null;
 }
@@ -5470,7 +5471,6 @@ const OwnerWorkspacePage: React.FC = () => {
           <Tab value={OW_TAB_MEETINGS} label="Мероприятия" />
           <Tab value={OW_TAB_REPORTS} label="Отчёты" />
           <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
-          <Tab value={OW_TAB_NOTIFICATIONS} label={`Уведомления${notifEnvelope && notifEnvelope.unread_count > 0 ? ` (${notifEnvelope.unread_count})` : ''}`} />
           <Tab value={OW_TAB_HISTORY} label="История" />
         </Tabs>
       </Box>

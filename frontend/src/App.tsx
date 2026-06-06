@@ -564,11 +564,7 @@ function App() {
             />
             <Route
               path="/owner-workspace/notifications"
-              element={
-                <PrivateRoute requiredPermission="owner_workspace.access">
-                  <OwnerWorkspacePage />
-                </PrivateRoute>
-              }
+              element={<Navigate to="/owner-workspace/projects" replace />}
             />
             {/* Настройки таск трекера и контрагентов переехали в общий раздел настроек */}
             <Route path="/owner-workspace/settings" element={<RedirectWithSearch to="/admin/settings?tab=ownerWorkspace" />} />

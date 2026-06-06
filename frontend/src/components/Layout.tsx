@@ -73,7 +73,7 @@ const SIDEBAR_SCROLL_STORAGE_KEY = 'sb_scroll_top';
 
 // Группы меню: id → массив путей
 const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
-  { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan', '/owner-workspace/notifications']) },
+  { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan']) },
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/persons', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
@@ -291,7 +291,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' },
         { text: 'Диск', icon: <Folder />, path: '/disk' },
-        { text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' },
       ];
 
     const items = [
@@ -310,7 +309,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
-      items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
     }
 
     if (canAccessReports && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
@@ -332,7 +330,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
-      items.push({ text: 'Уведомления', icon: <Notifications />, path: '/owner-workspace/notifications' });
     }
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
@@ -382,11 +379,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   /** Подсветка «Таск трекер» для любого `/owner-workspace/*`, кроме отдельных пунктов уведомлений и контрагентов. */
   const isOwnerWorkspaceMainSection = (pathname: string) =>
     pathname.startsWith('/owner-workspace') &&
-    pathname !== '/owner-workspace/notifications' &&
     !pathname.startsWith('/owner-workspace/counterparties');
 
   const isDrawerItemSelected = (itemPath: string) => {
-    if (itemPath === '/owner-workspace/notifications') return location.pathname === '/owner-workspace/notifications';
     if (itemPath === '/owner-workspace/counterparties') return location.pathname === '/owner-workspace/counterparties';
     if (itemPath === '/owner-workspace/projects') return isOwnerWorkspaceMainSection(location.pathname);
     return location.pathname === itemPath;

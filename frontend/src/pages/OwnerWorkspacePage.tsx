@@ -5278,6 +5278,8 @@ const OwnerWorkspacePage: React.FC = () => {
             projectListOwnerId={projectListOwnerId}
             projectListOverdueOnly={projectListOverdueOnly}
             projectName={projectName}
+            loading={loading}
+            loadError={error}
             canCreateProjectUi={canCreateProjectUi}
             isWorkspaceFullAccess={isWorkspaceFullAccess}
             userOptions={userOptions}
@@ -5289,6 +5291,15 @@ const OwnerWorkspacePage: React.FC = () => {
             onProjectNameChange={setProjectName}
             onCreateProject={createProject}
             onOpenProject={(project) => navigate(`/owner-workspace/projects/${project.id}`)}
+            onEditProject={(project) => void openProjectDialog(project, { syncUrl: false })}
+            onCreateTaskForProject={(project) => {
+              setCreateTaskDialogProjectId(project.id);
+              setCreateTaskDialogContactId(null);
+              setCreateTaskDialogOpen(true);
+            }}
+            onArchiveProject={(project) => setArchiveProjectConfirm(project)}
+            onDeleteProject={(project) => setArchiveProjectConfirm(project)}
+            onRetryLoad={loadProjectsAndContacts}
             onOpenProjectOverdueTasks={(projectId) => drillDownToProjectTasks(projectId, { overdueOnly: true })}
           />
         </Suspense>

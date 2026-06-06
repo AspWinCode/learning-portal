@@ -45,7 +45,6 @@ import {
   SalesInstruction,
   StudentCard,
   AbsenceFollowUp,
-  BankTransaction,
   FinanceLedgerBankRow,
   FinanceLedgerTransactionRow,
   FinanceAccountBalance,
@@ -1890,27 +1889,6 @@ export const salesApi = {
   deleteAccountTemplate: async (id: number): Promise<void> => {
     await api.delete(`/api/sales/account-templates/${id}`);
   },
-  listBankTransactions: async (params?: { status?: string[] }): Promise<BankTransaction[]> => {
-    const response = await api.get('/api/sales/bank-transactions', { params });
-    return response.data;
-  },
-  applyBankTransaction: async (transactionId: number, payload: { student_id: number }): Promise<BankTransaction> => {
-    const response = await api.post(`/api/sales/bank-transactions/${transactionId}/apply`, payload);
-    return response.data;
-  },
-  updateBankTransactionExpenseCategory: async (
-    transactionId: number,
-    payload: { expense_category?: string | null }
-  ): Promise<BankTransaction> => {
-    const response = await api.patch(
-      `/api/sales/bank-transactions/${transactionId}/expense-category`,
-      payload
-    );
-    return response.data;
-  },
-  deleteBankTransaction: async (transactionId: number): Promise<void> => {
-    await api.delete(`/api/sales/bank-transactions/${transactionId}`);
-  },
   getTochkaStatus: async (): Promise<{ configured: boolean; auto_import_configured?: boolean }> => {
     const response = await api.get('/api/sales/tochka/status');
     return response.data;
@@ -1921,14 +1899,6 @@ export const salesApi = {
     ambiguous: Array<{ payer_name: string; amount: number; date: string; candidates?: Array<{ student_id: number; student_name?: string; parent_full_name?: string }> }>;
   }> => {
     const response = await api.post('/api/sales/tochka/import-and-apply', params);
-    return response.data;
-  },
-  importBankTransactionsXlsx: async (file: File): Promise<{ imported: number; skipped: number; errors?: string[] }> => {
-    const form = new FormData();
-    form.append('file', file);
-    const response = await api.post('/api/sales/bank-transactions/import-xlsx', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
     return response.data;
   },
   listLeadTaskTemplates: async (active_only = true): Promise<LeadTaskTemplate[]> => {

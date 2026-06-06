@@ -273,10 +273,12 @@ export const ownerWorkspaceApi = {
     status_filter?: string;
     priority?: string;
     assignee_id?: number;
+    deadline_from?: string;
+    deadline_to?: string;
     overdue_only?: boolean;
     active_only?: boolean;
     search?: string;
-    sort_by?: 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority';
+    sort_by?: 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority' | 'status' | 'assignee' | 'project' | 'contact';
     sort_dir?: 'asc' | 'desc';
     limit?: number;
     offset?: number;
@@ -289,6 +291,8 @@ export const ownerWorkspaceApi = {
     contact_id?: number;
     priority?: string;
     assignee_id?: number;
+    deadline_from?: string;
+    deadline_to?: string;
     overdue_only?: boolean;
     active_only?: boolean;
     search?: string;
@@ -508,6 +512,7 @@ export const ownerWorkspaceApi = {
     status?: 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
     assignee_id?: number | null;
     priority?: 'low' | 'medium' | 'high' | 'critical';
+    deadline_at?: string | null;
   }): Promise<{ updated: number }> => {
     const response = await api.post('/api/owner-workspace/tasks/bulk-update', payload);
     return response.data;

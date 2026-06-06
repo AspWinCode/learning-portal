@@ -32,6 +32,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Tab,
   Tabs,
   TextField,
@@ -55,6 +56,8 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon from '@mui/icons-material/Add';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import InsightsIcon from '@mui/icons-material/Insights';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import CheckIcon from '@mui/icons-material/Check';
 import {
   format,
   startOfMonth,
@@ -165,6 +168,38 @@ const OwnerWorkspaceDialogsFallback: React.FC = () => (
 function isTaskOverdue(t: OwnerWorkspaceTask): boolean {
   if (!t.deadline_at || t.status === 'completed' || t.status === 'cancelled') return false;
   return new Date(t.deadline_at).getTime() < Date.now();
+}
+
+function taskOverdueLabel(t: OwnerWorkspaceTask): string {
+  if (!isTaskOverdue(t) || !t.deadline_at) return '';
+  const diffMs = Date.now() - new Date(t.deadline_at).getTime();
+  const hour = 60 * 60 * 1000;
+  const day = 24 * hour;
+  if (diffMs >= day) return `Просрочена на ${Math.floor(diffMs / day)} дн.`;
+  if (diffMs >= hour) return `Просрочена на ${Math.floor(diffMs / hour)} ч.`;
+  return 'Просрочена';
+}
+
+function formatTaskDateTime(value?: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function taskStatusChipSx(status: string) {
+  if (status === 'new') return { bgcolor: 'info.light', color: 'info.contrastText' };
+  if (status === 'in_progress') return { bgcolor: 'success.light', color: 'success.contrastText' };
+  if (status === 'waiting') return { bgcolor: 'warning.light', color: 'warning.contrastText' };
+  if (status === 'completed') return { bgcolor: 'grey.300', color: 'text.primary' };
+  if (status === 'cancelled') return { bgcolor: 'grey.100', color: 'text.secondary' };
+  return undefined;
 }
 
 function deadlineToLocalInput(iso: string | null | undefined): string {
@@ -867,6 +902,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskPriorityFilter, setTaskPriorityFilter] = useState<string>('');
   const [taskProjectFilter, setTaskProjectFilter] = useState<number | ''>('');
   const [taskContactFilter, setTaskContactFilter] = useState<number | ''>('');
+  const [taskDeadlineFrom, setTaskDeadlineFrom] = useState('');
+  const [taskDeadlineTo, setTaskDeadlineTo] = useState('');
   const [taskOverdueOnly, setTaskOverdueOnly] = useState(false);
   const [taskActiveOnly, setTaskActiveOnly] = useState(false);
   const [taskAssigneeFilter, setTaskAssigneeFilter] = useState<number | ''>('');
@@ -885,6 +922,8 @@ const OwnerWorkspacePage: React.FC = () => {
         taskPriorityFilter !== '',
         taskProjectFilter !== '',
         taskContactFilter !== '',
+        taskDeadlineFrom !== '',
+        taskDeadlineTo !== '',
         taskAssigneeFilter !== '',
         taskOverdueOnly,
         taskActiveOnly,
@@ -894,6 +933,8 @@ const OwnerWorkspacePage: React.FC = () => {
       taskPriorityFilter,
       taskProjectFilter,
       taskContactFilter,
+      taskDeadlineFrom,
+      taskDeadlineTo,
       taskAssigneeFilter,
       taskOverdueOnly,
       taskActiveOnly,
@@ -905,10 +946,16 @@ const OwnerWorkspacePage: React.FC = () => {
   const [bulkAssigneeMode, setBulkAssigneeMode] = useState<'skip' | 'set' | 'clear'>('skip');
   const [bulkAssigneeUserId, setBulkAssigneeUserId] = useState<number | ''>('');
   const [bulkPriority, setBulkPriority] = useState<string>('');
-  const [taskSortBy, setTaskSortBy] = useState<'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority'>(
-    'created_at'
+  const [bulkDeadline, setBulkDeadline] = useState('');
+  const [bulkDeleteTaskConfirmOpen, setBulkDeleteTaskConfirmOpen] = useState(false);
+  const [taskActionAnchorEl, setTaskActionAnchorEl] = useState<HTMLElement | null>(null);
+  const [taskActionTarget, setTaskActionTarget] = useState<OwnerWorkspaceTask | null>(null);
+  const [taskSortBy, setTaskSortBy] = useState<
+    'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority' | 'status' | 'assignee' | 'project' | 'contact'
+  >(
+    'deadline_at'
   );
-  const [taskSortDir, setTaskSortDir] = useState<'asc' | 'desc'>('desc');
+  const [taskSortDir, setTaskSortDir] = useState<'asc' | 'desc'>('asc');
   const [taskListTotal, setTaskListTotal] = useState(0);
   const [taskListPage, setTaskListPage] = useState(0);
   const [taskListRowsPerPage, setTaskListRowsPerPage] = useState(25);
@@ -1610,6 +1657,8 @@ const OwnerWorkspacePage: React.FC = () => {
         taskPriorityFilter,
         taskProjectFilter,
         taskContactFilter,
+        taskDeadlineFrom,
+        taskDeadlineTo,
         taskOverdueOnly,
         taskActiveOnly,
         taskAssigneeFilter,
@@ -1634,6 +1683,8 @@ const OwnerWorkspacePage: React.FC = () => {
         project_id: taskProjectFilter === '' ? undefined : taskProjectFilter,
         contact_id: taskContactFilter === '' ? undefined : taskContactFilter,
         assignee_id: taskAssigneeFilter === '' ? undefined : taskAssigneeFilter,
+        deadline_from: localInputToIso(taskDeadlineFrom) || undefined,
+        deadline_to: localInputToIso(taskDeadlineTo) || undefined,
         overdue_only: taskOverdueOnly || undefined,
         active_only: taskActiveOnly || undefined,
       };
@@ -1660,6 +1711,8 @@ const OwnerWorkspacePage: React.FC = () => {
     taskPriorityFilter,
     taskProjectFilter,
     taskContactFilter,
+    taskDeadlineFrom,
+    taskDeadlineTo,
     taskOverdueOnly,
     taskActiveOnly,
     taskAssigneeFilter,
@@ -3066,8 +3119,9 @@ const OwnerWorkspacePage: React.FC = () => {
     const hasAssigneeClear = bulkAssigneeMode === 'clear';
     const hasAssigneeSet = bulkAssigneeMode === 'set' && bulkAssigneeUserId !== '';
     const hasPriority = Boolean(bulkPriority);
-    if (!hasStatus && !hasAssigneeClear && !hasAssigneeSet && !hasPriority) {
-      setError('Выберите статус, исполнителя и/или приоритет');
+    const hasDeadline = Boolean(bulkDeadline);
+    if (!hasStatus && !hasAssigneeClear && !hasAssigneeSet && !hasPriority && !hasDeadline) {
+      setError('Выберите статус, исполнителя, приоритет и/или дедлайн');
       return;
     }
     const payload: {
@@ -3075,11 +3129,13 @@ const OwnerWorkspacePage: React.FC = () => {
       status?: OwnerWorkspaceTaskStatus;
       assignee_id?: number | null;
       priority?: OwnerWorkspaceTaskPriority;
+      deadline_at?: string | null;
     } = { task_ids: selectedTaskIds };
     if (hasStatus) payload.status = bulkStatus as OwnerWorkspaceTaskStatus;
     if (hasAssigneeClear) payload.assignee_id = null;
     if (hasAssigneeSet) payload.assignee_id = bulkAssigneeUserId as number;
     if (hasPriority) payload.priority = bulkPriority as OwnerWorkspaceTaskPriority;
+    if (hasDeadline) payload.deadline_at = localInputToIso(bulkDeadline);
     try {
       const res = await ownerWorkspaceApi.bulkUpdateTasks(payload);
       setSelectedTaskIds([]);
@@ -3087,12 +3143,32 @@ const OwnerWorkspacePage: React.FC = () => {
       setBulkPriority('');
       setBulkAssigneeMode('skip');
       setBulkAssigneeUserId('');
+      setBulkDeadline('');
       await loadTasksFiltered();
       void loadDigest();
       setError(null);
       setMaxSyncResult(`Массовое обновление: изменено задач — ${res.updated}.`);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Массовое обновление не удалось'));
+    }
+  };
+
+  const bulkDeleteTasks = async () => {
+    if (selectedTaskIds.length === 0) return;
+    if (!isWorkspaceFullAccess) {
+      setError('Удаление задач доступно только администратору/owner.');
+      return;
+    }
+    try {
+      await Promise.all(selectedTaskIds.map((taskId) => ownerWorkspaceApi.deleteTask(taskId)));
+      setSelectedTaskIds([]);
+      setBulkDeleteTaskConfirmOpen(false);
+      await loadTasksFiltered();
+      void loadDigest();
+      setError(null);
+      setMaxSyncResult('Выбранные задачи удалены.');
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось удалить выбранные задачи'));
     }
   };
 
@@ -4785,6 +4861,57 @@ const OwnerWorkspacePage: React.FC = () => {
     return map;
   }, [tasks]);
 
+  const projectDisplayName = useCallback(
+    (projectId: number | null | undefined) => {
+      if (projectId == null) return '—';
+      return projectsCatalogSorted.find((project) => project.id === projectId)?.name || `#${projectId}`;
+    },
+    [projectsCatalogSorted]
+  );
+
+  const contactNameById = useCallback(
+    (contactId: number | null | undefined) => {
+      if (contactId == null) return '—';
+      return contactsCatalogSorted.find((contact) => contact.id === contactId)?.full_name || `#${contactId}`;
+    },
+    [contactsCatalogSorted]
+  );
+
+  const changeTaskSort = (
+    column: 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority' | 'status' | 'assignee' | 'project' | 'contact'
+  ) => {
+    if (taskSortBy === column) {
+      setTaskSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setTaskSortBy(column);
+      setTaskSortDir('asc');
+    }
+  };
+
+  const closeTaskActionMenu = () => {
+    setTaskActionAnchorEl(null);
+    setTaskActionTarget(null);
+  };
+
+  const openTaskActionMenu = (event: React.MouseEvent<HTMLElement>, task: OwnerWorkspaceTask) => {
+    event.stopPropagation();
+    setTaskActionAnchorEl(event.currentTarget);
+    setTaskActionTarget(task);
+  };
+
+  const runTaskAction = (handler: (task: OwnerWorkspaceTask) => void | Promise<void>) => {
+    if (!taskActionTarget) return;
+    const task = taskActionTarget;
+    closeTaskActionMenu();
+    void handler(task);
+  };
+
+  const renderTaskActionButton = (task: OwnerWorkspaceTask) => (
+    <IconButton size="small" aria-label="Действия задачи" onClick={(event) => openTaskActionMenu(event, task)}>
+      <MoreVertIcon fontSize="small" />
+    </IconButton>
+  );
+
   type TaskCardOpts = {
     selectable?: boolean;
     selected?: boolean;
@@ -4825,11 +4952,12 @@ const OwnerWorkspacePage: React.FC = () => {
               <Box sx={{ cursor: 'pointer', minWidth: 0 }} onClick={() => openTaskDialog(t)}>
                 <Typography variant={compact ? 'body2' : 'subtitle1'}>{t.title}</Typography>
                 <Stack direction="row" spacing={0.5} sx={{ mt: 0.5, flexWrap: 'wrap' }}>
-                  <Chip size="small" label={statusLabels[t.status] || t.status} />
+                  <Chip size="small" label={statusLabels[t.status] || t.status} sx={taskStatusChipSx(t.status)} />
                   <Chip
                     size="small"
                     label={priorityLabels[t.priority] || t.priority}
-                    color={t.priority === 'critical' ? 'error' : t.priority === 'high' ? 'warning' : 'default'}
+                    color={t.priority === 'critical' ? 'error' : t.priority === 'high' ? 'warning' : t.priority === 'medium' ? 'primary' : 'default'}
+                    variant={t.priority === 'low' ? 'outlined' : 'filled'}
                   />
                   {t.assignee_id != null && (
                     <Chip size="small" variant="outlined" label={userName(t.assignee_id)} />
@@ -4838,17 +4966,13 @@ const OwnerWorkspacePage: React.FC = () => {
                     <Chip
                       size="small"
                       variant="outlined"
-                      label={new Date(t.deadline_at).toLocaleString('ru-RU', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      label={formatTaskDateTime(t.deadline_at)}
                       color={isTaskOverdue(t) ? 'error' : 'default'}
                     />
                   )}
-                  {t.project_id && <Chip size="small" label={`Проект #${t.project_id}`} variant="outlined" />}
-                  {t.contact_id && <Chip size="small" label={`Контакт #${t.contact_id}`} variant="outlined" />}
+                  {isTaskOverdue(t) && <Chip size="small" color="error" label={taskOverdueLabel(t)} />}
+                  {t.project_id && <Chip size="small" label={`Проект: ${projectDisplayName(t.project_id)}`} variant="outlined" />}
+                  {t.contact_id && <Chip size="small" label={`Контакт: ${contactNameById(t.contact_id)}`} variant="outlined" />}
                   {(t.tags || []).slice(0, 4).map((tag, ti) => (
                     <Chip key={`${t.id}-tag-${ti}`} size="small" variant="outlined" color="primary" label={tag} />
                   ))}
@@ -4856,28 +4980,30 @@ const OwnerWorkspacePage: React.FC = () => {
                     <Chip
                       size="small"
                       variant="outlined"
-                      label={`Обн. ${new Date(t.updated_at).toLocaleString('ru-RU', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}`}
+                      label={`Обн. ${formatTaskDateTime(t.updated_at)}`}
                     />
                   )}
                 </Stack>
               </Box>
             </Box>
-            {t.status !== 'completed' && t.status !== 'cancelled' && (
-              <Button
-                size="small"
-                variant="outlined"
-                disabled={!canCompleteTaskActionUi(t)}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => setCompleteDialogTask(t)}
-              >
-                Завершить…
-              </Button>
-            )}
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              {t.status !== 'completed' && t.status !== 'cancelled' && (
+                <Tooltip title="Завершить">
+                  <span>
+                    <IconButton
+                      size="small"
+                      color="success"
+                      disabled={!canCompleteTaskActionUi(t)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={() => setCompleteDialogTask(t)}
+                    >
+                      <CheckIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              )}
+              {renderTaskActionButton(t)}
+            </Stack>
           </Box>
         </CardContent>
       </Card>
@@ -5435,7 +5561,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     exclusive
                     onChange={(_, value) => value && setTaskViewMode(value)}
                   >
-                    <ToggleButton value="list">Список</ToggleButton>
+                    <ToggleButton value="list">Таблица</ToggleButton>
                     <ToggleButton value="kanban">Канбан</ToggleButton>
                     <ToggleButton value="calendar">Календарь</ToggleButton>
                   </ToggleButtonGroup>
@@ -5625,13 +5751,35 @@ const OwnerWorkspacePage: React.FC = () => {
                 </Grid>
                 <Grid item xs={6} md={2}>
                   <TextField
+                    fullWidth
+                    size="small"
+                    type="datetime-local"
+                    label="Дедлайн от"
+                    value={taskDeadlineFrom}
+                    onChange={(e) => setTaskDeadlineFrom(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={6} md={2}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="datetime-local"
+                    label="Дедлайн до"
+                    value={taskDeadlineTo}
+                    onChange={(e) => setTaskDeadlineTo(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={6} md={2}>
+                  <TextField
                     select
                     fullWidth
                     size="small"
                     label="Сортировка"
                     value={taskSortBy}
                     onChange={(e) =>
-                      setTaskSortBy(e.target.value as 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority')
+                      setTaskSortBy(e.target.value as 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority' | 'status' | 'assignee' | 'project' | 'contact')
                     }
                   >
                     <MenuItem value="created_at">По дате создания</MenuItem>
@@ -5639,6 +5787,10 @@ const OwnerWorkspacePage: React.FC = () => {
                     <MenuItem value="deadline_at">По дедлайну</MenuItem>
                     <MenuItem value="priority">По приоритету</MenuItem>
                     <MenuItem value="title">По названию</MenuItem>
+                    <MenuItem value="status">По статусу</MenuItem>
+                    <MenuItem value="assignee">По исполнителю</MenuItem>
+                    <MenuItem value="project">По проекту</MenuItem>
+                    <MenuItem value="contact">По контакту</MenuItem>
                   </TextField>
                 </Grid>
                 <Grid item xs={6} md={2}>
@@ -5764,34 +5916,162 @@ const OwnerWorkspacePage: React.FC = () => {
                   </MenuItem>
                 ))}
               </TextField>
+              <TextField
+                size="small"
+                type="datetime-local"
+                label="Дедлайн"
+                value={bulkDeadline}
+                onChange={(e) => setBulkDeadline(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 190 }}
+              />
               <Button variant="contained" disabled={selectedTaskIds.length === 0 || !canBulkUpdateTasksUi} onClick={applyBulkTaskUpdate}>
                 Применить к выбранным
+              </Button>
+              <Button
+                color="error"
+                variant="outlined"
+                disabled={selectedTaskIds.length === 0 || !isWorkspaceFullAccess}
+                onClick={() => setBulkDeleteTaskConfirmOpen(true)}
+              >
+                Удалить
               </Button>
             </Stack>
           )}
 
           {taskViewMode === 'list' ? (
             <Stack spacing={1}>
-              {tasks.map((t) =>
-                renderTaskCard(t, {
-                  selectable: true,
-                  selected: selectedTaskIds.includes(t.id),
-                  onToggleSelect: () => {
-                    setSelectedTaskIds((prev) =>
-                      prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
-                    );
-                  },
-                })
-              )}
+              <TableContainer component={Card} variant="outlined" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={tasks.length > 0 && selectedTaskIds.length === tasks.length}
+                          indeterminate={selectedTaskIds.length > 0 && selectedTaskIds.length < tasks.length}
+                          onChange={() => {
+                            if (selectedTaskIds.length === tasks.length) setSelectedTaskIds([]);
+                            else setSelectedTaskIds(tasks.map((x) => x.id));
+                          }}
+                        />
+                      </TableCell>
+                      {[
+                        ['title', 'Задача'],
+                        ['status', 'Статус'],
+                        ['priority', 'Приоритет'],
+                        ['assignee', 'Исполнитель'],
+                        ['project', 'Проект'],
+                        ['contact', 'Контакт'],
+                        ['deadline_at', 'Дедлайн'],
+                        ['updated_at', 'Обновлено'],
+                      ].map(([key, label]) => (
+                        <TableCell key={key}>
+                          <TableSortLabel
+                            active={taskSortBy === key}
+                            direction={taskSortBy === key ? taskSortDir : 'asc'}
+                            onClick={() =>
+                              changeTaskSort(
+                                key as 'created_at' | 'updated_at' | 'deadline_at' | 'title' | 'priority' | 'status' | 'assignee' | 'project' | 'contact'
+                              )
+                            }
+                          >
+                            {label}
+                          </TableSortLabel>
+                        </TableCell>
+                      ))}
+                      <TableCell align="right">Действия</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {tasks.map((t) => {
+                      const overdue = isTaskOverdue(t);
+                      return (
+                        <TableRow
+                          key={t.id}
+                          hover
+                          selected={selectedTaskIds.includes(t.id)}
+                          onDoubleClick={() => void openTaskDialog(t)}
+                          sx={{ borderLeft: overdue ? '4px solid' : undefined, borderLeftColor: overdue ? 'error.main' : undefined }}
+                        >
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedTaskIds.includes(t.id)}
+                              onChange={() => {
+                                setSelectedTaskIds((prev) =>
+                                  prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
+                                );
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={700}>{t.title}</Typography>
+                            {overdue && <Chip size="small" color="error" label={taskOverdueLabel(t)} sx={{ mt: 0.5 }} />}
+                          </TableCell>
+                          <TableCell><Chip size="small" label={statusLabels[t.status] || t.status} sx={taskStatusChipSx(t.status)} /></TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={priorityLabels[t.priority] || t.priority}
+                              color={t.priority === 'critical' ? 'error' : t.priority === 'high' ? 'warning' : t.priority === 'medium' ? 'primary' : 'default'}
+                              variant={t.priority === 'low' ? 'outlined' : 'filled'}
+                            />
+                          </TableCell>
+                          <TableCell>{userName(t.assignee_id)}</TableCell>
+                          <TableCell>{projectDisplayName(t.project_id)}</TableCell>
+                          <TableCell>{contactNameById(t.contact_id)}</TableCell>
+                          <TableCell sx={{ color: overdue ? 'error.main' : undefined, fontWeight: overdue ? 700 : undefined }}>
+                            {formatTaskDateTime(t.deadline_at)}
+                          </TableCell>
+                          <TableCell>{formatTaskDateTime(t.updated_at)}</TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                              {t.status !== 'completed' && t.status !== 'cancelled' && (
+                                <Tooltip title="Завершить">
+                                  <span>
+                                    <IconButton size="small" color="success" disabled={!canCompleteTaskActionUi(t)} onClick={() => setCompleteDialogTask(t)}>
+                                      <CheckIcon fontSize="small" />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              )}
+                              {renderTaskActionButton(t)}
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <Stack spacing={1} sx={{ display: { xs: 'flex', sm: 'none' } }}>
+                {tasks.map((t) =>
+                  renderTaskCard(t, {
+                    selectable: true,
+                    selected: selectedTaskIds.includes(t.id),
+                    onToggleSelect: () => {
+                      setSelectedTaskIds((prev) =>
+                        prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
+                      );
+                    },
+                  })
+                )}
+              </Stack>
               {tasks.length === 0 && !loading && (
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="subtitle2" gutterBottom>
-                      Пока нет задач
+                      {activeTaskFilterCount > 0 || taskStatusFilter ? 'Задачи не найдены' : 'Задач пока нет'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Создайте первую задачу формой выше или измените фильтры и нажмите «Применить».
+                      {activeTaskFilterCount > 0 || taskStatusFilter
+                        ? 'Попробуйте изменить фильтры или поисковый запрос'
+                        : 'Создайте первую задачу, чтобы начать работу'}
                     </Typography>
+                    {canCreateTaskUi && !(activeTaskFilterCount > 0 || taskStatusFilter) && (
+                      <Button sx={{ mt: 1 }} variant="contained" startIcon={<AddIcon />} onClick={() => setCreateTaskDialogOpen(true)}>
+                        Создать задачу
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -5805,7 +6085,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   setTaskListRowsPerPage(parseInt(e.target.value, 10));
                   setTaskListPage(0);
                 }}
-                rowsPerPageOptions={[10, 25, 50, 100]}
+                rowsPerPageOptions={[25, 50, 100]}
                 labelRowsPerPage="На странице:"
                 labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count !== -1 ? count : `более ${to}`}`}
               />
@@ -5829,6 +6109,45 @@ const OwnerWorkspacePage: React.FC = () => {
           )}
         </Stack>
       )}
+
+      <Menu anchorEl={taskActionAnchorEl} open={Boolean(taskActionAnchorEl)} onClose={closeTaskActionMenu}>
+        <MenuItem onClick={() => runTaskAction(openTaskDialog)}>
+          <OpenInNewIcon fontSize="small" sx={{ mr: 1 }} />Открыть задачу
+        </MenuItem>
+        <MenuItem onClick={() => runTaskAction(openTaskDialog)}>
+          <AssignmentIcon fontSize="small" sx={{ mr: 1 }} />Редактировать
+        </MenuItem>
+        <MenuItem
+          disabled={!taskActionTarget || taskActionTarget.status === 'completed' || taskActionTarget.status === 'cancelled' || !canCompleteTaskActionUi(taskActionTarget)}
+          onClick={() => runTaskAction((task) => setCompleteDialogTask(task))}
+        >
+          <CheckIcon fontSize="small" sx={{ mr: 1 }} />Завершить
+        </MenuItem>
+        <MenuItem onClick={() => runTaskAction(openTaskDialog)}>Изменить статус</MenuItem>
+        <MenuItem onClick={() => runTaskAction(openTaskDialog)}>Назначить исполнителя</MenuItem>
+        <MenuItem onClick={() => runTaskAction(openTaskDialog)}>Изменить дедлайн</MenuItem>
+        <Divider />
+        <MenuItem
+          sx={{ color: 'error.main' }}
+          disabled={!isWorkspaceFullAccess}
+          onClick={() => runTaskAction((task) => setDeleteTaskConfirm(task))}
+        >
+          <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} />Удалить
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={bulkDeleteTaskConfirmOpen} onClose={() => setBulkDeleteTaskConfirmOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Удалить выбранные задачи?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">Будет удалено задач: {selectedTaskIds.length}.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBulkDeleteTaskConfirmOpen(false)}>Отмена</Button>
+          <Button color="error" variant="contained" disabled={!isWorkspaceFullAccess} onClick={() => void bulkDeleteTasks()}>
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {tab === OW_TAB_REPORTS && (
         <Stack spacing={2}>

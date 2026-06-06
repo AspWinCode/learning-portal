@@ -6,17 +6,21 @@ import {
   Chip,
   IconButton,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import {
   eachDayOfInterval,
+  endOfDay,
   endOfMonth,
   endOfWeek,
   format,
   isSameMonth,
   isToday,
+  startOfDay,
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
@@ -46,6 +50,11 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   weekdaysShort: string[];
 };
 
+function isTaskOverdue(task: OwnerWorkspaceTask): boolean {
+  if (!task.deadline_at || task.status === 'completed' || task.status === 'cancelled') return false;
+  return new Date(task.deadline_at).getTime() < Date.now();
+}
+
 export function OwnerWorkspaceTaskBoardCalendarSection({
   taskViewMode,
   tasks,
@@ -59,6 +68,8 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   onOpenTask,
   weekdaysShort,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
+  const [calendarMode, setCalendarMode] = React.useState<'day' | 'week' | 'month'>('month');
+
   if (taskViewMode === 'kanban') {
     return (
       <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 1, alignItems: 'flex-start' }}>
@@ -99,20 +110,60 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     );
   }
 
+  const visibleDays = eachDayOfInterval({
+    start:
+      calendarMode === 'day'
+        ? startOfDay(calendarMonth)
+        : calendarMode === 'week'
+        ? startOfWeek(calendarMonth, { weekStartsOn: 1 })
+        : startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 }),
+    end:
+      calendarMode === 'day'
+        ? endOfDay(calendarMonth)
+        : calendarMode === 'week'
+        ? endOfWeek(calendarMonth, { weekStartsOn: 1 })
+        : endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 1 }),
+  });
+  const calendarTitle =
+    calendarMode === 'day'
+      ? format(calendarMonth, 'd MMMM yyyy', { locale: ru })
+      : calendarMode === 'week'
+      ? `${format(visibleDays[0], 'd MMM', { locale: ru })} — ${format(visibleDays[visibleDays.length - 1], 'd MMM yyyy', { locale: ru })}`
+      : format(calendarMonth, 'LLLL yyyy', { locale: ru });
+  const shiftCalendar = (direction: -1 | 1) => {
+    onCalendarMonthChange((current) => {
+      if (calendarMode === 'day') return new Date(current.getFullYear(), current.getMonth(), current.getDate() + direction);
+      if (calendarMode === 'week') return new Date(current.getFullYear(), current.getMonth(), current.getDate() + direction * 7);
+      return startOfMonth(new Date(current.getFullYear(), current.getMonth() + direction, 1));
+    });
+  };
+
   return (
     <Card>
       <CardContent>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between" sx={{ mb: 2 }}>
           <IconButton
-            aria-label="Предыдущий месяц"
-            onClick={() => onCalendarMonthChange((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() - 1, 1)))}
+            aria-label="Предыдущий период"
+            onClick={() => shiftCalendar(-1)}
           >
             <ChevronLeftIcon />
           </IconButton>
-          <Typography variant="h6">{format(calendarMonth, 'LLLL yyyy', { locale: ru })}</Typography>
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" flexWrap="wrap" useFlexGap>
+            <Typography variant="h6">{calendarTitle}</Typography>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={calendarMode}
+              onChange={(_, value) => value && setCalendarMode(value)}
+            >
+              <ToggleButton value="day">День</ToggleButton>
+              <ToggleButton value="week">Неделя</ToggleButton>
+              <ToggleButton value="month">Месяц</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
           <IconButton
-            aria-label="Следующий месяц"
-            onClick={() => onCalendarMonthChange((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() + 1, 1)))}
+            aria-label="Следующий период"
+            onClick={() => shiftCalendar(1)}
           >
             <ChevronRightIcon />
           </IconButton>
@@ -120,22 +171,19 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(7, 1fr)',
+            gridTemplateColumns: `repeat(${calendarMode === 'day' ? 1 : 7}, 1fr)`,
             gap: 0.5,
           }}
         >
-          {weekdaysShort.map((weekday) => (
+          {calendarMode !== 'day' && weekdaysShort.map((weekday) => (
             <Typography key={weekday} variant="caption" color="text.secondary" sx={{ textAlign: 'center', fontWeight: 600 }}>
               {weekday}
             </Typography>
           ))}
-          {eachDayOfInterval({
-            start: startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 }),
-            end: endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 1 }),
-          }).map((day) => {
+          {visibleDays.map((day) => {
             const key = format(day, 'yyyy-MM-dd');
             const dayTasks = tasksByDeadlineDay.get(key) || [];
-            const inMonth = isSameMonth(day, calendarMonth);
+            const inMonth = calendarMode === 'month' ? isSameMonth(day, calendarMonth) : true;
             return (
               <Box
                 key={key}
@@ -160,7 +208,9 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
                     <Chip
                       key={task.id}
                       size="small"
-                      label={task.title.length > 22 ? `${task.title.slice(0, 22)}…` : task.title}
+                      color={isTaskOverdue(task) ? 'error' : 'default'}
+                      variant={isTaskOverdue(task) ? 'filled' : 'outlined'}
+                      label={`${task.title.length > 18 ? `${task.title.slice(0, 18)}…` : task.title} · ${task.status} · ${task.priority}`}
                       onClick={() => void onOpenTask(task)}
                       sx={{ height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
                     />

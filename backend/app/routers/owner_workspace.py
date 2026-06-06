@@ -1839,6 +1839,8 @@ def _owner_workspace_tasks_filtered_query(
     status_filter: Optional[str],
     priority: Optional[str],
     assignee_id: Optional[int],
+    deadline_from: Optional[datetime],
+    deadline_to: Optional[datetime],
     overdue_only: bool,
     active_only: bool,
     search: Optional[str],
@@ -1854,6 +1856,10 @@ def _owner_workspace_tasks_filtered_query(
         q = q.filter(OwnerWorkspaceTask.priority == priority)
     if assignee_id is not None:
         q = q.filter(OwnerWorkspaceTask.assignee_id == assignee_id)
+    if deadline_from is not None:
+        q = q.filter(OwnerWorkspaceTask.deadline_at.isnot(None), OwnerWorkspaceTask.deadline_at >= deadline_from)
+    if deadline_to is not None:
+        q = q.filter(OwnerWorkspaceTask.deadline_at.isnot(None), OwnerWorkspaceTask.deadline_at <= deadline_to)
     if overdue_only:
         now = datetime.now(timezone.utc)
         q = q.filter(
@@ -1865,7 +1871,15 @@ def _owner_workspace_tasks_filtered_query(
         q = q.filter(OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]))
     if search:
         like = f"%{search.strip()}%"
-        q = q.filter(or_(OwnerWorkspaceTask.title.ilike(like), OwnerWorkspaceTask.description.ilike(like)))
+        q = q.filter(
+            or_(
+                OwnerWorkspaceTask.title.ilike(like),
+                OwnerWorkspaceTask.description.ilike(like),
+                OwnerWorkspaceTask.project.has(OwnerWorkspaceProject.name.ilike(like)),
+                OwnerWorkspaceTask.contact.has(OwnerWorkspaceContact.full_name.ilike(like)),
+                OwnerWorkspaceTask.assignee.has(User.full_name.ilike(like)),
+            )
+        )
     return filter_tasks_query(q, ctx)
 
 
@@ -1892,10 +1906,12 @@ async def list_tasks(
     status_filter: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
     assignee_id: Optional[int] = Query(None),
+    deadline_from: Optional[datetime] = Query(None),
+    deadline_to: Optional[datetime] = Query(None),
     overdue_only: bool = Query(False),
     active_only: bool = Query(False),
     search: Optional[str] = Query(None),
-    sort_by: Optional[str] = Query(None, description="created_at|updated_at|deadline_at|title|priority"),
+    sort_by: Optional[str] = Query(None, description="created_at|updated_at|deadline_at|title|priority|status|assignee|project|contact"),
     sort_dir: Optional[str] = Query(None, description="asc|desc"),
     limit: int = Query(100, ge=1, le=500, description="Размер страницы"),
     offset: int = Query(0, ge=0, description="Смещение"),
@@ -1916,6 +1932,8 @@ async def list_tasks(
         status_filter=status_filter,
         priority=priority,
         assignee_id=assignee_id,
+        deadline_from=deadline_from,
+        deadline_to=deadline_to,
         overdue_only=overdue_only,
         active_only=active_only,
         search=search,
@@ -1929,6 +1947,14 @@ async def list_tasks(
         (OwnerWorkspaceTask.priority == "critical", 4),
         else_=99,
     )
+    status_expr = case(
+        (OwnerWorkspaceTask.status == "new", 1),
+        (OwnerWorkspaceTask.status == "in_progress", 2),
+        (OwnerWorkspaceTask.status == "waiting", 3),
+        (OwnerWorkspaceTask.status == "completed", 4),
+        (OwnerWorkspaceTask.status == "cancelled", 5),
+        else_=99,
+    )
     if sb == "created_at":
         sort_col = OwnerWorkspaceTask.created_at
     elif sb == "updated_at":
@@ -1937,10 +1963,18 @@ async def list_tasks(
         sort_col = OwnerWorkspaceTask.deadline_at
     elif sb == "title":
         sort_col = OwnerWorkspaceTask.title
+    elif sb == "status":
+        sort_col = status_expr
+    elif sb == "assignee":
+        sort_col = OwnerWorkspaceTask.assignee_id
+    elif sb == "project":
+        sort_col = OwnerWorkspaceTask.project_id
+    elif sb == "contact":
+        sort_col = OwnerWorkspaceTask.contact_id
     else:
         sort_col = prio_expr
 
-    if sb == "deadline_at":
+    if sb in ("deadline_at", "assignee", "project", "contact"):
         order_expr = nullslast(desc(sort_col) if descending else asc(sort_col))
     else:
         order_expr = desc(sort_col) if descending else asc(sort_col)
@@ -1960,6 +1994,8 @@ async def task_status_counts(
     contact_id: Optional[int] = Query(None),
     priority: Optional[str] = Query(None),
     assignee_id: Optional[int] = Query(None),
+    deadline_from: Optional[datetime] = Query(None),
+    deadline_to: Optional[datetime] = Query(None),
     overdue_only: bool = Query(False),
     active_only: bool = Query(False),
     search: Optional[str] = Query(None),
@@ -1984,6 +2020,8 @@ async def task_status_counts(
         status_filter=None,
         priority=priority,
         assignee_id=assignee_id,
+        deadline_from=deadline_from,
+        deadline_to=deadline_to,
         overdue_only=overdue_only,
         active_only=active_only,
         search=search,
@@ -2210,7 +2248,7 @@ async def bulk_update_tasks(
     data = payload.model_dump(exclude_unset=True)
     task_ids = data.pop("task_ids", [])
     if not data:
-        raise HTTPException(status_code=400, detail="Укажите status, assignee_id и/или priority")
+        raise HTTPException(status_code=400, detail="Укажите status, assignee_id, priority и/или deadline_at")
     updated = 0
     for tid in task_ids:
         row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == tid).first()
@@ -2225,7 +2263,12 @@ async def bulk_update_tasks(
                 if extra:
                     continue
             # при смене на активный статус применяем все поля из data
-        old = {"status": row.status, "assignee_id": row.assignee_id, "priority": row.priority}
+        old = {
+            "status": row.status,
+            "assignee_id": row.assignee_id,
+            "priority": row.priority,
+            "deadline_at": row.deadline_at.isoformat() if row.deadline_at else None,
+        }
         prev_assignee = row.assignee_id
         for k, v in data.items():
             setattr(row, k, v)

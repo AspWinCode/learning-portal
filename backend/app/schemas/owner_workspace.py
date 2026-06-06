@@ -329,6 +329,7 @@ class OwnerWorkspaceTaskBulkUpdate(BaseModel):
     status: Optional[Literal["new", "in_progress", "waiting", "completed", "cancelled"]] = None
     assignee_id: Optional[int] = None
     priority: Optional[Literal["low", "medium", "high", "critical"]] = None
+    deadline_at: Optional[datetime] = None
 
 
 class OwnerWorkspaceTaskCommentCreate(BaseModel):

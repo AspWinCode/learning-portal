@@ -6,14 +6,12 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
-  FormControlLabel,
   Grid,
   IconButton,
   InputLabel,
@@ -318,11 +316,55 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <TextField fullWidth label="С даты" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <TextField fullWidth label="По дату" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} InputLabelProps={{ shrink: true }} />
+            <Grid item xs={12} sm={6} md={4}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  px: 1.5,
+                  height: 56,
+                  gap: 1,
+                  '&:hover': { borderColor: 'text.primary' },
+                  '&:focus-within': { borderColor: 'primary.main', borderWidth: 2 },
+                }}
+              >
+                <Typography variant="caption" color="text.secondary" noWrap>С</Typography>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  style={{
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    fontFamily: 'inherit',
+                    fontSize: '0.875rem',
+                    color: 'inherit',
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                />
+                <Box sx={{ width: '1px', height: 20, bgcolor: 'divider', flexShrink: 0 }} />
+                <Typography variant="caption" color="text.secondary" noWrap>По</Typography>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  style={{
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    fontFamily: 'inherit',
+                    fontSize: '0.875rem',
+                    color: 'inherit',
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth>
@@ -358,10 +400,13 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Stack direction="row" spacing={1} justifyContent={{ xs: 'stretch', md: 'flex-end' }} alignItems="center">
-                <FormControlLabel
-                  control={<Checkbox checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} />}
-                  label="Только просроченные"
+              <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} alignItems="center" flexWrap="wrap">
+                <Chip
+                  label="Просроченные"
+                  onClick={() => setOverdueOnly((v) => !v)}
+                  color={overdueOnly ? 'warning' : 'default'}
+                  variant={overdueOnly ? 'filled' : 'outlined'}
+                  sx={{ fontWeight: overdueOnly ? 600 : 400, cursor: 'pointer' }}
                 />
                 <Button variant="outlined" onClick={() => void loadMeetings()}>Найти</Button>
                 {canCreate && (

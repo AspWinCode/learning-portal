@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -6,381 +6,719 @@ import {
   Card,
   CardContent,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
+  CircularProgress,
   FormControl,
+  Grid,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Select,
   Stack,
-  TextField,
+  Tab,
+  Tabs,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { format, parseISO } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import OpenInNew from '@mui/icons-material/OpenInNew';
-import Event from '@mui/icons-material/Event';
+import Refresh from '@mui/icons-material/Refresh';
+import Done from '@mui/icons-material/Done';
+import PushPin from '@mui/icons-material/PushPin';
+import WarningAmber from '@mui/icons-material/WarningAmber';
 import Layout from '../components/Layout';
-import { b2bApi } from '../services/api';
+import { b2bApi, ownerWorkspaceApi, tasksApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { B2BSchool } from '../types';
+import type { B2BSchool, OwnerWorkspaceTask, TaskResponse } from '../types';
 
-const Section: React.FC<{
-  id?: string;
+type SourceKey = 'task_tracker' | 'counterparties' | 'schools' | 'personal';
+type PlanBucket = 'must' | 'should' | 'can_move';
+
+type PlannerTask = {
+  id: string;
+  source: SourceKey;
+  entityId: string;
   title: string;
-  schools: B2BSchool[];
-  onOpenSchool: (id: number) => void;
-  onReschedule?: (school: B2BSchool) => void;
-  onClose?: (school: B2BSchool) => void;
-  closingSchoolId?: number | null;
-}> = ({ id, title, schools, onOpenSchool, onReschedule, onClose, closingSchoolId }) => (
-  <Box id={id}>
-    <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
-      {title} ({schools.length})
-    </Typography>
-    {schools.length === 0 ? (
-      <Typography variant="body2" color="text.secondary">
-        Нет школ
-      </Typography>
-    ) : (
-      <Stack spacing={0.5}>
-        {schools.map((s) => (
-          <Card key={s.id} variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => onOpenSchool(s.id)}>
-            <CardContent sx={{ py: 1, '&:last-child': { pb: 1 } }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={0.5}>
-                <Box>
-                  <Typography variant="body2" fontWeight="medium">
-                    {s.name}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {s.city ?? '—'} · {s.pipeline_stage}
-                    {s.next_step && ` · ${s.next_step}`}
-                    {s.next_step_date && ` (${format(parseISO(s.next_step_date), 'd MMM', { locale: ru })})`}
-                    {s.manager_full_name && ` · ${s.manager_full_name}`}
-                  </Typography>
-                </Box>
-                <Stack direction="row" spacing={0.5}>
-                  {onClose && (s.next_step || s.next_step_date) && (
-                    <Button
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                      disabled={closingSchoolId === s.id}
-                      onClick={(e) => { e.stopPropagation(); onClose(s); }}
-                    >
-                      {closingSchoolId === s.id ? '…' : 'Закрыть'}
-                    </Button>
-                  )}
-                  {onReschedule && (
-                    <Button size="small" startIcon={<Event />} onClick={(e) => { e.stopPropagation(); onReschedule(s); }}>
-                      Перенести
-                    </Button>
-                  )}
-                  <Button size="small" startIcon={<OpenInNew />} onClick={(e) => { e.stopPropagation(); onOpenSchool(s.id); }}>
-                    Карточка
-                  </Button>
-                </Stack>
+  description?: string | null;
+  status: string;
+  priority: 'low' | 'normal' | 'medium' | 'high' | 'critical';
+  deadline?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  estimatedDuration: number;
+  assignee?: string | number | null;
+  score: number;
+  urgencyScore: number;
+  riskScore: number;
+  importanceScore: number;
+  ageScore: number;
+  bucket: PlanBucket;
+  overdue: boolean;
+  dueToday: boolean;
+  dueTomorrow: boolean;
+  dueThisWeek: boolean;
+  reason: string;
+  openUrl: string;
+  raw?: TaskResponse | OwnerWorkspaceTask | B2BSchool;
+};
+
+type LoadState = {
+  taskTracker?: string;
+  ownerWorkspace?: string;
+  schools?: string;
+};
+
+const SOURCE_LABELS: Record<SourceKey, string> = {
+  task_tracker: 'Таск-трекер',
+  counterparties: 'Контрагенты',
+  schools: 'Школы',
+  personal: 'Задачи',
+};
+
+const SOURCE_COEFFICIENTS: Record<SourceKey, number> = {
+  schools: 1.3,
+  counterparties: 1.2,
+  task_tracker: 1.0,
+  personal: 0.8,
+};
+
+const SOURCE_COLORS: Record<SourceKey, 'primary' | 'secondary' | 'success' | 'warning'> = {
+  task_tracker: 'primary',
+  counterparties: 'secondary',
+  schools: 'success',
+  personal: 'warning',
+};
+
+const todayStart = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const parseDate = (value?: string | null): Date | null => {
+  if (!value) return null;
+  const parsed = new Date(value.length === 10 ? `${value}T00:00:00` : value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDate = (value?: string | null) => {
+  const parsed = parseDate(value);
+  if (!parsed) return 'Без срока';
+  return parsed.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+const daysBetween = (from: Date, to: Date) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - start.getTime()) / 86400000);
+};
+
+const priorityWeight = (priority: PlannerTask['priority']) => {
+  if (priority === 'critical') return 100;
+  if (priority === 'high') return 85;
+  if (priority === 'medium' || priority === 'normal') return 55;
+  return 30;
+};
+
+const normalizePriority = (value?: string | null): PlannerTask['priority'] => {
+  if (value === 'critical' || value === 'high' || value === 'medium' || value === 'normal' || value === 'low') {
+    return value;
+  }
+  return 'normal';
+};
+
+const urgencyByDeadline = (deadline?: string | null) => {
+  const due = parseDate(deadline);
+  if (!due) return 20;
+  const diff = daysBetween(todayStart(), due);
+  if (diff < 0) return 100;
+  if (diff === 0) return 90;
+  if (diff === 1) return 80;
+  if (diff <= 3) return 60;
+  if (diff <= 7) return 40;
+  return 20;
+};
+
+const riskByDeadline = (deadline?: string | null, estimatedDuration = 60) => {
+  const due = parseDate(deadline);
+  if (!due) return estimatedDuration >= 180 ? 45 : 20;
+  const diff = daysBetween(todayStart(), due);
+  if (diff < 0) return 100;
+  if (diff === 0) return estimatedDuration >= 180 ? 95 : 85;
+  if (diff === 1) return estimatedDuration >= 180 ? 80 : 65;
+  if (diff <= 3) return 55;
+  if (diff <= 7) return 35;
+  return 15;
+};
+
+const ageScore = (createdAt?: string | null) => {
+  const created = parseDate(createdAt);
+  if (!created) return 10;
+  const age = Math.max(0, daysBetween(created, todayStart()));
+  if (age >= 30) return 100;
+  if (age >= 14) return 70;
+  if (age >= 7) return 50;
+  if (age >= 3) return 30;
+  return 10;
+};
+
+const buildScore = (task: Omit<PlannerTask, 'score' | 'urgencyScore' | 'riskScore' | 'importanceScore' | 'ageScore' | 'bucket' | 'overdue' | 'dueToday' | 'dueTomorrow' | 'dueThisWeek'>) => {
+  const due = parseDate(task.deadline);
+  const diff = due ? daysBetween(todayStart(), due) : null;
+  const urgencyScore = urgencyByDeadline(task.deadline);
+  const riskScore = riskByDeadline(task.deadline, task.estimatedDuration);
+  const importanceScore = priorityWeight(task.priority);
+  const taskAgeScore = ageScore(task.createdAt);
+  const coefficient = SOURCE_COEFFICIENTS[task.source];
+  const score = Math.min(
+    100,
+    Math.round((urgencyScore * 0.4 + riskScore * 0.3 + importanceScore * 0.2 + taskAgeScore * 0.1) * coefficient)
+  );
+  const overdue = diff != null && diff < 0;
+  const dueToday = diff === 0;
+  const dueTomorrow = diff === 1;
+  const dueThisWeek = diff != null && diff >= 0 && diff <= 7;
+  const bucket: PlanBucket =
+    overdue || dueToday || task.priority === 'critical' || score >= 75
+      ? 'must'
+      : score >= 50 || dueTomorrow || task.priority === 'high'
+        ? 'should'
+        : 'can_move';
+  return { score, urgencyScore, riskScore, importanceScore, ageScore: taskAgeScore, bucket, overdue, dueToday, dueTomorrow, dueThisWeek };
+};
+
+const withScore = (task: Omit<PlannerTask, 'score' | 'urgencyScore' | 'riskScore' | 'importanceScore' | 'ageScore' | 'bucket' | 'overdue' | 'dueToday' | 'dueTomorrow' | 'dueThisWeek'>): PlannerTask => ({
+  ...task,
+  ...buildScore(task),
+});
+
+const estimateTaskDuration = (task: TaskResponse) => {
+  const subtaskMinutes = (task.subtasks?.length || 1) * 25;
+  if (task.priority === 'high') return Math.max(45, subtaskMinutes);
+  return Math.max(30, subtaskMinutes);
+};
+
+const estimateOwnerTaskDuration = (task: OwnerWorkspaceTask) => {
+  if (task.effort_minutes) return task.effort_minutes;
+  if (task.effort_hours) return task.effort_hours * 60;
+  const checklist = Array.isArray(task.checklist) ? task.checklist.length : 0;
+  return Math.max(30, checklist * 25 || 60);
+};
+
+const b2bReasonLabels: Record<string, string> = {
+  overdue: 'Просрочен следующий шаг',
+  no_next_step: 'Нет следующего шага',
+  find_contacts_stale: 'Поиск контактов больше 3 дней',
+  find_contacts_no_contacts_48h: 'Нет контактов 48 часов',
+  today: 'Запланировано на сегодня',
+  tomorrow: 'Запланировано на завтра',
+  week: 'Срок на этой неделе',
+  no_contacts: 'Нет контактов',
+  no_touches_7d: 'Нет касаний 7 дней',
+  event_done_no_leads: 'Мероприятие проведено без лидов',
+  event_done_no_leads_24_48h: 'Проведено без лидов 24-48 часов',
+  negotiations_14d: 'Переговоры больше 14 дней',
+};
+
+const b2bPriorityByBucket: Record<string, PlannerTask['priority']> = {
+  overdue: 'critical',
+  find_contacts_no_contacts_48h: 'high',
+  event_done_no_leads: 'high',
+  event_done_no_leads_24_48h: 'high',
+  no_next_step: 'high',
+  today: 'high',
+  tomorrow: 'medium',
+  week: 'medium',
+  negotiations_14d: 'medium',
+  no_contacts: 'medium',
+  no_touches_7d: 'medium',
+  find_contacts_stale: 'medium',
+};
+
+const mergeByBestScore = (tasks: PlannerTask[]) => {
+  const map = new Map<string, PlannerTask>();
+  tasks.forEach((task) => {
+    const existing = map.get(task.id);
+    if (!existing || task.score > existing.score) {
+      map.set(task.id, task);
+    } else if (existing.reason && task.reason && !existing.reason.includes(task.reason)) {
+      existing.reason = `${existing.reason}; ${task.reason}`;
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => b.score - a.score || Number(a.deadline == null) - Number(b.deadline == null));
+};
+
+const TaskCard: React.FC<{
+  task: PlannerTask;
+  onComplete: (task: PlannerTask) => void;
+  onPinToday: (task: PlannerTask) => void;
+  actionLoadingId: string | null;
+}> = ({ task, onComplete, onPinToday, actionLoadingId }) => {
+  const loading = actionLoadingId === task.id;
+  return (
+    <Card variant="outlined" sx={{ borderColor: task.overdue ? 'error.light' : task.score >= 75 ? 'warning.light' : 'divider' }}>
+      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        <Stack spacing={1}>
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1}>
+            <Box>
+              <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+                <Chip size="small" color={SOURCE_COLORS[task.source]} label={SOURCE_LABELS[task.source]} />
+                <Chip size="small" variant="outlined" label={`Score ${task.score}`} />
+                <Chip
+                  size="small"
+                  color={task.priority === 'critical' ? 'error' : task.priority === 'high' ? 'warning' : 'default'}
+                  label={task.priority}
+                />
+                {task.overdue && <Chip size="small" color="error" label="Просрочено" />}
+                {task.dueToday && <Chip size="small" color="primary" label="Сегодня" />}
               </Stack>
-            </CardContent>
-          </Card>
-        ))}
+              <Typography variant="subtitle1" fontWeight={700} sx={{ mt: 1 }}>
+                {task.title}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {task.reason} · срок: {formatDate(task.deadline)} · оценка: {Math.round(task.estimatedDuration / 30) / 2} ч
+              </Typography>
+              {task.description && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  {task.description}
+                </Typography>
+              )}
+            </Box>
+            <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" sx={{ minWidth: { md: 260 }, justifyContent: { md: 'flex-end' } }}>
+              {task.source === 'task_tracker' && (
+                <>
+                  <Button size="small" variant="outlined" startIcon={<PushPin />} disabled={loading} onClick={() => onPinToday(task)}>
+                    В план
+                  </Button>
+                  <Button size="small" variant="contained" startIcon={<Done />} disabled={loading} onClick={() => onComplete(task)}>
+                    Готово
+                  </Button>
+                </>
+              )}
+              {task.source === 'counterparties' && (
+                <Button size="small" variant="contained" startIcon={<Done />} disabled={loading} onClick={() => onComplete(task)}>
+                  Закрыть
+                </Button>
+              )}
+              <Button size="small" href={task.openUrl} target="_blank" rel="noreferrer" startIcon={<OpenInNew />}>
+                Открыть
+              </Button>
+            </Stack>
+          </Stack>
+          <Tooltip title={`Срочность ${task.urgencyScore}, риск ${task.riskScore}, важность ${task.importanceScore}, возраст ${task.ageScore}`}>
+            <LinearProgress
+              variant="determinate"
+              value={task.score}
+              color={task.score >= 75 ? 'warning' : task.score >= 50 ? 'primary' : 'success'}
+              sx={{ height: 6, borderRadius: 999 }}
+            />
+          </Tooltip>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+};
+
+const TaskSection: React.FC<{
+  title: string;
+  caption: string;
+  tasks: PlannerTask[];
+  onComplete: (task: PlannerTask) => void;
+  onPinToday: (task: PlannerTask) => void;
+  actionLoadingId: string | null;
+}> = ({ title, caption, tasks, onComplete, onPinToday, actionLoadingId }) => (
+  <Card variant="outlined">
+    <CardContent>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1} sx={{ mb: 2 }}>
+        <Box>
+          <Typography variant="h6">{title}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {caption}
+          </Typography>
+        </Box>
+        <Chip label={tasks.length} />
       </Stack>
-    )}
-  </Box>
+      {tasks.length === 0 ? (
+        <Typography color="text.secondary">Нет задач</Typography>
+      ) : (
+        <Stack spacing={1.25}>
+          {tasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              onComplete={onComplete}
+              onPinToday={onPinToday}
+              actionLoadingId={actionLoadingId}
+            />
+          ))}
+        </Stack>
+      )}
+    </CardContent>
+  </Card>
 );
 
 const B2BPlanForTodayPage: React.FC = () => {
   const [cities, setCities] = useState<string[]>([]);
-  const [selectedCity, setSelectedCity] = useState<string>('');
-  const [data, setData] = useState<{
-    overdue: B2BSchool[];
-    no_next_step: B2BSchool[];
-    find_contacts_stale: B2BSchool[];
-    find_contacts_no_contacts_48h: B2BSchool[];
-    today: B2BSchool[];
-    tomorrow: B2BSchool[];
-    week: B2BSchool[];
-    no_contacts: B2BSchool[];
-    no_touches_7d: B2BSchool[];
-    event_done_no_leads: B2BSchool[];
-    event_done_no_leads_24_48h: B2BSchool[];
-    negotiations_14d: B2BSchool[];
-  } | null>(null);
-  const [citySummary, setCitySummary] = useState<{
-    city: string;
-    schools_in_work: number;
-    overdue: number;
-    events_this_week: number;
-    leads_7d: number;
-    partners: number;
-  }[]>([]);
+  const [selectedCity, setSelectedCity] = useState('');
+  const [tasks, setTasks] = useState<PlannerTask[]>([]);
+  const [sourceErrors, setSourceErrors] = useState<LoadState>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [rescheduleSchool, setRescheduleSchool] = useState<B2BSchool | null>(null);
-  const [rescheduleForm, setRescheduleForm] = useState({ next_step: '', next_step_date: '' });
-  const [closingSchoolId, setClosingSchoolId] = useState<number | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<'focus' | 'day' | 'week' | 'risks' | 'all'>('focus');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
   const loadCities = useCallback(async () => {
     try {
-      const list = await b2bApi.listCities();
-      setCities(list);
+      setCities(await b2bApi.listCities());
     } catch {
       setCities([]);
     }
   }, []);
 
-  const loadPlan = useCallback(async () => {
+  const loadPlanner = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const [planRes, summaryRes] = await Promise.all([
-        b2bApi.planForToday(selectedCity || undefined),
-        b2bApi.planCitySummary(),
-      ]);
-      setData(planRes);
-      setCitySummary(summaryRes);
-    } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось загрузить план'));
-      setData(null);
-    } finally {
-      setLoading(false);
+    const errors: LoadState = {};
+
+    const [taskTrackerRes, ownerWorkspaceRes, schoolsRes] = await Promise.allSettled([
+      tasksApi.listTodayTasks('active'),
+      ownerWorkspaceApi.listTasks({ active_only: true, limit: 500, sort_by: 'deadline_at', sort_dir: 'asc' }),
+      b2bApi.planForToday(selectedCity || undefined),
+    ]);
+
+    const nextTasks: PlannerTask[] = [];
+
+    if (taskTrackerRes.status === 'fulfilled') {
+      taskTrackerRes.value.forEach((task) => {
+        nextTasks.push(withScore({
+          id: `task_tracker:${task.id}`,
+          source: 'task_tracker',
+          entityId: String(task.id),
+          title: task.title || `Задача #${task.id}`,
+          description: task.description,
+          status: task.status,
+          priority: normalizePriority(task.priority),
+          deadline: task.due_at || task.scheduled_for,
+          createdAt: task.created_at,
+          updatedAt: task.updated_at,
+          estimatedDuration: estimateTaskDuration(task),
+          assignee: task.assigned_to_id,
+          reason: task.pinned_today ? 'Закреплено в плане' : 'Открытая задача',
+          openUrl: '/tasks',
+          raw: task,
+        }));
+      });
+    } else {
+      errors.taskTracker = extractApiError(taskTrackerRes.reason, 'Таск-трекер недоступен');
     }
+
+    if (ownerWorkspaceRes.status === 'fulfilled') {
+      ownerWorkspaceRes.value.items.forEach((task) => {
+        const source: SourceKey = task.contact_id ? 'counterparties' : 'task_tracker';
+        nextTasks.push(withScore({
+          id: `owner_workspace:${task.id}`,
+          source,
+          entityId: String(task.id),
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          priority: normalizePriority(task.priority === 'medium' ? 'normal' : task.priority),
+          deadline: task.deadline_at,
+          createdAt: task.created_at,
+          updatedAt: task.updated_at,
+          estimatedDuration: estimateOwnerTaskDuration(task),
+          assignee: task.assignee_id,
+          reason: task.contact_id ? 'Задача по контрагенту' : 'Задача из таск-трекера',
+          openUrl: task.contact_id ? `/counterparties/${task.contact_id}` : '/owner-workspace',
+          raw: task,
+        }));
+      });
+    } else {
+      errors.ownerWorkspace = extractApiError(ownerWorkspaceRes.reason, 'Контрагенты и task tracker недоступны');
+    }
+
+    if (schoolsRes.status === 'fulfilled') {
+      Object.entries(schoolsRes.value).forEach(([bucket, schools]) => {
+        schools.forEach((school) => {
+          nextTasks.push(withScore({
+            id: `schools:${school.id}`,
+            source: 'schools',
+            entityId: String(school.id),
+            title: school.next_step || `Проверить школу: ${school.name}`,
+            description: `${school.name}${school.city ? ` · ${school.city}` : ''}${school.pipeline_stage ? ` · ${school.pipeline_stage}` : ''}`,
+            status: 'open',
+            priority: b2bPriorityByBucket[bucket] || normalizePriority(school.priority),
+            deadline: school.next_step_date,
+            createdAt: school.created_at,
+            updatedAt: school.updated_at,
+            estimatedDuration: bucket === 'event_done_no_leads' || bucket === 'event_done_no_leads_24_48h' ? 90 : 45,
+            assignee: school.manager_full_name || school.manager_id,
+            reason: b2bReasonLabels[bucket] || 'B2B-риск',
+            openUrl: `/b2b-schools?open=${school.id}`,
+            raw: school,
+          }));
+        });
+      });
+    } else {
+      errors.schools = extractApiError(schoolsRes.reason, 'Работа со школами недоступна');
+    }
+
+    setTasks(mergeByBestScore(nextTasks));
+    setSourceErrors(errors);
+    setLastUpdatedAt(new Date());
+    setLoading(false);
   }, [selectedCity]);
 
   useEffect(() => {
-    loadCities();
+    void loadCities();
   }, [loadCities]);
 
   useEffect(() => {
-    loadPlan();
-  }, [loadPlan]);
+    void loadPlanner();
+    const timer = window.setInterval(() => {
+      void loadPlanner();
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [loadPlanner]);
 
-  const onOpenSchool = (id: number) => {
-    window.open(`/b2b-schools?open=${id}`, '_blank');
-  };
+  const stats = useMemo(() => {
+    const active = tasks.filter((task) => task.status !== 'completed' && task.status !== 'archived' && task.status !== 'cancelled');
+    const must = active.filter((task) => task.bucket === 'must');
+    const week = active.filter((task) => task.dueThisWeek);
+    const totalMinutesToday = must.reduce((sum, task) => sum + task.estimatedDuration, 0);
+    const totalMinutesWeek = week.reduce((sum, task) => sum + task.estimatedDuration, 0);
+    const bySource = active.reduce<Record<SourceKey, number>>((acc, task) => {
+      acc[task.source] = (acc[task.source] || 0) + 1;
+      return acc;
+    }, { task_tracker: 0, counterparties: 0, schools: 0, personal: 0 });
+    return {
+      total: active.length,
+      active: active.length,
+      overdue: active.filter((task) => task.overdue).length,
+      critical: active.filter((task) => task.priority === 'critical' || task.score >= 85).length,
+      recommendedToday: must.length,
+      soonRisk: active.filter((task) => !task.overdue && task.dueThisWeek && task.score >= 60).length,
+      movable: active.filter((task) => task.bucket === 'can_move').length,
+      dayHours: Math.round((totalMinutesToday / 60) * 10) / 10,
+      weekHours: Math.round((totalMinutesWeek / 60) * 10) / 10,
+      dayOverload: Math.max(0, Math.round(((totalMinutesToday - 8 * 60) / 60) * 10) / 10),
+      weekOverload: Math.max(0, Math.round(((totalMinutesWeek - 40 * 60) / 60) * 10) / 10),
+      bySource,
+    };
+  }, [tasks]);
 
-  const handleRescheduleOpen = (school: B2BSchool) => {
-    setRescheduleSchool(school);
-    setRescheduleForm({
-      next_step: school.next_step ?? '',
-      next_step_date: school.next_step_date ? format(parseISO(school.next_step_date), 'yyyy-MM-dd') : '',
-    });
-  };
+  const mustToday = useMemo(() => tasks.filter((task) => task.bucket === 'must').slice(0, 25), [tasks]);
+  const shouldToday = useMemo(() => tasks.filter((task) => task.bucket === 'should').slice(0, 25), [tasks]);
+  const canMove = useMemo(() => tasks.filter((task) => task.bucket === 'can_move').slice(0, 25), [tasks]);
+  const weekPlan = useMemo(() => tasks.filter((task) => task.dueThisWeek && !task.overdue).slice(0, 50), [tasks]);
+  const risks = useMemo(() => tasks.filter((task) => task.overdue || task.score >= 75 || task.riskScore >= 70).slice(0, 50), [tasks]);
 
-  const handleRescheduleSave = async () => {
-    if (!rescheduleSchool) return;
-    setError(null);
+  const handleComplete = async (task: PlannerTask) => {
+    setActionLoadingId(task.id);
     try {
-      await b2bApi.updateSchool(rescheduleSchool.id, {
-        next_step: rescheduleForm.next_step.trim() || null,
-        next_step_date: rescheduleForm.next_step_date.trim() || null,
-      });
-      setRescheduleSchool(null);
-      await loadPlan();
-    } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось перенести'));
+      if (task.source === 'task_tracker' && task.id.startsWith('task_tracker:')) {
+        await tasksApi.completeTask(Number(task.entityId));
+      } else if (task.id.startsWith('owner_workspace:')) {
+        await ownerWorkspaceApi.completeTask(Number(task.entityId));
+      } else if (task.source === 'schools') {
+        await b2bApi.updateSchool(Number(task.entityId), { next_step: null, next_step_date: null });
+      }
+      await loadPlanner();
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
-  const handleClose = async (school: B2BSchool) => {
-    setError(null);
-    setClosingSchoolId(school.id);
+  const handlePinToday = async (task: PlannerTask) => {
+    if (!task.id.startsWith('task_tracker:')) return;
+    setActionLoadingId(task.id);
     try {
-      await b2bApi.updateSchool(school.id, { next_step: null, next_step_date: null });
-      await loadPlan();
-    } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось закрыть'));
+      await tasksApi.pinTaskToday(Number(task.entityId), true);
+      await loadPlanner();
     } finally {
-      setClosingSchoolId(null);
+      setActionLoadingId(null);
     }
   };
 
   return (
     <Layout>
-      <Stack spacing={2}>
-        <Typography variant="h5">План на сегодня</Typography>
-        <FormControl size="small" sx={{ minWidth: 220 }}>
-          <InputLabel>Город / регион</InputLabel>
-          <Select
-            value={selectedCity}
-            label="Город / регион"
-            onChange={(e) => setSelectedCity(e.target.value)}
-          >
-            <MenuItem value="">Все</MenuItem>
-            {cities.map((c) => (
-              <MenuItem key={c} value={c}>
-                {c}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        {error && <Alert severity="error">{error}</Alert>}
-        {loading ? (
-          <Typography color="text.secondary">Загрузка...</Typography>
-        ) : data ? (
-          <Stack spacing={3}>
-            {citySummary.length > 0 && (
-              <Card variant="outlined" sx={{ overflow: 'auto' }}>
+      <Stack spacing={2.5}>
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}>
+          <Box>
+            <Typography variant="h4" fontWeight={800}>
+              Мой фокус
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Единый планировщик задач: таск-трекер, контрагенты, школы и операционные задачи. Рекомендации пересчитываются каждые 5 минут.
+            </Typography>
+          </Box>
+          <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel>Город / регион школ</InputLabel>
+              <Select
+                value={selectedCity}
+                label="Город / регион школ"
+                onChange={(e) => setSelectedCity(e.target.value)}
+              >
+                <MenuItem value="">Все регионы</MenuItem>
+                {cities.map((city) => (
+                  <MenuItem key={city} value={city}>
+                    {city}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button variant="outlined" startIcon={<Refresh />} disabled={loading} onClick={() => void loadPlanner()}>
+              Обновить
+            </Button>
+          </Stack>
+        </Stack>
+
+        {Object.values(sourceErrors).length > 0 && (
+          <Alert severity="warning">
+            Часть источников недоступна: {Object.values(sourceErrors).join('; ')}. План построен по доступным данным.
+          </Alert>
+        )}
+
+        {stats.dayOverload > 0 && (
+          <Alert severity="warning" icon={<WarningAmber />}>
+            Перегрузка на сегодня: {stats.dayHours} ч задач при доступных 8 ч. Рекомендуется перенести {stats.dayOverload} ч из блока «Можно перенести».
+          </Alert>
+        )}
+
+        <Grid container spacing={2}>
+          {[
+            ['Всего задач', stats.total],
+            ['Активных задач', stats.active],
+            ['Просрочено', stats.overdue],
+            ['Критических', stats.critical],
+            ['Рекомендуется сегодня', stats.recommendedToday],
+            ['Можно перенести', stats.movable],
+          ].map(([label, value]) => (
+            <Grid item xs={12} sm={6} md={2} key={label}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
                 <CardContent>
-                  <Typography variant="subtitle1" fontWeight="bold" color="primary" sx={{ mb: 1 }}>
-                    Сводка по городам
+                  <Typography variant="caption" color="text.secondary">
+                    {label}
                   </Typography>
-                  <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', '& th, & td': { px: 1.5, py: 0.5, textAlign: 'left', borderBottom: '1px solid', borderColor: 'divider' } }}>
-                    <thead>
-                      <tr>
-                        <th>Город</th>
-                        <th>В работе</th>
-                        <th>Просрочек</th>
-                        <th>Меропр. на неделе</th>
-                        <th>Лидов за 7 дн</th>
-                        <th>Партнёров</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {citySummary.map((row) => (
-                        <tr key={row.city}>
-                          <td>{row.city}</td>
-                          <td>{row.schools_in_work}</td>
-                          <td>{row.overdue}</td>
-                          <td>{row.events_this_week}</td>
-                          <td>{row.leads_7d}</td>
-                          <td>{row.partners}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Box>
+                  <Typography variant="h4" fontWeight={800}>
+                    {value}
+                  </Typography>
                 </CardContent>
               </Card>
-            )}
-            <Box>
-              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
-                Риски процесса
-              </Typography>
-              <Stack direction="row" flexWrap="wrap" gap={1}>
-                <Chip
-                  label={`Без след. действия: ${data.no_next_step.length}`}
-                  color={data.no_next_step.length > 0 ? 'warning' : 'default'}
-                  onClick={() => document.getElementById('section-no-next')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: data.no_next_step.length > 0 ? 'pointer' : 'default' }}
+            </Grid>
+          ))}
+        </Grid>
+
+        <Card variant="outlined">
+          <CardContent>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}>
+              <Box>
+                <Typography variant="h6">Прогноз нагрузки</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Сегодня: {stats.dayHours} ч из 8 ч · Неделя: {stats.weekHours} ч из 40 ч
+                </Typography>
+              </Box>
+              <Stack direction="row" gap={1} flexWrap="wrap">
+                {Object.entries(stats.bySource).map(([source, count]) => (
+                  <Chip key={source} color={SOURCE_COLORS[source as SourceKey]} label={`${SOURCE_LABELS[source as SourceKey]}: ${count}`} />
+                ))}
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
+
+        <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto">
+          <Tab value="focus" label="Фокус" />
+          <Tab value="day" label="План на день" />
+          <Tab value="week" label="План на неделю" />
+          <Tab value="risks" label="Риски" />
+          <Tab value="all" label="Все задачи" />
+        </Tabs>
+
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <>
+            {tab === 'focus' && (
+              <Stack spacing={2}>
+                <TaskSection
+                  title="Обязательно выполнить сегодня"
+                  caption="Критические и просроченные задачи, а также задачи с высоким рейтингом риска."
+                  tasks={mustToday}
+                  onComplete={handleComplete}
+                  onPinToday={handlePinToday}
+                  actionLoadingId={actionLoadingId}
                 />
-                <Chip
-                  label={`Просрочено: ${data.overdue.length}`}
-                  color={data.overdue.length > 0 ? 'error' : 'default'}
-                  onClick={() => document.getElementById('section-overdue')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: data.overdue.length > 0 ? 'pointer' : 'default' }}
+                <TaskSection
+                  title="Желательно выполнить"
+                  caption="Средний приоритет: выполнить после критичных задач, если хватает времени."
+                  tasks={shouldToday}
+                  onComplete={handleComplete}
+                  onPinToday={handlePinToday}
+                  actionLoadingId={actionLoadingId}
                 />
-                <Chip
-                  label={`Найти контакты >3 дн: ${data.find_contacts_stale.length}`}
-                  color={data.find_contacts_stale.length > 0 ? 'warning' : 'default'}
-                  onClick={() => document.getElementById('section-find-contacts')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: data.find_contacts_stale.length > 0 ? 'pointer' : 'default' }}
-                />
-                <Chip
-                  label={`Без контактов 48ч: ${data.find_contacts_no_contacts_48h?.length ?? 0}`}
-                  color={data.find_contacts_no_contacts_48h?.length ? 'error' : 'default'}
-                  onClick={() => document.getElementById('section-no-contacts-48h')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: data.find_contacts_no_contacts_48h?.length ? 'pointer' : 'default' }}
-                />
-                <Chip
-                  label={`Сегодня: ${data.today.length}`}
-                  color="primary"
-                  variant={data.today.length > 0 ? 'filled' : 'outlined'}
-                  onClick={() => document.getElementById('section-today')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: 'pointer' }}
-                />
-                <Chip
-                  label={`Завтра: ${data.tomorrow.length}`}
-                  color="primary"
-                  variant={data.tomorrow.length > 0 ? 'filled' : 'outlined'}
-                  onClick={() => document.getElementById('section-tomorrow')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: 'pointer' }}
-                />
-                <Chip
-                  label={`На неделе: ${data.week.length}`}
-                  color="primary"
-                  variant={data.week.length > 0 ? 'filled' : 'outlined'}
-                  onClick={() => document.getElementById('section-week')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: 'pointer' }}
-                />
-                <Chip
-                  label={`Без контактов: ${data.no_contacts?.length ?? 0}`}
-                  color={data.no_contacts?.length ? 'warning' : 'default'}
-                  onClick={() => document.getElementById('section-no-contacts')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: (data.no_contacts?.length ?? 0) > 0 ? 'pointer' : 'default' }}
-                />
-                <Chip
-                  label={`Нет касаний 7 дн: ${data.no_touches_7d?.length ?? 0}`}
-                  color={data.no_touches_7d?.length ? 'warning' : 'default'}
-                  onClick={() => document.getElementById('section-no-touches')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: (data.no_touches_7d?.length ?? 0) > 0 ? 'pointer' : 'default' }}
-                />
-                <Chip
-                  label={`Проведено без лидов: ${data.event_done_no_leads?.length ?? 0}`}
-                  color={data.event_done_no_leads?.length ? 'error' : 'default'}
-                  onClick={() => document.getElementById('section-event-no-leads')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: (data.event_done_no_leads?.length ?? 0) > 0 ? 'pointer' : 'default' }}
-                />
-                <Chip
-                  label={`Проведено без лидов 24–48ч: ${data.event_done_no_leads_24_48h?.length ?? 0}`}
-                  color={data.event_done_no_leads_24_48h?.length ? 'error' : 'default'}
-                  onClick={() => document.getElementById('section-event-no-leads-24-48h')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: data.event_done_no_leads_24_48h?.length ? 'pointer' : 'default' }}
-                />
-                <Chip
-                  label={`Переговоры 14+ дн: ${data.negotiations_14d?.length ?? 0}`}
-                  color={data.negotiations_14d?.length ? 'warning' : 'default'}
-                  onClick={() => document.getElementById('section-negotiations-14')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ cursor: (data.negotiations_14d?.length ?? 0) > 0 ? 'pointer' : 'default' }}
+                <TaskSection
+                  title="Можно перенести"
+                  caption="Задачи без явного риска просрочки. Используйте этот блок при перегрузке дня."
+                  tasks={canMove}
+                  onComplete={handleComplete}
+                  onPinToday={handlePinToday}
+                  actionLoadingId={actionLoadingId}
                 />
               </Stack>
-            </Box>
-            <Section id="section-overdue" title="Просроченные следующие действия" schools={data.overdue} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-no-next" title="Школы без следующего шага" schools={data.no_next_step} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-find-contacts" title="Школы в статусе «Найти контакты» больше 3 дней" schools={data.find_contacts_stale} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-no-contacts-48h" title="Без контактов 48ч (find_contacts)" schools={data.find_contacts_no_contacts_48h ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-today" title="Сегодня: дожим / перезвонить" schools={data.today} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-tomorrow" title="Завтра" schools={data.tomorrow} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-week" title="На неделе" schools={data.week} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-no-contacts" title="Школы без контактов" schools={data.no_contacts ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-no-touches" title="Нет касаний 7 дней (переговоры/подготовка)" schools={data.no_touches_7d ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-event-no-leads" title="Мероприятие проведено, лидов нет" schools={data.event_done_no_leads ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-event-no-leads-24-48h" title="Проведено без лидов 24–48ч" schools={data.event_done_no_leads_24_48h ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-            <Section id="section-negotiations-14" title="Переговоры 14+ дней (ревью)" schools={data.negotiations_14d ?? []} onOpenSchool={onOpenSchool} onReschedule={handleRescheduleOpen} onClose={handleClose} closingSchoolId={closingSchoolId} />
-          </Stack>
-        ) : null}
+            )}
 
-      <Dialog open={!!rescheduleSchool} onClose={() => setRescheduleSchool(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Перенести</DialogTitle>
-        <DialogContent>
-          {rescheduleSchool && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Typography variant="body2" color="text.secondary">{rescheduleSchool.name}</Typography>
-              <TextField
-                label="Следующее действие"
-                value={rescheduleForm.next_step}
-                onChange={(e) => setRescheduleForm((f) => ({ ...f, next_step: e.target.value }))}
-                fullWidth
-                size="small"
+            {tab === 'day' && (
+              <TaskSection
+                title="План на день"
+                caption="Задачи, которые система рекомендует держать в сегодняшнем фокусе."
+                tasks={[...mustToday, ...shouldToday].slice(0, 50)}
+                onComplete={handleComplete}
+                onPinToday={handlePinToday}
+                actionLoadingId={actionLoadingId}
               />
-              <TextField
-                label="Дата"
-                type="date"
-                value={rescheduleForm.next_step_date}
-                onChange={(e) => setRescheduleForm((f) => ({ ...f, next_step_date: e.target.value }))}
-                fullWidth
-                size="small"
-                InputLabelProps={{ shrink: true }}
+            )}
+
+            {tab === 'week' && (
+              <TaskSection
+                title="План на неделю"
+                caption="Задачи со сроком в ближайшие 7 дней, отсортированы по рейтингу."
+                tasks={weekPlan}
+                onComplete={handleComplete}
+                onPinToday={handlePinToday}
+                actionLoadingId={actionLoadingId}
               />
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRescheduleSchool(null)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void handleRescheduleSave()}>Сохранить</Button>
-        </DialogActions>
-      </Dialog>
+            )}
+
+            {tab === 'risks' && (
+              <TaskSection
+                title="Риски"
+                caption="Скоро просрочатся, уже просрочены, либо имеют высокий риск по score."
+                tasks={risks}
+                onComplete={handleComplete}
+                onPinToday={handlePinToday}
+                actionLoadingId={actionLoadingId}
+              />
+            )}
+
+            {tab === 'all' && (
+              <TaskSection
+                title="Единый реестр задач"
+                caption="Дедуплицированный список задач из всех доступных источников."
+                tasks={tasks}
+                onComplete={handleComplete}
+                onPinToday={handlePinToday}
+                actionLoadingId={actionLoadingId}
+              />
+            )}
+          </>
+        )}
+
+        <Typography variant="caption" color="text.secondary">
+          {lastUpdatedAt ? `Последнее обновление: ${lastUpdatedAt.toLocaleTimeString('ru-RU')}` : 'Данные ещё не загружены'}
+        </Typography>
       </Stack>
     </Layout>
   );

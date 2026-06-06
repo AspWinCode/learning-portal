@@ -13,7 +13,6 @@ COUNTERPARTY_DOCUMENT_CATEGORIES = [
     ("act", "Акт"),
     ("invoice", "Счет"),
     ("template", "Шаблон"),
-    ("financial_model", "Финансовая модель"),
     ("tz", "ТЗ"),
     ("business_plan", "Бизнес-план"),
 ]
@@ -66,4 +65,3 @@ def create_default_counterparty_tasks(
             db.add(task)
             created.append(task)
     return created
-

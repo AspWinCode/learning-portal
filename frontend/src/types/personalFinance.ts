@@ -49,5 +49,5 @@ export interface RecognitionRule {
 export const STORAGE_ARTICLES = 'personal_finance_articles';
 export const STORAGE_OPERATIONS = 'personal_finance_operations';
 export const STORAGE_RECOGNITION = 'personal_finance_recognition';
-/** Операции, перенесённые на счёт академии (страница «Финансовая модель») */
-export const STORAGE_ACADEMY_OPERATIONS = 'financial_model_academy_operations';
+/** Операции, перенесённые на счёт академии */
+export const STORAGE_ACADEMY_OPERATIONS = 'academy_operations';

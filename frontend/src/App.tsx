@@ -24,7 +24,6 @@ const GuestProgramsPage = React.lazy(() => import('./pages/GuestProgramsPage'));
 const GradesPage = React.lazy(() => import('./pages/GradesPage'));
 const CharacteristicsPage = React.lazy(() => import('./pages/CharacteristicsPage'));
 const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
-const FinancialModelPage = React.lazy(() => import('./pages/FinancialModelPage'));
 const AbonementsPage = React.lazy(() => import('./pages/AbonementsPage'));
 const TrainersPage = React.lazy(() => import('./pages/TrainersPage'));
 const CalculationsPage = React.lazy(() => import('./pages/CalculationsPage'));
@@ -397,14 +396,6 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="reports.access">
                   <ReportsPage />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/financial-model"
-              element={
-                <PrivateRoute requiredPermission="abonements.access">
-                  <FinancialModelPage />
                 </PrivateRoute>
               }
             />

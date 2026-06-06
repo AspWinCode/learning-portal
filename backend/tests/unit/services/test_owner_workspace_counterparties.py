@@ -21,7 +21,6 @@ def test_counterparty_document_categories_cover_expected_keys():
         "act",
         "invoice",
         "template",
-        "financial_model",
         "tz",
         "business_plan",
     } == COUNTERPARTY_DOCUMENT_CATEGORY_SET
@@ -40,7 +39,7 @@ def test_create_default_counterparty_tasks_creates_blueprint_for_each_project():
 
     assert len(created) == 18
     assert len(db.tasks) == 18
-    assert all(task.contact_id == 42 for task in created)
+    assert all(task.counterparty_id == 42 for task in created)
     assert {task.project_id for task in created} == {10, 11}
     assert all(task.deadline_at is not None for task in created)
     assert all("counterparty" in (task.tags or []) for task in created)
@@ -59,4 +58,3 @@ def test_create_default_counterparty_tasks_without_projects_creates_owner_level_
 
     assert len(created) == 9
     assert {task.project_id for task in created} == {None}
-

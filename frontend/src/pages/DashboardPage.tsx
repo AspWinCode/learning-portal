@@ -20,7 +20,6 @@ import { ownerDashboardApi } from '../services/api';
 import { hasPermission, getEffectiveRole } from '../utils/permissions';
 import { extractApiError } from '../utils/extractApiError';
 import { ReportsPageContent } from './ReportsPage';
-import { FinancialModelContent } from './FinancialModelPage';
 import OperationalReportsTab from './OperationalReportsTab';
 
 const MetricCard: React.FC<{
@@ -70,7 +69,7 @@ const TrendPanel: React.FC<{
 
 const DashboardOwnerTabs: React.FC = () => {
   const { user } = useAuth();
-  const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'financialModel' | 'operational'>('overview');
+  const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'operational'>('overview');
   const canAccessOwnerMetrics = hasPermission(user, 'owner_dashboard.access');
 
   const summaryQuery = useQuery({
@@ -84,7 +83,6 @@ const DashboardOwnerTabs: React.FC = () => {
       <Tabs value={tab} onChange={(_, nextTab) => setTab(nextTab)} sx={{ mb: 2 }}>
         <Tab value="overview" label="Главная" />
         <Tab value="characteristics" label="Характеристики" />
-        <Tab value="financialModel" label="Финансовая модель" />
         <Tab value="operational" label="Операционные отчёты" />
       </Tabs>
 
@@ -225,12 +223,6 @@ const DashboardOwnerTabs: React.FC = () => {
       {tab === 'characteristics' && (
         <Box sx={{ mt: 1 }}>
           <ReportsPageContent />
-        </Box>
-      )}
-
-      {tab === 'financialModel' && (
-        <Box sx={{ mt: 1 }}>
-          <FinancialModelContent />
         </Box>
       )}
 

@@ -2623,7 +2623,7 @@ async def update_task(
         action_type="update",
         author_id=ctx.user.id,
         old_value=old,
-        new_value=data,
+        new_value=payload.model_dump(exclude_unset=True, mode="json"),
     )
     if "assignee_id" in data and row.assignee_id != old.get("assignee_id"):
         notify_task_assigned(db, row, row.assignee_id, ctx.user.id)

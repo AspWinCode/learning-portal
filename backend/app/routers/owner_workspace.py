@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import String, and_, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
@@ -280,8 +281,8 @@ def _log_audit(
             entity_type=entity_type,
             entity_id=entity_id,
             action_type=action_type,
-            old_value=old_value,
-            new_value=new_value,
+            old_value=jsonable_encoder(old_value) if old_value is not None else None,
+            new_value=jsonable_encoder(new_value) if new_value is not None else None,
             author_id=author_id,
         )
     )

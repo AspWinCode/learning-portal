@@ -357,8 +357,7 @@ function App() {
             />
             <Route path="/sales/instructions" element={<RedirectWithSearch to="/operations/instructions" />} />
             <Route path="/sales/absences" element={<RedirectWithSearch to="/operations/absences" />} />
-            <Route path="/sales/student-cards" element={<Navigate to="/students?tab=ankety" replace />} />
-            <Route path="/sales/ankety" element={<Navigate to="/students?tab=ankety" replace />} />
+            <Route path="/sales/student-cards" element={<Navigate to="/admin/settings?tab=questionnaires" replace />} />
             <Route
               path="/finance/payments"
               element={

@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -92,12 +91,10 @@ interface StudentDetailPopupProps {
   open: boolean;
   onClose: () => void;
   studentId: number | null;
-  onOpenAnketa?: (cardId: number) => void;
 }
 
-const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, studentId, onOpenAnketa }) => {
+const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, studentId }) => {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [student, setStudent] = useState<Student | null>(null);
   const [studentCard, setStudentCard] = useState<StudentCard | null>(null);
   const [attendances, setAttendances] = useState<Array<{ lesson_date: string; group_name: string; attended: boolean }>>([]);
@@ -378,20 +375,6 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   <Typography variant="body2"><strong>Формат:</strong> {studentCard.format_type === 'group' ? 'Группа' : studentCard.format_type === 'individual' ? 'Индивидуальное' : '—'}</Typography>
                 </Box>
                 {studentCard.comment && <Typography variant="body2" sx={{ mb: 1 }}><strong>Комментарий:</strong> {studentCard.comment}</Typography>}
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => {
-                    if (onOpenAnketa) {
-                      onOpenAnketa(studentCard.id);
-                      onClose();
-                    } else {
-                      navigate(`/students?tab=ankety&cardId=${studentCard.id}`);
-                    }
-                  }}
-                >
-                  Открыть анкету
-                </Button>
               </Paper>
             )}
 

@@ -254,11 +254,6 @@ export const PersonRegistryContent: React.FC<PersonRegistryContentProps> = ({ pe
                       Открыть лид
                     </Button>
                   ) : null}
-                  {record.entity_type === 'student_card' ? (
-                    <Button size="small" onClick={() => navigate(`/students?tab=ankety&cardId=${record.entity_id}`)}>
-                      Открыть анкету
-                    </Button>
-                  ) : null}
                   {record.entity_type === 'user' ? (
                     <Button size="small" onClick={() => navigate(`/users/${record.entity_id}`)}>
                       Открыть пользователя
@@ -516,9 +511,6 @@ export const PersonRegistryContent: React.FC<PersonRegistryContentProps> = ({ pe
                                         Person
                                       </Button>
                                     ) : null}
-                                    <Button size="small" onClick={() => navigate(`/students?tab=ankety&cardId=${item.id}`)}>
-                                      Открыть
-                                    </Button>
                                     <Button
                                       size="small"
                                       onClick={() => void handleAttachRecord('student_card', item.id)}

@@ -338,7 +338,7 @@ const StudentCardsPage: React.FC = () => {
         )}
 
         <Alert severity="info" sx={{ mb: 2 }}>
-          Заявки и ввод данных: раздел «Анкеты». Создание ученика: Ученики → Добавить ученика (откроется форма анкеты). Здесь — все карточки, привязка к ученику и открытие кабинета родителя.
+          Здесь — все карточки учеников, привязка к ученику и открытие кабинета родителя.
         </Alert>
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }} flexWrap="wrap">
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
@@ -346,9 +346,6 @@ const StudentCardsPage: React.FC = () => {
             <Tab label="В архиве" value="archived" />
             <Tab label="Все" value="all" />
           </Tabs>
-          <Button variant="outlined" onClick={() => navigate('/sales/ankety')}>
-            Анкеты
-          </Button>
           <Button variant="contained" onClick={openCreate}>
             Новая карточка
           </Button>
@@ -414,7 +411,6 @@ const StudentCardsPage: React.FC = () => {
                   </TableCell>
                   {isOwner && <TableCell>{card.abonement?.name ?? '—'}</TableCell>}
                   <TableCell align="right">
-                    <Button size="small" onClick={() => navigate(`/sales/ankety?cardId=${card.id}`)}>Анкета</Button>
                     <Button size="small" onClick={() => openEdit(card)}>Редактировать</Button>
                     {card.student_id && (
                       <Button size="small" variant="outlined" onClick={() => navigate(`/students?detail=${card.student_id}`)}>

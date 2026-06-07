@@ -201,7 +201,8 @@ services:
       - -c
     command:
       - |
-        sed "s|\$${SLACK_WEBHOOK_URL}|\$${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/YOUR/WEBHOOK/URL}|g" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
+        WEBHOOK_URL="$${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/YOUR/WEBHOOK/URL}"
+        sed "s|\$${SLACK_WEBHOOK_URL}|$${WEBHOOK_URL}|g" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
         exec /bin/alertmanager --config.file=/tmp/alertmanager.yml
     volumes:
       - ./deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro

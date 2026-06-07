@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from app.database import get_db
 from app import auth
-from app.models import AppSetting, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, User
+from app.models import AppSetting, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, User, UserRole
 from app.schemas.settings import (
     B2BDistrictsResponse,
     B2BDistrictsUpdate,
@@ -44,6 +44,11 @@ from app.schemas.settings import (
     OwnerWorkspaceTaskConfigUpdate,
     ParentWeeklyDigestSettingsResponse,
     ParentWeeklyDigestSettingsUpdate,
+    PwaModuleResponse,
+    PwaMySettingsResponse,
+    PwaMySettingsUpdate,
+    PwaRoleSettingsResponse,
+    PwaRoleSettingsUpdate,
     RefusedReasonsResponse,
     RefusedReasonsUpdate,
 )
@@ -85,8 +90,126 @@ OWNER_WS_CONTACT_SOURCES_KEY = "owner_workspace_contact_source_dictionary"
 OWNER_WS_COUNTERPARTY_ROLES_KEY = "owner_workspace_counterparty_role_dictionary"
 OWNER_WS_COUNTERPARTY_INDUSTRIES_KEY = "owner_workspace_counterparty_industry_dictionary"
 PARENT_WEEKLY_DIGEST_SETTINGS_KEY = "parent_weekly_digest_settings"
+PWA_SETTINGS_KEY = "pwa_role_module_settings"
 OWNER_WS_SETTINGS_BUNDLE_VERSION = 1
 OWNER_WS_SETTINGS_SNAPSHOTS_KEY = "owner_workspace_settings_snapshots"
+
+PWA_MODULES = [
+    {
+        "key": "dashboard",
+        "label": "Главная",
+        "description": "Краткий обзор портала.",
+        "route": "/dashboard",
+        "required_permission": None,
+        "default_roles": ["admin", "owner"],
+    },
+    {
+        "key": "parent_dashboard",
+        "label": "Кабинет родителя",
+        "description": "Прогресс, уведомления и вопросы родителя.",
+        "route": "/parent-dashboard",
+        "required_permission": "parent_dashboard.access",
+        "default_roles": ["parent"],
+    },
+    {
+        "key": "trainer_cockpit",
+        "label": "Кокпит тренера",
+        "description": "Быстрые действия тренера и ученики.",
+        "route": "/trainer-cockpit",
+        "required_permission": "trainer_cockpit.access",
+        "default_roles": ["trainer"],
+    },
+    {
+        "key": "contacts",
+        "label": "Контакты",
+        "description": "Контакты и контрагенты owner workspace.",
+        "route": "/owner-workspace/contacts",
+        "required_permission": "owner_workspace.access",
+        "default_roles": ["owner", "admin"],
+    },
+    {
+        "key": "tasks",
+        "label": "Задачи",
+        "description": "Список задач и быстрый переход к работе.",
+        "route": "/tasks",
+        "required_permission": "tasks.access",
+        "default_roles": ["admin", "owner", "trainer", "sales"],
+    },
+    {
+        "key": "owner_workspace",
+        "label": "Таск трекер",
+        "description": "Проекты, задачи и коммуникации owner workspace.",
+        "route": "/owner-workspace/projects",
+        "required_permission": "owner_workspace.access",
+        "default_roles": ["admin", "owner", "sales"],
+    },
+    {
+        "key": "students",
+        "label": "Ученики",
+        "description": "Ученики и карточки обучения.",
+        "route": "/students",
+        "required_permission": "students.access",
+        "default_roles": ["admin", "owner", "sales"],
+    },
+    {
+        "key": "lessons",
+        "label": "Уроки",
+        "description": "Расписание и уроки.",
+        "route": "/lessons",
+        "required_permission": "lessons.access",
+        "default_roles": ["admin", "owner", "trainer", "sales"],
+    },
+    {
+        "key": "grades",
+        "label": "Оценки",
+        "description": "Оценки и прогресс.",
+        "route": "/grades",
+        "required_permission": "grades.access",
+        "default_roles": ["parent", "trainer", "admin", "owner"],
+    },
+    {
+        "key": "leads",
+        "label": "Лиды",
+        "description": "Лиды, звонки и следующие действия.",
+        "route": "/sales/leads",
+        "required_permission": "sales.access",
+        "default_roles": ["sales", "admin", "owner"],
+    },
+    {
+        "key": "sales_events",
+        "label": "События",
+        "description": "Мероприятия и записи.",
+        "route": "/sales/events",
+        "required_permission": "sales.access",
+        "default_roles": ["sales", "admin", "owner"],
+    },
+    {
+        "key": "payments",
+        "label": "Оплаты",
+        "description": "Платежи и долги.",
+        "route": "/finance/payments",
+        "required_permission": "sales.access",
+        "default_roles": ["sales", "admin", "owner"],
+    },
+    {
+        "key": "programs",
+        "label": "Программы",
+        "description": "Программы обучения.",
+        "route": "/programs",
+        "required_permission": "programs.access",
+        "default_roles": ["parent", "guest", "admin", "owner"],
+    },
+    {
+        "key": "reports",
+        "label": "Отчеты",
+        "description": "Отчеты и аналитика.",
+        "route": "/reports",
+        "required_permission": "reports.access",
+        "default_roles": ["admin"],
+    },
+]
+PWA_MODULE_KEYS = {item["key"] for item in PWA_MODULES}
+PWA_ROLE_KEYS = [role.value for role in UserRole]
 
 DEFAULT_OWNER_WS_TASK_CONFIG = {
     "statuses": [
@@ -166,6 +289,81 @@ def _set_json_setting(db: Session, key: str, value) -> None:
     else:
         setting.value = raw
         db.add(setting)
+
+
+def _default_pwa_role_modules() -> Dict[str, List[str]]:
+    role_modules: Dict[str, List[str]] = {role: [] for role in PWA_ROLE_KEYS}
+    for module in PWA_MODULES:
+        for role in module.get("default_roles", []):
+            if role in role_modules:
+                role_modules[role].append(module["key"])
+    return role_modules
+
+
+def _normalize_pwa_module_keys(keys: List[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for raw in keys or []:
+        key = str(raw or "").strip()
+        if key in PWA_MODULE_KEYS and key not in seen:
+            out.append(key)
+            seen.add(key)
+    return out
+
+
+def _normalize_pwa_settings(raw: Optional[dict]) -> dict:
+    defaults = _default_pwa_role_modules()
+    if not isinstance(raw, dict):
+        raw = {}
+    role_modules = defaults
+    raw_role_modules = raw.get("role_modules")
+    if isinstance(raw_role_modules, dict):
+        for role in PWA_ROLE_KEYS:
+            if role in raw_role_modules:
+                role_modules[role] = _normalize_pwa_module_keys(raw_role_modules.get(role) or [])
+    owner_user_modules: Dict[str, List[str]] = {}
+    raw_owner_user_modules = raw.get("owner_user_modules")
+    if isinstance(raw_owner_user_modules, dict):
+        for raw_user_id, raw_keys in raw_owner_user_modules.items():
+            user_id = str(raw_user_id or "").strip()
+            if user_id:
+                owner_user_modules[user_id] = _normalize_pwa_module_keys(raw_keys or [])
+    return {"role_modules": role_modules, "owner_user_modules": owner_user_modules}
+
+
+def _get_pwa_settings(db: Session) -> dict:
+    return _normalize_pwa_settings(_get_json_setting(db, PWA_SETTINGS_KEY))
+
+
+def _pwa_module_response(module: dict) -> PwaModuleResponse:
+    return PwaModuleResponse(
+        key=module["key"],
+        label=module["label"],
+        description=module["description"],
+        route=module["route"],
+        required_permission=module.get("required_permission"),
+    )
+
+
+def _module_available_for_user(user: User, module: dict) -> bool:
+    permission = module.get("required_permission")
+    return not permission or auth.has_permission(user, permission)
+
+
+def _effective_pwa_module_keys(db: Session, user: User) -> List[str]:
+    settings = _get_pwa_settings(db)
+    effective_role = auth.resolve_effective_role(user).value
+    role_keys = settings["role_modules"].get(effective_role, [])
+    if effective_role == UserRole.OWNER.value:
+        owner_keys = settings["owner_user_modules"].get(str(user.id))
+        if owner_keys is not None:
+            role_keys = owner_keys
+    modules_by_key = {module["key"]: module for module in PWA_MODULES}
+    return [
+        key
+        for key in _normalize_pwa_module_keys(role_keys)
+        if key in modules_by_key and _module_available_for_user(user, modules_by_key[key])
+    ]
 
 
 def _missing_email_env() -> List[str]:
@@ -582,6 +780,81 @@ async def set_logo(
     db.commit()
     db.refresh(setting)
     return {"data_url": setting.value}
+
+
+@router.get("/pwa/modules", response_model=PwaRoleSettingsResponse)
+async def get_pwa_role_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.access")),
+):
+    settings = _get_pwa_settings(db)
+    return PwaRoleSettingsResponse(
+        modules=[_pwa_module_response(module) for module in PWA_MODULES],
+        role_modules=settings["role_modules"],
+        owner_user_modules=settings["owner_user_modules"],
+    )
+
+
+@router.post("/pwa/modules", response_model=PwaRoleSettingsResponse)
+async def set_pwa_role_settings(
+    body: PwaRoleSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    current = _get_pwa_settings(db)
+    next_settings = {
+        "role_modules": _normalize_pwa_settings({"role_modules": body.role_modules})["role_modules"],
+        "owner_user_modules": current["owner_user_modules"],
+    }
+    _set_json_setting(db, PWA_SETTINGS_KEY, next_settings)
+    db.commit()
+    return PwaRoleSettingsResponse(
+        modules=[_pwa_module_response(module) for module in PWA_MODULES],
+        role_modules=next_settings["role_modules"],
+        owner_user_modules=next_settings["owner_user_modules"],
+    )
+
+
+@router.get("/pwa/my", response_model=PwaMySettingsResponse)
+async def get_my_pwa_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    available_modules = [
+        module for module in PWA_MODULES if _module_available_for_user(current_user, module)
+    ]
+    return PwaMySettingsResponse(
+        modules=[_pwa_module_response(module) for module in available_modules],
+        enabled_modules=_effective_pwa_module_keys(db, current_user),
+        available_module_keys=[module["key"] for module in available_modules],
+    )
+
+
+@router.post("/pwa/my", response_model=PwaMySettingsResponse)
+async def set_my_pwa_settings(
+    body: PwaMySettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    effective_role = auth.resolve_effective_role(current_user)
+    if effective_role != UserRole.OWNER:
+        raise HTTPException(status_code=403, detail="Only owner can customize own PWA modules")
+    available_keys = {
+        module["key"] for module in PWA_MODULES if _module_available_for_user(current_user, module)
+    }
+    enabled_modules = [key for key in _normalize_pwa_module_keys(body.enabled_modules) if key in available_keys]
+    settings = _get_pwa_settings(db)
+    settings["owner_user_modules"][str(current_user.id)] = enabled_modules
+    _set_json_setting(db, PWA_SETTINGS_KEY, settings)
+    db.commit()
+    available_modules = [
+        module for module in PWA_MODULES if _module_available_for_user(current_user, module)
+    ]
+    return PwaMySettingsResponse(
+        modules=[_pwa_module_response(module) for module in available_modules],
+        enabled_modules=enabled_modules,
+        available_module_keys=[module["key"] for module in available_modules],
+    )
 
 
 @router.get("/b2b-districts", response_model=B2BDistrictsResponse)

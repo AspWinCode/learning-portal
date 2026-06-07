@@ -15,6 +15,7 @@ import { getEffectiveRole } from './utils/permissions';
 
 const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const SetPasswordPage = React.lazy(() => import('./pages/SetPasswordPage'));
+const MobileHomePage = React.lazy(() => import('./pages/MobileHomePage'));
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const StudentsPage = React.lazy(() => import('./pages/StudentsPage'));
 const GroupsPage = React.lazy(() => import('./pages/GroupsPage'));
@@ -118,6 +119,14 @@ function App() {
                 <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/set-password" element={<SetPasswordPage />} />
+            <Route
+              path="/mobile"
+              element={
+                <PrivateRoute>
+                  <MobileHomePage />
+                </PrivateRoute>
+              }
+            />
             <Route path="/anketa/specialist" element={<SpecialistQuestionnairePage />} />
             <Route
               path="/anketa/tilda_lead"

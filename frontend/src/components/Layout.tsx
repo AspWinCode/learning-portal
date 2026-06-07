@@ -146,6 +146,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const isPwaNavigation = new URLSearchParams(location.search).get('pwa') === '1';
+  const [pwaAllowedRoutes, setPwaAllowedRoutes] = React.useState<Set<string> | null>(null);
 
   React.useEffect(() => {
     (async () => {
@@ -169,6 +171,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       }
     })();
   }, [user]);
+
+  React.useEffect(() => {
+    if (!isPwaNavigation) {
+      setPwaAllowedRoutes(null);
+      return;
+    }
+    let mounted = true;
+    settingsApi
+      .getMyPwaSettings()
+      .then((data) => {
+        if (!mounted) return;
+        const enabled = new Set(data.enabled_modules);
+        setPwaAllowedRoutes(new Set(data.modules.filter((module) => enabled.has(module.key)).map((module) => module.route)));
+      })
+      .catch(() => {
+        if (mounted) setPwaAllowedRoutes(new Set());
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [isPwaNavigation]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -369,9 +392,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   if (canAccessUsers && !permissionExpandedMenuItems.some((item) => item.path === '/trainers')) {
     permissionExpandedMenuItems.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
   }
-  const visibleMenuItems = canAccessOwnerWorkspace
+  const baseVisibleMenuItems = canAccessOwnerWorkspace
     ? permissionExpandedMenuItems
     : permissionExpandedMenuItems.filter((item) => !item.path.startsWith('/owner-workspace') && item.path !== '/disk');
+  const visibleMenuItems = isPwaNavigation
+    ? baseVisibleMenuItems.filter((item) => pwaAllowedRoutes?.has(item.path))
+    : baseVisibleMenuItems;
 
   /** Подсветка «Таск трекер» для любого `/owner-workspace/*`, кроме отдельных пунктов уведомлений и контрагентов. */
   const isOwnerWorkspaceMainSection = (pathname: string) =>
@@ -418,7 +444,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           onClick={(event) => {
             const scrollNode = event.currentTarget.closest('[data-sidebar-scroll]') as HTMLElement | null;
             saveSidebarScroll(scrollNode);
-            navigate(item.path);
+            navigate(isPwaNavigation ? `${item.path}?pwa=1` : item.path);
             setMobileOpen(false);
           }}
           sx={{

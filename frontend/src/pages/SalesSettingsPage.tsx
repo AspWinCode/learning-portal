@@ -25,6 +25,7 @@ import { Add as AddIcon } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
+import PwaSettingsSection from '../components/PwaSettingsSection';
 import { useAuth } from '../contexts/AuthContext';
 import { PersonRegistryContent } from './PersonRegistryPage';
 import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi } from '../services/api';
@@ -342,6 +343,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="leads" label="Лиды" />
           <Tab value="tasks" label="Задачи" />
           <Tab value="ownerWorkspace" label="Таск трекер" />
+          <Tab value="pwa" label="PWA" />
           {canAccessPersons ? <Tab value="persons" label="Реестр Person" /> : null}
           <Tab value="templates" label="Шаблоны" />
           <Tab value="integrations" label="Интеграции" />
@@ -397,6 +399,10 @@ const SalesSettingsPage: React.FC = () => {
             <PersonRegistryContent personPathBase="/admin/settings?tab=persons" />
           </Paper>
         ) : null}
+
+        <Paper sx={sectionPaperSx('pwa')}>
+          <PwaSettingsSection />
+        </Paper>
 
         <Paper sx={sectionPaperSx('leads')}>
           <Typography variant="h6" mb={1}>Причины отказа (этап «Отказали»)</Typography>

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from app.schemas.parent_dashboard import (
     ParentWeeklyDigestSettingsResponse,
@@ -30,6 +30,34 @@ class RefusedReasonsResponse(BaseModel):
 
 class RefusedReasonsUpdate(BaseModel):
     items: List[str]
+
+
+class PwaModuleResponse(BaseModel):
+    key: str
+    label: str
+    description: str
+    route: str
+    required_permission: Optional[str] = None
+
+
+class PwaRoleSettingsResponse(BaseModel):
+    modules: List[PwaModuleResponse]
+    role_modules: Dict[str, List[str]]
+    owner_user_modules: Dict[str, List[str]]
+
+
+class PwaRoleSettingsUpdate(BaseModel):
+    role_modules: Dict[str, List[str]] = Field(default_factory=dict)
+
+
+class PwaMySettingsResponse(BaseModel):
+    modules: List[PwaModuleResponse]
+    enabled_modules: List[str]
+    available_module_keys: List[str]
+
+
+class PwaMySettingsUpdate(BaseModel):
+    enabled_modules: List[str] = Field(default_factory=list)
 
 
 class OwnerWorkspaceTaskConfigItem(BaseModel):

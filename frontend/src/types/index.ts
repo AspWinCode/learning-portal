@@ -60,6 +60,28 @@ export interface PermissionCatalogItem {
   description: string;
 }
 
+export type PwaRoleKey = 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales';
+
+export interface PwaModule {
+  key: string;
+  label: string;
+  description: string;
+  route: string;
+  required_permission?: string | null;
+}
+
+export interface PwaRoleSettings {
+  modules: PwaModule[];
+  role_modules: Record<PwaRoleKey, string[]>;
+  owner_user_modules: Record<string, string[]>;
+}
+
+export interface PwaMySettings {
+  modules: PwaModule[];
+  enabled_modules: string[];
+  available_module_keys: string[];
+}
+
 export interface CommunicationTemplate {
   id: number;
   name: string;

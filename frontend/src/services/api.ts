@@ -100,6 +100,8 @@ import {
   PersonalFinanceTransaction,
   PersonAttachRecordRequest,
   PersonMergeRequest,
+  PwaMySettings,
+  PwaRoleSettings,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
@@ -1339,6 +1341,22 @@ export const settingsApi = {
   },
   setParentWeeklyDigest: async (payload: ParentWeeklyDigestSettings): Promise<ParentWeeklyDigestSettings> => {
     const response = await api.post('/api/settings/parent-weekly-digest', payload);
+    return response.data;
+  },
+  getPwaRoleSettings: async (): Promise<PwaRoleSettings> => {
+    const response = await api.get('/api/settings/pwa/modules');
+    return response.data;
+  },
+  setPwaRoleSettings: async (payload: Pick<PwaRoleSettings, 'role_modules'>): Promise<PwaRoleSettings> => {
+    const response = await api.post('/api/settings/pwa/modules', payload);
+    return response.data;
+  },
+  getMyPwaSettings: async (): Promise<PwaMySettings> => {
+    const response = await api.get('/api/settings/pwa/my');
+    return response.data;
+  },
+  setMyPwaSettings: async (enabled_modules: string[]): Promise<PwaMySettings> => {
+    const response = await api.post('/api/settings/pwa/my', { enabled_modules });
     return response.data;
   },
   getOwnerWorkspaceTaskConfig: async (): Promise<OwnerWorkspaceTaskConfig> => {

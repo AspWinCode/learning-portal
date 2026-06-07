@@ -146,7 +146,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const isPwaNavigation = new URLSearchParams(location.search).get('pwa') === '1';
+  const isStandalonePwa =
+    typeof window !== 'undefined' &&
+    (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true);
+  const hasPwaQuery = new URLSearchParams(location.search).get('pwa') === '1';
+  const hasStoredPwaMode = (() => {
+    try {
+      return sessionStorage.getItem('pwa_mode') === '1';
+    } catch {
+      return false;
+    }
+  })();
+  const isPwaNavigation = hasPwaQuery || isStandalonePwa || hasStoredPwaMode;
   const [pwaAllowedRoutes, setPwaAllowedRoutes] = React.useState<Set<string> | null>(null);
 
   React.useEffect(() => {
@@ -177,6 +188,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setPwaAllowedRoutes(null);
       return;
     }
+    try {
+      sessionStorage.setItem('pwa_mode', '1');
+    } catch {
+      // ignore storage errors
+    }
     let mounted = true;
     settingsApi
       .getMyPwaSettings()
@@ -192,6 +208,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       mounted = false;
     };
   }, [isPwaNavigation]);
+
+  React.useEffect(() => {
+    if (!isPwaNavigation || !pwaAllowedRoutes) return;
+    if (location.pathname === '/mobile' || pwaAllowedRoutes.has(location.pathname)) return;
+    navigate('/mobile', { replace: true });
+  }, [isPwaNavigation, location.pathname, navigate, pwaAllowedRoutes]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);

@@ -58,6 +58,11 @@ const MobileHomePage: React.FC = () => {
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
+    try {
+      sessionStorage.setItem('pwa_mode', '1');
+    } catch {
+      // ignore storage errors
+    }
     let mounted = true;
     settingsApi
       .getMyPwaSettings()

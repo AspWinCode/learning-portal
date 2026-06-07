@@ -845,6 +845,48 @@ export interface ParentWeeklyDigestSettings {
   send_time: string;
 }
 
+export type StudentQuestionnaireFieldType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'date'
+  | 'phone'
+  | 'email'
+  | 'select'
+  | 'multiselect'
+  | 'checkbox';
+
+export interface StudentQuestionnaireFieldValidation {
+  min_length?: number | null;
+  max_length?: number | null;
+  min?: number | null;
+  max?: number | null;
+  pattern?: string | null;
+}
+
+export interface StudentQuestionnaireField {
+  id: string;
+  key: string;
+  label: string;
+  type: StudentQuestionnaireFieldType;
+  required: boolean;
+  placeholder?: string | null;
+  help_text?: string | null;
+  options: string[];
+  validation: StudentQuestionnaireFieldValidation;
+}
+
+export interface StudentQuestionnaireTemplate {
+  id: string;
+  name: string;
+  event_name?: string | null;
+  description?: string | null;
+  is_active: boolean;
+  fields: StudentQuestionnaireField[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface AnketaConvertRequest {
   use_existing_parent_id?: number | null;
   use_existing_student_id?: number | null;

@@ -26,6 +26,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
 import PwaSettingsSection from '../components/PwaSettingsSection';
+import StudentQuestionnairesSettingsSection from '../components/StudentQuestionnairesSettingsSection';
 import { useAuth } from '../contexts/AuthContext';
 import { PersonRegistryContent } from './PersonRegistryPage';
 import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi } from '../services/api';
@@ -335,6 +336,7 @@ const SalesSettingsPage: React.FC = () => {
           scrollButtons="auto"
         >
           <Tab value="schools" label="Школы" />
+          <Tab value="questionnaires" label="Анкеты" />
           <Tab value="cities" label="Города" />
           <Tab value="classes" label="Классы" />
           <Tab value="b2b" label="Районы" />
@@ -402,6 +404,10 @@ const SalesSettingsPage: React.FC = () => {
 
         <Paper sx={sectionPaperSx('pwa')}>
           <PwaSettingsSection />
+        </Paper>
+
+        <Paper sx={sectionPaperSx('questionnaires')}>
+          <StudentQuestionnairesSettingsSection />
         </Paper>
 
         <Paper sx={sectionPaperSx('leads')}>

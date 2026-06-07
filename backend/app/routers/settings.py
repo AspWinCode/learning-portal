@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,11 +6,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 import json
 import os
+import re
 from uuid import uuid4
 
 from app.database import get_db
 from app import auth
-from app.models import AppSetting, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, User, UserRole
+from app.models import AppSetting, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, StudentCard, User, UserRole
 from app.schemas.settings import (
     B2BDistrictsResponse,
     B2BDistrictsUpdate,
@@ -51,6 +52,11 @@ from app.schemas.settings import (
     PwaRoleSettingsUpdate,
     RefusedReasonsResponse,
     RefusedReasonsUpdate,
+    StudentQuestionnaireField,
+    StudentQuestionnaireFieldValidation,
+    StudentQuestionnairesResponse,
+    StudentQuestionnaireTemplate,
+    StudentQuestionnairesUpdate,
 )
 from app.services.parent_weekly_digest import (
     DEFAULT_PARENT_WEEKLY_DIGEST_SETTINGS,
@@ -80,6 +86,7 @@ router = APIRouter()
 LOGO_KEY = "site_logo_data_url"
 DISTRICTS_KEY = "b2b_districts"
 REFUSED_REASONS_KEY = "sales_refused_reasons"
+STUDENT_QUESTIONNAIRES_KEY = "student_questionnaires"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
 OWNER_WS_PROJECT_CONFIG_KEY = "owner_workspace_project_config"
 OWNER_WS_PERMISSION_POLICY_KEY = "owner_workspace_permission_policy"
@@ -268,6 +275,17 @@ OWNER_WS_STATUS_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["st
 OWNER_WS_PRIORITY_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_TASK_CONFIG["priorities"]]
 OWNER_WS_PROJECT_STATUS_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_PROJECT_CONFIG["statuses"]]
 OWNER_WS_NOTIFICATION_KEYS = [item["key"] for item in DEFAULT_OWNER_WS_NOTIFICATION_CONFIG["items"]]
+STUDENT_QUESTIONNAIRE_FIELD_TYPES = {
+    "text",
+    "textarea",
+    "number",
+    "date",
+    "phone",
+    "email",
+    "select",
+    "multiselect",
+    "checkbox",
+}
 
 
 def _get_json_setting(db: Session, key: str):
@@ -289,6 +307,227 @@ def _set_json_setting(db: Session, key: str, value) -> None:
     else:
         setting.value = raw
         db.add(setting)
+
+
+def _slugify_questionnaire_key(value: str, fallback: str) -> str:
+    raw = (value or "").strip().lower()
+    out = []
+    previous_underscore = False
+    for ch in raw:
+        if ch.isalnum():
+            out.append(ch)
+            previous_underscore = False
+        elif not previous_underscore:
+            out.append("_")
+            previous_underscore = True
+    key = "".join(out).strip("_")
+    return (key or fallback)[:64]
+
+
+def _normalize_student_questionnaires(raw: Optional[dict]) -> List[dict]:
+    source = raw.get("items") if isinstance(raw, dict) else raw
+    if not isinstance(source, list):
+        return []
+
+    now = datetime.now(timezone.utc).isoformat()
+    templates: List[dict] = []
+    seen_template_ids = set()
+    for idx, item in enumerate(source[:50]):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        template_id = str(item.get("id") or "").strip() or uuid4().hex
+        if template_id in seen_template_ids:
+            template_id = uuid4().hex
+        seen_template_ids.add(template_id)
+
+        fields = []
+        seen_field_keys = set()
+        raw_fields = item.get("fields") if isinstance(item.get("fields"), list) else []
+        for field_idx, raw_field in enumerate(raw_fields[:80]):
+            if not isinstance(raw_field, dict):
+                continue
+            label = str(raw_field.get("label") or "").strip()
+            if not label:
+                continue
+            field_type = str(raw_field.get("type") or "text").strip()
+            if field_type not in STUDENT_QUESTIONNAIRE_FIELD_TYPES:
+                field_type = "text"
+            field_id = str(raw_field.get("id") or "").strip() or uuid4().hex
+            key_base = str(raw_field.get("key") or label)
+            field_key = _slugify_questionnaire_key(key_base, f"field_{field_idx + 1}")
+            suffix = 2
+            unique_key = field_key
+            while unique_key in seen_field_keys:
+                unique_key = f"{field_key}_{suffix}"[:64]
+                suffix += 1
+            seen_field_keys.add(unique_key)
+            options = [
+                str(option).strip()[:120]
+                for option in (raw_field.get("options") or [])
+                if str(option).strip()
+            ][:50]
+            if field_type in {"select", "multiselect"} and not options:
+                options = ["Option 1"]
+
+            validation_raw = raw_field.get("validation") if isinstance(raw_field.get("validation"), dict) else {}
+            validation = {
+                "min_length": validation_raw.get("min_length"),
+                "max_length": validation_raw.get("max_length"),
+                "min": validation_raw.get("min"),
+                "max": validation_raw.get("max"),
+                "pattern": (str(validation_raw.get("pattern") or "").strip()[:300] or None),
+            }
+            try:
+                validation_model = StudentQuestionnaireFieldValidation.model_validate(validation)
+            except Exception:
+                validation_model = StudentQuestionnaireFieldValidation()
+
+            field = StudentQuestionnaireField(
+                id=field_id[:64],
+                key=unique_key,
+                label=label[:160],
+                type=field_type,
+                required=bool(raw_field.get("required", False)),
+                placeholder=(str(raw_field.get("placeholder") or "").strip()[:200] or None),
+                help_text=(str(raw_field.get("help_text") or "").strip()[:300] or None),
+                options=options,
+                validation=validation_model,
+            )
+            fields.append(field.model_dump(mode="json"))
+
+        template = StudentQuestionnaireTemplate(
+            id=template_id[:64],
+            name=name[:160],
+            event_name=(str(item.get("event_name") or "").strip()[:160] or None),
+            description=(str(item.get("description") or "").strip()[:1000] or None),
+            is_active=bool(item.get("is_active", True)),
+            fields=fields,
+            created_at=item.get("created_at") or now,
+            updated_at=now,
+        )
+        templates.append(template.model_dump(mode="json"))
+    return templates
+
+
+def _get_student_questionnaires(db: Session) -> List[dict]:
+    return _normalize_student_questionnaires(_get_json_setting(db, STUDENT_QUESTIONNAIRES_KEY))
+
+
+def _find_student_questionnaire(db: Session, questionnaire_id: str, *, active_only: bool) -> Optional[dict]:
+    for item in _get_student_questionnaires(db):
+        if item["id"] == questionnaire_id and (not active_only or item.get("is_active", True)):
+            return item
+    return None
+
+
+def _string_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return ", ".join(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, bool):
+        return "Да" if value else "Нет"
+    return str(value).strip()
+
+
+def _validate_questionnaire_submission(template: dict, answers: dict) -> Dict[str, Any]:
+    if not isinstance(answers, dict):
+        raise HTTPException(status_code=400, detail="answers must be an object")
+    cleaned: Dict[str, Any] = {}
+    errors: List[str] = []
+    for field in template.get("fields", []):
+        key = field.get("key")
+        label = field.get("label") or key
+        field_type = field.get("type") or "text"
+        raw = answers.get(key)
+        text = _string_value(raw)
+        if field.get("required") and (raw is None or text == "" or raw == []):
+            errors.append(f"{label}: обязательное поле")
+            continue
+        if raw is None or text == "":
+            cleaned[key] = None
+            continue
+
+        options = [str(item) for item in field.get("options") or []]
+        if field_type == "select" and options and text not in options:
+            errors.append(f"{label}: выберите значение из списка")
+            continue
+        if field_type == "multiselect" and options:
+            selected = raw if isinstance(raw, list) else [text]
+            selected_values = [str(item).strip() for item in selected if str(item).strip()]
+            if any(item not in options for item in selected_values):
+                errors.append(f"{label}: выберите значения из списка")
+                continue
+            cleaned[key] = selected_values
+            continue
+        if field_type == "number":
+            try:
+                number = float(raw)
+            except Exception:
+                errors.append(f"{label}: введите число")
+                continue
+            validation = field.get("validation") or {}
+            if validation.get("min") is not None and number < float(validation["min"]):
+                errors.append(f"{label}: значение меньше минимума")
+            if validation.get("max") is not None and number > float(validation["max"]):
+                errors.append(f"{label}: значение больше максимума")
+            cleaned[key] = number
+            continue
+        if field_type == "checkbox":
+            cleaned[key] = bool(raw)
+            continue
+
+        validation = field.get("validation") or {}
+        if validation.get("min_length") is not None and len(text) < int(validation["min_length"]):
+            errors.append(f"{label}: слишком короткое значение")
+        if validation.get("max_length") is not None and len(text) > int(validation["max_length"]):
+            errors.append(f"{label}: слишком длинное значение")
+        pattern = str(validation.get("pattern") or "").strip()
+        if pattern:
+            try:
+                if not re.fullmatch(pattern, text):
+                    errors.append(f"{label}: значение не соответствует формату")
+            except re.error:
+                pass
+        cleaned[key] = text
+
+    if errors:
+        raise HTTPException(status_code=400, detail={"errors": errors})
+    return cleaned
+
+
+def _answer_by_keys(answers: dict, *keys: str) -> Optional[str]:
+    for key in keys:
+        value = _string_value(answers.get(key))
+        if value:
+            return value[:500]
+    return None
+
+
+def _parse_iso_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except Exception:
+        return None
+
+
+def _build_student_card_comment(template: dict, answers: dict) -> str:
+    lines = [f"Анкета: {template.get('name') or ''}".strip()]
+    if template.get("event_name"):
+        lines.append(f"Мероприятие: {template['event_name']}")
+    lines.append("")
+    for field in template.get("fields", []):
+        key = field.get("key")
+        label = field.get("label") or key
+        value = _string_value(answers.get(key))
+        if value:
+            lines.append(f"{label}: {value}")
+    return "\n".join(lines).strip()[:5000]
 
 
 def _default_pwa_role_modules() -> Dict[str, List[str]]:
@@ -933,6 +1172,86 @@ async def set_refused_reasons(
     db.commit()
     db.refresh(setting)
     return RefusedReasonsResponse(items=items)
+
+
+@router.get("/student-questionnaires", response_model=StudentQuestionnairesResponse)
+async def get_student_questionnaires(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.access")),
+):
+    return StudentQuestionnairesResponse(items=_get_student_questionnaires(db))
+
+
+@router.post("/student-questionnaires", response_model=StudentQuestionnairesResponse)
+async def set_student_questionnaires(
+    body: StudentQuestionnairesUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    items = _normalize_student_questionnaires({"items": body.items})
+    _set_json_setting(db, STUDENT_QUESTIONNAIRES_KEY, {"items": items})
+    db.commit()
+    return StudentQuestionnairesResponse(items=items)
+
+
+@router.get("/public/student-questionnaires/{questionnaire_id}")
+async def get_public_student_questionnaire(
+    questionnaire_id: str,
+    db: Session = Depends(get_db),
+):
+    template = _find_student_questionnaire(db, questionnaire_id, active_only=True)
+    if not template:
+        raise HTTPException(status_code=404, detail="questionnaire not found")
+    return template
+
+
+@router.post("/public/student-questionnaires/{questionnaire_id}/submit")
+async def submit_public_student_questionnaire(
+    questionnaire_id: str,
+    body: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    template = _find_student_questionnaire(db, questionnaire_id, active_only=True)
+    if not template:
+        raise HTTPException(status_code=404, detail="questionnaire not found")
+    answers = _validate_questionnaire_submission(template, body.get("answers") if isinstance(body, dict) else {})
+    student_full_name = _answer_by_keys(
+        answers,
+        "student_full_name",
+        "child_full_name",
+        "student_name",
+        "child_name",
+        "fio",
+        "full_name",
+    )
+    if not student_full_name:
+        first_text = next((_string_value(value) for value in answers.values() if _string_value(value)), "")
+        student_full_name = first_text[:160] or "Заполненная анкета"
+
+    card = StudentCard(
+        student_full_name=student_full_name[:255],
+        birth_date=_parse_iso_date(_answer_by_keys(answers, "birth_date", "student_birth_date")),
+        student_phone=_answer_by_keys(answers, "student_phone", "child_phone"),
+        telegram=_answer_by_keys(answers, "telegram", "student_telegram", "child_telegram"),
+        city=_answer_by_keys(answers, "city"),
+        school=_answer_by_keys(answers, "school", "school_name"),
+        grade=_answer_by_keys(answers, "grade", "school_class", "class"),
+        parent_full_name=_answer_by_keys(answers, "parent_full_name", "parent_name"),
+        parent_phone=_answer_by_keys(answers, "parent_phone", "phone"),
+        parent_phone_2=_answer_by_keys(answers, "parent_phone_2"),
+        parent_telegram=_answer_by_keys(answers, "parent_telegram"),
+        parent_email=_answer_by_keys(answers, "parent_email", "email"),
+        student_email=_answer_by_keys(answers, "student_email"),
+        preferred_messenger=_answer_by_keys(answers, "preferred_messenger"),
+        comment=_build_student_card_comment(template, answers),
+        source=f"Анкета: {template.get('name') or questionnaire_id}"[:255],
+        anketa_status="filled",
+        archived=False,
+    )
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+    return {"ok": True, "card_id": int(card.id)}
 
 
 @router.get("/parent-weekly-digest", response_model=ParentWeeklyDigestSettingsResponse)

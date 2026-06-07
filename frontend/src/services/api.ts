@@ -102,6 +102,7 @@ import {
   PersonMergeRequest,
   PwaMySettings,
   PwaRoleSettings,
+  StudentQuestionnaireTemplate,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
@@ -1335,6 +1336,14 @@ export const settingsApi = {
     const response = await api.post('/api/settings/refused-reasons', { items });
     return response.data;
   },
+  getStudentQuestionnaires: async (): Promise<StudentQuestionnaireTemplate[]> => {
+    const response = await api.get('/api/settings/student-questionnaires');
+    return response.data.items;
+  },
+  setStudentQuestionnaires: async (items: StudentQuestionnaireTemplate[]): Promise<StudentQuestionnaireTemplate[]> => {
+    const response = await api.post('/api/settings/student-questionnaires', { items });
+    return response.data.items;
+  },
   getParentWeeklyDigest: async (): Promise<ParentWeeklyDigestSettings> => {
     const response = await api.get('/api/settings/parent-weekly-digest');
     return response.data;
@@ -1505,6 +1514,17 @@ export const settingsApi = {
   deleteOwnerWorkspaceSettingsSnapshot: async (snapshotId: string): Promise<OwnerWorkspaceSettingsSnapshot[]> => {
     const response = await api.delete(`/api/settings/owner-workspace-settings-snapshots/${snapshotId}`);
     return response.data.items;
+  },
+};
+
+export const publicStudentQuestionnairesApi = {
+  get: async (questionnaireId: string): Promise<StudentQuestionnaireTemplate> => {
+    const response = await api.get(`/api/settings/public/student-questionnaires/${questionnaireId}`);
+    return response.data;
+  },
+  submit: async (questionnaireId: string, answers: Record<string, unknown>): Promise<{ ok: boolean; card_id: number }> => {
+    const response = await api.post(`/api/settings/public/student-questionnaires/${questionnaireId}/submit`, { answers });
+    return response.data;
   },
 };
 

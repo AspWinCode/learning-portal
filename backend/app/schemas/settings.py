@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.schemas.parent_dashboard import (
     ParentWeeklyDigestSettingsResponse,
@@ -30,6 +30,45 @@ class RefusedReasonsResponse(BaseModel):
 
 class RefusedReasonsUpdate(BaseModel):
     items: List[str]
+
+
+class StudentQuestionnaireFieldValidation(BaseModel):
+    min_length: Optional[int] = None
+    max_length: Optional[int] = None
+    min: Optional[float] = None
+    max: Optional[float] = None
+    pattern: Optional[str] = None
+
+
+class StudentQuestionnaireField(BaseModel):
+    id: str
+    key: str
+    label: str
+    type: str
+    required: bool = False
+    placeholder: Optional[str] = None
+    help_text: Optional[str] = None
+    options: List[str] = Field(default_factory=list)
+    validation: StudentQuestionnaireFieldValidation = Field(default_factory=StudentQuestionnaireFieldValidation)
+
+
+class StudentQuestionnaireTemplate(BaseModel):
+    id: str
+    name: str
+    event_name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool = True
+    fields: List[StudentQuestionnaireField] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class StudentQuestionnairesResponse(BaseModel):
+    items: List[StudentQuestionnaireTemplate]
+
+
+class StudentQuestionnairesUpdate(BaseModel):
+    items: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class PwaModuleResponse(BaseModel):

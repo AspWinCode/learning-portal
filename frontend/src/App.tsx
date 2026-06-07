@@ -54,6 +54,7 @@ const SalesTaxDeductionPage = React.lazy(() => import('./pages/SalesTaxDeduction
 const LeadCardPage = React.lazy(() => import('./pages/LeadCardPage'));
 const ManualLessonsPage = React.lazy(() => import('./pages/ManualLessonsPage'));
 const SpecialistQuestionnairePage = React.lazy(() => import('./pages/SpecialistQuestionnairePage'));
+const PublicStudentQuestionnairePage = React.lazy(() => import('./pages/PublicStudentQuestionnairePage'));
 const TildaLeadPage = React.lazy(() => import('./pages/TildaLeadPage'));
 const StartLeadPage = React.lazy(() => import('./pages/StartLeadPage'));
 const BaseLeadPage = React.lazy(() => import('./pages/BaseLeadPage'));
@@ -145,6 +146,7 @@ function App() {
               }
             />
             <Route path="/anketa/specialist" element={<SpecialistQuestionnairePage />} />
+            <Route path="/anketa/student/:questionnaireId" element={<PublicStudentQuestionnairePage />} />
             <Route
               path="/anketa/tilda_lead"
               element={

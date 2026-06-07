@@ -123,7 +123,7 @@ PWA_MODULES = [
         "key": "contacts",
         "label": "Контакты",
         "description": "Контакты и контрагенты owner workspace.",
-        "route": "/owner-workspace/contacts",
+        "route": "/mobile/contacts",
         "required_permission": "owner_workspace.access",
         "default_roles": ["owner", "admin"],
     },

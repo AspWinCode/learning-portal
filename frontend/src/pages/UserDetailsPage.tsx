@@ -94,7 +94,7 @@ const UserDetailsPage: React.FC = () => {
               </Typography>
             </Box>
             <Stack direction="row" spacing={1}>
-              <Button variant="outlined" onClick={() => navigate('/persons')}>
+              <Button variant="outlined" onClick={() => navigate('/admin/settings?tab=persons')}>
                 К реестру Person
               </Button>
               <Button variant="outlined" onClick={() => navigate('/roles')}>
@@ -208,7 +208,7 @@ const UserDetailsPage: React.FC = () => {
                     Открыть в ролях
                   </Button>
                   {targetUser.person_id ? (
-                    <Button variant="outlined" onClick={() => navigate(`/persons?personId=${targetUser.person_id}`)}>
+                    <Button variant="outlined" onClick={() => navigate(`/admin/settings?tab=persons&personId=${targetUser.person_id}`)}>
                       Открыть Person
                     </Button>
                   ) : null}

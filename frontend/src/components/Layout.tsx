@@ -75,7 +75,7 @@ const SIDEBAR_SCROLL_STORAGE_KEY = 'sb_scroll_top';
 const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan']) },
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
-  { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/persons', '/operations/manual-lessons', '/projects']) },
+  { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
   { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/disk']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
@@ -263,7 +263,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessLessons = hasPermission(user, 'lessons.access');
   const canAccessUsers = hasPermission(user, 'users.access');
   const canAccessRoles = hasPermission(user, 'roles.access');
-  const canAccessPersons = hasPermission(user, 'persons.access');
 
   const effectiveMenuItems = (() => {
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
@@ -286,7 +285,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Пропуски', icon: <PendingActions />, path: '/operations/absences' },
         { text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' },
         { text: 'Справка налогового вычета', icon: <ReceiptLong />, path: '/finance/tax-deduction' },
-        ...(canAccessPersons ? [{ text: 'Реестр Person', icon: <Search />, path: '/persons' }] : []),
         { text: 'Проекты', icon: <Assignment />, path: '/projects' },
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' },
@@ -334,7 +332,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
     if (canAccessRoles) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });
-    if (canAccessPersons) items.push({ text: 'Реестр Person', icon: <Search />, path: '/persons' });
     if (role === 'owner' && canAccessOwnerWorkspace) {
       items.push({ text: 'Контрагенты', icon: <People />, path: '/owner-workspace/counterparties' });
     }

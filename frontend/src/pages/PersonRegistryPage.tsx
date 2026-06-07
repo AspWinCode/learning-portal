@@ -30,7 +30,11 @@ const entityTypeLabel = (entityType: string): string => {
   return entityType;
 };
 
-const PersonRegistryPage: React.FC = () => {
+type PersonRegistryContentProps = {
+  personPathBase?: string;
+};
+
+export const PersonRegistryContent: React.FC<PersonRegistryContentProps> = ({ personPathBase = '/persons' }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(0);
@@ -52,6 +56,11 @@ const PersonRegistryPage: React.FC = () => {
     if (!phoneResult) return 0;
     return phoneResult.users.length + phoneResult.leads.length + phoneResult.student_cards.length;
   }, [phoneResult]);
+
+  const personPath = (personId: number) => {
+    const separator = personPathBase.includes('?') ? '&' : '?';
+    return `${personPathBase}${separator}personId=${personId}`;
+  };
 
   useEffect(() => {
     const personIdRaw = searchParams.get('personId');
@@ -265,7 +274,6 @@ const PersonRegistryPage: React.FC = () => {
   );
 
   return (
-    <Layout>
       <Box sx={{ p: { xs: 2, md: 3 } }}>
         <Stack spacing={3}>
           <Box>
@@ -401,7 +409,7 @@ const PersonRegistryPage: React.FC = () => {
                                     {item.person_id ? (
                                       <Button
                                         size="small"
-                                        onClick={() => navigate(`/persons?personId=${item.person_id}`)}
+                                        onClick={() => navigate(personPath(item.person_id))}
                                       >
                                         Person
                                       </Button>
@@ -449,7 +457,7 @@ const PersonRegistryPage: React.FC = () => {
                                     {item.person_id ? (
                                       <Button
                                         size="small"
-                                        onClick={() => navigate(`/persons?personId=${item.person_id}`)}
+                                        onClick={() => navigate(personPath(item.person_id))}
                                       >
                                         Person
                                       </Button>
@@ -503,7 +511,7 @@ const PersonRegistryPage: React.FC = () => {
                                     {item.person_id ? (
                                       <Button
                                         size="small"
-                                        onClick={() => navigate(`/persons?personId=${item.person_id}`)}
+                                        onClick={() => navigate(personPath(item.person_id))}
                                       >
                                         Person
                                       </Button>
@@ -548,6 +556,13 @@ const PersonRegistryPage: React.FC = () => {
           </Paper>
         </Stack>
       </Box>
+  );
+};
+
+const PersonRegistryPage: React.FC = () => {
+  return (
+    <Layout>
+      <PersonRegistryContent />
     </Layout>
   );
 };

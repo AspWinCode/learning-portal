@@ -22,11 +22,14 @@ import {
   Typography,
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
+import { useAuth } from '../contexts/AuthContext';
+import { PersonRegistryContent } from './PersonRegistryPage';
 import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+import { hasPermission } from '../utils/permissions';
 import {
   Abonement,
   ABONEMENT_FORMAT_LABELS,
@@ -61,6 +64,8 @@ const leadStatusLabels: Record<LeadStatus, string> = {
 };
 
 const SalesSettingsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [error, setError] = useState('');
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [templates, setTemplates] = useState<LeadTaskTemplate[]>([]);
@@ -80,6 +85,7 @@ const SalesSettingsPage: React.FC = () => {
   const [schools, setSchools] = useState<SalesSchool[]>([]);
   const [searchParams] = useSearchParams();
   const [settingsTab, setSettingsTab] = useState(searchParams.get('tab') || 'schools');
+  const canAccessPersons = hasPermission(user, 'persons.access');
   const [newSchool, setNewSchool] = useState({
     name: '',
     city: '',
@@ -180,6 +186,11 @@ const SalesSettingsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const nextTab = searchParams.get('tab') || 'schools';
+    setSettingsTab(nextTab === 'persons' && !canAccessPersons ? 'schools' : nextTab);
+  }, [canAccessPersons, searchParams]);
 
   const safeAction = async (fn: () => Promise<any>) => {
     try {
@@ -315,7 +326,10 @@ const SalesSettingsPage: React.FC = () => {
       <Paper sx={{ mb: 2 }}>
         <Tabs
           value={settingsTab}
-          onChange={(_, value) => setSettingsTab(value)}
+          onChange={(_, value) => {
+            setSettingsTab(value);
+            navigate(`/admin/settings?tab=${value}`, { replace: true });
+          }}
           variant="scrollable"
           scrollButtons="auto"
         >
@@ -328,6 +342,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="leads" label="Лиды" />
           <Tab value="tasks" label="Задачи" />
           <Tab value="ownerWorkspace" label="Таск трекер" />
+          {canAccessPersons ? <Tab value="persons" label="Реестр Person" /> : null}
           <Tab value="templates" label="Шаблоны" />
           <Tab value="integrations" label="Интеграции" />
         </Tabs>
@@ -376,6 +391,12 @@ const SalesSettingsPage: React.FC = () => {
             </TableBody>
           </Table>
         </Paper>
+
+        {canAccessPersons ? (
+          <Paper sx={sectionPaperSx('persons')}>
+            <PersonRegistryContent personPathBase="/admin/settings?tab=persons" />
+          </Paper>
+        ) : null}
 
         <Paper sx={sectionPaperSx('leads')}>
           <Typography variant="h6" mb={1}>Причины отказа (этап «Отказали»)</Typography>

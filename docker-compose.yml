@@ -197,7 +197,11 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.27.0
     command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - /bin/sh
+      - -c
+      - |
+        sed "s|\$${SLACK_WEBHOOK_URL}|\$${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/YOUR/WEBHOOK/URL}|g" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
+        exec /bin/alertmanager --config.file=/tmp/alertmanager.yml
     volumes:
       - ./deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     environment:
@@ -232,4 +236,3 @@ volumes:
   caddy_config:
   grafana_data:
   disk_storage:
-

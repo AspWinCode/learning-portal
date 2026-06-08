@@ -86,6 +86,10 @@ const formatShortDate = (d: string | null | undefined): string => {
   return `${day.padStart(2, '0')}.${month.padStart(2, '0')}`;
 };
 
+const normalizeTaskCategory = (value: TaskResponse['category'] | undefined, fallback: TaskCategory): TaskCategory => {
+  return value === 'schools' || value === 'parents' || value === 'leads' ? value : fallback;
+};
+
 const TasksPage: React.FC = () => {
   const { user } = useAuth();
   const effectiveRole = getEffectiveRole(user);
@@ -173,6 +177,7 @@ const TasksPage: React.FC = () => {
   const [taskEditId, setTaskEditId] = useState<number | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
+  const [taskCategory, setTaskCategory] = useState<TaskCategory>('schools');
   const [taskTemplateId, setTaskTemplateId] = useState<number | ''>('');
   const [taskSubtasks, setTaskSubtasks] = useState<{ text: string; order: number }[]>([]);
   const [taskStudentIds, setTaskStudentIds] = useState<number[]>([]);
@@ -188,6 +193,7 @@ const TasksPage: React.FC = () => {
   const [taskRepeatEndUntil, setTaskRepeatEndUntil] = useState<string>('');
   const [taskSaving, setTaskSaving] = useState(false);
   const [taskIsParentResponses, setTaskIsParentResponses] = useState(false);
+  const [followUpSourceTask, setFollowUpSourceTask] = useState<TaskResponse | null>(null);
 
   const loadTemplates = useCallback(async () => {
     if (!canManageTasks) return;
@@ -449,11 +455,12 @@ const TasksPage: React.FC = () => {
     }
   };
 
-  const openTaskDialog = (task?: TaskResponse, templateId?: number) => {
-    setTaskEditId(task?.id ?? null);
+  const openTaskDialog = (task?: TaskResponse, templateId?: number, cloneAsNew = false) => {
+    setTaskEditId(cloneAsNew ? null : task?.id ?? null);
     setTaskTitle(task?.title ?? '');
     setTaskDescription(task?.description ?? '');
-    setTaskTemplateId(task?.template_id ?? templateId ?? '');
+    setTaskCategory(normalizeTaskCategory(task?.category, categoryFilter));
+    setTaskTemplateId(cloneAsNew ? '' : task?.template_id ?? templateId ?? '');
     setTaskSubtasks(task?.subtasks?.map((s) => ({ text: s.text, order: s.order })) ?? []);
     setTaskStudentIds(task?.student_ids ?? []);
     setTaskRepeatEnabled(task?.repeat_enabled ?? false);
@@ -464,6 +471,27 @@ const TasksPage: React.FC = () => {
     setTaskRepeatEndUntil(task?.repeat_end_until ? task.repeat_end_until.slice(0, 10) : '');
     setTaskIsParentResponses(task?.tags?.includes('parent_responses') ?? false);
     setTaskDialogOpen(true);
+  };
+
+  const refreshAfterTaskChange = () => {
+    loadTasks();
+    loadDayDesk();
+    if (showTodayPlan || isSales) {
+      loadTodayTasks();
+      loadDayStats();
+      loadOverdueCount();
+    }
+  };
+
+  const completeTaskAndOfferFollowUp = async (task: TaskResponse) => {
+    setError(null);
+    try {
+      await tasksApi.completeTask(task.id);
+      refreshAfterTaskChange();
+      setFollowUpSourceTask(task);
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось завершить задачу'));
+    }
   };
 
   const saveTask = async () => {
@@ -494,7 +522,7 @@ const TasksPage: React.FC = () => {
           title: taskTitle.trim() || undefined,
           description: taskDescription.trim() || undefined,
           template_id: taskTemplateId || undefined,
-          category: taskIsParentResponses ? 'parents' : categoryFilter,
+          category: taskIsParentResponses ? 'parents' : taskCategory,
           subtasks: taskTemplateId ? undefined : (subtasks.length ? subtasks.map((s, i) => ({ text: s.text.trim(), order: i })) : undefined),
           student_ids: studentIds,
           tags,
@@ -502,7 +530,7 @@ const TasksPage: React.FC = () => {
         });
       }
       setTaskDialogOpen(false);
-      loadTasks();
+      refreshAfterTaskChange();
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось сохранить задачу'));
     } finally {
@@ -810,22 +838,7 @@ const TasksPage: React.FC = () => {
                                           size="small"
                                           variant="contained"
                                           color="success"
-                                          onClick={() =>
-                                            tasksApi
-                                              .completeTask(task.id)
-                                              .then(() => {
-                                                loadTasks();
-                                                loadDayDesk();
-                                                if (showTodayPlan || isSales) {
-                                                  loadTodayTasks();
-                                                  loadDayStats();
-                                                  loadOverdueCount();
-                                                }
-                                              })
-                                              .catch((e) =>
-                                                setError(extractApiError(e, 'Не удалось завершить задачу')),
-                                              )
-                                          }
+                                          onClick={() => void completeTaskAndOfferFollowUp(task)}
                                         >
                                           Завершить
                                         </Button>
@@ -1099,22 +1112,7 @@ const TasksPage: React.FC = () => {
                                           size="small"
                                           variant="contained"
                                           color="success"
-                                          onClick={() =>
-                                            tasksApi
-                                              .completeTask(task.id)
-                                              .then(() => {
-                                                loadTasks();
-                                                loadDayDesk();
-                                                if (showTodayPlan || isSales) {
-                                                  loadTodayTasks();
-                                                  loadDayStats();
-                                                  loadOverdueCount();
-                                                }
-                                              })
-                                              .catch((e) =>
-                                                setError(extractApiError(e, 'Не удалось завершить задачу')),
-                                              )
-                                          }
+                                          onClick={() => void completeTaskAndOfferFollowUp(task)}
                                         >
                                           Завершить
                                         </Button>
@@ -1382,24 +1380,7 @@ const TasksPage: React.FC = () => {
                                                 size="small"
                                                 variant="contained"
                                                 color="success"
-                                                onClick={() =>
-                                                  tasksApi
-                                                    .completeTask(task.id)
-                                                    .then(() => {
-                                                      loadTasks();
-                                                      loadDayDesk();
-                                                      if (showTodayPlan || isSales) {
-                                                        loadTodayTasks();
-                                                        loadDayStats();
-                                                        loadOverdueCount();
-                                                      }
-                                                    })
-                                                    .catch((e) =>
-                                                      setError(
-                                                        extractApiError(e, 'Не удалось завершить задачу'),
-                                                      ),
-                                                    )
-                                                }
+                                                onClick={() => void completeTaskAndOfferFollowUp(task)}
                                               >
                                                 Завершить
                                               </Button>
@@ -1665,22 +1646,7 @@ const TasksPage: React.FC = () => {
                                           variant="contained"
                                           color={paymentPaid ? 'success' : 'primary'}
                                           {...(paymentPaid && { sx: { fontWeight: 600 } })}
-                                          onClick={() =>
-                                            tasksApi
-                                              .completeTask(task.id)
-                                              .then(() => {
-                                                loadTasks();
-                                                loadDayDesk();
-                                                if (showTodayPlan || isSales) {
-                                                  loadTodayTasks();
-                                                  loadDayStats();
-                                                  loadOverdueCount();
-                                                }
-                                              })
-                                              .catch((e) =>
-                                                setError(extractApiError(e, 'Не удалось завершить задачу')),
-                                              )
-                                          }
+                                          onClick={() => void completeTaskAndOfferFollowUp(task)}
                                         >
                                           Завершить
                                         </Button>
@@ -2046,22 +2012,7 @@ const TasksPage: React.FC = () => {
                                           size="small"
                                           variant="contained"
                                           color="success"
-                                          onClick={() =>
-                                            tasksApi
-                                              .completeTask(task.id)
-                                              .then(() => {
-                                                loadTasks();
-                                                loadDayDesk();
-                                                if (showTodayPlan || isSales) {
-                                                  loadTodayTasks();
-                                                  loadDayStats();
-                                                  loadOverdueCount();
-                                                }
-                                              })
-                                              .catch((e) =>
-                                                setError(extractApiError(e, 'Не удалось завершить задачу')),
-                                              )
-                                          }
+                                          onClick={() => void completeTaskAndOfferFollowUp(task)}
                                         >
                                           Завершить
                                         </Button>
@@ -2247,22 +2198,7 @@ const TasksPage: React.FC = () => {
                                           size="small"
                                           variant="contained"
                                           color="success"
-                                          onClick={() =>
-                                            tasksApi
-                                              .completeTask(task.id)
-                                              .then(() => {
-                                                loadTasks();
-                                                loadDayDesk();
-                                                if (showTodayPlan || isSales) {
-                                                  loadTodayTasks();
-                                                  loadDayStats();
-                                                  loadOverdueCount();
-                                                }
-                                              })
-                                              .catch((e) =>
-                                                setError(extractApiError(e, 'Не удалось завершить задачу')),
-                                              )
-                                          }
+                                          onClick={() => void completeTaskAndOfferFollowUp(task)}
                                         >
                                           Завершить
                                         </Button>
@@ -2464,19 +2400,7 @@ const TasksPage: React.FC = () => {
                                   <Button
                                     size="small"
                                     variant="contained"
-                                    onClick={() =>
-                                      tasksApi
-                                        .completeTask(task.id)
-                                        .then(() => {
-                                          loadTasks();
-                                          if (showTodayPlan || isSales) {
-                                            loadTodayTasks();
-                                            loadDayStats();
-                                            loadOverdueCount();
-                                          }
-                                        })
-                                        .catch((e) => setError(extractApiError(e, 'Не удалось завершить')))
-                                    }
+                                    onClick={() => void completeTaskAndOfferFollowUp(task)}
                                   >
                                     Завершить
                                   </Button>
@@ -2827,19 +2751,7 @@ const TasksPage: React.FC = () => {
                                   <Button
                                     size="small"
                                     variant="outlined"
-                                    onClick={() =>
-                                      tasksApi
-                                        .completeTask(task.id)
-                                        .then(() => {
-                                          loadTasks();
-                                          if (showTodayPlan || isSales) {
-                                            loadTodayTasks();
-                                            loadDayStats();
-                                            loadOverdueCount();
-                                          }
-                                        })
-                                        .catch((e) => setError(extractApiError(e, 'Не удалось завершить задачу')))
-                                    }
+                                    onClick={() => void completeTaskAndOfferFollowUp(task)}
                                   >
                                     Завершить
                                   </Button>
@@ -3421,6 +3333,37 @@ const TasksPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={!!followUpSourceTask} onClose={() => setFollowUpSourceTask(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Задача завершена</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Создать новую задачу на основе закрытой?
+          </Typography>
+          {followUpSourceTask && (
+            <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'background.default' }}>
+              <Typography variant="subtitle2">{followUpSourceTask.title}</Typography>
+              {followUpSourceTask.description && (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                  {followUpSourceTask.description}
+                </Typography>
+              )}
+            </Paper>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFollowUpSourceTask(null)}>Не создавать</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const source = followUpSourceTask;
+              setFollowUpSourceTask(null);
+              if (source) openTaskDialog(source, undefined, true);
+            }}
+          >
+            Создать задачу
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={taskDialogOpen} onClose={() => setTaskDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{taskEditId ? 'Редактировать задачу' : 'Новая задача'}</DialogTitle>
         <DialogContent>

@@ -14,11 +14,6 @@ import {
   Select,
   Stack,
   Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -398,56 +393,44 @@ const StudentQuestionnairesSettingsSection: React.FC = () => {
                 </Button>
               </Box>
 
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ width: 220 }}>Поле</TableCell>
-                    <TableCell sx={{ width: 190 }}>Тип</TableCell>
-                    <TableCell>Валидация</TableCell>
-                    <TableCell sx={{ width: 90 }} align="right">Действия</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {selected.fields.map((field, index) => {
-                    const usesOptions = optionFieldTypes.has(field.type);
-                    const usesTextValidation = textValidationTypes.has(field.type);
-                    const usesNumberValidation = numberValidationTypes.has(field.type);
-                    return (
-                      <TableRow key={field.id} sx={{ verticalAlign: 'top' }}>
-                        <TableCell>
-                          <Stack spacing={1}>
-                            <TextField
-                              label="Название"
-                              value={field.label}
-                              onChange={(event) => {
-                                const label = event.target.value;
-                                updateField(field.id, {
-                                  label,
-                                  key: field.key.startsWith('field_') ? slugify(label, `field_${index + 1}`) : field.key,
-                                });
-                              }}
-                              size="small"
-                              required
-                            />
-                            <TextField
-                              label="Ключ"
-                              value={field.key}
-                              onChange={(event) => updateField(field.id, { key: slugify(event.target.value, `field_${index + 1}`) })}
-                              size="small"
-                            />
-                            <TextField
-                              label="Подсказка"
-                              value={field.placeholder || ''}
-                              onChange={(event) => updateField(field.id, { placeholder: event.target.value })}
-                              size="small"
-                            />
-                            <FormControlLabel
-                              control={<Switch checked={field.required} onChange={(event) => updateField(field.id, { required: event.target.checked })} />}
-                              label="Обязательное"
-                            />
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
+              <Stack spacing={1.5}>
+                {selected.fields.map((field, index) => {
+                  const usesOptions = optionFieldTypes.has(field.type);
+                  const usesTextValidation = textValidationTypes.has(field.type);
+                  const usesNumberValidation = numberValidationTypes.has(field.type);
+                  return (
+                    <Paper key={field.id} variant="outlined" sx={{ p: 1.5, bgcolor: 'background.paper' }}>
+                      <Stack spacing={1.5}>
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: {
+                              xs: '1fr',
+                              md: 'minmax(220px, 1.2fr) minmax(160px, 0.8fr) minmax(180px, 0.8fr) auto',
+                            },
+                            gap: 1.25,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <TextField
+                            label="Название"
+                            value={field.label}
+                            onChange={(event) => {
+                              const label = event.target.value;
+                              updateField(field.id, {
+                                label,
+                                key: field.key.startsWith('field_') ? slugify(label, `field_${index + 1}`) : field.key,
+                              });
+                            }}
+                            size="small"
+                            required
+                          />
+                          <TextField
+                            label="Ключ"
+                            value={field.key}
+                            onChange={(event) => updateField(field.id, { key: slugify(event.target.value, `field_${index + 1}`) })}
+                            size="small"
+                          />
                           <FormControl size="small" fullWidth>
                             <InputLabel id={`questionnaire-field-type-${field.id}`}>Тип</InputLabel>
                             <Select
@@ -470,83 +453,104 @@ const StudentQuestionnairesSettingsSection: React.FC = () => {
                               ))}
                             </Select>
                           </FormControl>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: { xs: 'space-between', md: 'flex-end' }, gap: 0.5 }}>
+                            <FormControlLabel
+                              control={<Switch checked={field.required} onChange={(event) => updateField(field.id, { required: event.target.checked })} />}
+                              label="Обязательное"
+                              sx={{ mr: 0, whiteSpace: 'nowrap' }}
+                            />
+                            <Tooltip title="Удалить поле">
+                              <IconButton size="small" color="error" onClick={() => deleteField(field.id)}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </Box>
+
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: usesOptions ? 'minmax(240px, 0.9fr) minmax(360px, 1.1fr)' : '1fr' }, gap: 1.25 }}>
+                          <TextField
+                            label="Подсказка"
+                            value={field.placeholder || ''}
+                            onChange={(event) => updateField(field.id, { placeholder: event.target.value })}
+                            size="small"
+                            fullWidth
+                          />
                           {usesOptions && (
                             <TextField
-                              label="Варианты"
+                              label="Варианты ответа"
+                              helperText="Каждый вариант с новой строки"
                               value={field.options.join('\n')}
                               onChange={(event) => setFieldOptions(field.id, event.target.value)}
                               size="small"
                               multiline
                               minRows={3}
-                              sx={{ mt: 1 }}
                               fullWidth
                             />
                           )}
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1 }}>
-                            <TextField
-                              label="Мин. длина"
-                              type="number"
-                              value={field.validation.min_length ?? ''}
-                              disabled={!usesTextValidation}
-                              onChange={(event) => updateField(field.id, { validation: { ...field.validation, min_length: event.target.value === '' ? null : Number(event.target.value) } })}
-                              size="small"
-                            />
-                            <TextField
-                              label="Макс. длина"
-                              type="number"
-                              value={field.validation.max_length ?? ''}
-                              disabled={!usesTextValidation}
-                              onChange={(event) => updateField(field.id, { validation: { ...field.validation, max_length: event.target.value === '' ? null : Number(event.target.value) } })}
-                              size="small"
-                            />
-                            <TextField
-                              label="Мин. значение"
-                              type="number"
-                              value={field.validation.min ?? ''}
-                              disabled={!usesNumberValidation}
-                              onChange={(event) => updateField(field.id, { validation: { ...field.validation, min: event.target.value === '' ? null : Number(event.target.value) } })}
-                              size="small"
-                            />
-                            <TextField
-                              label="Макс. значение"
-                              type="number"
-                              value={field.validation.max ?? ''}
-                              disabled={!usesNumberValidation}
-                              onChange={(event) => updateField(field.id, { validation: { ...field.validation, max: event.target.value === '' ? null : Number(event.target.value) } })}
-                              size="small"
-                            />
-                          </Box>
+                        </Box>
+
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(5, minmax(0, 1fr))' },
+                            gap: 1,
+                            alignItems: 'start',
+                          }}
+                        >
                           <TextField
-                            label="Регулярное выражение"
+                            label="Мин. длина"
+                            type="number"
+                            value={field.validation.min_length ?? ''}
+                            disabled={!usesTextValidation}
+                            onChange={(event) => updateField(field.id, { validation: { ...field.validation, min_length: event.target.value === '' ? null : Number(event.target.value) } })}
+                            size="small"
+                            inputProps={{ min: 0 }}
+                          />
+                          <TextField
+                            label="Макс. длина"
+                            type="number"
+                            value={field.validation.max_length ?? ''}
+                            disabled={!usesTextValidation}
+                            onChange={(event) => updateField(field.id, { validation: { ...field.validation, max_length: event.target.value === '' ? null : Number(event.target.value) } })}
+                            size="small"
+                            inputProps={{ min: 0 }}
+                          />
+                          <TextField
+                            label="Мин. значение"
+                            type="number"
+                            value={field.validation.min ?? ''}
+                            disabled={!usesNumberValidation}
+                            onChange={(event) => updateField(field.id, { validation: { ...field.validation, min: event.target.value === '' ? null : Number(event.target.value) } })}
+                            size="small"
+                          />
+                          <TextField
+                            label="Макс. значение"
+                            type="number"
+                            value={field.validation.max ?? ''}
+                            disabled={!usesNumberValidation}
+                            onChange={(event) => updateField(field.id, { validation: { ...field.validation, max: event.target.value === '' ? null : Number(event.target.value) } })}
+                            size="small"
+                          />
+                          <TextField
+                            label="Regex-проверка"
                             value={field.validation.pattern || ''}
                             disabled={!usesTextValidation}
                             onChange={(event) => updateField(field.id, { validation: { ...field.validation, pattern: event.target.value } })}
                             size="small"
                             fullWidth
-                            sx={{ mt: 1 }}
+                            sx={{ gridColumn: { xs: '1', sm: '1 / -1', xl: 'auto' } }}
                           />
-                        </TableCell>
-                        <TableCell align="right">
-                          <Tooltip title="Удалить поле">
-                            <IconButton size="small" color="error" onClick={() => deleteField(field.id)}>
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {selected.fields.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4}>
-                        <Typography color="text.secondary">В анкете пока нет полей.</Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  );
+                })}
+                {selected.fields.length === 0 && (
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography color="text.secondary">В анкете пока нет полей.</Typography>
+                  </Paper>
+                )}
+              </Stack>
             </Stack>
           )}
         </Paper>

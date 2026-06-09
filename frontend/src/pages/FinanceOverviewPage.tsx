@@ -597,7 +597,7 @@ const FinanceOverviewPageContent: React.FC = () => {
               <TableCell>{templateLabel(model.template_key, templates)}</TableCell>
               <TableCell>{model.currency}</TableCell>
               <TableCell align="right">
-                <Button size="small" onClick={() => setSelectedModelId(model.id)}>
+                <Button size="small" onClick={() => { setSelectedModelId(model.id); setTab('dashboard'); }}>
                   Открыть
                 </Button>
                 <IconButton size="small" color="error" onClick={() => deleteModel(model)}>

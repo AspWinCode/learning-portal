@@ -109,13 +109,20 @@ def init_statement(account_id: str, date_from: date, date_to: date, token: Optio
     """Запросить создание выписки. Возвращает statementId."""
     resp = _api_request("POST", "open-banking/v1.0/statements", token, body={
         "Data": {
-            "accountId": account_id,
-            "fromBookingDateTime": date_from.isoformat() + "T00:00:00+00:00",
-            "toBookingDateTime": date_to.isoformat() + "T23:59:59+00:00",
+            "Statement": {
+                "accountId": account_id,
+                "fromBookingDateTime": date_from.isoformat() + "T00:00:00+00:00",
+                "toBookingDateTime": date_to.isoformat() + "T23:59:59+00:00",
+            }
         }
     })
+    # Ответ: {"Data": {"statementId": "..."}} или {"Data": {"Statement": {"statementId": "..."}}}
     data = resp.get("Data") or resp
-    st_id = data.get("statementId") or data.get("StatementId")
+    st_id = (
+        data.get("statementId") or data.get("StatementId")
+        or (data.get("Statement") or {}).get("statementId")
+        or (data.get("Statement") or {}).get("StatementId")
+    )
     if not st_id:
         raise ValueError(f"Точка Банк: нет statementId в ответе: {resp}")
     return st_id

@@ -111,8 +111,8 @@ def init_statement(account_id: str, date_from: date, date_to: date, token: Optio
         "Data": {
             "Statement": {
                 "accountId": account_id,
-                "fromBookingDateTime": date_from.isoformat() + "T00:00:00+00:00",
-                "toBookingDateTime": date_to.isoformat() + "T23:59:59+00:00",
+                "startDateTime": date_from.isoformat() + "T00:00:00+00:00",
+                "endDateTime": date_to.isoformat() + "T23:59:59+00:00",
             }
         }
     })

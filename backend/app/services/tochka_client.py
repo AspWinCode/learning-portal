@@ -85,6 +85,26 @@ def get_accounts(token: Optional[str] = None) -> List[Dict[str, Any]]:
     return accounts
 
 
+def resolve_account_id(account_id: str, token: Optional[str] = None) -> str:
+    """
+    Возвращает полный accountId в формате 'NNNN/BIK' как в Tochka API.
+    Если account_id уже содержит '/', возвращает как есть.
+    Иначе ищет счёт в списке и возвращает полный ID.
+    """
+    if "/" in account_id:
+        return account_id
+    try:
+        accounts = get_accounts(token)
+        for acc in accounts:
+            full_id = acc.get("accountId", "")
+            # Сравниваем начало: "40802810020000440578/044525104".startswith("40802810020000440578")
+            if isinstance(full_id, str) and full_id.startswith(account_id):
+                return full_id
+    except Exception:
+        pass
+    return account_id  # fallback: вернуть как есть
+
+
 def init_statement(account_id: str, date_from: date, date_to: date, token: Optional[str] = None) -> str:
     """Запросить создание выписки. Возвращает statementId."""
     resp = _api_request("POST", "open-banking/v1.0/statements", token, body={
@@ -120,11 +140,13 @@ def fetch_statement_ready(
 ) -> Dict[str, Any]:
     """Запросить выписку и дождаться статуса Ready."""
     token = token or get_access_token()
-    st_id = init_statement(account_id, date_from, date_to, token)
+    # Резолвим полный accountId (с BIK), если передан только номер счёта
+    full_account_id = resolve_account_id(account_id, token)
+    st_id = init_statement(full_account_id, date_from, date_to, token)
     deadline = time.time() + max_wait_sec
     while time.time() < deadline:
         time.sleep(poll_interval_sec)
-        st = get_statement(account_id, st_id, token)
+        st = get_statement(full_account_id, st_id, token)
         data = st.get("Data") or st.get("data") or st
         status = ""
         if isinstance(data, dict):

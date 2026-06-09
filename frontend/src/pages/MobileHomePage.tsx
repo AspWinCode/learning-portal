@@ -32,6 +32,7 @@ import { settingsApi } from '../services/api';
 import { PwaModule } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { extractApiError } from '../utils/extractApiError';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 const moduleIcons: Record<string, React.ReactNode> = {
   dashboard: <Dashboard />,
@@ -50,6 +51,41 @@ const moduleIcons: Record<string, React.ReactNode> = {
   reports: <BarChart />,
 };
 
+const PWA_SETTINGS_TIMEOUT_MS = 7000;
+
+const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error('PWA settings request timed out')), timeoutMs);
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeoutId));
+  });
+
+const getFallbackModules = (user: ReturnType<typeof useAuth>['user']): PwaModule[] => {
+  const effectiveRole = getEffectiveRole(user);
+  const candidates: PwaModule[] = [
+    { key: 'dashboard', label: 'Главная', description: 'Сводка и основные показатели', route: '/dashboard' },
+    { key: 'parent_dashboard', label: 'Кабинет родителя', description: 'Обучение, оплаты и сообщения', route: '/mobile/parent-dashboard', required_permission: 'parent_dashboard.access' },
+    { key: 'trainer_cockpit', label: 'Кокпит тренера', description: 'Занятия и рабочий день тренера', route: '/mobile/trainer-cockpit', required_permission: 'trainer_cockpit.access' },
+    { key: 'tasks', label: 'Задачи', description: 'Рабочие задачи и напоминания', route: '/mobile/tasks', required_permission: 'tasks.access' },
+    { key: 'students', label: 'Ученики', description: 'Карточки и история учеников', route: '/mobile/students', required_permission: 'students.access' },
+    { key: 'lessons', label: 'Уроки', description: 'Расписание и занятия', route: '/mobile/lessons', required_permission: 'lessons.access' },
+    { key: 'programs', label: 'Программы', description: 'Учебные программы', route: '/mobile/programs', required_permission: 'programs.access' },
+    { key: 'grades', label: 'Оценки', description: 'Оценки и прогресс', route: '/trainer-grades', required_permission: 'grades.access' },
+    { key: 'leads', label: 'Лиды', description: 'Продажи и воронка', route: '/mobile/leads', required_permission: 'sales.access' },
+    { key: 'payments', label: 'Оплаты', description: 'Платежи и задолженности', route: '/finance/payments', required_permission: 'sales.access' },
+    { key: 'owner_workspace', label: 'Рабочее пространство', description: 'Проекты, контакты и задачи', route: '/mobile/contacts', required_permission: 'owner_workspace.access' },
+  ];
+
+  return candidates.filter((module) => {
+    if (module.key === 'dashboard') {
+      return ['admin', 'owner', 'trainer', 'parent'].includes(effectiveRole || '');
+    }
+    return !module.required_permission || hasPermission(user, module.required_permission);
+  });
+};
+
 const MobileHomePage: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -64,14 +100,15 @@ const MobileHomePage: React.FC = () => {
       // ignore storage errors
     }
     let mounted = true;
-    settingsApi
-      .getMyPwaSettings()
+    withTimeout(settingsApi.getMyPwaSettings(), PWA_SETTINGS_TIMEOUT_MS)
       .then((data) => {
         if (!mounted) return;
         const enabled = new Set(data.enabled_modules);
-        setModules(data.modules.filter((module) => enabled.has(module.key)));
+        const apiModules = data.modules.filter((module) => enabled.has(module.key));
+        setModules(apiModules.length ? apiModules : getFallbackModules(user));
       })
       .catch((err) => {
+        if (mounted) setModules(getFallbackModules(user));
         if (mounted) setError(extractApiError(err, 'Не удалось загрузить PWA-модули'));
       })
       .finally(() => {
@@ -80,7 +117,7 @@ const MobileHomePage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user]);
 
   const handleLogout = () => {
     logout();
@@ -88,7 +125,7 @@ const MobileHomePage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#f6f8fb', pb: 3 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#f6f8fb', pb: 'calc(20px + env(safe-area-inset-bottom))' }}>
       <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid rgba(15, 23, 42, 0.08)' }}>
         <Toolbar>
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -105,7 +142,7 @@ const MobileHomePage: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="sm" sx={{ pt: 2 }}>
+      <Container maxWidth="sm" sx={{ pt: 2, px: { xs: 1.5, sm: 3 } }}>
         <Stack spacing={2}>
           <Box>
             <Typography variant="h5" fontWeight={900}>
@@ -129,11 +166,12 @@ const MobileHomePage: React.FC = () => {
                   key={module.key}
                   variant="outlined"
                   sx={{
-                    p: 1.5,
+                    p: { xs: 1.25, sm: 1.5 },
                     borderRadius: 2,
                     display: 'flex',
                     gap: 1.5,
                     alignItems: 'center',
+                    minHeight: 76,
                   }}
                 >
                   <Box
@@ -158,7 +196,12 @@ const MobileHomePage: React.FC = () => {
                       {module.description}
                     </Typography>
                   </Box>
-                  <Button variant="contained" size="small" onClick={() => navigate(`${module.route}?pwa=1`)}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => navigate(module.route)}
+                    sx={{ flexShrink: 0 }}
+                  >
                     Открыть
                   </Button>
                 </Paper>

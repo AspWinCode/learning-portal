@@ -17,6 +17,13 @@ const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const SetPasswordPage = React.lazy(() => import('./pages/SetPasswordPage'));
 const MobileHomePage = React.lazy(() => import('./pages/MobileHomePage'));
 const MobileContactsPage = React.lazy(() => import('./pages/MobileContactsPage'));
+const MobileTrainerCockpitPage = React.lazy(() => import('./pages/MobileTrainerCockpitPage'));
+const MobileParentDashboardPage = React.lazy(() => import('./pages/MobileParentDashboardPage'));
+const MobileStudentsPage = React.lazy(() => import('./pages/MobileStudentsPage'));
+const MobileTasksPage = React.lazy(() => import('./pages/MobileTasksPage'));
+const MobileLessonsPage = React.lazy(() => import('./pages/MobileLessonsPage'));
+const MobileProgramsPage = React.lazy(() => import('./pages/MobileProgramsPage'));
+const MobileLeadsPage = React.lazy(() => import('./pages/MobileLeadsPage'));
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const StudentsPage = React.lazy(() => import('./pages/StudentsPage'));
 const GroupsPage = React.lazy(() => import('./pages/GroupsPage'));
@@ -142,6 +149,70 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="owner_workspace.access">
                   <MobileContactsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/trainer-cockpit"
+              element={
+                <PrivateRoute requiredPermission="trainer_cockpit.access">
+                  <MobileTrainerCockpitPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/parent-dashboard"
+              element={
+                <PrivateRoute>
+                  <MobileParentDashboardPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/students"
+              element={
+                <PrivateRoute requiredPermission="students.access">
+                  <MobileStudentsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/students/:studentId"
+              element={
+                <PrivateRoute requiredPermission="students.access">
+                  <MobileStudentsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/tasks"
+              element={
+                <PrivateRoute>
+                  <MobileTasksPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/lessons"
+              element={
+                <PrivateRoute requiredPermission="lessons.access">
+                  <MobileLessonsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/programs"
+              element={
+                <PrivateRoute requiredPermission="programs.access">
+                  <MobileProgramsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/leads"
+              element={
+                <PrivateRoute requiredPermission="sales.access">
+                  <MobileLeadsPage />
                 </PrivateRoute>
               }
             />

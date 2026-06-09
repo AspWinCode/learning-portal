@@ -700,11 +700,12 @@ export const financeApi = {
   createManualTransaction: async (payload: {
     account_id: number;
     amount: number;
-    direction: 'income' | 'expense';
+    direction: 'income' | 'expense' | 'transfer';
     occurred_at: string;
     article_id?: number | null;
     target_id?: number | null;
     description?: string | null;
+    to_account_id?: number | null;
   }): Promise<FinanceLedgerBankRow> => {
     const response = await api.post('/api/finance/manual-transaction', payload);
     return response.data;

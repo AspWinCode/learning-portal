@@ -420,11 +420,13 @@ class FinanceLedgerTransactionRow(BaseModel):
 class FinanceManualTransactionCreate(BaseModel):
     account_id: int
     amount: float
-    direction: str
+    direction: str  # income | expense | transfer
     occurred_at: date
     article_id: Optional[int] = None
     target_id: Optional[int] = None
     description: Optional[str] = None
+    # Для direction=transfer: счёт-назначения (обязателен при переводе)
+    to_account_id: Optional[int] = None
 
 
 class FinanceStudentAccountCreate(BaseModel):

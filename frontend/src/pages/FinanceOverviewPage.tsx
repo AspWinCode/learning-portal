@@ -128,8 +128,9 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualAccountId, setManualAccountId] = useState<number | ''>('');
+  const [manualToAccountId, setManualToAccountId] = useState<number | ''>('');
   const [manualAmount, setManualAmount] = useState('');
-  const [manualDirection, setManualDirection] = useState<'income' | 'expense'>('income');
+  const [manualDirection, setManualDirection] = useState<'income' | 'expense' | 'transfer'>('income');
   const [manualDate, setManualDate] = useState(today());
   const [manualArticleId, setManualArticleId] = useState<number | ''>('');
   const [manualTargetId, setManualTargetId] = useState<number | ''>('');
@@ -432,6 +433,7 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   const createManualOperation = async () => {
     if (!manualAccountId || !manualAmount || Number(manualAmount) <= 0) return;
+    if (manualDirection === 'transfer' && !manualToAccountId) return;
     setLoading(true);
     setError(null);
     try {
@@ -440,9 +442,10 @@ const FinanceOverviewPageContent: React.FC = () => {
         amount: Number(manualAmount),
         direction: manualDirection,
         occurred_at: manualDate,
-        article_id: manualArticleId === '' ? null : Number(manualArticleId),
+        article_id: manualDirection === 'transfer' ? null : (manualArticleId === '' ? null : Number(manualArticleId)),
         target_id: manualTargetId === '' ? null : Number(manualTargetId),
         description: manualDescription.trim() || null,
+        to_account_id: manualDirection === 'transfer' ? Number(manualToAccountId) : null,
       });
       setManualDialogOpen(false);
       await loadJournal();
@@ -786,6 +789,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             variant="contained"
             onClick={() => {
               setManualAccountId(accounts[0]?.id || '');
+              setManualToAccountId('');
               setManualTargetId(selectedTargetId || '');
               setManualArticleId('');
               setManualAmount('');
@@ -820,7 +824,11 @@ const FinanceOverviewPageContent: React.FC = () => {
             {journalRows.map((row) => (
               <TableRow key={row.id}>
                 <TableCell>{row.occurred_at ? new Date(row.occurred_at).toLocaleString('ru-RU') : '—'}</TableCell>
-                <TableCell>{row.account_name || row.account_code || '—'}</TableCell>
+                <TableCell>
+                  {row.transfer_group_id
+                    ? `${row.account_name || row.account_code || '?'} → ${row.to_account_name || row.to_account_code || '?'}`
+                    : (row.account_name || row.account_code || '—')}
+                </TableCell>
                 <TableCell>
                   <FormControl size="small" sx={{ minWidth: 170 }}>
                     <Select
@@ -1137,14 +1145,35 @@ const FinanceOverviewPageContent: React.FC = () => {
                 label="Тип"
                 value={manualDirection}
                 onChange={(e) => {
-                  setManualDirection(e.target.value as 'income' | 'expense');
+                  setManualDirection(e.target.value as 'income' | 'expense' | 'transfer');
                   setManualArticleId('');
+                  setManualToAccountId('');
                 }}
               >
                 <MenuItem value="income">Доход</MenuItem>
                 <MenuItem value="expense">Расход</MenuItem>
+                <MenuItem value="transfer">Перевод</MenuItem>
               </Select>
             </FormControl>
+            {manualDirection === 'transfer' && (
+              <FormControl size="small" fullWidth>
+                <InputLabel>Счёт-назначения</InputLabel>
+                <Select
+                  label="Счёт-назначения"
+                  value={manualToAccountId === '' ? '' : String(manualToAccountId)}
+                  onChange={(e) => setManualToAccountId(e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  {accounts
+                    .filter((acc) => acc.id !== manualAccountId)
+                    .map((account) => (
+                      <MenuItem key={account.id} value={account.id}>
+                        {account.name}
+                        {account.code ? ` (${account.code})` : ''}
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+            )}
             <TextField
               label="Сумма"
               type="number"
@@ -1168,23 +1197,25 @@ const FinanceOverviewPageContent: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <FormControl size="small" fullWidth>
-              <InputLabel>Статья</InputLabel>
-              <Select
-                label="Статья"
-                value={manualArticleId === '' ? '' : String(manualArticleId)}
-                onChange={(e) => setManualArticleId(e.target.value === '' ? '' : Number(e.target.value))}
-              >
-                <MenuItem value="">Не выбрана</MenuItem>
-                {articles
-                  .filter((article) => article.direction === manualDirection)
-                  .map((article) => (
-                    <MenuItem key={article.id} value={article.id}>
-                      {article.name}
-                    </MenuItem>
-                  ))}
-              </Select>
-            </FormControl>
+            {manualDirection !== 'transfer' && (
+              <FormControl size="small" fullWidth>
+                <InputLabel>Статья</InputLabel>
+                <Select
+                  label="Статья"
+                  value={manualArticleId === '' ? '' : String(manualArticleId)}
+                  onChange={(e) => setManualArticleId(e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  <MenuItem value="">Не выбрана</MenuItem>
+                  {articles
+                    .filter((article) => article.direction === manualDirection)
+                    .map((article) => (
+                      <MenuItem key={article.id} value={article.id}>
+                        {article.name}
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+            )}
             <TextField
               label="Комментарий"
               size="small"
@@ -1200,7 +1231,10 @@ const FinanceOverviewPageContent: React.FC = () => {
           <Button
             variant="contained"
             onClick={createManualOperation}
-            disabled={!manualAccountId || !manualAmount || Number(manualAmount) <= 0}
+            disabled={
+              !manualAccountId || !manualAmount || Number(manualAmount) <= 0 ||
+              (manualDirection === 'transfer' && !manualToAccountId)
+            }
           >
             Добавить
           </Button>

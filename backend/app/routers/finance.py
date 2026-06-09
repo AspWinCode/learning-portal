@@ -1703,11 +1703,22 @@ async def create_manual_transaction(
         raise HTTPException(status_code=400, detail="Сумма не может быть нулевой")
 
     if payload.direction not in {d.value for d in FinanceTransactionDirection}:  # type: ignore[attr-defined]
-        raise HTTPException(status_code=400, detail="Некорректное направление: income или expense")
+        raise HTTPException(status_code=400, detail="Некорректное направление: income, expense или transfer")
 
     account = db.query(FinanceAccount).filter(FinanceAccount.id == payload.account_id, FinanceAccount.is_active.is_(True)).first()
     if not account:
         raise HTTPException(status_code=400, detail="Счёт не найден или неактивен")
+
+    if payload.direction == "transfer":
+        if not payload.to_account_id:
+            raise HTTPException(status_code=400, detail="Для перевода необходимо указать счёт-назначения (to_account_id)")
+        if payload.to_account_id == payload.account_id:
+            raise HTTPException(status_code=400, detail="Счёт-источник и счёт-назначения не могут совпадать")
+        to_account_obj = db.query(FinanceAccount).filter(FinanceAccount.id == payload.to_account_id, FinanceAccount.is_active.is_(True)).first()
+        if not to_account_obj:
+            raise HTTPException(status_code=400, detail="Счёт-назначения не найден или неактивен")
+    else:
+        to_account_obj = None
 
     if payload.article_id and not db.query(FinanceArticle.id).filter(FinanceArticle.id == payload.article_id).first():
         raise HTTPException(status_code=400, detail="Статья не найдена")
@@ -1717,29 +1728,80 @@ async def create_manual_transaction(
     occurred_at = datetime.combine(payload.occurred_at, datetime.min.time())
     description = (payload.description or "").strip() or None
 
-    tx = FinanceTransaction(
-        occurred_at=occurred_at,
-        amount=abs(amount),
-        direction=FinanceTransactionDirection(payload.direction),  # type: ignore[call-arg]
-        account_id=payload.account_id,
-        to_account_id=None,
-        transfer_group_id=None,
-        counterparty_name=description,
-        counterparty_phone=None,
-        description_raw=description,
-        bank_source="manual",
-        bank_operation_id=None,
-        dedup_hash=None,
-        target_id=payload.target_id,
-        article_id=payload.article_id,
-        student_id=None,
-        group_id=None,
-        teacher_id=None,
-        status=FinanceTransactionStatus.CLASSIFIED,
-    )
-    with db_transaction(db):
-        db.add(tx)
-    db.refresh(tx)
+    if payload.direction == "transfer":
+        import uuid as _uuid
+        group_id = str(_uuid.uuid4())
+        # Расход со счёта-источника
+        tx_out = FinanceTransaction(
+            occurred_at=occurred_at,
+            amount=abs(amount),
+            direction=FinanceTransactionDirection.EXPENSE,
+            account_id=payload.account_id,
+            to_account_id=payload.to_account_id,
+            transfer_group_id=group_id,
+            counterparty_name=description,
+            counterparty_phone=None,
+            description_raw=description,
+            bank_source="manual",
+            bank_operation_id=None,
+            dedup_hash=None,
+            target_id=payload.target_id,
+            article_id=None,
+            student_id=None,
+            group_id=None,
+            teacher_id=None,
+            status=FinanceTransactionStatus.CLASSIFIED,
+        )
+        # Приход на счёт-назначения
+        tx_in = FinanceTransaction(
+            occurred_at=occurred_at,
+            amount=abs(amount),
+            direction=FinanceTransactionDirection.INCOME,
+            account_id=payload.to_account_id,
+            to_account_id=payload.account_id,
+            transfer_group_id=group_id,
+            counterparty_name=description,
+            counterparty_phone=None,
+            description_raw=description,
+            bank_source="manual",
+            bank_operation_id=None,
+            dedup_hash=None,
+            target_id=payload.target_id,
+            article_id=None,
+            student_id=None,
+            group_id=None,
+            teacher_id=None,
+            status=FinanceTransactionStatus.CLASSIFIED,
+        )
+        with db_transaction(db):
+            db.add(tx_out)
+            db.add(tx_in)
+        db.refresh(tx_out)
+        tx = tx_out  # Возвращаем расходную часть (исходящий счёт)
+    else:
+        tx = FinanceTransaction(
+            occurred_at=occurred_at,
+            amount=abs(amount),
+            direction=FinanceTransactionDirection(payload.direction),  # type: ignore[call-arg]
+            account_id=payload.account_id,
+            to_account_id=None,
+            transfer_group_id=None,
+            counterparty_name=description,
+            counterparty_phone=None,
+            description_raw=description,
+            bank_source="manual",
+            bank_operation_id=None,
+            dedup_hash=None,
+            target_id=payload.target_id,
+            article_id=payload.article_id,
+            student_id=None,
+            group_id=None,
+            teacher_id=None,
+            status=FinanceTransactionStatus.CLASSIFIED,
+        )
+        with db_transaction(db):
+            db.add(tx)
+        db.refresh(tx)
 
     tx = (
         db.query(FinanceTransaction)
@@ -1761,7 +1823,7 @@ async def create_manual_transaction(
         id=tx.id,
         occurred_at=tx.occurred_at,
         amount=float(tx.amount or 0.0),
-        direction=str(getattr(tx.direction, "value", tx.direction)),
+        direction="transfer" if tx.transfer_group_id else str(getattr(tx.direction, "value", tx.direction)),
         status=str(getattr(tx.status, "value", tx.status)),
         account_id=tx.account_id,
         account_code=getattr(account, "code", None),

@@ -1870,7 +1870,7 @@ const SalesSettingsPage: React.FC = () => {
       </Dialog>
 
       {/* Metric dialog */}
-      <Dialog open={metricDialogOpen} onClose={() => setMetricDialogOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={metricDialogOpen} onClose={() => setMetricDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingMetricIndex !== null ? 'Редактировать метрику' : 'Новая метрика'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
@@ -1880,21 +1880,82 @@ const SalesSettingsPage: React.FC = () => {
               value={metricName}
               onChange={(e) => setMetricName(e.target.value)}
               fullWidth
+              placeholder="например: Налог УСН 6%, Маржа, НДС"
             />
+
+            {/* Preset formula templates */}
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                Готовые шаблоны (нажмите для вставки):
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                {[
+                  { label: 'УСН 6%', formula: 'SUM(revenue) * 0.06' },
+                  { label: 'УСН 15%', formula: '(SUM(revenue) - SUM(costs)) * 0.15' },
+                  { label: 'НДС 20%', formula: 'SUM(revenue_with_vat) * 0.2 / 1.2' },
+                  { label: 'Прибыль', formula: 'SUM(revenue) - SUM(costs)' },
+                  { label: 'Маржа %', formula: '(SUM(revenue) - SUM(costs)) / SUM(revenue) * 100' },
+                  { label: 'ИП налог 6%', formula: 'SUM(revenue) * 0.06' },
+                  { label: 'Средний чек', formula: 'SUM(revenue) / COUNT(revenue)' },
+                ].map((tpl) => (
+                  <Chip
+                    key={tpl.label}
+                    label={tpl.label}
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    onClick={() => setMetricFormula(tpl.formula)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+              </Stack>
+            </Box>
+
+            {/* Available article codes from the template */}
+            {flattenArticleNodes(templateArticles).filter((n) => n.code).length > 0 && (
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                  Коды статей шаблона (нажмите чтобы добавить SUM в формулу):
+                </Typography>
+                <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                  {flattenArticleNodes(templateArticles)
+                    .filter((n) => n.code)
+                    .map(({ path, level, code, name, direction }) => (
+                      <Chip
+                        key={path.join('-')}
+                        label={`${code}`}
+                        title={name}
+                        size="small"
+                        color={direction === 'income' ? 'success' : 'error'}
+                        variant="outlined"
+                        onClick={() =>
+                          setMetricFormula((f) => (f.trim() ? `${f} + SUM(${code})` : `SUM(${code})`))
+                        }
+                        sx={{ cursor: 'pointer', fontFamily: 'monospace' }}
+                      />
+                    ))}
+                </Stack>
+              </Box>
+            )}
+
             <TextField
               size="small"
               label="Формула"
               value={metricFormula}
               onChange={(e) => setMetricFormula(e.target.value)}
-              helperText="Например: SUM(revenue) - SUM(costs)"
               fullWidth
+              multiline
+              minRows={2}
+              placeholder="Например: SUM(revenue) * 0.06"
+              helperText="Функции: SUM(код) — сумма транзакций, COUNT(код) — количество, AVG_TRANSACTION(код) — средний чек, BALANCE() — остаток на счетах. Поддерживается: +  −  *  /  ()"
             />
             <TextField
               size="small"
-              label="Единица"
+              label="Единица измерения"
               value={metricUnit}
               onChange={(e) => setMetricUnit(e.target.value)}
               fullWidth
+              placeholder="₽, %, шт."
             />
           </Stack>
         </DialogContent>

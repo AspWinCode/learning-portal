@@ -137,6 +137,21 @@ def get_statement(account_id: str, statement_id: str, token: Optional[str] = Non
     )
 
 
+def _extract_statement_status(resp: Dict[str, Any]) -> str:
+    """Извлечь статус из ответа GET /statements/{id}.
+    Ответ: {"Data": {"Statement": [{..., "status": "Ready", ...}]}}
+    """
+    data = resp.get("Data") or resp.get("data") or resp
+    if not isinstance(data, dict):
+        return ""
+    st = data.get("Statement") or data.get("statement")
+    if isinstance(st, list) and st:
+        return str(st[0].get("status") or st[0].get("Status") or "").lower()
+    if isinstance(st, dict):
+        return str(st.get("status") or st.get("Status") or "").lower()
+    return str(data.get("status") or data.get("Status") or "").lower()
+
+
 def fetch_statement_ready(
     account_id: str,
     date_from: date,
@@ -154,13 +169,7 @@ def fetch_statement_ready(
     while time.time() < deadline:
         time.sleep(poll_interval_sec)
         st = get_statement(full_account_id, st_id, token)
-        data = st.get("Data") or st.get("data") or st
-        status = ""
-        if isinstance(data, dict):
-            status = (
-                data.get("status") or data.get("Status")
-                or data.get("statement", {}).get("status") or ""
-            ).lower()
+        status = _extract_statement_status(st)
         if status == "ready":
             return st
         if status in ("failed", "error", "cancelled"):
@@ -169,77 +178,106 @@ def fetch_statement_ready(
 
 
 def extract_incoming_transactions(statement: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Из тела выписки извлечь все операции (приход и расход)."""
-    # Пробуем разные структуры ответа Точки
-    transactions = []
-    data = statement.get("Data") or statement.get("data") or statement
+    """Из тела выписки (GET .../statements/{id}) извлечь все операции.
+
+    Формат ответа Точки:
+    {"Data": {"Statement": [{"Transaction": [{transactionId, creditDebitIndicator, ...}]}]}}
+    """
+    transactions: List[Dict[str, Any]] = []
+
+    # Основной путь: Data.Statement[0].Transaction
+    data = statement.get("Data") or statement.get("data") or {}
     if isinstance(data, dict):
-        for key in ("Transaction", "transactions", "transactionList", "operations"):
-            if key in data and isinstance(data[key], list):
-                transactions = data[key]
-                break
+        st_list = data.get("Statement") or data.get("statement")
+        if isinstance(st_list, list) and st_list:
+            st_obj = st_list[0]
+        elif isinstance(st_list, dict):
+            st_obj = st_list
+        else:
+            st_obj = data
+        if isinstance(st_obj, dict):
+            txs = st_obj.get("Transaction") or st_obj.get("transactions") or st_obj.get("transactionList") or []
+            if isinstance(txs, list):
+                transactions = txs
+
+    # Fallback: прямой список транзакций
     if not transactions:
-        for key in ("transactions", "transactionList", "data", "operations"):
-            if key in statement and isinstance(statement[key], list):
+        for key in ("Transaction", "transactions", "transactionList", "operations"):
+            if isinstance(statement.get(key), list):
                 transactions = statement[key]
                 break
 
     result = []
     for tx in transactions:
         ind = (
-            tx.get("CreditDebitIndicator") or tx.get("creditDebitIndicator")
+            tx.get("creditDebitIndicator") or tx.get("CreditDebitIndicator")
             or tx.get("credit_debit_indicator") or ""
         ).lower()
-        amount_data = tx.get("Amount") or tx.get("amount") or tx.get("TransactionAmount") or {}
-        if isinstance(amount_data, dict):
-            amount = amount_data.get("Amount") or amount_data.get("amount")
-        else:
-            amount = amount_data or tx.get("amountNat")
-        if amount is None:
+
+        # Сумма — у Точки в поле "amount" (float) или в объекте Amount
+        amount_raw = tx.get("amount") or tx.get("Amount") or tx.get("transactionAmount") or tx.get("amountNat")
+        if isinstance(amount_raw, dict):
+            amount_raw = amount_raw.get("Amount") or amount_raw.get("amount")
+        if amount_raw is None:
             continue
         try:
-            amount_float = float(amount)
+            amount_float = abs(float(amount_raw))
         except (TypeError, ValueError):
             continue
 
-        # Плательщик
-        debtor = tx.get("DebtorAgent") or tx.get("debtor") or tx.get("debtorAccount") or {}
-        if isinstance(debtor, str):
-            payer_name = debtor
-        else:
-            payer_name = (
-                debtor.get("Name") or debtor.get("name") or debtor.get("fio")
-                or debtor.get("displayName") or tx.get("payerName") or tx.get("payer_name") or ""
-            )
-        payer_phone_raw = ""
-        if isinstance(debtor, dict):
-            payer_phone_raw = (
-                debtor.get("phone") or debtor.get("phoneNumber")
-                or debtor.get("mobile") or debtor.get("contact") or ""
-            )
+        # Плательщик (у Точки поля: payerName, debtor, debtorAccount)
+        payer_name = (
+            tx.get("payerName") or tx.get("payer_name") or tx.get("PayerName") or ""
+        ).strip()
+        if not payer_name:
+            debtor = tx.get("DebtorAgent") or tx.get("debtor") or tx.get("debtorAccount") or {}
+            if isinstance(debtor, str):
+                payer_name = debtor
+            elif isinstance(debtor, dict):
+                payer_name = (
+                    debtor.get("Name") or debtor.get("name") or debtor.get("fio") or ""
+                ).strip()
+
+        payer_phone_raw = (
+            tx.get("payerPhone") or tx.get("payer_phone") or tx.get("PayerPhone") or ""
+        ).strip()
         if not payer_phone_raw:
-            payer_phone_raw = tx.get("payerPhone") or tx.get("payer_phone") or ""
+            debtor = tx.get("DebtorAgent") or tx.get("debtor") or tx.get("debtorAccount") or {}
+            if isinstance(debtor, dict):
+                payer_phone_raw = (
+                    debtor.get("phone") or debtor.get("phoneNumber") or debtor.get("mobile") or ""
+                ).strip()
 
         tx_date = (
-            tx.get("BookingDateTime") or tx.get("bookingDate")
+            tx.get("bookingDate") or tx.get("documentProcessDate") or tx.get("BookingDateTime")
             or tx.get("date") or tx.get("valueDate") or tx.get("chargeDate") or ""
         )
+        # Оставить только дату (YYYY-MM-DD), убрать время если есть
+        if tx_date and "T" in str(tx_date):
+            tx_date = str(tx_date).split("T")[0]
+
         operation_id = (
-            tx.get("TransactionId") or tx.get("transactionId")
+            tx.get("transactionId") or tx.get("TransactionId")
             or tx.get("instructionId") or tx.get("endToEndId")
-            or tx.get("id") or tx.get("transaction_id") or ""
+            or tx.get("paymentId") or tx.get("id") or tx.get("transaction_id") or ""
         )
         if isinstance(operation_id, dict):
             operation_id = operation_id.get("id") or operation_id.get("value") or ""
         operation_id = str(operation_id).strip() if operation_id else ""
 
+        description = (
+            tx.get("description") or tx.get("Description")
+            or tx.get("transactionTypeCode") or tx.get("paymentPurpose") or ""
+        ).strip()
+
         result.append({
-            "date": tx_date,
+            "date": str(tx_date),
             "amount": amount_float,
             "direction": "income" if ind == "credit" else "expense",
-            "payer_name": (payer_name or "").strip(),
-            "payer_phone_raw": (payer_phone_raw or "").strip(),
+            "payer_name": payer_name,
+            "payer_phone_raw": payer_phone_raw,
             "operation_id": operation_id,
+            "description": description,
             "raw": tx,
         })
     return result

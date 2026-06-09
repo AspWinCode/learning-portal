@@ -251,6 +251,7 @@ class BudgetEntryResponse(BaseModel):
     article_name: Optional[str] = None
     period: str
     amount_plan: float
+    amount_fact: float = 0.0  # фактические транзакции за период
 
 
 class MetricDefinitionCreate(BaseModel):

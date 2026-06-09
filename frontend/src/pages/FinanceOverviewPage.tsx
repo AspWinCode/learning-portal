@@ -651,25 +651,38 @@ const FinanceOverviewPageContent: React.FC = () => {
   );
 
   const renderBudget = () => {
+    // factMap: article_id → amount_fact из последнего загруженного budget
+    const factMap = new Map<number, number>(
+      budget.map((entry) => [entry.article_id, entry.amount_fact ?? 0])
+    );
+
     const incomePlan = budgetArticles
-      .filter((article) => article.direction === 'income')
-      .reduce((sum, article) => sum + (budgetMap.get(article.id) || 0), 0);
+      .filter((a) => a.direction === 'income')
+      .reduce((sum, a) => sum + (budgetMap.get(a.id) || 0), 0);
     const expensePlan = budgetArticles
-      .filter((article) => article.direction === 'expense')
-      .reduce((sum, article) => sum + (budgetMap.get(article.id) || 0), 0);
+      .filter((a) => a.direction === 'expense')
+      .reduce((sum, a) => sum + (budgetMap.get(a.id) || 0), 0);
+    const incomeFact = budgetArticles
+      .filter((a) => a.direction === 'income')
+      .reduce((sum, a) => sum + (factMap.get(a.id) || 0), 0);
+    const expenseFact = budgetArticles
+      .filter((a) => a.direction === 'expense')
+      .reduce((sum, a) => sum + (factMap.get(a.id) || 0), 0);
 
     return (
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" sx={{ mb: 1.5 }}>
-          <Stack direction="row" spacing={2} alignItems="center">
+          <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
             <Typography variant="h6">Бюджет</Typography>
             <Typography variant="body2" color="success.main">
-              Доход: {money(incomePlan)}
+              Доход: план {money(incomePlan)} / факт {money(incomeFact)}
             </Typography>
             <Typography variant="body2" color="error.main">
-              Расход: {money(expensePlan)}
+              Расход: план {money(expensePlan)} / факт {money(expenseFact)}
             </Typography>
-            <Typography variant="body2">Итог: {money(incomePlan - expensePlan)}</Typography>
+            <Typography variant="body2">
+              Итог: план {money(incomePlan - expensePlan)} / факт {money(incomeFact - expenseFact)}
+            </Typography>
           </Stack>
           <Button startIcon={<Save />} variant="contained" onClick={saveBudget} disabled={!selectedTargetId}>
             Сохранить бюджет
@@ -681,28 +694,54 @@ const FinanceOverviewPageContent: React.FC = () => {
               <TableCell>Статья</TableCell>
               <TableCell>Тип</TableCell>
               <TableCell align="right">План</TableCell>
+              <TableCell align="right">Факт</TableCell>
+              <TableCell align="right">Отклонение</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {budgetArticles.map((article) => (
-              <TableRow key={article.id}>
-                <TableCell sx={{ pl: 2 + article.level * 3 }}>{article.name}</TableCell>
-                <TableCell>{directionLabel(article.direction)}</TableCell>
-                <TableCell align="right">
-                  <TextField
-                    size="small"
-                    type="number"
-                    value={budgetMap.get(article.id) ?? 0}
-                    onChange={(event) => setBudgetAmount(article.id, Number(event.target.value || 0))}
-                    inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
-                    sx={{ width: 160 }}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
+            {budgetArticles.map((article) => {
+              const plan = budgetMap.get(article.id) ?? 0;
+              const fact = factMap.get(article.id) ?? 0;
+              const diff = fact - plan;
+              // Для доходов: перевыполнение (факт > план) — хорошо (зелёный)
+              // Для расходов: перевыполнение (факт > план) — плохо (красный)
+              const diffColor =
+                diff === 0
+                  ? 'text.secondary'
+                  : article.direction === 'income'
+                  ? diff > 0 ? 'success.main' : 'error.main'
+                  : diff > 0 ? 'error.main' : 'success.main';
+
+              return (
+                <TableRow key={article.id}>
+                  <TableCell sx={{ pl: 2 + article.level * 3 }}>{article.name}</TableCell>
+                  <TableCell>{directionLabel(article.direction)}</TableCell>
+                  <TableCell align="right">
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={plan}
+                      onChange={(event) => setBudgetAmount(article.id, Number(event.target.value || 0))}
+                      inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
+                      sx={{ width: 140 }}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" sx={{ fontWeight: fact > 0 ? 600 : 400 }}>
+                      {money(fact)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" color={diffColor}>
+                      {diff === 0 ? '—' : (diff > 0 ? '+' : '') + money(diff)}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
             {budgetArticles.length === 0 && (
               <TableRow>
-                <TableCell colSpan={3} align="center">
+                <TableCell colSpan={5} align="center">
                   В модели пока нет статей.
                 </TableCell>
               </TableRow>

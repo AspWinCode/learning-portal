@@ -737,6 +737,38 @@ async def list_budget_entries(
         .order_by(BudgetEntry.id.asc())
         .all()
     )
+
+    # Считаем факт из транзакций за выбранный период (YYYY-MM → первый/последний день месяца)
+    try:
+        year, month = int(period[:4]), int(period[5:7])
+        period_start = date(year, month, 1)
+        if month == 12:
+            period_end = date(year + 1, 1, 1)
+        else:
+            period_end = date(year, month + 1, 1)
+    except (ValueError, IndexError):
+        period_start = period_end = None
+
+    fact_by_article: dict = {}
+    if period_start and period_end:
+        from sqlalchemy import func as sqlfunc
+        fact_rows = (
+            db.query(
+                FinanceTransaction.article_id,
+                sqlfunc.sum(FinanceTransaction.amount).label("total"),
+            )
+            .filter(
+                FinanceTransaction.target_id == target_id,
+                FinanceTransaction.article_id.isnot(None),
+                FinanceTransaction.direction != FinanceTransactionDirection.TRANSFER,
+                FinanceTransaction.occurred_at >= datetime.combine(period_start, datetime.min.time()),
+                FinanceTransaction.occurred_at < datetime.combine(period_end, datetime.min.time()),
+            )
+            .group_by(FinanceTransaction.article_id)
+            .all()
+        )
+        fact_by_article = {r.article_id: float(r.total or 0) for r in fact_rows}
+
     return [
         BudgetEntryResponse(
             id=row.id,
@@ -745,6 +777,7 @@ async def list_budget_entries(
             article_name=getattr(row.article, "name", None),
             period=row.period,
             amount_plan=float(row.amount_plan or 0),
+            amount_fact=fact_by_article.get(row.article_id, 0.0),
         )
         for row in rows
     ]

@@ -816,6 +816,7 @@ export interface BudgetEntry {
   article_name?: string | null;
   period: string;
   amount_plan: number;
+  amount_fact?: number;
 }
 
 export interface MetricDefinition {

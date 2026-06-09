@@ -813,6 +813,7 @@ const FinanceOverviewPageContent: React.FC = () => {
               <TableCell align="right">Сумма</TableCell>
               <TableCell>Контрагент</TableCell>
               <TableCell>Описание</TableCell>
+              <TableCell />
             </TableRow>
           </TableHead>
           <TableBody>
@@ -878,11 +879,27 @@ const FinanceOverviewPageContent: React.FC = () => {
                 </TableCell>
                 <TableCell>{row.counterparty_name || '—'}</TableCell>
                 <TableCell>{row.description || row.bank_source || '—'}</TableCell>
+                <TableCell align="right">
+                  <Tooltip title="Удалить операцию">
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={async () => {
+                        if (!window.confirm('Удалить операцию? Это действие необратимо.')) return;
+                        await financeApi.deleteTransaction(row.id);
+                        setJournalRows((prev) => prev.filter((r) => r.id !== row.id));
+                        if (selectedTargetId) await loadModelData(selectedTargetId);
+                      }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
               </TableRow>
             ))}
             {journalRows.length === 0 && !journalLoading && (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={9} align="center">
                   Операций за выбранный период нет.
                 </TableCell>
               </TableRow>

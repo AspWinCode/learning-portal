@@ -26,6 +26,10 @@ from app.models import (
     FinanceTransactionDirection,
     FinanceTransactionStatus,
     FinanceRecognitionRule,
+    FinanceModel,
+    BudgetEntry,
+    MetricDefinition,
+    DashboardWidget,
     Student,
     StudentAccount,
     StudentAccountTransaction,
@@ -44,7 +48,21 @@ from app.schemas.finance import (
     FinanceAnalyticsTargetBreakdownRow,
     FinanceArticleCreate,
     FinanceArticleResponse,
+    FinanceArticleTreeItem,
     FinanceArticleUpdate,
+    FinanceModelCreate,
+    FinanceModelResponse,
+    FinanceModelUpdate,
+    BudgetEntryResponse,
+    BudgetSaveRequest,
+    MetricComputeResponse,
+    MetricDefinitionCreate,
+    MetricDefinitionResponse,
+    MetricDefinitionUpdate,
+    DashboardWidgetCreate,
+    DashboardWidgetComputedResponse,
+    DashboardWidgetResponse,
+    DashboardWidgetUpdate,
     FinanceLedgerBankRow,
     FinanceLedgerTransactionRow,
     FinanceManualTransactionCreate,
@@ -56,6 +74,8 @@ from app.schemas.finance import (
     FinanceTransactionUpdate,
     StudentAccountResponse,
 )
+from app.services.finance_metric_engine import compute_metric_formula
+from app.services.finance_templates import get_template, list_templates
 from app.services.finance_ledger import apply_recognition_rules
 from app.services.student_account_finance import create_student_account as finance_create_student_account
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
@@ -70,6 +90,120 @@ def _require_finance_access(user: User) -> None:
     """Права доступа к финансовому журналу: admin / owner / sales."""
     if not auth.has_permission(user, "finance.access"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для работы с финансовым журналом")
+
+
+def _slug(value: str) -> str:
+    cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip())
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
+    return cleaned.strip("_")[:96] or "item"
+
+
+def _article_response(article: FinanceArticle) -> FinanceArticleResponse:
+    return FinanceArticleResponse(
+        id=article.id,
+        code=article.code,
+        target_id=article.target_id,
+        parent_id=article.parent_id,
+        name=article.name,
+        direction=str(getattr(article.direction, "value", article.direction)),
+        cost_kind=str(getattr(article.cost_kind, "value", article.cost_kind)),
+        scope=str(getattr(article.scope, "value", article.scope)),
+        color=article.color,
+        sort_order=int(article.sort_order or 0),
+        is_active=bool(article.is_active),
+    )
+
+
+def _model_response(model: FinanceModel) -> FinanceModelResponse:
+    target = getattr(model, "target", None)
+    return FinanceModelResponse(
+        id=model.id,
+        target_id=model.target_id,
+        target_code=getattr(target, "code", None),
+        target_name=getattr(target, "name", None),
+        name=model.name,
+        template_key=model.template_key,
+        currency=model.currency,
+        period_type=model.period_type,
+        settings_json=model.settings_json,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def _metric_response(metric: MetricDefinition) -> MetricDefinitionResponse:
+    target = getattr(metric, "target", None)
+    return MetricDefinitionResponse(
+        id=metric.id,
+        target_id=metric.target_id,
+        target_name=getattr(target, "name", None),
+        name=metric.name,
+        formula=metric.formula,
+        unit=metric.unit,
+        goal_value=metric.goal_value,
+        sort_order=int(metric.sort_order or 0),
+        created_at=metric.created_at,
+        updated_at=metric.updated_at,
+    )
+
+
+def _widget_response(widget: DashboardWidget) -> DashboardWidgetResponse:
+    metric = getattr(widget, "metric", None)
+    target = getattr(widget, "target", None)
+    return DashboardWidgetResponse(
+        id=widget.id,
+        owner_id=widget.owner_id,
+        metric_id=widget.metric_id,
+        metric_name=getattr(metric, "name", None),
+        target_id=widget.target_id,
+        target_name=getattr(target, "name", None),
+        widget_type=widget.widget_type,
+        period_type=widget.period_type,
+        position_x=int(widget.position_x or 0),
+        position_y=int(widget.position_y or 0),
+        width=int(widget.width or 1),
+        title_override=widget.title_override,
+    )
+
+
+def _create_article_from_template(
+    db: Session,
+    target_id: int,
+    item: Dict[str, object],
+    parent_id: Optional[int] = None,
+    sort_order: int = 0,
+) -> FinanceArticle:
+    code = _slug(str(item.get("code") or item.get("name") or "article"))
+    existing = (
+        db.query(FinanceArticle)
+        .filter(FinanceArticle.target_id == target_id, FinanceArticle.code == code)
+        .first()
+    )
+    if existing:
+        article = existing
+    else:
+        direction = str(item.get("direction") or "expense")
+        cost_kind = str(item.get("cost_kind") or "none")
+        article = FinanceArticle(
+            target_id=target_id,
+            parent_id=parent_id,
+            code=code,
+            name=str(item.get("name") or code),
+            direction=FinanceArticleDirection(direction),
+            cost_kind=FinanceArticleCostKind(cost_kind),
+            scope=FinanceArticleScope.ANY,
+            sort_order=sort_order,
+            is_active=True,
+        )
+        db.add(article)
+        db.flush()
+    children = item.get("children") or []
+    if isinstance(children, list):
+        for index, child in enumerate(children):
+            if isinstance(child, dict):
+                _create_article_from_template(db, target_id, child, article.id, index)
+    return article
 
 
 @router.get("/accounts", response_model=List[FinanceAccountResponse])
@@ -195,11 +329,184 @@ async def delete_finance_target(
     db.commit()
 
 
+@router.get("/model-templates")
+async def list_finance_model_templates(
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[Dict[str, str]]:
+    _require_finance_access(current_user)
+    return list_templates()
+
+
+@router.get("/models", response_model=List[FinanceModelResponse])
+async def list_finance_models(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[FinanceModelResponse]:
+    _require_finance_access(current_user)
+    rows = (
+        db.query(FinanceModel)
+        .options(joinedload(FinanceModel.target))
+        .order_by(FinanceModel.created_at.desc(), FinanceModel.id.desc())
+        .all()
+    )
+    return [_model_response(row) for row in rows]
+
+
+@router.post("/models", response_model=FinanceModelResponse, status_code=201)
+async def create_finance_model(
+    payload: FinanceModelCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceModelResponse:
+    _require_finance_access(current_user)
+    target: Optional[FinanceTarget] = None
+    if payload.target_id is not None:
+        target = db.query(FinanceTarget).filter(FinanceTarget.id == payload.target_id).first()
+    elif payload.target_code:
+        code = _slug(payload.target_code)
+        target = db.query(FinanceTarget).filter(FinanceTarget.code == code).first()
+        if target is None:
+            target = FinanceTarget(code=code, name=(payload.target_name or payload.name).strip(), is_active=True)
+            db.add(target)
+            db.flush()
+    if target is None:
+        raise HTTPException(status_code=400, detail="target_id or target_code is required")
+
+    model = FinanceModel(
+        target_id=target.id,
+        name=payload.name.strip(),
+        template_key=payload.template_key or "blank",
+        currency=(payload.currency or "RUB").strip().upper()[:8],
+        period_type=payload.period_type or "month",
+        settings_json=payload.settings_json,
+    )
+    template = get_template(model.template_key)
+    try:
+        with db_transaction(db):
+            db.add(model)
+            db.flush()
+            for index, item in enumerate(template.get("articles") or []):
+                if isinstance(item, dict):
+                    _create_article_from_template(db, target.id, item, None, index)
+            for index, metric_data in enumerate(template.get("metrics") or []):
+                if isinstance(metric_data, dict):
+                    metric = MetricDefinition(
+                        target_id=target.id,
+                        name=str(metric_data.get("name") or "Metric"),
+                        formula=str(metric_data.get("formula") or "0"),
+                        unit=metric_data.get("unit") if metric_data.get("unit") is not None else None,
+                        sort_order=index,
+                    )
+                    db.add(metric)
+                    db.flush()
+                    db.add(
+                        DashboardWidget(
+                            owner_id=current_user.id,
+                            metric_id=metric.id,
+                            target_id=target.id,
+                            widget_type="number",
+                            period_type="current_month",
+                            position_x=index % 4,
+                            position_y=index // 4,
+                            width=1,
+                        )
+                    )
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Finance model with this name already exists for target")
+    db.refresh(model)
+    db.refresh(model, ["target"])
+    return _model_response(model)
+
+
+@router.get("/models/{model_id}", response_model=FinanceModelResponse)
+async def get_finance_model(
+    model_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceModelResponse:
+    _require_finance_access(current_user)
+    row = db.query(FinanceModel).options(joinedload(FinanceModel.target)).filter(FinanceModel.id == model_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Finance model not found")
+    return _model_response(row)
+
+
+@router.patch("/models/{model_id}", response_model=FinanceModelResponse)
+async def update_finance_model(
+    model_id: int,
+    payload: FinanceModelUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceModelResponse:
+    _require_finance_access(current_user)
+    row = db.query(FinanceModel).options(joinedload(FinanceModel.target)).filter(FinanceModel.id == model_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Finance model not found")
+    if payload.name is not None:
+        row.name = payload.name.strip() or row.name
+    if payload.template_key is not None:
+        row.template_key = payload.template_key or row.template_key
+    if payload.currency is not None:
+        row.currency = payload.currency.strip().upper()[:8] or row.currency
+    if payload.period_type is not None:
+        row.period_type = payload.period_type or row.period_type
+    if payload.settings_json is not None:
+        row.settings_json = payload.settings_json
+    db.commit()
+    db.refresh(row)
+    db.refresh(row, ["target"])
+    return _model_response(row)
+
+
+@router.delete("/models/{model_id}", status_code=204)
+async def delete_finance_model(
+    model_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> None:
+    _require_finance_access(current_user)
+    row = db.query(FinanceModel).filter(FinanceModel.id == model_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Finance model not found")
+    db.delete(row)
+    db.commit()
+    return None
+
+
+@router.get("/articles/tree", response_model=List[FinanceArticleTreeItem])
+async def get_finance_articles_tree(
+    target_id: int = Query(...),
+    only_active: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[FinanceArticleTreeItem]:
+    _require_finance_access(current_user)
+    q = db.query(FinanceArticle).filter(FinanceArticle.target_id == target_id)
+    if only_active:
+        q = q.filter(FinanceArticle.is_active.is_(True))
+    articles = q.order_by(FinanceArticle.sort_order.asc(), FinanceArticle.name.asc()).all()
+    by_parent: Dict[Optional[int], List[FinanceArticle]] = {}
+    for article in articles:
+        by_parent.setdefault(article.parent_id, []).append(article)
+
+    def build(parent_id: Optional[int]) -> List[FinanceArticleTreeItem]:
+        nodes: List[FinanceArticleTreeItem] = []
+        for article in by_parent.get(parent_id, []):
+            data = _article_response(article).model_dump()
+            data["children"] = build(article.id)
+            nodes.append(FinanceArticleTreeItem(**data))
+        return nodes
+
+    return build(None)
+
+
 @router.get("/articles", response_model=List[FinanceArticleResponse])
 async def list_finance_articles(
     only_active: bool = Query(True, description="Только активные статьи"),
     scope: Optional[str] = Query(None, description="Фильтр по scope: academy | personal | any"),
     direction: Optional[str] = Query(None, description="Фильтр по direction: income | expense"),
+    target_id: Optional[int] = Query(None, description="Filter by finance_targets.id"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> List[FinanceArticleResponse]:
@@ -212,18 +519,10 @@ async def list_finance_articles(
         q = q.filter(FinanceArticle.scope == scope)
     if direction:
         q = q.filter(FinanceArticle.direction == direction)
-    arts = q.order_by(FinanceArticle.name).all()
-    return [
-        FinanceArticleResponse(
-            id=a.id,
-            name=a.name,
-            direction=str(getattr(a.direction, "value", a.direction)),
-            cost_kind=str(getattr(a.cost_kind, "value", a.cost_kind)),
-            scope=str(getattr(a.scope, "value", a.scope)),
-            is_active=bool(a.is_active),
-        )
-        for a in arts
-    ]
+    if target_id is not None:
+        q = q.filter(FinanceArticle.target_id == target_id)
+    arts = q.order_by(FinanceArticle.sort_order.asc(), FinanceArticle.name.asc()).all()
+    return [_article_response(a) for a in arts]
 
 
 @router.post("/articles", response_model=FinanceArticleResponse)
@@ -255,24 +554,22 @@ async def create_finance_article(
     cost_kind = FinanceArticleCostKind(cost_kind_value)  # type: ignore[call-arg]
 
     art = FinanceArticle(
+        code=_slug(payload.code or name),
+        target_id=payload.target_id,
+        parent_id=payload.parent_id,
         name=name,
         direction=direction,
         cost_kind=cost_kind,
         scope=scope,
+        color=payload.color,
+        sort_order=payload.sort_order or 0,
         is_active=True,
     )
     db.add(art)
     db.commit()
     db.refresh(art)
 
-    return FinanceArticleResponse(
-        id=art.id,
-        name=art.name,
-        direction=str(getattr(art.direction, "value", art.direction)),
-        cost_kind=str(getattr(art.cost_kind, "value", art.cost_kind)),
-        scope=str(getattr(art.scope, "value", art.scope)),
-        is_active=bool(art.is_active),
-    )
+    return _article_response(art)
 
 
 @router.patch("/articles/{article_id}", response_model=FinanceArticleResponse)
@@ -291,6 +588,18 @@ async def update_finance_article(
 
     if payload.name is not None:
         art.name = payload.name.strip() or art.name
+    if payload.code is not None:
+        art.code = _slug(payload.code) if payload.code else None
+    if payload.target_id is not None:
+        if payload.target_id and not db.query(FinanceTarget.id).filter(FinanceTarget.id == payload.target_id).first():
+            raise HTTPException(status_code=400, detail="target_id not found")
+        art.target_id = payload.target_id
+    if payload.parent_id is not None:
+        if payload.parent_id == art.id:
+            raise HTTPException(status_code=400, detail="Article cannot be its own parent")
+        if payload.parent_id and not db.query(FinanceArticle.id).filter(FinanceArticle.id == payload.parent_id).first():
+            raise HTTPException(status_code=400, detail="parent_id not found")
+        art.parent_id = payload.parent_id
 
     if payload.direction is not None:
         if payload.direction not in {d.value for d in FinanceArticleDirection}:  # type: ignore[attr-defined]
@@ -306,6 +615,10 @@ async def update_finance_article(
         if payload.cost_kind not in {c.value for c in FinanceArticleCostKind}:  # type: ignore[attr-defined]
             raise HTTPException(status_code=400, detail="Некорректное значение cost_kind")
         art.cost_kind = FinanceArticleCostKind(payload.cost_kind)  # type: ignore[call-arg]
+    if payload.color is not None:
+        art.color = payload.color[:16] if payload.color else None
+    if payload.sort_order is not None:
+        art.sort_order = int(payload.sort_order)
 
     if payload.is_active is not None:
         art.is_active = bool(payload.is_active)
@@ -313,14 +626,7 @@ async def update_finance_article(
     db.commit()
     db.refresh(art)
 
-    return FinanceArticleResponse(
-        id=art.id,
-        name=art.name,
-        direction=str(getattr(art.direction, "value", art.direction)),
-        cost_kind=str(getattr(art.cost_kind, "value", art.cost_kind)),
-        scope=str(getattr(art.scope, "value", art.scope)),
-        is_active=bool(art.is_active),
-    )
+    return _article_response(art)
 
 
 @router.delete("/articles/{article_id}")
@@ -343,6 +649,287 @@ async def delete_finance_article(
     art.is_active = False
     db.commit()
     return {"ok": True}
+
+
+@router.get("/budget", response_model=List[BudgetEntryResponse])
+async def list_budget_entries(
+    target_id: int = Query(...),
+    period: str = Query(..., min_length=7, max_length=7),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[BudgetEntryResponse]:
+    _require_finance_access(current_user)
+    rows = (
+        db.query(BudgetEntry)
+        .options(joinedload(BudgetEntry.article))
+        .filter(BudgetEntry.target_id == target_id, BudgetEntry.period == period)
+        .order_by(BudgetEntry.id.asc())
+        .all()
+    )
+    return [
+        BudgetEntryResponse(
+            id=row.id,
+            target_id=row.target_id,
+            article_id=row.article_id,
+            article_name=getattr(row.article, "name", None),
+            period=row.period,
+            amount_plan=float(row.amount_plan or 0),
+        )
+        for row in rows
+    ]
+
+
+@router.put("/budget", response_model=List[BudgetEntryResponse])
+async def save_budget_entries(
+    payload: BudgetSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[BudgetEntryResponse]:
+    _require_finance_access(current_user)
+    if len(payload.period) != 7:
+        raise HTTPException(status_code=400, detail="period must have YYYY-MM format")
+    with db_transaction(db):
+        for item in payload.entries:
+            article = (
+                db.query(FinanceArticle)
+                .filter(FinanceArticle.id == item.article_id, FinanceArticle.target_id == payload.target_id)
+                .first()
+            )
+            if not article:
+                raise HTTPException(status_code=400, detail=f"article_id {item.article_id} not found for target")
+            row = (
+                db.query(BudgetEntry)
+                .filter(
+                    BudgetEntry.target_id == payload.target_id,
+                    BudgetEntry.article_id == item.article_id,
+                    BudgetEntry.period == payload.period,
+                )
+                .first()
+            )
+            if row is None:
+                row = BudgetEntry(target_id=payload.target_id, article_id=item.article_id, period=payload.period)
+                db.add(row)
+            row.amount_plan = item.amount_plan
+    return await list_budget_entries(payload.target_id, payload.period, db, current_user)
+
+
+@router.get("/metrics", response_model=List[MetricDefinitionResponse])
+async def list_metrics(
+    target_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[MetricDefinitionResponse]:
+    _require_finance_access(current_user)
+    q = db.query(MetricDefinition).options(joinedload(MetricDefinition.target))
+    if target_id is not None:
+        q = q.filter(MetricDefinition.target_id == target_id)
+    rows = q.order_by(MetricDefinition.sort_order.asc(), MetricDefinition.name.asc()).all()
+    return [_metric_response(row) for row in rows]
+
+
+@router.post("/metrics", response_model=MetricDefinitionResponse, status_code=201)
+async def create_metric(
+    payload: MetricDefinitionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> MetricDefinitionResponse:
+    _require_finance_access(current_user)
+    if not db.query(FinanceTarget.id).filter(FinanceTarget.id == payload.target_id).first():
+        raise HTTPException(status_code=400, detail="target_id not found")
+    row = MetricDefinition(
+        target_id=payload.target_id,
+        name=payload.name.strip(),
+        formula=payload.formula.strip(),
+        unit=payload.unit,
+        goal_value=payload.goal_value,
+        sort_order=payload.sort_order,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    db.refresh(row, ["target"])
+    return _metric_response(row)
+
+
+@router.patch("/metrics/{metric_id}", response_model=MetricDefinitionResponse)
+async def update_metric(
+    metric_id: int,
+    payload: MetricDefinitionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> MetricDefinitionResponse:
+    _require_finance_access(current_user)
+    row = db.query(MetricDefinition).options(joinedload(MetricDefinition.target)).filter(MetricDefinition.id == metric_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Metric not found")
+    if payload.name is not None:
+        row.name = payload.name.strip() or row.name
+    if payload.formula is not None:
+        row.formula = payload.formula.strip() or row.formula
+    if payload.unit is not None:
+        row.unit = payload.unit or None
+    if payload.goal_value is not None:
+        row.goal_value = payload.goal_value
+    if payload.sort_order is not None:
+        row.sort_order = int(payload.sort_order)
+    db.commit()
+    db.refresh(row)
+    db.refresh(row, ["target"])
+    return _metric_response(row)
+
+
+@router.get("/metrics/{metric_id}/compute", response_model=MetricComputeResponse)
+async def compute_metric(
+    metric_id: int,
+    period: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> MetricComputeResponse:
+    _require_finance_access(current_user)
+    row = db.query(MetricDefinition).filter(MetricDefinition.id == metric_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Metric not found")
+    try:
+        value = compute_metric_formula(db, row.target_id, row.formula, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return MetricComputeResponse(
+        metric_id=row.id,
+        name=row.name,
+        formula=row.formula,
+        value=value,
+        unit=row.unit,
+        goal_value=row.goal_value,
+        period=period,
+    )
+
+
+@router.delete("/metrics/{metric_id}", status_code=204)
+async def delete_metric(
+    metric_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> None:
+    _require_finance_access(current_user)
+    row = db.query(MetricDefinition).filter(MetricDefinition.id == metric_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Metric not found")
+    db.delete(row)
+    db.commit()
+    return None
+
+
+@router.get("/dashboard", response_model=List[DashboardWidgetResponse])
+async def list_dashboard_widgets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[DashboardWidgetResponse]:
+    _require_finance_access(current_user)
+    rows = (
+        db.query(DashboardWidget)
+        .options(joinedload(DashboardWidget.metric), joinedload(DashboardWidget.target))
+        .filter(DashboardWidget.owner_id == current_user.id)
+        .order_by(DashboardWidget.position_y.asc(), DashboardWidget.position_x.asc(), DashboardWidget.id.asc())
+        .all()
+    )
+    return [_widget_response(row) for row in rows]
+
+
+@router.post("/dashboard/widgets", response_model=DashboardWidgetResponse, status_code=201)
+async def create_dashboard_widget(
+    payload: DashboardWidgetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> DashboardWidgetResponse:
+    _require_finance_access(current_user)
+    row = DashboardWidget(
+        owner_id=current_user.id,
+        metric_id=payload.metric_id,
+        target_id=payload.target_id,
+        widget_type=payload.widget_type,
+        period_type=payload.period_type,
+        position_x=payload.position_x,
+        position_y=payload.position_y,
+        width=payload.width,
+        title_override=payload.title_override,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    db.refresh(row, ["metric", "target"])
+    return _widget_response(row)
+
+
+@router.patch("/dashboard/widgets/{widget_id}", response_model=DashboardWidgetResponse)
+async def update_dashboard_widget(
+    widget_id: int,
+    payload: DashboardWidgetUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> DashboardWidgetResponse:
+    _require_finance_access(current_user)
+    row = (
+        db.query(DashboardWidget)
+        .options(joinedload(DashboardWidget.metric), joinedload(DashboardWidget.target))
+        .filter(DashboardWidget.id == widget_id, DashboardWidget.owner_id == current_user.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        setattr(row, key, value)
+    db.commit()
+    db.refresh(row)
+    db.refresh(row, ["metric", "target"])
+    return _widget_response(row)
+
+
+@router.delete("/dashboard/widgets/{widget_id}", status_code=204)
+async def delete_dashboard_widget(
+    widget_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> None:
+    _require_finance_access(current_user)
+    row = db.query(DashboardWidget).filter(DashboardWidget.id == widget_id, DashboardWidget.owner_id == current_user.id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    db.delete(row)
+    db.commit()
+    return None
+
+
+@router.get("/dashboard/compute", response_model=List[DashboardWidgetComputedResponse])
+async def compute_dashboard_widgets(
+    period: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[DashboardWidgetComputedResponse]:
+    _require_finance_access(current_user)
+    rows = (
+        db.query(DashboardWidget)
+        .options(joinedload(DashboardWidget.metric), joinedload(DashboardWidget.target))
+        .filter(DashboardWidget.owner_id == current_user.id)
+        .order_by(DashboardWidget.position_y.asc(), DashboardWidget.position_x.asc(), DashboardWidget.id.asc())
+        .all()
+    )
+    result: List[DashboardWidgetComputedResponse] = []
+    for row in rows:
+        base = _widget_response(row).model_dump()
+        metric = getattr(row, "metric", None)
+        value = None
+        unit = None
+        goal_value = None
+        if metric is not None:
+            try:
+                value = compute_metric_formula(db, metric.target_id, metric.formula, period)
+            except ValueError:
+                value = None
+            unit = metric.unit
+            goal_value = metric.goal_value
+        result.append(DashboardWidgetComputedResponse(**base, value=value, unit=unit, goal_value=goal_value))
+    return result
 
 
 @router.get("/ledger/transactions", response_model=List[FinanceLedgerTransactionRow])

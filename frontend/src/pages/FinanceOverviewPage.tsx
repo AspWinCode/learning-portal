@@ -1,311 +1,740 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  Grid,
+  IconButton,
+  InputLabel,
+  LinearProgress,
+  MenuItem,
   Paper,
+  Select,
+  Stack,
+  Tab,
   Table,
+  TableBody,
+  TableCell,
   TableHead,
   TableRow,
-  TableCell,
-  TableBody,
-  TextField,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
   Tabs,
-  Tab,
-  Button,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import { Delete as DeleteIcon } from '@mui/icons-material';
+import {
+  Add,
+  AccountTree,
+  Assessment,
+  Dashboard,
+  Delete,
+  Edit,
+  Refresh,
+  Save,
+  TableRows,
+} from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { financeApi, studentsApi } from '../services/api';
-import type { FinanceLedgerBankRow, Student } from '../types';
-import { FilterPanel, FormDialog } from '../components/ui';
+import { financeApi } from '../services/api';
+import type {
+  BudgetEntry,
+  DashboardWidgetComputed,
+  FinanceArticle,
+  FinanceArticleTreeItem,
+  FinanceLedgerBankRow,
+  FinanceModel,
+  MetricDefinition,
+} from '../types';
+
+type TargetOption = { id: number; code: string; name: string; is_active?: boolean };
+type AccountOption = { id: number; code: string; name: string; owner_scope?: string; is_active?: boolean };
+type FinanceTab = 'dashboard' | 'models' | 'budget' | 'articles' | 'journal';
+
+const currentMonth = () => new Date().toISOString().slice(0, 7);
+const today = () => new Date().toISOString().slice(0, 10);
+
+const money = (value: number | null | undefined) =>
+  new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+
+const directionLabel = (direction?: string | null) => {
+  if (direction === 'income') return 'Доход';
+  if (direction === 'expense') return 'Расход';
+  if (direction === 'transfer') return 'Перевод';
+  return 'Не задано';
+};
+
+const templateLabel = (key: string, templates: Array<{ key: string; name: string }>) =>
+  templates.find((t) => t.key === key)?.name || key;
+
+const flattenTree = (items: FinanceArticleTreeItem[], level = 0): Array<FinanceArticleTreeItem & { level: number }> =>
+  items.flatMap((item) => [{ ...item, level }, ...flattenTree(item.children || [], level + 1)]);
 
 const FinanceOverviewPageContent: React.FC = () => {
-  const [tab, setTab] = useState<'all' | 'unclassified'>('all');
+  const [tab, setTab] = useState<FinanceTab>('dashboard');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const [targets, setTargets] = useState<TargetOption[]>([]);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [models, setModels] = useState<FinanceModel[]>([]);
+  const [templates, setTemplates] = useState<Array<{ key: string; name: string }>>([]);
+  const [selectedModelId, setSelectedModelId] = useState<number | ''>('');
+  const [articleTree, setArticleTree] = useState<FinanceArticleTreeItem[]>([]);
+  const [articles, setArticles] = useState<FinanceArticle[]>([]);
+  const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
+  const [widgets, setWidgets] = useState<DashboardWidgetComputed[]>([]);
+  const [budget, setBudget] = useState<BudgetEntry[]>([]);
+  const [period, setPeriod] = useState(currentMonth());
+
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [modelName, setModelName] = useState('');
+  const [modelTemplate, setModelTemplate] = useState('education_center');
+  const [modelTargetId, setModelTargetId] = useState<number | ''>('');
+  const [modelTargetName, setModelTargetName] = useState('');
+  const [modelTargetCode, setModelTargetCode] = useState('');
+
+  const [articleDialogOpen, setArticleDialogOpen] = useState(false);
+  const [editingArticle, setEditingArticle] = useState<FinanceArticle | null>(null);
+  const [articleName, setArticleName] = useState('');
+  const [articleCode, setArticleCode] = useState('');
+  const [articleDirection, setArticleDirection] = useState<'income' | 'expense'>('expense');
+  const [articleParentId, setArticleParentId] = useState<number | ''>('');
+  const [articleColor, setArticleColor] = useState('#2f6fef');
+
+  const [metricDialogOpen, setMetricDialogOpen] = useState(false);
+  const [editingMetric, setEditingMetric] = useState<MetricDefinition | null>(null);
+  const [metricName, setMetricName] = useState('');
+  const [metricFormula, setMetricFormula] = useState('');
+  const [metricUnit, setMetricUnit] = useState('руб');
+  const [metricGoal, setMetricGoal] = useState('');
 
   const [journalRows, setJournalRows] = useState<FinanceLedgerBankRow[]>([]);
   const [journalLoading, setJournalLoading] = useState(false);
-  const [journalError, setJournalError] = useState<string | null>(null);
-  const [journalFrom, setJournalFrom] = useState<string>(() => {
+  const [journalFrom, setJournalFrom] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
     return d.toISOString().slice(0, 10);
   });
-  const [journalTo, setJournalTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [journalTo, setJournalTo] = useState(today());
   const [journalTargetFilter, setJournalTargetFilter] = useState<'all' | number>('all');
   const [journalDirectionFilter, setJournalDirectionFilter] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
-  const [targets, setTargets] = useState<Array<{ id: number; code: string; name: string }>>([]);
-  const [articles, setArticles] = useState<Array<{ id: number; name: string; direction: string }>>([]);
-  const [accounts, setAccounts] = useState<Array<{ id: number; code: string; name: string }>>([]);
-  const [importAccountId, setImportAccountId] = useState<number | ''>('');
-  const [importLoading, setImportLoading] = useState(false);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
-  const [applyDialogOpen, setApplyDialogOpen] = useState(false);
-  const [selectedJournalTx, setSelectedJournalTx] = useState<FinanceLedgerBankRow | null>(null);
-  const [studentSearch, setStudentSearch] = useState('');
-  const [studentOptions, setStudentOptions] = useState<Student[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [applyLoading, setApplyLoading] = useState(false);
+  const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
+
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualAccountId, setManualAccountId] = useState<number | ''>('');
   const [manualAmount, setManualAmount] = useState('');
   const [manualDirection, setManualDirection] = useState<'income' | 'expense'>('income');
-  const [manualDate, setManualDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [manualDate, setManualDate] = useState(today());
   const [manualArticleId, setManualArticleId] = useState<number | ''>('');
   const [manualTargetId, setManualTargetId] = useState<number | ''>('');
   const [manualDescription, setManualDescription] = useState('');
-  const [manualSubmitting, setManualSubmitting] = useState(false);
-  const [manualError, setManualError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!applyDialogOpen || !studentSearch.trim()) {
-      setStudentOptions([]);
-      return;
-    }
-    const t = setTimeout(() => {
-      studentsApi
-        .getAll({ q: studentSearch.trim(), limit: 20 })
-        .then((data) => setStudentOptions(data))
-        .catch(() => setStudentOptions([]));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [applyDialogOpen, studentSearch]);
+  const selectedModel = useMemo(
+    () => models.find((model) => model.id === selectedModelId) || null,
+    [models, selectedModelId]
+  );
+  const selectedTargetId = selectedModel?.target_id || null;
+  const flatArticles = useMemo(() => flattenTree(articleTree), [articleTree]);
+  const budgetMap = useMemo(
+    () => new Map(budget.map((entry) => [entry.article_id, Number(entry.amount_plan || 0)])),
+    [budget]
+  );
+  const budgetArticles = useMemo(
+    () => flatArticles.filter((article) => article.direction === 'income' || article.direction === 'expense'),
+    [flatArticles]
+  );
 
-  useEffect(() => {
-    // Загружаем справочники один раз при первом открытии вкладки журнала
-    if (!targets.length) {
-      financeApi
-        .listTargets()
-        .then((list) => {
-          setTargets(list.map((t) => ({ id: t.id, code: t.code, name: t.name })));
-        })
-        .catch(() => setTargets([]));
+  const loadBase = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [targetsList, accountsList, templatesList, modelsList] = await Promise.all([
+        financeApi.listTargets(),
+        financeApi.listAccounts(),
+        financeApi.listModelTemplates(),
+        financeApi.listModels(),
+      ]);
+      setTargets(targetsList);
+      setAccounts(accountsList);
+      setTemplates(templatesList);
+      setModels(modelsList);
+      setSelectedModelId((prev) => {
+        if (prev && modelsList.some((model) => model.id === prev)) return prev;
+        return modelsList[0]?.id || '';
+      });
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить финансы');
+    } finally {
+      setLoading(false);
     }
-    if (!articles.length) {
-      financeApi
-        .listArticles({})
-        .then((list) => {
-          setArticles(list.map((a) => ({ id: a.id, name: a.name, direction: a.direction })));
-        })
-        .catch(() => setArticles([]));
-    }
+  };
 
-    if (!accounts.length) {
-      financeApi
-        .listAccounts()
-        .then((list) => {
-          setAccounts(list.map((a) => ({ id: a.id, code: a.code, name: a.name })));
-        })
-        .catch(() => setAccounts([]));
+  const loadModelData = async (targetId: number) => {
+    setError(null);
+    try {
+      const [tree, articleList, metricList, budgetList, computedWidgets] = await Promise.all([
+        financeApi.getArticleTree(targetId),
+        financeApi.listArticles({ target_id: targetId }),
+        financeApi.listMetrics(targetId),
+        financeApi.listBudget({ target_id: targetId, period }),
+        financeApi.computeDashboard(period),
+      ]);
+      setArticleTree(tree);
+      setArticles(articleList);
+      setMetrics(metricList);
+      setBudget(budgetList);
+      setWidgets(computedWidgets.filter((widget) => !widget.target_id || widget.target_id === targetId));
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить данные финансовой модели');
+      setArticleTree([]);
+      setArticles([]);
+      setMetrics([]);
+      setBudget([]);
+      setWidgets([]);
     }
+  };
 
+  const loadJournal = async () => {
     setJournalLoading(true);
-    setJournalError(null);
-    financeApi
-      .listJournalTransactions({
-        unclassified_only: tab === 'unclassified',
+    setError(null);
+    try {
+      const rows = await financeApi.listJournalTransactions({
+        unclassified_only: unclassifiedOnly,
         target_ids: journalTargetFilter === 'all' ? undefined : [journalTargetFilter],
         direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
         date_from: journalFrom || undefined,
         date_to: journalTo || undefined,
         limit: 5000,
-      })
-      .then(setJournalRows)
-      .catch((err: any) => {
-        setJournalError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить операции журнала');
-        setJournalRows([]);
-      })
-      .finally(() => setJournalLoading(false));
-  }, [tab, journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, targets.length, articles.length, accounts.length]);
-
-  const closeApplyDialog = () => {
-    setApplyDialogOpen(false);
-    setSelectedJournalTx(null);
-    setStudentSearch('');
-    setStudentOptions([]);
-    setSelectedStudent(null);
-  };
-
-  const handleApplyStudentPayment = async () => {
-    if (!selectedJournalTx || !selectedStudent) return;
-    try {
-      setApplyLoading(true);
-      const updated = await financeApi.applyTransactionToStudent(selectedJournalTx.id, {
-        student_id: selectedStudent.id,
       });
-      setJournalRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-      closeApplyDialog();
+      setJournalRows(rows);
     } catch (err: any) {
-      setJournalError(
-        err?.response?.data?.detail ||
-          err?.message ||
-          'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°С‡РёСЃР»РёС‚СЊ РїР»Р°С‚С‘Р¶ РЅР° СЃС‡С‘С‚ СѓС‡РµРЅРёРєР°'
-      );
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить журнал операций');
+      setJournalRows([]);
     } finally {
-      setApplyLoading(false);
+      setJournalLoading(false);
     }
   };
 
-  const handleCreateManualOperation = async () => {
+  useEffect(() => {
+    loadBase();
+  }, []);
+
+  useEffect(() => {
+    if (selectedTargetId) {
+      loadModelData(selectedTargetId);
+    } else {
+      setArticleTree([]);
+      setArticles([]);
+      setMetrics([]);
+      setBudget([]);
+      setWidgets([]);
+    }
+  }, [selectedTargetId, period]);
+
+  useEffect(() => {
+    loadJournal();
+  }, [journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, unclassifiedOnly]);
+
+  const openCreateModel = () => {
+    setModelName('');
+    setModelTemplate(templates[0]?.key || 'education_center');
+    setModelTargetId('');
+    setModelTargetName('');
+    setModelTargetCode('');
+    setModelDialogOpen(true);
+  };
+
+  const createModel = async () => {
+    if (!modelName.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const model = await financeApi.createModel({
+        target_id: modelTargetId === '' ? null : Number(modelTargetId),
+        target_name: modelTargetId === '' ? modelTargetName.trim() || modelName.trim() : null,
+        target_code: modelTargetId === '' ? modelTargetCode.trim() || null : null,
+        name: modelName.trim(),
+        template_key: modelTemplate,
+        currency: 'RUB',
+        period_type: 'month',
+      });
+      setModelDialogOpen(false);
+      await loadBase();
+      setSelectedModelId(model.id);
+      setMessage('Финансовая модель создана');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось создать финансовую модель');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteModel = async (model: FinanceModel) => {
+    if (!window.confirm(`Удалить финансовую модель "${model.name}"? Статьи и операции проекта не удаляются.`)) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await financeApi.deleteModel(model.id);
+      await loadBase();
+      setMessage('Финансовая модель удалена');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось удалить финансовую модель');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openCreateArticle = () => {
+    setEditingArticle(null);
+    setArticleName('');
+    setArticleCode('');
+    setArticleDirection('expense');
+    setArticleParentId('');
+    setArticleColor('#2f6fef');
+    setArticleDialogOpen(true);
+  };
+
+  const openEditArticle = (article: FinanceArticle) => {
+    setEditingArticle(article);
+    setArticleName(article.name);
+    setArticleCode(article.code || '');
+    setArticleDirection(article.direction === 'income' ? 'income' : 'expense');
+    setArticleParentId(article.parent_id || '');
+    setArticleColor(article.color || '#2f6fef');
+    setArticleDialogOpen(true);
+  };
+
+  const saveArticle = async () => {
+    if (!selectedTargetId || !articleName.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = {
+        name: articleName.trim(),
+        code: articleCode.trim() || null,
+        direction: articleDirection,
+        target_id: selectedTargetId,
+        parent_id: articleParentId === '' ? null : Number(articleParentId),
+        scope: 'any',
+        cost_kind: 'none',
+        color: articleColor || null,
+      };
+      if (editingArticle) {
+        await financeApi.updateArticle(editingArticle.id, payload);
+      } else {
+        await financeApi.createArticle(payload);
+      }
+      setArticleDialogOpen(false);
+      await loadModelData(selectedTargetId);
+      setMessage('Статья сохранена');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось сохранить статью');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openCreateMetric = () => {
+    setEditingMetric(null);
+    setMetricName('');
+    setMetricFormula('');
+    setMetricUnit('руб');
+    setMetricGoal('');
+    setMetricDialogOpen(true);
+  };
+
+  const openEditMetric = (metric: MetricDefinition) => {
+    setEditingMetric(metric);
+    setMetricName(metric.name);
+    setMetricFormula(metric.formula);
+    setMetricUnit(metric.unit || '');
+    setMetricGoal(metric.goal_value == null ? '' : String(metric.goal_value));
+    setMetricDialogOpen(true);
+  };
+
+  const saveMetric = async () => {
+    if (!selectedTargetId || !metricName.trim() || !metricFormula.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = {
+        target_id: selectedTargetId,
+        name: metricName.trim(),
+        formula: metricFormula.trim(),
+        unit: metricUnit.trim() || null,
+        goal_value: metricGoal === '' ? null : Number(metricGoal),
+      };
+      if (editingMetric) {
+        await financeApi.updateMetric(editingMetric.id, payload);
+      } else {
+        const metric = await financeApi.createMetric(payload);
+        await financeApi.createDashboardWidget({
+          metric_id: metric.id,
+          target_id: selectedTargetId,
+          widget_type: 'number',
+          period_type: 'current_month',
+          width: 1,
+        });
+      }
+      setMetricDialogOpen(false);
+      await loadModelData(selectedTargetId);
+      setMessage('Метрика сохранена');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось сохранить метрику');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveBudget = async () => {
+    if (!selectedTargetId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const entries = budgetArticles.map((article) => ({
+        article_id: article.id,
+        amount_plan: budgetMap.get(article.id) || 0,
+      }));
+      const saved = await financeApi.saveBudget({ target_id: selectedTargetId, period, entries });
+      setBudget(saved);
+      setMessage('Бюджет сохранен');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось сохранить бюджет');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setBudgetAmount = (articleId: number, amount: number) => {
+    setBudget((prev) => {
+      const existing = prev.find((entry) => entry.article_id === articleId);
+      if (existing) {
+        return prev.map((entry) => (entry.article_id === articleId ? { ...entry, amount_plan: amount } : entry));
+      }
+      return [
+        ...prev,
+        {
+          id: -articleId,
+          target_id: selectedTargetId || 0,
+          article_id: articleId,
+          period,
+          amount_plan: amount,
+        },
+      ];
+    });
+  };
+
+  const createManualOperation = async () => {
     if (!manualAccountId || !manualAmount || Number(manualAmount) <= 0) return;
-    setManualSubmitting(true);
-    setManualError(null);
+    setLoading(true);
+    setError(null);
     try {
       await financeApi.createManualTransaction({
         account_id: Number(manualAccountId),
         amount: Number(manualAmount),
         direction: manualDirection,
         occurred_at: manualDate,
-        article_id: manualArticleId === '' ? null : manualArticleId,
-        target_id: manualTargetId === '' ? null : manualTargetId,
+        article_id: manualArticleId === '' ? null : Number(manualArticleId),
+        target_id: manualTargetId === '' ? null : Number(manualTargetId),
         description: manualDescription.trim() || null,
       });
       setManualDialogOpen(false);
-      const refreshed = await financeApi.listJournalTransactions({
-        unclassified_only: tab === 'unclassified',
-        target_ids: journalTargetFilter === 'all' ? undefined : [journalTargetFilter],
-        direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
-        date_from: journalFrom || undefined,
-        date_to: journalTo || undefined,
-        limit: 5000,
-      });
-      setJournalRows(refreshed);
+      await loadJournal();
+      if (selectedTargetId) await loadModelData(selectedTargetId);
+      setMessage('Операция добавлена');
     } catch (err: any) {
-      setManualError(err?.response?.data?.detail || err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ РѕРїРµСЂР°С†РёСЋ');
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось добавить операцию');
     } finally {
-      setManualSubmitting(false);
+      setLoading(false);
     }
   };
 
-  return (
-    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tabs
-          value={tab}
-          onChange={(_, v) => setTab(v)}
+  const renderModelSelector = () => (
+    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }}>
+      <FormControl size="small" sx={{ minWidth: 280 }}>
+        <InputLabel>Финансовая модель</InputLabel>
+        <Select
+          label="Финансовая модель"
+          value={selectedModelId === '' ? '' : String(selectedModelId)}
+          onChange={(event) => setSelectedModelId(event.target.value === '' ? '' : Number(event.target.value))}
         >
-          <Tab value="all" label="Все операции" />
-          <Tab value="unclassified" label="Неразобранные" />
-        </Tabs>
-      </Box>
+          {models.map((model) => (
+            <MenuItem key={model.id} value={model.id}>
+              {model.name}
+              {model.target_name ? ` / ${model.target_name}` : ''}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <TextField
+        size="small"
+        type="month"
+        label="Период"
+        value={period}
+        onChange={(event) => setPeriod(event.target.value)}
+        InputLabelProps={{ shrink: true }}
+      />
+      <Tooltip title="Обновить">
+        <span>
+          <IconButton onClick={() => selectedTargetId && loadModelData(selectedTargetId)} disabled={!selectedTargetId}>
+            <Refresh />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Button startIcon={<Add />} variant="contained" onClick={openCreateModel}>
+        Модель
+      </Button>
+    </Stack>
+  );
 
-      <Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          {tab === 'all' ? 'Все операции журнала' : 'Неразобранные операции журнала'}
-        </Typography>
+  const renderDashboard = () => (
+    <Stack spacing={2}>
+      <Grid container spacing={2}>
+        {widgets.map((widget) => (
+          <Grid item xs={12} sm={6} md={3} key={widget.id}>
+            <Paper variant="outlined" sx={{ p: 2, minHeight: 126, borderRadius: 1 }}>
+              <Stack spacing={1}>
+                <Typography variant="body2" color="text.secondary">
+                  {widget.title_override || widget.metric_name || 'Показатель'}
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  {money(widget.value)}
+                  {widget.unit ? ` ${widget.unit}` : ''}
+                </Typography>
+                {widget.goal_value != null && (
+                  <Typography variant="caption" color="text.secondary">
+                    План: {money(widget.goal_value)} {widget.unit || ''}
+                  </Typography>
+                )}
+              </Stack>
+            </Paper>
+          </Grid>
+        ))}
+        {widgets.length === 0 && (
+          <Grid item xs={12}>
+            <Alert severity="info">Добавьте метрики для выбранной модели, чтобы собрать dashboard.</Alert>
+          </Grid>
+        )}
+      </Grid>
 
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel>Счёт для импорта</InputLabel>
-            <Select
-              label="Счёт для импорта"
-              value={importAccountId === '' ? '' : String(importAccountId)}
-              onChange={(e) => {
-                const v = e.target.value;
-                setImportAccountId(v === '' ? '' : Number(v));
-              }}
-            >
-              <MenuItem value="">
-                <em>Не выбран</em>
-              </MenuItem>
-              {accounts.map((a) => (
-                <MenuItem key={a.id} value={a.id}>
-                  {a.name}
-                  {a.code ? ` (${a.code})` : ''}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Button
-            variant="outlined"
-            component="label"
-            disabled={importLoading || !importAccountId}
-          >
-            {importLoading ? 'Импорт операций…' : 'Импортировать CSV/XLSX'}
-            <input
-              type="file"
-              accept=".csv,.xlsx"
-              hidden
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (!file) return;
-                if (!importAccountId) {
-                  setJournalError('Сначала выберите счёт для импорта');
-                  return;
-                }
-                const acc = accounts.find((a) => a.id === importAccountId);
-                if (!acc) {
-                  setJournalError('Выбранный счёт не найден');
-                  return;
-                }
-                setImportLoading(true);
-                setJournalError(null);
-                setImportMessage(null);
-                try {
-                  const res = await financeApi.importJournalFile(acc.code, file);
-                  setImportMessage(
-                    `Импортировано операций: ${res.imported}. Пропущено (дубли или ошибки): ${res.skipped}.`
-                  );
-                  // перезагружаем список с текущими фильтрами
-                  const refreshed = await financeApi.listJournalTransactions({
-                    unclassified_only: tab === 'unclassified',
-                    target_ids: journalTargetFilter === 'all' ? undefined : [journalTargetFilter],
-                    direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
-                    date_from: journalFrom || undefined,
-                    date_to: journalTo || undefined,
-                    limit: 5000,
-                  });
-                  setJournalRows(refreshed);
-                } catch (err: any) {
-                  setJournalError(
-                    err?.response?.data?.detail ||
-                      err?.message ||
-                      'Ошибка импорта файла. Убедитесь, что формат: date,amount,counterparty,description[,bank_operation_id].'
-                  );
-                } finally {
-                  setImportLoading(false);
-                }
-              }}
-            />
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+          <Typography variant="h6">Метрики</Typography>
+          <Button startIcon={<Add />} variant="outlined" onClick={openCreateMetric} disabled={!selectedTargetId}>
+            Метрика
           </Button>
-          {importMessage && (
-            <Typography variant="body2" color="text.secondary">
-              {importMessage}
+        </Stack>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Наименование</TableCell>
+              <TableCell>Формула</TableCell>
+              <TableCell>Ед.</TableCell>
+              <TableCell align="right">План</TableCell>
+              <TableCell align="right">Действия</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {metrics.map((metric) => (
+              <TableRow key={metric.id}>
+                <TableCell>{metric.name}</TableCell>
+                <TableCell>{metric.formula}</TableCell>
+                <TableCell>{metric.unit || '—'}</TableCell>
+                <TableCell align="right">{metric.goal_value == null ? '—' : money(metric.goal_value)}</TableCell>
+                <TableCell align="right">
+                  <IconButton size="small" onClick={() => openEditMetric(metric)}>
+                    <Edit fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={async () => {
+                      if (!selectedTargetId || !window.confirm(`Удалить метрику "${metric.name}"?`)) return;
+                      await financeApi.deleteMetric(metric.id);
+                      await loadModelData(selectedTargetId);
+                    }}
+                  >
+                    <Delete fontSize="small" />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Paper>
+    </Stack>
+  );
+
+  const renderModels = () => (
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+        <Typography variant="h6">Финансовые модели</Typography>
+        <Button startIcon={<Add />} variant="contained" onClick={openCreateModel}>
+          Создать
+        </Button>
+      </Stack>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Наименование</TableCell>
+            <TableCell>Проект</TableCell>
+            <TableCell>Шаблон</TableCell>
+            <TableCell>Валюта</TableCell>
+            <TableCell align="right">Действия</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {models.map((model) => (
+            <TableRow key={model.id} selected={model.id === selectedModelId}>
+              <TableCell>{model.name}</TableCell>
+              <TableCell>{model.target_name || model.target_code || model.target_id}</TableCell>
+              <TableCell>{templateLabel(model.template_key, templates)}</TableCell>
+              <TableCell>{model.currency}</TableCell>
+              <TableCell align="right">
+                <Button size="small" onClick={() => setSelectedModelId(model.id)}>
+                  Открыть
+                </Button>
+                <IconButton size="small" color="error" onClick={() => deleteModel(model)}>
+                  <Delete fontSize="small" />
+                </IconButton>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Paper>
+  );
+
+  const renderBudget = () => {
+    const incomePlan = budgetArticles
+      .filter((article) => article.direction === 'income')
+      .reduce((sum, article) => sum + (budgetMap.get(article.id) || 0), 0);
+    const expensePlan = budgetArticles
+      .filter((article) => article.direction === 'expense')
+      .reduce((sum, article) => sum + (budgetMap.get(article.id) || 0), 0);
+
+    return (
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" sx={{ mb: 1.5 }}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Typography variant="h6">Бюджет</Typography>
+            <Typography variant="body2" color="success.main">
+              Доход: {money(incomePlan)}
             </Typography>
-          )}
-          <Button
-            variant="contained"
-            onClick={() => {
-              const nalichka = accounts.find((a) => a.code === 'nalichka');
-              setManualAccountId(nalichka?.id ?? accounts[0]?.id ?? '');
-              setManualAmount('');
-              setManualDirection('income');
-              setManualDate(new Date().toISOString().slice(0, 10));
-              setManualArticleId('');
-              setManualTargetId('');
-              setManualDescription('');
-              setManualError(null);
-              setManualDialogOpen(true);
-            }}
-          >
-            Добавить операцию (наличные)
+            <Typography variant="body2" color="error.main">
+              Расход: {money(expensePlan)}
+            </Typography>
+            <Typography variant="body2">Итог: {money(incomePlan - expensePlan)}</Typography>
+          </Stack>
+          <Button startIcon={<Save />} variant="contained" onClick={saveBudget} disabled={!selectedTargetId}>
+            Сохранить бюджет
           </Button>
-        </Box>
+        </Stack>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Статья</TableCell>
+              <TableCell>Тип</TableCell>
+              <TableCell align="right">План</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {budgetArticles.map((article) => (
+              <TableRow key={article.id}>
+                <TableCell sx={{ pl: 2 + article.level * 3 }}>{article.name}</TableCell>
+                <TableCell>{directionLabel(article.direction)}</TableCell>
+                <TableCell align="right">
+                  <TextField
+                    size="small"
+                    type="number"
+                    value={budgetMap.get(article.id) ?? 0}
+                    onChange={(event) => setBudgetAmount(article.id, Number(event.target.value || 0))}
+                    inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
+                    sx={{ width: 160 }}
+                  />
+                </TableCell>
+              </TableRow>
+            ))}
+            {budgetArticles.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={3} align="center">
+                  В модели пока нет статей.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Paper>
+    );
+  };
 
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+  const renderArticles = () => (
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+        <Typography variant="h6">Дерево статей</Typography>
+        <Button startIcon={<Add />} variant="contained" onClick={openCreateArticle} disabled={!selectedTargetId}>
+          Статья
+        </Button>
+      </Stack>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Наименование</TableCell>
+            <TableCell>Код</TableCell>
+            <TableCell>Тип</TableCell>
+            <TableCell align="right">Действия</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {flatArticles.map((article) => (
+            <TableRow key={article.id}>
+              <TableCell sx={{ pl: 2 + article.level * 3 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: article.color || 'divider' }} />
+                  <span>{article.name}</span>
+                </Stack>
+              </TableCell>
+              <TableCell>{article.code || '—'}</TableCell>
+              <TableCell>{directionLabel(article.direction)}</TableCell>
+              <TableCell align="right">
+                <IconButton size="small" onClick={() => openEditArticle(article)}>
+                  <Edit fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={async () => {
+                    if (!selectedTargetId || !window.confirm(`Удалить статью "${article.name}"?`)) return;
+                    await financeApi.deleteArticle(article.id);
+                    await loadModelData(selectedTargetId);
+                  }}
+                >
+                  <Delete fontSize="small" />
+                </IconButton>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Paper>
+  );
+
+  const renderJournal = () => (
+    <Stack spacing={2}>
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', lg: 'center' }}>
           <TextField
             label="С"
             type="date"
             size="small"
             value={journalFrom}
-            onChange={(e) => setJournalFrom(e.target.value)}
+            onChange={(event) => setJournalFrom(event.target.value)}
             InputLabelProps={{ shrink: true }}
           />
           <TextField
@@ -313,23 +742,22 @@ const FinanceOverviewPageContent: React.FC = () => {
             type="date"
             size="small"
             value={journalTo}
-            onChange={(e) => setJournalTo(e.target.value)}
+            onChange={(event) => setJournalTo(event.target.value)}
             InputLabelProps={{ shrink: true }}
           />
-          <FormControl size="small" sx={{ minWidth: 180 }}>
+          <FormControl size="small" sx={{ minWidth: 190 }}>
             <InputLabel>Проект</InputLabel>
             <Select
               label="Проект"
               value={journalTargetFilter === 'all' ? 'all' : String(journalTargetFilter)}
-              onChange={(e) => {
-                const v = e.target.value;
-                setJournalTargetFilter(v === 'all' ? 'all' : Number(v));
-              }}
+              onChange={(event) =>
+                setJournalTargetFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))
+              }
             >
               <MenuItem value="all">Все проекты</MenuItem>
-              {targets.map((t) => (
-                <MenuItem key={t.id} value={t.id}>
-                  {t.name}
+              {targets.map((target) => (
+                <MenuItem key={target.id} value={target.id}>
+                  {target.name}
                 </MenuItem>
               ))}
             </Select>
@@ -339,7 +767,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             <Select
               label="Тип"
               value={journalDirectionFilter}
-              onChange={(e) => setJournalDirectionFilter(e.target.value as typeof journalDirectionFilter)}
+              onChange={(event) => setJournalDirectionFilter(event.target.value as typeof journalDirectionFilter)}
             >
               <MenuItem value="all">Все</MenuItem>
               <MenuItem value="income">Доход</MenuItem>
@@ -347,371 +775,334 @@ const FinanceOverviewPageContent: React.FC = () => {
               <MenuItem value="transfer">Перевод</MenuItem>
             </Select>
           </FormControl>
-          {journalLoading && (
-            <Typography variant="body2" color="text.secondary">
-              Загрузка…
-            </Typography>
-          )}
-          {journalError && (
-            <Typography variant="body2" color="error">
-              {journalError}
-            </Typography>
-          )}
-        </Box>
-        <Paper variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Дата</TableCell>
-                <TableCell>Счёт</TableCell>
-                <TableCell>Проект</TableCell>
-                <TableCell>Статья</TableCell>
-                <TableCell>Тип</TableCell>
-                <TableCell align="right">Сумма</TableCell>
-                <TableCell>Контрагент</TableCell>
-                <TableCell>Описание / источник</TableCell>
-                <TableCell>Ученики</TableCell>
-                <TableCell align="right">Действия</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {journalRows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>{row.occurred_at ? new Date(row.occurred_at).toLocaleString('ru-RU') : '—'}</TableCell>
-                  <TableCell>
-                    {row.account_name
-                      ? `${row.account_name}${row.account_code ? ` (${row.account_code})` : ''}`
-                      : '—'}
-                  </TableCell>
-                  <TableCell>
-                    <FormControl size="small" sx={{ minWidth: 180 }}>
+          <Button
+            variant={unclassifiedOnly ? 'contained' : 'outlined'}
+            onClick={() => setUnclassifiedOnly((value) => !value)}
+          >
+            Неразобранные
+          </Button>
+          <Button
+            startIcon={<Add />}
+            variant="contained"
+            onClick={() => {
+              setManualAccountId(accounts[0]?.id || '');
+              setManualTargetId(selectedTargetId || '');
+              setManualArticleId('');
+              setManualAmount('');
+              setManualDirection('income');
+              setManualDate(today());
+              setManualDescription('');
+              setManualDialogOpen(true);
+            }}
+          >
+            Операция
+          </Button>
+        </Stack>
+      </Paper>
+
+      {journalLoading && <LinearProgress />}
+      <Paper variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Дата</TableCell>
+              <TableCell>Счет</TableCell>
+              <TableCell>Проект</TableCell>
+              <TableCell>Статья</TableCell>
+              <TableCell>Тип</TableCell>
+              <TableCell align="right">Сумма</TableCell>
+              <TableCell>Контрагент</TableCell>
+              <TableCell>Описание</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {journalRows.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell>{row.occurred_at ? new Date(row.occurred_at).toLocaleString('ru-RU') : '—'}</TableCell>
+                <TableCell>{row.account_name || row.account_code || '—'}</TableCell>
+                <TableCell>
+                  <FormControl size="small" sx={{ minWidth: 170 }}>
+                    <Select
+                      value={row.target_id ?? ''}
+                      displayEmpty
+                      onChange={async (event) => {
+                        const target_id = event.target.value === '' ? null : Number(event.target.value);
+                        const updated = await financeApi.updateTransaction(row.id, { target_id });
+                        setJournalRows((prev) => prev.map((item) => (item.id === row.id ? updated : item)));
+                        if (selectedTargetId) await loadModelData(selectedTargetId);
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>Не выбран</em>
+                      </MenuItem>
+                      {targets.map((target) => (
+                        <MenuItem key={target.id} value={target.id}>
+                          {target.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </TableCell>
+                <TableCell>
+                  {row.direction === 'transfer' ? (
+                    row.article_name || '—'
+                  ) : (
+                    <FormControl size="small" sx={{ minWidth: 190 }}>
                       <Select
-                        value={row.target_id ?? ''}
+                        value={row.article_id ?? ''}
                         displayEmpty
-                        onChange={async (e) => {
-                          const v = e.target.value as number | '';
-                          const target_id = v === '' ? null : Number(v);
-                          try {
-                            const updated = await financeApi.updateTransaction(row.id, { target_id });
-                            setJournalRows((prev) =>
-                              prev
-                                .map((r) => (r.id === row.id ? updated : r))
-                                .filter((r) =>
-                                  tab === 'unclassified'
-                                    ? !(
-                                        r.target_id !== null &&
-                                        r.target_id !== undefined &&
-                                        r.article_id !== null &&
-                                        r.article_id !== undefined
-                                      )
-                                    : true
-                                )
-                            );
-                          } catch (err: any) {
-                            setJournalError(
-                              err?.response?.data?.detail ||
-                                err?.message ||
-                                'Не удалось сохранить проект операции'
-                            );
-                          }
-                        }}
-                        renderValue={(v) => {
-                          if (!v) return <em>Не выбран</em>;
-                          const t = targets.find((t) => t.id === v);
-                          return t ? t.name : row.target_name || row.target_code || v;
+                        onChange={async (event) => {
+                          const article_id = event.target.value === '' ? null : Number(event.target.value);
+                          const updated = await financeApi.updateTransaction(row.id, { article_id });
+                          setJournalRows((prev) => prev.map((item) => (item.id === row.id ? updated : item)));
+                          if (selectedTargetId) await loadModelData(selectedTargetId);
                         }}
                       >
                         <MenuItem value="">
-                          <em>Не выбран</em>
+                          <em>Не выбрана</em>
                         </MenuItem>
-                        {targets.map((t) => (
-                          <MenuItem key={t.id} value={t.id}>
-                            {t.name}
-                          </MenuItem>
-                        ))}
+                        {articles
+                          .filter((article) => article.direction === row.direction)
+                          .map((article) => (
+                            <MenuItem key={article.id} value={article.id}>
+                              {article.name}
+                            </MenuItem>
+                          ))}
                       </Select>
                     </FormControl>
-                  </TableCell>
-                  <TableCell>
-                    {row.direction === 'transfer' ? (
-                      row.article_name || '—'
-                    ) : (
-                      <FormControl size="small" sx={{ minWidth: 200 }}>
-                        <Select
-                          value={row.article_id ?? ''}
-                          displayEmpty
-                          onChange={async (e) => {
-                            const v = e.target.value as number | '';
-                            const article_id = v === '' ? null : Number(v);
-                            try {
-                              const updated = await financeApi.updateTransaction(row.id, { article_id });
-                              setJournalRows((prev) =>
-                                prev
-                                  .map((r) => (r.id === row.id ? updated : r))
-                                  .filter((r) =>
-                                    tab === 'unclassified'
-                                      ? !(
-                                          r.target_id !== null &&
-                                          r.target_id !== undefined &&
-                                          r.article_id !== null &&
-                                          r.article_id !== undefined
-                                        )
-                                      : true
-                                  )
-                              );
-                            } catch (err: any) {
-                              setJournalError(
-                                err?.response?.data?.detail ||
-                                  err?.message ||
-                                  'Не удалось сохранить статью операции'
-                              );
-                            }
-                          }}
-                          renderValue={(v) => {
-                            if (!v) return <em>Не выбрана</em>;
-                            const a = articles.find((a) => a.id === v);
-                            return a ? a.name : row.article_name || v;
-                          }}
-                        >
-                          <MenuItem value="">
-                            <em>Не выбрана</em>
-                          </MenuItem>
-                          {articles
-                            .filter((a) =>
-                              row.direction === 'income'
-                                ? a.direction === 'income'
-                                : row.direction === 'expense'
-                                ? a.direction === 'expense'
-                                : true
-                            )
-                            .map((a) => (
-                              <MenuItem key={a.id} value={a.id}>
-                                {a.name}
-                              </MenuItem>
-                            ))}
-                        </Select>
-                      </FormControl>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {row.direction === 'income'
-                      ? 'Доход'
-                      : row.direction === 'expense'
-                      ? 'Расход'
-                      : 'Перевод'}
-                  </TableCell>
-                  <TableCell align="right" sx={{ color: row.direction === 'expense' ? 'error.main' : 'success.main' }}>
-                    {row.amount.toFixed(2)}
-                  </TableCell>
-                  <TableCell>{row.counterparty_name || '—'}</TableCell>
-                  <TableCell>
-                    {row.bank_source
-                      ? `${row.bank_source}${row.bank_operation_id ? ` (${row.bank_operation_id})` : ''}`
-                      : '—'}
-                  </TableCell>
-                  <TableCell>
-                    {row.direction === 'income' && (!row.status || row.status !== 'applied') && (
-                      <Typography
-                        component="button"
-                        variant="body2"
-                        color="primary"
-                        sx={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          textDecoration: 'underline',
-                          p: 0,
-                        }}
-                        onClick={() => {
-                          setSelectedJournalTx(row);
-                          setStudentSearch('');
-                          setSelectedStudent(null);
-                          setStudentOptions([]);
-                          setApplyDialogOpen(true);
-                        }}
-                      >
-                        Зачислить ученику
-                      </Typography>
-                    )}
-                    {row.direction === 'income' && row.status === 'applied' && row.student_id && (
-                      <Typography variant="body2" color="text.secondary">
-                        Зачислено (ученик #{row.student_id})
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      variant="text"
-                      color="error"
-                      size="small"
-                      startIcon={<DeleteIcon fontSize="small" />}
-                      onClick={async () => {
-                        if (
-                          !window.confirm(
-                            'Удалить эту операцию из единого финансового журнала? Это действие нельзя отменить.'
-                          )
-                        ) {
-                          return;
-                        }
-                        try {
-                          await financeApi.deleteTransaction(row.id);
-                          setJournalRows((prev) => prev.filter((r) => r.id !== row.id));
-                        } catch (err: any) {
-                          setJournalError(
-                            err?.response?.data?.detail ||
-                              err?.message ||
-                              'Не удалось удалить операцию из журнала'
-                          );
-                        }
-                      }}
-                    >
-                      Удалить
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {journalRows.length === 0 && !journalLoading && (
-                <TableRow>
-                  <TableCell colSpan={4} align="center">
-                    Нет операций за выбранный период.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Paper>
-      </Box>
+                  )}
+                </TableCell>
+                <TableCell>{directionLabel(row.direction)}</TableCell>
+                <TableCell align="right" sx={{ color: row.direction === 'expense' ? 'error.main' : 'success.main' }}>
+                  {money(row.amount)}
+                </TableCell>
+                <TableCell>{row.counterparty_name || '—'}</TableCell>
+                <TableCell>{row.description || row.bank_source || '—'}</TableCell>
+              </TableRow>
+            ))}
+            {journalRows.length === 0 && !journalLoading && (
+              <TableRow>
+                <TableCell colSpan={8} align="center">
+                  Операций за выбранный период нет.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Paper>
+    </Stack>
+  );
 
-      <FormDialog
-        open={applyDialogOpen && !!selectedJournalTx}
-        onClose={() => {
-          setApplyDialogOpen(false);
-          setSelectedJournalTx(null);
-          setStudentSearch('');
-          setStudentOptions([]);
-          setSelectedStudent(null);
-        }}
-        onSubmit={handleApplyStudentPayment}
-        submitLabel={applyLoading ? 'РЎРѕС…СЂР°РЅРµРЅРёРµ...' : 'Р—Р°С‡РёСЃР»РёС‚СЊ'}
-        submitDisabled={!selectedJournalTx || !selectedStudent || applyLoading}
-        title="Р—Р°С‡РёСЃР»РёС‚СЊ РїР»Р°С‚С‘Р¶ СѓС‡РµРЅРёРєСѓ"
-        maxWidth="sm"
-      >
-        <DialogTitle>Зачислить платёж ученику</DialogTitle>
-          {selectedJournalTx && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                <strong>Дата:</strong>{' '}
-                {selectedJournalTx.occurred_at
-                  ? new Date(selectedJournalTx.occurred_at).toLocaleString('ru-RU')
-                  : '—'}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Сумма:</strong> {selectedJournalTx.amount.toFixed(2)}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Контрагент:</strong> {selectedJournalTx.counterparty_name || '—'}
-              </Typography>
-            </Box>
-          )}
-          <TextField
-            label="Поиск ученика по ФИО"
-            fullWidth
-            size="small"
-            value={studentSearch}
-            onChange={(e) => setStudentSearch(e.target.value)}
-            helperText="Начните вводить ФИО ученика, чтобы найти и привязать платёж"
-            sx={{ mb: 1 }}
-          />
-          {studentOptions.length > 0 && (
-            <Box
-              sx={{
-                maxHeight: 200,
-                overflowY: 'auto',
-                border: '1px solid #eee',
-                borderRadius: 1,
-                p: 1,
-              }}
-            >
-              {studentOptions.map((s) => (
-                <Typography
-                  key={s.id}
-                  variant="body2"
-                  sx={{
-                    py: 0.5,
-                    px: 1,
-                    borderRadius: 1,
-                    cursor: 'pointer',
-                    bgcolor: selectedStudent?.id === s.id ? 'action.selected' : 'transparent',
-                    '&:hover': { bgcolor: 'action.hover' },
-                  }}
-                  onClick={() => setSelectedStudent(s)}
-                >
-                  {s.full_name} (id: {s.id})
-                </Typography>
-              ))}
-            </Box>
-          )}
+  return (
+    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            Финансы
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Единый журнал, модели, статьи, бюджет и показатели по проектам.
+          </Typography>
+        </Box>
+        {renderModelSelector()}
+      </Stack>
+
+      {loading && <LinearProgress />}
+      {error && (
+        <Alert severity="error" onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+      {message && (
+        <Alert severity="success" onClose={() => setMessage(null)}>
+          {message}
+        </Alert>
+      )}
+
+      {!selectedModel && (
+        <Alert
+          severity="info"
+          action={
+            <Button color="inherit" size="small" onClick={openCreateModel}>
+              Создать
+            </Button>
+          }
+        >
+          Создайте первую финансовую модель, чтобы настроить статьи, бюджет и dashboard.
+        </Alert>
+      )}
+
+      <Paper variant="outlined" sx={{ borderRadius: 1 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, value) => setTab(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ px: 1 }}
+        >
+          <Tab value="dashboard" icon={<Dashboard />} iconPosition="start" label="Dashboard" />
+          <Tab value="models" icon={<Assessment />} iconPosition="start" label="Модели" />
+          <Tab value="budget" icon={<TableRows />} iconPosition="start" label="Бюджет" />
+          <Tab value="articles" icon={<AccountTree />} iconPosition="start" label="Статьи" />
+          <Tab value="journal" icon={<TableRows />} iconPosition="start" label="Журнал" />
+        </Tabs>
+      </Paper>
+
+      {tab === 'dashboard' && renderDashboard()}
+      {tab === 'models' && renderModels()}
+      {tab === 'budget' && renderBudget()}
+      {tab === 'articles' && renderArticles()}
+      {tab === 'journal' && renderJournal()}
+
+      <Dialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Финансовая модель</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField label="Наименование" size="small" value={modelName} onChange={(e) => setModelName(e.target.value)} />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Шаблон</InputLabel>
+              <Select label="Шаблон" value={modelTemplate} onChange={(e) => setModelTemplate(e.target.value)}>
+                {templates.map((template) => (
+                  <MenuItem key={template.key} value={template.key}>
+                    {template.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Существующий проект</InputLabel>
+              <Select
+                label="Существующий проект"
+                value={modelTargetId === '' ? '' : String(modelTargetId)}
+                onChange={(e) => setModelTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value="">Создать новый проект</MenuItem>
+                {targets.map((target) => (
+                  <MenuItem key={target.id} value={target.id}>
+                    {target.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {modelTargetId === '' && (
+              <>
+                <Divider />
+                <TextField
+                  label="Название нового проекта"
+                  size="small"
+                  value={modelTargetName}
+                  onChange={(e) => setModelTargetName(e.target.value)}
+                />
+                <TextField
+                  label="Код нового проекта"
+                  size="small"
+                  value={modelTargetCode}
+                  onChange={(e) => setModelTargetCode(e.target.value)}
+                />
+              </>
+            )}
+          </Stack>
+        </DialogContent>
         <DialogActions>
-          <Button
-            onClick={() => {
-              setApplyDialogOpen(false);
-              setSelectedJournalTx(null);
-              setStudentSearch('');
-              setStudentOptions([]);
-              setSelectedStudent(null);
-            }}
-          >
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            disabled={!selectedJournalTx || !selectedStudent || applyLoading}
-            onClick={async () => {
-              if (!selectedJournalTx || !selectedStudent) return;
-              try {
-                setApplyLoading(true);
-                const updated = await financeApi.applyTransactionToStudent(selectedJournalTx.id, {
-                  student_id: selectedStudent.id,
-                });
-                setJournalRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-                setApplyDialogOpen(false);
-                setSelectedJournalTx(null);
-                setStudentSearch('');
-                setStudentOptions([]);
-                setSelectedStudent(null);
-              } catch (err: any) {
-                setJournalError(
-                  err?.response?.data?.detail ||
-                    err?.message ||
-                    'Не удалось зачислить платёж на счёт ученика'
-                );
-              } finally {
-                setApplyLoading(false);
-              }
-            }}
-          >
-            {applyLoading ? 'Сохранение...' : 'Зачислить'}
+          <Button onClick={() => setModelDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={createModel} disabled={!modelName.trim()}>
+            Создать
           </Button>
         </DialogActions>
-      </FormDialog>
+      </Dialog>
 
-      <FormDialog open={manualDialogOpen} onClose={() => !manualSubmitting && setManualDialogOpen(false)} onSubmit={handleCreateManualOperation} submitLabel={manualSubmitting ? 'РЎРѕС…СЂР°РЅРµРЅРёРµвЂ¦' : 'Р”РѕР±Р°РІРёС‚СЊ'} submitDisabled={manualSubmitting || !manualAccountId || !manualAmount || Number(manualAmount) <= 0} title="Р”РѕР±Р°РІРёС‚СЊ РѕРїРµСЂР°С†РёСЋ (СЂСѓС‡РЅР°СЏ Р·Р°РїРёСЃСЊ)" maxWidth="sm">
-        <DialogTitle>Добавить операцию (ручная запись)</DialogTitle>
+      <Dialog open={articleDialogOpen} onClose={() => setArticleDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingArticle ? 'Редактировать статью' : 'Новая статья'}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            {manualError && (
-              <Typography color="error" variant="body2">{manualError}</Typography>
-            )}
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField label="Наименование" size="small" value={articleName} onChange={(e) => setArticleName(e.target.value)} />
+            <TextField label="Код" size="small" value={articleCode} onChange={(e) => setArticleCode(e.target.value)} />
             <FormControl size="small" fullWidth>
-              <InputLabel>Счёт</InputLabel>
+              <InputLabel>Тип</InputLabel>
               <Select
-                label="Счёт"
+                label="Тип"
+                value={articleDirection}
+                onChange={(e) => setArticleDirection(e.target.value as 'income' | 'expense')}
+              >
+                <MenuItem value="income">Доход</MenuItem>
+                <MenuItem value="expense">Расход</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Родитель</InputLabel>
+              <Select
+                label="Родитель"
+                value={articleParentId === '' ? '' : String(articleParentId)}
+                onChange={(e) => setArticleParentId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value="">Корневой уровень</MenuItem>
+                {flatArticles
+                  .filter((article) => article.id !== editingArticle?.id)
+                  .map((article) => (
+                    <MenuItem key={article.id} value={article.id}>
+                      {' '.repeat(article.level * 2)}
+                      {article.name}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+            <TextField label="Цвет" size="small" value={articleColor} onChange={(e) => setArticleColor(e.target.value)} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setArticleDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={saveArticle} disabled={!articleName.trim() || !selectedTargetId}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={metricDialogOpen} onClose={() => setMetricDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingMetric ? 'Редактировать метрику' : 'Новая метрика'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField label="Наименование" size="small" value={metricName} onChange={(e) => setMetricName(e.target.value)} />
+            <TextField
+              label="Формула"
+              size="small"
+              value={metricFormula}
+              onChange={(e) => setMetricFormula(e.target.value)}
+              helperText="Например: SUM(revenue) - SUM(expenses), BALANCE(), COUNT(revenue)"
+            />
+            <TextField label="Единица" size="small" value={metricUnit} onChange={(e) => setMetricUnit(e.target.value)} />
+            <TextField
+              label="План"
+              type="number"
+              size="small"
+              value={metricGoal}
+              onChange={(e) => setMetricGoal(e.target.value)}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMetricDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={saveMetric} disabled={!metricName.trim() || !metricFormula.trim()}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={manualDialogOpen} onClose={() => setManualDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Ручная операция</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Счет</InputLabel>
+              <Select
+                label="Счет"
                 value={manualAccountId === '' ? '' : String(manualAccountId)}
                 onChange={(e) => setManualAccountId(e.target.value === '' ? '' : Number(e.target.value))}
               >
-                {accounts.map((a) => (
-                  <MenuItem key={a.id} value={a.id}>{a.name}{a.code ? ` (${a.code})` : ''}</MenuItem>
+                {accounts.map((account) => (
+                  <MenuItem key={account.id} value={account.id}>
+                    {account.name}
+                    {account.code ? ` (${account.code})` : ''}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -719,19 +1110,21 @@ const FinanceOverviewPageContent: React.FC = () => {
               label="Дата"
               type="date"
               size="small"
-              fullWidth
               value={manualDate}
               onChange={(e) => setManualDate(e.target.value)}
               InputLabelProps={{ shrink: true }}
             />
             <FormControl size="small" fullWidth>
-              <InputLabel>Направление</InputLabel>
+              <InputLabel>Тип</InputLabel>
               <Select
-                label="Направление"
+                label="Тип"
                 value={manualDirection}
-                onChange={(e) => setManualDirection(e.target.value as 'income' | 'expense')}
+                onChange={(e) => {
+                  setManualDirection(e.target.value as 'income' | 'expense');
+                  setManualArticleId('');
+                }}
               >
-                <MenuItem value="income">Приход</MenuItem>
+                <MenuItem value="income">Доход</MenuItem>
                 <MenuItem value="expense">Расход</MenuItem>
               </Select>
             </FormControl>
@@ -739,11 +1132,25 @@ const FinanceOverviewPageContent: React.FC = () => {
               label="Сумма"
               type="number"
               size="small"
-              fullWidth
               value={manualAmount}
               onChange={(e) => setManualAmount(e.target.value)}
               inputProps={{ min: 0, step: 0.01 }}
             />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Проект</InputLabel>
+              <Select
+                label="Проект"
+                value={manualTargetId === '' ? '' : String(manualTargetId)}
+                onChange={(e) => setManualTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value="">Не выбран</MenuItem>
+                {targets.map((target) => (
+                  <MenuItem key={target.id} value={target.id}>
+                    {target.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <FormControl size="small" fullWidth>
               <InputLabel>Статья</InputLabel>
               <Select
@@ -751,76 +1158,37 @@ const FinanceOverviewPageContent: React.FC = () => {
                 value={manualArticleId === '' ? '' : String(manualArticleId)}
                 onChange={(e) => setManualArticleId(e.target.value === '' ? '' : Number(e.target.value))}
               >
-                <MenuItem value="">— Не выбрана</MenuItem>
-                {articles.filter((a) => a.direction === manualDirection).map((a) => (
-                  <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" fullWidth>
-              <InputLabel>Проект / цель</InputLabel>
-              <Select
-                label="Проект / цель"
-                value={manualTargetId === '' ? '' : String(manualTargetId)}
-                onChange={(e) => setManualTargetId(e.target.value === '' ? '' : Number(e.target.value))}
-              >
-                <MenuItem value="">— Не выбран</MenuItem>
-                {targets.map((t) => (
-                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
-                ))}
+                <MenuItem value="">Не выбрана</MenuItem>
+                {articles
+                  .filter((article) => article.direction === manualDirection)
+                  .map((article) => (
+                    <MenuItem key={article.id} value={article.id}>
+                      {article.name}
+                    </MenuItem>
+                  ))}
               </Select>
             </FormControl>
             <TextField
-              label="Комментарий (необязательно)"
+              label="Комментарий"
               size="small"
-              fullWidth
               multiline
               minRows={2}
               value={manualDescription}
               onChange={(e) => setManualDescription(e.target.value)}
             />
-          </Box>
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => !manualSubmitting && setManualDialogOpen(false)} disabled={manualSubmitting}>Отмена</Button>
+          <Button onClick={() => setManualDialogOpen(false)}>Отмена</Button>
           <Button
             variant="contained"
-            disabled={manualSubmitting || !manualAccountId || !manualAmount || Number(manualAmount) <= 0}
-            onClick={async () => {
-              if (!manualAccountId || !manualAmount || Number(manualAmount) <= 0) return;
-              setManualSubmitting(true);
-              setManualError(null);
-              try {
-                await financeApi.createManualTransaction({
-                  account_id: Number(manualAccountId),
-                  amount: Number(manualAmount),
-                  direction: manualDirection,
-                  occurred_at: manualDate,
-                  article_id: manualArticleId === '' ? null : manualArticleId,
-                  target_id: manualTargetId === '' ? null : manualTargetId,
-                  description: manualDescription.trim() || null,
-                });
-                setManualDialogOpen(false);
-                const refreshed = await financeApi.listJournalTransactions({
-                  unclassified_only: tab === 'unclassified',
-                  target_ids: journalTargetFilter === 'all' ? undefined : [journalTargetFilter],
-                  direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
-                  date_from: journalFrom || undefined,
-                  date_to: journalTo || undefined,
-                  limit: 5000,
-                });
-                setJournalRows(refreshed);
-              } catch (err: any) {
-                setManualError(err?.response?.data?.detail || err?.message || 'Не удалось добавить операцию');
-              } finally {
-                setManualSubmitting(false);
-              }
-            }}
+            onClick={createManualOperation}
+            disabled={!manualAccountId || !manualAmount || Number(manualAmount) <= 0}
           >
-            {manualSubmitting ? 'Сохранение…' : 'Добавить'}
+            Добавить
           </Button>
         </DialogActions>
-      </FormDialog>
+      </Dialog>
     </Box>
   );
 };
@@ -832,4 +1200,3 @@ const FinanceOverviewPage: React.FC = () => (
 );
 
 export default FinanceOverviewPage;
-

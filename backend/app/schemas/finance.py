@@ -1,7 +1,7 @@
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.students import StudentAccountResponse
 
@@ -113,26 +113,181 @@ class FinanceTargetResponse(BaseModel):
 
 class FinanceArticleResponse(BaseModel):
     id: int
+    code: Optional[str] = None
+    target_id: Optional[int] = None
+    parent_id: Optional[int] = None
     name: str
     direction: str
     cost_kind: str
     scope: str
+    color: Optional[str] = None
+    sort_order: int = 0
     is_active: bool
 
 
 class FinanceArticleCreate(BaseModel):
     name: str
     direction: str
+    code: Optional[str] = None
+    target_id: Optional[int] = None
+    parent_id: Optional[int] = None
     scope: Optional[str] = "personal"
     cost_kind: Optional[str] = "none"
+    color: Optional[str] = None
+    sort_order: int = 0
 
 
 class FinanceArticleUpdate(BaseModel):
     name: Optional[str] = None
+    code: Optional[str] = None
+    target_id: Optional[int] = None
+    parent_id: Optional[int] = None
     direction: Optional[str] = None
     scope: Optional[str] = None
     cost_kind: Optional[str] = None
+    color: Optional[str] = None
+    sort_order: Optional[int] = None
     is_active: Optional[bool] = None
+
+
+class FinanceArticleTreeItem(FinanceArticleResponse):
+    children: List["FinanceArticleTreeItem"] = Field(default_factory=list)
+
+
+class FinanceModelCreate(BaseModel):
+    target_id: Optional[int] = None
+    target_code: Optional[str] = None
+    target_name: Optional[str] = None
+    name: str
+    template_key: str = "blank"
+    currency: str = "RUB"
+    period_type: str = "month"
+    settings_json: Optional[Dict[str, Any]] = None
+
+
+class FinanceModelUpdate(BaseModel):
+    name: Optional[str] = None
+    template_key: Optional[str] = None
+    currency: Optional[str] = None
+    period_type: Optional[str] = None
+    settings_json: Optional[Dict[str, Any]] = None
+
+
+class FinanceModelResponse(BaseModel):
+    id: int
+    target_id: int
+    target_code: Optional[str] = None
+    target_name: Optional[str] = None
+    name: str
+    template_key: str
+    currency: str
+    period_type: str
+    settings_json: Optional[Dict[str, Any]] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class BudgetEntryUpsert(BaseModel):
+    article_id: int
+    amount_plan: float
+
+
+class BudgetSaveRequest(BaseModel):
+    target_id: int
+    period: str
+    entries: List[BudgetEntryUpsert]
+
+
+class BudgetEntryResponse(BaseModel):
+    id: int
+    target_id: int
+    article_id: int
+    article_name: Optional[str] = None
+    period: str
+    amount_plan: float
+
+
+class MetricDefinitionCreate(BaseModel):
+    target_id: int
+    name: str
+    formula: str
+    unit: Optional[str] = None
+    goal_value: Optional[float] = None
+    sort_order: int = 0
+
+
+class MetricDefinitionUpdate(BaseModel):
+    name: Optional[str] = None
+    formula: Optional[str] = None
+    unit: Optional[str] = None
+    goal_value: Optional[float] = None
+    sort_order: Optional[int] = None
+
+
+class MetricDefinitionResponse(BaseModel):
+    id: int
+    target_id: int
+    target_name: Optional[str] = None
+    name: str
+    formula: str
+    unit: Optional[str] = None
+    goal_value: Optional[float] = None
+    sort_order: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MetricComputeResponse(BaseModel):
+    metric_id: int
+    name: str
+    formula: str
+    value: float
+    unit: Optional[str] = None
+    goal_value: Optional[float] = None
+    period: Optional[str] = None
+
+
+class DashboardWidgetCreate(BaseModel):
+    metric_id: Optional[int] = None
+    target_id: Optional[int] = None
+    widget_type: str = "number"
+    period_type: str = "current_month"
+    position_x: int = 0
+    position_y: int = 0
+    width: int = 1
+    title_override: Optional[str] = None
+
+
+class DashboardWidgetUpdate(BaseModel):
+    metric_id: Optional[int] = None
+    target_id: Optional[int] = None
+    widget_type: Optional[str] = None
+    period_type: Optional[str] = None
+    position_x: Optional[int] = None
+    position_y: Optional[int] = None
+    width: Optional[int] = None
+    title_override: Optional[str] = None
+
+
+class DashboardWidgetResponse(BaseModel):
+    id: int
+    owner_id: int
+    metric_id: Optional[int] = None
+    metric_name: Optional[str] = None
+    target_id: Optional[int] = None
+    target_name: Optional[str] = None
+    widget_type: str
+    period_type: str
+    position_x: int
+    position_y: int
+    width: int
+    title_override: Optional[str] = None
+
+
+class DashboardWidgetComputedResponse(DashboardWidgetResponse):
+    value: Optional[float] = None
+    unit: Optional[str] = None
+    goal_value: Optional[float] = None
 
 
 class FinanceTransactionUpdate(BaseModel):

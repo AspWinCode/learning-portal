@@ -751,6 +751,91 @@ export interface FinanceAnalyticsSummary {
   account_balances: FinanceAccountBalance[];
 }
 
+export interface FinanceArticle {
+  id: number;
+  code?: string | null;
+  target_id?: number | null;
+  parent_id?: number | null;
+  name: string;
+  direction: 'income' | 'expense' | string;
+  cost_kind: 'variable' | 'fixed' | 'none' | string;
+  scope: 'academy' | 'personal' | 'any' | string;
+  color?: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface FinanceArticleTreeItem extends FinanceArticle {
+  children: FinanceArticleTreeItem[];
+}
+
+export interface FinanceModel {
+  id: number;
+  target_id: number;
+  target_code?: string | null;
+  target_name?: string | null;
+  name: string;
+  template_key: string;
+  currency: string;
+  period_type: string;
+  settings_json?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BudgetEntry {
+  id: number;
+  target_id: number;
+  article_id: number;
+  article_name?: string | null;
+  period: string;
+  amount_plan: number;
+}
+
+export interface MetricDefinition {
+  id: number;
+  target_id: number;
+  target_name?: string | null;
+  name: string;
+  formula: string;
+  unit?: string | null;
+  goal_value?: number | null;
+  sort_order: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface MetricComputeResult {
+  metric_id: number;
+  name: string;
+  formula: string;
+  value: number;
+  unit?: string | null;
+  goal_value?: number | null;
+  period?: string | null;
+}
+
+export interface DashboardWidget {
+  id: number;
+  owner_id: number;
+  metric_id?: number | null;
+  metric_name?: string | null;
+  target_id?: number | null;
+  target_name?: string | null;
+  widget_type: string;
+  period_type: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  title_override?: string | null;
+}
+
+export interface DashboardWidgetComputed extends DashboardWidget {
+  value?: number | null;
+  unit?: string | null;
+  goal_value?: number | null;
+}
+
 export interface SalesInstruction {
   id: number;
   title: string;

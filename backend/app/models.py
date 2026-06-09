@@ -774,6 +774,9 @@ class FinanceArticle(Base):
     __tablename__ = "finance_articles"
 
     id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(96), nullable=True, index=True)
+    target_id = Column(Integer, ForeignKey("finance_targets.id"), nullable=True, index=True)
+    parent_id = Column(Integer, ForeignKey("finance_articles.id"), nullable=True, index=True)
     name = Column(String(256), nullable=False, index=True)
     direction = Column(
         SQLEnum(FinanceArticleDirection, name="financearticledirection", values_callable=_enum_values),
@@ -789,9 +792,90 @@ class FinanceArticle(Base):
         nullable=False,
         default=FinanceArticleScope.ANY,
     )
+    color = Column(String(16), nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0, index=True)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    target = relationship("FinanceTarget", foreign_keys=[target_id])
+    parent = relationship("FinanceArticle", remote_side=[id], backref="children")
+
+
+class FinanceModel(Base):
+    """Financial model for a target/project; owns article tree, budgets, metrics, and dashboard."""
+
+    __tablename__ = "finance_models"
+    __table_args__ = (
+        UniqueConstraint("target_id", "name", name="uq_finance_models_target_name"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    target_id = Column(Integer, ForeignKey("finance_targets.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(256), nullable=False)
+    template_key = Column(String(64), nullable=False, default="blank", index=True)
+    currency = Column(String(8), nullable=False, default="RUB")
+    period_type = Column(String(32), nullable=False, default="month")
+    settings_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    target = relationship("FinanceTarget", foreign_keys=[target_id])
+
+
+class BudgetEntry(Base):
+    __tablename__ = "budget_entries"
+    __table_args__ = (
+        UniqueConstraint("target_id", "article_id", "period", name="uq_budget_entries_target_article_period"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    target_id = Column(Integer, ForeignKey("finance_targets.id", ondelete="CASCADE"), nullable=False, index=True)
+    article_id = Column(Integer, ForeignKey("finance_articles.id", ondelete="CASCADE"), nullable=False, index=True)
+    period = Column(String(7), nullable=False, index=True)
+    amount_plan = Column(Numeric(14, 2), nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    target = relationship("FinanceTarget", foreign_keys=[target_id])
+    article = relationship("FinanceArticle", foreign_keys=[article_id])
+
+
+class MetricDefinition(Base):
+    __tablename__ = "metric_definitions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    target_id = Column(Integer, ForeignKey("finance_targets.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(256), nullable=False)
+    formula = Column(Text, nullable=False)
+    unit = Column(String(32), nullable=True)
+    goal_value = Column(Float, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    target = relationship("FinanceTarget", foreign_keys=[target_id])
+
+
+class DashboardWidget(Base):
+    __tablename__ = "dashboard_widgets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    metric_id = Column(Integer, ForeignKey("metric_definitions.id", ondelete="CASCADE"), nullable=True, index=True)
+    target_id = Column(Integer, ForeignKey("finance_targets.id", ondelete="CASCADE"), nullable=True, index=True)
+    widget_type = Column(String(32), nullable=False, default="number")
+    period_type = Column(String(32), nullable=False, default="current_month")
+    position_x = Column(Integer, nullable=False, default=0)
+    position_y = Column(Integer, nullable=False, default=0)
+    width = Column(Integer, nullable=False, default=1)
+    title_override = Column(String(256), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    metric = relationship("MetricDefinition", foreign_keys=[metric_id])
+    target = relationship("FinanceTarget", foreign_keys=[target_id])
 
 
 class FinanceTransactionDirection(str, enum.Enum):

@@ -50,6 +50,14 @@ import {
   FinanceAccountBalance,
   FinancePnlRow,
   FinanceAnalyticsSummary,
+  FinanceArticle,
+  FinanceArticleTreeItem,
+  FinanceModel,
+  BudgetEntry,
+  MetricDefinition,
+  MetricComputeResult,
+  DashboardWidget,
+  DashboardWidgetComputed,
   OwnerWorkspaceProject,
   OwnerWorkspaceContact,
   OwnerWorkspaceTask,
@@ -529,20 +537,27 @@ export const financeApi = {
   deleteTarget: async (id: number): Promise<void> => {
     await api.delete(`/api/finance/targets/${id}`);
   },
-  listArticles: async (params?: { scope?: string; direction?: string }): Promise<
-    Array<{ id: number; name: string; direction: string; cost_kind: string; scope: string; is_active: boolean }>
-  > => {
+  listArticles: async (params?: { scope?: string; direction?: string; target_id?: number }): Promise<FinanceArticle[]> => {
     const response = await api.get('/api/finance/articles', {
-      params: { only_active: true, scope: params?.scope, direction: params?.direction },
+      params: { only_active: true, scope: params?.scope, direction: params?.direction, target_id: params?.target_id },
     });
+    return response.data;
+  },
+  getArticleTree: async (targetId: number): Promise<FinanceArticleTreeItem[]> => {
+    const response = await api.get('/api/finance/articles/tree', { params: { target_id: targetId } });
     return response.data;
   },
   createArticle: async (payload: {
     name: string;
     direction: 'income' | 'expense';
+    code?: string | null;
+    target_id?: number | null;
+    parent_id?: number | null;
     scope?: string;
     cost_kind?: string;
-  }): Promise<{ id: number; name: string; direction: string; cost_kind: string; scope: string; is_active: boolean }> => {
+    color?: string | null;
+    sort_order?: number;
+  }): Promise<FinanceArticle> => {
     const response = await api.post('/api/finance/articles', payload);
     return response.data;
   },
@@ -550,17 +565,116 @@ export const financeApi = {
     articleId: number,
     payload: {
       name?: string;
+      code?: string | null;
+      target_id?: number | null;
+      parent_id?: number | null;
       direction?: 'income' | 'expense';
       scope?: string;
       cost_kind?: string;
+      color?: string | null;
+      sort_order?: number;
       is_active?: boolean;
     }
-  ): Promise<{ id: number; name: string; direction: string; cost_kind: string; scope: string; is_active: boolean }> => {
+  ): Promise<FinanceArticle> => {
     const response = await api.patch(`/api/finance/articles/${articleId}`, payload);
     return response.data;
   },
   deleteArticle: async (articleId: number): Promise<void> => {
     await api.delete(`/api/finance/articles/${articleId}`);
+  },
+  listModelTemplates: async (): Promise<Array<{ key: string; name: string }>> => {
+    const response = await api.get('/api/finance/model-templates');
+    return response.data;
+  },
+  listModels: async (): Promise<FinanceModel[]> => {
+    const response = await api.get('/api/finance/models');
+    return response.data;
+  },
+  createModel: async (payload: {
+    target_id?: number | null;
+    target_code?: string | null;
+    target_name?: string | null;
+    name: string;
+    template_key?: string;
+    currency?: string;
+    period_type?: string;
+    settings_json?: Record<string, unknown> | null;
+  }): Promise<FinanceModel> => {
+    const response = await api.post('/api/finance/models', payload);
+    return response.data;
+  },
+  updateModel: async (modelId: number, payload: Partial<FinanceModel>): Promise<FinanceModel> => {
+    const response = await api.patch(`/api/finance/models/${modelId}`, payload);
+    return response.data;
+  },
+  deleteModel: async (modelId: number): Promise<void> => {
+    await api.delete(`/api/finance/models/${modelId}`);
+  },
+  listBudget: async (params: { target_id: number; period: string }): Promise<BudgetEntry[]> => {
+    const response = await api.get('/api/finance/budget', { params });
+    return response.data;
+  },
+  saveBudget: async (payload: {
+    target_id: number;
+    period: string;
+    entries: Array<{ article_id: number; amount_plan: number }>;
+  }): Promise<BudgetEntry[]> => {
+    const response = await api.put('/api/finance/budget', payload);
+    return response.data;
+  },
+  listMetrics: async (targetId?: number): Promise<MetricDefinition[]> => {
+    const response = await api.get('/api/finance/metrics', { params: targetId != null ? { target_id: targetId } : {} });
+    return response.data;
+  },
+  createMetric: async (payload: {
+    target_id: number;
+    name: string;
+    formula: string;
+    unit?: string | null;
+    goal_value?: number | null;
+    sort_order?: number;
+  }): Promise<MetricDefinition> => {
+    const response = await api.post('/api/finance/metrics', payload);
+    return response.data;
+  },
+  updateMetric: async (metricId: number, payload: Partial<MetricDefinition>): Promise<MetricDefinition> => {
+    const response = await api.patch(`/api/finance/metrics/${metricId}`, payload);
+    return response.data;
+  },
+  computeMetric: async (metricId: number, period?: string): Promise<MetricComputeResult> => {
+    const response = await api.get(`/api/finance/metrics/${metricId}/compute`, { params: period ? { period } : {} });
+    return response.data;
+  },
+  deleteMetric: async (metricId: number): Promise<void> => {
+    await api.delete(`/api/finance/metrics/${metricId}`);
+  },
+  listDashboardWidgets: async (): Promise<DashboardWidget[]> => {
+    const response = await api.get('/api/finance/dashboard');
+    return response.data;
+  },
+  createDashboardWidget: async (payload: {
+    metric_id?: number | null;
+    target_id?: number | null;
+    widget_type?: string;
+    period_type?: string;
+    position_x?: number;
+    position_y?: number;
+    width?: number;
+    title_override?: string | null;
+  }): Promise<DashboardWidget> => {
+    const response = await api.post('/api/finance/dashboard/widgets', payload);
+    return response.data;
+  },
+  updateDashboardWidget: async (widgetId: number, payload: Partial<DashboardWidget>): Promise<DashboardWidget> => {
+    const response = await api.patch(`/api/finance/dashboard/widgets/${widgetId}`, payload);
+    return response.data;
+  },
+  deleteDashboardWidget: async (widgetId: number): Promise<void> => {
+    await api.delete(`/api/finance/dashboard/widgets/${widgetId}`);
+  },
+  computeDashboard: async (period?: string): Promise<DashboardWidgetComputed[]> => {
+    const response = await api.get('/api/finance/dashboard/compute', { params: period ? { period } : {} });
+    return response.data;
   },
   createPersonalOperation: async (payload: {
     date: string;

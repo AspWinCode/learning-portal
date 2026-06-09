@@ -2680,6 +2680,22 @@ class DiskItem(Base):
     owner = relationship("User", foreign_keys=[owner_id])
 
 
+class PasswordEntry(Base):
+    __tablename__ = "password_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    website_url = Column(Text, nullable=True)
+    login = Column(String(255), nullable=True, index=True)
+    encrypted_password = Column(Text, nullable=False)
+    note = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    owner = relationship("User", foreign_keys=[owner_id])
+
+
 class OwnerWorkspaceUserPreference(Base):
     """Персональные настройки UI задачника (JSON, merge при PATCH)."""
 

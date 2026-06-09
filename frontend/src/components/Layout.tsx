@@ -53,6 +53,7 @@ import {
   Search,
   School,
   Bolt,
+  Lock,
   ChevronLeft,
   ChevronRight,
   ExpandLess,
@@ -77,7 +78,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/disk']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/disk', '/passwords']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
@@ -308,6 +309,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessLessons = hasPermission(user, 'lessons.access');
   const canAccessUsers = hasPermission(user, 'users.access');
   const canAccessRoles = hasPermission(user, 'roles.access');
+  const canAccessPasswords = hasPermission(user, 'passwords.access');
 
   const effectiveMenuItems = (() => {
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
@@ -334,6 +336,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
         { text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' },
         { text: 'Диск', icon: <Folder />, path: '/disk' },
+        ...(canAccessPasswords ? [{ text: 'Пароли', icon: <Lock />, path: '/passwords' }] : []),
       ];
 
     const items = [
@@ -352,6 +355,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
+      if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
     }
 
     if (canAccessReports && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
@@ -373,6 +377,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
+      if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
     }
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });

@@ -93,6 +93,8 @@ import {
   PersonSearchResponse,
   DiskItem,
   DiskItemsResponse,
+  PasswordEntry,
+  PasswordEntryPayload,
   PersonalFinanceAccount,
   PersonalFinanceCategory,
   PersonalFinanceRule,
@@ -3620,6 +3622,28 @@ export const diskApi = {
   },
   deleteItem: async (itemId: number): Promise<void> => {
     await api.delete(`/disk/items/${itemId}`);
+  },
+};
+
+export const passwordsApi = {
+  list: async (q?: string): Promise<PasswordEntry[]> => {
+    const response = await api.get('/passwords', { params: q ? { q } : {} });
+    return response.data;
+  },
+  create: async (payload: PasswordEntryPayload & { password: string }): Promise<PasswordEntry> => {
+    const response = await api.post('/passwords', payload);
+    return response.data;
+  },
+  update: async (entryId: number, payload: PasswordEntryPayload): Promise<PasswordEntry> => {
+    const response = await api.patch(`/passwords/${entryId}`, payload);
+    return response.data;
+  },
+  reveal: async (entryId: number): Promise<{ id: number; password: string }> => {
+    const response = await api.get(`/passwords/${entryId}/secret`);
+    return response.data;
+  },
+  delete: async (entryId: number): Promise<void> => {
+    await api.delete(`/passwords/${entryId}`);
   },
 };
 

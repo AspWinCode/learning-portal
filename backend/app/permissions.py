@@ -57,6 +57,24 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Access to owner personal finance workspace.",
     },
     {
+        "key": "passwords.access",
+        "module": "passwords",
+        "label": "Passwords view",
+        "description": "Access to the protected password vault.",
+    },
+    {
+        "key": "passwords.manage",
+        "module": "passwords",
+        "label": "Passwords manage",
+        "description": "Create, edit, and delete password vault entries.",
+    },
+    {
+        "key": "passwords.reveal",
+        "module": "passwords",
+        "label": "Passwords reveal",
+        "description": "Reveal decrypted password vault secrets.",
+    },
+    {
         "key": "settings.access",
         "module": "settings",
         "label": "Просмотр настроек",

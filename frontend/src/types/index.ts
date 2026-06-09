@@ -1905,6 +1905,27 @@ export interface DiskItemsResponse {
   breadcrumbs: DiskItem[];
 }
 
+export interface PasswordEntry {
+  id: number;
+  name: string;
+  website_url?: string | null;
+  login?: string | null;
+  note?: string | null;
+  owner_id?: number | null;
+  owner_name?: string | null;
+  has_password: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface PasswordEntryPayload {
+  name: string;
+  website_url?: string | null;
+  login?: string | null;
+  password?: string;
+  note?: string | null;
+}
+
 export interface PersonalFinanceCategory {
   id: number;
   owner_id: number;

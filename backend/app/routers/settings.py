@@ -146,7 +146,7 @@ PWA_MODULES = [
         "key": "owner_workspace",
         "label": "Таск трекер",
         "description": "Проекты, задачи и коммуникации owner workspace.",
-        "route": "/mobile/contacts",
+        "route": "/mobile/owner-workspace",
         "required_permission": "owner_workspace.access",
         "default_roles": ["admin", "owner", "sales"],
     },

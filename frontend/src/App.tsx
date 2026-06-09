@@ -24,6 +24,7 @@ const MobileTasksPage = React.lazy(() => import('./pages/MobileTasksPage'));
 const MobileLessonsPage = React.lazy(() => import('./pages/MobileLessonsPage'));
 const MobileProgramsPage = React.lazy(() => import('./pages/MobileProgramsPage'));
 const MobileLeadsPage = React.lazy(() => import('./pages/MobileLeadsPage'));
+const MobileOwnerWorkspacePage = React.lazy(() => import('./pages/MobileOwnerWorkspacePage'));
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const StudentsPage = React.lazy(() => import('./pages/StudentsPage'));
 const GroupsPage = React.lazy(() => import('./pages/GroupsPage'));
@@ -213,6 +214,14 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="sales.access">
                   <MobileLeadsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mobile/owner-workspace"
+              element={
+                <PrivateRoute requiredPermission="owner_workspace.access">
+                  <MobileOwnerWorkspacePage />
                 </PrivateRoute>
               }
             />

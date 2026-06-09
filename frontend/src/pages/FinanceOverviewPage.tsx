@@ -93,6 +93,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [period, setPeriod] = useState(currentMonth());
 
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [editingModel, setEditingModel] = useState<FinanceModel | null>(null);
   const [modelName, setModelName] = useState('');
   const [modelTemplate, setModelTemplate] = useState('education_center');
   const [modelTargetId, setModelTargetId] = useState<number | ''>('');
@@ -243,6 +244,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   }, [journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, unclassifiedOnly]);
 
   const openCreateModel = () => {
+    setEditingModel(null);
     setModelName('');
     setModelTemplate(templates[0]?.key || 'education_center');
     setModelTargetId('');
@@ -271,6 +273,33 @@ const FinanceOverviewPageContent: React.FC = () => {
       setMessage('Финансовая модель создана');
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || 'Не удалось создать финансовую модель');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEditModel = (model: FinanceModel) => {
+    setEditingModel(model);
+    setModelName(model.name);
+    setModelTemplate(model.template_key || 'blank');
+    setModelTargetId(model.target_id || '');
+    setModelTargetName(model.target_name || '');
+    setModelTargetCode(model.target_code || '');
+    setModelDialogOpen(true);
+  };
+
+  const saveModel = async () => {
+    if (!modelName.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await financeApi.updateModel(editingModel!.id, { name: modelName.trim() });
+      await loadBase();
+      setMessage('Модель обновлена');
+      setModelDialogOpen(false);
+      setEditingModel(null);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось обновить модель');
     } finally {
       setLoading(false);
     }
@@ -603,9 +632,16 @@ const FinanceOverviewPageContent: React.FC = () => {
                 <Button size="small" onClick={() => { setSelectedModelId(model.id); setTab('dashboard'); }}>
                   Открыть
                 </Button>
-                <IconButton size="small" color="error" onClick={() => deleteModel(model)}>
-                  <Delete fontSize="small" />
-                </IconButton>
+                <Tooltip title="Редактировать">
+                  <IconButton size="small" onClick={() => openEditModel(model)}>
+                    <Edit fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Удалить">
+                  <IconButton size="small" color="error" onClick={() => deleteModel(model)}>
+                    <Delete fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               </TableCell>
             </TableRow>
           ))}
@@ -979,59 +1015,72 @@ const FinanceOverviewPageContent: React.FC = () => {
       {tab === 'articles' && renderArticles()}
       {tab === 'journal' && renderJournal()}
 
-      <Dialog open={modelDialogOpen} onClose={() => setModelDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Финансовая модель</DialogTitle>
+      <Dialog open={modelDialogOpen} onClose={() => { setModelDialogOpen(false); setEditingModel(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingModel ? 'Редактировать модель' : 'Новая финансовая модель'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField label="Наименование" size="small" value={modelName} onChange={(e) => setModelName(e.target.value)} />
-            <FormControl size="small" fullWidth>
-              <InputLabel>Шаблон</InputLabel>
-              <Select label="Шаблон" value={modelTemplate} onChange={(e) => setModelTemplate(e.target.value)}>
-                {templates.map((template) => (
-                  <MenuItem key={template.key} value={template.key}>
-                    {template.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" fullWidth>
-              <InputLabel>Существующий проект</InputLabel>
-              <Select
-                label="Существующий проект"
-                value={modelTargetId === '' ? '' : String(modelTargetId)}
-                onChange={(e) => setModelTargetId(e.target.value === '' ? '' : Number(e.target.value))}
-              >
-                <MenuItem value="">Создать новый проект</MenuItem>
-                {targets.map((target) => (
-                  <MenuItem key={target.id} value={target.id}>
-                    {target.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            {modelTargetId === '' && (
+            {!editingModel && (
               <>
-                <Divider />
-                <TextField
-                  label="Название нового проекта"
-                  size="small"
-                  value={modelTargetName}
-                  onChange={(e) => setModelTargetName(e.target.value)}
-                />
-                <TextField
-                  label="Код нового проекта"
-                  size="small"
-                  value={modelTargetCode}
-                  onChange={(e) => setModelTargetCode(e.target.value)}
-                />
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Шаблон</InputLabel>
+                  <Select label="Шаблон" value={modelTemplate} onChange={(e) => setModelTemplate(e.target.value)}>
+                    {templates.map((template) => (
+                      <MenuItem key={template.key} value={template.key}>
+                        {template.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Существующий проект</InputLabel>
+                  <Select
+                    label="Существующий проект"
+                    value={modelTargetId === '' ? '' : String(modelTargetId)}
+                    onChange={(e) => setModelTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <MenuItem value="">Создать новый проект</MenuItem>
+                    {targets.map((target) => (
+                      <MenuItem key={target.id} value={target.id}>
+                        {target.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {modelTargetId === '' && (
+                  <>
+                    <Divider />
+                    <TextField
+                      label="Название нового проекта"
+                      size="small"
+                      value={modelTargetName}
+                      onChange={(e) => setModelTargetName(e.target.value)}
+                    />
+                    <TextField
+                      label="Код нового проекта"
+                      size="small"
+                      value={modelTargetCode}
+                      onChange={(e) => setModelTargetCode(e.target.value)}
+                    />
+                  </>
+                )}
               </>
+            )}
+            {editingModel && (
+              <TextField
+                label="Проект"
+                size="small"
+                value={editingModel.target_name || editingModel.target_code || String(editingModel.target_id)}
+                disabled
+                helperText="Проект нельзя изменить после создания модели"
+              />
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setModelDialogOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={createModel} disabled={!modelName.trim()}>
-            Создать
+          <Button onClick={() => { setModelDialogOpen(false); setEditingModel(null); }}>Отмена</Button>
+          <Button variant="contained" onClick={editingModel ? saveModel : createModel} disabled={!modelName.trim()}>
+            {editingModel ? 'Сохранить' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>

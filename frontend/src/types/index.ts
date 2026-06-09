@@ -783,6 +783,32 @@ export interface FinanceModel {
   updated_at?: string | null;
 }
 
+export interface FinanceTemplateArticleNode {
+  code?: string;
+  name: string;
+  direction: 'income' | 'expense';
+  cost_kind?: string;
+  color?: string;
+  children?: FinanceTemplateArticleNode[];
+}
+
+export interface FinanceTemplateMetric {
+  name: string;
+  formula: string;
+  unit?: string;
+}
+
+export interface FinanceModelTemplate {
+  id: number;
+  key: string;
+  name: string;
+  articles_json: FinanceTemplateArticleNode[];
+  metrics_json: FinanceTemplateMetric[];
+  is_system: boolean;
+  sort_order: number;
+  created_at?: string | null;
+}
+
 export interface BudgetEntry {
   id: number;
   target_id: number;

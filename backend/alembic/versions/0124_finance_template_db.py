@@ -1,23 +1,34 @@
-from typing import Dict, List, Optional, TYPE_CHECKING
+"""Finance model templates: move from hardcoded dict to DB table.
 
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
+Revision ID: 0124_finance_template_db
+Revises: 0123_drop_legacy_finance_stacks
+Create Date: 2026-06-09
+"""
 
-ArticleTemplate = Dict[str, object]
+import sqlalchemy as sa
+from alembic import op
 
-# Kept as fallback for downgrade() and offline use
-TEMPLATES: Dict[str, Dict[str, object]] = {
-    "blank": {
+revision = "0124_finance_template_db"
+down_revision = "0123_drop_legacy_finance_stacks"
+branch_labels = None
+depends_on = None
+
+_SEED = [
+    {
+        "key": "blank",
         "name": "Пустая модель",
-        "articles": [
+        "articles_json": [
             {"code": "income", "name": "Доходы", "direction": "income", "children": []},
             {"code": "expenses", "name": "Расходы", "direction": "expense", "children": []},
         ],
-        "metrics": [],
+        "metrics_json": [],
+        "is_system": True,
+        "sort_order": 0,
     },
-    "personal_budget": {
+    {
+        "key": "personal_budget",
         "name": "Личный бюджет",
-        "articles": [
+        "articles_json": [
             {
                 "code": "income",
                 "name": "Доходы",
@@ -42,13 +53,16 @@ TEMPLATES: Dict[str, Dict[str, object]] = {
                 ],
             },
         ],
-        "metrics": [
+        "metrics_json": [
             {"name": "Норма накоплений", "formula": "(SUM(income) - SUM(expenses)) / SUM(income) * 100", "unit": "%"},
         ],
+        "is_system": True,
+        "sort_order": 1,
     },
-    "education_center": {
+    {
+        "key": "education_center",
         "name": "Учебный центр",
-        "articles": [
+        "articles_json": [
             {
                 "code": "revenue",
                 "name": "Доходы",
@@ -70,14 +84,17 @@ TEMPLATES: Dict[str, Dict[str, object]] = {
                 ],
             },
         ],
-        "metrics": [
+        "metrics_json": [
             {"name": "Маржа", "formula": "(SUM(revenue) - SUM(costs)) / SUM(revenue) * 100", "unit": "%"},
             {"name": "Средний чек", "formula": "SUM(revenue) / COUNT(revenue)", "unit": "RUB"},
         ],
+        "is_system": True,
+        "sort_order": 2,
     },
-    "small_business": {
+    {
+        "key": "small_business",
         "name": "Малый бизнес",
-        "articles": [
+        "articles_json": [
             {
                 "code": "revenue",
                 "name": "Доходы",
@@ -98,14 +115,17 @@ TEMPLATES: Dict[str, Dict[str, object]] = {
                 ],
             },
         ],
-        "metrics": [
+        "metrics_json": [
             {"name": "Gross Profit", "formula": "SUM(revenue) - SUM(cogs)", "unit": "RUB"},
             {"name": "EBITDA", "formula": "SUM(revenue) - SUM(cogs) - SUM(opex)", "unit": "RUB"},
         ],
+        "is_system": True,
+        "sort_order": 3,
     },
-    "real_estate": {
+    {
+        "key": "real_estate",
         "name": "Аренда недвижимости",
-        "articles": [
+        "articles_json": [
             {"code": "rent_income", "name": "Арендные платежи", "direction": "income", "children": []},
             {
                 "code": "property_expenses",
@@ -119,30 +139,37 @@ TEMPLATES: Dict[str, Dict[str, object]] = {
                 ],
             },
         ],
-        "metrics": [],
+        "metrics_json": [],
+        "is_system": True,
+        "sort_order": 4,
     },
-}
+]
 
 
-def get_template(template_key: Optional[str], db: Optional["Session"] = None) -> Dict[str, object]:
-    if db is not None:
-        try:
-            from app.models import FinanceModelTemplate
-            row = db.query(FinanceModelTemplate).filter(FinanceModelTemplate.key == (template_key or "blank")).first()
-            if row:
-                return {"name": row.name, "articles": row.articles_json or [], "metrics": row.metrics_json or []}
-        except Exception:
-            pass
-    return TEMPLATES.get(template_key or "blank", TEMPLATES["blank"])
+def upgrade() -> None:
+    tbl = op.create_table(
+        "finance_model_templates",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("key", sa.String(64), nullable=False),
+        sa.Column("name", sa.String(256), nullable=False),
+        sa.Column("articles_json", sa.JSON(), nullable=False, server_default="[]"),
+        sa.Column("metrics_json", sa.JSON(), nullable=False, server_default="[]"),
+        sa.Column("is_system", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("sort_order", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("key", name="uq_finance_model_templates_key"),
+    )
+    op.create_index("ix_finance_model_templates_id", "finance_model_templates", ["id"], unique=False)
+    op.create_index("ix_finance_model_templates_key", "finance_model_templates", ["key"], unique=True)
+    op.create_index("ix_finance_model_templates_sort_order", "finance_model_templates", ["sort_order"], unique=False)
+
+    op.bulk_insert(tbl, _SEED)
 
 
-def list_templates(db: Optional["Session"] = None) -> List[Dict[str, str]]:
-    if db is not None:
-        try:
-            from app.models import FinanceModelTemplate
-            rows = db.query(FinanceModelTemplate).order_by(FinanceModelTemplate.sort_order, FinanceModelTemplate.id).all()
-            if rows:
-                return [{"key": row.key, "name": row.name} for row in rows]
-        except Exception:
-            pass
-    return [{"key": key, "name": str(value["name"])} for key, value in TEMPLATES.items()]
+def downgrade() -> None:
+    op.drop_index("ix_finance_model_templates_sort_order", table_name="finance_model_templates")
+    op.drop_index("ix_finance_model_templates_key", table_name="finance_model_templates")
+    op.drop_index("ix_finance_model_templates_id", table_name="finance_model_templates")
+    op.drop_table("finance_model_templates")

@@ -823,6 +823,20 @@ class FinanceModel(Base):
     target = relationship("FinanceTarget", foreign_keys=[target_id])
 
 
+class FinanceModelTemplate(Base):
+    __tablename__ = "finance_model_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(256), nullable=False)
+    articles_json = Column(JSON, nullable=False, default=list)
+    metrics_json = Column(JSON, nullable=False, default=list)
+    is_system = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class BudgetEntry(Base):
     __tablename__ = "budget_entries"
     __table_args__ = (

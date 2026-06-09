@@ -3,8 +3,14 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   FormControlLabel,
+  IconButton,
   InputLabel,
   MenuItem,
   Paper,
@@ -12,16 +18,17 @@ import {
   Stack,
   Switch,
   Tab,
-  Tabs,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Lock as LockIcon } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
@@ -48,6 +55,9 @@ import {
   SalesClass,
   CampaignDictionaryItem,
   CampaignSettings,
+  FinanceModelTemplate,
+  FinanceTemplateArticleNode,
+  FinanceTemplateMetric,
 } from '../types';
 
 const leadStatusLabels: Record<LeadStatus, string> = {
@@ -128,6 +138,24 @@ const SalesSettingsPage: React.FC = () => {
   const [newImportAccount, setNewImportAccount] = useState({ name: '', code: '' });
   const [financeTargets, setFinanceTargets] = useState<Array<{ id: number; code: string; name: string }>>([]);
   const [newFinanceTarget, setNewFinanceTarget] = useState({ name: '', code: '' });
+  const [financeTemplates, setFinanceTemplates] = useState<FinanceModelTemplate[]>([]);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<FinanceModelTemplate | null>(null);
+  const [templateName, setTemplateName] = useState('');
+  const [templateKey, setTemplateKey] = useState('');
+  const [templateArticles, setTemplateArticles] = useState<FinanceTemplateArticleNode[]>([]);
+  const [templateMetrics, setTemplateMetrics] = useState<FinanceTemplateMetric[]>([]);
+  const [articleDialogOpen, setArticleDialogOpen] = useState(false);
+  const [editingArticlePath, setEditingArticlePath] = useState<number[] | null>(null);
+  const [articleName, setArticleName] = useState('');
+  const [articleCode, setArticleCode] = useState('');
+  const [articleDirection, setArticleDirection] = useState<'income' | 'expense'>('expense');
+  const [articleParentPath, setArticleParentPath] = useState<number[] | null>(null);
+  const [metricDialogOpen, setMetricDialogOpen] = useState(false);
+  const [editingMetricIndex, setEditingMetricIndex] = useState<number | null>(null);
+  const [metricName, setMetricName] = useState('');
+  const [metricFormula, setMetricFormula] = useState('');
+  const [metricUnit, setMetricUnit] = useState('');
   const [b2bDistricts, setB2bDistricts] = useState<string[]>([]);
   const [newDistrict, setNewDistrict] = useState('');
   const [campaignSettings, setCampaignSettings] = useState<CampaignSettings | null>(null);
@@ -167,6 +195,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
       load('Счета для импорта', () => financeApi.listAccounts(), setImportAccounts),
       load('Проекты (финансы)', () => financeApi.listTargets(), setFinanceTargets),
+      load('Шаблоны финансовых моделей', () => financeApi.listModelTemplates(), setFinanceTemplates),
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
       load('Работа со школами', () => campaignsApi.getSettings(), setCampaignSettings),
       load('Причины отказа', async () => (await settingsApi.getRefusedReasons()).items, setRefusedReasons),
@@ -201,6 +230,150 @@ const SalesSettingsPage: React.FC = () => {
       await loadData();
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка сохранения'));
+    }
+  };
+
+  const countArticles = (nodes: FinanceTemplateArticleNode[]): number =>
+    nodes.reduce((sum, n) => sum + 1 + countArticles(n.children || []), 0);
+
+  const getNodeByPath = (nodes: FinanceTemplateArticleNode[], path: number[]): FinanceTemplateArticleNode | null => {
+    if (path.length === 0) return null;
+    const node = nodes[path[0]];
+    if (!node) return null;
+    if (path.length === 1) return node;
+    return getNodeByPath(node.children || [], path.slice(1));
+  };
+
+  const flattenArticleNodes = (
+    nodes: FinanceTemplateArticleNode[],
+    path: number[] = [],
+    level = 0
+  ): Array<FinanceTemplateArticleNode & { path: number[]; level: number }> =>
+    nodes.flatMap((node, i) => [
+      { ...node, path: [...path, i], level },
+      ...flattenArticleNodes(node.children || [], [...path, i], level + 1),
+    ]);
+
+  const updateNodeAtPath = (
+    nodes: FinanceTemplateArticleNode[],
+    path: number[],
+    updater: (n: FinanceTemplateArticleNode) => FinanceTemplateArticleNode
+  ): FinanceTemplateArticleNode[] => {
+    if (path.length === 0) return nodes;
+    return nodes.map((n, i) => {
+      if (i !== path[0]) return n;
+      if (path.length === 1) return updater(n);
+      return { ...n, children: updateNodeAtPath(n.children || [], path.slice(1), updater) };
+    });
+  };
+
+  const deleteNodeAtPath = (nodes: FinanceTemplateArticleNode[], path: number[]): FinanceTemplateArticleNode[] => {
+    if (path.length === 1) return nodes.filter((_, i) => i !== path[0]);
+    return nodes.map((n, i) => {
+      if (i !== path[0]) return n;
+      return { ...n, children: deleteNodeAtPath(n.children || [], path.slice(1)) };
+    });
+  };
+
+  const addNodeAtPath = (
+    nodes: FinanceTemplateArticleNode[],
+    parentPath: number[] | null,
+    node: FinanceTemplateArticleNode
+  ): FinanceTemplateArticleNode[] => {
+    if (!parentPath || parentPath.length === 0) return [...nodes, node];
+    return nodes.map((n, i) => {
+      if (i !== parentPath[0]) return n;
+      if (parentPath.length === 1) return { ...n, children: [...(n.children || []), node] };
+      return { ...n, children: addNodeAtPath(n.children || [], parentPath.slice(1), node) };
+    });
+  };
+
+  const openAddArticle = (parentPath: number[] | null) => {
+    setEditingArticlePath(null);
+    setArticleParentPath(parentPath);
+    setArticleName('');
+    setArticleCode('');
+    setArticleDirection('expense');
+    setArticleDialogOpen(true);
+  };
+
+  const openEditArticle = (path: number[]) => {
+    const node = getNodeByPath(templateArticles, path);
+    if (!node) return;
+    setEditingArticlePath(path);
+    setArticleParentPath(null);
+    setArticleName(node.name);
+    setArticleCode(node.code || '');
+    setArticleDirection(node.direction === 'income' ? 'income' : 'expense');
+    setArticleDialogOpen(true);
+  };
+
+  const saveArticleNode = () => {
+    const node: FinanceTemplateArticleNode = {
+      code: articleCode.trim() || articleName.trim().toLowerCase().replace(/\s+/g, '_'),
+      name: articleName.trim(),
+      direction: articleDirection,
+    };
+    if (editingArticlePath) {
+      setTemplateArticles((prev) => updateNodeAtPath(prev, editingArticlePath, (old) => ({ ...old, ...node })));
+    } else {
+      setTemplateArticles((prev) => addNodeAtPath(prev, articleParentPath, { ...node, children: [] }));
+    }
+    setArticleDialogOpen(false);
+  };
+
+  const openAddMetric = () => {
+    setEditingMetricIndex(null);
+    setMetricName('');
+    setMetricFormula('');
+    setMetricUnit('');
+    setMetricDialogOpen(true);
+  };
+
+  const openEditMetric = (index: number) => {
+    const m = templateMetrics[index];
+    setEditingMetricIndex(index);
+    setMetricName(m.name);
+    setMetricFormula(m.formula);
+    setMetricUnit(m.unit || '');
+    setMetricDialogOpen(true);
+  };
+
+  const saveMetricItem = () => {
+    const metric: FinanceTemplateMetric = { name: metricName.trim(), formula: metricFormula.trim(), unit: metricUnit.trim() || undefined };
+    if (editingMetricIndex !== null) {
+      setTemplateMetrics((prev) => prev.map((m, i) => (i === editingMetricIndex ? metric : m)));
+    } else {
+      setTemplateMetrics((prev) => [...prev, metric]);
+    }
+    setMetricDialogOpen(false);
+  };
+
+  const saveTemplate = async () => {
+    if (!templateName.trim()) return;
+    try {
+      let saved: FinanceModelTemplate;
+      if (editingTemplate) {
+        saved = await financeApi.updateModelTemplate(editingTemplate.id, {
+          name: templateName.trim(),
+          articles: templateArticles,
+          metrics: templateMetrics,
+        });
+        setFinanceTemplates((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+      } else {
+        const key = templateKey.trim() || templateName.trim().toLowerCase().replace(/\s+/g, '_');
+        saved = await financeApi.createModelTemplate({
+          key,
+          name: templateName.trim(),
+          articles: templateArticles,
+          metrics: templateMetrics,
+        });
+        setFinanceTemplates((prev) => [...prev, saved]);
+      }
+      setTemplateDialogOpen(false);
+      setError('');
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось сохранить шаблон'));
     }
   };
 
@@ -960,6 +1133,99 @@ const SalesSettingsPage: React.FC = () => {
         </Paper>
 
         <Paper sx={sectionPaperSx('finance')}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Box>
+              <Typography variant="h6">Шаблоны финансовых моделей</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Предустановленный набор статей и метрик, применяемый при создании финансовой модели.
+              </Typography>
+            </Box>
+            <Button
+              startIcon={<AddIcon />}
+              variant="contained"
+              size="small"
+              onClick={() => {
+                setEditingTemplate(null);
+                setTemplateName('');
+                setTemplateKey('');
+                setTemplateArticles([]);
+                setTemplateMetrics([]);
+                setTemplateDialogOpen(true);
+              }}
+            >
+              Шаблон
+            </Button>
+          </Stack>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Название</TableCell>
+                <TableCell>Ключ</TableCell>
+                <TableCell>Тип</TableCell>
+                <TableCell align="center">Статьи</TableCell>
+                <TableCell align="center">Метрики</TableCell>
+                <TableCell align="right">Действия</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {financeTemplates.map((tmpl) => (
+                <TableRow key={tmpl.id}>
+                  <TableCell>{tmpl.name}</TableCell>
+                  <TableCell><Typography variant="body2" fontFamily="monospace">{tmpl.key}</Typography></TableCell>
+                  <TableCell>
+                    {tmpl.is_system
+                      ? <Chip label="Системный" size="small" icon={<LockIcon />} />
+                      : <Chip label="Пользовательский" size="small" variant="outlined" />}
+                  </TableCell>
+                  <TableCell align="center">{countArticles(tmpl.articles_json)}</TableCell>
+                  <TableCell align="center">{tmpl.metrics_json.length}</TableCell>
+                  <TableCell align="right">
+                    <Tooltip title="Редактировать">
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setEditingTemplate(tmpl);
+                          setTemplateName(tmpl.name);
+                          setTemplateKey(tmpl.key);
+                          setTemplateArticles(JSON.parse(JSON.stringify(tmpl.articles_json)));
+                          setTemplateMetrics(JSON.parse(JSON.stringify(tmpl.metrics_json)));
+                          setTemplateDialogOpen(true);
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={tmpl.is_system ? 'Системный шаблон нельзя удалить' : 'Удалить'}>
+                      <span>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          disabled={tmpl.is_system}
+                          onClick={() => safeAction(async () => {
+                            if (!window.confirm(`Удалить шаблон "${tmpl.name}"?`)) return;
+                            await financeApi.deleteModelTemplate(tmpl.id);
+                            setFinanceTemplates((prev) => prev.filter((t) => t.id !== tmpl.id));
+                          })}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {financeTemplates.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} align="center">
+                    <Typography variant="body2" color="text.secondary">Нет шаблонов</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </Paper>
+
+        <Paper sx={sectionPaperSx('finance')}>
           <Typography variant="h6" mb={1}>Счета для импорта</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Список банковских счетов, доступных для выбора при импорте CSV/XLSX в журнале операций.
@@ -1410,6 +1676,227 @@ const SalesSettingsPage: React.FC = () => {
           </Paper>
         )}
       </Stack>
+
+      {/* Template editor dialog */}
+      <Dialog open={templateDialogOpen} onClose={() => setTemplateDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>{editingTemplate ? 'Редактировать шаблон' : 'Новый шаблон'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <TextField
+                size="small"
+                label="Название шаблона"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                sx={{ flex: 2 }}
+              />
+              {!editingTemplate && (
+                <TextField
+                  size="small"
+                  label="Ключ (латиница, без пробелов)"
+                  value={templateKey}
+                  onChange={(e) => setTemplateKey(e.target.value.toLowerCase().replace(/\s+/g, '_'))}
+                  helperText="Оставьте пустым для авто-генерации"
+                  sx={{ flex: 1 }}
+                />
+              )}
+            </Stack>
+
+            {/* Articles editor */}
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography variant="subtitle2">Статьи</Typography>
+                <Button size="small" startIcon={<AddIcon />} onClick={() => openAddArticle(null)}>
+                  Добавить статью
+                </Button>
+              </Stack>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Наименование</TableCell>
+                    <TableCell>Код</TableCell>
+                    <TableCell>Тип</TableCell>
+                    <TableCell align="right">Действия</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {flattenArticleNodes(templateArticles).map(({ path, level, ...node }) => (
+                    <TableRow key={path.join('-')}>
+                      <TableCell sx={{ pl: 2 + level * 3 }}>{node.name}</TableCell>
+                      <TableCell><Typography variant="body2" fontFamily="monospace">{node.code || '—'}</Typography></TableCell>
+                      <TableCell>
+                        <Chip
+                          label={node.direction === 'income' ? 'Доход' : 'Расход'}
+                          size="small"
+                          color={node.direction === 'income' ? 'success' : 'error'}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Добавить дочернюю статью">
+                          <IconButton size="small" onClick={() => openAddArticle(path)}>
+                            <AddIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <IconButton size="small" onClick={() => openEditArticle(path)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => setTemplateArticles((prev) => deleteNodeAtPath(prev, path))}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {templateArticles.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        <Typography variant="body2" color="text.secondary">Статей нет</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+
+            {/* Metrics editor */}
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography variant="subtitle2">Метрики</Typography>
+                <Button size="small" startIcon={<AddIcon />} onClick={openAddMetric}>
+                  Добавить метрику
+                </Button>
+              </Stack>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Наименование</TableCell>
+                    <TableCell>Формула</TableCell>
+                    <TableCell>Ед.</TableCell>
+                    <TableCell align="right">Действия</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {templateMetrics.map((m, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{m.name}</TableCell>
+                      <TableCell><Typography variant="body2" fontFamily="monospace">{m.formula}</Typography></TableCell>
+                      <TableCell>{m.unit || '—'}</TableCell>
+                      <TableCell align="right">
+                        <IconButton size="small" onClick={() => openEditMetric(i)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => setTemplateMetrics((prev) => prev.filter((_, idx) => idx !== i))}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {templateMetrics.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        <Typography variant="body2" color="text.secondary">Метрик нет</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTemplateDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={saveTemplate} disabled={!templateName.trim()}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Article node dialog */}
+      <Dialog open={articleDialogOpen} onClose={() => setArticleDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{editingArticlePath ? 'Редактировать статью' : 'Новая статья'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              size="small"
+              label="Наименование"
+              value={articleName}
+              onChange={(e) => setArticleName(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="Код (латиница)"
+              value={articleCode}
+              onChange={(e) => setArticleCode(e.target.value)}
+              helperText="Оставьте пустым для авто-генерации"
+              fullWidth
+            />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Тип</InputLabel>
+              <Select
+                label="Тип"
+                value={articleDirection}
+                onChange={(e) => setArticleDirection(e.target.value as 'income' | 'expense')}
+              >
+                <MenuItem value="income">Доход</MenuItem>
+                <MenuItem value="expense">Расход</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setArticleDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={saveArticleNode} disabled={!articleName.trim()}>
+            {editingArticlePath ? 'Сохранить' : 'Добавить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Metric dialog */}
+      <Dialog open={metricDialogOpen} onClose={() => setMetricDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{editingMetricIndex !== null ? 'Редактировать метрику' : 'Новая метрика'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              size="small"
+              label="Наименование"
+              value={metricName}
+              onChange={(e) => setMetricName(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="Формула"
+              value={metricFormula}
+              onChange={(e) => setMetricFormula(e.target.value)}
+              helperText="Например: SUM(revenue) - SUM(costs)"
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="Единица"
+              value={metricUnit}
+              onChange={(e) => setMetricUnit(e.target.value)}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMetricDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={saveMetricItem} disabled={!metricName.trim() || !metricFormula.trim()}>
+            {editingMetricIndex !== null ? 'Сохранить' : 'Добавить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
     </Layout>
   );
 };

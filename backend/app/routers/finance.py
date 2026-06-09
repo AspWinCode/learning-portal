@@ -66,6 +66,9 @@ from app.schemas.finance import (
     FinanceLedgerBankRow,
     FinanceLedgerTransactionRow,
     FinanceManualTransactionCreate,
+    FinanceModelTemplateCreate,
+    FinanceModelTemplateResponse,
+    FinanceModelTemplateUpdate,
     FinancePnlRow,
     FinanceStudentAccountCreate,
     FinanceTargetResponse,
@@ -328,12 +331,81 @@ async def delete_finance_target(
     db.commit()
 
 
-@router.get("/model-templates")
+@router.get("/model-templates", response_model=List[FinanceModelTemplateResponse])
 async def list_finance_model_templates(
+    db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
-) -> List[Dict[str, str]]:
+) -> List[FinanceModelTemplateResponse]:
     _require_finance_access(current_user)
-    return list_templates()
+    from app.models import FinanceModelTemplate
+    rows = db.query(FinanceModelTemplate).order_by(FinanceModelTemplate.sort_order, FinanceModelTemplate.id).all()
+    return rows
+
+
+@router.post("/model-templates", response_model=FinanceModelTemplateResponse)
+async def create_finance_model_template(
+    payload: FinanceModelTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceModelTemplateResponse:
+    _require_finance_access(current_user)
+    from app.models import FinanceModelTemplate
+    key = payload.key.strip().lower().replace(" ", "_")
+    if not key:
+        raise HTTPException(status_code=400, detail="Ключ шаблона не может быть пустым")
+    if db.query(FinanceModelTemplate).filter(FinanceModelTemplate.key == key).first():
+        raise HTTPException(status_code=400, detail="Шаблон с таким ключом уже существует")
+    row = FinanceModelTemplate(
+        key=key,
+        name=payload.name.strip(),
+        articles_json=[a.model_dump(exclude_none=True) for a in payload.articles],
+        metrics_json=[m.model_dump(exclude_none=True) for m in payload.metrics],
+        is_system=False,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/model-templates/{template_id}", response_model=FinanceModelTemplateResponse)
+async def update_finance_model_template(
+    template_id: int,
+    payload: FinanceModelTemplateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceModelTemplateResponse:
+    _require_finance_access(current_user)
+    from app.models import FinanceModelTemplate
+    row = db.query(FinanceModelTemplate).filter(FinanceModelTemplate.id == template_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Шаблон не найден")
+    if payload.name is not None:
+        row.name = payload.name.strip() or row.name
+    if payload.articles is not None:
+        row.articles_json = [a.model_dump(exclude_none=True) for a in payload.articles]
+    if payload.metrics is not None:
+        row.metrics_json = [m.model_dump(exclude_none=True) for m in payload.metrics]
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/model-templates/{template_id}", status_code=204)
+async def delete_finance_model_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> None:
+    _require_finance_access(current_user)
+    from app.models import FinanceModelTemplate
+    row = db.query(FinanceModelTemplate).filter(FinanceModelTemplate.id == template_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Шаблон не найден")
+    if row.is_system:
+        raise HTTPException(status_code=400, detail="Системный шаблон нельзя удалить")
+    db.delete(row)
+    db.commit()
 
 
 @router.get("/models", response_model=List[FinanceModelResponse])
@@ -379,7 +451,7 @@ async def create_finance_model(
         period_type=payload.period_type or "month",
         settings_json=payload.settings_json,
     )
-    template = get_template(model.template_key)
+    template = get_template(model.template_key, db=db)
     try:
         with db_transaction(db):
             db.add(model)

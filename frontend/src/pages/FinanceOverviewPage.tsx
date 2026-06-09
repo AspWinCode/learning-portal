@@ -83,7 +83,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [targets, setTargets] = useState<TargetOption[]>([]);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [models, setModels] = useState<FinanceModel[]>([]);
-  const [templates, setTemplates] = useState<Array<{ key: string; name: string }>>([]);
+  const [templates, setTemplates] = useState<Array<{ key: string; name: string; id?: number }>>([]);
   const [selectedModelId, setSelectedModelId] = useState<number | ''>('');
   const [articleTree, setArticleTree] = useState<FinanceArticleTreeItem[]>([]);
   const [articles, setArticles] = useState<FinanceArticle[]>([]);

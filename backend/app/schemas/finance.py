@@ -187,6 +187,52 @@ class FinanceModelResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class FinanceTemplateArticleNode(BaseModel):
+    code: str = ""
+    name: str
+    direction: str = "expense"
+    cost_kind: Optional[str] = None
+    color: Optional[str] = None
+    children: Optional[List["FinanceTemplateArticleNode"]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+FinanceTemplateArticleNode.model_rebuild()
+
+
+class FinanceTemplateMetric(BaseModel):
+    name: str
+    formula: str
+    unit: Optional[str] = None
+
+
+class FinanceModelTemplateCreate(BaseModel):
+    key: str
+    name: str
+    articles: List[FinanceTemplateArticleNode] = Field(default_factory=list)
+    metrics: List[FinanceTemplateMetric] = Field(default_factory=list)
+
+
+class FinanceModelTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    articles: Optional[List[FinanceTemplateArticleNode]] = None
+    metrics: Optional[List[FinanceTemplateMetric]] = None
+
+
+class FinanceModelTemplateResponse(BaseModel):
+    id: int
+    key: str
+    name: str
+    articles_json: List[Dict[str, Any]]
+    metrics_json: List[Dict[str, Any]]
+    is_system: bool
+    sort_order: int
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BudgetEntryUpsert(BaseModel):
     article_id: int
     amount_plan: float

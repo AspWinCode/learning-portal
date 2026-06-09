@@ -53,6 +53,9 @@ import {
   FinanceArticle,
   FinanceArticleTreeItem,
   FinanceModel,
+  FinanceModelTemplate,
+  FinanceTemplateArticleNode,
+  FinanceTemplateMetric,
   BudgetEntry,
   MetricDefinition,
   MetricComputeResult,
@@ -577,9 +580,32 @@ export const financeApi = {
   deleteArticle: async (articleId: number): Promise<void> => {
     await api.delete(`/api/finance/articles/${articleId}`);
   },
-  listModelTemplates: async (): Promise<Array<{ key: string; name: string }>> => {
+  listModelTemplates: async (): Promise<FinanceModelTemplate[]> => {
     const response = await api.get('/api/finance/model-templates');
     return response.data;
+  },
+  createModelTemplate: async (payload: {
+    key: string;
+    name: string;
+    articles: FinanceTemplateArticleNode[];
+    metrics: FinanceTemplateMetric[];
+  }): Promise<FinanceModelTemplate> => {
+    const response = await api.post('/api/finance/model-templates', payload);
+    return response.data;
+  },
+  updateModelTemplate: async (
+    id: number,
+    payload: {
+      name?: string;
+      articles?: FinanceTemplateArticleNode[];
+      metrics?: FinanceTemplateMetric[];
+    }
+  ): Promise<FinanceModelTemplate> => {
+    const response = await api.patch(`/api/finance/model-templates/${id}`, payload);
+    return response.data;
+  },
+  deleteModelTemplate: async (id: number): Promise<void> => {
+    await api.delete(`/api/finance/model-templates/${id}`);
   },
   listModels: async (): Promise<FinanceModel[]> => {
     const response = await api.get('/api/finance/models');

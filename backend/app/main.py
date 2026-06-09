@@ -309,7 +309,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.legacy_scheduler = scheduler
 
     cache_redis_url = (os.getenv("CACHE_REDIS_URL") or "redis://redis:6379/1").strip()
-    cache_redis = aioredis.from_url(cache_redis_url, encoding="utf8", decode_responses=True)
+    cache_redis = aioredis.from_url(cache_redis_url, encoding="utf8", decode_responses=False)
     FastAPICache.init(RedisBackend(cache_redis), prefix="lp-cache")
 
     try:

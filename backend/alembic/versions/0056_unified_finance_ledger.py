@@ -185,57 +185,12 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
-    # --- Seed reference data ---
+    # Reference accounts and targets are intentionally not seeded here. They are managed through the finance UI.
+
     conn = op.get_bind()
-
-    accounts_table = sa.table(
-        "finance_accounts",
-        sa.column("code", sa.String),
-        sa.column("name", sa.String),
-        sa.column("owner_scope", sa.String),
-        sa.column("is_active", sa.Boolean),
-    )
-    op.bulk_insert(
-        accounts_table,
-        [
-            {"code": "tochka_ip", "name": "Точка ИП", "owner_scope": "business", "is_active": True},
-            {"code": "alfa_business", "name": "Альфа Бизнес", "owner_scope": "business", "is_active": True},
-            {"code": "sber", "name": "Сбер", "owner_scope": "personal", "is_active": True},
-            {"code": "tinkoff", "name": "Тинькофф", "owner_scope": "personal", "is_active": True},
-            {"code": "vtb", "name": "ВТБ", "owner_scope": "personal", "is_active": True},
-            {"code": "alfa", "name": "Альфа (личная)", "owner_scope": "personal", "is_active": True},
-        ],
-    )
-
-    targets_table = sa.table(
-        "finance_targets",
-        sa.column("code", sa.String),
-        sa.column("name", sa.String),
-        sa.column("is_active", sa.Boolean),
-    )
-    op.bulk_insert(
-        targets_table,
-        [
-            {"code": "academy", "name": "Академия", "is_active": True},
-            {"code": "personal", "name": "Личные", "is_active": True},
-            {"code": "leninets", "name": "Ленинец", "is_active": True},
-            {"code": "gogol_mogol", "name": "Гоголь Моголь", "is_active": True},
-            {"code": "side_job", "name": "Подработка", "is_active": True},
-        ],
-    )
 
     # --- Migrate existing bank_transactions into finance_transactions ---
     if _table_exists(conn, "bank_transactions"):
-        tochka_account_id_row = conn.execute(
-            text("SELECT id FROM finance_accounts WHERE code = 'tochka_ip'")
-        ).fetchone()
-        tochka_finance_account_id = tochka_account_id_row[0] if tochka_account_id_row else None
-
-        academy_target_row = conn.execute(
-            text("SELECT id FROM finance_targets WHERE code = 'academy'")
-        ).fetchone()
-        academy_target_id = academy_target_row[0] if academy_target_row else None
-
         rows = conn.execute(
             text(
                 "SELECT id, operation_id, tochka_account_id, amount, payer_phone, payer_name, "
@@ -308,20 +263,17 @@ def upgrade() -> None:
             dedup_seed = f"{bank_source}|{payment_date or ''}|{amount}|{(payer_name or '').strip()}|{(payer_phone or '').strip()}"
             dedup_hash = hashlib.sha1(dedup_seed.encode("utf-8")).hexdigest()
 
-            account_id = tochka_finance_account_id if tochka_account_id and tochka_finance_account_id else None
-            target_id = academy_target_id if student_id and academy_target_id else None
-
             params = {
                 "occurred_at": payment_date,
                 "amount": amount,
                 "direction": direction,
-                "account_id": account_id,
+                "account_id": None,
                 "counterparty_name": (payer_name or "").strip() or None,
                 "counterparty_phone": (payer_phone or "").strip() or None,
                 "bank_source": bank_source,
                 "bank_operation_id": operation_id,
                 "dedup_hash": dedup_hash,
-                "target_id": target_id,
+                "target_id": None,
                 "student_id": student_id,
                 "status": tx_status,
             }

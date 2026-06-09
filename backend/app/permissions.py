@@ -51,12 +51,6 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Access to parent dashboard, weekly digest summary, questions, and web push.",
     },
     {
-        "key": "personal_finance.access",
-        "module": "personal_finance",
-        "label": "Personal finance access",
-        "description": "Access to owner personal finance workspace.",
-    },
-    {
         "key": "passwords.access",
         "module": "passwords",
         "label": "Passwords view",

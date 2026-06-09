@@ -72,11 +72,23 @@ def _tx_query(db: Session, target_id: int, period: Optional[str]):
     return q
 
 
-def aggregate_article(db: Session, target_id: int, code: str, period: Optional[str], kind: str) -> float:
+def aggregate_article(
+    db: Session,
+    target_id: int,
+    code: str,
+    period: Optional[str],
+    kind: str,
+    direction: Optional[str] = None,
+) -> float:
     ids = _article_ids_for_code(db, target_id, code)
     if not ids:
         return 0.0
     q = _tx_query(db, target_id, period).filter(FinanceTransaction.article_id.in_(ids))
+    if direction:
+        normalized_direction = direction.strip().lower()
+        if normalized_direction not in ("income", "expense", "transfer"):
+            raise ValueError("Unsupported metric direction filter")
+        q = q.filter(FinanceTransaction.direction == FinanceTransactionDirection(normalized_direction))
     if kind == "count":
         return float(q.count())
     total = q.with_entities(func.coalesce(func.sum(FinanceTransaction.amount), 0.0)).scalar() or 0.0
@@ -146,14 +158,19 @@ def compute_metric_formula(db: Session, target_id: int, formula: str, period: Op
     def replace_function(match: Match[str]) -> str:
         fn_name = match.group(1).upper()
         code = match.group(2).strip()
+        direction = match.group(3)
         if fn_name == "SUM":
-            return str(aggregate_article(db, target_id, code, period, "sum"))
+            return str(aggregate_article(db, target_id, code, period, "sum", direction))
         if fn_name == "COUNT":
-            return str(aggregate_article(db, target_id, code, period, "count"))
+            return str(aggregate_article(db, target_id, code, period, "count", direction))
         if fn_name == "AVG_TRANSACTION":
-            return str(aggregate_article(db, target_id, code, period, "avg"))
+            return str(aggregate_article(db, target_id, code, period, "avg", direction))
         raise ValueError(f"Unsupported metric function: {fn_name}")
 
-    expression = re.sub(r"\b(SUM|COUNT|AVG_TRANSACTION)\(\s*([a-zA-Z0-9_\-]+)\s*\)", replace_function, normalized)
+    expression = re.sub(
+        r"\b(SUM|COUNT|AVG_TRANSACTION)\(\s*([a-zA-Z0-9_\-]+)\s*(?:,\s*direction\s*=\s*(income|expense|transfer)\s*)?\)",
+        replace_function,
+        normalized,
+    )
     expression = re.sub(r"\bBALANCE\(\s*\)", str(balance(db, target_id)), expression)
     return _safe_eval_expression(expression)

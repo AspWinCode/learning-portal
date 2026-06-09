@@ -11,7 +11,6 @@ Seed-скрипт для наполнения демо-данными Learning P
 - 8 групп
 - Абонементы, счета, транзакции
 - 30 лидов для сейлза
-- Finance Hub данные (счета, транзакции, долги)
 - Задачи, комментарии
 """
 
@@ -32,11 +31,11 @@ from app.models import (
     StudentAccountTransactionKind, Abonement, AbonementStatus, Group, GroupStatus,
     GroupStudent, GroupSchedule, GroupProgram, Program, ProgramStatus, Module, Topic,
     TopicStatus, StudentProgram, StudentProgramLinkStatus, Grade, Lead, LeadStatus,
-    LeadTask, LeadTaskStatus, LeadSource, PersonalFinanceAccount, PersonalFinanceCategory,
-    PersonalFinanceDirection, PersonalFinanceTransaction, FinanceTarget, FinanceAccount,
+    LeadTask, LeadTaskStatus, LeadSource,
+    FinanceTarget, FinanceAccount,
     FinanceAccountOwnerScope, FinanceArticle, FinanceArticleDirection, FinanceArticleCostKind,
     FinanceArticleScope, FinanceTransaction, FinanceTransactionDirection, FinanceTransactionStatus,
-    FinanceHubDebt, FinanceHubAllocation, ProgramTrainer,
+    ProgramTrainer,
 )
 
 DATABASE_URL = os.getenv(
@@ -505,7 +504,6 @@ db.flush()
 print(f"  ✅ {len(LEAD_NAMES)} лидов создано")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 7. FINANCE HUB — СЧЕТА, ТРАНЗАКЦИИ, ДОЛГИ
 # ═══════════════════════════════════════════════════════════════════════════
 
 print("  💰 Создаю финансовые данные...")
@@ -647,131 +645,6 @@ for month_back in range(6, 0, -1):
 
 db.flush()
 
-# Personal Finance Hub Accounts (для Finance Hub страницы)
-pf_accounts_data = [
-    ("Kaspi Gold", "bank", "KZT", rng.randint(300000, 800000), None),
-    ("Наличные", "cash", "KZT", rng.randint(50000, 150000), None),
-    ("USDT кошелёк", "crypto", "USD", rng.randint(500, 2000), None),
-    ("Счёт Академии", "bank", "KZT", rng.randint(500000, 1500000), ft_map["academy"].id),
-    ("Маркетинговый бюджет", "bank", "KZT", rng.randint(100000, 300000), ft_map["marketing"].id),
-]
-
-pf_acc_map = []
-for acc_name, acc_type, currency, balance, project_id in pf_accounts_data:
-    pf_acc = PersonalFinanceAccount(
-        owner_id=owner.id,
-        name=acc_name,
-        account_type=acc_type,
-        currency=currency,
-        balance=float(balance),
-        project_id=project_id,
-        is_active=True,
-    )
-    db.add(pf_acc)
-    db.flush()
-    pf_acc_map.append(pf_acc)
-
-# Personal Finance Categories
-pf_cats = [
-    ("Жильё", PersonalFinanceDirection.EXPENSE),
-    ("Питание", PersonalFinanceDirection.EXPENSE),
-    ("Транспорт", PersonalFinanceDirection.EXPENSE),
-    ("Развлечения", PersonalFinanceDirection.EXPENSE),
-    ("Дивиденды", PersonalFinanceDirection.INCOME),
-    ("Фриланс", PersonalFinanceDirection.INCOME),
-]
-pf_cat_map = []
-for cat_name, cat_dir in pf_cats:
-    cat = PersonalFinanceCategory(owner_id=owner.id, name=cat_name, direction=cat_dir, is_active=True)
-    db.add(cat)
-    db.flush()
-    pf_cat_map.append(cat)
-
-# Personal Finance Transactions (последние 3 месяца)
-income_cats = [c for c in pf_cat_map if c.direction == PersonalFinanceDirection.INCOME]
-expense_cats = [c for c in pf_cat_map if c.direction == PersonalFinanceDirection.EXPENSE]
-personal_acct = pf_acc_map[0]
-
-for month_back in range(3, 0, -1):
-    base_date = date.today().replace(day=1) - timedelta(days=month_back * 30)
-
-    # Личный доход (дивиденды)
-    pf_tx_inc = PersonalFinanceTransaction(
-        owner_id=owner.id,
-        account_id=personal_acct.id,
-        category_id=income_cats[0].id,
-        amount=rng.randint(200000, 350000),
-        direction=PersonalFinanceDirection.INCOME,
-        article="Дивиденды от Академии",
-        hub_status="completed",
-        occurred_at=datetime.combine(base_date + timedelta(days=10), datetime.min.time()).replace(tzinfo=timezone.utc),
-    )
-    db.add(pf_tx_inc)
-
-    # Расходы
-    for cat in expense_cats:
-        amounts = {"Жильё": 150000, "Питание": 80000, "Транспорт": 50000, "Развлечения": 40000}
-        amt = amounts.get(cat.name, 30000) + rng.randint(-10000, 10000)
-        pf_tx_exp = PersonalFinanceTransaction(
-            owner_id=owner.id,
-            account_id=personal_acct.id,
-            category_id=cat.id,
-            amount=-abs(amt),
-            direction=PersonalFinanceDirection.EXPENSE,
-            article=cat.name,
-            hub_status="completed",
-            occurred_at=datetime.combine(base_date + timedelta(days=rng.randint(1, 25)), datetime.min.time()).replace(tzinfo=timezone.utc),
-        )
-        db.add(pf_tx_exp)
-
-# Плановые транзакции (для блока "Планирование")
-planned_txs = [
-    (45000, "income", "project_revenue", "Ожидаемые оплаты учеников", "planned"),
-    (120000, "expense", "salary", "Зарплата тренеров (следующий месяц)", "planned"),
-    (80000, "income", "personal_income", "Дивиденды (прогноз)", "pending"),
-    (40000, "expense", "tax", "НПД за квартал", "planned"),
-]
-next_month = date.today() + timedelta(days=15)
-for amt, direction, category, desc, status in planned_txs:
-    pf_planned = PersonalFinanceTransaction(
-        owner_id=owner.id,
-        account_id=pf_acc_map[0].id,
-        amount=amt if direction == "income" else -amt,
-        direction=PersonalFinanceDirection.INCOME if direction == "income" else PersonalFinanceDirection.EXPENSE,
-        article=category,
-        description=desc,
-        hub_status=status,
-        occurred_at=datetime.combine(next_month, datetime.min.time()).replace(tzinfo=timezone.utc),
-    )
-    db.add(pf_planned)
-
-db.flush()
-
-# Finance Hub Debts
-debts_data = [
-    ("Алибек (займ на маркетинг)", "owe", 500000, "KZT", 200000, date.today() + timedelta(days=30), "Займ на рекламную кампанию"),
-    ("Налоговая (ИПН Q2)", "owe", 85000, "KZT", 0, date.today() - timedelta(days=5), "ИПН за 2 квартал — просрочен!"),
-    ("Клиент Байжанов (предоплата)", "owed", 150000, "KZT", 0, date.today() + timedelta(days=7), "Предоплата за корпоративное обучение"),
-    ("Партнёр КодАрена", "owed", 300000, "KZT", 100000, date.today() + timedelta(days=45), "Совместный проект — задолженность"),
-]
-
-for counterparty, dtype, amount, currency, paid, due, desc in debts_data:
-    debt = FinanceHubDebt(
-        owner_id=owner.id,
-        debt_type=dtype,
-        counterparty=counterparty,
-        amount=amount,
-        paid_amount=paid,
-        currency=currency,
-        due_date=due,
-        description=desc,
-        status="closed" if paid >= amount else ("partially_paid" if paid > 0 else "active"),
-    )
-    db.add(debt)
-
-db.flush()
-print(f"  ✅ Финансовые данные: счета, транзакции, долги")
-
 # ═══════════════════════════════════════════════════════════════════════════
 # ИТОГ
 # ═══════════════════════════════════════════════════════════════════════════
@@ -803,6 +676,4 @@ print(f"  👥 Групп: {len(all_groups)}")
 print(f"  📚 Программ: {len(all_programs)}")
 print(f"  📝 Тем для оценок: {len(all_topics)}")
 print(f"  📞 Лидов: {len(LEAD_NAMES)}")
-print(f"  💰 Finance Hub счетов: {len(pf_acc_map)}")
-print(f"  🔴 Долгов: {len(debts_data)}")
 print()

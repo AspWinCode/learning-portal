@@ -371,13 +371,6 @@ class FinanceLedgerTransactionRow(BaseModel):
     description_raw: Optional[str] = None
 
 
-class FinancePersonalOperationCreate(BaseModel):
-    date: date
-    amount: float
-    description: str
-    target_code: str = "personal"
-
-
 class FinanceManualTransactionCreate(BaseModel):
     account_id: int
     amount: float

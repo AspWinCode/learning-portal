@@ -228,7 +228,6 @@ from app.schemas.finance import (
     FinanceLedgerBankRow,
     FinanceLedgerTransactionRow,
     FinanceManualTransactionCreate,
-    FinancePersonalOperationCreate,
     FinancePnlRow,
     FinanceStudentAccountCreate,
     FinanceTargetResponse,
@@ -448,24 +447,6 @@ from app.schemas.campaigns import (
     SchoolCampaignEventUpdate,
     SchoolCampaignResponse,
     SchoolCampaignUpdate,
-)
-from app.schemas.personal_finance import (
-    PersonalFinanceAccountCreate,
-    PersonalFinanceAccountResponse,
-    PersonalFinanceAccountUpdate,
-    PersonalFinanceCategoryCreate,
-    PersonalFinanceCategoryResponse,
-    PersonalFinanceCategoryUpdate,
-    PersonalFinanceLegacyImportPayload,
-    PersonalFinanceLegacyImportResponse,
-    PersonalFinanceRuleCreate,
-    PersonalFinanceRuleResponse,
-    PersonalFinanceRuleUpdate,
-    PersonalFinanceSummaryAccountItem,
-    PersonalFinanceSummaryResponse,
-    PersonalFinanceTransactionCreate,
-    PersonalFinanceTransactionResponse,
-    PersonalFinanceTransactionUpdate,
 )
 LeadResponse.model_rebuild()
 TrainerCockpitStudentProgressItem.model_rebuild()

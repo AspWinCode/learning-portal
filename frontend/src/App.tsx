@@ -49,7 +49,6 @@ const SalesReportsPage = React.lazy(() => import('./pages/SalesReportsPage'));
 const SalesInstructionsPage = React.lazy(() => import('./pages/SalesInstructionsPage'));
 const SalesAbsencesPage = React.lazy(() => import('./pages/SalesAbsencesPage'));
 const SalesDebtsPage = React.lazy(() => import('./pages/SalesDebtsPage'));
-const SalesProgramMakeupPage = React.lazy(() => import('./pages/SalesProgramMakeupPage'));
 const SalesTaxDeductionPage = React.lazy(() => import('./pages/SalesTaxDeductionPage'));
 const LeadCardPage = React.lazy(() => import('./pages/LeadCardPage'));
 const ManualLessonsPage = React.lazy(() => import('./pages/ManualLessonsPage'));
@@ -371,13 +370,7 @@ function App() {
             />
             <Route
               path="/operations/program-makeup"
-              element={
-                <PrivateRoute requiredPermission="settings.manage">
-                  <SectionBoundary>
-                    <SalesProgramMakeupPage />
-                  </SectionBoundary>
-                </PrivateRoute>
-              }
+              element={<Navigate to="/admin/settings?tab=programMakeup" replace />}
             />
             <Route
               path="/finance/tax-deduction"

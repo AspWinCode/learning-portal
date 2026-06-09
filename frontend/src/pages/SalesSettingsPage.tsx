@@ -36,6 +36,7 @@ import PwaSettingsSection from '../components/PwaSettingsSection';
 import StudentQuestionnairesSettingsSection from '../components/StudentQuestionnairesSettingsSection';
 import { useAuth } from '../contexts/AuthContext';
 import { PersonRegistryContent } from './PersonRegistryPage';
+import { ProgramMakeupContent } from './SalesProgramMakeupPage';
 import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
@@ -522,6 +523,7 @@ const SalesSettingsPage: React.FC = () => {
           {canAccessPersons ? <Tab value="persons" label="Реестр Person" /> : null}
           <Tab value="templates" label="Шаблоны" />
           <Tab value="integrations" label="Интеграции" />
+          <Tab value="programMakeup" label="Совместимость отработок" />
         </Tabs>
       </Paper>
 
@@ -1673,6 +1675,13 @@ const SalesSettingsPage: React.FC = () => {
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" mb={1}>Настройки контрагентов и таск трекера</Typography>
             <OwnerWorkspaceSettingsSection />
+          </Paper>
+        )}
+
+        {settingsTab === 'programMakeup' && (
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" mb={1}>Совместимость программ (отработки)</Typography>
+            <ProgramMakeupContent />
           </Paper>
         )}
       </Stack>

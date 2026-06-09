@@ -372,8 +372,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       if (!items.some((item) => item.path === '/finance/payments')) {
         items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' });
       }
-      items.push({ text: 'Совместимость программ (отработки)', icon: <Assignment />, path: '/operations/program-makeup' });
-      items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
+items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });

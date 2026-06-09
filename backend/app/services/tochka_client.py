@@ -14,7 +14,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from typing import Optional, List, Dict, Any
-from datetime import date
+from datetime import date, timedelta
 
 
 TOCHKA_API_BASE = "https://enter.tochka.com/uapi/"
@@ -112,7 +112,7 @@ def init_statement(account_id: str, date_from: date, date_to: date, token: Optio
             "Statement": {
                 "accountId": account_id,
                 "startDateTime": date_from.isoformat() + "T00:00:00+00:00",
-                "endDateTime": date_to.isoformat() + "T23:59:59+00:00",
+                "endDateTime": (date_to + timedelta(days=1)).isoformat() + "T00:00:00+00:00",
             }
         }
     })

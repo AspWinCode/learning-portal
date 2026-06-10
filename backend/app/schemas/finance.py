@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.students import StudentAccountResponse
 
 
 class BankPaymentItem(BaseModel):
@@ -175,7 +174,7 @@ class FinanceModelUpdate(BaseModel):
 
 class FinanceModelResponse(BaseModel):
     id: int
-    target_id: int
+    target_id: Optional[int] = None
     target_code: Optional[str] = None
     target_name: Optional[str] = None
     name: str

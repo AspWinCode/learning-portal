@@ -128,7 +128,7 @@ async def list_b2b_managers(
     current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """List sales users for assigning as school manager."""
-    users = db.query(User).filter(User.role == UserRole.SALES, User.is_active == True).order_by(User.full_name).all()
+    users = db.query(User).filter(User.role == UserRole.SALES, User.is_active).order_by(User.full_name).all()
     return [{"id": u.id, "full_name": u.full_name} for u in users]
 
 
@@ -780,15 +780,15 @@ async def list_school_leads(
     )
     return [
         B2BLeadListItem(
-            id=l.id,
-            contact_name=l.contact_name,
-            phone=l.phone or "",
-            status=l.status.value if hasattr(l.status, "value") else str(l.status),
-            source=l.source,
-            source_event=_event_label(l.b2b_event) if getattr(l, "b2b_event", None) else None,
-            created_at=l.created_at,
+            id=lead.id,
+            contact_name=lead.contact_name,
+            phone=lead.phone or "",
+            status=lead.status.value if hasattr(lead.status, "value") else str(lead.status),
+            source=lead.source,
+            source_event=_event_label(lead.b2b_event) if getattr(lead, "b2b_event", None) else None,
+            created_at=lead.created_at,
         )
-        for l in leads
+        for lead in leads
     ]
 
 

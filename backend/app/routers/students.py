@@ -508,6 +508,7 @@ async def get_student_timeline(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
+    effective_role = _student_effective_role(current_user)
     if effective_role == UserRole.PARENT:
         if student.parent_id != current_user.id or student.status != StudentStatus.ACTIVE:
             raise HTTPException(status_code=403, detail="Not enough permissions")

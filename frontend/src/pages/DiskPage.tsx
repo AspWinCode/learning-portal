@@ -275,7 +275,7 @@ const DiskPage: React.FC = () => {
                       {item.name}
                     </Button>
                   </TableCell>
-                  <TableCell>{item.item_type === 'folder' ? '—' : formatBytes(item.size_bytes)}</TableCell>
+                  <TableCell>{item.item_type === 'folder' ? '—' : formatBytes(item.size_bytes ?? 0)}</TableCell>
                   <TableCell>{item.owner_name || '—'}</TableCell>
                   <TableCell>{formatDate(item.updated_at || item.created_at)}</TableCell>
                   <TableCell align="right">

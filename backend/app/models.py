@@ -2,8 +2,6 @@ from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, D
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
-from datetime import datetime
-import os
 import enum
 import uuid
 from typing import List, Optional

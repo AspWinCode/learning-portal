@@ -677,6 +677,7 @@ export interface FinanceLedgerBankRow {
   article_name?: string | null;
 
   student_id?: number | null;
+  description?: string | null;
 }
 
 /** Строка транзакции журнала для дашборда личных финансов (по target). */
@@ -2115,3 +2116,70 @@ export interface HubTransactionByProjectRow {
   expense: number;
   net: number;
 }
+
+export interface DiskItem {
+  id: number;
+  name: string;
+  item_type: 'folder' | 'file';
+  size_bytes?: number | null;
+  content_type?: string | null;
+  parent_id?: number | null;
+  owner_name?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface DiskItemsResponse {
+  items: DiskItem[];
+  breadcrumbs: DiskItem[];
+}
+
+export interface PasswordEntry {
+  id: number;
+  name: string;
+  website_url?: string | null;
+  login?: string | null;
+  note?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface PasswordEntryPayload {
+  name: string;
+  website_url?: string | null;
+  login?: string | null;
+  note?: string | null;
+}
+
+export interface LinkedPersonItem {
+  id: number;
+  full_name: string;
+  person_id?: number | null;
+}
+
+export interface OwnerWorkspaceCounterpartyCustomField {
+  id?: string;
+  key?: string;
+  label: string;
+  field_type?: string;
+  value: string | null;
+}
+
+export interface OwnerWorkspaceCounterparty extends OwnerWorkspaceContact {
+  counterparty_role?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  ogrn?: string | null;
+  legal_address?: string | null;
+  actual_address?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  bank_account?: string | null;
+  bank_corr_account?: string | null;
+  bank_bik?: string | null;
+  bank_name?: string | null;
+  bank_currency?: string | null;
+  custom_fields?: OwnerWorkspaceCounterpartyCustomField[] | null;
+}
+
+export type OwnerWorkspaceCounterpartyDocument = OwnerWorkspaceProjectDocument;

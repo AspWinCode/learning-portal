@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import csv
 import hashlib
@@ -6,7 +6,6 @@ from datetime import date, datetime, timedelta
 from io import StringIO, BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Form
-from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -14,7 +13,6 @@ from app import auth
 from app.database import db_transaction, get_db
 from app.models import (
     User,
-    UserRole,
     FinanceTransaction,
     FinanceAccount,
     FinanceAccountOwnerScope,
@@ -25,15 +23,10 @@ from app.models import (
     FinanceArticleScope,
     FinanceTransactionDirection,
     FinanceTransactionStatus,
-    FinanceRecognitionRule,
     FinanceModel,
     BudgetEntry,
     MetricDefinition,
     DashboardWidget,
-    Student,
-    StudentAccount,
-    StudentAccountTransaction,
-    StudentAccountTransactionKind,
 )
 from app.schemas.finance import (
     BankTransactionApplyRequest,
@@ -77,7 +70,7 @@ from app.schemas.finance import (
     StudentAccountResponse,
 )
 from app.services.finance_metric_engine import compute_metric_formula
-from app.services.finance_templates import get_template, list_templates
+from app.services.finance_templates import get_template
 from app.services.finance_ledger import apply_recognition_rules
 from app.services.student_account_finance import create_student_account as finance_create_student_account
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply

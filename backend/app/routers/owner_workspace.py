@@ -14,7 +14,6 @@ from app import auth
 from app.database import get_db
 from app.services.owner_workspace_access import (
     OWNER_WORKSPACE_HISTORY_ENTITY_TYPES,
-    OWNER_WORKSPACE_API_ROLES,
     OwnerWorkspaceAccessContext,
     audit_history_allowed,
     assert_full_workspace,
@@ -532,7 +531,7 @@ def _counterparty_document_to_response(counterparty_id: int, category: str, row:
         content_type=row.content_type,
         size_bytes=row.size_bytes,
         uploaded_at=row.updated_at or row.created_at,
-        download_url=f"/api/v1/owner-workspace/counterparties/{contact_id}/documents/{category}",
+        download_url=f"/api/v1/owner-workspace/counterparties/{counterparty_id}/documents/{category}",
     )
 
 
@@ -1385,7 +1384,6 @@ async def add_contact_to_project(
     project = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
     if not project or not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
-    uid = ctx.user.id
     if not can_manage_project_contacts(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == payload.contact_id).first()
@@ -1412,7 +1410,6 @@ async def remove_contact_from_project(
 ):
     if not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
-    uid = ctx.user.id
     if not can_manage_project_contacts(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if not ctx.full and not contact_visible(ctx, contact_id):

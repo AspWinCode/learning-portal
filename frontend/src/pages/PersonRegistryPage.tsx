@@ -404,7 +404,7 @@ export const PersonRegistryContent: React.FC<PersonRegistryContentProps> = ({ pe
                                     {item.person_id ? (
                                       <Button
                                         size="small"
-                                        onClick={() => navigate(personPath(item.person_id))}
+                                        onClick={() => navigate(personPath(item.person_id!))}
                                       >
                                         Person
                                       </Button>
@@ -452,7 +452,7 @@ export const PersonRegistryContent: React.FC<PersonRegistryContentProps> = ({ pe
                                     {item.person_id ? (
                                       <Button
                                         size="small"
-                                        onClick={() => navigate(personPath(item.person_id))}
+                                        onClick={() => navigate(personPath(item.person_id!))}
                                       >
                                         Person
                                       </Button>
@@ -506,7 +506,7 @@ export const PersonRegistryContent: React.FC<PersonRegistryContentProps> = ({ pe
                                     {item.person_id ? (
                                       <Button
                                         size="small"
-                                        onClick={() => navigate(personPath(item.person_id))}
+                                        onClick={() => navigate(personPath(item.person_id!))}
                                       >
                                         Person
                                       </Button>

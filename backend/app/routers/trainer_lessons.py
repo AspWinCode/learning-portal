@@ -127,11 +127,11 @@ def _first_n_slots_per_group_in_month(
     cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations}
     allowed: Set[Tuple[int, date, time, time]] = set()
     index_map: dict = {}
-    month_start = date(year, month, 1)
+    date(year, month, 1)
     if month == 12:
-        month_end = date(year, 12, 31)
+        date(year, 12, 31)
     else:
-        month_end = date(year, month + 1, 1) - timedelta(days=1)
+        date(year, month + 1, 1) - timedelta(days=1)
     for gid in group_ids:
         schedules = db.query(GroupSchedule).filter(GroupSchedule.group_id == gid).order_by(GroupSchedule.day_of_week, GroupSchedule.start_time).all()
         slots_in_month: List[Tuple[date, time, time]] = []
@@ -896,7 +896,7 @@ async def list_trainer_custom_lessons(
     if date_to:
         query = query.filter(CustomLesson.lesson_date <= date_to)
     lessons = query.order_by(CustomLesson.lesson_date.desc(), CustomLesson.start_time.asc()).all()
-    return [_custom_lesson_to_response(db, l) for l in lessons]
+    return [_custom_lesson_to_response(db, lesson) for lesson in lessons]
 
 
 @router.post("/custom-lessons/attendance")

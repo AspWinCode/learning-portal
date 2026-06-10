@@ -96,7 +96,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [editingModel, setEditingModel] = useState<FinanceModel | null>(null);
   const [modelName, setModelName] = useState('');
   const [modelTemplate, setModelTemplate] = useState('education_center');
-  const [modelTargetId, setModelTargetId] = useState<number | ''>('');
+  const [modelTargetId, setModelTargetId] = useState<number | '' | 'new'>('');
   const [modelTargetName, setModelTargetName] = useState('');
   const [modelTargetCode, setModelTargetCode] = useState('');
 
@@ -1078,7 +1078,11 @@ const FinanceOverviewPageContent: React.FC = () => {
                   <Select
                     label="Проект"
                     value={modelTargetId === '' ? '' : String(modelTargetId)}
-                    onChange={(e) => setModelTargetId(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === '' || v === 'new') setModelTargetId(v);
+                      else setModelTargetId(Number(v));
+                    }}
                   >
                     <MenuItem value="">Без проекта</MenuItem>
                     <MenuItem value="new">Создать новый проект</MenuItem>

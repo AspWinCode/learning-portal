@@ -14,7 +14,7 @@ from openpyxl import Workbook, load_workbook
 from app import auth
 from app.database import get_db
 from app.student_display import get_student_display_name, get_students_display_names
-from app.services.parent_invite import create_parent_with_invite, create_parent_user_no_invite
+from app.services.parent_invite import create_parent_with_invite
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
 from app.services.student_card_conversion import (
     convert_student_card_to_student as student_card_convert,
@@ -62,7 +62,6 @@ from app.models import (
     Student,
     Group,
     GroupSchedule,
-    GroupStudent,
     LessonAttendance,
     StudentAccount,
     StudentAccountTransaction,
@@ -148,7 +147,6 @@ from app.schemas.sales import (
     OpenParentCabinetResponse,
     AnketaConvertRequest,
     AnketaConvertResponse,
-    AnketaConvertConflictResponse,
     LeadConvertToStudentResponse,
     LessonCallResultUpdate,
     TochkaImportRequest,
@@ -181,7 +179,6 @@ from app.schemas.sales import (
     LeadActivityResponse,
     LeadNextAction,
     LeadSidebarSummary,
-    LeadCardResponse,
 )
 from app.routers.action_log import log_action
 from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
@@ -557,7 +554,6 @@ async def upload_sales_instruction_image(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
-    filename = file.filename or ""
     content_type = file.content_type or "application/octet-stream"
     if not content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="РњРѕР¶РЅРѕ Р·Р°РіСЂСѓР¶Р°С‚СЊ С‚РѕР»СЊРєРѕ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ")
@@ -1429,10 +1425,9 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
             amount_val = -abs(amount_val)
         date_str = last_date_str
         counterparty = ""
-        description = ""
         if i + 1 < len(lines):
             counterparty = (lines[i + 2] or "").strip() if i + 2 < len(lines) else ""
-            description = (lines[i + 3] or "").strip() if i + 3 < len(lines) else ""
+            (lines[i + 3] or "").strip() if i + 3 < len(lines) else ""
             time_line = (lines[i + 4] or "").strip() if i + 4 < len(lines) else ""
             if time_line:
                 parsed = _parse_vertical_date(time_line, today)
@@ -2319,9 +2314,9 @@ async def list_custom_lessons(
             ls.lesson_id
             for ls in db.query(CustomLessonStudent).filter(CustomLessonStudent.student_id == student_id).all()
         }
-        lessons = [l for l in lessons if l.id in lesson_ids]
+        lessons = [lesson for lesson in lessons if lesson.id in lesson_ids]
 
-    return [_custom_lesson_to_response(db, l) for l in lessons]
+    return [_custom_lesson_to_response(db, lesson) for lesson in lessons]
 
 
 @router.get("/_legacy-disabled/custom-lessons/{lesson_id}", response_model=CustomLessonResponse)
@@ -2380,7 +2375,7 @@ async def update_custom_lesson(
     # РћР±РЅРѕРІР»РµРЅРёРµ СЃРїРёСЃРєР° СѓС‡РµРЅРёРєРѕРІ: РµСЃР»Рё РїРµСЂРµРґР°РЅ payload.students вЂ” РїРµСЂРµСЃРѕР±РёСЂР°РµРј СЃРїРёСЃРѕРє
     if payload.students is not None:
         existing = db.query(CustomLessonStudent).filter(CustomLessonStudent.lesson_id == lesson.id).all()
-        existing_by_student = {(e.student_id, e.planned_absence_id): e for e in existing}
+        {(e.student_id, e.planned_absence_id): e for e in existing}
         db.query(CustomLessonStudent).filter(CustomLessonStudent.lesson_id == lesson.id).delete(synchronize_session=False)
 
         for item in payload.students:
@@ -3722,7 +3717,7 @@ async def list_leads(
                     r.id: r
                     for r in db.query(Lead).options(*_lead_eager_options()).filter(Lead.id.in_(came_lead_ids)).all()
                 }
-                leads = [refreshed.get(l.id, l) for l in leads]
+                leads = [refreshed.get(lead.id, lead) for lead in leads]
 
     result: List[Lead] = []
     for lead in leads:
@@ -4369,7 +4364,7 @@ async def get_leads_send_info_status(
     if not ids:
         return {}
     base = _filter_query_by_role(db.query(Lead), current_user)
-    allowed_ids = {l.id for l in base.filter(Lead.id.in_(ids)).all()}
+    allowed_ids = {lead.id for lead in base.filter(Lead.id.in_(ids)).all()}
     tasks = (
         db.query(LeadTask)
         .options(joinedload(LeadTask.template))
@@ -4444,7 +4439,7 @@ async def get_leads_badges(
     if not ids:
         return {}
     base = _filter_query_by_role(db.query(Lead), current_user)
-    allowed_ids = {l.id for l in base.filter(Lead.id.in_(ids)).all()}
+    allowed_ids = {lead.id for lead in base.filter(Lead.id.in_(ids)).all()}
 
     today_start = datetime.combine(date.today(), dt_time.min)
     today_end = datetime.combine(date.today(), dt_time.max)
@@ -4590,7 +4585,7 @@ async def update_lead(
         _add_activity(
             db, lead_id, current_user.id,
             type="status_changed",
-            title=f"РЎС‚Р°С‚СѓСЃ РёР·РјРµРЅС‘РЅ",
+            title="РЎС‚Р°С‚СѓСЃ РёР·РјРµРЅС‘РЅ",
             status_effect_from=old_status,
             status_effect_to=new_status,
         )
@@ -5655,4 +5650,4 @@ async def list_post_visit_leads(
         for lead in leads:
             db.refresh(lead)
 
-    return [_fix_lead_strings(l) for l in leads]
+    return [_fix_lead_strings(lead) for lead in leads]

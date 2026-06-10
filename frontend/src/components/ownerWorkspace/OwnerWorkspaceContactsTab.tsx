@@ -98,8 +98,8 @@ type OwnerWorkspaceContactsTabProps = {
   onOpenContactComms: (contactId: number) => void | Promise<void>;
   onOpenContactTasks: (contactId: number) => void | Promise<void>;
   onDeleteContact: (contact: OwnerWorkspaceContact) => void | Promise<void>;
-  onBulkAddTag: (contacts: OwnerWorkspaceContact[], tag: string) => void | Promise<void>;
-  onBulkDelete: (contacts: OwnerWorkspaceContact[]) => void | Promise<void>;
+  onBulkAddTag: (contacts: OwnerWorkspaceContact[], tag: string) => Promise<void>;
+  onBulkDelete: (contacts: OwnerWorkspaceContact[]) => Promise<void>;
   onRetryLoad: () => void | Promise<void>;
 };
 

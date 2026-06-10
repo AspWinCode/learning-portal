@@ -2,6 +2,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.students import StudentAccountResponse as StudentAccountResponse  # noqa: F401
 
 
 

@@ -64,6 +64,8 @@ from app.schemas.finance import (
     FinanceModelTemplateUpdate,
     FinancePnlRow,
     FinanceStudentAccountCreate,
+    PLReportRow,
+    PLReportResponse,
     FinanceTargetResponse,
     FinanceTransactionApplyStudentRequest,
     FinanceTransactionUpdate,
@@ -1234,6 +1236,246 @@ async def get_finance_pnl(
             )
         )
     return rows
+
+
+# ─── P&L Multi-Period Report ─────────────────────────────────────────────────
+
+def _generate_pl_periods(period_from: str, period_to: str) -> List[str]:
+    y0, m0 = int(period_from[:4]), int(period_from[5:7])
+    y1, m1 = int(period_to[:4]), int(period_to[5:7])
+    periods: List[str] = []
+    y, m = y0, m0
+    while (y, m) <= (y1, m1):
+        periods.append(f"{y:04d}-{m:02d}")
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+    return periods
+
+
+def _next_period_str(period: str) -> str:
+    y, m = int(period[:4]), int(period[5:7])
+    m += 1
+    if m > 12:
+        m = 1
+        y += 1
+    return f"{y:04d}-{m:02d}"
+
+
+def _get_article_cells(
+    article_id: int,
+    fact_map: Dict[int, Dict[str, float]],
+    plan_map: Dict[int, Dict[str, float]],
+    periods: List[str],
+    children_map: Dict,
+) -> tuple:
+    own_facts = fact_map.get(article_id, {})
+    own_plans = plan_map.get(article_id, {})
+    facts = {p: own_facts.get(p, 0.0) for p in periods}
+    plans = {p: own_plans.get(p, 0.0) for p in periods}
+    for child in children_map.get(article_id, []):
+        cf, cp = _get_article_cells(child.id, fact_map, plan_map, periods, children_map)
+        for p in periods:
+            facts[p] += cf[p]
+            plans[p] += cp[p]
+    return facts, plans
+
+
+def _add_article_rows(
+    articles_list: List,
+    result_rows: List[PLReportRow],
+    fact_map: Dict,
+    plan_map: Dict,
+    periods: List[str],
+    children_map: Dict,
+    level: int = 0,
+) -> tuple:
+    section_facts = {p: 0.0 for p in periods}
+    section_plans = {p: 0.0 for p in periods}
+    for article in articles_list:
+        cells, plan_cells = _get_article_cells(article.id, fact_map, plan_map, periods, children_map)
+        result_rows.append(PLReportRow(
+            row_type="article",
+            id=article.id,
+            name=article.name,
+            code=article.code,
+            level=level,
+            direction=str(article.direction.value) if hasattr(article.direction, "value") else str(article.direction),
+            cost_kind=str(article.cost_kind.value) if hasattr(article.cost_kind, "value") else str(article.cost_kind or "none"),
+            color=article.color,
+            cells={p: cells[p] for p in periods},
+            plan_cells={p: plan_cells[p] for p in periods},
+            total_fact=sum(cells.values()),
+            total_plan=sum(plan_cells.values()),
+        ))
+        children = children_map.get(article.id, [])
+        if children:
+            _add_article_rows(children, result_rows, fact_map, plan_map, periods, children_map, level + 1)
+        for p in periods:
+            section_facts[p] += cells[p]
+            section_plans[p] += plan_cells[p]
+    return section_facts, section_plans
+
+
+@router.get("/models/{model_id}/pl-report", response_model=PLReportResponse)
+async def get_pl_report(
+    model_id: int,
+    period_from: str = Query(..., description="YYYY-MM"),
+    period_to: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> PLReportResponse:
+    _require_finance_access(current_user)
+    model = db.query(FinanceModel).filter(FinanceModel.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Finance model not found")
+
+    periods = _generate_pl_periods(period_from, period_to)
+
+    if not model.target_id:
+        return PLReportResponse(model_id=model_id, target_id=None, periods=periods, rows=[])
+
+    target_id = model.target_id
+
+    articles = (
+        db.query(FinanceArticle)
+        .filter(FinanceArticle.target_id == target_id, FinanceArticle.is_active.isnot(False))
+        .order_by(FinanceArticle.sort_order, FinanceArticle.id)
+        .all()
+    )
+
+    from sqlalchemy import func as sqlfunc
+    p_start = period_from + "-01"
+    p_end = _next_period_str(period_to) + "-01"
+
+    fact_rows = (
+        db.query(
+            FinanceTransaction.article_id,
+            sqlfunc.to_char(FinanceTransaction.occurred_at, "YYYY-MM").label("period"),
+            sqlfunc.sum(FinanceTransaction.amount).label("total"),
+        )
+        .filter(
+            FinanceTransaction.target_id == target_id,
+            FinanceTransaction.occurred_at >= p_start,
+            FinanceTransaction.occurred_at < p_end,
+            FinanceTransaction.article_id.isnot(None),
+            FinanceTransaction.direction != FinanceTransactionDirection.TRANSFER,
+        )
+        .group_by(
+            FinanceTransaction.article_id,
+            sqlfunc.to_char(FinanceTransaction.occurred_at, "YYYY-MM"),
+        )
+        .all()
+    )
+
+    fact_map: Dict[int, Dict[str, float]] = {}
+    for r in fact_rows:
+        if r.article_id not in fact_map:
+            fact_map[r.article_id] = {}
+        fact_map[r.article_id][r.period] = float(r.total or 0)
+
+    plan_rows_q = (
+        db.query(BudgetEntry.article_id, BudgetEntry.period, BudgetEntry.amount_plan)
+        .filter(
+            BudgetEntry.target_id == target_id,
+            BudgetEntry.period >= period_from,
+            BudgetEntry.period <= period_to,
+        )
+        .all()
+    )
+
+    plan_map: Dict[int, Dict[str, float]] = {}
+    for r in plan_rows_q:
+        if r.article_id not in plan_map:
+            plan_map[r.article_id] = {}
+        plan_map[r.article_id][r.period] = float(r.amount_plan or 0)
+
+    children_map: Dict[int, List] = {}
+    for a in articles:
+        children_map.setdefault(a.parent_id, []).append(a)
+
+    spacer = PLReportRow(row_type="spacer", name="", cells={p: 0.0 for p in periods}, plan_cells={p: 0.0 for p in periods})
+    rows: List[PLReportRow] = []
+
+    # ── Income section ────────────────────────────────────────────────────────
+    root_income = [a for a in articles if str(getattr(a.direction, "value", a.direction)) == "income" and not a.parent_id]
+    income_facts: Dict[str, float] = {p: 0.0 for p in periods}
+    income_plans: Dict[str, float] = {p: 0.0 for p in periods}
+
+    if root_income:
+        rows.append(PLReportRow(row_type="header", name="Доходы", bold=True, direction="income", cells={p: 0.0 for p in periods}, plan_cells={p: 0.0 for p in periods}))
+        sf, sp = _add_article_rows(root_income, rows, fact_map, plan_map, periods, children_map)
+        income_facts, income_plans = sf, sp
+        rows.append(PLReportRow(
+            row_type="total", name="Итого доходы", bold=True, direction="income",
+            cells=dict(income_facts), plan_cells=dict(income_plans),
+            total_fact=sum(income_facts.values()), total_plan=sum(income_plans.values()),
+        ))
+        rows.append(spacer)
+
+    # ── Expense sections ──────────────────────────────────────────────────────
+    all_exp_facts: Dict[str, float] = {p: 0.0 for p in periods}
+    all_exp_plans: Dict[str, float] = {p: 0.0 for p in periods}
+    for cost_kind_key, section_name in [("variable", "Переменные расходы"), ("fixed", "Постоянные расходы"), ("none", "Прочие расходы")]:
+        def _ck(a) -> str:  # noqa: E306
+            return str(a.cost_kind.value) if hasattr(a.cost_kind, "value") else str(a.cost_kind or "none")
+
+        def _dir(a) -> str:  # noqa: E306
+            return str(a.direction.value) if hasattr(a.direction, "value") else str(a.direction)
+
+        if cost_kind_key == "none":
+            group_arts = [a for a in articles if _dir(a) == "expense" and not a.parent_id and _ck(a) not in ("variable", "fixed")]
+        else:
+            group_arts = [a for a in articles if _dir(a) == "expense" and not a.parent_id and _ck(a) == cost_kind_key]
+
+        if not group_arts:
+            continue
+
+        rows.append(PLReportRow(row_type="header", name=section_name, bold=True, direction="expense", cells={p: 0.0 for p in periods}, plan_cells={p: 0.0 for p in periods}))
+        gf, gp = _add_article_rows(group_arts, rows, fact_map, plan_map, periods, children_map)
+        rows.append(PLReportRow(
+            row_type="total", name=f"Итого {section_name.lower()}", bold=True, direction="expense",
+            cells=dict(gf), plan_cells=dict(gp),
+            total_fact=sum(gf.values()), total_plan=sum(gp.values()),
+        ))
+        for p in periods:
+            all_exp_facts[p] += gf[p]
+            all_exp_plans[p] += gp[p]
+
+        if cost_kind_key == "variable":
+            var_facts, var_plans = gf, gp
+            gross_f = {p: income_facts[p] - var_facts[p] for p in periods}
+            gross_p = {p: income_plans[p] - var_plans[p] for p in periods}
+            rows.append(spacer)
+            rows.append(PLReportRow(
+                row_type="calculated", name="Валовая прибыль", bold=True, key="gross_profit",
+                cells=dict(gross_f), plan_cells=dict(gross_p),
+                total_fact=sum(gross_f.values()), total_plan=sum(gross_p.values()),
+            ))
+            gm = {p: (gross_f[p] / income_facts[p] * 100) if income_facts.get(p, 0) != 0 else 0.0 for p in periods}
+            rows.append(PLReportRow(
+                row_type="calculated", name="Рентабельность по валовой прибыли", is_percent=True, key="gross_margin",
+                cells=dict(gm), plan_cells={p: 0.0 for p in periods},
+            ))
+
+        rows.append(spacer)
+
+    # ── Net profit ────────────────────────────────────────────────────────────
+    net_f = {p: income_facts[p] - all_exp_facts[p] for p in periods}
+    net_p = {p: income_plans[p] - all_exp_plans[p] for p in periods}
+    rows.append(PLReportRow(
+        row_type="calculated", name="Чистая прибыль", bold=True, key="net_profit",
+        cells=dict(net_f), plan_cells=dict(net_p),
+        total_fact=sum(net_f.values()), total_plan=sum(net_p.values()),
+    ))
+    nm = {p: (net_f[p] / income_facts[p] * 100) if income_facts.get(p, 0) != 0 else 0.0 for p in periods}
+    rows.append(PLReportRow(
+        row_type="calculated", name="Рентабельность по чистой прибыли", is_percent=True, key="net_margin",
+        cells=dict(nm), plan_cells={p: 0.0 for p in periods},
+    ))
+
+    return PLReportResponse(model_id=model_id, target_id=target_id, periods=periods, rows=rows)
 
 
 @router.get("/analytics/summary", response_model=FinanceAnalyticsSummaryResponse)

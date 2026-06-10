@@ -2183,3 +2183,28 @@ export interface OwnerWorkspaceCounterparty extends OwnerWorkspaceContact {
 }
 
 export type OwnerWorkspaceCounterpartyDocument = OwnerWorkspaceProjectDocument;
+
+export interface PLReportRow {
+  row_type: 'header' | 'article' | 'total' | 'calculated' | 'spacer';
+  id?: number | null;
+  name: string;
+  key?: string | null;
+  code?: string | null;
+  level: number;
+  direction?: string | null;
+  cost_kind?: string | null;
+  color?: string | null;
+  bold: boolean;
+  is_percent: boolean;
+  cells: Record<string, number>;
+  plan_cells: Record<string, number>;
+  total_fact: number;
+  total_plan: number;
+}
+
+export interface PLReportResponse {
+  model_id: number;
+  target_id?: number | null;
+  periods: string[];
+  rows: PLReportRow[];
+}

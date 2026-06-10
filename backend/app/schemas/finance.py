@@ -435,4 +435,34 @@ class FinanceStudentAccountCreate(BaseModel):
     name: str
 
 
+class PLReportCell(BaseModel):
+    fact: float = 0.0
+    plan: float = 0.0
+
+
+class PLReportRow(BaseModel):
+    row_type: str  # header | article | total | calculated | spacer
+    id: Optional[int] = None
+    name: str = ""
+    key: Optional[str] = None
+    code: Optional[str] = None
+    level: int = 0
+    direction: Optional[str] = None
+    cost_kind: Optional[str] = None
+    color: Optional[str] = None
+    bold: bool = False
+    is_percent: bool = False
+    cells: Dict[str, float] = {}
+    plan_cells: Dict[str, float] = {}
+    total_fact: float = 0.0
+    total_plan: float = 0.0
+
+
+class PLReportResponse(BaseModel):
+    model_id: int
+    target_id: Optional[int] = None
+    periods: List[str]
+    rows: List[PLReportRow]
+
+
 __all__ = [name for name in globals() if not name.startswith("_")]

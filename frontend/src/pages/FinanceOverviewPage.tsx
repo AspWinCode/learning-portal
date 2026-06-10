@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -21,6 +22,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   Tabs,
@@ -37,6 +39,7 @@ import {
   Edit,
   Refresh,
   Save,
+  TableChart,
   TableRows,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
@@ -49,11 +52,12 @@ import type {
   FinanceLedgerBankRow,
   FinanceModel,
   MetricDefinition,
+  PLReportResponse,
 } from '../types';
 
 type TargetOption = { id: number; code: string; name: string; is_active?: boolean };
 type AccountOption = { id: number; code: string; name: string; owner_scope?: string; is_active?: boolean };
-type FinanceTab = 'dashboard' | 'models' | 'budget' | 'articles' | 'journal';
+type FinanceTab = 'dashboard' | 'models' | 'budget' | 'articles' | 'journal' | 'report';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -107,6 +111,15 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [articleDirection, setArticleDirection] = useState<'income' | 'expense'>('expense');
   const [articleParentId, setArticleParentId] = useState<number | ''>('');
   const [articleColor, setArticleColor] = useState('#2f6fef');
+  const [articleCostKind, setArticleCostKind] = useState<'none' | 'variable' | 'fixed'>('none');
+
+  const [plReport, setPlReport] = useState<PLReportResponse | null>(null);
+  const [plLoading, setPlLoading] = useState(false);
+  const [plFrom, setPlFrom] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-01`;
+  });
+  const [plTo, setPlTo] = useState(currentMonth);
 
   const [metricDialogOpen, setMetricDialogOpen] = useState(false);
   const [editingMetric, setEditingMetric] = useState<MetricDefinition | null>(null);
@@ -223,6 +236,20 @@ const FinanceOverviewPageContent: React.FC = () => {
     }
   };
 
+  const loadPlReport = useCallback(async () => {
+    if (!selectedModelId) return;
+    setPlLoading(true);
+    try {
+      const report = await financeApi.getPLReport(Number(selectedModelId), plFrom, plTo);
+      setPlReport(report);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить P&L отчёт');
+      setPlReport(null);
+    } finally {
+      setPlLoading(false);
+    }
+  }, [selectedModelId, plFrom, plTo]);
+
   useEffect(() => {
     loadBase();
   }, []);
@@ -329,6 +356,7 @@ const FinanceOverviewPageContent: React.FC = () => {
     setArticleDirection('expense');
     setArticleParentId('');
     setArticleColor('#2f6fef');
+    setArticleCostKind('none');
     setArticleDialogOpen(true);
   };
 
@@ -339,6 +367,8 @@ const FinanceOverviewPageContent: React.FC = () => {
     setArticleDirection(article.direction === 'income' ? 'income' : 'expense');
     setArticleParentId(article.parent_id || '');
     setArticleColor(article.color || '#2f6fef');
+    const ck = (article.cost_kind as string) || 'none';
+    setArticleCostKind(ck === 'variable' ? 'variable' : ck === 'fixed' ? 'fixed' : 'none');
     setArticleDialogOpen(true);
   };
 
@@ -354,7 +384,7 @@ const FinanceOverviewPageContent: React.FC = () => {
         target_id: selectedTargetId,
         parent_id: articleParentId === '' ? null : Number(articleParentId),
         scope: 'any',
-        cost_kind: 'none',
+        cost_kind: articleCostKind,
         color: articleColor || null,
       };
       if (editingArticle) {
@@ -805,6 +835,187 @@ const FinanceOverviewPageContent: React.FC = () => {
     </Paper>
   );
 
+  const renderReport = () => {
+    const fmtMoney = (v: number) =>
+      new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
+    const fmtPct = (v: number) =>
+      `${new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v)}%`;
+
+    const rowBg = (row: PLReportResponse['rows'][0]) => {
+      if (row.row_type === 'header') return row.direction === 'income' ? '#e8f5e9' : row.direction === 'expense' ? '#ffebee' : '#e3f2fd';
+      if (row.row_type === 'total') return row.direction === 'income' ? '#c8e6c9' : '#ffcdd2';
+      if (row.row_type === 'calculated') return '#fff9c4';
+      return 'transparent';
+    };
+
+    const cellColor = (row: PLReportResponse['rows'][0], v: number) => {
+      if (row.is_percent) return v < 0 ? '#d32f2f' : v > 0 ? '#2e7d32' : 'text.secondary';
+      if (row.row_type === 'calculated' || row.row_type === 'total') return v < 0 ? '#d32f2f' : v > 0 ? '#2e7d32' : 'inherit';
+      return 'inherit';
+    };
+
+    const fmtCell = (row: PLReportResponse['rows'][0], v: number) => {
+      if (row.row_type === 'spacer' || row.row_type === 'header') return '';
+      if (row.is_percent) return v === 0 ? '—' : fmtPct(v);
+      if (v === 0) return row.row_type === 'article' ? '—' : '0';
+      return fmtMoney(v);
+    };
+
+    const monthLabel = (period: string) => {
+      const [y, m] = period.split('-');
+      const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+      return `${months[parseInt(m, 10) - 1]} ${y}`;
+    };
+
+    return (
+      <Stack spacing={2}>
+        <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+            <TextField
+              label="С"
+              type="month"
+              size="small"
+              value={plFrom}
+              onChange={(e) => setPlFrom(e.target.value)}
+              sx={{ width: 160 }}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="По"
+              type="month"
+              size="small"
+              value={plTo}
+              onChange={(e) => setPlTo(e.target.value)}
+              sx={{ width: 160 }}
+              InputLabelProps={{ shrink: true }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<Refresh />}
+              onClick={() => void loadPlReport()}
+              disabled={plLoading || !selectedModelId}
+            >
+              Сформировать
+            </Button>
+            {plLoading && <LinearProgress sx={{ flex: 1, minWidth: 80 }} />}
+          </Stack>
+        </Paper>
+
+        {!selectedModelId && (
+          <Alert severity="info">Выберите финансовую модель в верхней части страницы.</Alert>
+        )}
+        {selectedModelId && !plReport && !plLoading && (
+          <Alert severity="info">Нажмите «Сформировать» для построения P&L отчёта.</Alert>
+        )}
+        {plReport && !plReport.target_id && (
+          <Alert severity="warning">
+            Финансовая модель не привязана к проекту — данные о транзакциях отсутствуют.
+          </Alert>
+        )}
+
+        {plReport && plReport.target_id && (
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 700 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'grey.100' }}>
+                  <TableCell sx={{ fontWeight: 700, minWidth: 240, position: 'sticky', left: 0, bgcolor: 'grey.100', zIndex: 2 }}>
+                    Статья
+                  </TableCell>
+                  {plReport.periods.map((p) => (
+                    <TableCell key={p} align="right" sx={{ fontWeight: 700, minWidth: 100, whiteSpace: 'nowrap' }}>
+                      {monthLabel(p)}
+                    </TableCell>
+                  ))}
+                  <TableCell align="right" sx={{ fontWeight: 700, minWidth: 100, bgcolor: 'grey.200', whiteSpace: 'nowrap' }}>
+                    Итого
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {plReport.rows.map((row, idx) => {
+                  if (row.row_type === 'spacer') {
+                    return <TableRow key={idx}><TableCell colSpan={plReport.periods.length + 2} sx={{ py: 0.3, border: 0 }} /></TableRow>;
+                  }
+                  return (
+                    <TableRow
+                      key={idx}
+                      sx={{
+                        bgcolor: rowBg(row),
+                        '&:hover': { filter: 'brightness(0.97)' },
+                        borderTop: row.row_type === 'calculated' ? '2px solid #e0e0e0' : undefined,
+                      }}
+                    >
+                      <TableCell
+                        sx={{
+                          fontWeight: row.bold ? 700 : 400,
+                          pl: row.row_type === 'article' ? `${16 + row.level * 20}px` : 2,
+                          fontSize: row.row_type === 'header' ? '0.85rem' : '0.8rem',
+                          letterSpacing: row.row_type === 'header' ? '0.04em' : undefined,
+                          textTransform: row.row_type === 'header' ? 'uppercase' : undefined,
+                          color: row.row_type === 'header' ? 'text.secondary' : 'text.primary',
+                          position: 'sticky',
+                          left: 0,
+                          bgcolor: rowBg(row) || 'background.paper',
+                          zIndex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                        }}
+                      >
+                        {row.color && row.row_type === 'article' && (
+                          <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: row.color, flexShrink: 0, display: 'inline-block' }} />
+                        )}
+                        {row.name}
+                      </TableCell>
+                      {plReport.periods.map((p) => {
+                        const v = row.cells[p] ?? 0;
+                        return (
+                          <TableCell
+                            key={p}
+                            align="right"
+                            sx={{
+                              fontWeight: row.bold ? 700 : 400,
+                              color: cellColor(row, v),
+                              fontSize: '0.8rem',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {fmtCell(row, v)}
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell
+                        align="right"
+                        sx={{
+                          fontWeight: 700,
+                          color: cellColor(row, row.total_fact),
+                          fontSize: '0.8rem',
+                          whiteSpace: 'nowrap',
+                          bgcolor: 'rgba(0,0,0,0.03)',
+                        }}
+                      >
+                        {fmtCell(row, row.is_percent ? (row.total_fact / Math.max(1, plReport.periods.length)) : row.total_fact)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        <Stack direction="row" spacing={2} flexWrap="wrap">
+          <Chip size="small" label="Доходы" sx={{ bgcolor: '#c8e6c9' }} />
+          <Chip size="small" label="Расходы" sx={{ bgcolor: '#ffcdd2' }} />
+          <Chip size="small" label="Расчётные строки" sx={{ bgcolor: '#fff9c4' }} />
+          <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+            Итого для %-строк — среднее за период
+          </Typography>
+        </Stack>
+      </Stack>
+    );
+  };
+
   const renderJournal = () => (
     <Stack spacing={2}>
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
@@ -1044,6 +1255,7 @@ const FinanceOverviewPageContent: React.FC = () => {
         >
           <Tab value="dashboard" icon={<Dashboard />} iconPosition="start" label="Dashboard" />
           <Tab value="models" icon={<Assessment />} iconPosition="start" label="Модели" />
+          <Tab value="report" icon={<TableChart />} iconPosition="start" label="P&L Отчёт" />
           <Tab value="budget" icon={<TableRows />} iconPosition="start" label="Бюджет" />
           <Tab value="articles" icon={<AccountTree />} iconPosition="start" label="Статьи" />
           <Tab value="journal" icon={<TableRows />} iconPosition="start" label="Журнал" />
@@ -1052,6 +1264,7 @@ const FinanceOverviewPageContent: React.FC = () => {
 
       {tab === 'dashboard' && renderDashboard()}
       {tab === 'models' && renderModels()}
+      {tab === 'report' && renderReport()}
       {tab === 'budget' && renderBudget()}
       {tab === 'articles' && renderArticles()}
       {tab === 'journal' && renderJournal()}
@@ -1166,7 +1379,21 @@ const FinanceOverviewPageContent: React.FC = () => {
                   ))}
               </Select>
             </FormControl>
-            <TextField label="Цвет" size="small" value={articleColor} onChange={(e) => setArticleColor(e.target.value)} />
+            {articleDirection === 'expense' && (
+              <FormControl size="small" fullWidth>
+                <InputLabel>Тип расходов (для P&L)</InputLabel>
+                <Select
+                  label="Тип расходов (для P&L)"
+                  value={articleCostKind}
+                  onChange={(e) => setArticleCostKind(e.target.value as 'none' | 'variable' | 'fixed')}
+                >
+                  <MenuItem value="none">Прочие / не задано</MenuItem>
+                  <MenuItem value="variable">Переменные</MenuItem>
+                  <MenuItem value="fixed">Постоянные</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            <TextField label="Цвет (HEX)" size="small" value={articleColor} onChange={(e) => setArticleColor(e.target.value)} />
           </Stack>
         </DialogContent>
         <DialogActions>

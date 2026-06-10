@@ -111,6 +111,7 @@ import {
   PwaMySettings,
   PwaRoleSettings,
   StudentQuestionnaireTemplate,
+  PLReportResponse,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
@@ -789,6 +790,12 @@ export const financeApi = {
     payload: { student_id: number }
   ): Promise<FinanceLedgerBankRow> => {
     const response = await api.post(`/api/finance/transactions/${transactionId}/apply-student`, payload);
+    return response.data;
+  },
+  getPLReport: async (modelId: number, periodFrom: string, periodTo: string): Promise<PLReportResponse> => {
+    const response = await api.get(`/api/finance/models/${modelId}/pl-report`, {
+      params: { period_from: periodFrom, period_to: periodTo },
+    });
     return response.data;
   },
 };

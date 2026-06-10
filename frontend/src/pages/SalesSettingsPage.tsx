@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -40,6 +40,7 @@ import { ProgramMakeupContent } from './SalesProgramMakeupPage';
 import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
+import { transliterate } from '../utils/transliterate';
 import {
   Abonement,
   ABONEMENT_FORMAT_LABELS,
@@ -152,6 +153,7 @@ const SalesSettingsPage: React.FC = () => {
   const [articleCode, setArticleCode] = useState('');
   const [articleDirection, setArticleDirection] = useState<'income' | 'expense'>('expense');
   const [articleParentPath, setArticleParentPath] = useState<number[] | null>(null);
+  const articleCodeUserEdited = useRef(false);
   const [metricDialogOpen, setMetricDialogOpen] = useState(false);
   const [editingMetricIndex, setEditingMetricIndex] = useState<number | null>(null);
   const [metricName, setMetricName] = useState('');
@@ -294,7 +296,9 @@ const SalesSettingsPage: React.FC = () => {
     setArticleParentPath(parentPath);
     setArticleName('');
     setArticleCode('');
-    setArticleDirection('expense');
+    articleCodeUserEdited.current = false;
+    const parentNode = parentPath ? getNodeByPath(templateArticles, parentPath) : null;
+    setArticleDirection((parentNode?.direction === 'income' ? 'income' : 'expense') as 'income' | 'expense');
     setArticleDialogOpen(true);
   };
 
@@ -305,6 +309,7 @@ const SalesSettingsPage: React.FC = () => {
     setArticleParentPath(null);
     setArticleName(node.name);
     setArticleCode(node.code || '');
+    articleCodeUserEdited.current = true;
     setArticleDirection(node.direction === 'income' ? 'income' : 'expense');
     setArticleDialogOpen(true);
   };
@@ -1237,13 +1242,18 @@ const SalesSettingsPage: React.FC = () => {
               size="small"
               label="Название счёта"
               value={newImportAccount.name}
-              onChange={(e) => setNewImportAccount((prev) => ({ ...prev, name: e.target.value }))}
+              onChange={(e) => setNewImportAccount((prev) => ({
+                ...prev,
+                name: e.target.value,
+                code: transliterate(e.target.value),
+              }))}
               sx={{ flex: 2 }}
             />
             <TextField
               size="small"
-              label="Код (латиница, без пробелов)"
+              label="Код (латиница)"
               value={newImportAccount.code}
+              helperText="Авто из названия"
               onChange={(e) => setNewImportAccount((prev) => ({ ...prev, code: e.target.value }))}
               sx={{ flex: 1 }}
             />
@@ -1837,15 +1847,24 @@ const SalesSettingsPage: React.FC = () => {
               size="small"
               label="Наименование"
               value={articleName}
-              onChange={(e) => setArticleName(e.target.value)}
+              onChange={(e) => {
+                setArticleName(e.target.value);
+                if (!articleCodeUserEdited.current) {
+                  setArticleCode(transliterate(e.target.value));
+                }
+              }}
               fullWidth
+              autoFocus
             />
             <TextField
               size="small"
               label="Код (латиница)"
               value={articleCode}
-              onChange={(e) => setArticleCode(e.target.value)}
-              helperText="Оставьте пустым для авто-генерации"
+              onChange={(e) => {
+                articleCodeUserEdited.current = true;
+                setArticleCode(e.target.value);
+              }}
+              helperText="Заполняется автоматически из наименования"
               fullWidth
             />
             <FormControl size="small" fullWidth>

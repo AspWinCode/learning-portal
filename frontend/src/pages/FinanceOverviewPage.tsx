@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -54,6 +54,7 @@ import type {
   MetricDefinition,
   PLReportResponse,
 } from '../types';
+import { transliterate } from '../utils/transliterate';
 
 type TargetOption = { id: number; code: string; name: string; is_active?: boolean };
 type AccountOption = { id: number; code: string; name: string; owner_scope?: string; is_active?: boolean };
@@ -112,6 +113,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [articleParentId, setArticleParentId] = useState<number | ''>('');
   const [articleColor, setArticleColor] = useState('#2f6fef');
   const [articleCostKind, setArticleCostKind] = useState<'none' | 'variable' | 'fixed'>('none');
+  const articleCodeUserEdited = useRef(false);
 
   const [plReport, setPlReport] = useState<PLReportResponse | null>(null);
   const [plLoading, setPlLoading] = useState(false);
@@ -353,6 +355,7 @@ const FinanceOverviewPageContent: React.FC = () => {
     setEditingArticle(null);
     setArticleName('');
     setArticleCode('');
+    articleCodeUserEdited.current = false;
     setArticleDirection('expense');
     setArticleParentId('');
     setArticleColor('#2f6fef');
@@ -364,6 +367,7 @@ const FinanceOverviewPageContent: React.FC = () => {
     setEditingArticle(article);
     setArticleName(article.name);
     setArticleCode(article.code || '');
+    articleCodeUserEdited.current = true;
     setArticleDirection(article.direction === 'income' ? 'income' : 'expense');
     setArticleParentId(article.parent_id || '');
     setArticleColor(article.color || '#2f6fef');
@@ -1313,12 +1317,16 @@ const FinanceOverviewPageContent: React.FC = () => {
                       label="Название нового проекта"
                       size="small"
                       value={modelTargetName}
-                      onChange={(e) => setModelTargetName(e.target.value)}
+                      onChange={(e) => {
+                        setModelTargetName(e.target.value);
+                        setModelTargetCode(transliterate(e.target.value));
+                      }}
                     />
                     <TextField
-                      label="Код нового проекта"
+                      label="Код нового проекта (латиница)"
                       size="small"
                       value={modelTargetCode}
+                      helperText="Заполняется автоматически из названия"
                       onChange={(e) => setModelTargetCode(e.target.value)}
                     />
                   </>
@@ -1348,8 +1356,23 @@ const FinanceOverviewPageContent: React.FC = () => {
         <DialogTitle>{editingArticle ? 'Редактировать статью' : 'Новая статья'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField label="Наименование" size="small" value={articleName} onChange={(e) => setArticleName(e.target.value)} />
-            <TextField label="Код" size="small" value={articleCode} onChange={(e) => setArticleCode(e.target.value)} />
+            <TextField
+              label="Наименование"
+              size="small"
+              value={articleName}
+              autoFocus
+              onChange={(e) => {
+                setArticleName(e.target.value);
+                if (!articleCodeUserEdited.current) setArticleCode(transliterate(e.target.value));
+              }}
+            />
+            <TextField
+              label="Код (латиница)"
+              size="small"
+              value={articleCode}
+              helperText="Заполняется автоматически из наименования"
+              onChange={(e) => { articleCodeUserEdited.current = true; setArticleCode(e.target.value); }}
+            />
             <FormControl size="small" fullWidth>
               <InputLabel>Тип</InputLabel>
               <Select

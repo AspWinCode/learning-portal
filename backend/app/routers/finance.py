@@ -440,11 +440,8 @@ async def create_finance_model(
             target = FinanceTarget(code=code, name=(payload.target_name or payload.name).strip(), is_active=True)
             db.add(target)
             db.flush()
-    if target is None:
-        raise HTTPException(status_code=400, detail="target_id or target_code is required")
-
     model = FinanceModel(
-        target_id=target.id,
+        target_id=target.id if target else None,
         name=payload.name.strip(),
         template_key=payload.template_key or "blank",
         currency=(payload.currency or "RUB").strip().upper()[:8],
@@ -456,32 +453,33 @@ async def create_finance_model(
         with db_transaction(db):
             db.add(model)
             db.flush()
-            for index, item in enumerate(template.get("articles") or []):
-                if isinstance(item, dict):
-                    _create_article_from_template(db, target.id, item, None, index)
-            for index, metric_data in enumerate(template.get("metrics") or []):
-                if isinstance(metric_data, dict):
-                    metric = MetricDefinition(
-                        target_id=target.id,
-                        name=str(metric_data.get("name") or "Metric"),
-                        formula=str(metric_data.get("formula") or "0"),
-                        unit=metric_data.get("unit") if metric_data.get("unit") is not None else None,
-                        sort_order=index,
-                    )
-                    db.add(metric)
-                    db.flush()
-                    db.add(
-                        DashboardWidget(
-                            owner_id=current_user.id,
-                            metric_id=metric.id,
+            if target is not None:
+                for index, item in enumerate(template.get("articles") or []):
+                    if isinstance(item, dict):
+                        _create_article_from_template(db, target.id, item, None, index)
+                for index, metric_data in enumerate(template.get("metrics") or []):
+                    if isinstance(metric_data, dict):
+                        metric = MetricDefinition(
                             target_id=target.id,
-                            widget_type="number",
-                            period_type="current_month",
-                            position_x=index % 4,
-                            position_y=index // 4,
-                            width=1,
+                            name=str(metric_data.get("name") or "Metric"),
+                            formula=str(metric_data.get("formula") or "0"),
+                            unit=metric_data.get("unit") if metric_data.get("unit") is not None else None,
+                            sort_order=index,
                         )
-                    )
+                        db.add(metric)
+                        db.flush()
+                        db.add(
+                            DashboardWidget(
+                                owner_id=current_user.id,
+                                metric_id=metric.id,
+                                target_id=target.id,
+                                widget_type="number",
+                                period_type="current_month",
+                                position_x=index % 4,
+                                position_y=index // 4,
+                                width=1,
+                            )
+                        )
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Finance model with this name already exists for target")

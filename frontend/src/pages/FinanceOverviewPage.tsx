@@ -258,10 +258,12 @@ const FinanceOverviewPageContent: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      const isNewProject = modelTargetId === 'new';
+      const isExisting = modelTargetId !== '' && modelTargetId !== 'new';
       const model = await financeApi.createModel({
-        target_id: modelTargetId === '' ? null : Number(modelTargetId),
-        target_name: modelTargetId === '' ? modelTargetName.trim() || modelName.trim() : null,
-        target_code: modelTargetId === '' ? modelTargetCode.trim() || null : null,
+        target_id: isExisting ? Number(modelTargetId) : null,
+        target_name: isNewProject ? modelTargetName.trim() || modelName.trim() : null,
+        target_code: isNewProject ? modelTargetCode.trim() || null : null,
         name: modelName.trim(),
         template_key: modelTemplate,
         currency: 'RUB',
@@ -1072,13 +1074,14 @@ const FinanceOverviewPageContent: React.FC = () => {
                   </Select>
                 </FormControl>
                 <FormControl size="small" fullWidth>
-                  <InputLabel>Существующий проект</InputLabel>
+                  <InputLabel>Проект</InputLabel>
                   <Select
-                    label="Существующий проект"
+                    label="Проект"
                     value={modelTargetId === '' ? '' : String(modelTargetId)}
-                    onChange={(e) => setModelTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) => setModelTargetId(e.target.value)}
                   >
-                    <MenuItem value="">Создать новый проект</MenuItem>
+                    <MenuItem value="">Без проекта</MenuItem>
+                    <MenuItem value="new">Создать новый проект</MenuItem>
                     {targets.map((target) => (
                       <MenuItem key={target.id} value={target.id}>
                         {target.name}
@@ -1086,7 +1089,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
-                {modelTargetId === '' && (
+                {modelTargetId === 'new' && (
                   <>
                     <Divider />
                     <TextField

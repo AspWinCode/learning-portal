@@ -811,7 +811,7 @@ class FinanceModel(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    target_id = Column(Integer, ForeignKey("finance_targets.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_id = Column(Integer, ForeignKey("finance_targets.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String(256), nullable=False)
     template_key = Column(String(64), nullable=False, default="blank", index=True)
     currency = Column(String(8), nullable=False, default="RUB")

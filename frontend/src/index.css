@@ -10,6 +10,21 @@ body {
     Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+  touch-action: manipulation;
+}
+
+html {
+  min-height: 100%;
+  background: #f6f8fb;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 code {

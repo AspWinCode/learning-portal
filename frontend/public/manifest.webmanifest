@@ -1,13 +1,16 @@
 {
-  "name": "Learning Portal PWA",
+  "id": "/mobile",
+  "name": "Learning Portal",
   "short_name": "Portal",
-  "description": "Мобильный режим Learning Portal",
-  "start_url": "/mobile",
+  "description": "Мобильное приложение Learning Portal",
+  "start_url": "/mobile?pwa=1",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
   "background_color": "#f6f8fb",
-  "theme_color": "#2563eb",
+  "theme_color": "#ffffff",
   "orientation": "portrait",
+  "categories": ["education", "productivity"],
   "icons": [
     {
       "src": "/icon-192.png",

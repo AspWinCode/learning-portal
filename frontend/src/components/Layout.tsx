@@ -25,6 +25,8 @@ import {
   Badge,
   InputBase,
   Tooltip,
+  BottomNavigation,
+  BottomNavigationAction,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -454,6 +456,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     };
   }).filter(g => g.items.length > 0);
   const standalone = visibleMenuItems.filter(item => !allGroupedPaths.has(item.path));
+  const pwaBottomItems = visibleMenuItems.slice(0, 5);
 
   React.useLayoutEffect(() => {
     requestAnimationFrame(() => restoreSidebarScroll());
@@ -591,26 +594,38 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
   );
 
   return (
-    <Box sx={{ display: 'flex', bgcolor: 'background.default', minHeight: '100vh' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        bgcolor: 'background.default',
+        minHeight: '100vh',
+        pb: isPwaNavigation ? 'calc(72px + env(safe-area-inset-bottom))' : 0,
+      }}
+    >
       <AppBar
         position="fixed"
         sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
+          width: isPwaNavigation ? '100%' : { sm: `calc(100% - ${drawerWidth}px)` },
+          ml: isPwaNavigation ? 0 : { sm: `${drawerWidth}px` },
           transition: 'width 200ms ease, margin 200ms ease',
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }}>
           <IconButton
             color="inherit"
             aria-label="open drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+            sx={{ mr: 2, display: isPwaNavigation ? 'none' : { sm: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 800 }}>
+          <Typography
+            variant="h6"
+            noWrap
+            component="div"
+            sx={{ flexGrow: 1, fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}
+          >
             {appBarPageTitle}
           </Typography>
           {role === 'sales' && canAccessSalesModule && (
@@ -652,8 +667,8 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
               </Tooltip>
             </Box>
           )}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="body2" color="text.secondary">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 2 } }}>
+            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
               {user?.full_name}
             </Typography>
             <IconButton onClick={handleMenuClick} size="small">
@@ -699,7 +714,12 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       </AppBar>
       <Box
         component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 }, transition: 'width 200ms ease' }}
+        sx={{
+          display: isPwaNavigation ? 'none' : 'block',
+          width: { sm: drawerWidth },
+          flexShrink: { sm: 0 },
+          transition: 'width 200ms ease',
+        }}
       >
         <Drawer
           variant="temporary"
@@ -742,14 +762,58 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, sm: 3 },
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          p: isPwaNavigation ? { xs: 1.5, sm: 2 } : { xs: 2, sm: 3 },
+          width: isPwaNavigation ? '100%' : { sm: `calc(100% - ${drawerWidth}px)` },
           transition: 'width 200ms ease',
         }}
       >
         <Toolbar />
-        <Box sx={{ maxWidth: 1240, mx: 'auto' }}>{children}</Box>
+        <Box sx={{ maxWidth: isPwaNavigation ? '100%' : 1240, mx: 'auto' }}>{children}</Box>
       </Box>
+
+      {isPwaNavigation && pwaBottomItems.length > 0 && (
+        <BottomNavigation
+          showLabels
+          value={pwaBottomItems.findIndex((item) => isDrawerItemSelected(item.path))}
+          onChange={(_event, index) => {
+            const item = pwaBottomItems[index];
+            if (item) navigate(`${item.path}?pwa=1`);
+          }}
+          sx={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: (theme) => theme.zIndex.appBar,
+            height: 'calc(64px + env(safe-area-inset-bottom))',
+            pb: 'env(safe-area-inset-bottom)',
+            borderTop: '1px solid rgba(15, 23, 42, 0.08)',
+            bgcolor: 'rgba(255, 255, 255, 0.96)',
+            backdropFilter: 'saturate(180%) blur(16px)',
+            '& .MuiBottomNavigationAction-root': {
+              minWidth: 0,
+              px: 0.5,
+              color: 'text.secondary',
+            },
+            '& .MuiBottomNavigationAction-label': {
+              fontSize: '0.68rem',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '100%',
+            },
+          }}
+        >
+          {pwaBottomItems.map((item) => (
+            <BottomNavigationAction
+              key={item.path}
+              label={item.text}
+              icon={item.icon}
+              aria-label={item.text}
+            />
+          ))}
+        </BottomNavigation>
+      )}
 
       <Dialog open={tgOpen} onClose={() => setTgOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>╨Я╤А╨╕╨▓╤П╨╖╨║╨░ Telegram</DialogTitle>

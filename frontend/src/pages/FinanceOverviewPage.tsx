@@ -35,6 +35,7 @@ import {
   AccountTree,
   Assessment,
   Dashboard,
+  Hub,
   Delete,
   Edit,
   Refresh,
@@ -43,6 +44,7 @@ import {
   TableRows,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
+import FinanceCommandCenter from '../components/FinanceCommandCenter';
 import { financeApi } from '../services/api';
 import type {
   BudgetEntry,
@@ -58,7 +60,7 @@ import { transliterate } from '../utils/transliterate';
 
 type TargetOption = { id: number; code: string; name: string; is_active?: boolean };
 type AccountOption = { id: number; code: string; name: string; owner_scope?: string; is_active?: boolean };
-type FinanceTab = 'dashboard' | 'models' | 'budget' | 'articles' | 'journal' | 'report';
+type FinanceTab = 'overview' | 'dashboard' | 'models' | 'budget' | 'articles' | 'journal' | 'report';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -80,7 +82,7 @@ const flattenTree = (items: FinanceArticleTreeItem[], level = 0): Array<FinanceA
   items.flatMap((item) => [{ ...item, level }, ...flattenTree(item.children || [], level + 1)]);
 
 const FinanceOverviewPageContent: React.FC = () => {
-  const [tab, setTab] = useState<FinanceTab>('dashboard');
+  const [tab, setTab] = useState<FinanceTab>('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -1257,6 +1259,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           scrollButtons="auto"
           sx={{ px: 1 }}
         >
+          <Tab value="overview" icon={<Hub />} iconPosition="start" label="Обзор" />
           <Tab value="dashboard" icon={<Dashboard />} iconPosition="start" label="Dashboard" />
           <Tab value="models" icon={<Assessment />} iconPosition="start" label="Модели" />
           <Tab value="report" icon={<TableChart />} iconPosition="start" label="P&L Отчёт" />
@@ -1266,6 +1269,7 @@ const FinanceOverviewPageContent: React.FC = () => {
         </Tabs>
       </Paper>
 
+      {tab === 'overview' && <FinanceCommandCenter onNavigateToJournal={() => setTab('journal')} />}
       {tab === 'dashboard' && renderDashboard()}
       {tab === 'models' && renderModels()}
       {tab === 'report' && renderReport()}

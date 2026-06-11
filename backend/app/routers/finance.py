@@ -66,6 +66,13 @@ from app.schemas.finance import (
     FinanceStudentAccountCreate,
     PLReportRow,
     PLReportResponse,
+    CommandCenterResponse,
+    CommandCenterKpi,
+    CommandCenterAccount,
+    CommandCenterProjectColumn,
+    CommandCenterCashFlowPoint,
+    CommandCenterTransaction,
+    CommandCenterAlert,
     FinanceTargetResponse,
     FinanceTransactionApplyStudentRequest,
     FinanceTransactionUpdate,
@@ -1236,6 +1243,346 @@ async def get_finance_pnl(
             )
         )
     return rows
+
+
+# ─── Finance Command Center ──────────────────────────────────────────────────
+
+@router.get("/command-center", response_model=CommandCenterResponse)
+async def get_command_center(
+    period: Optional[str] = Query(None, description="YYYY-MM, default = current month"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> CommandCenterResponse:
+    _require_finance_access(current_user)
+
+    from sqlalchemy import func as sqlfunc
+    import calendar as _cal
+
+    today = date.today()
+    if period:
+        y, m = int(period[:4]), int(period[5:7])
+    else:
+        y, m = today.year, today.month
+
+    period_str = f"{y:04d}-{m:02d}"
+    period_start = datetime(y, m, 1)
+    last_day = _cal.monthrange(y, m)[1]
+    period_end = datetime(y, m, last_day, 23, 59, 59)
+
+    # previous month boundaries
+    pm = m - 1 if m > 1 else 12
+    py = y if m > 1 else y - 1
+    pm_last = _cal.monthrange(py, pm)[1]
+    prev_start = datetime(py, pm, 1)
+    prev_end = datetime(py, pm, pm_last, 23, 59, 59)
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+    def _txn_agg(start: datetime, end: datetime, target_id: Optional[int] = None):
+        q = (
+            db.query(FinanceTransaction.direction, sqlfunc.sum(FinanceTransaction.amount))
+            .filter(
+                FinanceTransaction.occurred_at >= start,
+                FinanceTransaction.occurred_at <= end,
+                FinanceTransaction.direction.in_([
+                    FinanceTransactionDirection.INCOME,
+                    FinanceTransactionDirection.EXPENSE,
+                ]),
+            )
+        )
+        if target_id is not None:
+            q = q.filter(FinanceTransaction.target_id == target_id)
+        q = q.group_by(FinanceTransaction.direction).all()
+        income = expense = 0.0
+        for direction, total in q:
+            if direction == FinanceTransactionDirection.INCOME:
+                income = float(total or 0)
+            else:
+                expense = abs(float(total or 0))
+        return income, expense
+
+    # ── KPI ───────────────────────────────────────────────────────────────────
+    cur_inc, cur_exp = _txn_agg(period_start, period_end)
+    prv_inc, prv_exp = _txn_agg(prev_start, prev_end)
+
+    cur_profit = cur_inc - cur_exp
+    prv_profit = prv_inc - prv_exp
+    cur_margin = round(cur_profit / cur_inc * 100, 1) if cur_inc else 0.0
+
+    def _pct_delta(cur: float, prv: float) -> float:
+        return round((cur - prv) / prv * 100, 1) if prv else 0.0
+
+    # ── Account balances ──────────────────────────────────────────────────────
+    accounts = db.query(FinanceAccount).filter(FinanceAccount.is_active.is_(True)).order_by(FinanceAccount.code).all()
+
+    def _account_balances_up_to(up_to: datetime) -> Dict[int, float]:
+        txns = db.query(
+            FinanceTransaction.account_id,
+            FinanceTransaction.to_account_id,
+            FinanceTransaction.direction,
+            FinanceTransaction.amount,
+        ).filter(FinanceTransaction.occurred_at <= up_to).all()
+        bmap: Dict[int, float] = {a.id: 0.0 for a in accounts}
+        for acc_id, to_acc_id, direction, amount in txns:
+            amt = float(amount or 0)
+            if direction == FinanceTransactionDirection.INCOME:
+                if acc_id in bmap:
+                    bmap[acc_id] += amt
+            elif direction == FinanceTransactionDirection.EXPENSE:
+                if acc_id in bmap:
+                    bmap[acc_id] += amt  # amt is already negative for expenses or we use -abs
+                    bmap[acc_id] -= abs(amt) + amt  # neutralise then subtract abs
+            elif direction == FinanceTransactionDirection.TRANSFER:
+                a = abs(amt)
+                if acc_id in bmap:
+                    bmap[acc_id] -= a
+                if to_acc_id in bmap:
+                    bmap[to_acc_id] += a
+        return bmap
+
+    # Simpler, correct balance computation
+    def _account_balances_correct(up_to: datetime) -> Dict[int, float]:
+        bmap: Dict[int, float] = {a.id: 0.0 for a in accounts}
+        txns = (
+            db.query(
+                FinanceTransaction.account_id,
+                FinanceTransaction.to_account_id,
+                FinanceTransaction.direction,
+                FinanceTransaction.amount,
+            )
+            .filter(FinanceTransaction.occurred_at <= up_to)
+            .all()
+        )
+        for acc_id, to_acc_id, direction, amount in txns:
+            amt = float(amount or 0)
+            if direction == FinanceTransactionDirection.INCOME:
+                if acc_id in bmap:
+                    bmap[acc_id] += amt
+            elif direction == FinanceTransactionDirection.EXPENSE:
+                if acc_id in bmap:
+                    bmap[acc_id] -= abs(amt)
+            elif direction == FinanceTransactionDirection.TRANSFER:
+                a = abs(amt)
+                if acc_id in bmap:
+                    bmap[acc_id] -= a
+                if to_acc_id in bmap:
+                    bmap[to_acc_id] += a
+        return bmap
+
+    # account income/expense this month only
+    def _account_month_flow(start: datetime, end: datetime) -> Dict[int, Dict[str, float]]:
+        fmap: Dict[int, Dict[str, float]] = {a.id: {"income": 0.0, "expense": 0.0} for a in accounts}
+        txns = (
+            db.query(FinanceTransaction.account_id, FinanceTransaction.direction, FinanceTransaction.amount)
+            .filter(
+                FinanceTransaction.occurred_at >= start,
+                FinanceTransaction.occurred_at <= end,
+                FinanceTransaction.direction.in_([
+                    FinanceTransactionDirection.INCOME,
+                    FinanceTransactionDirection.EXPENSE,
+                ]),
+            )
+            .all()
+        )
+        for acc_id, direction, amount in txns:
+            if acc_id in fmap:
+                if direction == FinanceTransactionDirection.INCOME:
+                    fmap[acc_id]["income"] += float(amount or 0)
+                else:
+                    fmap[acc_id]["expense"] += abs(float(amount or 0))
+        return fmap
+
+    bal_now = _account_balances_correct(period_end)
+    bal_prev = _account_balances_correct(prev_end)
+    month_flow = _account_month_flow(period_start, period_end)
+
+    total_balance = round(sum(bal_now.values()), 2)
+    total_balance_prev = round(sum(bal_prev.values()), 2)
+
+    cc_accounts: List[CommandCenterAccount] = []
+    for acc in accounts:
+        bal = bal_now.get(acc.id, 0.0)
+        prev_bal = bal_prev.get(acc.id, 0.0)
+        flow = month_flow.get(acc.id, {"income": 0.0, "expense": 0.0})
+        cc_accounts.append(CommandCenterAccount(
+            id=acc.id,
+            code=acc.code,
+            name=acc.name,
+            balance=round(bal, 2),
+            balance_delta=round(bal - prev_bal, 2),
+            income_month=round(flow["income"], 2),
+            expense_month=round(flow["expense"], 2),
+        ))
+
+    # ── Project breakdown ─────────────────────────────────────────────────────
+    # Get all active targets
+    targets_list = db.query(FinanceTarget).filter(FinanceTarget.is_active.is_(True)).all()
+    targets_map = {t.id: t for t in targets_list}
+
+    # Get articles for cost_kind lookup
+    articles_map: Dict[int, FinanceArticle] = {
+        a.id: a for a in db.query(FinanceArticle).filter(FinanceArticle.is_active.isnot(False)).all()
+    }
+
+    # Aggregate transactions for the month by target + article direction + cost_kind
+    proj_txns = (
+        db.query(
+            FinanceTransaction.target_id,
+            FinanceTransaction.article_id,
+            FinanceTransaction.direction,
+            sqlfunc.sum(FinanceTransaction.amount).label("total"),
+        )
+        .filter(
+            FinanceTransaction.occurred_at >= period_start,
+            FinanceTransaction.occurred_at <= period_end,
+            FinanceTransaction.direction.in_([
+                FinanceTransactionDirection.INCOME,
+                FinanceTransactionDirection.EXPENSE,
+            ]),
+        )
+        .group_by(
+            FinanceTransaction.target_id,
+            FinanceTransaction.article_id,
+            FinanceTransaction.direction,
+        )
+        .all()
+    )
+
+    proj_agg: Dict[Optional[int], Dict[str, float]] = {}
+    for target_id, article_id, direction, total in proj_txns:
+        key = target_id
+        if key not in proj_agg:
+            proj_agg[key] = {"income": 0.0, "variable": 0.0, "fixed": 0.0, "other": 0.0}
+        amt = float(total or 0)
+        if direction == FinanceTransactionDirection.INCOME:
+            proj_agg[key]["income"] += amt
+        else:
+            article = articles_map.get(article_id) if article_id else None
+            ck = str(article.cost_kind.value if hasattr(article.cost_kind, "value") else (article.cost_kind or "none")) if article else "none"
+            if ck == "variable":
+                proj_agg[key]["variable"] += abs(amt)
+            elif ck == "fixed":
+                proj_agg[key]["fixed"] += abs(amt)
+            else:
+                proj_agg[key]["other"] += abs(amt)
+
+    cc_projects: List[CommandCenterProjectColumn] = []
+    for target_id_key, agg in sorted(proj_agg.items(), key=lambda x: -(x[1]["income"])):
+        target = targets_map.get(target_id_key) if target_id_key else None
+        income = agg["income"]
+        var_exp = agg["variable"]
+        fixed_exp = agg["fixed"]
+        other_exp = agg["other"]
+        gross = income - var_exp
+        net = income - var_exp - fixed_exp - other_exp
+        margin = round(net / income * 100, 1) if income else 0.0
+        cc_projects.append(CommandCenterProjectColumn(
+            target_id=target_id_key,
+            target_code=target.code if target else "unknown",
+            target_name=target.name if target else "Без проекта",
+            income=round(income, 2),
+            variable_expense=round(var_exp, 2),
+            fixed_expense=round(fixed_exp, 2),
+            other_expense=round(other_exp, 2),
+            gross_profit=round(gross, 2),
+            net_profit=round(net, 2),
+            net_margin=margin,
+        ))
+
+    # ── Cash flow last 6 months ───────────────────────────────────────────────
+    cashflow: List[CommandCenterCashFlowPoint] = []
+    for i in range(5, -1, -1):
+        cm = m - i
+        cy = y
+        while cm <= 0:
+            cm += 12
+            cy -= 1
+        cf_start = datetime(cy, cm, 1)
+        cf_last = _cal.monthrange(cy, cm)[1]
+        cf_end = datetime(cy, cm, cf_last, 23, 59, 59)
+        cf_inc, cf_exp = _txn_agg(cf_start, cf_end)
+        cashflow.append(CommandCenterCashFlowPoint(
+            period=f"{cy:04d}-{cm:02d}",
+            income=round(cf_inc, 2),
+            expense=round(cf_exp, 2),
+            net=round(cf_inc - cf_exp, 2),
+        ))
+
+    # ── Recent transactions ───────────────────────────────────────────────────
+    recent_raw = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.account),
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(
+            FinanceTransaction.direction.in_([
+                FinanceTransactionDirection.INCOME,
+                FinanceTransactionDirection.EXPENSE,
+                FinanceTransactionDirection.TRANSFER,
+            ])
+        )
+        .order_by(FinanceTransaction.occurred_at.desc(), FinanceTransaction.id.desc())
+        .limit(15)
+        .all()
+    )
+
+    recent_transactions: List[CommandCenterTransaction] = []
+    for tx in recent_raw:
+        recent_transactions.append(CommandCenterTransaction(
+            id=tx.id,
+            occurred_at=tx.occurred_at,
+            amount=float(tx.amount or 0),
+            direction=str(tx.direction.value if hasattr(tx.direction, "value") else tx.direction),
+            account_name=tx.account.name if tx.account else None,
+            target_id=tx.target_id,
+            target_name=tx.target.name if tx.target else None,
+            article_name=tx.article.name if tx.article else None,
+            description=tx.description_raw,
+        ))
+
+    # ── Alerts ────────────────────────────────────────────────────────────────
+    unclassified_count = (
+        db.query(sqlfunc.count(FinanceTransaction.id))
+        .filter(
+            FinanceTransaction.occurred_at >= period_start,
+            FinanceTransaction.occurred_at <= period_end,
+            FinanceTransaction.direction.in_([
+                FinanceTransactionDirection.INCOME,
+                FinanceTransactionDirection.EXPENSE,
+            ]),
+            (FinanceTransaction.article_id.is_(None)) | (FinanceTransaction.target_id.is_(None)),
+        )
+        .scalar() or 0
+    )
+
+    alerts: List[CommandCenterAlert] = []
+    if unclassified_count > 0:
+        alerts.append(CommandCenterAlert(
+            type="unclassified",
+            count=unclassified_count,
+            message=f"{unclassified_count} операций без статьи или проекта",
+        ))
+
+    return CommandCenterResponse(
+        period=period_str,
+        kpi=CommandCenterKpi(
+            total_balance=total_balance,
+            income_month=round(cur_inc, 2),
+            expense_month=round(cur_exp, 2),
+            net_profit_month=round(cur_profit, 2),
+            net_margin_month=cur_margin,
+            income_delta_pct=_pct_delta(cur_inc, prv_inc),
+            expense_delta_pct=_pct_delta(cur_exp, prv_exp),
+            profit_delta=round(cur_profit - prv_profit, 2),
+            balance_delta=round(total_balance - total_balance_prev, 2),
+        ),
+        accounts=cc_accounts,
+        projects=cc_projects,
+        cashflow=cashflow,
+        recent_transactions=recent_transactions,
+        alerts=alerts,
+    )
 
 
 # ─── P&L Multi-Period Report ─────────────────────────────────────────────────

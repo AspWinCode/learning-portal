@@ -2184,6 +2184,76 @@ export interface OwnerWorkspaceCounterparty extends OwnerWorkspaceContact {
 
 export type OwnerWorkspaceCounterpartyDocument = OwnerWorkspaceProjectDocument;
 
+export interface CommandCenterKpi {
+  total_balance: number;
+  income_month: number;
+  expense_month: number;
+  net_profit_month: number;
+  net_margin_month: number;
+  income_delta_pct: number;
+  expense_delta_pct: number;
+  profit_delta: number;
+  balance_delta: number;
+}
+
+export interface CommandCenterAccount {
+  id: number;
+  code: string;
+  name: string;
+  balance: number;
+  balance_delta: number;
+  income_month: number;
+  expense_month: number;
+}
+
+export interface CommandCenterProjectColumn {
+  target_id?: number | null;
+  target_code: string;
+  target_name: string;
+  income: number;
+  variable_expense: number;
+  fixed_expense: number;
+  other_expense: number;
+  gross_profit: number;
+  net_profit: number;
+  net_margin: number;
+}
+
+export interface CommandCenterCashFlowPoint {
+  period: string;
+  income: number;
+  expense: number;
+  net: number;
+}
+
+export interface CommandCenterTransaction {
+  id: number;
+  occurred_at?: string | null;
+  amount: number;
+  direction: string;
+  account_name?: string | null;
+  target_id?: number | null;
+  target_name?: string | null;
+  article_name?: string | null;
+  description?: string | null;
+}
+
+export interface CommandCenterAlert {
+  type: string;
+  count: number;
+  message: string;
+}
+
+export interface CommandCenterResponse {
+  period: string;
+  kpi: CommandCenterKpi;
+  accounts: CommandCenterAccount[];
+  projects: CommandCenterProjectColumn[];
+  cashflow: CommandCenterCashFlowPoint[];
+  recent_transactions: CommandCenterTransaction[];
+  alerts: CommandCenterAlert[];
+}
+
 export interface PLReportRow {
   row_type: 'header' | 'article' | 'total' | 'calculated' | 'spacer';
   id?: number | null;

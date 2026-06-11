@@ -440,6 +440,76 @@ class PLReportCell(BaseModel):
     plan: float = 0.0
 
 
+class CommandCenterKpi(BaseModel):
+    total_balance: float
+    income_month: float
+    expense_month: float
+    net_profit_month: float
+    net_margin_month: float
+    income_delta_pct: float
+    expense_delta_pct: float
+    profit_delta: float
+    balance_delta: float
+
+
+class CommandCenterAccount(BaseModel):
+    id: int
+    code: str
+    name: str
+    balance: float
+    balance_delta: float
+    income_month: float
+    expense_month: float
+
+
+class CommandCenterProjectColumn(BaseModel):
+    target_id: Optional[int] = None
+    target_code: str
+    target_name: str
+    income: float
+    variable_expense: float
+    fixed_expense: float
+    other_expense: float
+    gross_profit: float
+    net_profit: float
+    net_margin: float
+
+
+class CommandCenterCashFlowPoint(BaseModel):
+    period: str
+    income: float
+    expense: float
+    net: float
+
+
+class CommandCenterTransaction(BaseModel):
+    id: int
+    occurred_at: Optional[datetime] = None
+    amount: float
+    direction: str
+    account_name: Optional[str] = None
+    target_id: Optional[int] = None
+    target_name: Optional[str] = None
+    article_name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CommandCenterAlert(BaseModel):
+    type: str
+    count: int
+    message: str
+
+
+class CommandCenterResponse(BaseModel):
+    period: str
+    kpi: CommandCenterKpi
+    accounts: List[CommandCenterAccount]
+    projects: List[CommandCenterProjectColumn]
+    cashflow: List[CommandCenterCashFlowPoint]
+    recent_transactions: List[CommandCenterTransaction]
+    alerts: List[CommandCenterAlert]
+
+
 class PLReportRow(BaseModel):
     row_type: str  # header | article | total | calculated | spacer
     id: Optional[int] = None

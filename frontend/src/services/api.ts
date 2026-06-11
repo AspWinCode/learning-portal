@@ -112,6 +112,7 @@ import {
   PwaRoleSettings,
   StudentQuestionnaireTemplate,
   PLReportResponse,
+  CommandCenterResponse,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
@@ -790,6 +791,10 @@ export const financeApi = {
     payload: { student_id: number }
   ): Promise<FinanceLedgerBankRow> => {
     const response = await api.post(`/api/finance/transactions/${transactionId}/apply-student`, payload);
+    return response.data;
+  },
+  getCommandCenter: async (period?: string): Promise<CommandCenterResponse> => {
+    const response = await api.get('/api/finance/command-center', { params: period ? { period } : {} });
     return response.data;
   },
   getPLReport: async (modelId: number, periodFrom: string, periodTo: string): Promise<PLReportResponse> => {

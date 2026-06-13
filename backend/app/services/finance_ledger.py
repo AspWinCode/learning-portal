@@ -34,6 +34,10 @@ def _make_dedup_hash(bank_source: str, payment_date: Optional[str], amount: floa
     return hashlib.sha1(seed.encode("utf-8")).hexdigest()
 
 
+def _make_operation_dedup_hash(bank_source: str, operation_id: str) -> str:
+    return hashlib.sha1(f"{bank_source}|operation|{operation_id}".encode("utf-8")).hexdigest()
+
+
 def apply_recognition_rules(db: Session, tx: FinanceTransaction) -> None:
     """
     Применяет активные правила авто-классификации к транзакции журнала.
@@ -105,9 +109,11 @@ def ensure_finance_transaction_for_bank_transaction(
         bank_tx.payer_name,
         bank_tx.payer_phone,
     )
-    identity_conditions = [FinanceTransaction.dedup_hash == dedup_hash]
     if operation_id:
-        identity_conditions.append(FinanceTransaction.bank_operation_id == operation_id)
+        dedup_hash = _make_operation_dedup_hash(bank_source, operation_id)
+        identity_conditions = [FinanceTransaction.bank_operation_id == operation_id]
+    else:
+        identity_conditions = [FinanceTransaction.dedup_hash == dedup_hash]
 
     existing = None
     for pending in getattr(db, "new", ()):
@@ -115,9 +121,10 @@ def ensure_finance_transaction_for_bank_transaction(
             continue
         if pending.bank_source != bank_source:
             continue
-        if pending.dedup_hash == dedup_hash or (
-            operation_id and pending.bank_operation_id == operation_id
-        ):
+        if operation_id and pending.bank_operation_id == operation_id:
+            existing = pending
+            break
+        if not operation_id and pending.dedup_hash == dedup_hash:
             existing = pending
             break
 

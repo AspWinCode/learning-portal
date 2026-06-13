@@ -8,6 +8,7 @@ from app.models import (
 )
 from app.services.finance_ledger import (
     _make_dedup_hash,
+    _make_operation_dedup_hash,
     apply_recognition_rules,
     ensure_finance_transaction_for_bank_transaction,
 )
@@ -28,6 +29,14 @@ def test_make_dedup_hash_different_amounts():
 def test_make_dedup_hash_none_fields():
     h = _make_dedup_hash("tochka", None, 500.0, None, None)
     assert isinstance(h, str) and len(h) == 40
+
+
+def test_make_operation_dedup_hash_deterministic():
+    h1 = _make_operation_dedup_hash("tochka", "OP123")
+    h2 = _make_operation_dedup_hash("tochka", "OP123")
+
+    assert h1 == h2
+    assert h1 != _make_operation_dedup_hash("tochka", "OP124")
 
 
 def _make_tx(
@@ -255,17 +264,31 @@ def test_ensure_finance_tx_reuses_existing_by_dedup_hash(mock_rules):
     db = MagicMock()
     existing = MagicMock()
     existing.status = FinanceTransactionStatus.NEW
-    existing.bank_operation_id = "OLD_OP"
+    existing.bank_operation_id = None
     db.query.return_value.filter.return_value.first.return_value = existing
-    bank_tx = _make_bank_tx(operation_id="NEW_OP", amount=1000.0)
+    bank_tx = _make_bank_tx(operation_id="", amount=1000.0)
 
     result = ensure_finance_transaction_for_bank_transaction(db, bank_tx, bank_source="tochka")
 
     assert result is existing
     assert existing.amount == 1000.0
-    assert existing.bank_operation_id == "OLD_OP"
+    assert existing.bank_operation_id is None
     db.add.assert_not_called()
     mock_rules.assert_called_once_with(db, existing)
+
+
+@patch("app.services.finance_ledger.apply_recognition_rules")
+def test_ensure_finance_tx_does_not_reuse_dedup_hash_when_operation_id_differs(mock_rules):
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    bank_tx = _make_bank_tx(operation_id="NEW_OP", amount=1000.0)
+
+    tx = ensure_finance_transaction_for_bank_transaction(db, bank_tx, bank_source="tochka")
+
+    assert tx.bank_operation_id == "NEW_OP"
+    assert tx.dedup_hash == _make_operation_dedup_hash("tochka", "NEW_OP")
+    db.add.assert_called_once_with(tx)
+    mock_rules.assert_called_once_with(db, tx)
 
 
 @patch("app.services.finance_ledger.apply_recognition_rules")

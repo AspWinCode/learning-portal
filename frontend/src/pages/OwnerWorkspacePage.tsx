@@ -54,6 +54,7 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon from '@mui/icons-material/Add';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import InsightsIcon from '@mui/icons-material/Insights';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -67,7 +68,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
-import { ownerWorkspaceApi, settingsApi, usersApi } from '../services/api';
+import { ownerWorkspaceApi, settingsApi, tasksApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceContact,
@@ -268,6 +269,18 @@ const DEFAULT_PRIORITY_LABELS: Record<string, string> = {
   medium: 'Средний',
   high: 'Высокий',
   critical: 'Критический',
+};
+
+const AI_TASK_CATEGORY_LABELS: Record<AiTaskBreakdownCategory, string> = {
+  schools: 'Школы',
+  parents: 'Родители',
+  leads: 'Лиды',
+};
+
+const aiTaskPriorityToOwnerPriority = (priority: AiTaskBreakdownPriority): OwnerWorkspaceTaskPriority => {
+  if (priority === 'high') return 'high';
+  if (priority === 'low') return 'low';
+  return 'medium';
 };
 
 const DEFAULT_PROJECT_STATUS_LABELS: Record<string, string> = {
@@ -570,6 +583,16 @@ const OwnerWorkspaceSubprojectTreeRow: React.FC<{
 
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 type OwnerWorkspaceTaskPriority = 'low' | 'medium' | 'high' | 'critical';
+type AiTaskBreakdownCategory = 'schools' | 'parents' | 'leads';
+type AiTaskBreakdownPriority = 'low' | 'normal' | 'high';
+type AiTaskBreakdownDraft = {
+  title: string;
+  description?: string | null;
+  category: AiTaskBreakdownCategory;
+  priority: AiTaskBreakdownPriority;
+  provider?: 'claude' | 'rules';
+  subtasks: { text: string; order?: number }[];
+};
 type OwnerWorkspaceProjectStatus = 'active' | 'completed' | 'archived';
 type OwnerWorkspaceProjectParticipantRole = 'member' | 'manager' | 'observer';
 
@@ -911,6 +934,11 @@ const OwnerWorkspacePage: React.FC = () => {
   const [createTaskDialogOpen, setCreateTaskDialogOpen] = useState(false);
   const [createTaskDialogProjectId, setCreateTaskDialogProjectId] = useState<number | null>(null);
   const [createTaskDialogContactId, setCreateTaskDialogContactId] = useState<number | null>(null);
+  const [aiTaskText, setAiTaskText] = useState('');
+  const [aiTaskCategory, setAiTaskCategory] = useState<AiTaskBreakdownCategory>('schools');
+  const [aiTaskLoading, setAiTaskLoading] = useState(false);
+  const [aiTaskCreating, setAiTaskCreating] = useState(false);
+  const [aiTaskDraft, setAiTaskDraft] = useState<AiTaskBreakdownDraft | null>(null);
 
   const [taskSearch, setTaskSearch] = useState('');
   const [taskStatusFilter, setTaskStatusFilter] = useState<string>('');
@@ -2425,6 +2453,59 @@ const OwnerWorkspacePage: React.FC = () => {
     setCreateTaskDialogContactId(null);
     await loadTasksFiltered();
     void loadDigest();
+  };
+
+  const buildAiTaskDraft = async () => {
+    const text = aiTaskText.trim();
+    if (!text) return;
+    setAiTaskLoading(true);
+    setError(null);
+    try {
+      const draft = await tasksApi.createAiBreakdown({ text, category: aiTaskCategory });
+      setAiTaskDraft({
+        title: draft.title,
+        description: draft.description || text,
+        category: draft.category,
+        priority: draft.priority,
+        provider: draft.provider,
+        subtasks: draft.subtasks || [],
+      });
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось разложить задачу'));
+    } finally {
+      setAiTaskLoading(false);
+    }
+  };
+
+  const createOwnerWorkspaceTaskFromAiDraft = async () => {
+    if (!aiTaskDraft) return;
+    const checklist = aiTaskDraft.subtasks
+      .map((subtask) => subtask.text.trim())
+      .filter(Boolean)
+      .map((text) => ({ text, done: false }));
+    if (checklist.length === 0) return;
+
+    setAiTaskCreating(true);
+    setError(null);
+    try {
+      await ownerWorkspaceApi.createTask({
+        title: aiTaskDraft.title.trim(),
+        description: aiTaskDraft.description || aiTaskText.trim() || null,
+        status: 'new',
+        priority: aiTaskPriorityToOwnerPriority(aiTaskDraft.priority),
+        tags: ['ai_tracker', `ai_category:${aiTaskDraft.category}`],
+        checklist,
+      });
+      setAiTaskText('');
+      setAiTaskDraft(null);
+      setMaxSyncResult('AI трекер создал задачу в таск трекере.');
+      await loadTasksFiltered();
+      void loadDigest();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось создать задачу'));
+    } finally {
+      setAiTaskCreating(false);
+    }
   };
 
   const openTaskDialog = async (t: OwnerWorkspaceTask, options?: { syncUrl?: boolean }) => {
@@ -5566,6 +5647,102 @@ const OwnerWorkspacePage: React.FC = () => {
 
       {tab === OW_TAB_TASKS && (
         <Stack spacing={2}>
+          {canCreateTaskUi && (
+            <Card variant="outlined">
+              <CardContent>
+                <Stack spacing={2}>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} justifyContent="space-between">
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <AutoAwesomeIcon color="primary" />
+                      <Typography variant="h6">AI трекер</Typography>
+                      {aiTaskDraft?.provider && (
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={aiTaskDraft.provider === 'claude' ? 'Claude' : 'Локальный режим'}
+                        />
+                      )}
+                    </Stack>
+                    <TextField
+                      select
+                      size="small"
+                      label="Категория"
+                      value={aiTaskCategory}
+                      onChange={(event) => setAiTaskCategory(event.target.value as AiTaskBreakdownCategory)}
+                      sx={{ minWidth: { xs: '100%', md: 180 } }}
+                    >
+                      <MenuItem value="schools">Школы</MenuItem>
+                      <MenuItem value="parents">Родители</MenuItem>
+                      <MenuItem value="leads">Лиды</MenuItem>
+                    </TextField>
+                  </Stack>
+                  <TextField
+                    multiline
+                    minRows={3}
+                    value={aiTaskText}
+                    onChange={(event) => setAiTaskText(event.target.value)}
+                    placeholder="Например: подготовить запуск летнего интенсива, собрать расписание, проверить группы, написать родителям и проконтролировать оплаты"
+                    fullWidth
+                  />
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Button
+                      variant="contained"
+                      startIcon={<AutoAwesomeIcon />}
+                      disabled={!aiTaskText.trim() || aiTaskLoading}
+                      onClick={buildAiTaskDraft}
+                    >
+                      {aiTaskLoading ? 'Разбираю...' : 'Разложить'}
+                    </Button>
+                    {aiTaskDraft && (
+                      <Button
+                        variant="outlined"
+                        disabled={aiTaskCreating || aiTaskDraft.subtasks.every((subtask) => !subtask.text.trim())}
+                        onClick={createOwnerWorkspaceTaskFromAiDraft}
+                      >
+                        {aiTaskCreating ? 'Создаю...' : 'Создать задачу'}
+                      </Button>
+                    )}
+                  </Stack>
+                  {aiTaskDraft && (
+                    <Box>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                        <Typography variant="subtitle1" fontWeight={700}>{aiTaskDraft.title}</Typography>
+                        <Chip size="small" label={AI_TASK_CATEGORY_LABELS[aiTaskDraft.category]} />
+                        <Chip
+                          size="small"
+                          color={aiTaskDraft.priority === 'high' ? 'warning' : aiTaskDraft.priority === 'low' ? 'default' : 'primary'}
+                          label={DEFAULT_PRIORITY_LABELS[aiTaskPriorityToOwnerPriority(aiTaskDraft.priority)]}
+                        />
+                      </Stack>
+                      <Stack spacing={1}>
+                        {aiTaskDraft.subtasks.map((subtask, index) => (
+                          <TextField
+                            key={index}
+                            size="small"
+                            value={subtask.text}
+                            onChange={(event) =>
+                              setAiTaskDraft((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      subtasks: prev.subtasks.map((item, itemIndex) =>
+                                        itemIndex === index ? { ...item, text: event.target.value } : item,
+                                      ),
+                                    }
+                                  : prev,
+                              )
+                            }
+                            InputProps={{ startAdornment: <Typography color="text.secondary" sx={{ mr: 1 }}>{index + 1}.</Typography> }}
+                            fullWidth
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
           {/* Компактный тулбар: вид + быстрые фильтры + переключатели панелей */}
           <Card>
             <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>

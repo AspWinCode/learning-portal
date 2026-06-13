@@ -3319,6 +3319,7 @@ export const tasksApi = {
     description?: string | null;
     category: 'schools' | 'parents' | 'leads';
     priority: 'low' | 'normal' | 'high';
+    provider?: 'claude' | 'rules';
     subtasks: { text: string; order?: number }[];
   }> => {
     const response = await api.post('/api/tasks/ai-breakdown', payload);

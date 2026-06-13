@@ -43,7 +43,6 @@ import {
   ExpandMore,
   ArrowUpward,
   ArrowDownward,
-  AutoAwesome,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { tasksApi, studentsApi, salesApi } from '../services/api';
@@ -89,12 +88,6 @@ const formatShortDate = (d: string | null | undefined): string => {
 
 const normalizeTaskCategory = (value: TaskResponse['category'] | undefined, fallback: TaskCategory): TaskCategory => {
   return value === 'schools' || value === 'parents' || value === 'leads' ? value : fallback;
-};
-
-const taskCategoryLabel = (value: TaskCategory): string => {
-  if (value === 'parents') return 'Родители';
-  if (value === 'leads') return 'Лиды';
-  return 'Школы';
 };
 
 const TasksPage: React.FC = () => {
@@ -201,17 +194,6 @@ const TasksPage: React.FC = () => {
   const [taskSaving, setTaskSaving] = useState(false);
   const [taskIsParentResponses, setTaskIsParentResponses] = useState(false);
   const [followUpSourceTask, setFollowUpSourceTask] = useState<TaskResponse | null>(null);
-  const [aiTaskText, setAiTaskText] = useState('');
-  const [aiTaskCategory, setAiTaskCategory] = useState<TaskCategory>('schools');
-  const [aiTaskLoading, setAiTaskLoading] = useState(false);
-  const [aiTaskCreating, setAiTaskCreating] = useState(false);
-  const [aiTaskDraft, setAiTaskDraft] = useState<{
-    title: string;
-    description?: string | null;
-    category: TaskCategory;
-    priority: 'low' | 'normal' | 'high';
-    subtasks: { text: string; order?: number }[];
-  } | null>(null);
 
   const loadTemplates = useCallback(async () => {
     if (!canManageTasks) return;
@@ -509,48 +491,6 @@ const TasksPage: React.FC = () => {
       setFollowUpSourceTask(task);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось завершить задачу'));
-    }
-  };
-
-  const buildAiTaskDraft = async () => {
-    if (!aiTaskText.trim()) return;
-    setAiTaskLoading(true);
-    setError(null);
-    try {
-      const draft = await tasksApi.createAiBreakdown({
-        text: aiTaskText.trim(),
-        category: aiTaskCategory,
-      });
-      setAiTaskDraft(draft);
-    } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось разложить задачу'));
-    } finally {
-      setAiTaskLoading(false);
-    }
-  };
-
-  const createTaskFromAiDraft = async () => {
-    if (!aiTaskDraft) return;
-    setAiTaskCreating(true);
-    setError(null);
-    try {
-      await tasksApi.createTask({
-        title: aiTaskDraft.title,
-        description: aiTaskDraft.description || undefined,
-        category: aiTaskDraft.category,
-        priority: aiTaskDraft.priority,
-        subtasks: aiTaskDraft.subtasks
-          .filter((subtask) => subtask.text.trim())
-          .map((subtask, index) => ({ text: subtask.text.trim(), order: index })),
-        tags: ['ai_tracker'],
-      });
-      setAiTaskText('');
-      setAiTaskDraft(null);
-      refreshAfterTaskChange();
-    } catch (e: unknown) {
-      setError(extractApiError(e, 'Не удалось создать задачу'));
-    } finally {
-      setAiTaskCreating(false);
     }
   };
 
@@ -2335,93 +2275,6 @@ const TasksPage: React.FC = () => {
           <Typography color="text.secondary">Загрузка...</Typography>
         ) : tab === 0 ? (
           <Stack spacing={3}>
-            {canManageTasks && !isSales && (
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Stack spacing={2}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <AutoAwesome color="primary" />
-                      <Typography variant="h6">AI трекер</Typography>
-                    </Stack>
-                    <FormControl size="small" sx={{ minWidth: 150 }}>
-                      <InputLabel>Категория</InputLabel>
-                      <Select
-                        label="Категория"
-                        value={aiTaskCategory}
-                        onChange={(event) => setAiTaskCategory(event.target.value as TaskCategory)}
-                      >
-                        <MenuItem value="schools">Школы</MenuItem>
-                        <MenuItem value="parents">Родители</MenuItem>
-                        <MenuItem value="leads">Лиды</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Stack>
-                  <TextField
-                    multiline
-                    minRows={3}
-                    value={aiTaskText}
-                    onChange={(event) => setAiTaskText(event.target.value)}
-                    placeholder="Например: подготовить запуск летнего интенсива, собрать расписание, проверить группы, написать родителям и проконтролировать оплаты"
-                    fullWidth
-                  />
-                  <Stack direction="row" spacing={1} flexWrap="wrap">
-                    <Button
-                      variant="contained"
-                      startIcon={<AutoAwesome />}
-                      disabled={!aiTaskText.trim() || aiTaskLoading}
-                      onClick={buildAiTaskDraft}
-                    >
-                      {aiTaskLoading ? 'Разбираю...' : 'Разложить'}
-                    </Button>
-                    {aiTaskDraft && (
-                      <Button
-                        variant="outlined"
-                        disabled={aiTaskCreating || aiTaskDraft.subtasks.every((subtask) => !subtask.text.trim())}
-                        onClick={createTaskFromAiDraft}
-                      >
-                        {aiTaskCreating ? 'Создаю...' : 'Создать задачу'}
-                      </Button>
-                    )}
-                  </Stack>
-                  {aiTaskDraft && (
-                    <Box>
-                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 1 }}>
-                        <Typography variant="subtitle1">{aiTaskDraft.title}</Typography>
-                        <Chip size="small" label={taskCategoryLabel(aiTaskDraft.category)} />
-                        <Chip
-                          size="small"
-                          color={aiTaskDraft.priority === 'high' ? 'error' : aiTaskDraft.priority === 'low' ? 'default' : 'primary'}
-                          label={aiTaskDraft.priority === 'high' ? 'Высокий' : aiTaskDraft.priority === 'low' ? 'Низкий' : 'Нормальный'}
-                        />
-                      </Stack>
-                      <Stack spacing={1}>
-                        {aiTaskDraft.subtasks.map((subtask, index) => (
-                          <TextField
-                            key={index}
-                            size="small"
-                            value={subtask.text}
-                            onChange={(event) =>
-                              setAiTaskDraft((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      subtasks: prev.subtasks.map((item, itemIndex) =>
-                                        itemIndex === index ? { ...item, text: event.target.value } : item,
-                                      ),
-                                    }
-                                  : prev,
-                              )
-                            }
-                            InputProps={{ startAdornment: <Typography color="text.secondary" sx={{ mr: 1 }}>{index + 1}.</Typography> }}
-                            fullWidth
-                          />
-                        ))}
-                      </Stack>
-                    </Box>
-                  )}
-                </Stack>
-              </Paper>
-            )}
             {(showTodayPlan && !isSales) && (
             <Box>
               <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>План на сегодня</Typography>

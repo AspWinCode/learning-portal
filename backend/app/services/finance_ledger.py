@@ -4,6 +4,7 @@ import hashlib
 import re
 from typing import Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -96,17 +97,27 @@ def ensure_finance_transaction_for_bank_transaction(
     Используется при авто‑импорте и ручном импорте выписки.
     """
     operation_id = (bank_tx.operation_id or "").strip()
+    amount = float(bank_tx.amount or 0)
+    dedup_hash = _make_dedup_hash(
+        bank_source,
+        bank_tx.payment_date,
+        amount,
+        bank_tx.payer_name,
+        bank_tx.payer_phone,
+    )
+    identity_conditions = [FinanceTransaction.dedup_hash == dedup_hash]
+    if operation_id:
+        identity_conditions.append(FinanceTransaction.bank_operation_id == operation_id)
 
     existing = (
         db.query(FinanceTransaction)
         .filter(
             FinanceTransaction.bank_source == bank_source,
-            FinanceTransaction.bank_operation_id == operation_id,
+            or_(*identity_conditions),
         )
         .first()
     )
 
-    amount = float(bank_tx.amount or 0)
     bank_status = (bank_tx.status or "").lower()
     is_expense = amount < 0 or bank_status == BankTransactionStatus.EXPENSE.value
     direction = FinanceTransactionDirection.EXPENSE if is_expense else FinanceTransactionDirection.INCOME
@@ -129,14 +140,9 @@ def ensure_finance_transaction_for_bank_transaction(
         existing.counterparty_name = (bank_tx.payer_name or "").strip() or None
         existing.counterparty_phone = (bank_tx.payer_phone or "").strip() or None
         existing.bank_source = bank_source
-        existing.bank_operation_id = operation_id or None
-        existing.dedup_hash = _make_dedup_hash(
-            bank_source,
-            bank_tx.payment_date,
-            amount,
-            bank_tx.payer_name,
-            bank_tx.payer_phone,
-        )
+        if operation_id and not existing.bank_operation_id:
+            existing.bank_operation_id = operation_id
+        existing.dedup_hash = dedup_hash
         existing.student_id = bank_tx.student_id
         # Статус обновляем только из "new" → более конкретного; ручную классификацию не перезатираем.
         if existing.status == FinanceTransactionStatus.NEW and tx_status != FinanceTransactionStatus.NEW:
@@ -163,13 +169,7 @@ def ensure_finance_transaction_for_bank_transaction(
         description_raw=None,
         bank_source=bank_source,
         bank_operation_id=operation_id or None,
-        dedup_hash=_make_dedup_hash(
-            bank_source,
-            bank_tx.payment_date,
-            amount,
-            bank_tx.payer_name,
-            bank_tx.payer_phone,
-        ),
+        dedup_hash=dedup_hash,
         target_id=target_id,
         student_id=bank_tx.student_id,
         status=tx_status,

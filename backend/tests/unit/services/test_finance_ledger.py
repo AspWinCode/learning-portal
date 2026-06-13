@@ -250,6 +250,24 @@ def test_ensure_finance_tx_updates_existing(mock_rules):
 
 
 @patch("app.services.finance_ledger.apply_recognition_rules")
+def test_ensure_finance_tx_reuses_existing_by_dedup_hash(mock_rules):
+    db = MagicMock()
+    existing = MagicMock()
+    existing.status = FinanceTransactionStatus.NEW
+    existing.bank_operation_id = "OLD_OP"
+    db.query.return_value.filter.return_value.first.return_value = existing
+    bank_tx = _make_bank_tx(operation_id="NEW_OP", amount=1000.0)
+
+    result = ensure_finance_transaction_for_bank_transaction(db, bank_tx, bank_source="tochka")
+
+    assert result is existing
+    assert existing.amount == 1000.0
+    assert existing.bank_operation_id == "OLD_OP"
+    db.add.assert_not_called()
+    mock_rules.assert_called_once_with(db, existing)
+
+
+@patch("app.services.finance_ledger.apply_recognition_rules")
 def test_ensure_finance_tx_expense_direction(mock_rules):
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None

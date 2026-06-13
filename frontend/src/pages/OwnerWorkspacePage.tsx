@@ -590,7 +590,7 @@ type AiTaskBreakdownDraft = {
   description?: string | null;
   category: AiTaskBreakdownCategory;
   priority: AiTaskBreakdownPriority;
-  provider?: 'claude' | 'rules';
+  provider?: 'ranvik' | 'claude' | 'rules';
   subtasks: { text: string; order?: number }[];
 };
 type OwnerWorkspaceProjectStatus = 'active' | 'completed' | 'archived';
@@ -5659,7 +5659,7 @@ const OwnerWorkspacePage: React.FC = () => {
                         <Chip
                           size="small"
                           variant="outlined"
-                          label={aiTaskDraft.provider === 'claude' ? 'Claude' : 'Локальный режим'}
+                          label={aiTaskDraft.provider === 'ranvik' ? 'Ranvik' : aiTaskDraft.provider === 'claude' ? 'Claude' : 'Локальный режим'}
                         />
                       )}
                     </Stack>

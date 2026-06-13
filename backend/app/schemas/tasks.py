@@ -106,7 +106,7 @@ class TaskAiBreakdownResponse(BaseModel):
     category: Literal["schools", "parents", "leads"] = "schools"
     priority: Literal["low", "normal", "high"] = "normal"
     subtasks: List[dict]
-    provider: Literal["claude", "rules"] = "rules"
+    provider: Literal["ranvik", "claude", "rules"] = "rules"
 
 
 class TaskUpdate(BaseModel):

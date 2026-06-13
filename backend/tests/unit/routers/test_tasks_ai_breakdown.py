@@ -5,12 +5,13 @@ from fastapi import HTTPException
 
 from app.routers.tasks import create_task_ai_breakdown
 from app.schemas.tasks import TaskAiBreakdownRequest
-from app.services.claude_task_breakdown import normalize_claude_breakdown
+from app.services.ai_task_breakdown import normalize_ai_breakdown
 
 
 @pytest.mark.asyncio
 async def test_create_task_ai_breakdown_returns_editable_task_draft(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("RANVIK_API_KEY", raising=False)
 
     result = await create_task_ai_breakdown(
         TaskAiBreakdownRequest(
@@ -28,8 +29,8 @@ async def test_create_task_ai_breakdown_returns_editable_task_draft(monkeypatch)
     assert result.subtasks[0]["text"] == "Уточнить критерий готовности и срок"
 
 
-def test_normalize_claude_breakdown_accepts_valid_json_shape():
-    result = normalize_claude_breakdown(
+def test_normalize_ai_breakdown_accepts_valid_json_shape():
+    result = normalize_ai_breakdown(
         {
             "title": "Launch campaign",
             "description": "Prepare and launch campaign",

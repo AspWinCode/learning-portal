@@ -42,7 +42,7 @@ from app.schemas.tasks import (
     TaskDayDeskStats,
     TaskDayStatsResponse,
 )
-from app.services.claude_task_breakdown import build_task_breakdown_with_claude
+from app.services.ai_task_breakdown import build_task_breakdown_with_ai
 
 router = APIRouter()
 
@@ -797,9 +797,9 @@ async def create_task_ai_breakdown(
         raise HTTPException(status_code=400, detail="Описание задачи слишком длинное")
 
     category = payload.category if payload.category in ("schools", "parents", "leads") else "schools"
-    claude_breakdown = await build_task_breakdown_with_claude(text, category)
-    if claude_breakdown:
-        return TaskAiBreakdownResponse(**claude_breakdown, provider="claude")
+    ai_breakdown, provider = await build_task_breakdown_with_ai(text, category)
+    if ai_breakdown and provider:
+        return TaskAiBreakdownResponse(**ai_breakdown, provider=provider)
 
     return TaskAiBreakdownResponse(
         title=_make_task_title(text),

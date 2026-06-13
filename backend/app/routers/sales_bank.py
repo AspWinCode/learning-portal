@@ -11,6 +11,7 @@ from app.dependencies import require_sales_admin_owner
 from app.models import (
     BankTransaction,
     BankTransactionStatus,
+    FinanceTransaction,
     PhonePaymentBinding,
     Student,
     StudentAccount,
@@ -154,6 +155,8 @@ def do_tochka_import_and_apply(
                 .filter(BankTransaction.operation_id == operation_id)
                 .first()
             )
+            if bank_transaction is not None and bank_transaction.status == BankTransactionStatus.IGNORED.value:
+                continue
             if bank_transaction is None:
                 bank_transaction = BankTransaction(
                     operation_id=operation_id,
@@ -416,6 +419,8 @@ async def list_bank_transactions(
     query = db.query(BankTransaction).order_by(BankTransaction.created_at.desc())
     if status:
         query = query.filter(BankTransaction.status.in_(status))
+    else:
+        query = query.filter(BankTransaction.status != BankTransactionStatus.IGNORED.value)
     items = query.limit(500).all()
     return [BankTransactionResponse.model_validate(item) for item in items]
 
@@ -488,6 +493,19 @@ async def delete_bank_transaction(
     bank_transaction = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
     if not bank_transaction:
         raise HTTPException(status_code=404, detail="Операция не найдена")
+    if bank_transaction.status == BankTransactionStatus.APPLIED.value:
+        raise HTTPException(status_code=400, detail="Зачисленную операцию нельзя скрыть без отмены зачисления")
     with db_transaction(db):
-        db.delete(bank_transaction)
+        bank_source = "tochka" if bank_transaction.tochka_account_id else "import_xlsx"
+        (
+            db.query(FinanceTransaction)
+            .filter(
+                FinanceTransaction.bank_source == bank_source,
+                FinanceTransaction.bank_operation_id == bank_transaction.operation_id,
+            )
+            .delete(synchronize_session=False)
+        )
+        bank_transaction.status = BankTransactionStatus.IGNORED.value
+        bank_transaction.student_id = None
+        bank_transaction.student_account_id = None
     return {"ok": True}

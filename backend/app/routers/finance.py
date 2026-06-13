@@ -14,6 +14,7 @@ from app.database import db_transaction, get_db
 from app.models import (
     User,
     BankTransaction,
+    BankTransactionStatus,
     FinanceTransaction,
     FinanceAccount,
     FinanceAccountOwnerScope,
@@ -2812,6 +2813,21 @@ async def delete_finance_transaction(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
 
     with db_transaction(db):
+        if tx.bank_source and tx.bank_operation_id:
+            bank_transaction = (
+                db.query(BankTransaction)
+                .filter(BankTransaction.operation_id == tx.bank_operation_id)
+                .first()
+            )
+            if bank_transaction is not None:
+                if bank_transaction.status == BankTransactionStatus.APPLIED.value:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Зачисленную банковскую операцию нельзя скрыть без отмены зачисления",
+                    )
+                bank_transaction.status = BankTransactionStatus.IGNORED.value
+                bank_transaction.student_id = None
+                bank_transaction.student_account_id = None
         db.delete(tx)
     return {"ok": True}
 
@@ -2962,7 +2978,11 @@ async def backfill_bank_transactions_to_ledger(
     """
     from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
 
-    all_bank_txs: list[BankTransaction] = db.query(BankTransaction).all()
+    all_bank_txs: list[BankTransaction] = (
+        db.query(BankTransaction)
+        .filter(BankTransaction.status != BankTransactionStatus.IGNORED.value)
+        .all()
+    )
     created = 0
     updated = 0
 

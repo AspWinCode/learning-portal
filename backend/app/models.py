@@ -655,6 +655,7 @@ class BankTransactionStatus(str, enum.Enum):
     AMBIGUOUS = "ambiguous"
     NO_MATCH = "no_match"
     EXPENSE = "expense"  # расход (списание); категория в expense_category
+    IGNORED = "ignored"
 
 
 class BankTransaction(Base):

@@ -2448,6 +2448,7 @@ async def create_manual_transaction(
         transfer_group_id=tx.transfer_group_id,
         counterparty_name=tx.counterparty_name,
         counterparty_phone=tx.counterparty_phone,
+        description=tx.description_raw,
         bank_source=tx.bank_source,
         bank_operation_id=tx.bank_operation_id,
         target_id=tx.target_id,
@@ -2538,6 +2539,7 @@ async def list_finance_ledger_bank(
                 transfer_group_id=tx.transfer_group_id,
                 counterparty_name=tx.counterparty_name,
                 counterparty_phone=tx.counterparty_phone,
+                description=tx.description_raw,
                 bank_source=tx.bank_source,
                 bank_operation_id=tx.bank_operation_id,
                 target_id=tx.target_id,
@@ -2657,6 +2659,7 @@ async def list_finance_transactions(
                 transfer_group_id=tx.transfer_group_id,
                 counterparty_name=tx.counterparty_name,
                 counterparty_phone=tx.counterparty_phone,
+                description=tx.description_raw,
                 bank_source=tx.bank_source,
                 bank_operation_id=tx.bank_operation_id,
                 target_id=tx.target_id,
@@ -2678,10 +2681,7 @@ async def update_finance_transaction(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceLedgerBankRow:
-    """
-    Частичное обновление транзакции журнала (смена направления, target/article, счетов, статуса).
-    Используется для ручной классификации во фронтенде.
-    """
+    """Partial update for a finance journal transaction."""
     _require_finance_access(current_user)
 
     tx = (
@@ -2696,44 +2696,76 @@ async def update_finance_transaction(
         .first()
     )
     if not tx:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+
+    fields_set = payload.model_fields_set
+
+    if "occurred_at" in fields_set:
+        tx.occurred_at = payload.occurred_at
+
+    if "amount" in fields_set:
+        amount = float(payload.amount or 0.0)
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="amount must be greater than 0")
+        tx.amount = abs(amount)
 
     if payload.direction is not None:
         if payload.direction not in {d.value for d in FinanceTransactionDirection}:  # type: ignore[attr-defined]
-            raise HTTPException(status_code=400, detail="Некорректное значение direction")
+            raise HTTPException(status_code=400, detail="Invalid direction")
         tx.direction = FinanceTransactionDirection(payload.direction)  # type: ignore[call-arg]
+        if payload.direction != FinanceTransactionDirection.TRANSFER.value:
+            tx.to_account_id = None
+            tx.transfer_group_id = None
 
     if payload.status is not None:
         if payload.status not in {s.value for s in FinanceTransactionStatus}:  # type: ignore[attr-defined]
-            raise HTTPException(status_code=400, detail="Некорректное значение status")
+            raise HTTPException(status_code=400, detail="Invalid status")
         tx.status = FinanceTransactionStatus(payload.status)  # type: ignore[call-arg]
 
-    if payload.account_id is not None:
+    if "account_id" in fields_set:
         if payload.account_id and not db.query(FinanceAccount.id).filter(FinanceAccount.id == payload.account_id).first():
-            raise HTTPException(status_code=400, detail="account_id не найден")
+            raise HTTPException(status_code=400, detail="account_id not found")
         tx.account_id = payload.account_id
 
-    if payload.to_account_id is not None:
+    if "to_account_id" in fields_set:
         if payload.to_account_id and not db.query(FinanceAccount.id).filter(FinanceAccount.id == payload.to_account_id).first():
-            raise HTTPException(status_code=400, detail="to_account_id не найден")
+            raise HTTPException(status_code=400, detail="to_account_id not found")
         tx.to_account_id = payload.to_account_id
 
-    if payload.target_id is not None:
+    if "target_id" in fields_set:
         if payload.target_id and not db.query(FinanceTarget.id).filter(FinanceTarget.id == payload.target_id).first():
-            raise HTTPException(status_code=400, detail="target_id не найден")
+            raise HTTPException(status_code=400, detail="target_id not found")
         tx.target_id = payload.target_id
 
-    if payload.article_id is not None:
+    if "article_id" in fields_set:
         if payload.article_id and not db.query(FinanceArticle.id).filter(FinanceArticle.id == payload.article_id).first():
-            raise HTTPException(status_code=400, detail="article_id не найден")
+            raise HTTPException(status_code=400, detail="article_id not found")
         tx.article_id = payload.article_id
 
-    if payload.transfer_group_id is not None:
+    if "transfer_group_id" in fields_set:
         tx.transfer_group_id = payload.transfer_group_id or None
+
+    if "counterparty_name" in fields_set:
+        tx.counterparty_name = payload.counterparty_name.strip() if payload.counterparty_name else None
+
+    if "description" in fields_set:
+        tx.description_raw = payload.description.strip() if payload.description else None
 
     with db_transaction(db):
         pass
-    db.refresh(tx)
+    tx = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.account),
+            joinedload(FinanceTransaction.to_account),
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(FinanceTransaction.id == transaction_id)
+        .first()
+    )
+    if not tx:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
     account: Optional[FinanceAccount] = getattr(tx, "account", None)
     to_account: Optional[FinanceAccount] = getattr(tx, "to_account", None)
@@ -2743,8 +2775,8 @@ async def update_finance_transaction(
     return FinanceLedgerBankRow(
         id=tx.id,
         occurred_at=tx.occurred_at,
-        amount=tx.amount,
-        direction=str(getattr(tx.direction, "value", tx.direction)),
+        amount=float(tx.amount or 0.0),
+        direction="transfer" if tx.transfer_group_id else str(getattr(tx.direction, "value", tx.direction)),
         status=str(getattr(tx.status, "value", tx.status)),
         account_id=tx.account_id,
         account_code=getattr(account, "code", None),
@@ -2752,8 +2784,10 @@ async def update_finance_transaction(
         to_account_id=tx.to_account_id,
         to_account_code=getattr(to_account, "code", None),
         to_account_name=getattr(to_account, "name", None),
+        transfer_group_id=tx.transfer_group_id,
         counterparty_name=tx.counterparty_name,
         counterparty_phone=tx.counterparty_phone,
+        description=tx.description_raw,
         bank_source=tx.bank_source,
         bank_operation_id=tx.bank_operation_id,
         target_id=tx.target_id,
@@ -2763,7 +2797,6 @@ async def update_finance_transaction(
         article_name=getattr(article, "name", None),
         student_id=tx.student_id,
     )
-
 
 @router.delete("/transactions/{transaction_id}")
 async def delete_finance_transaction(

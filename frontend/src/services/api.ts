@@ -496,6 +496,8 @@ export const financeApi = {
   updateTransaction: async (
     transactionId: number,
     payload: {
+      occurred_at?: string | null;
+      amount?: number;
       direction?: string;
       status?: string;
       account_id?: number | null;
@@ -503,6 +505,8 @@ export const financeApi = {
       target_id?: number | null;
       article_id?: number | null;
       transfer_group_id?: string | null;
+      counterparty_name?: string | null;
+      description?: string | null;
     }
   ): Promise<FinanceLedgerBankRow> => {
     const response = await api.patch(`/api/finance/transactions/${transactionId}`, payload);

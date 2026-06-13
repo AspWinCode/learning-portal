@@ -68,6 +68,13 @@ const today = () => new Date().toISOString().slice(0, 10);
 const money = (value: number | null | undefined) =>
   new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
 
+const dateInputValue = (value?: string | null) => {
+  if (!value) return today();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10) || today();
+  return date.toISOString().slice(0, 10);
+};
+
 const directionLabel = (direction?: string | null) => {
   if (direction === 'income') return 'Доход';
   if (direction === 'expense') return 'Расход';
@@ -153,6 +160,16 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [manualArticleId, setManualArticleId] = useState<number | ''>('');
   const [manualTargetId, setManualTargetId] = useState<number | ''>('');
   const [manualDescription, setManualDescription] = useState('');
+  const [editingTransaction, setEditingTransaction] = useState<FinanceLedgerBankRow | null>(null);
+  const [editTxAccountId, setEditTxAccountId] = useState<number | ''>('');
+  const [editTxToAccountId, setEditTxToAccountId] = useState<number | ''>('');
+  const [editTxAmount, setEditTxAmount] = useState('');
+  const [editTxDirection, setEditTxDirection] = useState<'income' | 'expense' | 'transfer'>('income');
+  const [editTxDate, setEditTxDate] = useState(today());
+  const [editTxArticleId, setEditTxArticleId] = useState<number | ''>('');
+  const [editTxTargetId, setEditTxTargetId] = useState<number | ''>('');
+  const [editTxCounterparty, setEditTxCounterparty] = useState('');
+  const [editTxDescription, setEditTxDescription] = useState('');
 
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId) || null,
@@ -520,6 +537,47 @@ const FinanceOverviewPageContent: React.FC = () => {
       setMessage('Операция добавлена');
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || 'Не удалось добавить операцию');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEditTransaction = (row: FinanceLedgerBankRow) => {
+    setEditingTransaction(row);
+    setEditTxAccountId(row.account_id || '');
+    setEditTxToAccountId(row.to_account_id || '');
+    setEditTxAmount(String(row.amount || ''));
+    setEditTxDirection((row.direction === 'transfer' ? 'transfer' : row.direction === 'expense' ? 'expense' : 'income'));
+    setEditTxDate(dateInputValue(row.occurred_at));
+    setEditTxArticleId(row.article_id || '');
+    setEditTxTargetId(row.target_id || '');
+    setEditTxCounterparty(row.counterparty_name || '');
+    setEditTxDescription(row.description || '');
+  };
+
+  const saveTransactionEdit = async () => {
+    if (!editingTransaction || !editTxAccountId || !editTxAmount || Number(editTxAmount) <= 0) return;
+    if (editTxDirection === 'transfer' && !editTxToAccountId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const updated = await financeApi.updateTransaction(editingTransaction.id, {
+        occurred_at: editTxDate ? `${editTxDate}T12:00:00Z` : null,
+        account_id: Number(editTxAccountId),
+        to_account_id: editTxDirection === 'transfer' ? Number(editTxToAccountId) : null,
+        amount: Number(editTxAmount),
+        direction: editTxDirection,
+        target_id: editTxTargetId === '' ? null : Number(editTxTargetId),
+        article_id: editTxDirection === 'transfer' || editTxArticleId === '' ? null : Number(editTxArticleId),
+        counterparty_name: editTxCounterparty.trim() || null,
+        description: editTxDescription.trim() || null,
+      });
+      setJournalRows((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setEditingTransaction(null);
+      setMessage('РћРїРµСЂР°С†РёСЏ РѕР±РЅРѕРІР»РµРЅР°');
+      if (selectedTargetId) await loadModelData(selectedTargetId);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РѕРїРµСЂР°С†РёСЋ');
     } finally {
       setLoading(false);
     }
@@ -1120,7 +1178,8 @@ const FinanceOverviewPageContent: React.FC = () => {
 
       {journalLoading && <LinearProgress />}
       <Paper variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
-        <Table size="small">
+        <TableContainer sx={{ overflowX: 'auto' }}>
+        <Table size="small" sx={{ minWidth: 1500 }}>
           <TableHead>
             <TableRow>
               <TableCell>Дата</TableCell>
@@ -1202,6 +1261,14 @@ const FinanceOverviewPageContent: React.FC = () => {
                 <TableCell>{row.counterparty_name || '—'}</TableCell>
                 <TableCell>{row.description || row.bank_source || '—'}</TableCell>
                 <TableCell align="right">
+                  <Tooltip title="Редактировать операцию">
+                    <IconButton
+                      size="small"
+                      onClick={() => openEditTransaction(row)}
+                    >
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                   <Tooltip title="Удалить операцию">
                     <IconButton
                       size="small"
@@ -1228,6 +1295,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             )}
           </TableBody>
         </Table>
+        </TableContainer>
       </Paper>
     </Stack>
   );
@@ -1476,6 +1544,139 @@ const FinanceOverviewPageContent: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setMetricDialogOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={saveMetric} disabled={!metricName.trim() || !metricFormula.trim()}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!editingTransaction} onClose={() => setEditingTransaction(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Редактировать операцию</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Дата"
+              type="date"
+              size="small"
+              value={editTxDate}
+              onChange={(e) => setEditTxDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Счет</InputLabel>
+              <Select
+                label="Счет"
+                value={editTxAccountId === '' ? '' : String(editTxAccountId)}
+                onChange={(e) => setEditTxAccountId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                {accounts.map((account) => (
+                  <MenuItem key={account.id} value={account.id}>
+                    {account.name}
+                    {account.code ? ` (${account.code})` : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Сумма"
+              type="number"
+              size="small"
+              value={editTxAmount}
+              onChange={(e) => setEditTxAmount(e.target.value)}
+              inputProps={{ min: 0, step: 0.01 }}
+            />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Тип</InputLabel>
+              <Select
+                label="Тип"
+                value={editTxDirection}
+                onChange={(e) => {
+                  const direction = e.target.value as 'income' | 'expense' | 'transfer';
+                  setEditTxDirection(direction);
+                  setEditTxArticleId('');
+                  if (direction !== 'transfer') setEditTxToAccountId('');
+                }}
+              >
+                <MenuItem value="income">Доход</MenuItem>
+                <MenuItem value="expense">Расход</MenuItem>
+                <MenuItem value="transfer">Перевод</MenuItem>
+              </Select>
+            </FormControl>
+            {editTxDirection === 'transfer' && (
+              <FormControl size="small" fullWidth>
+                <InputLabel>Счет назначения</InputLabel>
+                <Select
+                  label="Счет назначения"
+                  value={editTxToAccountId === '' ? '' : String(editTxToAccountId)}
+                  onChange={(e) => setEditTxToAccountId(e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  {accounts
+                    .filter((acc) => acc.id !== editTxAccountId)
+                    .map((account) => (
+                      <MenuItem key={account.id} value={account.id}>
+                        {account.name}
+                        {account.code ? ` (${account.code})` : ''}
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+            )}
+            <FormControl size="small" fullWidth>
+              <InputLabel>Проект</InputLabel>
+              <Select
+                label="Проект"
+                value={editTxTargetId === '' ? '' : String(editTxTargetId)}
+                onChange={(e) => setEditTxTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value="">Не выбран</MenuItem>
+                {targets.map((target) => (
+                  <MenuItem key={target.id} value={target.id}>
+                    {target.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {editTxDirection !== 'transfer' && (
+              <FormControl size="small" fullWidth>
+                <InputLabel>Статья</InputLabel>
+                <Select
+                  label="Статья"
+                  value={editTxArticleId === '' ? '' : String(editTxArticleId)}
+                  onChange={(e) => setEditTxArticleId(e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  <MenuItem value="">Не выбрана</MenuItem>
+                  {articles
+                    .filter((article) => article.direction === editTxDirection)
+                    .map((article) => (
+                      <MenuItem key={article.id} value={article.id}>
+                        {article.name}
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+            )}
+            <TextField
+              label="Контрагент"
+              size="small"
+              value={editTxCounterparty}
+              onChange={(e) => setEditTxCounterparty(e.target.value)}
+            />
+            <TextField
+              label="Описание"
+              size="small"
+              value={editTxDescription}
+              onChange={(e) => setEditTxDescription(e.target.value)}
+              multiline
+              minRows={2}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditingTransaction(null)}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={saveTransactionEdit}
+            disabled={!editTxAccountId || !editTxAmount || Number(editTxAmount) <= 0 || (editTxDirection === 'transfer' && !editTxToAccountId)}
+          >
             Сохранить
           </Button>
         </DialogActions>

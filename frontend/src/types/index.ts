@@ -665,6 +665,7 @@ export interface FinanceLedgerBankRow {
 
   counterparty_name?: string | null;
   counterparty_phone?: string | null;
+  description?: string | null;
 
   bank_source?: string | null;
   bank_operation_id?: string | null;
@@ -677,7 +678,6 @@ export interface FinanceLedgerBankRow {
   article_name?: string | null;
 
   student_id?: number | null;
-  description?: string | null;
 }
 
 /** Строка транзакции журнала для дашборда личных финансов (по target). */

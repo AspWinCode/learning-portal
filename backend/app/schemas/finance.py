@@ -75,6 +75,7 @@ class FinanceLedgerBankRow(BaseModel):
     transfer_group_id: Optional[str] = None
     counterparty_name: Optional[str] = None
     counterparty_phone: Optional[str] = None
+    description: Optional[str] = None
     bank_source: Optional[str] = None
     bank_operation_id: Optional[str] = None
     target_id: Optional[int] = None
@@ -338,6 +339,8 @@ class DashboardWidgetComputedResponse(DashboardWidgetResponse):
 
 
 class FinanceTransactionUpdate(BaseModel):
+    occurred_at: Optional[datetime] = None
+    amount: Optional[float] = None
     direction: Optional[str] = None
     status: Optional[str] = None
     account_id: Optional[int] = None
@@ -345,6 +348,8 @@ class FinanceTransactionUpdate(BaseModel):
     transfer_group_id: Optional[str] = None
     target_id: Optional[int] = None
     article_id: Optional[int] = None
+    counterparty_name: Optional[str] = None
+    description: Optional[str] = None
 
 
 class FinanceAccountBalance(BaseModel):

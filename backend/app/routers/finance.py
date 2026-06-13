@@ -2,7 +2,7 @@ from typing import Dict, List, Optional
 
 import csv
 import hashlib
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO, BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Form
@@ -13,6 +13,7 @@ from app import auth
 from app.database import db_transaction, get_db
 from app.models import (
     User,
+    BankTransaction,
     FinanceTransaction,
     FinanceAccount,
     FinanceAccountOwnerScope,
@@ -761,8 +762,8 @@ async def list_budget_entries(
                 FinanceTransaction.target_id == target_id,
                 FinanceTransaction.article_id.isnot(None),
                 FinanceTransaction.direction != FinanceTransactionDirection.TRANSFER,
-                FinanceTransaction.occurred_at >= datetime.combine(period_start, datetime.min.time()),
-                FinanceTransaction.occurred_at < datetime.combine(period_end, datetime.min.time()),
+                FinanceTransaction.occurred_at >= datetime.combine(period_start, datetime.min.time(), tzinfo=timezone.utc),
+                FinanceTransaction.occurred_at < datetime.combine(period_end, datetime.min.time(), tzinfo=timezone.utc),
             )
             .group_by(FinanceTransaction.article_id)
             .all()
@@ -1085,9 +1086,9 @@ async def list_finance_ledger_transactions(
             return []
 
     if date_from is not None:
-        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time()))
+        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc))
     if date_to is not None:
-        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time()))
+        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time(), tzinfo=timezone.utc))
 
     q = q.order_by(FinanceTransaction.occurred_at.desc())
     items: List[FinanceTransaction] = q.limit(limit).all()
@@ -1265,16 +1266,16 @@ async def get_command_center(
         y, m = today.year, today.month
 
     period_str = f"{y:04d}-{m:02d}"
-    period_start = datetime(y, m, 1)
+    period_start = datetime(y, m, 1, tzinfo=timezone.utc)
     last_day = _cal.monthrange(y, m)[1]
-    period_end = datetime(y, m, last_day, 23, 59, 59)
+    period_end = datetime(y, m, last_day, 23, 59, 59, tzinfo=timezone.utc)
 
     # previous month boundaries
     pm = m - 1 if m > 1 else 12
     py = y if m > 1 else y - 1
     pm_last = _cal.monthrange(py, pm)[1]
-    prev_start = datetime(py, pm, 1)
-    prev_end = datetime(py, pm, pm_last, 23, 59, 59)
+    prev_start = datetime(py, pm, 1, tzinfo=timezone.utc)
+    prev_end = datetime(py, pm, pm_last, 23, 59, 59, tzinfo=timezone.utc)
 
     # ── helpers ───────────────────────────────────────────────────────────────
     def _txn_agg(start: datetime, end: datetime, target_id: Optional[int] = None):
@@ -1496,9 +1497,9 @@ async def get_command_center(
         while cm <= 0:
             cm += 12
             cy -= 1
-        cf_start = datetime(cy, cm, 1)
+        cf_start = datetime(cy, cm, 1, tzinfo=timezone.utc)
         cf_last = _cal.monthrange(cy, cm)[1]
-        cf_end = datetime(cy, cm, cf_last, 23, 59, 59)
+        cf_end = datetime(cy, cm, cf_last, 23, 59, 59, tzinfo=timezone.utc)
         cf_inc, cf_exp = _txn_agg(cf_start, cf_end)
         cashflow.append(CommandCenterCashFlowPoint(
             period=f"{cy:04d}-{cm:02d}",
@@ -1857,13 +1858,13 @@ def _finance_analytics_impl(
     if date_from > date_to:
         raise HTTPException(status_code=400, detail="date_from must be <= date_to")
 
-    period_start = datetime.combine(date_from, datetime.min.time())
-    period_end = datetime.combine(date_to, datetime.max.time())
+    period_start = datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc)
+    period_end = datetime.combine(date_to, datetime.max.time(), tzinfo=timezone.utc)
     days_span = max(1, (date_to - date_from).days + 1)
     prev_date_to = date_from - timedelta(days=1)
     prev_date_from = prev_date_to - timedelta(days=days_span - 1)
-    prev_start = datetime.combine(prev_date_from, datetime.min.time())
-    prev_end = datetime.combine(prev_date_to, datetime.max.time())
+    prev_start = datetime.combine(prev_date_from, datetime.min.time(), tzinfo=timezone.utc)
+    prev_end = datetime.combine(prev_date_to, datetime.max.time(), tzinfo=timezone.utc)
 
     def _sum_period(start_dt: datetime, end_dt: datetime) -> Dict[str, float]:
         rows = (
@@ -2338,7 +2339,7 @@ async def create_manual_transaction(
     if payload.target_id and not db.query(FinanceTarget.id).filter(FinanceTarget.id == payload.target_id).first():
         raise HTTPException(status_code=400, detail="Цель/проект не найден")
 
-    occurred_at = datetime.combine(payload.occurred_at, datetime.min.time())
+    occurred_at = datetime.combine(payload.occurred_at, datetime.min.time(), tzinfo=timezone.utc)
     description = (payload.description or "").strip() or None
 
     if payload.direction == "transfer":
@@ -2627,9 +2628,9 @@ async def list_finance_transactions(
             | (FinanceTransaction.article_id.is_(None))
         )
     if date_from is not None:
-        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time()))
+        q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc))
     if date_to is not None:
-        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time()))
+        q = q.filter(FinanceTransaction.occurred_at <= datetime.combine(date_to, datetime.max.time(), tzinfo=timezone.utc))
 
     items: List[FinanceTransaction] = q.limit(limit).all()
 
@@ -2914,3 +2915,39 @@ async def apply_bank_transaction_to_student(
         raise HTTPException(status_code=400, detail=msg)
     db.refresh(result.transaction)
     return BankTransactionResponse.model_validate(result.transaction)
+
+
+@router.post("/bank-transactions/backfill-ledger")
+async def backfill_bank_transactions_to_ledger(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(dep_require_finance_access),
+) -> dict:
+    """
+    Однократный бэкфилл: создаёт/обновляет записи в finance_transactions
+    для всех существующих bank_transactions. Безопасно запускать повторно —
+    ensure_finance_transaction_for_bank_transaction идемпотентна.
+    """
+    from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
+
+    all_bank_txs: list[BankTransaction] = db.query(BankTransaction).all()
+    created = 0
+    updated = 0
+
+    for bt in all_bank_txs:
+        bank_source = "tochka" if bt.tochka_account_id else "import_xlsx"
+        existing_ft = (
+            db.query(FinanceTransaction)
+            .filter(
+                FinanceTransaction.bank_source == bank_source,
+                FinanceTransaction.bank_operation_id == bt.operation_id,
+            )
+            .first()
+        )
+        ensure_finance_transaction_for_bank_transaction(db, bt, bank_source=bank_source)
+        if existing_ft:
+            updated += 1
+        else:
+            created += 1
+
+    db.commit()
+    return {"ok": True, "created": created, "updated": updated, "total": len(all_bank_txs)}

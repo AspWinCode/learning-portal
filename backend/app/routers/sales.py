@@ -684,23 +684,6 @@ def _payer_matches_parent(payer_name: str, parent_full_name: Optional[str]) -> b
     return True
 
 
-def _tochka_payment_already_applied(
-    db: Session, account_id: str, payment_date: str, amount: float, payer_name: str
-) -> bool:
-    """РџСЂРѕРІРµСЂСЏРµС‚, Р±С‹Р» Р»Рё СЌС‚РѕС‚ РїР»Р°С‚С‘Р¶ РёР· РўРѕС‡РєР° Р‘Р°РЅРє СѓР¶Рµ Р·Р°С‡РёСЃР»РµРЅ (РёРґРµРјРїРѕС‚РµРЅС‚РЅРѕСЃС‚СЊ)."""
-    payer_trunc = (payer_name or "")[:512]
-    return (
-        db.query(TochkaAppliedPayment.id)
-        .filter(
-            TochkaAppliedPayment.tochka_account_id == account_id,
-            TochkaAppliedPayment.payment_date == payment_date,
-            TochkaAppliedPayment.amount == amount,
-            TochkaAppliedPayment.payer_name == payer_trunc,
-        )
-        .first()
-        is not None
-    )
-
 
 def _resolve_student_for_bank_payment(
     db: Session,
@@ -788,6 +771,9 @@ def do_tochka_import_and_apply(
         existing_bt = db.query(BankTransaction).filter(BankTransaction.operation_id == operation_id).first()
         if existing_bt:
             bt = existing_bt
+            ensure_finance_transaction_for_bank_transaction(db, bt, bank_source="tochka")
+            if bt.status == BankTransactionStatus.APPLIED.value:
+                continue
         else:
             bt = BankTransaction(
                 operation_id=operation_id,
@@ -800,9 +786,7 @@ def do_tochka_import_and_apply(
             )
             db.add(bt)
             db.flush()
-
-        # РћС‚СЂР°Р·РёРј РѕРїРµСЂР°С†РёСЋ РІ РµРґРёРЅРѕРј С„РёРЅР°РЅСЃРѕРІРѕРј Р¶СѓСЂРЅР°Р»Рµ.
-        ensure_finance_transaction_for_bank_transaction(db, bt, bank_source="tochka")
+            ensure_finance_transaction_for_bank_transaction(db, bt, bank_source="tochka")
 
         student_ids: List[int] = []
         if payer_phone:

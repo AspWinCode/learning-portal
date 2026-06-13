@@ -1078,6 +1078,26 @@ const FinanceOverviewPageContent: React.FC = () => {
           >
             Неразобранные
           </Button>
+          <Tooltip title="Перенести все банковские операции в журнал (бэкфилл)">
+            <Button
+              startIcon={<Refresh />}
+              variant="outlined"
+              onClick={async () => {
+                setJournalLoading(true);
+                try {
+                  const result = await financeApi.backfillBankTransactionsToLedger();
+                  setMessage(`Синхронизировано: создано ${result.created}, обновлено ${result.updated} из ${result.total}`);
+                  await loadJournal();
+                } catch (err: any) {
+                  setError(err?.response?.data?.detail || err?.message || 'Ошибка синхронизации');
+                } finally {
+                  setJournalLoading(false);
+                }
+              }}
+            >
+              Синхронизировать
+            </Button>
+          </Tooltip>
           <Button
             startIcon={<Add />}
             variant="contained"

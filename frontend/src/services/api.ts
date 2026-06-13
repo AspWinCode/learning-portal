@@ -803,6 +803,10 @@ export const financeApi = {
     });
     return response.data;
   },
+  backfillBankTransactionsToLedger: async (): Promise<{ ok: boolean; created: number; updated: number; total: number }> => {
+    const response = await api.post('/api/finance/bank-transactions/backfill-ledger');
+    return response.data;
+  },
 };
 
 export const groupsApi = {

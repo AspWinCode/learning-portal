@@ -137,9 +137,11 @@ def do_tochka_import_and_apply(
     with db_transaction(db):
         for idx, transaction in enumerate(transactions):
             payer_name = (transaction.get("payer_name") or "").strip()
-            amount = transaction.get("amount") or 0
+            amount = abs(float(transaction.get("amount") or 0))
             tx_date = transaction.get("date") or ""
             payer_phone = normalize_phone(transaction.get("payer_phone_raw") or "")
+            direction = str(transaction.get("direction") or "income").strip().lower()
+            is_expense = direction == "expense"
 
             operation_id = (transaction.get("operation_id") or "").strip()
             if not operation_id:
@@ -157,19 +159,29 @@ def do_tochka_import_and_apply(
                     operation_id=operation_id,
                     tochka_account_id=account_id,
                     amount=amount,
-                    payer_phone=payer_phone or None,
+                    payer_phone=(payer_phone or None) if not is_expense else None,
                     payer_name=payer_name[:512] if payer_name else None,
                     payment_date=tx_date,
-                    status=BankTransactionStatus.NEW.value,
+                    status=BankTransactionStatus.EXPENSE.value if is_expense else BankTransactionStatus.NEW.value,
                 )
                 db.add(bank_transaction)
                 db.flush()
+            elif is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
+                bank_transaction.amount = amount
+                bank_transaction.payer_phone = None
+                bank_transaction.payer_name = payer_name[:512] if payer_name else bank_transaction.payer_name
+                bank_transaction.payment_date = tx_date or bank_transaction.payment_date
+                bank_transaction.status = BankTransactionStatus.EXPENSE.value
+                bank_transaction.student_id = None
+                bank_transaction.student_account_id = None
 
             ensure_finance_transaction_for_bank_transaction(
                 db,
                 bank_transaction,
                 bank_source="tochka",
             )
+            if bank_transaction.status == BankTransactionStatus.EXPENSE.value:
+                continue
             if bank_transaction.status == BankTransactionStatus.APPLIED.value:
                 continue
 
@@ -203,6 +215,11 @@ def do_tochka_import_and_apply(
 
             if not student_ids:
                 bank_transaction.status = BankTransactionStatus.NO_MATCH.value
+                ensure_finance_transaction_for_bank_transaction(
+                    db,
+                    bank_transaction,
+                    bank_source="tochka",
+                )
                 no_match.append(
                     {
                         "payer_name": payer_name,
@@ -216,6 +233,11 @@ def do_tochka_import_and_apply(
             chosen_student_id = _resolve_student_for_bank_payment(db, student_ids)
             if chosen_student_id is None:
                 bank_transaction.status = BankTransactionStatus.AMBIGUOUS.value
+                ensure_finance_transaction_for_bank_transaction(
+                    db,
+                    bank_transaction,
+                    bank_source="tochka",
+                )
                 ambiguous.append(
                     {
                         "payer_name": payer_name,
@@ -243,6 +265,11 @@ def do_tochka_import_and_apply(
             student = db.query(Student).filter(Student.id == chosen_student_id).first()
             if student is None:
                 bank_transaction.status = BankTransactionStatus.NO_MATCH.value
+                ensure_finance_transaction_for_bank_transaction(
+                    db,
+                    bank_transaction,
+                    bank_source="tochka",
+                )
                 no_match.append(
                     {
                         "payer_name": payer_name,
@@ -295,6 +322,11 @@ def do_tochka_import_and_apply(
             bank_transaction.status = BankTransactionStatus.APPLIED.value
             bank_transaction.student_id = chosen_student_id
             bank_transaction.student_account_id = account.id
+            ensure_finance_transaction_for_bank_transaction(
+                db,
+                bank_transaction,
+                bank_source="tochka",
+            )
 
             applied.append(
                 {

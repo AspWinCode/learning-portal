@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from app.models import (
     BankTransactionStatus,
+    FinanceTransaction,
     FinanceTransactionDirection,
     FinanceTransactionStatus,
 )
@@ -265,6 +266,27 @@ def test_ensure_finance_tx_reuses_existing_by_dedup_hash(mock_rules):
     assert existing.bank_operation_id == "OLD_OP"
     db.add.assert_not_called()
     mock_rules.assert_called_once_with(db, existing)
+
+
+@patch("app.services.finance_ledger.apply_recognition_rules")
+def test_ensure_finance_tx_reuses_pending_transaction(mock_rules):
+    db = MagicMock()
+    pending = FinanceTransaction(
+        bank_source="tochka",
+        bank_operation_id="OP123",
+        dedup_hash="old",
+        status=FinanceTransactionStatus.NEW,
+    )
+    db.new = {pending}
+    bank_tx = _make_bank_tx(operation_id="OP123", status=BankTransactionStatus.NO_MATCH.value)
+
+    result = ensure_finance_transaction_for_bank_transaction(db, bank_tx, bank_source="tochka")
+
+    assert result is pending
+    assert pending.status == FinanceTransactionStatus.CLASSIFIED
+    db.query.assert_not_called()
+    db.add.assert_not_called()
+    mock_rules.assert_called_once_with(db, pending)
 
 
 @patch("app.services.finance_ledger.apply_recognition_rules")

@@ -109,14 +109,27 @@ def ensure_finance_transaction_for_bank_transaction(
     if operation_id:
         identity_conditions.append(FinanceTransaction.bank_operation_id == operation_id)
 
-    existing = (
-        db.query(FinanceTransaction)
-        .filter(
-            FinanceTransaction.bank_source == bank_source,
-            or_(*identity_conditions),
+    existing = None
+    for pending in getattr(db, "new", ()):
+        if not isinstance(pending, FinanceTransaction):
+            continue
+        if pending.bank_source != bank_source:
+            continue
+        if pending.dedup_hash == dedup_hash or (
+            operation_id and pending.bank_operation_id == operation_id
+        ):
+            existing = pending
+            break
+
+    if existing is None:
+        existing = (
+            db.query(FinanceTransaction)
+            .filter(
+                FinanceTransaction.bank_source == bank_source,
+                or_(*identity_conditions),
+            )
+            .first()
         )
-        .first()
-    )
 
     bank_status = (bank_tx.status or "").lower()
     is_expense = amount < 0 or bank_status == BankTransactionStatus.EXPENSE.value

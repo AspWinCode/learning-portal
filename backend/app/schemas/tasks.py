@@ -95,6 +95,19 @@ class TaskCreate(BaseModel):
     repeat_end_until: Optional[date] = None
 
 
+class TaskAiBreakdownRequest(BaseModel):
+    text: str
+    category: Optional[Literal["schools", "parents", "leads"]] = "schools"
+
+
+class TaskAiBreakdownResponse(BaseModel):
+    title: str
+    description: Optional[str] = None
+    category: Literal["schools", "parents", "leads"] = "schools"
+    priority: Literal["low", "normal", "high"] = "normal"
+    subtasks: List[dict]
+
+
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None

@@ -1,4 +1,5 @@
 """Task manager: templates (admin/owner), tasks CRUD (admin/owner), sales: view tasks + complete subtasks."""
+import re
 from datetime import date, datetime, timedelta, time, timezone
 from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -28,6 +29,8 @@ from app.schemas.tasks import (
     TaskTemplateResponse,
     TaskTemplateSubtaskResponse,
     TaskCreate,
+    TaskAiBreakdownRequest,
+    TaskAiBreakdownResponse,
     TaskUpdate,
     TaskResponse,
     TaskSubtaskResponse,
@@ -222,6 +225,79 @@ def _task_to_response(task: Task, db: Optional[Session] = None) -> TaskResponse:
         repeat_end_until=_norm_date(getattr(task, "repeat_end_until", None)),
         **extra,
     )
+
+
+def _sentence_split(text: str) -> List[str]:
+    return [
+        part.strip(" \t\r\n-•0123456789.()")
+        for part in re.split(r"[\n.;]+", text)
+        if part.strip(" \t\r\n-•0123456789.()")
+    ]
+
+
+def _make_task_title(text: str) -> str:
+    first_sentence = _sentence_split(text)[0] if _sentence_split(text) else text.strip()
+    first_sentence = re.sub(r"\s+", " ", first_sentence).strip()
+    if len(first_sentence) <= 80:
+        return first_sentence
+    return first_sentence[:77].rstrip() + "..."
+
+
+def _infer_task_priority(text: str) -> str:
+    lowered = text.lower()
+    high_markers = ("срочно", "горит", "критично", "сегодня", "дедлайн", "просроч")
+    low_markers = ("когда будет время", "не срочно", "позже", "низкий приоритет")
+    if any(marker in lowered for marker in high_markers):
+        return "high"
+    if any(marker in lowered for marker in low_markers):
+        return "low"
+    return "normal"
+
+
+def _build_ai_subtasks(text: str) -> List[dict]:
+    chunks = _sentence_split(text)
+    action_verbs = (
+        "проверить",
+        "подготовить",
+        "создать",
+        "собрать",
+        "написать",
+        "позвонить",
+        "согласовать",
+        "отправить",
+        "обновить",
+        "найти",
+        "исправить",
+        "запустить",
+        "сделать",
+    )
+    subtasks: List[str] = []
+    for chunk in chunks:
+        normalized = re.sub(r"\s+", " ", chunk).strip()
+        if not normalized:
+            continue
+        lowered = normalized.lower()
+        if lowered.startswith(action_verbs):
+            text_item = normalized[:1].upper() + normalized[1:]
+        else:
+            text_item = f"Разобрать: {normalized[:1].lower() + normalized[1:]}"
+        if text_item not in subtasks:
+            subtasks.append(text_item)
+
+    if len(subtasks) < 3:
+        base = _make_task_title(text).rstrip(".")
+        subtasks = [
+            f"Уточнить ожидаемый результат по задаче: {base}",
+            "Определить ответственных и ограничения по срокам",
+            "Составить список материалов, доступов и данных",
+            "Выполнить основную работу и зафиксировать результат",
+            "Проверить результат и закрыть задачу",
+        ]
+    else:
+        subtasks.insert(0, "Уточнить критерий готовности и срок")
+        subtasks.append("Проверить результат и зафиксировать следующий шаг")
+
+    return [{"text": item[:240], "order": idx} for idx, item in enumerate(subtasks[:8])]
 
 
 # --- Task templates (admin, owner only) ---
@@ -706,6 +782,27 @@ async def get_tasks_day_desk_legacy(
 ) -> TaskDayDeskResponse:
     """Совместимость со старым frontend: алиас для /tasks/day-desk-summary."""
     return await get_tasks_day_desk(db=db, current_user=current_user)
+
+
+@router.post("/tasks/ai-breakdown", response_model=TaskAiBreakdownResponse)
+async def create_task_ai_breakdown(
+    payload: TaskAiBreakdownRequest,
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
+) -> TaskAiBreakdownResponse:
+    text = re.sub(r"\s+", " ", (payload.text or "").strip())
+    if len(text) < 8:
+        raise HTTPException(status_code=400, detail="Опишите задачу подробнее")
+    if len(text) > 4000:
+        raise HTTPException(status_code=400, detail="Описание задачи слишком длинное")
+
+    category = payload.category if payload.category in ("schools", "parents", "leads") else "schools"
+    return TaskAiBreakdownResponse(
+        title=_make_task_title(text),
+        description=text,
+        category=category,
+        priority=_infer_task_priority(text),
+        subtasks=_build_ai_subtasks(text),
+    )
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)

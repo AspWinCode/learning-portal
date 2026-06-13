@@ -3311,6 +3311,19 @@ export const tasksApi = {
     const response = await api.get('/api/tasks/today', { params });
     return response.data;
   },
+  createAiBreakdown: async (payload: {
+    text: string;
+    category?: 'schools' | 'parents' | 'leads';
+  }): Promise<{
+    title: string;
+    description?: string | null;
+    category: 'schools' | 'parents' | 'leads';
+    priority: 'low' | 'normal' | 'high';
+    subtasks: { text: string; order?: number }[];
+  }> => {
+    const response = await api.post('/api/tasks/ai-breakdown', payload);
+    return response.data;
+  },
   postponeTask: async (taskId: number): Promise<import('../types').TaskResponse> => {
     const response = await api.patch(`/api/tasks/${taskId}/postpone`);
     return response.data;

@@ -6,19 +6,18 @@ API gateway не доступен на frontend — только через back
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import User, SmsMessage, SmsTemplate, LeadCommunication
+from app.models import User, SmsMessage, LeadCommunication
 from app.schemas.sms import (
     SmsSendRequest,
     SmsSendBulkRequest,
     SmsMessageResponse,
-    SmsTemplateResponse,
 )
 from app.services.sms_gateway import send_sms, is_configured, SMS_MAX_LENGTH
 from app.utils.datetime import utcnow

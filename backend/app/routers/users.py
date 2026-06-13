@@ -7,7 +7,7 @@ from app.schemas.auth import ParentInviteRequest, ParentInviteResponse
 from app.schemas.users import UserCreate, UserListResponse, UserResponse, UserUpdate
 from app.models import User, UserRole, Role
 from app.routers.action_log import log_action
-from app.services.parent_invite import create_parent_with_invite, send_invite_email
+from app.services.parent_invite import create_parent_with_invite
 from app.services.email_sender import is_email_configured
 from app.services.person_sync import sync_user_person
 from app.utils.phone import normalize_phone

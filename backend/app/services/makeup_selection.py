@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import date, datetime, time as dt_time, timedelta
+from datetime import date, time as dt_time, timedelta
 from typing import List
 
 from jose import JWTError, jwt

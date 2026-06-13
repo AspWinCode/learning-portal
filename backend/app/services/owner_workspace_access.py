@@ -14,8 +14,6 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.models import (
-    OwnerWorkspaceContact,
-    OwnerWorkspaceCounterparty,
     OwnerWorkspaceProject,
     OwnerWorkspaceProjectContact,
     OwnerWorkspaceProjectCounterparty,

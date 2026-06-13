@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.services.manual_lesson import create_manual_lesson, CreateManualLessonResult
+from app.services.manual_lesson import create_manual_lesson
 
 
 def test_create_manual_lesson_trainer_not_found():

@@ -1,4 +1,4 @@
-from datetime import date, datetime, time as dt_time, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import List, Optional
 
@@ -19,8 +19,8 @@ from app.models import (
     User,
 )
 from app.routers.action_log import log_action
+from app.schemas.groups import LessonCallResultUpdate
 from app.schemas.sales import (
-    LessonCallResultUpdate,
     SalesInstructionCreate,
     SalesInstructionResponse,
     SalesInstructionUpdate,

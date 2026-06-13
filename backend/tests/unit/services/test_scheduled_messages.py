@@ -4,7 +4,6 @@ Unit-тесты сервиса scheduled_messages (ТЗ: отправка отл
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from app.services.scheduled_messages import dispatch_scheduled_messages, _dispatch_sms, _dispatch_max
 

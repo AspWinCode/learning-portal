@@ -16,7 +16,6 @@ from app.background_jobs import (
     run_student_class_autopromo,
     run_tochka_auto_import,
 )
-from app.dramatiq_broker import broker as _broker  # ensure broker setup
 
 
 @dramatiq.actor(queue_name="periodic")

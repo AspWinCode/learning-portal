@@ -29,9 +29,6 @@ from app.schemas.settings import (
     OwnerWorkspaceProjectConfigResponse,
     OwnerWorkspaceProjectConfigUpdate,
     OwnerWorkspaceSettingsBundleEnvelopeResponse,
-    OwnerWorkspaceSettingsBundleMetaResponse,
-    OwnerWorkspaceSettingsBundleResponse,
-    OwnerWorkspaceSettingsBundleSummaryResponse,
     OwnerWorkspaceSettingsBundleUpdate,
     OwnerWorkspaceSettingsSnapshotCreateRequest,
     OwnerWorkspaceSettingsSnapshotDuplicateRequest,
@@ -43,8 +40,6 @@ from app.schemas.settings import (
     OwnerWorkspaceTaskConfigItem,
     OwnerWorkspaceTaskConfigResponse,
     OwnerWorkspaceTaskConfigUpdate,
-    ParentWeeklyDigestSettingsResponse,
-    ParentWeeklyDigestSettingsUpdate,
     PwaModuleResponse,
     PwaMySettingsResponse,
     PwaMySettingsUpdate,
@@ -57,6 +52,10 @@ from app.schemas.settings import (
     StudentQuestionnairesResponse,
     StudentQuestionnaireTemplate,
     StudentQuestionnairesUpdate,
+)
+from app.schemas.parent_dashboard import (
+    ParentWeeklyDigestSettingsResponse,
+    ParentWeeklyDigestSettingsUpdate,
 )
 from app.services.parent_weekly_digest import (
     DEFAULT_PARENT_WEEKLY_DIGEST_SETTINGS,

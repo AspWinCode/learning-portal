@@ -1,6 +1,5 @@
 """Projects kanban for project-access roles."""
 
-from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status

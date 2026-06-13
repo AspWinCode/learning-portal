@@ -1,10 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app.schemas.parent_dashboard import (
-    ParentWeeklyDigestSettingsResponse,
-    ParentWeeklyDigestSettingsUpdate,
-)
 from pydantic import BaseModel, Field
 
 

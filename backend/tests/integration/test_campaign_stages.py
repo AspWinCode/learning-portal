@@ -19,7 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from app import auth
 from app.database import Base, get_db
 from app.main import app
-from app.models import B2BSchool, Campaign, SchoolCampaign
+from app.models import B2BSchool, SchoolCampaign
 from app.routers import campaigns as campaigns_router
 
 

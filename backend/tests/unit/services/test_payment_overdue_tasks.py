@@ -4,7 +4,6 @@ Unit-тесты сервиса payment_overdue_tasks (ТЗ: автозадачи
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from app.services.payment_overdue_tasks import (
     create_payment_overdue_tasks,

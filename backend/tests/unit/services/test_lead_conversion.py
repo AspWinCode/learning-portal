@@ -1,7 +1,7 @@
 """
 Unit-тесты сервиса lead_conversion (ТЗ: конвертация лида в ученика).
 """
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

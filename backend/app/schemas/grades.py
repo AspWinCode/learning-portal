@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.programs import TopicResponse
 from app.schemas.students import StudentResponse
@@ -12,6 +12,19 @@ class GradeBase(BaseModel):
     grade: float = Field(..., ge=0, le=5)
     comment: Optional[str] = None
     date: datetime
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_calendar_date(cls, value):
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, date):
+            return datetime.combine(value, time.min)
+        if isinstance(value, str):
+            text = value.strip()
+            if len(text) == 10:
+                return datetime.combine(date.fromisoformat(text), time.min)
+        return value
 
 
 class GradeCreate(GradeBase):

@@ -1,5 +1,5 @@
 import csv
-from datetime import date, datetime, time as dt_time, timedelta
+from datetime import datetime, timedelta
 from io import BytesIO, StringIO
 from typing import Dict, List, Optional
 
@@ -15,8 +15,6 @@ from app.models import (
     Event,
     EventRegistration,
     EventRegistrationStatus,
-    Invoice,
-    InvoiceStatus,
     Lead,
     LeadInfoTemplate,
     LeadSource,
@@ -32,8 +30,6 @@ from app.models import (
     SalesSchool,
     User,
     UserRole,
-    Task,
-    TaskStatus,
 )
 from app.routers.action_log import log_action
 from app.schemas.sales import (

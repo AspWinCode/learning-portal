@@ -9,7 +9,6 @@ Tests the complete flow:
 """
 import pytest
 from datetime import datetime
-from sqlalchemy.orm import Session
 from fastapi.testclient import TestClient
 
 from app.main import app

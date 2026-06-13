@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 
 from sqlalchemy.orm import Session
 
@@ -80,7 +80,6 @@ def create_morning_link_tasks(db: Session, target_date: date | None = None) -> i
       continue
     assignee_id = _get_sales_assignee(db)
     title = f"Отправить ссылку на занятие: {getattr(student, 'full_name', '')} — {getattr(group, 'name', '')}"
-    due_at = datetime.combine(target_date, time(hour=9, minute=0))
     task = Task(
       title=title,
       description=f"Отправить ссылку на занятие (отработка) ученику {getattr(student, 'full_name', '')} в группе {getattr(group, 'name', '')}",

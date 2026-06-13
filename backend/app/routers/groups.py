@@ -294,7 +294,7 @@ async def update_group(
         raise HTTPException(status_code=404, detail="Group not found")
     
     update_data = group_update.model_dump(exclude_unset=True)
-    schedules_payload = update_data.pop("schedules", None)  # list of dicts or None
+    update_data.pop("schedules", None)  # list of dicts or None
 
     # Валидация тренера (если меняем)
     if "trainer_id" in update_data and update_data["trainer_id"] is not None:
@@ -524,7 +524,7 @@ async def remove_student_from_group(
     if not group_student:
         raise HTTPException(status_code=404, detail="Student not in group")
 
-    from datetime import datetime, timezone
+    from datetime import timezone
     group_student.left_at = datetime.now(timezone.utc)
     group = db.query(Group).filter(Group.id == group_id).first()
     log_student_activity(

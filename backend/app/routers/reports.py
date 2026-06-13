@@ -1,5 +1,5 @@
 from typing import List, Dict, Tuple, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -7,7 +7,7 @@ from app.database import get_db
 from app import auth
 from app.models import (
     User, Grade, Student, Characteristic, ActionLog, UserRole,
-    GroupStudent, Group, StudentStatus, GroupStatus, CharacteristicStatus
+    GroupStudent, Group, StudentStatus, CharacteristicStatus
 )
 from app.schemas.reports import ReportRequest
 import io

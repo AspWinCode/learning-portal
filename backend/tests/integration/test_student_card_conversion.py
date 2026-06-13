@@ -9,13 +9,11 @@ Tests the complete flow:
 """
 import pytest
 from datetime import datetime
-from sqlalchemy.orm import Session
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.database import get_db
 from app.models import StudentCard, Student, User, UserRole, StudentStatus
-from app.schemas.sales import AnketaConvertRequest
 
 
 class FakeStudentCardsDB:

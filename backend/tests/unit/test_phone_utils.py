@@ -1,7 +1,6 @@
 """
 Unit-тесты утилит нормализации и валидации телефона (app/utils/phone.py).
 """
-import pytest
 
 from app.utils.phone import normalize_phone, validate_phone_for_lead
 

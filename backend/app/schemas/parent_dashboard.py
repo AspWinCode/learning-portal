@@ -5,11 +5,6 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.owner_dashboard import StudentLearningAIInsightResponse
-from app.schemas.owner_workspace import (
-    OwnerWorkspaceWebPushStatusResponse,
-    OwnerWorkspaceWebPushSubscriptionDelete,
-    OwnerWorkspaceWebPushSubscriptionUpsert,
-)
 
 
 class ParentDashboardNearestLessonResponse(BaseModel):

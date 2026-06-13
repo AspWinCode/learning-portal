@@ -11,8 +11,8 @@ from app.schemas.communications import (
     CommunicationQueueResponse,
     CommunicationTemplateCreate,
     CommunicationTemplateUpdate,
-    SmsTemplateResponse,
 )
+from app.schemas.sms import SmsTemplateResponse
 
 router = APIRouter()
 

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models import OwnerWorkspaceTask, OwnerWorkspaceTaskWatcher, User
+from app.models import OwnerWorkspaceTask, OwnerWorkspaceTaskWatcher
 from app.services.owner_workspace_notifications import queue_notification
 
 logger = logging.getLogger(__name__)

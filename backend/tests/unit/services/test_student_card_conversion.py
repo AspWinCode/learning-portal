@@ -1,7 +1,7 @@
 """
 Unit-тесты сервиса student_card_conversion (ТЗ: конвертация анкеты в ученика).
 """
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

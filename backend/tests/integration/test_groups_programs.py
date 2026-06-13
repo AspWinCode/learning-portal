@@ -6,9 +6,8 @@
 2. Назначение/удаление программ у группы
 3. Валидация ACTIVE статуса программы в groups и programs роутерах
 """
-import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -118,7 +117,7 @@ class FakeGroupsDB:
         self.flushed = False
 
     def query(self, model):
-        from app.models import Group, Student, GroupStudent, StudentProgram, GroupProgram, Program
+        from app.models import Group, Student, StudentProgram, Program
         if model is Group:
             return FakeQuery(self._group)
         if model is Student:
@@ -454,12 +453,11 @@ class TestRemoveProgramFromGroup:
 class TestProgramsAssignToStudent:
 
     def _make_programs_db(self, program=None, student=None, existing_sp=None):
-        from app.models import StudentProgram, ProgramTrainer
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = None
 
         def _query_side_effect(model):
-            from app.models import Program, Student, StudentProgram as SP, ProgramTrainer as PT, Group
+            from app.models import StudentProgram as SP, ProgramTrainer as PT, Group
             q = MagicMock()
             q.filter.return_value = q
             q.distinct.return_value = q

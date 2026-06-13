@@ -12,17 +12,6 @@ from app.schemas.common import (
     LeadStatus,
     LeadTaskStatus,
 )
-from app.schemas.finance import (
-    BankPaymentImportRequest,
-    BankPaymentImportResponse,
-    BankPaymentItem,
-    BankTransactionApplyRequest,
-    BankTransactionExpenseCategoryUpdate,
-    BankTransactionResponse,
-    PhonePaymentBindingCreate,
-    TochkaImportRequest,
-)
-from app.schemas.groups import LessonCallResultUpdate
 from app.schemas.owner_dashboard import LeadAIInsightResponse
 
 

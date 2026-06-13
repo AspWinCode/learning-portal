@@ -4,7 +4,6 @@
 """
 
 import logging
-from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -15,7 +14,6 @@ from app.services.max_messenger import (
     send_message_personal,
     is_configured as max_is_configured,
     is_personal_configured,
-    get_personal_provider,
 )
 from app.utils.datetime import utcnow
 
@@ -82,7 +80,6 @@ def _dispatch_max(db: Session) -> int:
     sent_count = 0
     for record in pending:
         try:
-            provider = record.provider or ""
             chat_id = record.chat_id or ""
             max_user_id = record.max_user_id
 

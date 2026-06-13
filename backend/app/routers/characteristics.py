@@ -1,7 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 from app.database import get_db
 from app import auth
 from app.schemas.characteristics import (
@@ -13,7 +12,6 @@ from app.models import (
     Characteristic, CharacteristicTemplate, User, CharacteristicStatus, Student, GroupStudent, Group, UserRole, StudentStatus
 )
 from app.routers.action_log import log_action
-from datetime import datetime
 from app.services.telegram import notify_admins, notify_user
 from app.services.characteristic_review import (
     submit_characteristic_for_review,
@@ -57,7 +55,7 @@ async def read_templates(
 ):
     """Получение списка шаблонов характеристик"""
     templates = db.query(CharacteristicTemplate).filter(
-        CharacteristicTemplate.is_active == True
+        CharacteristicTemplate.is_active
     ).all()
     return templates
 
@@ -99,7 +97,7 @@ async def create_characteristic(
     
     # Валидация обязательных полей по активному шаблону (если есть)
     active_template = db.query(CharacteristicTemplate).filter(
-        CharacteristicTemplate.is_active == True
+        CharacteristicTemplate.is_active
     ).first()
     if active_template and isinstance(active_template.fields, list):
         for f in active_template.fields:
@@ -209,7 +207,7 @@ async def update_characteristic(
     if body.data is not None:
         # Валидация обязательных полей по активному шаблону
         active_template = db.query(CharacteristicTemplate).filter(
-            CharacteristicTemplate.is_active == True
+            CharacteristicTemplate.is_active
         ).first()
         if active_template and isinstance(active_template.fields, list):
             for f in active_template.fields:

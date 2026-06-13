@@ -12,7 +12,7 @@
 8. Представления: /tasks/today (today|overdue|active), /tasks/stats
 9. day-desk-summary: группировка
 """
-from datetime import datetime, timedelta, time, timezone
+from datetime import timedelta
 
 import pytest
 import sqlalchemy as sa
@@ -24,7 +24,7 @@ from app import auth
 from app.database import Base, get_db
 from app.main import app
 from app.models import Student, Task, TaskStatus, User
-from app.routers.tasks import MSK, _today_msk
+from app.routers.tasks import _today_msk
 
 
 # ---------------------------------------------------------------------------

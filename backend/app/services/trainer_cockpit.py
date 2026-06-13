@@ -21,7 +21,6 @@ from app.models import (
     Student,
     StudentProgram,
     StudentProgramLinkStatus,
-    Topic,
     TopicStatus,
     User,
     UserRole,

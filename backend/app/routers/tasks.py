@@ -39,13 +39,6 @@ from app.schemas.tasks import (
     TaskDayDeskStats,
     TaskDayStatsResponse,
 )
-from app.schemas.tasks import (
-    ParentResponsesStat,
-    TaskCounterIncrement,
-    TaskDayDeskResponse,
-    TaskDayDeskStats,
-    TaskDayStatsResponse,
-)
 
 router = APIRouter()
 

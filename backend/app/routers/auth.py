@@ -13,13 +13,10 @@ from app.database import get_db
 from app.models import User
 from app.rate_limit import limiter
 from app.schemas.auth import (
-    ParentInviteRequest,
-    ParentInviteResponse,
     PasswordReset,
     PasswordResetConfirm,
     SetPasswordByInvite,
     Token,
-    UserLogin,
 )
 from app.schemas.users import UserResponse
 from app.services.telegram import notify_user

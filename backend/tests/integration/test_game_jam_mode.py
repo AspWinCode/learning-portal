@@ -20,7 +20,7 @@ from sqlalchemy.pool import StaticPool
 from app import auth
 from app.database import Base, get_db
 from app.main import app
-from app.models import B2BSchool, Campaign, CampaignEvent, SchoolCampaign, User
+from app.models import B2BSchool, User
 
 
 # ---------------------------------------------------------------------------

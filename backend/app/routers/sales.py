@@ -148,13 +148,6 @@ from app.schemas.sales import (
     AnketaConvertRequest,
     AnketaConvertResponse,
     LeadConvertToStudentResponse,
-    LessonCallResultUpdate,
-    TochkaImportRequest,
-    BankPaymentImportResponse,
-    PhonePaymentBindingCreate,
-    BankTransactionResponse,
-    BankTransactionApplyRequest,
-    BankTransactionExpenseCategoryUpdate,
     AbsenceMakeupAssign,
     MakeupSuggestionItem,
     PublicMakeupSlotsResponse,
@@ -180,6 +173,15 @@ from app.schemas.sales import (
     LeadNextAction,
     LeadSidebarSummary,
 )
+from app.schemas.finance import (
+    BankPaymentImportResponse,
+    BankTransactionApplyRequest,
+    BankTransactionExpenseCategoryUpdate,
+    BankTransactionResponse,
+    PhonePaymentBindingCreate,
+    TochkaImportRequest,
+)
+from app.schemas.groups import LessonCallResultUpdate
 from app.routers.action_log import log_action
 from app.services.lead_conversion import convert_lead_to_student as lead_conversion_convert
 from app.services.makeup_selection import (

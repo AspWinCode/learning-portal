@@ -92,7 +92,7 @@ def _run_tochka_auto_import() -> None:
         date_from = date_to - timedelta(days=14)
         db = SessionLocal()
         try:
-            from app.routers.sales import do_tochka_import_and_apply
+            from app.routers.sales_bank import do_tochka_import_and_apply
 
             do_tochka_import_and_apply(db, account_id, date_from, date_to, actor_user_id=None)
         finally:

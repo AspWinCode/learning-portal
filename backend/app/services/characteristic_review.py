@@ -5,7 +5,6 @@ Use case: отправка на согласование, одобрение и 
 Источник: BACKEND_REFACTOR_USE_CASES.md.
 """
 
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -36,7 +35,7 @@ def submit_characteristic_for_review(
 
     active_template = (
         db.query(CharacteristicTemplate)
-        .filter(CharacteristicTemplate.is_active == True)
+        .filter(CharacteristicTemplate.is_active)
         .first()
     )
     if active_template and isinstance(active_template.fields, list):

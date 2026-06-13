@@ -22,7 +22,7 @@ from app.models import (
     UserRole,
 )
 from app.routers.action_log import log_action
-from app.schemas.sales import (
+from app.schemas.finance import (
     BankPaymentImportResponse,
     BankTransactionApplyRequest,
     BankTransactionExpenseCategoryUpdate,
@@ -170,6 +170,8 @@ def do_tochka_import_and_apply(
                 bank_transaction,
                 bank_source="tochka",
             )
+            if bank_transaction.status == BankTransactionStatus.APPLIED.value:
+                continue
 
             student_ids: List[int] = []
             if payer_phone:

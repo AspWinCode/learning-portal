@@ -4,7 +4,6 @@ Unit-тесты сервиса student_card_period (ТЗ: период обуч�
 from datetime import date, timedelta
 from unittest.mock import MagicMock
 
-import pytest
 
 from app.services.student_card_period import (
     update_card_payment_dates,

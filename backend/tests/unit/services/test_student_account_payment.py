@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.services.student_account_payment import add_payment_to_student_account
-from app.models import StudentAccount
 
 
 @patch("app.services.student_account_payment.update_card_payment_dates")
@@ -30,7 +29,7 @@ def test_add_payment_student_not_found(mock_update_dates):
 @patch("app.services.student_account_payment.update_card_payment_dates")
 def test_add_payment_success_creates_account(mock_update_dates):
     """Успех: ученик есть, счёта нет — создаётся счёт и проводка."""
-    from app.models import Student, StudentAccount
+    from app.models import Student
     db = MagicMock()
     mock_student = MagicMock()
     mock_student.id = 1

@@ -3,7 +3,6 @@ from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.sms import SmsTemplateResponse
 
 
 class CommunicationTemplateBase(BaseModel):

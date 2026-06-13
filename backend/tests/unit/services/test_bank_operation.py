@@ -1,7 +1,7 @@
 """
 Unit-тесты сервиса bank_operation (ТЗ: зачисление банковской операции на ученика).
 """
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

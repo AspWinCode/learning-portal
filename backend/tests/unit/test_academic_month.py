@@ -3,7 +3,6 @@ Unit-тесты модуля academic_month (ТЗ: учебный месяц д�
 """
 from datetime import date
 
-import pytest
 
 from app.academic_month import get_academic_window
 

@@ -7,10 +7,12 @@ from app.cache import CACHE_NS_PARENT_DASHBOARD
 from app.database import get_db
 from app.models import User
 from app.routers.action_log import log_action
-from app.schemas.parent_dashboard import (
+from app.schemas.owner_workspace import (
     OwnerWorkspaceWebPushStatusResponse,
     OwnerWorkspaceWebPushSubscriptionDelete,
     OwnerWorkspaceWebPushSubscriptionUpsert,
+)
+from app.schemas.parent_dashboard import (
     ParentDashboardSummaryResponse,
     ParentQuestionCreate,
     ParentQuestionResponse,

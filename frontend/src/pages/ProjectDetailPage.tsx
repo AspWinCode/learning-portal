@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -31,6 +31,8 @@ import {
   Delete as DeleteIcon,
   Download as DownloadIcon,
   Edit as EditIcon,
+  CreateNewFolder as CreateNewFolderIcon,
+  Folder as FolderIcon,
   InsertDriveFile as FileIcon,
   NavigateNext as NavigateNextIcon,
   UploadFile as UploadFileIcon,
@@ -45,6 +47,7 @@ import type {
   OwnerWorkspaceContact,
   OwnerWorkspaceProject,
   OwnerWorkspaceProjectDocument,
+  OwnerWorkspaceProjectDocumentFolder,
   OwnerWorkspaceProjectStatus,
   OwnerWorkspaceTask,
   User,
@@ -178,6 +181,15 @@ type SubprojectForm = {
   description: string;
 };
 
+type DocumentFolderForm = {
+  name: string;
+  parent_id: string;
+};
+
+type DocumentFolderTreeItem = OwnerWorkspaceProjectDocumentFolder & {
+  depth: number;
+};
+
 const emptySubprojectForm = (): SubprojectForm => ({
   name: '',
   status: 'new',
@@ -209,6 +221,13 @@ const ProjectDetailPage: React.FC = () => {
 
   // Documents
   const [documents, setDocuments] = useState<OwnerWorkspaceProjectDocument[]>([]);
+  const [documentFolders, setDocumentFolders] = useState<OwnerWorkspaceProjectDocumentFolder[]>([]);
+  const [selectedDocumentFolderId, setSelectedDocumentFolderId] = useState<number | null>(null);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<OwnerWorkspaceProjectDocumentFolder | null>(null);
+  const [folderForm, setFolderForm] = useState<DocumentFolderForm>({ name: '', parent_id: '' });
+  const [folderSaving, setFolderSaving] = useState(false);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<OwnerWorkspaceProjectDocumentFolder | null>(null);
   const [docsLoading, setDocsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -296,7 +315,11 @@ const ProjectDetailPage: React.FC = () => {
   const loadDocuments = useCallback(async () => {
     setDocsLoading(true);
     try {
-      const data = await ownerWorkspaceApi.listProjectDocuments(projectId);
+      const [folders, data] = await Promise.all([
+        ownerWorkspaceApi.listProjectDocumentFolders(projectId),
+        ownerWorkspaceApi.listProjectDocuments(projectId),
+      ]);
+      setDocumentFolders(folders);
       setDocuments(data);
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось загрузить документы.'));
@@ -359,6 +382,41 @@ const ProjectDetailPage: React.FC = () => {
     if (tab === 4) void loadSubprojects();
     if (tab === 5) void loadHistory();
   }, [tab, loadTasks, loadDocuments, loadContacts, loadSubprojects, loadHistory]);
+
+  const documentFolderTree = useMemo<DocumentFolderTreeItem[]>(() => {
+    const byParent = new Map<number | null, OwnerWorkspaceProjectDocumentFolder[]>();
+    documentFolders.forEach((folder) => {
+      const parentId = folder.parent_id ?? null;
+      const siblings = byParent.get(parentId) ?? [];
+      siblings.push(folder);
+      byParent.set(parentId, siblings);
+    });
+    byParent.forEach((siblings) => siblings.sort((a, b) => a.name.localeCompare(b.name, 'ru')));
+    const result: DocumentFolderTreeItem[] = [];
+    const walk = (parentId: number | null, depth: number) => {
+      (byParent.get(parentId) ?? []).forEach((folder) => {
+        result.push({ ...folder, depth });
+        walk(folder.id, depth + 1);
+      });
+    };
+    walk(null, 0);
+    return result;
+  }, [documentFolders]);
+
+  const selectedDocumentFolder = useMemo(
+    () => documentFolders.find((folder) => folder.id === selectedDocumentFolderId) ?? null,
+    [documentFolders, selectedDocumentFolderId]
+  );
+
+  const visibleDocuments = useMemo(
+    () => documents.filter((doc) => (doc.folder_id ?? null) === selectedDocumentFolderId),
+    [documents, selectedDocumentFolderId]
+  );
+
+  const unfiledDocumentCount = useMemo(
+    () => documents.filter((doc) => doc.folder_id == null).length,
+    [documents]
+  );
 
   // ─── Edit project ─────────────────────────────────────────────────────────
 
@@ -444,13 +502,77 @@ const ProjectDetailPage: React.FC = () => {
     setUploading(true);
     setError('');
     try {
-      await ownerWorkspaceApi.uploadProjectDocument(projectId, file);
+      await ownerWorkspaceApi.uploadProjectDocument(projectId, file, selectedDocumentFolderId);
       setSuccess('Документ загружен.');
       await loadDocuments();
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось загрузить документ.'));
     } finally {
       setUploading(false);
+    }
+  };
+
+  const openCreateFolderDialog = (parentId: number | null = selectedDocumentFolderId) => {
+    setEditingFolder(null);
+    setFolderForm({ name: '', parent_id: parentId != null ? String(parentId) : '' });
+    setFolderDialogOpen(true);
+  };
+
+  const openEditFolderDialog = (folder: OwnerWorkspaceProjectDocumentFolder) => {
+    setEditingFolder(folder);
+    setFolderForm({
+      name: folder.name,
+      parent_id: folder.parent_id != null ? String(folder.parent_id) : '',
+    });
+    setFolderDialogOpen(true);
+  };
+
+  const handleSaveFolder = async () => {
+    const name = folderForm.name.trim();
+    if (!name) {
+      setError('Укажите название папки.');
+      return;
+    }
+    const parentId = folderForm.parent_id ? Number(folderForm.parent_id) : null;
+    setFolderSaving(true);
+    setError('');
+    try {
+      if (editingFolder) {
+        await ownerWorkspaceApi.updateProjectDocumentFolder(projectId, editingFolder.id, {
+          name,
+          parent_id: parentId,
+        });
+        setSuccess('Папка обновлена.');
+      } else {
+        const created = await ownerWorkspaceApi.createProjectDocumentFolder(projectId, {
+          name,
+          parent_id: parentId,
+        });
+        setSelectedDocumentFolderId(created.id);
+        setSuccess('Папка создана.');
+      }
+      setFolderDialogOpen(false);
+      setEditingFolder(null);
+      await loadDocuments();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось сохранить папку.'));
+    } finally {
+      setFolderSaving(false);
+    }
+  };
+
+  const handleDeleteFolder = async () => {
+    if (!deleteFolderTarget) return;
+    try {
+      await ownerWorkspaceApi.deleteProjectDocumentFolder(projectId, deleteFolderTarget.id);
+      if (selectedDocumentFolderId === deleteFolderTarget.id) {
+        setSelectedDocumentFolderId(null);
+      }
+      setDeleteFolderTarget(null);
+      setSuccess('Папка удалена.');
+      await loadDocuments();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось удалить папку.'));
     }
   };
 
@@ -814,6 +936,53 @@ const ProjectDetailPage: React.FC = () => {
 
         {/* Tab: Документы */}
         <TabPanel value={tab} index={2}>
+          <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography fontWeight={700}>Папки</Typography>
+              <Button size="small" variant="outlined" startIcon={<CreateNewFolderIcon />} onClick={() => openCreateFolderDialog(null)}>
+                Создать папку
+              </Button>
+            </Stack>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button
+                size="small"
+                color={selectedDocumentFolderId === null ? 'primary' : 'inherit'}
+                variant={selectedDocumentFolderId === null ? 'contained' : 'outlined'}
+                startIcon={<FolderIcon />}
+                onClick={() => setSelectedDocumentFolderId(null)}
+              >
+                Без папки ({unfiledDocumentCount})
+              </Button>
+              {documentFolderTree.map((folder) => {
+                const count = documents.filter((doc) => doc.folder_id === folder.id).length;
+                return (
+                  <Stack key={folder.id} direction="row" alignItems="center" spacing={0.5} sx={{ ml: folder.depth }}>
+                    <Button
+                      size="small"
+                      color={selectedDocumentFolderId === folder.id ? 'primary' : 'inherit'}
+                      variant={selectedDocumentFolderId === folder.id ? 'contained' : 'outlined'}
+                      startIcon={<FolderIcon />}
+                      onClick={() => setSelectedDocumentFolderId(folder.id)}
+                    >
+                      {folder.name} ({count})
+                    </Button>
+                    <IconButton size="small" onClick={() => openCreateFolderDialog(folder.id)}>
+                      <AddIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => openEditFolderDialog(folder)}>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" color="error" onClick={() => setDeleteFolderTarget(folder)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                );
+              })}
+            </Stack>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Текущая папка: {selectedDocumentFolder ? selectedDocumentFolder.name : 'Без папки'}
+            </Typography>
+          </Paper>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
             <Button
               variant="contained"
@@ -838,11 +1007,11 @@ const ProjectDetailPage: React.FC = () => {
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
             </Box>
-          ) : documents.length === 0 ? (
+          ) : visibleDocuments.length === 0 ? (
             <EmptyState title="Нет документов" description="Загрузите первый документ." />
           ) : (
             <Stack spacing={1}>
-              {documents.map((doc) => (
+              {visibleDocuments.map((doc) => (
                 <Paper key={doc.id} variant="outlined" sx={{ p: 2 }}>
                   <Stack
                     direction={{ xs: 'column', sm: 'row' }}
@@ -1160,6 +1329,54 @@ const ProjectDetailPage: React.FC = () => {
         onSubmit={handleCreateTask}
         projectName={project?.name}
         users={users}
+      />
+
+      <Dialog open={folderDialogOpen} onClose={() => setFolderDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingFolder ? 'Редактировать папку' : 'Создать папку'}</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Название"
+              value={folderForm.name}
+              onChange={(e) => setFolderForm((prev) => ({ ...prev, name: e.target.value }))}
+              fullWidth
+              required
+              autoFocus
+            />
+            <FormControl fullWidth>
+              <InputLabel>Родительская папка</InputLabel>
+              <Select
+                label="Родительская папка"
+                value={folderForm.parent_id}
+                onChange={(e) => setFolderForm((prev) => ({ ...prev, parent_id: e.target.value }))}
+              >
+                <MenuItem value="">Без родителя</MenuItem>
+                {documentFolderTree
+                  .filter((folder) => folder.id !== editingFolder?.id)
+                  .map((folder) => (
+                    <MenuItem key={folder.id} value={String(folder.id)}>
+                      {'—'.repeat(folder.depth)} {folder.name}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFolderDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" disabled={folderSaving} onClick={() => void handleSaveFolder()}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleteFolderTarget)}
+        title="Удалить папку?"
+        description={`Папка «${deleteFolderTarget?.name ?? ''}» и ее подпапки будут удалены. Файлы останутся в разделе «Без папки».`}
+        confirmLabel="Удалить"
+        onClose={() => setDeleteFolderTarget(null)}
+        onConfirm={handleDeleteFolder}
       />
 
       {/* Delete document confirm */}

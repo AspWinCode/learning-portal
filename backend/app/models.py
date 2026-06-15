@@ -2338,12 +2338,30 @@ class OwnerWorkspaceCounterpartyDocument(Base):
     counterparty = relationship("OwnerWorkspaceCounterparty")
 
 
+class OwnerWorkspaceProjectDocumentFolder(Base):
+    """Folders for project documents."""
+    __tablename__ = "owner_workspace_project_document_folders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_id = Column(Integer, ForeignKey("owner_workspace_project_document_folders.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    project = relationship("OwnerWorkspaceProject")
+    parent = relationship("OwnerWorkspaceProjectDocumentFolder", remote_side=[id], backref="children")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
 class OwnerWorkspaceProjectDocument(Base):
     """Документы, прикреплённые к проекту (бинарные данные в БД)."""
     __tablename__ = "owner_workspace_project_documents"
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("owner_workspace_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    folder_id = Column(Integer, ForeignKey("owner_workspace_project_document_folders.id", ondelete="SET NULL"), nullable=True, index=True)
     filename = Column(String(255), nullable=False)
     content_type = Column(String(128), nullable=False)
     size_bytes = Column(Integer, nullable=False, server_default="0")
@@ -2352,6 +2370,7 @@ class OwnerWorkspaceProjectDocument(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     project = relationship("OwnerWorkspaceProject", back_populates="documents")
+    folder = relationship("OwnerWorkspaceProjectDocumentFolder")
     uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
 
 

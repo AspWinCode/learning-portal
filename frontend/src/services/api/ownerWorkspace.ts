@@ -13,6 +13,7 @@ import type {
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceProject,
   OwnerWorkspaceProjectDocument,
+  OwnerWorkspaceProjectDocumentFolder,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskComment,
@@ -71,12 +72,35 @@ export const ownerWorkspaceApi = {
     return response.data;
   },
   // Project Documents
+  listProjectDocumentFolders: async (projectId: number): Promise<OwnerWorkspaceProjectDocumentFolder[]> => {
+    const response = await api.get(`/api/owner-workspace/projects/${projectId}/document-folders`);
+    return response.data;
+  },
+  createProjectDocumentFolder: async (
+    projectId: number,
+    payload: { name: string; parent_id?: number | null }
+  ): Promise<OwnerWorkspaceProjectDocumentFolder> => {
+    const response = await api.post(`/api/owner-workspace/projects/${projectId}/document-folders`, payload);
+    return response.data;
+  },
+  updateProjectDocumentFolder: async (
+    projectId: number,
+    folderId: number,
+    payload: { name?: string; parent_id?: number | null }
+  ): Promise<OwnerWorkspaceProjectDocumentFolder> => {
+    const response = await api.patch(`/api/owner-workspace/projects/${projectId}/document-folders/${folderId}`, payload);
+    return response.data;
+  },
+  deleteProjectDocumentFolder: async (projectId: number, folderId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/projects/${projectId}/document-folders/${folderId}`);
+  },
   listProjectDocuments: async (projectId: number): Promise<OwnerWorkspaceProjectDocument[]> => {
     const response = await api.get(`/api/owner-workspace/projects/${projectId}/documents`);
     return response.data;
   },
-  uploadProjectDocument: async (projectId: number, file: File): Promise<OwnerWorkspaceProjectDocument> => {
+  uploadProjectDocument: async (projectId: number, file: File, folderId?: number | null): Promise<OwnerWorkspaceProjectDocument> => {
     const form = new FormData();
+    if (folderId != null) form.append('folder_id', String(folderId));
     form.append('file', file);
     const response = await api.post(`/api/owner-workspace/projects/${projectId}/documents`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },

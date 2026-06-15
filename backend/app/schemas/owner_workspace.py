@@ -78,12 +78,35 @@ class OwnerWorkspaceProjectResponse(BaseModel):
 class OwnerWorkspaceProjectDocumentResponse(BaseModel):
     id: int
     project_id: int
+    folder_id: Optional[int] = None
     filename: str
     content_type: str
     size_bytes: int
     uploaded_by_id: Optional[int] = None
     uploaded_by_name: Optional[str] = None
     created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OwnerWorkspaceProjectDocumentFolderCreate(BaseModel):
+    parent_id: Optional[int] = None
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class OwnerWorkspaceProjectDocumentFolderUpdate(BaseModel):
+    parent_id: Optional[int] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+
+
+class OwnerWorkspaceProjectDocumentFolderResponse(BaseModel):
+    id: int
+    project_id: int
+    parent_id: Optional[int] = None
+    name: str
+    created_by_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

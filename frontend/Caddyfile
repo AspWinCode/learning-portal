@@ -6,6 +6,9 @@ http://{$DOMAIN} {
     # Backend API: все /api/* на backend без обрезки пути (path сохраняется)
     @api path /api/*
     handle @api {
+        request_body {
+            max_size 100MB
+        }
         reverse_proxy backend:8000
     }
 

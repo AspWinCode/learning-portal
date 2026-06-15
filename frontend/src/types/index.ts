@@ -1534,12 +1534,23 @@ export interface OwnerWorkspaceProject {
 export interface OwnerWorkspaceProjectDocument {
   id: number;
   project_id: number;
+  folder_id?: number | null;
   filename: string;
   content_type: string;
   size_bytes: number;
   uploaded_by_id?: number | null;
   uploaded_by_name?: string | null;
   created_at?: string | null;
+}
+
+export interface OwnerWorkspaceProjectDocumentFolder {
+  id: number;
+  project_id: number;
+  parent_id?: number | null;
+  name: string;
+  created_by_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface OwnerUsefulLinkFolder {

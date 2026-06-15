@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import String, and_, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
@@ -70,6 +70,7 @@ from app.models import (
     OwnerWorkspaceProjectContact,
     OwnerWorkspaceProjectCounterparty,
     OwnerWorkspaceProjectDocument,
+    OwnerWorkspaceProjectDocumentFolder,
     OwnerWorkspaceProjectParticipant,
     OwnerWorkspaceTask,
     OwnerWorkspaceTaskComment,
@@ -117,6 +118,9 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceUserPreferencesResponse,
     OwnerWorkspaceProjectContactAdd,
     OwnerWorkspaceProjectCreate,
+    OwnerWorkspaceProjectDocumentFolderCreate,
+    OwnerWorkspaceProjectDocumentFolderResponse,
+    OwnerWorkspaceProjectDocumentFolderUpdate,
     OwnerWorkspaceProjectDocumentResponse,
     OwnerWorkspaceProjectParticipantAdd,
     OwnerWorkspaceProjectParticipantRolePatch,
@@ -1657,6 +1661,194 @@ async def remove_contact_from_project(
 
 # ── Project Documents ──────────────────────────────────────────────────────
 
+PROJECT_DOCUMENT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
+
+def _project_document_folder_to_response(row: OwnerWorkspaceProjectDocumentFolder) -> OwnerWorkspaceProjectDocumentFolderResponse:
+    return OwnerWorkspaceProjectDocumentFolderResponse(
+        id=row.id,
+        project_id=row.project_id,
+        parent_id=row.parent_id,
+        name=row.name,
+        created_by_id=row.created_by_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _assert_project_document_folder(
+    db: Session,
+    project_id: int,
+    folder_id: Optional[int],
+) -> Optional[OwnerWorkspaceProjectDocumentFolder]:
+    if folder_id is None:
+        return None
+    folder = db.query(OwnerWorkspaceProjectDocumentFolder).filter(
+        OwnerWorkspaceProjectDocumentFolder.id == folder_id,
+        OwnerWorkspaceProjectDocumentFolder.project_id == project_id,
+    ).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return folder
+
+
+def _assert_not_folder_descendant(
+    db: Session,
+    project_id: int,
+    folder_id: int,
+    parent_id: Optional[int],
+) -> None:
+    current_parent = parent_id
+    visited: set[int] = set()
+    while current_parent is not None:
+        if current_parent == folder_id:
+            raise HTTPException(status_code=400, detail="Folder cannot be moved into itself")
+        if current_parent in visited:
+            raise HTTPException(status_code=400, detail="Folder cycle detected")
+        visited.add(current_parent)
+        parent = db.query(OwnerWorkspaceProjectDocumentFolder).filter(
+            OwnerWorkspaceProjectDocumentFolder.id == current_parent,
+            OwnerWorkspaceProjectDocumentFolder.project_id == project_id,
+        ).first()
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent folder not found")
+        current_parent = parent.parent_id
+
+
+@router.get("/projects/{project_id}/document-folders", response_model=List[OwnerWorkspaceProjectDocumentFolderResponse])
+async def list_project_document_folders(
+    project_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    rows = (
+        db.query(OwnerWorkspaceProjectDocumentFolder)
+        .filter(OwnerWorkspaceProjectDocumentFolder.project_id == project_id)
+        .order_by(OwnerWorkspaceProjectDocumentFolder.name.asc(), OwnerWorkspaceProjectDocumentFolder.id.asc())
+        .all()
+    )
+    return [_project_document_folder_to_response(row) for row in rows]
+
+
+@router.post("/projects/{project_id}/document-folders", response_model=OwnerWorkspaceProjectDocumentFolderResponse, status_code=status.HTTP_201_CREATED)
+async def create_project_document_folder(
+    project_id: int,
+    payload: OwnerWorkspaceProjectDocumentFolderCreate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_edit_project_content(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Folder name is required")
+    _assert_project_document_folder(db, project_id, payload.parent_id)
+    row = OwnerWorkspaceProjectDocumentFolder(
+        project_id=project_id,
+        parent_id=payload.parent_id,
+        name=name,
+        created_by_id=ctx.user.id,
+    )
+    db.add(row)
+    _log_audit(
+        db,
+        entity_type="project",
+        entity_id=project_id,
+        action_type="document_folder_create",
+        author_id=ctx.user.id,
+        new_value={"name": name, "parent_id": payload.parent_id},
+    )
+    db.commit()
+    db.refresh(row)
+    return _project_document_folder_to_response(row)
+
+
+@router.patch("/projects/{project_id}/document-folders/{folder_id}", response_model=OwnerWorkspaceProjectDocumentFolderResponse)
+async def update_project_document_folder(
+    project_id: int,
+    folder_id: int,
+    payload: OwnerWorkspaceProjectDocumentFolderUpdate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_edit_project_content(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    row = _assert_project_document_folder(db, project_id, folder_id)
+    if payload.parent_id is not None:
+        _assert_not_folder_descendant(db, project_id, folder_id, payload.parent_id)
+    old_value = {"name": row.name, "parent_id": row.parent_id}
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Folder name is required")
+        row.name = name
+    if "parent_id" in payload.model_fields_set:
+        if payload.parent_id is not None:
+            _assert_project_document_folder(db, project_id, payload.parent_id)
+        row.parent_id = payload.parent_id
+    _log_audit(
+        db,
+        entity_type="project",
+        entity_id=project_id,
+        action_type="document_folder_update",
+        author_id=ctx.user.id,
+        old_value=old_value,
+        new_value={"name": row.name, "parent_id": row.parent_id},
+    )
+    db.commit()
+    db.refresh(row)
+    return _project_document_folder_to_response(row)
+
+
+@router.delete("/projects/{project_id}/document-folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project_document_folder(
+    project_id: int,
+    folder_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_edit_project_content(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    row = _assert_project_document_folder(db, project_id, folder_id)
+    folder_ids = [folder_id]
+    cursor = 0
+    while cursor < len(folder_ids):
+        child_ids = [
+            child_id for (child_id,) in db.query(OwnerWorkspaceProjectDocumentFolder.id)
+            .filter(
+                OwnerWorkspaceProjectDocumentFolder.project_id == project_id,
+                OwnerWorkspaceProjectDocumentFolder.parent_id == folder_ids[cursor],
+            )
+            .all()
+        ]
+        folder_ids.extend(child_ids)
+        cursor += 1
+    db.query(OwnerWorkspaceProjectDocument).filter(
+        OwnerWorkspaceProjectDocument.project_id == project_id,
+        OwnerWorkspaceProjectDocument.folder_id.in_(folder_ids),
+    ).update({OwnerWorkspaceProjectDocument.folder_id: None}, synchronize_session=False)
+    old_value = {"name": row.name, "folder_ids": folder_ids}
+    db.delete(row)
+    _log_audit(
+        db,
+        entity_type="project",
+        entity_id=project_id,
+        action_type="document_folder_delete",
+        author_id=ctx.user.id,
+        old_value=old_value,
+    )
+    db.commit()
+    return None
+
+
 @router.get("/projects/{project_id}/documents", response_model=List[OwnerWorkspaceProjectDocumentResponse])
 async def list_project_documents(
     project_id: int,
@@ -1680,6 +1872,7 @@ async def list_project_documents(
         result.append(OwnerWorkspaceProjectDocumentResponse(
             id=r.id,
             project_id=r.project_id,
+            folder_id=r.folder_id,
             filename=r.filename,
             content_type=r.content_type,
             size_bytes=r.size_bytes,
@@ -1693,6 +1886,7 @@ async def list_project_documents(
 @router.post("/projects/{project_id}/documents", response_model=OwnerWorkspaceProjectDocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_project_document(
     project_id: int,
+    folder_id: Optional[int] = Form(default=None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
@@ -1701,11 +1895,15 @@ async def upload_project_document(
         raise HTTPException(status_code=404, detail="Project not found")
     if not can_edit_project_content(db, ctx, project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
-    data = await file.read()
-    if len(data) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Файл слишком большой (максимум 50 МБ)")
+    _assert_project_document_folder(db, project_id, folder_id)
+    data = await file.read(PROJECT_DOCUMENT_MAX_UPLOAD_BYTES + 1)
+    if len(data) > PROJECT_DOCUMENT_MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File is too large. Maximum size is 100 MB")
+    if not data:
+        raise HTTPException(status_code=400, detail="File is empty")
     row = OwnerWorkspaceProjectDocument(
         project_id=project_id,
+        folder_id=folder_id,
         filename=file.filename or "document",
         content_type=file.content_type or "application/octet-stream",
         size_bytes=len(data),
@@ -1719,13 +1917,14 @@ async def upload_project_document(
         entity_id=project_id,
         action_type="document_upload",
         author_id=ctx.user.id,
-        new_value={"filename": row.filename, "size_bytes": row.size_bytes},
+        new_value={"filename": row.filename, "size_bytes": row.size_bytes, "folder_id": row.folder_id},
     )
     db.commit()
     db.refresh(row)
     return OwnerWorkspaceProjectDocumentResponse(
         id=row.id,
         project_id=row.project_id,
+        folder_id=row.folder_id,
         filename=row.filename,
         content_type=row.content_type,
         size_bytes=row.size_bytes,
@@ -2283,7 +2482,7 @@ async def upload_counterparty_document(
         raise HTTPException(status_code=400, detail="Supported formats: DOC, DOCX, PDF, XLS, XLSX")
     data = await file.read()
     if not data:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise HTTPException(status_code=400, detail="File is empty")
     existing = db.query(OwnerWorkspaceCounterpartyDocument).filter(
         OwnerWorkspaceCounterpartyDocument.counterparty_id == contact_id,
         OwnerWorkspaceCounterpartyDocument.category == normalized_category,
@@ -2901,7 +3100,7 @@ async def bulk_update_tasks(
     data = payload.model_dump(exclude_unset=True)
     task_ids = data.pop("task_ids", [])
     if not data:
-        raise HTTPException(status_code=400, detail="Укажите status, assignee_id, priority и/или deadline_at")
+        raise HTTPException(status_code=400, detail="File is empty")
     updated = 0
     for tid in task_ids:
         row = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == tid).first()

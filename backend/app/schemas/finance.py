@@ -410,6 +410,64 @@ class FinanceAnalyticsSummaryResponse(BaseModel):
     account_balances: List[FinanceAccountBalance]
 
 
+class UnitEconomicsKpi(BaseModel):
+    revenue: float
+    marketing_sales_cost: float
+    variable_cost: float
+    gross_profit: float
+    gross_margin_pct: float
+    active_students: int
+    new_students: int
+    churned_students: int
+    arpu: float
+    cac: float
+    monthly_gross_profit_per_student: float
+    churn_pct: float
+    lifetime_months: float
+    ltv: float
+    ltv_cac_ratio: float
+    payback_months: float
+
+
+class UnitEconomicsFunnel(BaseModel):
+    leads: int
+    trials: int
+    sales: int
+    lead_to_trial_pct: float
+    trial_to_sale_pct: float
+    cpl: float
+    cpt: float
+
+
+class UnitEconomicsRetention(BaseModel):
+    month_3_pct: float
+    month_6_pct: float
+    month_12_pct: float
+
+
+class UnitEconomicsCohortRow(BaseModel):
+    cohort: str
+    students: int
+    revenue: float
+    gross_profit: float
+    arpu: float
+    retention_3_pct: float
+    retention_6_pct: float
+    retention_12_pct: float
+
+
+class UnitEconomicsResponse(BaseModel):
+    model_id: int
+    target_id: Optional[int] = None
+    period: str
+    currency: str = "RUB"
+    kpi: UnitEconomicsKpi
+    funnel: UnitEconomicsFunnel
+    retention: UnitEconomicsRetention
+    cohorts: List[UnitEconomicsCohortRow]
+    notes: List[str]
+
+
 class FinanceLedgerTransactionRow(BaseModel):
     id: int
     occurred_at: Optional[datetime] = None

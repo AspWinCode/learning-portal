@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import csv
 import hashlib
@@ -14,6 +14,8 @@ from app import auth
 from app.database import db_transaction, get_db
 from app.models import (
     User,
+    Lead,
+    LeadStatus,
     BankTransaction,
     BankTransactionStatus,
     FinanceTransaction,
@@ -76,6 +78,11 @@ from app.schemas.finance import (
     CommandCenterCashFlowPoint,
     CommandCenterTransaction,
     CommandCenterAlert,
+    UnitEconomicsResponse,
+    UnitEconomicsKpi,
+    UnitEconomicsFunnel,
+    UnitEconomicsRetention,
+    UnitEconomicsCohortRow,
     FinanceTargetResponse,
     FinanceTransactionApplyStudentRequest,
     FinanceTransactionUpdate,
@@ -1589,6 +1596,296 @@ async def get_command_center(
 
 
 # ─── P&L Multi-Period Report ─────────────────────────────────────────────────
+
+@router.get("/models/{model_id}/unit-economics", response_model=UnitEconomicsResponse)
+async def get_unit_economics(
+    model_id: int,
+    period: Optional[str] = Query(None, description="YYYY-MM, default = current month"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> UnitEconomicsResponse:
+    _require_finance_access(current_user)
+
+    from sqlalchemy import func as sqlfunc
+    import calendar as _cal
+
+    model = db.query(FinanceModel).filter(FinanceModel.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finance model not found")
+    target_id = model.target_id
+
+    today = date.today()
+    if period:
+        try:
+            year, month = int(period[:4]), int(period[5:7])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="period must be YYYY-MM")
+    else:
+        year, month = today.year, today.month
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="period month must be 01..12")
+
+    period_str = f"{year:04d}-{month:02d}"
+    period_start = datetime(year, month, 1, tzinfo=timezone.utc)
+    period_end = datetime(year, month, _cal.monthrange(year, month)[1], 23, 59, 59, tzinfo=timezone.utc)
+    prev_month = month - 1 if month > 1 else 12
+    prev_year = year if month > 1 else year - 1
+    prev_start = datetime(prev_year, prev_month, 1, tzinfo=timezone.utc)
+    prev_end = datetime(prev_year, prev_month, _cal.monthrange(prev_year, prev_month)[1], 23, 59, 59, tzinfo=timezone.utc)
+
+    def _round(value: float, digits: int = 2) -> float:
+        return round(float(value or 0.0), digits)
+
+    def _pct(numerator: float, denominator: float) -> float:
+        return _round((float(numerator or 0.0) / float(denominator or 0.0)) * 100, 1) if denominator else 0.0
+
+    def _article_text(article: Optional[FinanceArticle]) -> str:
+        if not article:
+            return ""
+        return f"{article.code or ''} {article.name or ''}".strip().lower()
+
+    def _is_marketing_sales(article: Optional[FinanceArticle]) -> bool:
+        text = _article_text(article)
+        return any(
+            needle in text
+            for needle in (
+                "marketing", "sales", "lead", "cpl", "cac", "реклам", "маркет",
+                "продаж", "лид", "заявк", "таргет", "авито", "директ",
+            )
+        )
+
+    def _is_variable_cost(article: Optional[FinanceArticle]) -> bool:
+        if article and article.cost_kind == FinanceArticleCostKind.VARIABLE:
+            return True
+        text = _article_text(article)
+        return any(
+            needle in text
+            for needle in (
+                "teacher", "trainer", "platform", "commission", "преподав", "педагог",
+                "тренер", "куратор", "методист", "платформ", "лиценз", "комисс", "эквайр",
+            )
+        )
+
+    tx_query = (
+        db.query(FinanceTransaction)
+        .options(joinedload(FinanceTransaction.article))
+        .filter(
+            FinanceTransaction.occurred_at >= period_start,
+            FinanceTransaction.occurred_at <= period_end,
+            FinanceTransaction.direction.in_([FinanceTransactionDirection.INCOME, FinanceTransactionDirection.EXPENSE]),
+        )
+    )
+    if target_id is not None:
+        tx_query = tx_query.filter(FinanceTransaction.target_id == target_id)
+    transactions: List[FinanceTransaction] = tx_query.all()
+
+    revenue = 0.0
+    variable_cost = 0.0
+    marketing_sales_cost = 0.0
+    for tx in transactions:
+        amount = abs(float(tx.amount or 0.0))
+        if tx.direction == FinanceTransactionDirection.INCOME:
+            revenue += amount
+            continue
+        article = getattr(tx, "article", None)
+        if _is_marketing_sales(article):
+            marketing_sales_cost += amount
+        if _is_variable_cost(article):
+            variable_cost += amount
+
+    gross_profit = revenue - variable_cost
+    gross_margin_pct = _pct(gross_profit, revenue)
+
+    def _paid_student_ids(start: datetime, end: datetime) -> Set[int]:
+        q = (
+            db.query(FinanceTransaction.student_id)
+            .filter(
+                FinanceTransaction.occurred_at >= start,
+                FinanceTransaction.occurred_at <= end,
+                FinanceTransaction.direction == FinanceTransactionDirection.INCOME,
+                FinanceTransaction.student_id.isnot(None),
+            )
+        )
+        if target_id is not None:
+            q = q.filter(FinanceTransaction.target_id == target_id)
+        return {int(row[0]) for row in q.distinct().all() if row[0] is not None}
+
+    active_student_ids = _paid_student_ids(period_start, period_end)
+    previous_student_ids = _paid_student_ids(prev_start, prev_end)
+    churned_student_ids = previous_student_ids - active_student_ids
+
+    first_payment_rows = (
+        db.query(FinanceTransaction.student_id, sqlfunc.min(FinanceTransaction.occurred_at))
+        .filter(
+            FinanceTransaction.direction == FinanceTransactionDirection.INCOME,
+            FinanceTransaction.student_id.isnot(None),
+        )
+    )
+    if target_id is not None:
+        first_payment_rows = first_payment_rows.filter(FinanceTransaction.target_id == target_id)
+    first_payment_rows = first_payment_rows.group_by(FinanceTransaction.student_id).all()
+    first_payment_by_student = {int(student_id): first_paid for student_id, first_paid in first_payment_rows if student_id and first_paid}
+    new_student_ids = {
+        student_id for student_id, first_paid in first_payment_by_student.items() if period_start <= first_paid <= period_end
+    }
+
+    active_students = len(active_student_ids)
+    new_students = len(new_student_ids)
+    churned_students = len(churned_student_ids)
+    arpu = revenue / active_students if active_students else 0.0
+    cac = marketing_sales_cost / new_students if new_students else 0.0
+    monthly_gross_profit_per_student = gross_profit / active_students if active_students else 0.0
+    churn_pct = _pct(churned_students, len(previous_student_ids))
+
+    lifetime_months = (100 / churn_pct) if churn_pct else 0.0
+    if not lifetime_months and first_payment_by_student:
+        last_payment_rows = (
+            db.query(FinanceTransaction.student_id, sqlfunc.max(FinanceTransaction.occurred_at))
+            .filter(
+                FinanceTransaction.direction == FinanceTransactionDirection.INCOME,
+                FinanceTransaction.student_id.isnot(None),
+            )
+        )
+        if target_id is not None:
+            last_payment_rows = last_payment_rows.filter(FinanceTransaction.target_id == target_id)
+        last_payment_by_student = {
+            int(student_id): last_paid
+            for student_id, last_paid in last_payment_rows.group_by(FinanceTransaction.student_id).all()
+            if student_id and last_paid
+        }
+        observed = []
+        for student_id, first_paid in first_payment_by_student.items():
+            last_paid = last_payment_by_student.get(student_id)
+            if last_paid:
+                observed.append(max(1, (last_paid.year - first_paid.year) * 12 + last_paid.month - first_paid.month + 1))
+        lifetime_months = sum(observed) / len(observed) if observed else 0.0
+
+    ltv = arpu * (gross_margin_pct / 100) * lifetime_months
+    ltv_cac_ratio = ltv / cac if cac else 0.0
+    payback_months = cac / monthly_gross_profit_per_student if monthly_gross_profit_per_student > 0 and cac else 0.0
+
+    period_leads_q = db.query(Lead).filter(Lead.created_at >= period_start, Lead.created_at <= period_end)
+    leads = period_leads_q.count()
+    trial_statuses = {LeadStatus.TRIAL_SCHEDULED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT, LeadStatus.WON}
+    trials = period_leads_q.filter(Lead.status.in_(trial_statuses)).count()
+    won_leads = period_leads_q.filter(Lead.status == LeadStatus.WON).count()
+    sales = max(new_students, won_leads)
+
+    def _has_income_in_month(student_id: int, months_after: int) -> bool:
+        first_paid = first_payment_by_student.get(student_id)
+        if not first_paid:
+            return False
+        total_month = first_paid.month + months_after
+        y = first_paid.year + (total_month - 1) // 12
+        m = ((total_month - 1) % 12) + 1
+        start = datetime(y, m, 1, tzinfo=timezone.utc)
+        end = datetime(y, m, _cal.monthrange(y, m)[1], 23, 59, 59, tzinfo=timezone.utc)
+        q = db.query(FinanceTransaction.id).filter(
+            FinanceTransaction.student_id == student_id,
+            FinanceTransaction.direction == FinanceTransactionDirection.INCOME,
+            FinanceTransaction.occurred_at >= start,
+            FinanceTransaction.occurred_at <= end,
+        )
+        if target_id is not None:
+            q = q.filter(FinanceTransaction.target_id == target_id)
+        return q.first() is not None
+
+    def _retention(student_ids: Set[int], months_after: int) -> float:
+        if not student_ids:
+            return 0.0
+        retained = sum(1 for student_id in student_ids if _has_income_in_month(student_id, months_after))
+        return _pct(retained, len(student_ids))
+
+    retention_3 = _retention(new_student_ids, 3)
+    retention_6 = _retention(new_student_ids, 6)
+    retention_12 = _retention(new_student_ids, 12)
+
+    cohort_map: Dict[str, Set[int]] = {}
+    for student_id, first_paid in first_payment_by_student.items():
+        cohort_map.setdefault(f"{first_paid.year:04d}-{first_paid.month:02d}", set()).add(student_id)
+
+    cohorts: List[UnitEconomicsCohortRow] = []
+    for cohort, student_ids in sorted(cohort_map.items(), reverse=True)[:12]:
+        cohort_revenue = 0.0
+        cohort_variable_cost = 0.0
+        cohort_tx_query = (
+            db.query(FinanceTransaction)
+            .options(joinedload(FinanceTransaction.article))
+            .filter(
+                FinanceTransaction.student_id.in_(student_ids),
+                FinanceTransaction.direction.in_([FinanceTransactionDirection.INCOME, FinanceTransactionDirection.EXPENSE]),
+            )
+        )
+        if target_id is not None:
+            cohort_tx_query = cohort_tx_query.filter(FinanceTransaction.target_id == target_id)
+        for tx in cohort_tx_query.all():
+            amount = abs(float(tx.amount or 0.0))
+            if tx.direction == FinanceTransactionDirection.INCOME:
+                cohort_revenue += amount
+            elif _is_variable_cost(getattr(tx, "article", None)):
+                cohort_variable_cost += amount
+        cohorts.append(UnitEconomicsCohortRow(
+            cohort=cohort,
+            students=len(student_ids),
+            revenue=_round(cohort_revenue),
+            gross_profit=_round(cohort_revenue - cohort_variable_cost),
+            arpu=_round(cohort_revenue / len(student_ids) if student_ids else 0.0),
+            retention_3_pct=_retention(student_ids, 3),
+            retention_6_pct=_retention(student_ids, 6),
+            retention_12_pct=_retention(student_ids, 12),
+        ))
+
+    notes: List[str] = []
+    if target_id is None:
+        notes.append("У финансовой модели нет проекта: расчёт построен по всем операциям.")
+    if active_students == 0:
+        notes.append("Не найдено доходных транзакций с привязанным учеником за период: ARPU, CAC и LTV будут занижены.")
+    if marketing_sales_cost == 0:
+        notes.append("Не найдены расходы на маркетинг/продажи: проверьте статьи с названиями реклама, маркетинг, продажи.")
+    if variable_cost == 0:
+        notes.append("Не найдены переменные расходы: для точной gross margin пометьте статьи преподавателей/комиссий как variable.")
+
+    return UnitEconomicsResponse(
+        model_id=model_id,
+        target_id=target_id,
+        period=period_str,
+        currency="RUB",
+        kpi=UnitEconomicsKpi(
+            revenue=_round(revenue),
+            marketing_sales_cost=_round(marketing_sales_cost),
+            variable_cost=_round(variable_cost),
+            gross_profit=_round(gross_profit),
+            gross_margin_pct=_round(gross_margin_pct, 1),
+            active_students=active_students,
+            new_students=new_students,
+            churned_students=churned_students,
+            arpu=_round(arpu),
+            cac=_round(cac),
+            monthly_gross_profit_per_student=_round(monthly_gross_profit_per_student),
+            churn_pct=_round(churn_pct, 1),
+            lifetime_months=_round(lifetime_months, 1),
+            ltv=_round(ltv),
+            ltv_cac_ratio=_round(ltv_cac_ratio, 2),
+            payback_months=_round(payback_months, 1),
+        ),
+        funnel=UnitEconomicsFunnel(
+            leads=leads,
+            trials=trials,
+            sales=sales,
+            lead_to_trial_pct=_pct(trials, leads),
+            trial_to_sale_pct=_pct(sales, trials),
+            cpl=_round(marketing_sales_cost / leads if leads else 0.0),
+            cpt=_round(marketing_sales_cost / trials if trials else 0.0),
+        ),
+        retention=UnitEconomicsRetention(
+            month_3_pct=retention_3,
+            month_6_pct=retention_6,
+            month_12_pct=retention_12,
+        ),
+        cohorts=cohorts,
+        notes=notes,
+    )
+
 
 def _generate_pl_periods(period_from: str, period_to: str) -> List[str]:
     y0, m0 = int(period_from[:4]), int(period_from[5:7])

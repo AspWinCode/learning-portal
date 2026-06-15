@@ -113,6 +113,7 @@ import {
   StudentQuestionnaireTemplate,
   PLReportResponse,
   CommandCenterResponse,
+  UnitEconomicsResponse,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
@@ -807,6 +808,12 @@ export const financeApi = {
   getPLReport: async (modelId: number, periodFrom: string, periodTo: string): Promise<PLReportResponse> => {
     const response = await api.get(`/api/finance/models/${modelId}/pl-report`, {
       params: { period_from: periodFrom, period_to: periodTo },
+    });
+    return response.data;
+  },
+  getUnitEconomics: async (modelId: number, period: string): Promise<UnitEconomicsResponse> => {
+    const response = await api.get(`/api/finance/models/${modelId}/unit-economics`, {
+      params: { period },
     });
     return response.data;
   },

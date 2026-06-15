@@ -55,18 +55,22 @@ import type {
   FinanceModel,
   MetricDefinition,
   PLReportResponse,
+  UnitEconomicsResponse,
 } from '../types';
 import { transliterate } from '../utils/transliterate';
 
 type TargetOption = { id: number; code: string; name: string; is_active?: boolean };
 type AccountOption = { id: number; code: string; name: string; owner_scope?: string; is_active?: boolean };
-type FinanceTab = 'overview' | 'dashboard' | 'models' | 'budget' | 'articles' | 'journal' | 'report';
+type FinanceTab = 'overview' | 'dashboard' | 'models' | 'budget' | 'articles' | 'journal' | 'unit' | 'report';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const today = () => new Date().toISOString().slice(0, 10);
 
 const money = (value: number | null | undefined) =>
   new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+
+const rub = (value: number | null | undefined) => `${money(value)} ₽`;
+const pct = (value: number | null | undefined) => `${money(value)}%`;
 
 const dateInputValue = (value?: string | null) => {
   if (!value) return today();
@@ -147,6 +151,8 @@ const FinanceOverviewPageContent: React.FC = () => {
     return `${d.getFullYear()}-01`;
   });
   const [plTo, setPlTo] = useState(currentMonth);
+  const [unitEconomics, setUnitEconomics] = useState<UnitEconomicsResponse | null>(null);
+  const [unitLoading, setUnitLoading] = useState(false);
 
   const [metricDialogOpen, setMetricDialogOpen] = useState(false);
   const [editingMetric, setEditingMetric] = useState<MetricDefinition | null>(null);
@@ -289,6 +295,20 @@ const FinanceOverviewPageContent: React.FC = () => {
     }
   }, [selectedModelId, plFrom, plTo]);
 
+  const loadUnitEconomics = useCallback(async () => {
+    if (!selectedModelId) return;
+    setUnitLoading(true);
+    try {
+      const response = await financeApi.getUnitEconomics(Number(selectedModelId), period);
+      setUnitEconomics(response);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить юнит-экономику');
+      setUnitEconomics(null);
+    } finally {
+      setUnitLoading(false);
+    }
+  }, [selectedModelId, period]);
+
   useEffect(() => {
     loadBase();
   }, []);
@@ -310,6 +330,12 @@ const FinanceOverviewPageContent: React.FC = () => {
   useEffect(() => {
     loadJournal();
   }, [journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, unclassifiedOnly]);
+
+  useEffect(() => {
+    if (tab === 'unit') {
+      loadUnitEconomics();
+    }
+  }, [tab, loadUnitEconomics]);
 
   const openCreateModel = () => {
     setEditingModel(null);
@@ -1320,6 +1346,167 @@ const FinanceOverviewPageContent: React.FC = () => {
     </Stack>
   );
 
+  const renderUnitEconomics = () => {
+    const data = unitEconomics;
+    const kpi = data?.kpi;
+    const funnel = data?.funnel;
+    const retention = data?.retention;
+    const kpiCards = kpi
+      ? [
+          { label: 'LTV ученика', value: rub(kpi.ltv), tone: kpi.ltv_cac_ratio >= 3 ? 'success.main' : kpi.ltv_cac_ratio > 0 ? 'warning.main' : 'text.primary' },
+          { label: 'CAC', value: rub(kpi.cac), tone: 'text.primary' },
+          { label: 'LTV / CAC', value: money(kpi.ltv_cac_ratio), tone: kpi.ltv_cac_ratio >= 3 ? 'success.main' : kpi.ltv_cac_ratio >= 1 ? 'warning.main' : 'error.main' },
+          { label: 'Payback', value: `${money(kpi.payback_months)} мес.`, tone: kpi.payback_months && kpi.payback_months <= 6 ? 'success.main' : kpi.payback_months <= 12 ? 'warning.main' : 'error.main' },
+          { label: 'ARPU / месяц', value: rub(kpi.arpu), tone: 'text.primary' },
+          { label: 'Gross Margin', value: pct(kpi.gross_margin_pct), tone: kpi.gross_margin_pct >= 50 ? 'success.main' : 'warning.main' },
+          { label: 'Churn / месяц', value: pct(kpi.churn_pct), tone: kpi.churn_pct <= 5 ? 'success.main' : kpi.churn_pct <= 10 ? 'warning.main' : 'error.main' },
+          { label: 'Lifetime', value: `${money(kpi.lifetime_months)} мес.`, tone: 'text.primary' },
+        ]
+      : [];
+
+    return (
+      <Stack spacing={2}>
+        <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Юнит-экономика ученика
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Расчёт по выбранной финансовой модели за {period}. Все суммы в рублях.
+              </Typography>
+            </Box>
+            <Button startIcon={<Refresh />} variant="outlined" onClick={loadUnitEconomics} disabled={!selectedModelId || unitLoading}>
+              Обновить
+            </Button>
+          </Stack>
+        </Paper>
+
+        {unitLoading && <LinearProgress />}
+
+        {!unitLoading && !data && (
+          <Alert severity="info">Выберите финансовую модель, чтобы увидеть юнит-экономику.</Alert>
+        )}
+
+        {data && (
+          <>
+            {data.notes.length > 0 && (
+              <Alert severity="warning">
+                <Stack spacing={0.5}>
+                  {data.notes.map((note) => (
+                    <Typography key={note} variant="body2">{note}</Typography>
+                  ))}
+                </Stack>
+              </Alert>
+            )}
+
+            <Grid container spacing={1.5}>
+              {kpiCards.map((card) => (
+                <Grid item xs={12} sm={6} md={3} key={card.label}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: '100%' }}>
+                    <Typography variant="caption" color="text.secondary">{card.label}</Typography>
+                    <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: card.tone }}>{card.value}</Typography>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+
+            {kpi && (
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: '100%' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>P&L на ученика</Typography>
+                    <Stack spacing={1}>
+                      <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Выручка</Typography><Typography>{rub(kpi.revenue)}</Typography></Stack>
+                      <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Переменные расходы</Typography><Typography>{rub(kpi.variable_cost)}</Typography></Stack>
+                      <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Валовая прибыль</Typography><Typography>{rub(kpi.gross_profit)}</Typography></Stack>
+                      <Divider />
+                      <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Активные ученики</Typography><Typography>{kpi.active_students}</Typography></Stack>
+                      <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Новые ученики</Typography><Typography>{kpi.new_students}</Typography></Stack>
+                      <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Ушли</Typography><Typography>{kpi.churned_students}</Typography></Stack>
+                    </Stack>
+                  </Paper>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: '100%' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Воронка</Typography>
+                    {funnel && (
+                      <Stack spacing={1}>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Лиды</Typography><Typography>{funnel.leads}</Typography></Stack>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Пробные/демо</Typography><Typography>{funnel.trials}</Typography></Stack>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Покупки</Typography><Typography>{funnel.sales}</Typography></Stack>
+                        <Divider />
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Lead → Trial</Typography><Typography>{pct(funnel.lead_to_trial_pct)}</Typography></Stack>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Trial → Sale</Typography><Typography>{pct(funnel.trial_to_sale_pct)}</Typography></Stack>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">CPL</Typography><Typography>{rub(funnel.cpl)}</Typography></Stack>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">CPT</Typography><Typography>{rub(funnel.cpt)}</Typography></Stack>
+                      </Stack>
+                    )}
+                  </Paper>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: '100%' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Retention</Typography>
+                    {retention && (
+                      <Stack spacing={1}>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">После 3 месяцев</Typography><Typography>{pct(retention.month_3_pct)}</Typography></Stack>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">После 6 месяцев</Typography><Typography>{pct(retention.month_6_pct)}</Typography></Stack>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">После 12 месяцев</Typography><Typography>{pct(retention.month_12_pct)}</Typography></Stack>
+                        <Divider />
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Маркетинг + продажи</Typography><Typography>{rub(kpi.marketing_sales_cost)}</Typography></Stack>
+                        <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">Прибыль / ученик / мес.</Typography><Typography>{rub(kpi.monthly_gross_profit_per_student)}</Typography></Stack>
+                      </Stack>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
+            )}
+
+            <Paper variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
+              <TableContainer sx={{ overflowX: 'auto' }}>
+                <Table size="small" sx={{ minWidth: 900 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Когорта</TableCell>
+                      <TableCell align="right">Ученики</TableCell>
+                      <TableCell align="right">Выручка</TableCell>
+                      <TableCell align="right">Валовая прибыль</TableCell>
+                      <TableCell align="right">ARPU</TableCell>
+                      <TableCell align="right">Retention 3м</TableCell>
+                      <TableCell align="right">6м</TableCell>
+                      <TableCell align="right">12м</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {data.cohorts.map((row) => (
+                      <TableRow key={row.cohort}>
+                        <TableCell>{row.cohort}</TableCell>
+                        <TableCell align="right">{row.students}</TableCell>
+                        <TableCell align="right">{rub(row.revenue)}</TableCell>
+                        <TableCell align="right">{rub(row.gross_profit)}</TableCell>
+                        <TableCell align="right">{rub(row.arpu)}</TableCell>
+                        <TableCell align="right">{pct(row.retention_3_pct)}</TableCell>
+                        <TableCell align="right">{pct(row.retention_6_pct)}</TableCell>
+                        <TableCell align="right">{pct(row.retention_12_pct)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {data.cohorts.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center">Когорты пока не сформированы.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </>
+        )}
+      </Stack>
+    );
+  };
+
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
@@ -1374,6 +1561,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           <Tab value="budget" icon={<TableRows />} iconPosition="start" label="Бюджет" />
           <Tab value="articles" icon={<AccountTree />} iconPosition="start" label="Статьи" />
           <Tab value="journal" icon={<TableRows />} iconPosition="start" label="Журнал" />
+          <Tab value="unit" icon={<Assessment />} iconPosition="start" label="Юнит экономика" />
         </Tabs>
       </Paper>
 
@@ -1384,6 +1572,7 @@ const FinanceOverviewPageContent: React.FC = () => {
       {tab === 'budget' && renderBudget()}
       {tab === 'articles' && renderArticles()}
       {tab === 'journal' && renderJournal()}
+      {tab === 'unit' && renderUnitEconomics()}
 
       <Dialog open={modelDialogOpen} onClose={() => { setModelDialogOpen(false); setEditingModel(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>{editingModel ? 'Редактировать модель' : 'Новая финансовая модель'}</DialogTitle>

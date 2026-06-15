@@ -2278,3 +2278,61 @@ export interface PLReportResponse {
   periods: string[];
   rows: PLReportRow[];
 }
+
+export interface UnitEconomicsKpi {
+  revenue: number;
+  marketing_sales_cost: number;
+  variable_cost: number;
+  gross_profit: number;
+  gross_margin_pct: number;
+  active_students: number;
+  new_students: number;
+  churned_students: number;
+  arpu: number;
+  cac: number;
+  monthly_gross_profit_per_student: number;
+  churn_pct: number;
+  lifetime_months: number;
+  ltv: number;
+  ltv_cac_ratio: number;
+  payback_months: number;
+}
+
+export interface UnitEconomicsFunnel {
+  leads: number;
+  trials: number;
+  sales: number;
+  lead_to_trial_pct: number;
+  trial_to_sale_pct: number;
+  cpl: number;
+  cpt: number;
+}
+
+export interface UnitEconomicsRetention {
+  month_3_pct: number;
+  month_6_pct: number;
+  month_12_pct: number;
+}
+
+export interface UnitEconomicsCohortRow {
+  cohort: string;
+  students: number;
+  revenue: number;
+  gross_profit: number;
+  arpu: number;
+  retention_3_pct: number;
+  retention_6_pct: number;
+  retention_12_pct: number;
+}
+
+export interface UnitEconomicsResponse {
+  model_id: number;
+  target_id?: number | null;
+  period: string;
+  currency: string;
+  kpi: UnitEconomicsKpi;
+  funnel: UnitEconomicsFunnel;
+  retention: UnitEconomicsRetention;
+  cohorts: UnitEconomicsCohortRow[];
+  notes: string[];
+}

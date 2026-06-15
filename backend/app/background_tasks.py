@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app import dramatiq_broker as _dramatiq_broker  # noqa: F401 - configure Redis broker before actors are declared.
 import dramatiq
 
 from app.background_jobs import (

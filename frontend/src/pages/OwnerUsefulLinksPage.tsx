@@ -104,6 +104,10 @@ function collectDescendantIds(folders: OwnerUsefulLinkFolder[], folderId: number
   return result;
 }
 
+function websitePreviewUrl(url: string): string {
+  return `https://image.thum.io/get/width/900/crop/560/noanimate/${url}`;
+}
+
 const OwnerUsefulLinksPage: React.FC = () => {
   const [folders, setFolders] = useState<OwnerUsefulLinkFolder[]>([]);
   const [links, setLinks] = useState<OwnerUsefulLink[]>([]);
@@ -445,15 +449,49 @@ const OwnerUsefulLinksPage: React.FC = () => {
                 {visibleLinks.map((link) => (
                   <Grid item xs={12} lg={6} key={link.id}>
                     <Card variant="outlined" sx={{ height: '100%', borderRadius: 1, overflow: 'hidden' }}>
-                      <Box sx={{ height: 180, bgcolor: 'grey.100', borderBottom: 1, borderColor: 'divider', position: 'relative' }}>
-                        <iframe
-                          title={link.title}
-                          src={link.url}
+                      <Box
+                        component="a"
+                        href={link.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{
+                          height: 180,
+                          bgcolor: 'grey.100',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                          position: 'relative',
+                          display: 'block',
+                          overflow: 'hidden',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        <Box
+                          component="img"
+                          src={websitePreviewUrl(link.url)}
+                          alt={link.title}
                           loading="lazy"
-                          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                          style={{ width: '100%', height: '100%', border: 0, pointerEvents: 'none', background: '#fff' }}
+                          onError={(event: React.SyntheticEvent<HTMLImageElement>) => {
+                            event.currentTarget.style.display = 'none';
+                          }}
+                          sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', bgcolor: '#fff', position: 'relative', zIndex: 1 }}
                         />
-                        <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: 'inset 0 -24px 40px rgba(0,0,0,0.06)' }} />
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'text.secondary',
+                            zIndex: 0,
+                          }}
+                        >
+                          <Stack spacing={0.5} alignItems="center">
+                            <LinkIcon />
+                            <Typography variant="body2">Превью сайта</Typography>
+                          </Stack>
+                        </Box>
+                        <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: 'inset 0 -24px 40px rgba(0,0,0,0.08)', zIndex: 2 }} />
                       </Box>
                       <CardContent>
                         <Stack spacing={1.25}>

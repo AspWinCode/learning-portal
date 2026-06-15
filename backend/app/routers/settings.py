@@ -198,6 +198,14 @@ PWA_MODULES = [
         "default_roles": ["sales", "admin", "owner"],
     },
     {
+        "key": "finance_journal",
+        "label": "Журнал",
+        "description": "Финансовый журнал, операции и разбор транзакций.",
+        "route": "/finance/overview",
+        "required_permission": "finance.access",
+        "default_roles": ["admin", "owner"],
+    },
+    {
         "key": "programs",
         "label": "Программы",
         "description": "Программы обучения.",

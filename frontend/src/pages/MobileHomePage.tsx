@@ -75,6 +75,7 @@ const getFallbackModules = (user: ReturnType<typeof useAuth>['user']): PwaModule
     { key: 'grades', label: 'Оценки', description: 'Оценки и прогресс', route: '/trainer-grades', required_permission: 'grades.access' },
     { key: 'leads', label: 'Лиды', description: 'Продажи и воронка', route: '/mobile/leads', required_permission: 'sales.access' },
     { key: 'payments', label: 'Оплаты', description: 'Платежи и задолженности', route: '/finance/payments', required_permission: 'sales.access' },
+    { key: 'finance_journal', label: 'Журнал', description: 'Финансовый журнал и операции', route: '/finance/overview', required_permission: 'finance.access' },
     { key: 'owner_workspace', label: 'Рабочее пространство', description: 'Проекты, контакты и задачи', route: '/mobile/contacts', required_permission: 'owner_workspace.access' },
   ];
 

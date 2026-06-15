@@ -75,6 +75,22 @@ const dateInputValue = (value?: string | null) => {
   return date.toISOString().slice(0, 10);
 };
 
+const renderCounterparty = (row: FinanceLedgerBankRow) => {
+  const name = (row.counterparty_name || '').trim();
+  const phone = (row.counterparty_phone || '').trim();
+  if (!name && !phone) return '—';
+  return (
+    <Stack spacing={0.25}>
+      <Typography variant="body2">{name || phone}</Typography>
+      {name && phone && (
+        <Typography variant="caption" color="text.secondary">
+          {phone}
+        </Typography>
+      )}
+    </Stack>
+  );
+};
+
 const directionLabel = (direction?: string | null) => {
   if (direction === 'income') return 'Доход';
   if (direction === 'expense') return 'Расход';
@@ -1258,7 +1274,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                 <TableCell align="right" sx={{ color: row.direction === 'expense' ? 'error.main' : 'success.main' }}>
                   {money(row.amount)}
                 </TableCell>
-                <TableCell>{row.counterparty_name || '—'}</TableCell>
+                <TableCell>{renderCounterparty(row)}</TableCell>
                 <TableCell>{row.description || row.bank_source || '—'}</TableCell>
                 <TableCell align="right">
                   <Tooltip title="Редактировать операцию">

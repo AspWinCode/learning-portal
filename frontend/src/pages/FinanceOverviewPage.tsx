@@ -29,7 +29,9 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
   Add,
   AccountTree,
@@ -109,6 +111,8 @@ const flattenTree = (items: FinanceArticleTreeItem[], level = 0): Array<FinanceA
   items.flatMap((item) => [{ ...item, level }, ...flattenTree(item.children || [], level + 1)]);
 
 const FinanceOverviewPageContent: React.FC = () => {
+  const theme = useTheme();
+  const isJournalMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [tab, setTab] = useState<FinanceTab>('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -629,9 +633,25 @@ const FinanceOverviewPageContent: React.FC = () => {
     }
   };
 
+  const updateJournalTransaction = async (
+    rowId: number,
+    payload: Parameters<typeof financeApi.updateTransaction>[1]
+  ) => {
+    const updated = await financeApi.updateTransaction(rowId, payload);
+    setJournalRows((prev) => prev.map((item) => (item.id === rowId ? updated : item)));
+    if (selectedTargetId) await loadModelData(selectedTargetId);
+  };
+
+  const deleteJournalTransaction = async (rowId: number) => {
+    if (!window.confirm('Удалить операцию? Это действие необратимо.')) return;
+    await financeApi.deleteTransaction(rowId);
+    setJournalRows((prev) => prev.filter((row) => row.id !== rowId));
+    if (selectedTargetId) await loadModelData(selectedTargetId);
+  };
+
   const renderModelSelector = () => (
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }}>
-      <FormControl size="small" sx={{ minWidth: 280 }}>
+      <FormControl size="small" sx={{ minWidth: { xs: 0, md: 280 }, width: { xs: '100%', md: 'auto' } }}>
         <InputLabel>Финансовая модель</InputLabel>
         <Select
           label="Финансовая модель"
@@ -1128,7 +1148,7 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   const renderJournal = () => (
     <Stack spacing={2}>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
+      <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 1 }}>
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', lg: 'center' }}>
           <TextField
             label="С"
@@ -1146,7 +1166,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             onChange={(event) => setJournalTo(event.target.value)}
             InputLabelProps={{ shrink: true }}
           />
-          <FormControl size="small" sx={{ minWidth: 190 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 0, lg: 190 }, width: { xs: '100%', lg: 'auto' } }}>
             <InputLabel>Проект</InputLabel>
             <Select
               label="Проект"
@@ -1163,7 +1183,7 @@ const FinanceOverviewPageContent: React.FC = () => {
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 0, lg: 160 }, width: { xs: '100%', lg: 'auto' } }}>
             <InputLabel>Тип</InputLabel>
             <Select
               label="Тип"
@@ -1179,6 +1199,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           <Button
             variant={unclassifiedOnly ? 'contained' : 'outlined'}
             onClick={() => setUnclassifiedOnly((value) => !value)}
+            fullWidth={isJournalMobile}
           >
             Неразобранные
           </Button>
@@ -1186,6 +1207,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             <Button
               startIcon={<Refresh />}
               variant="outlined"
+              fullWidth={isJournalMobile}
               onClick={async () => {
                 setJournalLoading(true);
                 try {
@@ -1205,6 +1227,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           <Button
             startIcon={<Add />}
             variant="contained"
+            fullWidth={isJournalMobile}
             onClick={() => {
               setManualAccountId(accounts[0]?.id || '');
               setManualToAccountId('');
@@ -1223,6 +1246,135 @@ const FinanceOverviewPageContent: React.FC = () => {
       </Paper>
 
       {journalLoading && <LinearProgress />}
+      {isJournalMobile && (
+        <Stack spacing={1.25}>
+          {journalRows.map((row) => {
+            const accountLabel = row.transfer_group_id
+              ? `${row.account_name || row.account_code || '?'} → ${row.to_account_name || row.to_account_code || '?'}`
+              : (row.account_name || row.account_code || '—');
+            const amountColor = row.direction === 'expense' ? 'error.main' : 'success.main';
+
+            return (
+              <Paper key={row.id} variant="outlined" sx={{ p: 1.5, borderRadius: 1 }}>
+                <Stack spacing={1.25}>
+                  <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        {row.occurred_at ? new Date(row.occurred_at).toLocaleString('ru-RU') : '—'}
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>
+                        {accountLabel}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        {directionLabel(row.direction)}
+                      </Typography>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 800, color: amountColor, lineHeight: 1.2 }}>
+                        {money(row.amount)}
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip size="small" label={row.target_name || 'Проект не выбран'} variant={row.target_id ? 'filled' : 'outlined'} />
+                    <Chip size="small" label={row.article_name || 'Статья не выбрана'} variant={row.article_id ? 'filled' : 'outlined'} />
+                  </Stack>
+
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Контрагент
+                    </Typography>
+                    <Box sx={{ overflowWrap: 'anywhere' }}>{renderCounterparty(row)}</Box>
+                  </Box>
+
+                  {(row.description || row.bank_source) && (
+                    <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+                      {row.description || row.bank_source}
+                    </Typography>
+                  )}
+
+                  <Stack spacing={1}>
+                    <FormControl size="small" fullWidth>
+                      <InputLabel>Проект</InputLabel>
+                      <Select
+                        label="Проект"
+                        value={row.target_id ?? ''}
+                        displayEmpty
+                        onChange={async (event) => {
+                          const target_id = event.target.value === '' ? null : Number(event.target.value);
+                          await updateJournalTransaction(row.id, { target_id });
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Не выбран</em>
+                        </MenuItem>
+                        {targets.map((target) => (
+                          <MenuItem key={target.id} value={target.id}>
+                            {target.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    {row.direction === 'transfer' ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {row.article_name || 'Без статьи'}
+                      </Typography>
+                    ) : (
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>Статья</InputLabel>
+                        <Select
+                          label="Статья"
+                          value={row.article_id ?? ''}
+                          displayEmpty
+                          onChange={async (event) => {
+                            const article_id = event.target.value === '' ? null : Number(event.target.value);
+                            await updateJournalTransaction(row.id, { article_id });
+                          }}
+                        >
+                          <MenuItem value="">
+                            <em>Не выбрана</em>
+                          </MenuItem>
+                          {articles
+                            .filter((article) => article.direction === row.direction)
+                            .map((article) => (
+                              <MenuItem key={article.id} value={article.id}>
+                                {article.name}
+                              </MenuItem>
+                            ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                  </Stack>
+
+                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                    <Tooltip title="Редактировать операцию">
+                      <IconButton size="small" onClick={() => openEditTransaction(row)}>
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Удалить операцию">
+                      <IconButton size="small" color="error" onClick={() => deleteJournalTransaction(row.id)}>
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </Stack>
+              </Paper>
+            );
+          })}
+
+          {journalRows.length === 0 && !journalLoading && (
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                Операций за выбранный период нет.
+              </Typography>
+            </Paper>
+          )}
+        </Stack>
+      )}
+      {!isJournalMobile && (
       <Paper variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
         <TableContainer sx={{ overflowX: 'auto' }}>
         <Table size="small" sx={{ minWidth: 1500 }}>
@@ -1255,9 +1407,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                       displayEmpty
                       onChange={async (event) => {
                         const target_id = event.target.value === '' ? null : Number(event.target.value);
-                        const updated = await financeApi.updateTransaction(row.id, { target_id });
-                        setJournalRows((prev) => prev.map((item) => (item.id === row.id ? updated : item)));
-                        if (selectedTargetId) await loadModelData(selectedTargetId);
+                        await updateJournalTransaction(row.id, { target_id });
                       }}
                     >
                       <MenuItem value="">
@@ -1281,9 +1431,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                         displayEmpty
                         onChange={async (event) => {
                           const article_id = event.target.value === '' ? null : Number(event.target.value);
-                          const updated = await financeApi.updateTransaction(row.id, { article_id });
-                          setJournalRows((prev) => prev.map((item) => (item.id === row.id ? updated : item)));
-                          if (selectedTargetId) await loadModelData(selectedTargetId);
+                          await updateJournalTransaction(row.id, { article_id });
                         }}
                       >
                         <MenuItem value="">
@@ -1319,12 +1467,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                     <IconButton
                       size="small"
                       color="error"
-                      onClick={async () => {
-                        if (!window.confirm('Удалить операцию? Это действие необратимо.')) return;
-                        await financeApi.deleteTransaction(row.id);
-                        setJournalRows((prev) => prev.filter((r) => r.id !== row.id));
-                        if (selectedTargetId) await loadModelData(selectedTargetId);
-                      }}
+                      onClick={() => deleteJournalTransaction(row.id)}
                     >
                       <Delete fontSize="small" />
                     </IconButton>
@@ -1343,6 +1486,7 @@ const FinanceOverviewPageContent: React.FC = () => {
         </Table>
         </TableContainer>
       </Paper>
+      )}
     </Stack>
   );
 
@@ -1508,7 +1652,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box sx={{ p: { xs: 1, sm: 2 }, display: 'flex', flexDirection: 'column', gap: { xs: 1.5, sm: 2 } }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
@@ -1552,7 +1696,15 @@ const FinanceOverviewPageContent: React.FC = () => {
           onChange={(_, value) => setTab(value)}
           variant="scrollable"
           scrollButtons="auto"
-          sx={{ px: 1 }}
+          sx={{
+            px: { xs: 0.5, sm: 1 },
+            minHeight: { xs: 44, sm: 48 },
+            '& .MuiTab-root': {
+              minHeight: { xs: 44, sm: 48 },
+              minWidth: { xs: 104, sm: 120 },
+              px: { xs: 1, sm: 2 },
+            },
+          }}
         >
           <Tab value="overview" icon={<Hub />} iconPosition="start" label="Обзор" />
           <Tab value="dashboard" icon={<Dashboard />} iconPosition="start" label="Dashboard" />

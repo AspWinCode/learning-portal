@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -112,7 +113,13 @@ const flattenTree = (items: FinanceArticleTreeItem[], level = 0): Array<FinanceA
 
 const FinanceOverviewPageContent: React.FC = () => {
   const theme = useTheme();
+  const location = useLocation();
   const isJournalMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isPwaJournal = useMemo(() => {
+    const hasPwaQuery = new URLSearchParams(location.search).get('pwa') === '1';
+    const hasPwaSession = typeof window !== 'undefined' && sessionStorage.getItem('pwa_mode') === '1';
+    return isJournalMobile && (hasPwaQuery || hasPwaSession);
+  }, [isJournalMobile, location.search]);
   const [tab, setTab] = useState<FinanceTab>('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -316,6 +323,12 @@ const FinanceOverviewPageContent: React.FC = () => {
   useEffect(() => {
     loadBase();
   }, []);
+
+  useEffect(() => {
+    if (isPwaJournal && tab !== 'journal') {
+      setTab('journal');
+    }
+  }, [isPwaJournal, tab]);
 
   useEffect(() => {
     if (selectedTargetId) {
@@ -1147,9 +1160,62 @@ const FinanceOverviewPageContent: React.FC = () => {
   };
 
   const renderJournal = () => (
-    <Stack spacing={2}>
-      <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 1 }}>
-        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', lg: 'center' }}>
+    <Stack spacing={isPwaJournal ? 1 : 2}>
+      <Paper variant="outlined" sx={{ p: { xs: 1, sm: 2 }, borderRadius: 1 }}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={isPwaJournal ? 1 : 1.5} alignItems={{ xs: 'stretch', lg: 'center' }}>
+          {isPwaJournal && (
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
+                  Журнал
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {journalRows.length} операций
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.5}>
+                <Tooltip title="Синхронизировать">
+                  <IconButton
+                    size="small"
+                    onClick={async () => {
+                      setJournalLoading(true);
+                      try {
+                        const result = await financeApi.backfillBankTransactionsToLedger();
+                        setMessage(`Синхронизировано: создано ${result.created}, обновлено ${result.updated} из ${result.total}`);
+                        await loadJournal();
+                      } catch (err: any) {
+                        setError(err?.response?.data?.detail || err?.message || 'Ошибка синхронизации');
+                      } finally {
+                        setJournalLoading(false);
+                      }
+                    }}
+                  >
+                    <Refresh fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Добавить операцию">
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => {
+                      setManualAccountId(accounts[0]?.id || '');
+                      setManualToAccountId('');
+                      setManualTargetId(selectedTargetId || '');
+                      setManualArticleId('');
+                      setManualAmount('');
+                      setManualDirection('income');
+                      setManualDate(today());
+                      setManualDescription('');
+                      setManualDialogOpen(true);
+                    }}
+                  >
+                    <Add fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            </Stack>
+          )}
+          <Stack direction="row" spacing={1} sx={{ display: { xs: 'grid', sm: 'flex' }, gridTemplateColumns: '1fr 1fr' }}>
           <TextField
             label="С"
             type="date"
@@ -1157,6 +1223,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             value={journalFrom}
             onChange={(event) => setJournalFrom(event.target.value)}
             InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 0 }}
           />
           <TextField
             label="По"
@@ -1165,7 +1232,9 @@ const FinanceOverviewPageContent: React.FC = () => {
             value={journalTo}
             onChange={(event) => setJournalTo(event.target.value)}
             InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 0 }}
           />
+          </Stack>
           <FormControl size="small" sx={{ minWidth: { xs: 0, lg: 190 }, width: { xs: '100%', lg: 'auto' } }}>
             <InputLabel>Проект</InputLabel>
             <Select
@@ -1200,9 +1269,11 @@ const FinanceOverviewPageContent: React.FC = () => {
             variant={unclassifiedOnly ? 'contained' : 'outlined'}
             onClick={() => setUnclassifiedOnly((value) => !value)}
             fullWidth={isJournalMobile}
+            size={isPwaJournal ? 'small' : 'medium'}
           >
             Неразобранные
           </Button>
+          {!isPwaJournal && (
           <Tooltip title="Перенести все банковские операции в журнал (бэкфилл)">
             <Button
               startIcon={<Refresh />}
@@ -1224,6 +1295,8 @@ const FinanceOverviewPageContent: React.FC = () => {
               Синхронизировать
             </Button>
           </Tooltip>
+          )}
+          {!isPwaJournal && (
           <Button
             startIcon={<Add />}
             variant="contained"
@@ -1242,6 +1315,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           >
             Операция
           </Button>
+          )}
         </Stack>
       </Paper>
 
@@ -1255,33 +1329,49 @@ const FinanceOverviewPageContent: React.FC = () => {
             const amountColor = row.direction === 'expense' ? 'error.main' : 'success.main';
 
             return (
-              <Paper key={row.id} variant="outlined" sx={{ p: 1.5, borderRadius: 1 }}>
-                <Stack spacing={1.25}>
+              <Paper key={row.id} variant="outlined" sx={{ p: isPwaJournal ? 1 : 1.5, borderRadius: 1 }}>
+                <Stack spacing={isPwaJournal ? 1 : 1.25}>
                   <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
                     <Box sx={{ minWidth: 0 }}>
                       <Typography variant="caption" color="text.secondary">
-                        {row.occurred_at ? new Date(row.occurred_at).toLocaleString('ru-RU') : '—'}
+                        {row.occurred_at
+                          ? new Date(row.occurred_at).toLocaleString('ru-RU', isPwaJournal ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' } : undefined)
+                          : '—'}
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>
                         {accountLabel}
                       </Typography>
                     </Box>
-                    <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        {directionLabel(row.direction)}
-                      </Typography>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 800, color: amountColor, lineHeight: 1.2 }}>
-                        {money(row.amount)}
-                      </Typography>
-                    </Box>
+                    <Stack direction="row" spacing={0.5} alignItems="flex-start" sx={{ flexShrink: 0 }}>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {directionLabel(row.direction)}
+                        </Typography>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 800, color: amountColor, lineHeight: 1.2 }}>
+                          {money(row.amount)}
+                        </Typography>
+                      </Box>
+                      {isPwaJournal && (
+                        <Stack direction="row" spacing={0.25}>
+                          <IconButton size="small" onClick={() => openEditTransaction(row)} aria-label="Редактировать">
+                            <Edit fontSize="small" />
+                          </IconButton>
+                          <IconButton size="small" color="error" onClick={() => deleteJournalTransaction(row.id)} aria-label="Удалить">
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      )}
+                    </Stack>
                   </Stack>
 
+                  {!isPwaJournal && (
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Chip size="small" label={row.target_name || 'Проект не выбран'} variant={row.target_id ? 'filled' : 'outlined'} />
                     <Chip size="small" label={row.article_name || 'Статья не выбрана'} variant={row.article_id ? 'filled' : 'outlined'} />
                   </Stack>
+                  )}
 
-                  <Box>
+                  <Box sx={{ display: !row.counterparty_name && !row.counterparty_phone && isPwaJournal ? 'none' : 'block' }}>
                     <Typography variant="caption" color="text.secondary">
                       Контрагент
                     </Typography>
@@ -1294,8 +1384,8 @@ const FinanceOverviewPageContent: React.FC = () => {
                     </Typography>
                   )}
 
-                  <Stack spacing={1}>
-                    <FormControl size="small" fullWidth>
+                  <Stack direction={isPwaJournal ? 'row' : 'column'} spacing={1}>
+                    <FormControl size="small" fullWidth sx={{ minWidth: 0 }}>
                       <InputLabel>Проект</InputLabel>
                       <Select
                         label="Проект"
@@ -1322,7 +1412,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                         {row.article_name || 'Без статьи'}
                       </Typography>
                     ) : (
-                      <FormControl size="small" fullWidth>
+                      <FormControl size="small" fullWidth sx={{ minWidth: 0 }}>
                         <InputLabel>Статья</InputLabel>
                         <Select
                           label="Статья"
@@ -1348,6 +1438,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                     )}
                   </Stack>
 
+                  {!isPwaJournal && (
                   <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                     <Tooltip title="Редактировать операцию">
                       <IconButton size="small" onClick={() => openEditTransaction(row)}>
@@ -1360,6 +1451,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                       </IconButton>
                     </Tooltip>
                   </Stack>
+                  )}
                 </Stack>
               </Paper>
             );
@@ -1652,7 +1744,8 @@ const FinanceOverviewPageContent: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: { xs: 1, sm: 2 }, display: 'flex', flexDirection: 'column', gap: { xs: 1.5, sm: 2 } }}>
+    <Box sx={{ p: isPwaJournal ? 1 : { xs: 1, sm: 2 }, pb: isPwaJournal ? 8 : undefined, display: 'flex', flexDirection: 'column', gap: isPwaJournal ? 1 : { xs: 1.5, sm: 2 } }}>
+      {!isPwaJournal && (
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
@@ -1664,6 +1757,7 @@ const FinanceOverviewPageContent: React.FC = () => {
         </Box>
         {renderModelSelector()}
       </Stack>
+      )}
 
       {loading && <LinearProgress />}
       {error && (
@@ -1677,7 +1771,7 @@ const FinanceOverviewPageContent: React.FC = () => {
         </Alert>
       )}
 
-      {!selectedModel && (
+      {!isPwaJournal && !selectedModel && (
         <Alert
           severity="info"
           action={
@@ -1690,6 +1784,7 @@ const FinanceOverviewPageContent: React.FC = () => {
         </Alert>
       )}
 
+      {!isPwaJournal && (
       <Paper variant="outlined" sx={{ borderRadius: 1 }}>
         <Tabs
           value={tab}
@@ -1716,15 +1811,20 @@ const FinanceOverviewPageContent: React.FC = () => {
           <Tab value="unit" icon={<Assessment />} iconPosition="start" label="Юнит экономика" />
         </Tabs>
       </Paper>
+      )}
 
-      {tab === 'overview' && <FinanceCommandCenter onNavigateToJournal={() => setTab('journal')} />}
-      {tab === 'dashboard' && renderDashboard()}
-      {tab === 'models' && renderModels()}
-      {tab === 'report' && renderReport()}
-      {tab === 'budget' && renderBudget()}
-      {tab === 'articles' && renderArticles()}
-      {tab === 'journal' && renderJournal()}
-      {tab === 'unit' && renderUnitEconomics()}
+      {isPwaJournal ? renderJournal() : (
+        <>
+          {tab === 'overview' && <FinanceCommandCenter onNavigateToJournal={() => setTab('journal')} />}
+          {tab === 'dashboard' && renderDashboard()}
+          {tab === 'models' && renderModels()}
+          {tab === 'report' && renderReport()}
+          {tab === 'budget' && renderBudget()}
+          {tab === 'articles' && renderArticles()}
+          {tab === 'journal' && renderJournal()}
+          {tab === 'unit' && renderUnitEconomics()}
+        </>
+      )}
 
       <Dialog open={modelDialogOpen} onClose={() => { setModelDialogOpen(false); setEditingModel(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>{editingModel ? 'Редактировать модель' : 'Новая финансовая модель'}</DialogTitle>

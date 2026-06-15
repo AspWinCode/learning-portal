@@ -1766,7 +1766,9 @@ async def get_unit_economics(
 
     period_leads_q = db.query(Lead).filter(Lead.created_at >= period_start, Lead.created_at <= period_end)
     leads = period_leads_q.count()
-    trial_statuses = {LeadStatus.TRIAL_SCHEDULED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT, LeadStatus.WON}
+    # Keep this list limited to legacy enum values that are guaranteed to exist
+    # in older PostgreSQL leadstatus types.
+    trial_statuses = [LeadStatus.DEMO, LeadStatus.WON]
     trials = period_leads_q.filter(Lead.status.in_(trial_statuses)).count()
     won_leads = period_leads_q.filter(Lead.status == LeadStatus.WON).count()
     sales = max(new_students, won_leads)

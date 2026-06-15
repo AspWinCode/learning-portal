@@ -62,6 +62,9 @@ import {
   DashboardWidget,
   DashboardWidgetComputed,
   OwnerWorkspaceProject,
+  OwnerUsefulLink,
+  OwnerUsefulLinkFolder,
+  OwnerUsefulLinksPage,
   OwnerWorkspaceContact,
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskListPage,
@@ -118,6 +121,53 @@ import {
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
 const api = apiClient;
+
+export const ownerUsefulLinksApi = {
+  list: async (params?: { q?: string; tag?: string }): Promise<OwnerUsefulLinksPage> => {
+    const response = await api.get('/api/owner-workspace/links', { params });
+    return response.data;
+  },
+  createFolder: async (data: {
+    parent_id?: number | null;
+    name: string;
+    description?: string | null;
+    sort_order?: number;
+  }): Promise<OwnerUsefulLinkFolder> => {
+    const response = await api.post('/api/owner-workspace/links/folders', data);
+    return response.data;
+  },
+  updateFolder: async (
+    folderId: number,
+    data: Partial<{ parent_id: number | null; name: string; description: string | null; sort_order: number }>
+  ): Promise<OwnerUsefulLinkFolder> => {
+    const response = await api.patch(`/api/owner-workspace/links/folders/${folderId}`, data);
+    return response.data;
+  },
+  deleteFolder: async (folderId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/links/folders/${folderId}`);
+  },
+  createLink: async (data: {
+    folder_id?: number | null;
+    title: string;
+    description?: string | null;
+    url: string;
+    tags?: string[];
+    sort_order?: number;
+  }): Promise<OwnerUsefulLink> => {
+    const response = await api.post('/api/owner-workspace/links', data);
+    return response.data;
+  },
+  updateLink: async (
+    linkId: number,
+    data: Partial<{ folder_id: number | null; title: string; description: string | null; url: string; tags: string[]; sort_order: number }>
+  ): Promise<OwnerUsefulLink> => {
+    const response = await api.patch(`/api/owner-workspace/links/${linkId}`, data);
+    return response.data;
+  },
+  deleteLink: async (linkId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/links/${linkId}`);
+  },
+};
 
 /*
 

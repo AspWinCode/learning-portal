@@ -56,6 +56,7 @@ import {
   School,
   Bolt,
   Lock,
+  Link,
   ChevronLeft,
   ChevronRight,
   ExpandLess,
@@ -80,7 +81,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/disk', '/passwords']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
@@ -356,6 +357,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
+      items.push({ text: 'Полезные ссылки', icon: <Link />, path: '/owner-workspace/links' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
     }
@@ -377,6 +379,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
+      items.push({ text: 'Полезные ссылки', icon: <Link />, path: '/owner-workspace/links' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
     }

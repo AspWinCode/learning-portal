@@ -1542,6 +1542,35 @@ export interface OwnerWorkspaceProjectDocument {
   created_at?: string | null;
 }
 
+export interface OwnerUsefulLinkFolder {
+  id: number;
+  parent_id?: number | null;
+  name: string;
+  description?: string | null;
+  sort_order: number;
+  created_by_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface OwnerUsefulLink {
+  id: number;
+  folder_id?: number | null;
+  title: string;
+  description?: string | null;
+  url: string;
+  tags: string[];
+  sort_order: number;
+  created_by_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface OwnerUsefulLinksPage {
+  folders: OwnerUsefulLinkFolder[];
+  links: OwnerUsefulLink[];
+}
+
 export type OwnerWorkspaceContactType = 'company' | 'ip' | 'individual';
 
 export interface OwnerWorkspaceContact {

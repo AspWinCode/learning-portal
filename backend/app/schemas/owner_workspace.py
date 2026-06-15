@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class OwnerWorkspaceProjectParticipantAdd(BaseModel):
@@ -86,6 +86,135 @@ class OwnerWorkspaceProjectDocumentResponse(BaseModel):
     created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class OwnerUsefulLinkFolderBase(BaseModel):
+    parent_id: Optional[int] = None
+    name: str
+    description: Optional[str] = None
+    sort_order: int = 0
+
+
+class OwnerUsefulLinkFolderCreate(OwnerUsefulLinkFolderBase):
+    pass
+
+
+class OwnerUsefulLinkFolderUpdate(BaseModel):
+    parent_id: Optional[int] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class OwnerUsefulLinkFolderResponse(BaseModel):
+    id: int
+    parent_id: Optional[int] = None
+    name: str
+    description: Optional[str] = None
+    sort_order: int = 0
+    created_by_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OwnerUsefulLinkBase(BaseModel):
+    folder_id: Optional[int] = None
+    title: str
+    description: Optional[str] = None
+    url: str
+    tags: List[str] = Field(default_factory=list)
+    sort_order: int = 0
+
+    @field_validator("url")
+    @classmethod
+    def normalize_url(cls, value: str) -> str:
+        cleaned = (value or "").strip()
+        if not cleaned:
+            raise ValueError("url is required")
+        if not cleaned.startswith(("http://", "https://")):
+            cleaned = f"https://{cleaned}"
+        return cleaned
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, value: List[str]) -> List[str]:
+        seen = set()
+        tags: List[str] = []
+        for raw in value or []:
+            tag = str(raw).strip()
+            if not tag:
+                continue
+            key = tag.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            tags.append(tag)
+        return tags
+
+
+class OwnerUsefulLinkCreate(OwnerUsefulLinkBase):
+    pass
+
+
+class OwnerUsefulLinkUpdate(BaseModel):
+    folder_id: Optional[int] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    url: Optional[str] = None
+    tags: Optional[List[str]] = None
+    sort_order: Optional[int] = None
+
+    @field_validator("url")
+    @classmethod
+    def normalize_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("url is required")
+        if not cleaned.startswith(("http://", "https://")):
+            cleaned = f"https://{cleaned}"
+        return cleaned
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return value
+        seen = set()
+        tags: List[str] = []
+        for raw in value:
+            tag = str(raw).strip()
+            if not tag:
+                continue
+            key = tag.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            tags.append(tag)
+        return tags
+
+
+class OwnerUsefulLinkResponse(BaseModel):
+    id: int
+    folder_id: Optional[int] = None
+    title: str
+    description: Optional[str] = None
+    url: str
+    tags: List[str] = Field(default_factory=list)
+    sort_order: int = 0
+    created_by_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OwnerUsefulLinksPageResponse(BaseModel):
+    folders: List[OwnerUsefulLinkFolderResponse] = Field(default_factory=list)
+    links: List[OwnerUsefulLinkResponse] = Field(default_factory=list)
 
 
 OwnerWorkspaceContactType = Literal["company", "ip", "individual"]

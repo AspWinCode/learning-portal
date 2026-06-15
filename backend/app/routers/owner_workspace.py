@@ -77,6 +77,8 @@ from app.models import (
     OwnerWorkspaceTaskTemplate,
     OwnerWorkspaceTaskWatcher,
     OwnerWorkspaceWebPushSubscription,
+    OwnerUsefulLink,
+    OwnerUsefulLinkFolder,
     User,
 )
 from app.schemas.owner_workspace import (
@@ -120,6 +122,13 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceProjectParticipantRolePatch,
     OwnerWorkspaceProjectResponse,
     OwnerWorkspaceProjectUpdate,
+    OwnerUsefulLinkCreate,
+    OwnerUsefulLinkFolderCreate,
+    OwnerUsefulLinkFolderResponse,
+    OwnerUsefulLinkFolderUpdate,
+    OwnerUsefulLinkResponse,
+    OwnerUsefulLinksPageResponse,
+    OwnerUsefulLinkUpdate,
     OwnerWorkspaceSearchContactHit,
     OwnerWorkspaceSearchMessageHit,
     OwnerWorkspaceSearchProjectHit,
@@ -148,6 +157,228 @@ from app.services.owner_workspace_counterparties import (
 )
 
 router = APIRouter()
+
+
+def _useful_link_folder_response(folder: OwnerUsefulLinkFolder) -> OwnerUsefulLinkFolderResponse:
+    return OwnerUsefulLinkFolderResponse.model_validate(folder)
+
+
+def _useful_link_response(link: OwnerUsefulLink) -> OwnerUsefulLinkResponse:
+    return OwnerUsefulLinkResponse.model_validate(link)
+
+
+def _assert_folder_exists(db: Session, folder_id: Optional[int]) -> None:
+    if folder_id is None:
+        return
+    if not db.query(OwnerUsefulLinkFolder.id).filter(OwnerUsefulLinkFolder.id == folder_id).first():
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+
+def _assert_not_descendant_folder(db: Session, folder_id: int, parent_id: Optional[int]) -> None:
+    current_id = parent_id
+    seen = set()
+    while current_id is not None:
+        if current_id == folder_id:
+            raise HTTPException(status_code=400, detail="Folder cannot be moved inside itself")
+        if current_id in seen:
+            raise HTTPException(status_code=400, detail="Folder tree has a cycle")
+        seen.add(current_id)
+        parent = db.query(OwnerUsefulLinkFolder.parent_id).filter(OwnerUsefulLinkFolder.id == current_id).first()
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent folder not found")
+        current_id = parent[0]
+
+
+def _descendant_folder_ids(db: Session, folder_id: int) -> List[int]:
+    ids = [folder_id]
+    index = 0
+    while index < len(ids):
+        child_ids = [
+            row[0]
+            for row in db.query(OwnerUsefulLinkFolder.id)
+            .filter(OwnerUsefulLinkFolder.parent_id == ids[index])
+            .all()
+        ]
+        for child_id in child_ids:
+            if child_id not in ids:
+                ids.append(child_id)
+        index += 1
+    return ids
+
+
+@router.get("/links", response_model=OwnerUsefulLinksPageResponse)
+async def list_owner_useful_links(
+    q: Optional[str] = Query(None),
+    tag: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+):
+    folders = (
+        db.query(OwnerUsefulLinkFolder)
+        .order_by(asc(OwnerUsefulLinkFolder.parent_id).nullsfirst(), asc(OwnerUsefulLinkFolder.sort_order), asc(OwnerUsefulLinkFolder.name))
+        .all()
+    )
+    query = db.query(OwnerUsefulLink)
+    if q:
+        pattern = f"%{q.strip()}%"
+        query = query.filter(
+            or_(
+                OwnerUsefulLink.title.ilike(pattern),
+                OwnerUsefulLink.description.ilike(pattern),
+                OwnerUsefulLink.url.ilike(pattern),
+            )
+        )
+    if tag:
+        tag_value = tag.strip().lower()
+        if tag_value:
+            query = query.filter(cast(OwnerUsefulLink.tags, String).ilike(f"%{tag_value}%"))
+    links = query.order_by(asc(OwnerUsefulLink.sort_order), asc(OwnerUsefulLink.title)).all()
+    return OwnerUsefulLinksPageResponse(
+        folders=[_useful_link_folder_response(folder) for folder in folders],
+        links=[_useful_link_response(link) for link in links],
+    )
+
+
+@router.post("/links/folders", response_model=OwnerUsefulLinkFolderResponse, status_code=status.HTTP_201_CREATED)
+async def create_owner_useful_link_folder(
+    payload: OwnerUsefulLinkFolderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+):
+    _assert_folder_exists(db, payload.parent_id)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Folder name is required")
+    folder = OwnerUsefulLinkFolder(
+        parent_id=payload.parent_id,
+        name=name,
+        description=(payload.description or "").strip() or None,
+        sort_order=payload.sort_order,
+        created_by_id=current_user.id,
+    )
+    db.add(folder)
+    db.commit()
+    db.refresh(folder)
+    return _useful_link_folder_response(folder)
+
+
+@router.patch("/links/folders/{folder_id}", response_model=OwnerUsefulLinkFolderResponse)
+async def update_owner_useful_link_folder(
+    folder_id: int,
+    payload: OwnerUsefulLinkFolderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+):
+    folder = db.query(OwnerUsefulLinkFolder).filter(OwnerUsefulLinkFolder.id == folder_id).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    updates = payload.model_dump(exclude_unset=True)
+    if "parent_id" in updates:
+        _assert_folder_exists(db, payload.parent_id)
+        _assert_not_descendant_folder(db, folder_id, payload.parent_id)
+        folder.parent_id = payload.parent_id
+    if "name" in updates:
+        name = (payload.name or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Folder name is required")
+        folder.name = name
+    if "description" in updates:
+        folder.description = (payload.description or "").strip() or None
+    if "sort_order" in updates:
+        folder.sort_order = payload.sort_order or 0
+    db.commit()
+    db.refresh(folder)
+    return _useful_link_folder_response(folder)
+
+
+@router.delete("/links/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_owner_useful_link_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+):
+    folder = db.query(OwnerUsefulLinkFolder).filter(OwnerUsefulLinkFolder.id == folder_id).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    folder_ids = _descendant_folder_ids(db, folder_id)
+    db.query(OwnerUsefulLink).filter(OwnerUsefulLink.folder_id.in_(folder_ids)).update(
+        {"folder_id": None},
+        synchronize_session=False,
+    )
+    db.query(OwnerUsefulLinkFolder).filter(OwnerUsefulLinkFolder.id.in_(folder_ids)).delete(synchronize_session=False)
+    db.commit()
+    return None
+
+
+@router.post("/links", response_model=OwnerUsefulLinkResponse, status_code=status.HTTP_201_CREATED)
+async def create_owner_useful_link(
+    payload: OwnerUsefulLinkCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+):
+    _assert_folder_exists(db, payload.folder_id)
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Link title is required")
+    link = OwnerUsefulLink(
+        folder_id=payload.folder_id,
+        title=title,
+        description=(payload.description or "").strip() or None,
+        url=payload.url,
+        tags=payload.tags,
+        sort_order=payload.sort_order,
+        created_by_id=current_user.id,
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return _useful_link_response(link)
+
+
+@router.patch("/links/{link_id}", response_model=OwnerUsefulLinkResponse)
+async def update_owner_useful_link(
+    link_id: int,
+    payload: OwnerUsefulLinkUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+):
+    link = db.query(OwnerUsefulLink).filter(OwnerUsefulLink.id == link_id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    updates = payload.model_dump(exclude_unset=True)
+    if "folder_id" in updates:
+        _assert_folder_exists(db, payload.folder_id)
+        link.folder_id = payload.folder_id
+    if "title" in updates:
+        title = (payload.title or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Link title is required")
+        link.title = title
+    if "description" in updates:
+        link.description = (payload.description or "").strip() or None
+    if "url" in updates and payload.url is not None:
+        link.url = payload.url
+    if "tags" in updates and payload.tags is not None:
+        link.tags = payload.tags
+    if "sort_order" in updates:
+        link.sort_order = payload.sort_order or 0
+    db.commit()
+    db.refresh(link)
+    return _useful_link_response(link)
+
+
+@router.delete("/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_owner_useful_link(
+    link_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+):
+    link = db.query(OwnerUsefulLink).filter(OwnerUsefulLink.id == link_id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    db.delete(link)
+    db.commit()
+    return None
 
 
 async def get_owner_workspace_access(

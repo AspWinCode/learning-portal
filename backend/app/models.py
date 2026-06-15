@@ -2253,6 +2253,40 @@ class OwnerWorkspaceContact(Base):
     counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[counterparty_id])
 
 
+class OwnerUsefulLinkFolder(Base):
+    __tablename__ = "owner_useful_link_folders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    parent_id = Column(Integer, ForeignKey("owner_useful_link_folders.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    parent = relationship("OwnerUsefulLinkFolder", remote_side=[id], backref="children")
+    links = relationship("OwnerUsefulLink", back_populates="folder")
+
+
+class OwnerUsefulLink(Base):
+    __tablename__ = "owner_useful_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    folder_id = Column(Integer, ForeignKey("owner_useful_link_folders.id", ondelete="SET NULL"), nullable=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    url = Column(Text, nullable=False)
+    tags = Column(JSON, nullable=False, default=list)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    folder = relationship("OwnerUsefulLinkFolder", back_populates="links")
+    created_by = relationship("User")
+
+
 class OwnerWorkspaceProjectContact(Base):
     """Связь проект ↔ простой контакт."""
     __tablename__ = "owner_workspace_project_contacts"

@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from io import StringIO, BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Form
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -2564,6 +2565,10 @@ async def list_finance_transactions(
         None,
         description="Фильтр по проектам (finance_targets.id). Пусто = все.",
     ),
+    include_unassigned_targets: bool = Query(
+        False,
+        description="Вместе с target_ids показывать операции без проекта (target_id IS NULL).",
+    ),
     article_ids: Optional[List[int]] = Query(
         None,
         description="Фильтр по статьям (finance_articles.id). Пусто = все.",
@@ -2609,7 +2614,10 @@ async def list_finance_transactions(
     if account_ids:
         q = q.filter(FinanceTransaction.account_id.in_(account_ids))
     if target_ids:
-        q = q.filter(FinanceTransaction.target_id.in_(target_ids))
+        target_filter = FinanceTransaction.target_id.in_(target_ids)
+        if include_unassigned_targets:
+            target_filter = or_(target_filter, FinanceTransaction.target_id.is_(None))
+        q = q.filter(target_filter)
     if article_ids:
         q = q.filter(FinanceTransaction.article_id.in_(article_ids))
     if direction:

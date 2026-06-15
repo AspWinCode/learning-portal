@@ -255,10 +255,12 @@ const FinanceOverviewPageContent: React.FC = () => {
   const loadJournal = async () => {
     setJournalLoading(true);
     setError(null);
+    const effectiveTargetFilter = journalTargetFilter === 'all' ? null : journalTargetFilter;
     try {
       const rows = await financeApi.listJournalTransactions({
         unclassified_only: unclassifiedOnly,
-        target_ids: journalTargetFilter === 'all' ? undefined : [journalTargetFilter],
+        target_ids: effectiveTargetFilter ? [effectiveTargetFilter] : undefined,
+        include_unassigned_targets: Boolean(effectiveTargetFilter),
         direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
         date_from: journalFrom || undefined,
         date_to: journalTo || undefined,
@@ -294,12 +296,14 @@ const FinanceOverviewPageContent: React.FC = () => {
   useEffect(() => {
     if (selectedTargetId) {
       loadModelData(selectedTargetId);
+      setJournalTargetFilter(selectedTargetId);
     } else {
       setArticleTree([]);
       setArticles([]);
       setMetrics([]);
       setBudget([]);
       setWidgets([]);
+      setJournalTargetFilter('all');
     }
   }, [selectedTargetId, period]);
 

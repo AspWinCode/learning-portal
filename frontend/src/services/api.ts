@@ -759,6 +759,7 @@ export const financeApi = {
     direction?: string;
     status?: string[];
     unclassified_only?: boolean;
+    include_unassigned_targets?: boolean;
     date_from?: string;
     date_to?: string;
     limit?: number;
@@ -771,6 +772,7 @@ export const financeApi = {
         direction: params?.direction,
         status: params?.status,
         unclassified_only: params?.unclassified_only,
+        include_unassigned_targets: params?.include_unassigned_targets,
         date_from: params?.date_from,
         date_to: params?.date_to,
         limit: params?.limit,

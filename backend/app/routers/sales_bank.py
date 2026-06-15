@@ -1,9 +1,10 @@
 import hashlib
 import os
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from jose import jwt
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import db_transaction, get_db
@@ -108,6 +109,147 @@ def _resolve_student_for_bank_payment(
     return None
 
 
+def _webhook_get(payload: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _webhook_side_name(side: Any) -> str:
+    if isinstance(side, dict):
+        return str(side.get("name") or side.get("Name") or "").strip()
+    return ""
+
+
+def _webhook_side_phone(side: Any) -> str:
+    if isinstance(side, dict):
+        return str(
+            side.get("phone")
+            or side.get("Phone")
+            or side.get("mobile")
+            or side.get("Mobile")
+            or side.get("payerMobileNumber")
+            or ""
+        ).strip()
+    return ""
+
+
+def _decode_tochka_webhook(raw_body: bytes) -> Dict[str, Any]:
+    body = raw_body.decode("utf-8").strip()
+    if not body:
+        raise ValueError("empty webhook body")
+    if body.startswith("{"):
+        import json
+
+        decoded = json.loads(body)
+        if not isinstance(decoded, dict):
+            raise ValueError("webhook JSON body must be object")
+        return decoded
+    claims = jwt.get_unverified_claims(body)
+    if not isinstance(claims, dict):
+        raise ValueError("webhook JWT claims must be object")
+    return claims
+
+
+def _transaction_from_tochka_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
+    webhook_type = str(_webhook_get(payload, "webhookType", "WebhookType") or "").strip()
+    direction = "expense" if webhook_type == "outgoingPayment" else "income"
+    payer_side = _webhook_get(payload, "SidePayer", "sidePayer", "payer", "Payer") or {}
+    recipient_side = _webhook_get(payload, "SideRecipient", "sideRecipient", "recipient", "Recipient") or {}
+    counterparty_side = recipient_side if direction == "expense" else payer_side
+
+    payer_name = str(
+        _webhook_get(payload, "payerName", "PayerName", "debtorName", "DebtorName")
+        or _webhook_side_name(counterparty_side)
+        or ""
+    ).strip()
+    payer_phone = str(
+        _webhook_get(payload, "payerMobileNumber", "PayerMobileNumber", "payerPhone", "PayerPhone")
+        or _webhook_side_phone(counterparty_side)
+        or ""
+    ).strip()
+
+    amount_raw = _webhook_get(payload, "amount", "Amount") or (
+        counterparty_side.get("amount") if isinstance(counterparty_side, dict) else None
+    )
+    try:
+        amount = abs(float(amount_raw or 0))
+    except (TypeError, ValueError):
+        amount = 0.0
+
+    return {
+        "date": str(_webhook_get(payload, "date", "Date", "paymentDate", "PaymentDate") or date.today().isoformat()),
+        "amount": amount,
+        "direction": direction,
+        "payer_name": payer_name,
+        "payer_phone_raw": payer_phone,
+        "operation_id": str(
+            _webhook_get(payload, "paymentId", "PaymentId", "operationId", "OperationId", "refTransactionId", "RefTransactionId")
+            or ""
+        ).strip(),
+        "description": str(_webhook_get(payload, "purpose", "Purpose", "paymentPurpose", "PaymentPurpose") or "").strip(),
+        "raw": payload,
+    }
+
+
+def _upsert_tochka_bank_transaction(
+    db: Session,
+    account_id: str,
+    transaction: Dict[str, Any],
+) -> BankTransaction:
+    payer_name = (transaction.get("payer_name") or "").strip()
+    amount = abs(float(transaction.get("amount") or 0))
+    tx_date = transaction.get("date") or ""
+    payer_phone = normalize_phone(transaction.get("payer_phone_raw") or "")
+    direction = str(transaction.get("direction") or "income").strip().lower()
+    is_expense = direction == "expense"
+    operation_id = (transaction.get("operation_id") or "").strip()
+    if not operation_id:
+        operation_id = hashlib.sha256(
+            f"{account_id}|{tx_date}|{amount}|{payer_name}|{payer_phone}".encode()
+        ).hexdigest()
+
+    bank_transaction = (
+        db.query(BankTransaction)
+        .filter(BankTransaction.operation_id == operation_id)
+        .first()
+    )
+    if bank_transaction is None:
+        bank_transaction = BankTransaction(
+            operation_id=operation_id,
+            tochka_account_id=account_id,
+            amount=amount,
+            payer_phone=(payer_phone or None) if not is_expense else None,
+            payer_name=payer_name[:512] if payer_name else None,
+            payment_date=tx_date,
+            status=BankTransactionStatus.EXPENSE.value if is_expense else BankTransactionStatus.NEW.value,
+        )
+        db.add(bank_transaction)
+        db.flush()
+    else:
+        bank_transaction.amount = amount
+        if is_expense:
+            bank_transaction.payer_phone = None
+        elif payer_phone:
+            bank_transaction.payer_phone = payer_phone
+        if payer_name:
+            bank_transaction.payer_name = payer_name[:512]
+        bank_transaction.payment_date = tx_date or bank_transaction.payment_date
+        if is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
+            bank_transaction.status = BankTransactionStatus.EXPENSE.value
+            bank_transaction.student_id = None
+            bank_transaction.student_account_id = None
+
+    ensure_finance_transaction_for_bank_transaction(
+        db,
+        bank_transaction,
+        bank_source="tochka",
+    )
+    return bank_transaction
+
+
 def do_tochka_import_and_apply(
     db: Session,
     account_id: str,
@@ -171,7 +313,10 @@ def do_tochka_import_and_apply(
                 db.flush()
             else:
                 bank_transaction.amount = amount
-                bank_transaction.payer_phone = (payer_phone or None) if not is_expense else None
+                if is_expense:
+                    bank_transaction.payer_phone = None
+                elif payer_phone:
+                    bank_transaction.payer_phone = payer_phone
                 if payer_name:
                     bank_transaction.payer_name = payer_name[:512]
                 bank_transaction.payment_date = tx_date or bank_transaction.payment_date
@@ -359,6 +504,33 @@ def do_tochka_import_and_apply(
             {"applied": len(applied), "no_match": len(no_match), "ambiguous": len(ambiguous)},
         )
     return BankPaymentImportResponse(applied=applied, no_match=no_match, ambiguous=ambiguous)
+
+
+@router.post("/tochka/webhook")
+async def tochka_webhook(request: Request, db: Session = Depends(get_db)):
+    account_id = (os.getenv("TOCHKA_ACCOUNT_ID") or "").strip()
+    if not account_id:
+        raise HTTPException(status_code=400, detail="TOCHKA_ACCOUNT_ID is not configured")
+
+    try:
+        payload = _decode_tochka_webhook(await request.body())
+        transaction = _transaction_from_tochka_webhook(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid Tochka webhook: {exc!s}")
+
+    if not transaction.get("amount"):
+        raise HTTPException(status_code=400, detail="Invalid Tochka webhook: missing amount")
+
+    with db_transaction(db):
+        bank_transaction = _upsert_tochka_bank_transaction(db, account_id, transaction)
+
+    return {
+        "ok": True,
+        "operation_id": bank_transaction.operation_id,
+        "payer_phone": bank_transaction.payer_phone,
+        "payer_name": bank_transaction.payer_name,
+        "status": bank_transaction.status,
+    }
 
 
 @router.get("/tochka/status")

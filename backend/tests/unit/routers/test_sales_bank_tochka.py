@@ -4,7 +4,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.models import BankTransaction, BankTransactionStatus, FinanceTransaction, PhonePaymentBinding, StudentCard
-from app.routers.sales_bank import delete_bank_transaction, do_tochka_import_and_apply
+from app.routers.sales_bank import (
+    _transaction_from_tochka_webhook,
+    _upsert_tochka_bank_transaction,
+    delete_bank_transaction,
+    do_tochka_import_and_apply,
+)
 
 
 def _query_mock(result):
@@ -108,6 +113,56 @@ def test_tochka_import_marks_debit_transaction_as_expense(monkeypatch):
     assert result.no_match == []
     assert result.ambiguous == []
     ensure_finance.assert_called_once_with(db, created_transaction, bank_source="tochka")
+
+
+def test_tochka_webhook_extracts_sbp_payer_phone():
+    transaction = _transaction_from_tochka_webhook(
+        {
+            "webhookType": "incomingSbpPayment",
+            "operationId": "sbp-1",
+            "amount": "4000.00",
+            "payerMobileNumber": "+79991112233",
+            "payerName": "Иван Иванович И.",
+            "purpose": "Оплата обучения",
+        }
+    )
+
+    assert transaction["operation_id"] == "sbp-1"
+    assert transaction["payer_phone_raw"] == "+79991112233"
+    assert transaction["payer_name"] == "Иван Иванович И."
+    assert transaction["direction"] == "income"
+
+
+def test_tochka_upsert_preserves_existing_phone_when_statement_has_no_phone(monkeypatch):
+    bank_transaction = MagicMock()
+    bank_transaction.operation_id = "op-keep-phone"
+    bank_transaction.status = BankTransactionStatus.NEW.value
+    bank_transaction.payer_phone = "+79991112233"
+    bank_transaction.payer_name = "Old"
+    bank_transaction.payment_date = "2026-06-14"
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = bank_transaction
+    ensure_finance = MagicMock()
+    monkeypatch.setattr("app.routers.sales_bank.ensure_finance_transaction_for_bank_transaction", ensure_finance)
+
+    result = _upsert_tochka_bank_transaction(
+        db,
+        "account-1",
+        {
+            "operation_id": "op-keep-phone",
+            "amount": 4000,
+            "date": "2026-06-15",
+            "direction": "income",
+            "payer_name": 'ООО "Банк Точка"',
+            "payer_phone_raw": "",
+        },
+    )
+
+    assert result is bank_transaction
+    assert bank_transaction.payer_phone == "+79991112233"
+    assert bank_transaction.payer_name == 'ООО "Банк Точка"'
+    ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
 
 
 def test_tochka_import_skips_ignored_transaction(monkeypatch):

@@ -33,7 +33,7 @@ def _enqueue_fast_cycle_jobs() -> None:
 
 def main() -> None:
     scheduler = BlockingScheduler()
-    scheduler.add_job(lambda: task_tochka_auto_import.send(), "interval", minutes=10, id="tochka_auto_import", max_instances=1)
+    scheduler.add_job(lambda: task_tochka_auto_import.send(), "interval", minutes=1, id="tochka_auto_import", max_instances=1)
     scheduler.add_job(lambda: task_payment_overdue_tasks.send(), "interval", days=1, id="payment_overdue_tasks", max_instances=1)
     scheduler.add_job(lambda: task_payment_reminder_notifications.send(), "cron", hour=9, minute=0, id="payment_reminder_notifications", max_instances=1)
     scheduler.add_job(lambda: task_parent_weekly_digests.send(), "interval", minutes=15, id="parent_weekly_digests", max_instances=1)

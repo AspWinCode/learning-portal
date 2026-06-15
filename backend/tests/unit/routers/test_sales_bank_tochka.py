@@ -20,6 +20,8 @@ def test_tochka_import_skips_existing_applied_transaction(monkeypatch):
     bank_transaction = MagicMock()
     bank_transaction.operation_id = "op-1"
     bank_transaction.status = BankTransactionStatus.APPLIED.value
+    bank_transaction.payer_name = 'ООО "Банк Точка"'
+    bank_transaction.payer_phone = None
 
     db = MagicMock()
     db.query.side_effect = lambda model: {
@@ -57,6 +59,8 @@ def test_tochka_import_skips_existing_applied_transaction(monkeypatch):
     assert result.applied == []
     assert result.no_match == []
     assert result.ambiguous == []
+    assert bank_transaction.payer_name == "Ivanov"
+    assert bank_transaction.payer_phone == "+79990000000"
     ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
     db.add.assert_not_called()
 

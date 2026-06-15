@@ -13,7 +13,7 @@ import json
 import urllib.request
 import urllib.error
 import urllib.parse
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import date, timedelta
 
 
@@ -177,6 +177,106 @@ def fetch_statement_ready(
     raise TimeoutError("Точка Банк: выписка не готова за отведённое время")
 
 
+def _clean_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    return " ".join(value.strip().split())
+
+
+def _get_any(obj: Dict[str, Any], keys: List[str]) -> Any:
+    for key in keys:
+        if key in obj and obj[key] not in (None, ""):
+            return obj[key]
+    return None
+
+
+def _extract_name_from_party(value: Any) -> str:
+    if isinstance(value, str):
+        return _clean_text(value)
+    if not isinstance(value, dict):
+        return ""
+
+    direct = _get_any(
+        value,
+        ["Name", "name", "fullName", "FullName", "fio", "FIO", "partyName", "PartyName", "legalName", "LegalName"],
+    )
+    if direct:
+        return _clean_text(direct)
+
+    for key in ("Party", "party", "Organisation", "organization", "Individual", "individual"):
+        name = _extract_name_from_party(value.get(key))
+        if name:
+            return name
+    return ""
+
+
+def _extract_phone_from_party(value: Any) -> str:
+    if isinstance(value, str):
+        return _clean_text(value)
+    if not isinstance(value, dict):
+        return ""
+
+    direct = _get_any(
+        value,
+        ["phone", "Phone", "phoneNumber", "PhoneNumber", "mobile", "Mobile", "payerPhone", "PayerPhone"],
+    )
+    if direct:
+        return _clean_text(direct)
+
+    for key in ("ContactDetails", "contactDetails", "Party", "party", "Organisation", "organization", "Individual", "individual"):
+        phone = _extract_phone_from_party(value.get(key))
+        if phone:
+            return phone
+    return ""
+
+
+def _extract_related_party(tx: Dict[str, Any], party_keys: List[str]) -> Any:
+    for container_key in ("RelatedParties", "relatedParties", "related_parties"):
+        container = tx.get(container_key)
+        if not isinstance(container, dict):
+            continue
+        value = _get_any(container, party_keys)
+        if value:
+            return value
+    return None
+
+
+def _counterparty_keys(direction: str) -> Tuple[List[str], List[str], List[str], List[str]]:
+    if direction == "expense":
+        return (
+            ["Creditor", "creditor", "CreditorParty", "creditorParty", "recipient", "Recipient", "payee", "Payee", "creditorAccount", "CreditorAccount"],
+            ["recipientName", "RecipientName", "payeeName", "PayeeName", "creditorName", "CreditorName"],
+            ["recipientPhone", "RecipientPhone", "payeePhone", "PayeePhone", "creditorPhone", "CreditorPhone"],
+            ["CreditorAgent", "creditorAgent"],
+        )
+    return (
+        ["Debtor", "debtor", "DebtorParty", "debtorParty", "payer", "Payer", "remitter", "Remitter", "payerAccount", "PayerAccount", "debtorAccount", "DebtorAccount"],
+        ["payerName", "payer_name", "PayerName", "debtorName", "DebtorName"],
+        ["payerPhone", "payer_phone", "PayerPhone", "debtorPhone", "DebtorPhone"],
+        ["DebtorAgent", "debtorAgent"],
+    )
+
+
+def _extract_counterparty_name(tx: Dict[str, Any], direction: str) -> str:
+    party_keys, direct_name_keys, _direct_phone_keys, agent_keys = _counterparty_keys(direction)
+    for value in (_get_any(tx, party_keys), _extract_related_party(tx, party_keys), _get_any(tx, direct_name_keys)):
+        name = _extract_name_from_party(value)
+        if name:
+            return name
+    return _extract_name_from_party(_get_any(tx, agent_keys))
+
+
+def _extract_counterparty_phone(tx: Dict[str, Any], direction: str) -> str:
+    party_keys, _direct_name_keys, direct_phone_keys, agent_keys = _counterparty_keys(direction)
+    for value in (_get_any(tx, party_keys), _extract_related_party(tx, party_keys), _get_any(tx, direct_phone_keys)):
+        phone = _extract_phone_from_party(value)
+        if phone:
+            return phone
+    return _extract_phone_from_party(_get_any(tx, agent_keys))
+
+
 def extract_incoming_transactions(statement: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Из тела выписки (GET .../statements/{id}) извлечь все операции.
 
@@ -226,27 +326,9 @@ def extract_incoming_transactions(statement: Dict[str, Any]) -> List[Dict[str, A
             continue
 
         # Плательщик (у Точки поля: payerName, debtor, debtorAccount)
-        payer_name = (
-            tx.get("payerName") or tx.get("payer_name") or tx.get("PayerName") or ""
-        ).strip()
-        if not payer_name:
-            debtor = tx.get("DebtorAgent") or tx.get("debtor") or tx.get("debtorAccount") or {}
-            if isinstance(debtor, str):
-                payer_name = debtor
-            elif isinstance(debtor, dict):
-                payer_name = (
-                    debtor.get("Name") or debtor.get("name") or debtor.get("fio") or ""
-                ).strip()
-
-        payer_phone_raw = (
-            tx.get("payerPhone") or tx.get("payer_phone") or tx.get("PayerPhone") or ""
-        ).strip()
-        if not payer_phone_raw:
-            debtor = tx.get("DebtorAgent") or tx.get("debtor") or tx.get("debtorAccount") or {}
-            if isinstance(debtor, dict):
-                payer_phone_raw = (
-                    debtor.get("phone") or debtor.get("phoneNumber") or debtor.get("mobile") or ""
-                ).strip()
+        direction = "income" if ind == "credit" else "expense"
+        payer_name = _extract_counterparty_name(tx, direction)
+        payer_phone_raw = _extract_counterparty_phone(tx, direction)
 
         tx_date = (
             tx.get("bookingDate") or tx.get("documentProcessDate") or tx.get("BookingDateTime")
@@ -273,7 +355,7 @@ def extract_incoming_transactions(statement: Dict[str, Any]) -> List[Dict[str, A
         result.append({
             "date": str(tx_date),
             "amount": amount_float,
-            "direction": "income" if ind == "credit" else "expense",
+            "direction": direction,
             "payer_name": payer_name,
             "payer_phone_raw": payer_phone_raw,
             "operation_id": operation_id,

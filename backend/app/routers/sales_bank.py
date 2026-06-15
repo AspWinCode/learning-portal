@@ -169,7 +169,14 @@ def do_tochka_import_and_apply(
                 )
                 db.add(bank_transaction)
                 db.flush()
-            elif is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
+            else:
+                bank_transaction.amount = amount
+                bank_transaction.payer_phone = (payer_phone or None) if not is_expense else None
+                if payer_name:
+                    bank_transaction.payer_name = payer_name[:512]
+                bank_transaction.payment_date = tx_date or bank_transaction.payment_date
+
+            if bank_transaction is not None and is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
                 bank_transaction.amount = amount
                 bank_transaction.payer_phone = None
                 bank_transaction.payer_name = payer_name[:512] if payer_name else bank_transaction.payer_name

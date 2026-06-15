@@ -165,6 +165,108 @@ def test_tochka_upsert_preserves_existing_phone_when_statement_has_no_phone(monk
     ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
 
 
+def test_tochka_webhook_enriches_existing_statement_transaction(monkeypatch):
+    bank_transaction = MagicMock()
+    bank_transaction.operation_id = "statement-op"
+    bank_transaction.status = BankTransactionStatus.NEW.value
+    bank_transaction.payer_phone = None
+    bank_transaction.payer_name = 'ООО "Банк Точка"'
+    bank_transaction.payment_date = "2026-06-15"
+    bank_transaction.amount = 4200
+
+    db = MagicMock()
+    db.query.side_effect = [_query_mock(None), _query_mock([bank_transaction])]
+    ensure_finance = MagicMock()
+    monkeypatch.setattr("app.routers.sales_bank.ensure_finance_transaction_for_bank_transaction", ensure_finance)
+
+    result = _upsert_tochka_bank_transaction(
+        db,
+        "account-1",
+        {
+            "operation_id": "sbp-op",
+            "amount": 4200,
+            "date": "2026-06-15",
+            "direction": "income",
+            "payer_name": "Елена Ивановна И.",
+            "payer_phone_raw": "+7 (952) 624-43-52",
+        },
+    )
+
+    assert result is bank_transaction
+    assert bank_transaction.operation_id == "statement-op"
+    assert bank_transaction.payer_phone == "+79526244352"
+    assert bank_transaction.payer_name == "Елена Ивановна И."
+    db.add.assert_not_called()
+    ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
+
+
+def test_tochka_import_reuses_enriched_webhook_transaction(monkeypatch):
+    bank_transaction = MagicMock()
+    bank_transaction.operation_id = "sbp-op"
+    bank_transaction.status = BankTransactionStatus.NEW.value
+    bank_transaction.payer_phone = "+79526244352"
+    bank_transaction.payer_name = "Елена Ивановна И."
+    bank_transaction.payment_date = "2026-06-15"
+    bank_transaction.amount = 4200
+
+    def query_side_effect(model):
+        if model is StudentCard:
+            return _query_mock([])
+        if model is PhonePaymentBinding:
+            return _query_mock([])
+        if model is BankTransaction:
+            query_side_effect.bank_queries += 1
+            return _query_mock(None) if query_side_effect.bank_queries == 1 else _query_mock([bank_transaction])
+        raise AssertionError(model)
+
+    query_side_effect.bank_queries = 0
+    db = MagicMock()
+    db.query.side_effect = query_side_effect
+    ensure_finance = MagicMock()
+    monkeypatch.setattr(
+        "app.services.tochka_client.fetch_statement_ready",
+        lambda account_id, date_from, date_to: {},
+    )
+    monkeypatch.setattr(
+        "app.services.tochka_client.extract_incoming_transactions",
+        lambda statement: [
+            {
+                "operation_id": "statement-op",
+                "payer_name": 'ООО "Банк Точка"',
+                "amount": 4200,
+                "direction": "income",
+                "date": "2026-06-15",
+                "payer_phone_raw": "",
+            }
+        ],
+    )
+    monkeypatch.setattr("app.routers.sales_bank.ensure_finance_transaction_for_bank_transaction", ensure_finance)
+
+    result = do_tochka_import_and_apply(
+        db,
+        "account-1",
+        date(2026, 6, 15),
+        date(2026, 6, 15),
+    )
+
+    assert result.applied == []
+    assert result.no_match == [
+        {
+            "payer_name": bank_transaction.payer_name,
+            "amount": 4200.0,
+            "date": "2026-06-15",
+            "payer_phone": "+79526244352",
+        }
+    ]
+    assert result.ambiguous == []
+    assert bank_transaction.operation_id == "sbp-op"
+    assert bank_transaction.payer_phone == "+79526244352"
+    assert bank_transaction.payer_name == "Елена Ивановна И."
+    db.add.assert_not_called()
+    assert ensure_finance.call_count == 2
+    ensure_finance.assert_called_with(db, bank_transaction, bank_source="tochka")
+
+
 def test_tochka_import_skips_ignored_transaction(monkeypatch):
     bank_transaction = MagicMock()
     bank_transaction.operation_id = "ignored-1"

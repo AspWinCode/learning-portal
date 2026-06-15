@@ -136,6 +136,38 @@ def _webhook_side_phone(side: Any) -> str:
     return ""
 
 
+def _is_generic_tochka_counterparty(name: Optional[str]) -> bool:
+    normalized = _normalize_name((name or "").replace('"', ""))
+    return "банк точка" in normalized or "bank tochka" in normalized
+
+
+def _find_single_tochka_candidate(
+    db: Session,
+    account_id: str,
+    amount: float,
+    tx_date: str,
+    *,
+    require_missing_phone: bool = False,
+    require_enriched: bool = False,
+) -> Optional[BankTransaction]:
+    query = db.query(BankTransaction).filter(
+        BankTransaction.tochka_account_id == account_id,
+        BankTransaction.amount == amount,
+        BankTransaction.payment_date == tx_date,
+        BankTransaction.status != BankTransactionStatus.IGNORED.value,
+    )
+    if require_missing_phone:
+        query = query.filter(BankTransaction.payer_phone.is_(None))
+    if require_enriched:
+        query = query.filter(BankTransaction.payer_phone.isnot(None))
+    candidates = [
+        item
+        for item in query.all()
+        if not require_missing_phone or _is_generic_tochka_counterparty(item.payer_name)
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def _decode_tochka_webhook(raw_body: bytes) -> Dict[str, Any]:
     body = raw_body.decode("utf-8").strip()
     if not body:
@@ -216,6 +248,14 @@ def _upsert_tochka_bank_transaction(
         .filter(BankTransaction.operation_id == operation_id)
         .first()
     )
+    if bank_transaction is None and not is_expense and (payer_phone or payer_name):
+        bank_transaction = _find_single_tochka_candidate(
+            db,
+            account_id,
+            amount,
+            tx_date,
+            require_missing_phone=True,
+        )
     if bank_transaction is None:
         bank_transaction = BankTransaction(
             operation_id=operation_id,
@@ -297,6 +337,19 @@ def do_tochka_import_and_apply(
                 .filter(BankTransaction.operation_id == operation_id)
                 .first()
             )
+            if (
+                bank_transaction is None
+                and not is_expense
+                and not payer_phone
+                and _is_generic_tochka_counterparty(payer_name)
+            ):
+                bank_transaction = _find_single_tochka_candidate(
+                    db,
+                    account_id,
+                    amount,
+                    tx_date,
+                    require_enriched=True,
+                )
             if bank_transaction is not None and bank_transaction.status == BankTransactionStatus.IGNORED.value:
                 continue
             if bank_transaction is None:
@@ -317,9 +370,16 @@ def do_tochka_import_and_apply(
                     bank_transaction.payer_phone = None
                 elif payer_phone:
                     bank_transaction.payer_phone = payer_phone
-                if payer_name:
+                if payer_name and not (
+                    not payer_phone
+                    and bank_transaction.payer_phone
+                    and _is_generic_tochka_counterparty(payer_name)
+                ):
                     bank_transaction.payer_name = payer_name[:512]
                 bank_transaction.payment_date = tx_date or bank_transaction.payment_date
+                if not is_expense:
+                    payer_phone = normalize_phone(bank_transaction.payer_phone or "") or payer_phone
+                    payer_name = (bank_transaction.payer_name or payer_name or "").strip()
 
             if bank_transaction is not None and is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
                 bank_transaction.amount = amount

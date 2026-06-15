@@ -10,6 +10,7 @@
 import os
 import time
 import json
+import re
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -18,6 +19,9 @@ from datetime import date, timedelta
 
 
 TOCHKA_API_BASE = "https://enter.tochka.com/uapi/"
+
+PHONE_PATTERN = re.compile(r"(?<!\d)(?:\+?7|8)[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d(?!\d)")
+LABELED_PHONE_PATTERN = re.compile(r"(?:тел(?:ефон)?|phone|mobile|сбп|sbp)\D{0,20}(\d[\d\s\-()]{9,}\d)", re.IGNORECASE)
 
 
 def _get_jwt() -> str:
@@ -232,6 +236,61 @@ def _extract_phone_from_party(value: Any) -> str:
     return ""
 
 
+def _extract_phone_from_text(value: Any) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+
+    match = PHONE_PATTERN.search(text)
+    if match:
+        return _clean_text(match.group(0))
+
+    labeled = LABELED_PHONE_PATTERN.search(text)
+    if labeled:
+        return _clean_text(labeled.group(1))
+
+    return ""
+
+
+def _iter_strings(value: Any) -> List[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        result: List[str] = []
+        for nested in value.values():
+            result.extend(_iter_strings(nested))
+        return result
+    if isinstance(value, list):
+        result: List[str] = []
+        for nested in value:
+            result.extend(_iter_strings(nested))
+        return result
+    return []
+
+
+def _extract_phone_from_transaction_text(tx: Dict[str, Any]) -> str:
+    priority_values = [
+        tx.get("paymentPurpose"),
+        tx.get("PaymentPurpose"),
+        tx.get("description"),
+        tx.get("Description"),
+        tx.get("remittanceInformation"),
+        tx.get("RemittanceInformation"),
+        tx.get("details"),
+        tx.get("Details"),
+    ]
+    for value in priority_values:
+        phone = _extract_phone_from_text(value)
+        if phone:
+            return phone
+
+    for value in _iter_strings(tx):
+        phone = _extract_phone_from_text(value)
+        if phone:
+            return phone
+    return ""
+
+
 def _extract_related_party(tx: Dict[str, Any], party_keys: List[str]) -> Any:
     for container_key in ("RelatedParties", "relatedParties", "related_parties"):
         container = tx.get(container_key)
@@ -274,6 +333,9 @@ def _extract_counterparty_phone(tx: Dict[str, Any], direction: str) -> str:
         phone = _extract_phone_from_party(value)
         if phone:
             return phone
+    phone = _extract_phone_from_transaction_text(tx)
+    if phone:
+        return phone
     return _extract_phone_from_party(_get_any(tx, agent_keys))
 
 

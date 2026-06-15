@@ -54,3 +54,21 @@ def test_extract_transactions_reads_related_debtor_party():
 
     assert result[0]["payer_name"] == "Петров Петр"
     assert result[0]["payer_phone_raw"] == "89991234567"
+
+
+def test_extract_transactions_reads_phone_from_payment_purpose():
+    statement = {
+        "Transaction": [
+            {
+                "transactionId": "op-3",
+                "creditDebitIndicator": "Credit",
+                "amount": 4000,
+                "payerName": 'ООО "Банк Точка"',
+                "paymentPurpose": "Перевод по СБП от +7 (999) 111-22-33 за обучение",
+            }
+        ]
+    }
+
+    result = extract_incoming_transactions(statement)
+
+    assert result[0]["payer_phone_raw"] == "+7 (999) 111-22-33"

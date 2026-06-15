@@ -81,10 +81,10 @@ const renderCounterparty = (row: FinanceLedgerBankRow) => {
   if (!name && !phone) return '—';
   return (
     <Stack spacing={0.25}>
-      <Typography variant="body2">{name || phone}</Typography>
-      {name && phone && (
+      <Typography variant="body2">{phone || name}</Typography>
+      {phone && name && (
         <Typography variant="caption" color="text.secondary">
-          {phone}
+          {name}
         </Typography>
       )}
     </Stack>

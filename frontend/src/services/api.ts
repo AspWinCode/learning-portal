@@ -777,6 +777,7 @@ export const financeApi = {
         date_to: params?.date_to,
         limit: params?.limit,
       },
+      paramsSerializer: { indexes: null },
     });
     return response.data;
   },

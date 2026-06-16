@@ -37,6 +37,13 @@ export const hasPermission = (user: User | null | undefined, permission: string)
     return true;
   }
 
+  if (normalizedPermission.endsWith('.access')) {
+    const managePermission = `${normalizedPermission.slice(0, -'.access'.length)}.manage`;
+    if (permissions.includes(managePermission)) {
+      return true;
+    }
+  }
+
   const parts = normalizedPermission.split('.');
   for (let index = parts.length - 1; index > 0; index -= 1) {
     const wildcardPermission = `${parts.slice(0, index).join('.')}.*`;

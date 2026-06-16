@@ -2043,7 +2043,7 @@ const StudentsPage: React.FC = () => {
               onChange={(e) => setNewTrainer({ ...newTrainer, password: e.target.value })}
               sx={{ mt: 2 }}
               required
-              helperText="Минимум 6 символов"
+              helperText="Минимум 8 символов, хотя бы одна буква и одна цифра"
             />
             <FormControl fullWidth sx={{ mt: 2 }}>
               <InputLabel>Кастомная роль</InputLabel>
@@ -2069,8 +2069,8 @@ const StudentsPage: React.FC = () => {
                   setError('Заполните все поля');
                   return;
                 }
-                if (newTrainer.password.length < 6) {
-                  setError('Пароль должен быть минимум 6 символов');
+                if (newTrainer.password.length < 8 || !/[A-Za-zА-Яа-яЁё]/.test(newTrainer.password) || !/\d/.test(newTrainer.password)) {
+                  setError('Пароль должен быть минимум 8 символов и содержать хотя бы одну букву и одну цифру');
                   return;
                 }
                 try {

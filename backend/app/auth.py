@@ -277,6 +277,11 @@ def has_permission(user: User, permission: str) -> bool:
     if "*" in permissions or normalized_permission in permissions:
         return True
 
+    if normalized_permission.endswith(".access"):
+        manage_permission = normalized_permission[: -len(".access")] + ".manage"
+        if manage_permission in permissions:
+            return True
+
     parts = normalized_permission.split(".")
     for index in range(len(parts) - 1, 0, -1):
         wildcard_permission = ".".join(parts[:index]) + ".*"

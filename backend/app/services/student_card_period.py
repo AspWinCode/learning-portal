@@ -40,10 +40,10 @@ def _lesson_threshold_for_card(card: "StudentCard") -> int:
 
 
 def count_lessons_since_period_start(db: Session, student_id: int, period_start: "date | None") -> int:
-    """Количество посещённых уроков студента с даты начала периода."""
+    """Количество уроков студента с даты начала периода (и посещённые, и пропущенные).
+    Пропущенный урок всё равно считается — он занимает место в абонементе."""
     query = db.query(func.count(LessonAttendance.id)).filter(
         LessonAttendance.student_id == student_id,
-        LessonAttendance.attended == True,
     )
     if period_start:
         query = query.filter(LessonAttendance.lesson_date >= period_start)

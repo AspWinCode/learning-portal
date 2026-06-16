@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . /app
 RUN groupadd --system app \
  && useradd --system --gid app --create-home --home-dir /home/app app \
+ && mkdir -p /app/storage \
  && chown -R app:app /app /home/app
 
 # При сборке всегда подменять миграцию 0047 на идемпотентную (CREATE INDEX IF NOT EXISTS, _table_exists/_column_exists)

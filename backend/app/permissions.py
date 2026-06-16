@@ -326,6 +326,18 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "label": "РџРѕРїРѕР»РЅРµРЅРёРµ СЃС‡РµС‚РѕРІ СѓС‡РµРЅРёРєРѕРІ",
         "description": "РџСЂР°РІРѕ РїСЂРѕРІРѕРґРёС‚СЊ РѕРїР»Р°С‚С‹ Рё РїРѕРїРѕР»РЅРµРЅРёСЏ РїРѕ СЃС‡РµС‚Р°Рј СѓС‡РµРЅРёРєРѕРІ.",
     },
+    {
+        "key": "disk.access",
+        "module": "disk",
+        "label": "Disk: просмотр",
+        "description": "Просмотр файлов на диске.",
+    },
+    {
+        "key": "disk.manage",
+        "module": "disk",
+        "label": "Disk: управление",
+        "description": "Загрузка, переименование и удаление файлов на диске.",
+    },
 ]
 
 VALID_PERMISSION_KEYS: Set[str] = {item["key"] for item in PERMISSION_CATALOG}

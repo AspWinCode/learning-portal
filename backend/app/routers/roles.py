@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -11,6 +11,27 @@ from app.routers.action_log import log_action
 from app.schemas.roles import RoleCreate, RoleResponse, RoleUpdate
 
 router = APIRouter()
+
+
+def _repair_mojibake(value: str) -> str:
+    try:
+        repaired = value.encode("latin1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        try:
+            repaired = value.encode("cp1251").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return value
+    return repaired if repaired.count("Р") + repaired.count("С") < value.count("Р") + value.count("С") else value
+
+
+def _normalized_permission_catalog() -> List[Dict[str, Any]]:
+    result: List[Dict[str, Any]] = []
+    for item in PERMISSION_CATALOG:
+        normalized: Dict[str, Any] = {}
+        for key, value in item.items():
+            normalized[key] = _repair_mojibake(value) if isinstance(value, str) else value
+        result.append(normalized)
+    return result
 
 
 def _get_role_or_404(db: Session, role_id: int) -> Role:
@@ -32,7 +53,7 @@ async def list_roles(
 async def get_permissions_catalog(
     current_user: User = Depends(auth.require_permission("roles.access")),
 ):
-    return {"items": PERMISSION_CATALOG}
+    return {"items": _normalized_permission_catalog()}
 
 
 @router.post("/", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)

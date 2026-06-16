@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -138,7 +139,51 @@ def _webhook_side_phone(side: Any) -> str:
 
 def _is_generic_tochka_counterparty(name: Optional[str]) -> bool:
     normalized = _normalize_name((name or "").replace('"', ""))
-    return "банк точка" in normalized or "bank tochka" in normalized
+    return "\u0431\u0430\u043d\u043a \u0442\u043e\u0447\u043a\u0430" in normalized or "bank tochka" in normalized
+
+
+def _stable_tochka_fallback_operation_id(account_id: str, transaction: Dict[str, Any]) -> str:
+    raw = transaction.get("raw")
+    raw_identity = json.dumps(raw, ensure_ascii=False, sort_keys=True, default=str) if isinstance(raw, dict) else ""
+    seed = "|".join(
+        [
+            account_id,
+            str(transaction.get("date") or ""),
+            str(transaction.get("amount") or ""),
+            str(transaction.get("direction") or ""),
+            str(transaction.get("description") or ""),
+            raw_identity,
+        ]
+    )
+    return "tochka-fallback-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()
+
+
+def _find_semantic_tochka_candidate(
+    db: Session,
+    account_id: str,
+    amount: float,
+    tx_date: str,
+    payer_name: str,
+    payer_phone: str,
+    *,
+    is_expense: bool,
+) -> Optional[BankTransaction]:
+    if not (is_expense or _is_generic_tochka_counterparty(payer_name)):
+        return None
+    candidates = (
+        db.query(BankTransaction)
+        .filter(
+            BankTransaction.tochka_account_id == account_id,
+            BankTransaction.amount == amount,
+            BankTransaction.payment_date == tx_date,
+            BankTransaction.payer_phone == (payer_phone or None),
+            BankTransaction.payer_name == (payer_name[:512] if payer_name else None),
+            BankTransaction.status != BankTransactionStatus.IGNORED.value,
+        )
+        .order_by(BankTransaction.id.asc())
+        .all()
+    )
+    return candidates[0] if candidates else None
 
 
 def _find_single_tochka_candidate(
@@ -239,15 +284,23 @@ def _upsert_tochka_bank_transaction(
     is_expense = direction == "expense"
     operation_id = (transaction.get("operation_id") or "").strip()
     if not operation_id:
-        operation_id = hashlib.sha256(
-            f"{account_id}|{tx_date}|{amount}|{payer_name}|{payer_phone}".encode()
-        ).hexdigest()
+        operation_id = _stable_tochka_fallback_operation_id(account_id, transaction)
 
     bank_transaction = (
         db.query(BankTransaction)
         .filter(BankTransaction.operation_id == operation_id)
         .first()
     )
+    if bank_transaction is None:
+        bank_transaction = _find_semantic_tochka_candidate(
+            db,
+            account_id,
+            amount,
+            tx_date,
+            payer_name,
+            payer_phone,
+            is_expense=is_expense,
+        )
     if bank_transaction is None and not is_expense and (payer_phone or payer_name):
         bank_transaction = _find_single_tochka_candidate(
             db,
@@ -328,15 +381,23 @@ def do_tochka_import_and_apply(
 
             operation_id = (transaction.get("operation_id") or "").strip()
             if not operation_id:
-                operation_id = hashlib.sha256(
-                    f"{account_id}|{tx_date}|{amount}|{payer_name}|{payer_phone}|{idx}".encode()
-                ).hexdigest()
+                operation_id = _stable_tochka_fallback_operation_id(account_id, transaction)
 
             bank_transaction = (
                 db.query(BankTransaction)
                 .filter(BankTransaction.operation_id == operation_id)
                 .first()
             )
+            if bank_transaction is None:
+                bank_transaction = _find_semantic_tochka_candidate(
+                    db,
+                    account_id,
+                    amount,
+                    tx_date,
+                    payer_name,
+                    payer_phone,
+                    is_expense=is_expense,
+                )
             if (
                 bank_transaction is None
                 and not is_expense

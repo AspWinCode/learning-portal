@@ -742,7 +742,7 @@ const TrainerLessonsPage: React.FC = () => {
         )}
       </Stack>
 
-      <Dialog open={popupOpen} onClose={() => setPopupOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={popupOpen} onClose={() => setPopupOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
           Занятие: {selectedSlot?.group_name} — {selectedSlot?.lesson_date && format(new Date(selectedSlot.lesson_date + 'T12:00:00'), 'd.MM.yyyy')}
         </DialogTitle>
@@ -818,8 +818,8 @@ const TrainerLessonsPage: React.FC = () => {
               const isPresent = reason === 'was';
               return (
                 <Stack key={student.id} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" flexWrap="wrap" spacing={1}>
-                    <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <Stack direction="row" alignItems="center" flexWrap="nowrap" spacing={1}>
+                    <FormControl size="small" sx={{ minWidth: 160, flexShrink: 0 }}>
                       <InputLabel>Статус</InputLabel>
                       <Select
                         value={reason}

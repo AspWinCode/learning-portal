@@ -278,7 +278,7 @@ const TrainerCockpitPage: React.FC = () => {
                   <LinearProgress />
                 ) : (
                   <Stack spacing={1.5}>
-                    {(summary?.my_students ?? []).slice(0, 8).map((item) => (
+                    {(summary?.my_students ?? []).map((item) => (
                       <Card key={item.student_id} variant="outlined">
                         <CardContent sx={{ '&:last-child': { pb: 2 } }}>
                           <Stack spacing={1}>

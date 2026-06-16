@@ -34,12 +34,44 @@ import { hasPermission } from '../utils/permissions';
 const BASE_ROLE_OPTIONS: Array<Role['base_role']> = ['owner', 'admin', 'sales', 'trainer', 'parent', 'guest'];
 
 const BASE_ROLE_LABELS: Record<Role['base_role'], string> = {
-  owner: 'Owner',
-  admin: 'Admin',
-  sales: 'Sales',
-  trainer: 'Trainer',
-  parent: 'Parent',
-  guest: 'Guest',
+  owner: 'Владелец',
+  admin: 'Администратор',
+  sales: 'Продажи',
+  trainer: 'Преподаватель',
+  parent: 'Родитель',
+  guest: 'Гость',
+};
+
+const PERMISSION_MODULE_LABELS: Record<string, string> = {
+  abonements: 'Абонементы',
+  admin_tools: 'Административные инструменты',
+  b2b: 'B2B',
+  campaigns: 'Кампании',
+  characteristics: 'Характеристики',
+  communications: 'Коммуникации',
+  finance: 'Финансы',
+  grades: 'Оценки',
+  groups: 'Группы',
+  lessons: 'Уроки',
+  owner_calculations: 'Расчеты владельца',
+  owner_dashboard: 'Дашборд владельца',
+  owner_funnels: 'Воронки владельца',
+  owner_workspace: 'Рабочее пространство владельца',
+  parent_dashboard: 'Кабинет родителя',
+  passwords: 'Пароли',
+  persons: 'Реестр персон',
+  programs: 'Программы',
+  projects: 'Проекты',
+  reports: 'Отчеты',
+  roles: 'Роли',
+  sales: 'Продажи',
+  settings: 'Настройки',
+  student_accounts: 'Счета учеников',
+  students: 'Ученики',
+  tasks: 'Задачи',
+  telegram: 'Telegram',
+  trainer_cockpit: 'Кабинет преподавателя',
+  users: 'Пользователи',
 };
 
 type RoleFormState = {
@@ -132,7 +164,9 @@ const RolesPage: React.FC = () => {
     permissionsCatalog.forEach((item) => {
       grouped.set(item.module, [...(grouped.get(item.module) || []), item]);
     });
-    return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right));
+    return [...grouped.entries()].sort(([left], [right]) =>
+      (PERMISSION_MODULE_LABELS[left] || left).localeCompare(PERMISSION_MODULE_LABELS[right] || right)
+    );
   }, [permissionsCatalog]);
 
   const activeCustomRoles = useMemo(
@@ -326,7 +360,7 @@ const RolesPage: React.FC = () => {
           <Box>
             <Typography variant="h4">Роли и доступы</Typography>
             <Typography variant="body2" color="text.secondary">
-              Owner управляет каталогом ролей, выбирает разрешения из фиксированного списка и создает пользователей
+              Владелец управляет каталогом ролей, выбирает разрешения из фиксированного списка и создает пользователей
               под любую базовую роль.
             </Typography>
           </Box>
@@ -370,7 +404,7 @@ const RolesPage: React.FC = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Название</TableCell>
-                <TableCell>Key</TableCell>
+                <TableCell>Код</TableCell>
                 <TableCell>Базовая роль</TableCell>
                 <TableCell>Разрешения</TableCell>
                 <TableCell>Статус</TableCell>
@@ -383,7 +417,7 @@ const RolesPage: React.FC = () => {
                   <TableCell>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography variant="body2">{roleItem.name}</Typography>
-                      {roleItem.is_system && <Chip size="small" label="system" />}
+                      {roleItem.is_system && <Chip size="small" label="системная" />}
                     </Stack>
                     {roleItem.description && (
                       <Typography variant="caption" color="text.secondary">
@@ -442,7 +476,7 @@ const RolesPage: React.FC = () => {
               Пользователи и роли
             </Typography>
             <Typography variant="body2" color="text.secondary" mb={2}>
-              Здесь owner задает базовую роль пользователя, назначает подходящую кастомную роль и управляет архивом.
+              Здесь владелец задает базовую роль пользователя, назначает подходящую кастомную роль и управляет архивом.
             </Typography>
             <Table size="small">
               <TableHead>
@@ -529,7 +563,7 @@ const RolesPage: React.FC = () => {
                           />
                           {targetUser.effective_role && (
                             <Typography variant="caption" color="text.secondary">
-                              effective: {BASE_ROLE_LABELS[targetUser.effective_role as Role['base_role']]}
+                              Итоговая роль: {BASE_ROLE_LABELS[targetUser.effective_role as Role['base_role']]}
                             </Typography>
                           )}
                         </Stack>
@@ -537,7 +571,7 @@ const RolesPage: React.FC = () => {
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
                           <Button size="small" onClick={() => navigate(`/users/${targetUser.id}`)}>
-                            Open
+                            Открыть
                           </Button>
                         <Button
                           size="small"
@@ -570,11 +604,11 @@ const RolesPage: React.FC = () => {
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="Key"
+              label="Код роли"
               value={roleForm.key}
               onChange={(event) => setRoleForm((prev) => ({ ...prev, key: event.target.value }))}
               disabled={!!editingRole}
-              helperText="Например: sales_manager"
+              helperText="Например: menedzher_prodazh"
               fullWidth
             />
             <TextField
@@ -618,7 +652,7 @@ const RolesPage: React.FC = () => {
                 {permissionsCatalogByModule.map(([moduleName, items]) => (
                   <Box key={moduleName}>
                     <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, textTransform: 'capitalize' }}>
-                      {moduleName}
+                      {PERMISSION_MODULE_LABELS[moduleName] || moduleName}
                     </Typography>
                     <Stack spacing={0.5}>
                       {items.map((permission) => (
@@ -634,7 +668,7 @@ const RolesPage: React.FC = () => {
                             <Box>
                               <Typography variant="body2">{permission.label}</Typography>
                               <Typography variant="caption" color="text.secondary">
-                                {permission.key} · {permission.description}
+                                {permission.description}
                               </Typography>
                             </Box>
                           }
@@ -672,7 +706,7 @@ const RolesPage: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Email"
+              label="Эл. почта"
               type="email"
               value={userForm.email}
               onChange={(event) => setUserForm((prev) => ({ ...prev, email: event.target.value }))}

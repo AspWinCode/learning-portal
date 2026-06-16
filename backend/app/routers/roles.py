@@ -12,6 +12,101 @@ from app.schemas.roles import RoleCreate, RoleResponse, RoleUpdate
 
 router = APIRouter()
 
+PERMISSION_DISPLAY_OVERRIDES: Dict[str, Dict[str, str]] = {
+    "persons.access": {
+        "label": "Просмотр реестра персон",
+        "description": "Доступ к реестру персон, проверке дублей по телефону и связанным карточкам.",
+    },
+    "persons.manage": {
+        "label": "Управление реестром персон",
+        "description": "Объединение персон и привязка пользователей, лидов и карточек учеников.",
+    },
+    "trainer_cockpit.access": {
+        "label": "Просмотр кабинета преподавателя",
+        "description": "Доступ к сводке кабинета преподавателя и быстрым действиям.",
+    },
+    "parent_dashboard.access": {
+        "label": "Просмотр кабинета родителя",
+        "description": "Доступ к кабинету родителя, недельной сводке, вопросам и пуш-уведомлениям.",
+    },
+    "passwords.access": {
+        "label": "Просмотр паролей",
+        "description": "Доступ к защищенному хранилищу паролей.",
+    },
+    "passwords.manage": {
+        "label": "Управление паролями",
+        "description": "Создание, редактирование и удаление записей в хранилище паролей.",
+    },
+    "passwords.reveal": {
+        "label": "Просмотр секретов паролей",
+        "description": "Право раскрывать расшифрованные секреты из хранилища паролей.",
+    },
+    "communications.access": {
+        "label": "Просмотр коммуникаций",
+        "description": "Доступ к шаблонам коммуникаций и истории очереди отправки.",
+    },
+    "communications.manage": {
+        "label": "Управление коммуникациями",
+        "description": "Создание и редактирование шаблонов коммуникаций.",
+    },
+    "telegram.link": {
+        "label": "Привязка Telegram",
+        "description": "Право привязывать и отвязывать Telegram в профиле текущего пользователя.",
+    },
+    "admin_tools.manage": {
+        "label": "Управление административными инструментами",
+        "description": "Запуск служебных административных инструментов, например сброса пароля преподавателя.",
+    },
+    "owner_funnels.access": {
+        "label": "Просмотр воронок владельца",
+        "description": "Доступ к воронкам владельца, событиям и карточкам воронок.",
+    },
+    "owner_funnels.manage": {
+        "label": "Управление воронками владельца",
+        "description": "Создание, изменение и удаление элементов и событий воронок владельца.",
+    },
+    "owner_calculations.access": {
+        "label": "Просмотр расчетов владельца",
+        "description": "Доступ к модулю расчетов владельца по преподавателям.",
+    },
+    "owner_calculations.manage": {
+        "label": "Управление расчетами владельца",
+        "description": "Изменение ставок, премий и выплат в модуле расчетов владельца.",
+    },
+    "owner_dashboard.access": {
+        "label": "Просмотр дашборда владельца",
+        "description": "Доступ к метрическому дашборду владельца.",
+    },
+    "campaigns.access": {
+        "label": "Просмотр кампаний",
+        "description": "Доступ к кампаниям, школам кампаний, джемам и матрице школ.",
+    },
+    "campaigns.manage": {
+        "label": "Управление кампаниями",
+        "description": "Создание и изменение кампаний, джемов, школ и связанных действий по матрице.",
+    },
+    "sales.access": {
+        "label": "Доступ к модулю продаж",
+        "description": "Маршруты и экраны продаж: лиды, события, инструкции, долги и связанные операции.",
+    },
+    "finance.access": {
+        "label": "Доступ к финансовому модулю",
+        "description": "Финансовый журнал и финансовые представления.",
+    },
+    "owner_workspace.access": {
+        "label": "Доступ к рабочему пространству владельца",
+        "description": "Вход в рабочее пространство владельца и его базовые разделы.",
+    },
+    "projects.access": {
+        "label": "Просмотр проектов",
+        "description": "Доступ к проектам и канбан-доскам.",
+    },
+    "settings.manage": {
+        "label": "Управление настройками",
+        "description": "Изменение централизованных настроек, справочников и конфигурации рабочего пространства владельца.",
+    },
+}
+
 
 def _repair_mojibake(value: str) -> str:
     try:
@@ -30,6 +125,7 @@ def _normalized_permission_catalog() -> List[Dict[str, Any]]:
         normalized: Dict[str, Any] = {}
         for key, value in item.items():
             normalized[key] = _repair_mojibake(value) if isinstance(value, str) else value
+        normalized.update(PERMISSION_DISPLAY_OVERRIDES.get(str(item.get("key")), {}))
         result.append(normalized)
     return result
 

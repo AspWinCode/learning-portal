@@ -449,6 +449,46 @@ async def get_lessons_for_date(
             )
         )
 
+    # Показываем слоты, на которые был перенесён урок, даже если группа пуста
+    # и attendance-записей ещё нет (move_lesson не создаёт их при 0 студентах).
+    incoming_moves = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id.in_(group_ids),
+        LessonCancellation.moved_to_date == lesson_date,
+    ).all()
+    for mv in incoming_moves:
+        slot_start = getattr(mv, "moved_to_start_time", None)
+        slot_end = getattr(mv, "moved_to_end_time", None)
+        if slot_start is None or slot_end is None:
+            continue
+        key = (mv.group_id, lesson_date, slot_start, slot_end)
+        if key in existing_keys:
+            continue
+        group = group_by_id.get(mv.group_id)
+        if not group:
+            group = db.query(Group).filter(Group.id == mv.group_id).first()
+            if not group:
+                continue
+        program_name = group.programs[0].name if group.programs else None
+        trainer_user = group.trainer
+        trainer_id = getattr(trainer_user, "id", None) or group.trainer_id
+        trainer_name = getattr(trainer_user, "full_name", None) if trainer_user else None
+        result.append(
+            TrainerLessonSlotResponse(
+                group_id=mv.group_id,
+                group_name=group.name,
+                program_name=program_name,
+                day_of_week=weekday,
+                start_time=slot_start,
+                end_time=slot_end,
+                lesson_date=lesson_date,
+                students=[],
+                trainer_id=trainer_id,
+                trainer_name=trainer_name or None,
+                lesson_index_in_month=None,
+            )
+        )
+        existing_keys.add(key)
+
     result.sort(key=lambda x: (x.start_time, x.group_name))
     return result
 

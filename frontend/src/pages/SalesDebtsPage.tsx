@@ -7,6 +7,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  LinearProgress,
   Table,
   TableBody,
   TableCell,
@@ -14,6 +15,7 @@ import {
   TableRow,
   Tab,
   Tabs,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { format, parseISO } from 'date-fns';
@@ -28,10 +30,13 @@ interface PaymentStatusRow {
   card_id?: number;
   next_payment_date?: string | null;
   learning_period_start?: string | null;
+  lessons_since_payment?: number;
   status: string;
 }
 
-const STATUS_LABELS: Record<string, { label: string; color: 'default' | 'warning' | 'error' | 'success' }> = {
+const LESSON_THRESHOLD = 8;
+
+const STATUS_LABELS: Record<string, { label: string; color: 'default' | 'warning' | 'error' | 'success' | 'info' }> = {
   overdue: { label: 'Просрочено', color: 'error' },
   due_soon: { label: 'Скоро', color: 'warning' },
   ok: { label: 'Оплачено', color: 'success' },
@@ -76,12 +81,12 @@ const SalesDebtsPage: React.FC = () => {
     void loadPaymentSummary();
   }, [loadDebts, loadPaymentSummary]);
 
-  const formatDate = (date: string | null | undefined) => {
-    if (!date) return '—';
+  const formatDate = (d: string | null | undefined) => {
+    if (!d) return '—';
     try {
-      return format(parseISO(date), 'd MMM yyyy', { locale: ru });
+      return format(parseISO(d), 'd MMM yyyy', { locale: ru });
     } catch {
-      return date;
+      return d;
     }
   };
 
@@ -90,17 +95,17 @@ const SalesDebtsPage: React.FC = () => {
       ? 'Нет просроченных оплат.'
       : statusFilter === 'due_soon'
         ? 'Нет оплат в ближайшие 3 дня.'
-        : 'Нет данных о датах оплаты. Даты задаются при пополнении счёта.';
+        : 'Нет данных. Оплата запрашивается автоматически после 8 посещённых уроков.';
 
   return (
     <Layout>
       <Box sx={{ p: 2 }}>
-        <Typography variant="h5" sx={{ mb: 2 }}>
+        <Typography variant="h5" sx={{ mb: 1 }}>
           Долги и оплаты
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Ученики с датой следующей оплаты. Просрочено - дата оплаты прошла; Скоро - в ближайшие 3 дня.
-          Для импорта и разбора финансовых операций используйте раздел «Финансы (журнал)».
+          Ученик появляется здесь после 8 посещённых уроков с момента последней оплаты.
+          Просрочено — оплата не поступила. Скоро — только что достиг порога.
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -143,38 +148,59 @@ const SalesDebtsPage: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>Ученик</TableCell>
-                  <TableCell>Дата следующей оплаты</TableCell>
+                  <TableCell>Уроков в периоде</TableCell>
                   <TableCell>Начало периода</TableCell>
+                  <TableCell>Дата следующей оплаты</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell />
                 </TableRow>
               </TableHead>
               <TableBody>
-                {items.map((row) => (
-                  <TableRow key={row.student_id} hover>
-                    <TableCell>{row.student_name}</TableCell>
-                    <TableCell>{formatDate(row.next_payment_date)}</TableCell>
-                    <TableCell>{formatDate(row.learning_period_start)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={STATUS_LABELS[row.status]?.label ?? row.status}
-                        color={STATUS_LABELS[row.status]?.color ?? 'default'}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        component="button"
-                        variant="body2"
-                        color="primary"
-                        sx={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-                        onClick={() => navigate(`/students?detail=${row.student_id}`)}
-                      >
-                        Карточка
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {items.map((row) => {
+                  const lessons = row.lessons_since_payment ?? 0;
+                  const pct = Math.min(100, Math.round((lessons / LESSON_THRESHOLD) * 100));
+                  const overThreshold = lessons > LESSON_THRESHOLD;
+                  return (
+                    <TableRow key={row.student_id} hover>
+                      <TableCell sx={{ fontWeight: 500 }}>{row.student_name}</TableCell>
+                      <TableCell sx={{ minWidth: 160 }}>
+                        <Tooltip title={`${lessons} из ${LESSON_THRESHOLD} уроков`}>
+                          <Box>
+                            <Typography variant="caption" color={overThreshold ? 'error' : 'text.secondary'}>
+                              {lessons} / {LESSON_THRESHOLD} уроков
+                            </Typography>
+                            <LinearProgress
+                              variant="determinate"
+                              value={pct}
+                              color={overThreshold ? 'error' : lessons >= LESSON_THRESHOLD ? 'warning' : 'primary'}
+                              sx={{ height: 6, borderRadius: 3, mt: 0.3 }}
+                            />
+                          </Box>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell>{formatDate(row.learning_period_start)}</TableCell>
+                      <TableCell>{formatDate(row.next_payment_date)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={STATUS_LABELS[row.status]?.label ?? row.status}
+                          color={STATUS_LABELS[row.status]?.color ?? 'default'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          component="button"
+                          variant="body2"
+                          color="primary"
+                          sx={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                          onClick={() => navigate(`/students?detail=${row.student_id}`)}
+                        >
+                          Карточка
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
             {items.length === 0 && (

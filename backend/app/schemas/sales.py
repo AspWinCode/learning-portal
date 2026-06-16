@@ -157,6 +157,7 @@ class PaymentStatusItem(BaseModel):
     card_id: Optional[int] = None
     next_payment_date: Optional[date] = None
     learning_period_start: Optional[date] = None
+    lessons_since_payment: int = 0
     status: str
 
 

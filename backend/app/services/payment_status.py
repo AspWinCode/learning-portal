@@ -2,8 +2,7 @@
 Use case: список и сводка статусов оплаты учеников (payment-status, payment-status-summary).
 
 Домен: Finance.
-Источник: BACKEND_REFACTOR_USE_CASES.md (recalculate_student_payment_status, отображение).
-Статус вычисляется по next_payment_date на карточке и наличию оплат.
+Статус вычисляется по next_payment_date на карточке и количеству посещённых уроков с начала периода.
 """
 
 from datetime import date, timedelta
@@ -19,6 +18,7 @@ from app.models import (
     StudentStatus,
     Student,
 )
+from app.services.student_card_period import count_lessons_since_period_start, DEFAULT_LESSON_THRESHOLD
 from app.student_display import get_student_display_name
 
 
@@ -42,11 +42,13 @@ def get_payment_status_list(
 ) -> List[dict]:
     """
     Список учеников с датой следующей оплаты и статусом (ok / due_soon / overdue / unpaid).
-    Возвращает список словарей, подходящих для PaymentStatusItem.
+    Показываются студенты у которых next_payment_date выставлен (8+ уроков с последней оплаты)
+    или у которых нет оплаты вообще но есть посещения.
     """
     if today is None:
         today = date.today()
     due_soon_end = today + timedelta(days=3)
+
     cards = (
         db.query(StudentCard)
         .filter(
@@ -57,10 +59,12 @@ def get_payment_status_list(
         .all()
     )
     result = []
+    seen_student_ids = set()
     for card in cards:
         student = db.query(Student).filter(Student.id == card.student_id).first()
         if not student or student.status == StudentStatus.ARCHIVED:
             continue
+        seen_student_ids.add(card.student_id)
         next_pay = getattr(card, "next_payment_date", None)
         if not next_pay:
             continue
@@ -68,6 +72,7 @@ def get_payment_status_list(
             next_pay = next_pay.date()
 
         has_payments = _has_payments(db, card.student_id)
+        lessons = count_lessons_since_period_start(db, card.student_id, card.learning_period_start)
         if not has_payments:
             st = "unpaid"
         elif next_pay < today:
@@ -85,6 +90,7 @@ def get_payment_status_list(
             "card_id": card.id,
             "next_payment_date": next_pay,
             "learning_period_start": getattr(card, "learning_period_start", None),
+            "lessons_since_payment": lessons,
             "status": st,
         })
     result.sort(key=lambda x: (x["next_payment_date"] or date.max, x["student_name"]))
@@ -97,7 +103,6 @@ def get_payment_status_summary(
 ) -> dict:
     """
     Сводка по просрочкам: число учеников с долгом 3+ и 10+ дней.
-    Возвращает dict с ключами overdue_3_count, overdue_10_count.
     """
     if today is None:
         today = date.today()
@@ -124,8 +129,6 @@ def get_payment_status_summary(
             continue
         if hasattr(next_pay, "date"):
             next_pay = next_pay.date()
-        if not _has_payments(db, card.student_id):
-            continue
         if next_pay <= day_3:
             overdue_3_count += 1
         if next_pay <= day_10:

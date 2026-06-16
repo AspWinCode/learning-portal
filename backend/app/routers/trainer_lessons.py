@@ -12,6 +12,7 @@ from app import auth
 from app.services.communication_hub import CommunicationService
 from app.services.makeup_selection import queue_makeup_selection_request
 from app.services.student_activity import log_student_activity
+from app.services.student_card_period import check_lesson_payment_threshold, set_card_payment_dates_from_training_start
 from app.models import (
     User,
     Group,
@@ -883,6 +884,20 @@ async def save_attendance(
                         },
                     )
     db.commit()
+
+    attended_student_ids = {
+        att.student_id for att in attendances_saved
+        if att.attended and (not att.absence_reason or att.absence_reason == "was")
+    }
+    for sid in attended_student_ids:
+        try:
+            set_card_payment_dates_from_training_start(db, sid, payload.lesson_date)
+            check_lesson_payment_threshold(db, sid)
+        except Exception:
+            pass
+    if attended_student_ids:
+        db.commit()
+
     for absence in new_absence_notifications:
         try:
             queue_makeup_selection_request(db, absence, created_by=current_user.id)

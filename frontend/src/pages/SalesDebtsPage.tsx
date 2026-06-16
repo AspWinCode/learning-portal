@@ -150,7 +150,6 @@ const SalesDebtsPage: React.FC = () => {
                   <TableCell>Ученик</TableCell>
                   <TableCell>Уроков в периоде</TableCell>
                   <TableCell>Начало периода</TableCell>
-                  <TableCell>Дата следующей оплаты</TableCell>
                   <TableCell>Статус</TableCell>
                   <TableCell />
                 </TableRow>
@@ -179,7 +178,6 @@ const SalesDebtsPage: React.FC = () => {
                         </Tooltip>
                       </TableCell>
                       <TableCell>{formatDate(row.learning_period_start)}</TableCell>
-                      <TableCell>{formatDate(row.next_payment_date)}</TableCell>
                       <TableCell>
                         <Chip
                           size="small"

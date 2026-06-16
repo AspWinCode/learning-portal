@@ -54,11 +54,11 @@ def _student_timeline_item(activity: StudentActivityLog) -> StudentActivityLogRe
     return StudentActivityLogResponse(
         id=activity.id,
         student_id=activity.student_id,
-        type=activity.type,
+        event_type=activity.type,
         title=activity.title,
         description=activity.description,
-        created_by=activity.created_by,
-        creator_name=activity.creator.full_name if activity.creator else None,
+        actor_user_id=activity.created_by,
+        actor_user_name=activity.creator.full_name if activity.creator else None,
         created_at=activity.created_at,
         payload_json=activity.payload_json,
     )

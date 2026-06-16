@@ -282,7 +282,10 @@ async def get_lessons_for_date(
         program_name = group.programs[0].name if group.programs else None
 
         def build_slot(slot_start: time, slot_end: time, atts: list) -> None:
-            if (group.id, lesson_date, slot_start, slot_end) not in first_8_allowed:
+            # Slots with existing attendance records (moved/manual lessons) always show,
+            # even if the date is outside the regular schedule. Quota filter only applies
+            # to schedule-generated future slots with no attendance yet.
+            if not atts and (group.id, lesson_date, slot_start, slot_end) not in first_8_allowed:
                 return
             # 1) Если в LessonAttendance уже зафиксирован тренер — используем его (исторические данные).
             att_trainer_ids = {

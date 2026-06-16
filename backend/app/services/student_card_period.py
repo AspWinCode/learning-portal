@@ -76,7 +76,7 @@ def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
     - Уроков накоплено >= порога (8) и была оплата → начать новый период,
       снова поставить next_payment_date (нужна следующая оплата)
     """
-    card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    card = _get_or_create_card(db, student_id)
     if not card:
         return
     threshold = _lesson_threshold_for_card(card)
@@ -108,7 +108,7 @@ def update_card_payment_dates(db: Session, student_id: int, payment_date: date) 
 
 def set_card_payment_dates_from_training_start(db: Session, student_id: int, start_date: date) -> None:
     """Установить learning_period_start от даты первого занятия (если ещё не задано)."""
-    card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    card = _get_or_create_card(db, student_id)
     if not card:
         return
     if not card.learning_period_start:

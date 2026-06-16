@@ -121,9 +121,11 @@ def _first_n_slots_per_group_in_month(
     month: int,
     cancellations: List,
     individual_group_ids: Optional[Set[int]] = None,
+    group_start_dates: Optional[dict[int, date]] = None,
 ) -> Tuple[Set[Tuple[int, date, time, time]], dict]:
     """Для каждой группы возвращает множество (group_id, date, start_time, end_time) первых 8 слотов в месяце (или все слоты для индивидуальных групп) и маппинг (group_id, date, st, et) -> index 1..8."""
     individual_group_ids = individual_group_ids or set()
+    group_start_dates = group_start_dates or {}
     cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations}
     allowed: Set[Tuple[int, date, time, time]] = set()
     index_map: dict = {}
@@ -138,6 +140,9 @@ def _first_n_slots_per_group_in_month(
         for sched in schedules:
             for d in calendar.Calendar().itermonthdates(year, month):
                 if d.month != month:
+                    continue
+                group_start_date = group_start_dates.get(gid)
+                if group_start_date is not None and d < group_start_date:
                     continue
                 if d.weekday() == sched.day_of_week:
                     if (gid, d, sched.start_time, sched.end_time) not in cancelled_set:
@@ -194,6 +199,11 @@ async def get_lessons_for_date(
         g.id for g in groups_for_day
         if (getattr(g, "lesson_format", None) or "group").strip().lower() == "individual"
     }
+    group_start_dates = {
+        g.id: g.start_date
+        for g in groups_for_day
+        if getattr(g, "start_date", None) is not None
+    }
     def _time_eq(a: Optional[time], b: Optional[time]) -> bool:
         if a is None and b is None:
             return True
@@ -224,7 +234,13 @@ async def get_lessons_for_date(
         LessonCancellation.lesson_date <= month_end,
     ).all()
     first_8_allowed, lesson_index_in_month_map = _first_n_slots_per_group_in_month(
-        db, group_ids, year, month, cancellations_month, individual_group_ids=individual_group_ids
+        db,
+        group_ids,
+        year,
+        month,
+        cancellations_month,
+        individual_group_ids=individual_group_ids,
+        group_start_dates=group_start_dates,
     )
 
     overrides = db.query(LessonTrainerOverride).filter(

@@ -27,7 +27,7 @@ import { Abonement, ABONEMENT_FORMAT_LABELS, AbonementFormat } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 
-const emptyForm = { name: '', price: 0, discount_type: 'none', discount_value: 0, abonement_format: '' as '' | AbonementFormat };
+const emptyForm = { name: '', price: '' as string | number, discount_type: 'none', discount_value: '' as string | number, abonement_format: '' as '' | AbonementFormat };
 
 const AbonementsPage: React.FC = () => {
   const { user } = useAuth();
@@ -38,9 +38,9 @@ const AbonementsPage: React.FC = () => {
   const [editing, setEditing] = useState<Abonement | null>(null);
   const [form, setForm] = useState({
     name: '',
-    price: 0,
+    price: '' as string | number,
     discount_type: 'none',
-    discount_value: 0,
+    discount_value: '' as string | number,
     abonement_format: '' as '' | AbonementFormat,
   });
   const canManageAbonements = hasPermission(user, 'abonements.manage');
@@ -230,7 +230,9 @@ const AbonementsPage: React.FC = () => {
             type="number"
             label="Стоимость абонемента"
             value={form.price}
-            onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+            onFocus={(e) => e.target.select()}
+            inputProps={{ min: 0 }}
             sx={{ mt: 2 }}
           />
           <FormControl fullWidth sx={{ mt: 2 }}>
@@ -268,7 +270,9 @@ const AbonementsPage: React.FC = () => {
             type="number"
             label="Размер скидки"
             value={form.discount_value}
-            onChange={(e) => setForm({ ...form, discount_value: Number(e.target.value) })}
+            onChange={(e) => setForm({ ...form, discount_value: e.target.value })}
+            onFocus={(e) => e.target.select()}
+            inputProps={{ min: 0 }}
             sx={{ mt: 2 }}
             helperText={form.discount_type === 'percent' ? 'Укажите процент' : 'Укажите сумму'}
           />
@@ -296,7 +300,9 @@ const AbonementsPage: React.FC = () => {
             type="number"
             label="Стоимость абонемента"
             value={form.price}
-            onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+            onFocus={(e) => e.target.select()}
+            inputProps={{ min: 0 }}
             sx={{ mt: 2 }}
           />
           <FormControl fullWidth sx={{ mt: 2 }}>
@@ -316,7 +322,9 @@ const AbonementsPage: React.FC = () => {
             type="number"
             label="Размер скидки"
             value={form.discount_value}
-            onChange={(e) => setForm({ ...form, discount_value: Number(e.target.value) })}
+            onChange={(e) => setForm({ ...form, discount_value: e.target.value })}
+            onFocus={(e) => e.target.select()}
+            inputProps={{ min: 0 }}
             sx={{ mt: 2 }}
             helperText={form.discount_type === 'percent' ? 'Укажите процент' : 'Укажите сумму'}
           />

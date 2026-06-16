@@ -433,7 +433,7 @@ const GroupsPage: React.FC = () => {
 
       {/* Диалог создания группы */}
       {canManageGroups && (
-        <FormDialog open={open} title="РЎРѕР·РґР°С‚СЊ РіСЂСѓРїРїСѓ" onClose={() => setOpen(false)} onSubmit={handleCreate} submitLabel="РЎРѕР·РґР°С‚СЊ" maxWidth="sm">
+        <FormDialog open={open} title="Создать группу" onClose={() => setOpen(false)} onSubmit={handleCreate} submitLabel="Создать" maxWidth="sm">
           <DialogTitle>Создать группу</DialogTitle>
           <DialogContent>
             <TextField

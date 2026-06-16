@@ -11,12 +11,31 @@ from app.models import (
 DEFAULT_LESSONS_FOR_30_DAYS = 8
 
 
+def _get_or_create_card(db: Session, student_id: int) -> "StudentCard | None":
+    card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    if card:
+        return card
+    from app.models import Student
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        return None
+    card = StudentCard(
+        student_id=student_id,
+        student_full_name=student.full_name,
+    )
+    db.add(card)
+    db.flush()
+    return card
+
+
+
 def update_card_payment_dates(db: Session, student_id: int, payment_date: date) -> None:
     """Установить learning_period_start и next_payment_date на карточке ученика после пополнения.
     Период оплаты берётся из абонемента карточки: lessons_count занятий -> 30*lessons_count/8 дней;
-    если абонемента или lessons_count нет — 30 дней."""
-    card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
-    if not card or not hasattr(card, "learning_period_start"):
+    если абонемента или lessons_count нет — 30 дней.
+    Если StudentCard ещё нет — создаётся автоматически."""
+    card = _get_or_create_card(db, student_id)
+    if not card:
         return
     card.learning_period_start = payment_date
     period_days = 30
@@ -35,7 +54,7 @@ def set_card_payment_dates_from_training_start(db: Session, student_id: int, sta
     Напоминания об оплате считаются от даты начала посещения занятий,
     даже если оплата ещё не внесена."""
     card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
-    if not card or not hasattr(card, "learning_period_start"):
+    if not card:
         return
     card.learning_period_start = start_date
 

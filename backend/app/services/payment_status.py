@@ -1,13 +1,14 @@
 """
-Use case: список и сводка статусов оплаты учеников (payment-status, payment-status-summary).
+Список и сводка статусов оплаты учеников.
 
-Домен: Finance.
-Статус вычисляется по next_payment_date на карточке и количеству посещённых уроков с начала периода.
+Студент появляется в "Долгах" как только посетил 1 урок без оплаты за текущий период.
+После оплаты исчезает из долгов на следующие 8 уроков.
 """
 
 from datetime import date, timedelta
 from typing import List, Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -23,6 +24,7 @@ from app.student_display import get_student_display_name
 
 
 def _has_payments(db: Session, student_id: int) -> bool:
+    """Есть ли вообще хоть одна оплата у студента (для статуса unpaid vs overdue)."""
     return (
         db.query(StudentAccountTransaction.id)
         .join(StudentAccount, StudentAccount.id == StudentAccountTransaction.account_id)
@@ -40,11 +42,6 @@ def get_payment_status_list(
     status_filter: Optional[str] = None,
     today: Optional[date] = None,
 ) -> List[dict]:
-    """
-    Список учеников с датой следующей оплаты и статусом (ok / due_soon / overdue / unpaid).
-    Показываются студенты у которых next_payment_date выставлен (8+ уроков с последней оплаты)
-    или у которых нет оплаты вообще но есть посещения.
-    """
     if today is None:
         today = date.today()
     due_soon_end = today + timedelta(days=3)
@@ -59,12 +56,10 @@ def get_payment_status_list(
         .all()
     )
     result = []
-    seen_student_ids = set()
     for card in cards:
         student = db.query(Student).filter(Student.id == card.student_id).first()
         if not student or student.status == StudentStatus.ARCHIVED:
             continue
-        seen_student_ids.add(card.student_id)
         next_pay = getattr(card, "next_payment_date", None)
         if not next_pay:
             continue
@@ -73,6 +68,7 @@ def get_payment_status_list(
 
         has_payments = _has_payments(db, card.student_id)
         lessons = count_lessons_since_period_start(db, card.student_id, card.learning_period_start)
+
         if not has_payments:
             st = "unpaid"
         elif next_pay < today:
@@ -101,9 +97,6 @@ def get_payment_status_summary(
     db: Session,
     today: Optional[date] = None,
 ) -> dict:
-    """
-    Сводка по просрочкам: число учеников с долгом 3+ и 10+ дней.
-    """
     if today is None:
         today = date.today()
     day_3 = today - timedelta(days=3)

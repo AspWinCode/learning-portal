@@ -259,6 +259,7 @@ const GroupsPage: React.FC = () => {
       const fullGroup = await groupsApi.getById(selectedGroup.id);
       setGroupDetails(fullGroup);
       setStudentToAddId('');
+      loadGroups();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка добавления ученика в группу');
     }
@@ -270,6 +271,7 @@ const GroupsPage: React.FC = () => {
       await groupsApi.removeStudent(selectedGroup.id, studentId);
       const fullGroup = await groupsApi.getById(selectedGroup.id);
       setGroupDetails(fullGroup);
+      loadGroups();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка удаления ученика из группы');
     }

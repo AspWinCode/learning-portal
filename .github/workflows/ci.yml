@@ -10,6 +10,8 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: test-secret-key-for-ci-only-32-chars-minimum
     defaults:
       run:
         working-directory: backend

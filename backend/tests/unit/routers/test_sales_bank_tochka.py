@@ -16,6 +16,7 @@ def _query_mock(result):
     query = MagicMock()
     query.filter.return_value = query
     query.options.return_value = query
+    query.order_by.return_value = query
     query.all.return_value = result if isinstance(result, list) else []
     query.first.return_value = result if not isinstance(result, list) else None
     return query

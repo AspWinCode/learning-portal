@@ -61,7 +61,6 @@ def _has_payment_since(db: Session, student_id: int, since: "date | None") -> bo
         )
     )
     if since:
-        from sqlalchemy import cast, Date
         query = query.filter(
             func.date(StudentAccountTransaction.created_at) >= since
         )

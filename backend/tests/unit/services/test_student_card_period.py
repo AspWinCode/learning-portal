@@ -1,14 +1,13 @@
 """
 Unit-тесты сервиса student_card_period (ТЗ: период обучения и дата следующей оплаты).
 """
-from datetime import date, timedelta
+from datetime import date
 from unittest.mock import MagicMock
 
 
 from app.services.student_card_period import (
     update_card_payment_dates,
     set_card_payment_dates_from_training_start,
-    DEFAULT_LESSONS_FOR_30_DAYS,
 )
 
 
@@ -51,7 +50,7 @@ def test_update_card_payment_dates_default_30_days():
     update_card_payment_dates(db, student_id=1, payment_date=payment_date)
 
     assert card.learning_period_start == payment_date
-    assert card.next_payment_date == payment_date + timedelta(days=30)
+    assert card.next_payment_date is None
 
 
 def test_update_card_payment_dates_with_abonement_8_lessons():
@@ -63,8 +62,7 @@ def test_update_card_payment_dates_with_abonement_8_lessons():
 
     update_card_payment_dates(db, student_id=1, payment_date=payment_date)
 
-    expected_days = round(30 * 8 / DEFAULT_LESSONS_FOR_30_DAYS)  # 30
-    assert card.next_payment_date == payment_date + timedelta(days=expected_days)
+    assert card.next_payment_date is None
 
 
 def test_update_card_payment_dates_with_abonement_4_lessons():
@@ -76,8 +74,7 @@ def test_update_card_payment_dates_with_abonement_4_lessons():
 
     update_card_payment_dates(db, student_id=1, payment_date=payment_date)
 
-    expected_days = round(30 * 4 / DEFAULT_LESSONS_FOR_30_DAYS)  # 15
-    assert card.next_payment_date == payment_date + timedelta(days=expected_days)
+    assert card.next_payment_date is None
 
 
 def test_update_card_payment_dates_with_abonement_16_lessons():
@@ -89,8 +86,7 @@ def test_update_card_payment_dates_with_abonement_16_lessons():
 
     update_card_payment_dates(db, student_id=1, payment_date=payment_date)
 
-    expected_days = round(30 * 16 / DEFAULT_LESSONS_FOR_30_DAYS)  # 60
-    assert card.next_payment_date == payment_date + timedelta(days=expected_days)
+    assert card.next_payment_date is None
 
 
 # ─────────────────────── set_card_payment_dates_from_training_start ───────────────────────
@@ -114,7 +110,7 @@ def test_set_card_from_training_start_default_30_days():
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)
 
     assert card.learning_period_start == start_date
-    assert card.next_payment_date == start_date + timedelta(days=30)
+    assert card.next_payment_date is None
 
 
 def test_set_card_from_training_start_with_abonement():
@@ -126,8 +122,7 @@ def test_set_card_from_training_start_with_abonement():
 
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)
 
-    expected_days = round(30 * 12 / DEFAULT_LESSONS_FOR_30_DAYS)  # 45
-    assert card.next_payment_date == start_date + timedelta(days=expected_days)
+    assert card.next_payment_date is None
 
 
 def test_set_card_from_training_start_min_1_day():
@@ -139,4 +134,4 @@ def test_set_card_from_training_start_min_1_day():
 
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)
 
-    assert card.next_payment_date >= start_date + timedelta(days=1)
+    assert card.next_payment_date is None

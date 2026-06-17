@@ -8,7 +8,6 @@
 from datetime import date, timedelta
 from typing import List, Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -19,7 +18,7 @@ from app.models import (
     StudentStatus,
     Student,
 )
-from app.services.student_card_period import count_lessons_since_period_start, DEFAULT_LESSON_THRESHOLD
+from app.services.student_card_period import count_lessons_since_period_start
 from app.student_display import get_student_display_name
 
 
@@ -116,6 +115,8 @@ def get_payment_status_summary(
     for card in cards:
         student = db.query(Student).filter(Student.id == card.student_id).first()
         if not student or student.status == StudentStatus.ARCHIVED:
+            continue
+        if not _has_payments(db, card.student_id):
             continue
         next_pay = getattr(card, "next_payment_date", None)
         if not next_pay:

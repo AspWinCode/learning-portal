@@ -35,6 +35,8 @@ from app.schemas.tasks import (
     TaskResponse,
     TaskSubtaskResponse,
     TaskSubtaskUpdate,
+    TaskSubtaskBulkCreate,
+    TaskSubtaskBulkResponse,
     TaskCountersResponse,
     ParentResponsesStat,
     TaskCounterIncrement,
@@ -1057,6 +1059,40 @@ async def update_task_subtask(
         text=st.text,
         completed=st.completed,
         order=st.order,
+    )
+
+
+@router.post("/tasks/{task_id}/subtasks/bulk", response_model=TaskSubtaskBulkResponse, status_code=201)
+async def bulk_create_subtasks(
+    task_id: int,
+    payload: TaskSubtaskBulkCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("tasks.manage")),
+):
+    """Создать несколько подзадач одной транзакцией."""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    max_order_row = db.query(func.max(TaskSubtask.order)).filter(TaskSubtask.task_id == task_id).scalar()
+    next_order = (max_order_row + 1) if max_order_row is not None else 0
+
+    new_subtasks = []
+    for i, title in enumerate(payload.titles):
+        st = TaskSubtask(task_id=task_id, text=title, order=next_order + i, completed=False)
+        db.add(st)
+        new_subtasks.append(st)
+
+    db.commit()
+    for st in new_subtasks:
+        db.refresh(st)
+
+    return TaskSubtaskBulkResponse(
+        created=len(new_subtasks),
+        subtasks=[
+            TaskSubtaskResponse(id=st.id, task_id=st.task_id, text=st.text, completed=st.completed, order=st.order)
+            for st in new_subtasks
+        ],
     )
 
 

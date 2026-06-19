@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TaskTemplateSubtaskResponse(BaseModel):
@@ -72,6 +72,34 @@ class TaskCountersResponse(BaseModel):
 
 class TaskSubtaskUpdate(BaseModel):
     completed: Optional[bool] = None
+
+
+class TaskSubtaskBulkCreate(BaseModel):
+    titles: List[str] = Field(..., min_length=1, max_length=50)
+    assignee_id: Optional[int] = None
+    due_date: Optional[date] = None
+
+    @field_validator("titles", mode="before")
+    @classmethod
+    def validate_titles(cls, v):
+        if not isinstance(v, list):
+            raise ValueError("titles must be a list")
+        result = []
+        for item in v:
+            if not isinstance(item, str):
+                raise ValueError("each title must be a string")
+            trimmed = item.strip()
+            if not trimmed:
+                raise ValueError("title must not be empty after trimming whitespace")
+            if len(trimmed) > 255:
+                raise ValueError(f"title exceeds 255 characters: {trimmed[:40]!r}...")
+            result.append(trimmed)
+        return result
+
+
+class TaskSubtaskBulkResponse(BaseModel):
+    created: int
+    subtasks: List[TaskSubtaskResponse]
 
 
 class TaskCreate(BaseModel):

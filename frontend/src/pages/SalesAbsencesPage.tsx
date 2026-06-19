@@ -28,8 +28,9 @@ import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { AbsenceFollowUp, AbsenceFollowUpStage, MakeupSuggestionItem } from '../types';
 
-const STAGES: { value: AbsenceFollowUpStage | 'missed_or_link_sent'; label: string; filter: (a: AbsenceFollowUp) => boolean }[] = [
-  { value: 'missed_or_link_sent', label: 'Нужна отработка', filter: (a) => a.stage === 'missed' || a.stage === 'link_sent' },
+const STAGES: { value: AbsenceFollowUpStage; label: string; filter: (a: AbsenceFollowUp) => boolean }[] = [
+  { value: 'missed', label: 'Нужна отработка', filter: (a) => a.stage === 'missed' },
+  { value: 'link_sent', label: 'Ссылка отправлена', filter: (a) => a.stage === 'link_sent' },
   { value: 'assigned', label: 'Отработка назначена', filter: (a) => a.stage === 'assigned' },
   { value: 'made_up', label: 'Отработал', filter: (a) => a.stage === 'made_up' },
   { value: 'missed_makeup', label: 'Пропустил отработку — переназначить', filter: (a) => a.stage === 'missed_makeup' },
@@ -160,10 +161,9 @@ const SalesAbsencesPage: React.FC = () => {
               onChange={(e) => setStageFilter(e.target.value)}
             >
               <MenuItem value="">Все</MenuItem>
-              <MenuItem value="missed">Нужна отработка</MenuItem>
-              <MenuItem value="assigned">Отработка назначена</MenuItem>
-              <MenuItem value="made_up">Отработал</MenuItem>
-              <MenuItem value="missed_makeup">Пропустил отработку — переназначить</MenuItem>
+              {STAGES.map((s) => (
+                <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Box>

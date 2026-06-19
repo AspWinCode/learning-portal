@@ -479,6 +479,16 @@ def do_tochka_import_and_apply(
                     student_ids = list(dict.fromkeys(student_ids))
 
             if not student_ids and payer_name:
+                payer_norm = _normalize_name(payer_name)
+                # Точное совпадение с tochka_payer_name (приоритет)
+                for card in cards:
+                    if card.tochka_payer_name and _normalize_name(card.tochka_payer_name) == payer_norm:
+                        if card.student_id:
+                            student_ids.append(card.student_id)
+                student_ids = list(dict.fromkeys(student_ids))
+
+            if not student_ids and payer_name:
+                # Нечёткое совпадение с parent_full_name / user.full_name (запасной вариант)
                 for card in cards:
                     if _payer_matches_parent(payer_name, card.parent_full_name):
                         if card.student_id:

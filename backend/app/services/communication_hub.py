@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.models import CommunicationQueue, Lead, MaxMessage, SmsMessage, SmsTemplate, Student, User
+from app.models import CommunicationQueue, Lead, MaxMessage, SmsMessage, SmsTemplate, Student, StudentCard, User
 from app.services.email_sender import is_email_configured, send_email
 from app.services.max_messenger import is_configured as max_is_configured
 from app.services.max_messenger import send_message, send_message_personal
@@ -95,12 +95,16 @@ def _resolve_recipient(
         if not student:
             raise ValueError("Recipient student not found")
         parent = db.query(User).filter(User.id == student.parent_id).first() if student.parent_id else None
+        card = db.query(StudentCard).filter(StudentCard.student_id == recipient_id).first()
+        card_parent_email = (card.parent_email or "").strip() if card else ""
+        card_parent_telegram = (card.parent_telegram or "").strip() if card else ""
+        card_preferred_messenger = (card.preferred_messenger or "").strip() if card else ""
         return {
             "recipient_name": student.full_name,
-            "email": (student.parent_email or "").strip() or (parent.email if parent else None),
+            "email": card_parent_email or (parent.email if parent else None),
             "phone": None,
-            "chat_id": (student.parent_telegram or "").strip() or (str(parent.telegram_chat_id) if parent and parent.telegram_chat_id else None),
-            "preferred_messenger": (student.preferred_messenger or "").strip() or None,
+            "chat_id": card_parent_telegram or (str(parent.telegram_chat_id) if parent and parent.telegram_chat_id else None),
+            "preferred_messenger": card_preferred_messenger or None,
             "parent_name": parent.full_name if parent else None,
         }
 

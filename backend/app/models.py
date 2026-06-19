@@ -641,6 +641,8 @@ class StudentCard(Base):
     anketa_status = Column(String(32), default="converted", nullable=False, index=True)
     # При автозачислении из банка: если у родителя несколько детей, платёж пойдёт на счёт этого ученика
     primary_for_bank_payments = Column(Boolean, default=False, nullable=False)
+    # Точное ФИО плательщика как в выписке Точка-банка (для точного матчинга вместо parent_full_name)
+    tochka_payer_name = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

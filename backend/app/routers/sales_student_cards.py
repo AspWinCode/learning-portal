@@ -72,6 +72,7 @@ def _student_card_response(card: StudentCard, user: User, db: Session) -> Studen
         "archived": card.archived,
         "anketa_status": getattr(card, "anketa_status", "converted"),
         "primary_for_bank_payments": getattr(card, "primary_for_bank_payments", False),
+        "tochka_payer_name": getattr(card, "tochka_payer_name", None),
         "created_at": card.created_at,
         "updated_at": card.updated_at,
     }
@@ -82,10 +83,11 @@ def _student_card_response(card: StudentCard, user: User, db: Session) -> Studen
         data["discount_value"] = card.discount_value
         data["abonement"] = AbonementResponse.model_validate(card.abonement) if card.abonement else None
     else:
-        data["abonement_id"] = None
+        # abonement_id и объект абонемента (цена) видны всем — не содержат конфиденциальных данных
+        data["abonement_id"] = card.abonement_id
         data["discount_type"] = DiscountType.NONE
         data["discount_value"] = 0.0
-        data["abonement"] = None
+        data["abonement"] = AbonementResponse.model_validate(card.abonement) if card.abonement else None
     return StudentCardResponse(**data)
 
 

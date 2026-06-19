@@ -592,6 +592,7 @@ class StudentCardBase(BaseModel):
     next_payment_date: Optional[date] = None
     anketa_status: Optional[str] = None
     primary_for_bank_payments: bool = False
+    tochka_payer_name: Optional[str] = None
 
 
 class StudentCardCreate(StudentCardBase):
@@ -627,6 +628,7 @@ class StudentCardUpdate(BaseModel):
     next_payment_date: Optional[date] = None
     anketa_status: Optional[str] = None
     primary_for_bank_payments: Optional[bool] = None
+    tochka_payer_name: Optional[str] = None
 
 
 class StudentCardResponse(StudentCardBase):

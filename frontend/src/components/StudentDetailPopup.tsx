@@ -3,6 +3,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   IconButton,
   Box,
   Typography,
@@ -37,8 +38,8 @@ import StarIcon from '@mui/icons-material/Star';
 import DescriptionIcon from '@mui/icons-material/Description';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { studentsApi, salesApi, studentCardsApi } from '../services/api';
-import { Student, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentCard, StudentTimelineEvent } from '../types';
+import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi } from '../services/api';
+import { Student, Abonement, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentAccountTransaction, StudentCard, StudentTimelineEvent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
@@ -108,7 +109,15 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
-  const [tab, setTab] = useState<'overview' | 'history'>('overview');
+  const [tab, setTab] = useState<'overview' | 'history' | 'accounts'>('overview');
+  const [paymentDialog, setPaymentDialog] = useState<{ account: StudentAccount; type: 'payment' | 'deduct' } | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<StudentAccountTransaction[]>([]);
+  const [transactionsAccountId, setTransactionsAccountId] = useState<number | null>(null);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [timelineEvents, setTimelineEvents] = useState<StudentTimelineEvent[]>([]);
   const [timelineType, setTimelineType] = useState<string>('all');
   const [timelineDateFrom, setTimelineDateFrom] = useState('');
@@ -126,6 +135,11 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [freezeLoading, setFreezeLoading] = useState(false);
   const [closeByFactPreview, setCloseByFactPreview] = useState<{ lessons_attended_in_period: number; amount: number } | null>(null);
   const [closeByFactLoading, setCloseByFactLoading] = useState(false);
+  const [abonements, setAbonements] = useState<Abonement[]>([]);
+  const [tochkaPayerEdit, setTochkaPayerEdit] = useState(false);
+  const [tochkaPayerValue, setTochkaPayerValue] = useState('');
+  const [tochkaPayerSaving, setTochkaPayerSaving] = useState(false);
+  const [tochkaPayerError, setTochkaPayerError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !studentId) return;
@@ -142,6 +156,11 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setCloseByFactPreview(null);
     setTimelineEvents([]);
     setTab('overview');
+    setTransactions([]);
+    setTransactionsAccountId(null);
+    setPaymentDialog(null);
+    setPaymentAmount('');
+    setPaymentNote('');
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),
@@ -149,6 +168,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       canSeeAbsences ? salesApi.getAbsences({ student_id: studentId }) : Promise.resolve([]),
       canAccessAccounts ? studentsApi.getAccounts(studentId) : Promise.resolve([]),
       canSeeAbsences ? studentCardsApi.list({ student_id: studentId }).then((cards) => (cards && cards[0]) || null) : Promise.resolve(null),
+      abonementsApi.getAll().catch(() => []),
     ];
     if (isOwner) promises.push(salesApi.getStudentFreezes(studentId));
     Promise.all(promises)
@@ -159,13 +179,17 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
         const abs = results[3];
         const acc = results[4];
         const card = results[5] as StudentCard | null;
-        const frz = results[6];
+        const abons = results[6] as Abonement[];
+        const frz = results[7];
         setStudent(s);
         setAttendances(att);
         setTimelineEvents((timeline || []) as StudentTimelineEvent[]);
         setAbsences(abs as AbsenceFollowUp[]);
         setAccounts((acc || []) as StudentAccount[]);
         setStudentCard(card ?? null);
+        setAbonements(Array.isArray(abons) ? abons : []);
+        setTochkaPayerEdit(false);
+        setTochkaPayerValue(card?.tochka_payer_name || '');
         if (isOwner && Array.isArray(frz)) setFreezes(frz.map((f: any) => ({ id: f.id, freeze_start: f.freeze_start, freeze_end: f.freeze_end })));
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Ошибка загрузки'))
@@ -228,6 +252,55 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setTimelineEvents(data);
   };
 
+  const openTransactions = async (acc: StudentAccount) => {
+    if (transactionsAccountId === acc.id) {
+      setTransactionsAccountId(null);
+      setTransactions([]);
+      return;
+    }
+    setTransactionsAccountId(acc.id);
+    setTransactionsLoading(true);
+    try {
+      const list = await studentAccountsApi.getTransactions(acc.id);
+      setTransactions(list);
+    } catch {
+      setTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
+    }
+  };
+
+  const handlePaymentOrDeduct = async () => {
+    if (!paymentDialog || !studentId) return;
+    const amount = parseFloat(paymentAmount.replace(',', '.'));
+    if (isNaN(amount) || amount <= 0) {
+      setPaymentError('Введите положительную сумму');
+      return;
+    }
+    setPaymentLoading(true);
+    setPaymentError(null);
+    try {
+      if (paymentDialog.type === 'payment') {
+        await studentAccountsApi.addPayment(paymentDialog.account.id, { amount, note: paymentNote.trim() || undefined });
+      } else {
+        await studentAccountsApi.deduct(paymentDialog.account.id, { amount, note: paymentNote.trim() || undefined });
+      }
+      const updated = await studentsApi.getAccounts(studentId);
+      setAccounts(updated);
+      if (transactionsAccountId === paymentDialog.account.id) {
+        const txs = await studentAccountsApi.getTransactions(paymentDialog.account.id);
+        setTransactions(txs);
+      }
+      setPaymentDialog(null);
+      setPaymentAmount('');
+      setPaymentNote('');
+    } catch (err: any) {
+      setPaymentError(err.response?.data?.detail || 'Ошибка операции');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   if (!studentId) return null;
 
   return (
@@ -261,6 +334,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
             <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
               <Tab value="overview" label="Обзор" />
               <Tab value="history" label="История" />
+              {canAccessAccounts && <Tab value="accounts" label="Счёт" />}
             </Tabs>
             {tab === 'overview' && (
               <>
@@ -603,65 +677,180 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
               </Paper>
             )}
 
-            {canAccessAccounts && (
+              </>
+            )}
+            {tab === 'accounts' && canAccessAccounts && (
               <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Счета
-                </Typography>
-                {accountsError && (
-                  <Alert severity="error" sx={{ mb: 1 }} onClose={() => setAccountsError(null)}>
-                    {accountsError}
-                  </Alert>
-                )}
-                {canManageAccounts && (
-                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap">
-                    <TextField
-                      size="small"
-                      label="Название счета"
-                      value={newAccountName}
-                      onChange={(e) => setNewAccountName(e.target.value)}
-                      placeholder="Например: Основной"
-                      sx={{ minWidth: 180 }}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={handleCreateAccount}
-                      disabled={!newAccountName.trim() || accountsLoading}
-                    >
-                      Создать счет
-                    </Button>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Счета ученика</Typography>
+                  {canManageAccounts && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField
+                        size="small"
+                        label="Новый счёт"
+                        value={newAccountName}
+                        onChange={(e) => setNewAccountName(e.target.value)}
+                        placeholder="Основной"
+                        sx={{ width: 150 }}
+                      />
+                      <Button size="small" variant="outlined" onClick={handleCreateAccount} disabled={!newAccountName.trim() || accountsLoading}>
+                        Создать
+                      </Button>
+                    </Stack>
+                  )}
+                </Stack>
+                {accountsError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setAccountsError(null)}>{accountsError}</Alert>}
+                {accountsLoading && !accounts.length ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={24} /></Box>
+                ) : accounts.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">Нет счетов.</Typography>
+                ) : (
+                  <Stack spacing={2}>
+                    {accounts.map((acc) => (
+                      <Card key={acc.id} variant="outlined">
+                        <CardContent sx={{ pb: '12px !important' }}>
+                          <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" spacing={1}>
+                            <Box>
+                              <Typography variant="subtitle2">{acc.name}</Typography>
+                              <Typography variant="h6" color={acc.balance < 0 ? 'error' : 'text.primary'}>
+                                {acc.balance ?? 0} ₽
+                              </Typography>
+                            </Box>
+                            {canManageAccounts && (
+                              <Stack direction="row" spacing={1}>
+                                <Button size="small" variant="contained" color="success"
+                                  onClick={() => { setPaymentDialog({ account: acc, type: 'payment' }); setPaymentAmount(''); setPaymentNote(''); setPaymentError(null); }}>
+                                  Пополнить
+                                </Button>
+                                <Button size="small" variant="outlined" color="warning"
+                                  onClick={() => { setPaymentDialog({ account: acc, type: 'deduct' }); setPaymentAmount(''); setPaymentNote(''); setPaymentError(null); }}>
+                                  Списать
+                                </Button>
+                                <Button size="small" variant="text"
+                                  onClick={() => openTransactions(acc)}>
+                                  {transactionsAccountId === acc.id ? 'Скрыть' : 'История'}
+                                </Button>
+                              </Stack>
+                            )}
+                            {!canManageAccounts && (
+                              <Button size="small" variant="text" onClick={() => openTransactions(acc)}>
+                                {transactionsAccountId === acc.id ? 'Скрыть' : 'История'}
+                              </Button>
+                            )}
+                          </Stack>
+                          {transactionsAccountId === acc.id && (
+                            <Box sx={{ mt: 1.5 }}>
+                              {transactionsLoading ? (
+                                <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}><CircularProgress size={20} /></Box>
+                              ) : transactions.length === 0 ? (
+                                <Typography variant="body2" color="text.secondary">Нет операций.</Typography>
+                              ) : (
+                                <Table size="small">
+                                  <TableHead>
+                                    <TableRow>
+                                      <TableCell>Дата</TableCell>
+                                      <TableCell>Тип</TableCell>
+                                      <TableCell align="right">Сумма</TableCell>
+                                      <TableCell>Примечание</TableCell>
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {transactions.map((tx) => (
+                                      <TableRow key={tx.id}>
+                                        <TableCell>{formatDate(tx.created_at)}</TableCell>
+                                        <TableCell>
+                                          <Chip size="small"
+                                            label={tx.kind === 'payment' ? 'Оплата' : 'Списание'}
+                                            color={tx.kind === 'payment' ? 'success' : 'default'}
+                                          />
+                                        </TableCell>
+                                        <TableCell align="right" sx={{ color: tx.kind === 'payment' ? 'success.main' : 'text.secondary', fontWeight: 500 }}>
+                                          {tx.kind === 'payment' ? '+' : '-'}{Math.abs(tx.amount)} ₽
+                                        </TableCell>
+                                        <TableCell sx={{ maxWidth: 200 }}>
+                                          <Typography variant="body2" noWrap title={tx.note || ''}>
+                                            {tx.note || '—'}
+                                          </Typography>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              )}
+                            </Box>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
                   </Stack>
                 )}
-                {accountsLoading && !accounts.length ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                    <CircularProgress size={24} />
+
+                {canManageAccounts && studentCard && (
+                  <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Автосопоставление (Точка банк)
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      ФИО плательщика точно как в выписке — используется при автоимпорте вместо ФИО родителя.
+                    </Typography>
+                    {tochkaPayerEdit ? (
+                      <Stack spacing={1}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <TextField
+                            size="small"
+                            fullWidth
+                            label="ФИО в выписке банка"
+                            value={tochkaPayerValue}
+                            onChange={(e) => { setTochkaPayerValue(e.target.value); setTochkaPayerError(null); }}
+                            placeholder="Иванова Анна Петровна"
+                            autoFocus
+                            error={!!tochkaPayerError}
+                          />
+                          <Button size="small" variant="contained" disabled={tochkaPayerSaving}
+                            onClick={async () => {
+                              if (!studentCard?.id) return;
+                              setTochkaPayerSaving(true);
+                              setTochkaPayerError(null);
+                              try {
+                                const updated = await studentCardsApi.update(studentCard.id, {
+                                  tochka_payer_name: tochkaPayerValue.trim() || null,
+                                });
+                                setStudentCard(updated);
+                                setTochkaPayerValue(updated.tochka_payer_name || '');
+                                setTochkaPayerEdit(false);
+                              } catch (e: any) {
+                                setTochkaPayerError(e?.response?.data?.detail || e?.message || 'Ошибка сохранения');
+                              } finally {
+                                setTochkaPayerSaving(false);
+                              }
+                            }}>
+                            {tochkaPayerSaving ? 'Сохранение…' : 'Сохранить'}
+                          </Button>
+                          <Button size="small" variant="text" onClick={() => { setTochkaPayerEdit(false); setTochkaPayerError(null); setTochkaPayerValue(studentCard?.tochka_payer_name || ''); }}>
+                            Отмена
+                          </Button>
+                        </Stack>
+                        {tochkaPayerError && <Alert severity="error" sx={{ py: 0 }}>{tochkaPayerError}</Alert>}
+                      </Stack>
+                    ) : (
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="body2" sx={{ flex: 1 }}>
+                          {studentCard.tochka_payer_name
+                            ? <><strong>Точное ФИО:</strong> {studentCard.tochka_payer_name}</>
+                            : <span style={{ color: '#9e9e9e' }}>Не задано — используется ФИО родителя ({studentCard.parent_full_name || '—'})</span>
+                          }
+                        </Typography>
+                        <Button size="small" variant="outlined"
+                          onClick={() => { setTochkaPayerValue(studentCard.tochka_payer_name || ''); setTochkaPayerEdit(true); }}>
+                          Изменить
+                        </Button>
+                      </Stack>
+                    )}
                   </Box>
-                ) : accounts.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    {canManageAccounts ? 'Нет счетов. Создайте счёт выше.' : 'Нет счетов.'}
-                  </Typography>
-                ) : (
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Название</TableCell>
-                        <TableCell align="right">Баланс</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {accounts.map((acc) => (
-                        <TableRow key={acc.id}>
-                          <TableCell>{acc.name}</TableCell>
-                          <TableCell align="right">{acc.balance ?? 0} ₽</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
                 )}
               </Paper>
             )}
-              </>
-            )}
+
             {tab === 'history' && (
               <Paper variant="outlined" sx={{ p: 2 }}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mb: 2 }}>
@@ -708,6 +897,62 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
           </Stack>
         )}
       </DialogContent>
+
+      <Dialog open={!!paymentDialog} onClose={() => setPaymentDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>{paymentDialog?.type === 'payment' ? 'Пополнение счёта' : 'Списание со счёта'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {paymentError && <Alert severity="error" onClose={() => setPaymentError(null)}>{paymentError}</Alert>}
+            <Typography variant="body2" color="text.secondary">
+              Счёт: <strong>{paymentDialog?.account.name}</strong> · Баланс: {paymentDialog?.account.balance ?? 0} ₽
+            </Typography>
+            <Stack spacing={1}>
+              <TextField
+                label="Сумма, ₽"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                type="number"
+                inputProps={{ min: 0, step: 1 }}
+                autoFocus
+                fullWidth
+              />
+              {paymentDialog?.type === 'payment' && (() => {
+                const abonPrice = studentCard?.abonement?.price
+                  ?? abonements.find(a => a.id === studentCard?.abonement_id)?.price;
+                if (abonPrice == null) return null;
+                return (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    sx={{ alignSelf: 'flex-start' }}
+                    onClick={() => setPaymentAmount(String(abonPrice))}
+                  >
+                    Цена абонемента: {abonPrice} ₽
+                  </Button>
+                );
+              })()}
+            </Stack>
+            <TextField
+              label="Примечание (необязательно)"
+              value={paymentNote}
+              onChange={(e) => setPaymentNote(e.target.value)}
+              fullWidth
+              size="small"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentDialog(null)}>Отмена</Button>
+          <Button
+            variant="contained"
+            color={paymentDialog?.type === 'payment' ? 'success' : 'warning'}
+            onClick={handlePaymentOrDeduct}
+            disabled={!paymentAmount || paymentLoading}
+          >
+            {paymentLoading ? 'Сохранение…' : paymentDialog?.type === 'payment' ? 'Пополнить' : 'Списать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 };

@@ -906,6 +906,8 @@ export interface StudentCard {
   next_payment_date?: string | null;
   archived: boolean;
   anketa_status?: string; // draft | filled | converted | cancelled
+  primary_for_bank_payments?: boolean;
+  tochka_payer_name?: string | null;
   created_at: string;
   updated_at?: string | null;
   abonement?: Abonement | null;

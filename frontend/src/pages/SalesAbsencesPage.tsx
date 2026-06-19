@@ -28,11 +28,11 @@ import { salesApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { AbsenceFollowUp, AbsenceFollowUpStage, MakeupSuggestionItem } from '../types';
 
-const STAGES: { value: AbsenceFollowUpStage; label: string }[] = [
-  { value: 'missed', label: 'Нужна отработка' },
-  { value: 'assigned', label: 'Отработка назначена' },
-  { value: 'made_up', label: 'Отработал' },
-  { value: 'missed_makeup', label: 'Пропустил отработку — переназначить' },
+const STAGES: { value: AbsenceFollowUpStage | 'missed_or_link_sent'; label: string; filter: (a: AbsenceFollowUp) => boolean }[] = [
+  { value: 'missed_or_link_sent', label: 'Нужна отработка', filter: (a) => a.stage === 'missed' || a.stage === 'link_sent' },
+  { value: 'assigned', label: 'Отработка назначена', filter: (a) => a.stage === 'assigned' },
+  { value: 'made_up', label: 'Отработал', filter: (a) => a.stage === 'made_up' },
+  { value: 'missed_makeup', label: 'Пропустил отработку — переназначить', filter: (a) => a.stage === 'missed_makeup' },
 ];
 
 /** Окно подбора отработок: 3 недели вперёд */
@@ -129,11 +129,11 @@ const SalesAbsencesPage: React.FC = () => {
   };
 
   const byStage = STAGES.reduce(
-    (acc, { value }) => {
-      acc[value] = items.filter((a) => a.stage === value);
+    (acc, { value, filter }) => {
+      acc[value] = items.filter(filter);
       return acc;
     },
-    {} as Record<AbsenceFollowUpStage, AbsenceFollowUp[]>
+    {} as Record<string, AbsenceFollowUp[]>
   );
 
   const formatDate = (d: string) => {
@@ -160,11 +160,10 @@ const SalesAbsencesPage: React.FC = () => {
               onChange={(e) => setStageFilter(e.target.value)}
             >
               <MenuItem value="">Все</MenuItem>
-              {STAGES.map((s) => (
-                <MenuItem key={s.value} value={s.value}>
-                  {s.label}
-                </MenuItem>
-              ))}
+              <MenuItem value="missed">Нужна отработка</MenuItem>
+              <MenuItem value="assigned">Отработка назначена</MenuItem>
+              <MenuItem value="made_up">Отработал</MenuItem>
+              <MenuItem value="missed_makeup">Пропустил отработку — переназначить</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -213,13 +212,13 @@ const SalesAbsencesPage: React.FC = () => {
                               {a.absence_comment && ` — ${a.absence_comment}`}
                             </Typography>
                           )}
-                          {a.stage === 'assigned' && a.makeup_group_name && a.makeup_lesson_date && (
+                          {(a.stage === 'assigned' || a.stage === 'link_sent') && a.makeup_group_name && a.makeup_lesson_date && (
                             <Typography variant="caption" color="primary" display="block">
                               Отработка: {a.makeup_group_name} · {formatDate(a.makeup_lesson_date)}
                             </Typography>
                           )}
                           <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
-                            {(a.stage === 'missed' || a.stage === 'missed_makeup') && (
+                            {(a.stage === 'missed' || a.stage === 'link_sent' || a.stage === 'missed_makeup') && (
                               <Button size="small" variant="outlined" onClick={() => openSuggest(a)}>
                                 Подобрать отработку
                               </Button>
@@ -239,11 +238,11 @@ const SalesAbsencesPage: React.FC = () => {
                                 onChange={(e) => handleStageChange(a.id, e.target.value)}
                                 displayEmpty
                               >
-                                {STAGES.map((s) => (
-                                  <MenuItem key={s.value} value={s.value}>
-                                    {s.label}
-                                  </MenuItem>
-                                ))}
+                                <MenuItem value="missed">Нужна отработка</MenuItem>
+                                <MenuItem value="link_sent">Ссылка отправлена</MenuItem>
+                                <MenuItem value="assigned">Отработка назначена</MenuItem>
+                                <MenuItem value="made_up">Отработал</MenuItem>
+                                <MenuItem value="missed_makeup">Пропустил отработку — переназначить</MenuItem>
                               </Select>
                             </FormControl>
                           </Stack>

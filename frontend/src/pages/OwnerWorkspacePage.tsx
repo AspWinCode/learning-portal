@@ -1503,6 +1503,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskEditAssigneeId, setTaskEditAssigneeId] = useState<number | ''>('');
   const [taskEditTags, setTaskEditTags] = useState<string[]>([]);
   const [taskEditChecklist, setTaskEditChecklist] = useState<ChecklistRow[]>([]);
+  const [taskEditBulkOpen, setTaskEditBulkOpen] = useState(false);
+  const [taskEditBulkText, setTaskEditBulkText] = useState('');
   const [taskComments, setTaskComments] = useState<OwnerWorkspaceTaskComment[]>([]);
   const [newCommentText, setNewCommentText] = useState('');
 
@@ -8230,6 +8232,52 @@ const OwnerWorkspacePage: React.FC = () => {
             >
               + Пункт чеклиста
             </Button>
+            <Button
+              size="small"
+              variant="text"
+              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
+              onClick={() => { setTaskEditBulkOpen((v) => !v); setTaskEditBulkText(''); }}
+            >
+              {taskEditBulkOpen ? 'Отмена' : '+ Добавить пачкой'}
+            </Button>
+            {taskEditBulkOpen && (() => {
+              const lines = taskEditBulkText.split('\n').map((s) => s.trim()).filter(Boolean);
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <TextField
+                    multiline
+                    minRows={3}
+                    maxRows={10}
+                    size="small"
+                    placeholder={"Каждая строка — отдельный пункт\nПункт 1\nПункт 2\nПункт 3"}
+                    value={taskEditBulkText}
+                    onChange={(e) => setTaskEditBulkText(e.target.value)}
+                    autoFocus
+                  />
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {lines.slice(0, 3).map((l, i) => (
+                      <Chip key={i} label={l.length > 30 ? l.slice(0, 30) + '…' : l} size="small" />
+                    ))}
+                    {lines.length > 3 && <Chip label={`ещё ${lines.length - 3}`} size="small" variant="outlined" />}
+                  </Box>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={lines.length === 0}
+                    onClick={() => {
+                      setTaskEditChecklist((prev) => [
+                        ...prev,
+                        ...lines.map((text) => ({ id: `n-${Date.now()}-${Math.random()}`, text, done: false })),
+                      ]);
+                      setTaskEditBulkOpen(false);
+                      setTaskEditBulkText('');
+                    }}
+                  >
+                    Добавить {lines.length > 0 ? `${lines.length} пункт${lines.length === 1 ? '' : lines.length < 5 ? 'а' : 'ов'}` : ''}
+                  </Button>
+                </Box>
+              );
+            })()}
             <Divider />
             <Typography variant="subtitle2">Вложения (JSON-массив)</Typography>
             <Typography variant="caption" color="text.secondary">

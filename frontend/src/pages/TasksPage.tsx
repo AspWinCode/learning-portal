@@ -3017,9 +3017,30 @@ const TasksPage: React.FC = () => {
                     </ListItemButton>
                     {expandedTaskId === task.id && (
                       <CardContent sx={{ pt: 0, borderTop: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                          Подзадачи
-                        </Typography>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Подзадачи
+                          </Typography>
+                          {canManageTasks && (
+                            <Button
+                              size="small"
+                              variant={bulkTaskId === task.id ? 'contained' : 'outlined'}
+                              onClick={() => {
+                                if (bulkTaskId === task.id) {
+                                  setBulkTaskId(null);
+                                  setBulkText('');
+                                  setBulkError(null);
+                                } else {
+                                  setBulkTaskId(task.id);
+                                  setBulkText('');
+                                  setBulkError(null);
+                                }
+                              }}
+                            >
+                              {bulkTaskId === task.id ? 'Отмена' : '+ Добавить пачкой'}
+                            </Button>
+                          )}
+                        </Stack>
                         <List dense>
                           {task.subtasks.map((st) => (
                             <ListItem key={st.id} disablePadding>
@@ -3036,6 +3057,47 @@ const TasksPage: React.FC = () => {
                             </ListItem>
                           ))}
                         </List>
+                        {bulkTaskId === task.id && canManageTasks && (() => {
+                          const lines = bulkText.split('\n').map((s) => s.trim()).filter(Boolean);
+                          const preview = lines.slice(0, 3);
+                          const rest = lines.length - preview.length;
+                          return (
+                            <Box sx={{ mt: 1.5, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                              <TextField
+                                fullWidth
+                                multiline
+                                minRows={4}
+                                size="small"
+                                placeholder={'Каждая строка — отдельная подзадача'}
+                                value={bulkText}
+                                onChange={(e) => { setBulkText(e.target.value); setBulkError(null); }}
+                                autoFocus
+                              />
+                              {lines.length > 0 && (
+                                <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 1 }}>
+                                  {preview.map((t, i) => (
+                                    <Chip key={i} label={t.length > 40 ? t.slice(0, 40) + '…' : t} size="small" />
+                                  ))}
+                                  {rest > 0 && <Chip label={`+ ещё ${rest}`} size="small" variant="outlined" />}
+                                </Stack>
+                              )}
+                              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  {lines.length > 0 ? `Распознано: ${lines.length} подзадач${lines.length >= 50 ? ' — это много, точно всё сразу?' : ''}` : 'Введите подзадачи, каждая с новой строки'}
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  disabled={lines.length === 0 || bulkLoading}
+                                  onClick={() => handleBulkCreate(task.id)}
+                                >
+                                  {bulkLoading ? 'Создание…' : `Создать ${lines.length > 0 ? lines.length : ''} подзадач`}
+                                </Button>
+                              </Stack>
+                              {bulkError && <Alert severity="error" sx={{ mt: 1 }}>{bulkError}</Alert>}
+                            </Box>
+                          );
+                        })()}
                         {task.student_ids?.length > 0 && (
                           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                             Ученики: {task.student_ids.length}

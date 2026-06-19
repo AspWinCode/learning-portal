@@ -706,6 +706,12 @@ async def save_attendance(
 
         if is_present:
             _close_absence_for_group_makeup(db, attendance=att, group=group)
+            # Если студент исправлен на "присутствовал" — убираем ошибочную запись пропуска
+            stale_absence = db.query(AbsenceFollowUp).filter(
+                AbsenceFollowUp.lesson_attendance_id == att.id,
+            ).first()
+            if stale_absence:
+                db.delete(stale_absence)
 
         existing_txs = list(
             db.query(StudentAccountTransaction).filter(

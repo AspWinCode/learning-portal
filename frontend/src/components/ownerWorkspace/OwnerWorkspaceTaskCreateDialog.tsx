@@ -169,6 +169,8 @@ export function OwnerWorkspaceTaskCreateDialog({
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [newCheckItem, setNewCheckItem] = useState('');
+  const [bulkCheckOpen, setBulkCheckOpen] = useState(false);
+  const [bulkCheckText, setBulkCheckText] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [deadlineTime, setDeadlineTime] = useState('');
@@ -265,6 +267,13 @@ export function OwnerWorkspaceTaskCreateDialog({
     setChecklist((prev) => prev.map((item) => item.id === id ? { ...item, done: !item.done } : item));
   const removeCheckItem = (id: string) =>
     setChecklist((prev) => prev.filter((item) => item.id !== id));
+  const bulkAddCheckItems = () => {
+    const lines = bulkCheckText.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (!lines.length) return;
+    setChecklist((prev) => [...prev, ...lines.map((t) => ({ id: uid(), text: t, done: false }))]);
+    setBulkCheckText('');
+    setBulkCheckOpen(false);
+  };
 
   // Save as template
   const handleSaveTemplate = async () => {
@@ -757,6 +766,45 @@ export function OwnerWorkspaceTaskCreateDialog({
                     <AddIcon fontSize="small" />
                   </IconButton>
                 </Stack>
+                <Button
+                  size="small"
+                  variant="text"
+                  sx={{ mt: 0.5, alignSelf: 'flex-start' }}
+                  onClick={() => { setBulkCheckOpen((v) => !v); setBulkCheckText(''); }}
+                >
+                  {bulkCheckOpen ? 'Отмена' : '+ Добавить пачкой'}
+                </Button>
+                {bulkCheckOpen && (() => {
+                  const lines = bulkCheckText.split('\n').map((s) => s.trim()).filter(Boolean);
+                  return (
+                    <Box sx={{ mt: 1, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                      <TextField
+                        fullWidth
+                        multiline
+                        minRows={4}
+                        size="small"
+                        placeholder={'Каждая строка — отдельный пункт'}
+                        value={bulkCheckText}
+                        onChange={(e) => setBulkCheckText(e.target.value)}
+                        autoFocus
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                      />
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {lines.length > 0 ? `Распознано: ${lines.length} пунктов` : 'Введите пункты, каждый с новой строки'}
+                        </Typography>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          disabled={lines.length === 0}
+                          onClick={bulkAddCheckItems}
+                        >
+                          Добавить {lines.length > 0 ? lines.length : ''} пунктов
+                        </Button>
+                      </Stack>
+                    </Box>
+                  );
+                })()}
               </Box>
             </Collapse>
           </Box>

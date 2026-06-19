@@ -904,11 +904,6 @@ async def save_attendance(
     if attended_student_ids:
         db.commit()
 
-    for absence in new_absence_notifications:
-        try:
-            queue_makeup_selection_request(db, absence, created_by=current_user.id)
-        except Exception:
-            pass
     return {"ok": True}
 
 

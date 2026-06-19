@@ -30,6 +30,7 @@ from app.services.makeup_selection import (
     close_send_link_tasks_for_absence,
     create_sales_confirmation_task,
     list_makeup_suggestions_for_absence,
+    queue_makeup_selection_request,
     resolve_absence_by_token,
 )
 from app.services.student_activity import log_student_activity
@@ -120,12 +121,18 @@ async def update_absence_stage(
     absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
     if not absence:
         raise HTTPException(status_code=404, detail="Пропуск не найден")
+    prev_stage = absence.stage
     absence.stage = payload.stage
     if payload.stage == "missed_makeup":
         absence.makeup_group_id = None
         absence.makeup_lesson_date = None
     db.commit()
     db.refresh(absence)
+    if payload.stage == "link_sent" and prev_stage != "link_sent":
+        try:
+            queue_makeup_selection_request(db, absence, created_by=current_user.id)
+        except Exception:
+            pass
     return _absence_to_response(db, absence)
 
 

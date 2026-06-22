@@ -19,6 +19,20 @@ from calendar import monthrange
 
 router = APIRouter()
 
+
+async def require_reports_access(current_user: User = Depends(auth.get_current_active_user)) -> User:
+    if auth.resolve_effective_role(current_user) in (UserRole.ADMIN, UserRole.OWNER):
+        return current_user
+    auth.ensure_permission(current_user, "reports.access")
+    return current_user
+
+
+async def require_reports_export(current_user: User = Depends(auth.get_current_active_user)) -> User:
+    if auth.resolve_effective_role(current_user) in (UserRole.ADMIN, UserRole.OWNER):
+        return current_user
+    auth.ensure_permission(current_user, "reports.export")
+    return current_user
+
 # Окно сдачи: с 1 по 6 число в UTC (для таймзоны проекта можно заменить на Europe/Moscow и конвертировать)
 
 
@@ -27,7 +41,7 @@ async def characteristics_compliance_report(
     month: int,
     year: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("reports.access"))
+    current_user: User = Depends(require_reports_access)
 ):
     """
     Контроль сдачи характеристик по месяцам для админа.
@@ -181,7 +195,7 @@ async def get_students_report(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("reports.access"))
+    current_user: User = Depends(require_reports_access)
 ):
     """Отчет по ученикам"""
     students = db.query(Student).offset(skip).limit(limit).all()
@@ -195,7 +209,7 @@ async def get_students_report(
 async def get_trainers_report(
     include_archived: bool = False,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("reports.access"))
+    current_user: User = Depends(require_reports_access)
 ):
     """Расширенная отчетность по тренерам. По умолчанию архивные (is_active=False) исключены."""
     from app.models import User as UserModel, UserRole, Group, Grade
@@ -234,7 +248,7 @@ async def get_action_logs(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("reports.access"))
+    current_user: User = Depends(require_reports_access)
 ):
     """Журнал действий"""
     logs = db.query(ActionLog).order_by(ActionLog.created_at.desc()).offset(skip).limit(limit).all()
@@ -248,7 +262,7 @@ async def get_action_logs(
 async def export_report(
     report_request: ReportRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("reports.export"))
+    current_user: User = Depends(require_reports_export)
 ):
     """Экспорт отчетов (XLSX/CSV)"""
     # Получаем данные

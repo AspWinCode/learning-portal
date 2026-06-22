@@ -23,6 +23,7 @@ from app.schemas.sales import (
 )
 from app.services.parent_invite import create_parent_with_invite
 from app.services.person_sync import sync_student_card_person
+from app.services.student_account_finance import ensure_default_student_account
 from app.services.student_card_conversion import (
     StudentCardConvertConflict,
     convert_student_card_to_student as student_card_convert,
@@ -482,6 +483,7 @@ async def open_parent_cabinet_from_card(
         student = Student(full_name=(card.student_full_name or "").strip() or "Ученик", status=StudentStatus.ACTIVE)
         db.add(student)
         db.flush()
+        ensure_default_student_account(db, student.id)
         card.student_id = student.id
         db.add(card)
         db.flush()

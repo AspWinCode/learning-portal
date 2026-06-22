@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models import Student, StudentCard, StudentStatus, User, UserRole
 from app.services.parent_invite import create_parent_user_no_invite
 from app.services.student_activity import log_student_activity
+from app.services.student_account_finance import ensure_default_student_account
 from app.services.person_sync import sync_student_card_person, sync_user_person
 
 
@@ -95,6 +96,7 @@ def convert_student_card_to_student(
         )
         db.add(student)
         db.flush()
+        ensure_default_student_account(db, student.id)
         card.student_id = student.id
         card.anketa_status = "converted"
         sync_student_card_person(db, card)
@@ -156,6 +158,7 @@ def convert_student_card_to_student(
     )
     db.add(student)
     db.flush()
+    ensure_default_student_account(db, student.id)
     card.student_id = student.id
     card.anketa_status = "converted"
     sync_student_card_person(db, card)

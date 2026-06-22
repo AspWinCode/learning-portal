@@ -30,6 +30,7 @@ from app.services.email_sender import is_email_configured, send_email
 from app.routers.action_log import log_action
 from app.utils.phone import normalize_phone
 from app.services.student_activity import log_student_activity
+from app.services.student_account_finance import ensure_default_student_account
 from app.services.person_sync import sync_lead_person, sync_student_card_person, sync_user_person
 
 
@@ -258,6 +259,7 @@ def convert_lead_to_student(
     )
     db.add(student)
     db.flush()
+    ensure_default_student_account(db, student.id)
     lead.converted_to_student_id = student.id
     lead.status = LeadStatus.WON
     lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)

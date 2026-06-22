@@ -27,6 +27,7 @@ from app.services.ai_insights import build_lead_ai_insight
 from app.services.payment_status import get_payment_status_list as payment_status_list_svc, get_payment_status_summary as payment_status_summary_svc
 from app.services.lead_post_visit import update_lead_post_visit_stage as lead_post_visit_update_stage
 from app.services.student_activity import log_student_activity
+from app.services.student_account_finance import ensure_default_student_account
 from app.services.person_sync import sync_lead_person, sync_student_card_person
 from app.utils.datetime import utcnow
 from app.models import (
@@ -1842,6 +1843,7 @@ async def open_parent_cabinet_from_card(
         )
         db.add(student)
         db.flush()
+        ensure_default_student_account(db, student.id)
         card.student_id = student.id
         db.add(card)
         db.flush()

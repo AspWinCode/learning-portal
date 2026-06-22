@@ -23,6 +23,7 @@ from app.routers.action_log import log_action
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
 from app.services.student_activity import log_student_activity
+from app.services.student_account_finance import ensure_default_student_account
 
 router = APIRouter()
 
@@ -197,6 +198,8 @@ async def create_student_with_parent(
         status=StudentStatus.ACTIVE,
     )
     db.add(db_student)
+    db.flush()
+    ensure_default_student_account(db, db_student.id)
     db.commit()
     db.refresh(db_student)
     db.refresh(parent_user)
@@ -287,6 +290,8 @@ async def create_student(
         status=StudentStatus.ACTIVE
     )
     db.add(db_student)
+    db.flush()
+    ensure_default_student_account(db, db_student.id)
     db.commit()
     db.refresh(db_student)
     log_student_activity(

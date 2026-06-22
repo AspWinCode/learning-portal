@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from app.models import Student, StudentAccount
 
 
+DEFAULT_STUDENT_ACCOUNT_NAME = "\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439"
+
+
 def create_student_account(
     db: Session,
     student_id: int,
@@ -31,3 +34,18 @@ def create_student_account(
     db.flush()
     db.refresh(account)
     return account
+
+
+def ensure_default_student_account(db: Session, student_id: int) -> StudentAccount:
+    account = (
+        db.query(StudentAccount)
+        .filter(
+            StudentAccount.student_id == student_id,
+            StudentAccount.name == DEFAULT_STUDENT_ACCOUNT_NAME,
+        )
+        .order_by(StudentAccount.id.asc())
+        .first()
+    )
+    if account:
+        return account
+    return create_student_account(db, student_id, DEFAULT_STUDENT_ACCOUNT_NAME)

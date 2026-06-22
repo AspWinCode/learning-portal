@@ -35,8 +35,8 @@ import {
   Grid,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon, MoreVert as MoreVertIcon } from '@mui/icons-material';
-import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi, rolesApi } from '../services/api';
-import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType, Role } from '../types';
+import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
+import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
 import { applyPhoneMask, isValidPhone, isValidGeorgianPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
@@ -55,7 +55,6 @@ const StudentsPage: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [parentOpen, setParentOpen] = useState(false);
-  const [trainerOpen, setTrainerOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [error, setError] = useState('');
   const [newStudent, setNewStudent] = useState({
@@ -104,15 +103,8 @@ const StudentsPage: React.FC = () => {
   const [editParentCabinetLink, setEditParentCabinetLink] = useState<string | null>(null);
   const [editParentCabinetMessage, setEditParentCabinetMessage] = useState<string | null>(null);
   const [editParentCabinetLoading, setEditParentCabinetLoading] = useState(false);
-  const [newTrainer, setNewTrainer] = useState({
-    full_name: '',
-    email: '',
-    password: '',
-    custom_role_id: '',
-  });
   const [parents, setParents] = useState<User[]>([]);
   const [trainers, setTrainers] = useState<User[]>([]);
-  const [trainerRoles, setTrainerRoles] = useState<Role[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [abonements, setAbonements] = useState<Abonement[]>([]);
@@ -167,10 +159,10 @@ const StudentsPage: React.FC = () => {
   const [trainersLoaded, setTrainersLoaded] = useState(false);
   const [refDataLoaded, setRefDataLoaded] = useState(false);
 
-  type PageTab = 'students' | 'parents' | 'trainers';
+  type PageTab = 'students' | 'parents';
   const tabParam = searchParams.get('tab');
   const studentsTab: PageTab =
-    tabParam === 'parents' || tabParam === 'trainers' ? tabParam : 'students';
+    tabParam === 'parents' ? tabParam : 'students';
   const setStudentsTab = (tab: PageTab) => {
     const next = new URLSearchParams(searchParams);
     if (tab === 'students') next.delete('tab');
@@ -182,7 +174,6 @@ const StudentsPage: React.FC = () => {
   const [quickFilterFromLead, setQuickFilterFromLead] = useState(false);
   const [rowMenuAnchor, setRowMenuAnchor] = useState<{ el: HTMLElement; student: Student } | null>(null);
   const [parentSearch, setParentSearch] = useState('');
-  const [trainerSearch, setTrainerSearch] = useState('');
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState<Student | null>(null);
 
   const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || '').trim());
@@ -216,14 +207,6 @@ const StudentsPage: React.FC = () => {
       loadParents().then(() => setParentsLoaded(true));
     }
   }, [hasFullStudentsView, studentsTab, editOpen, parentsLoaded]);
-
-  // Тренеры загружаются в первом эффекте (нужны для фильтра на вкладке «Ученики»). Если вкладка «Тренеры» открыта до завершения загрузки — дозагружаем.
-  useEffect(() => {
-    if (!hasFullStudentsView || trainersLoaded || isOwner) return;
-    if (studentsTab === 'trainers') {
-      loadTrainers().then(() => setTrainersLoaded(true));
-    }
-  }, [hasFullStudentsView, studentsTab, trainersLoaded, isOwner]);
 
   // Справочники для диалогов (города, школы, классы) и абонементы — по требованию при открытии добавления/редактирования
   useEffect(() => {
@@ -457,9 +440,8 @@ const StudentsPage: React.FC = () => {
 
   const loadTrainers = async () => {
     try {
-      const [data, allRoles] = await Promise.all([usersApi.getAll('trainer'), rolesApi.getAll()]);
+      const data = await usersApi.getAll('trainer');
       setTrainers(data);
-      setTrainerRoles(allRoles.filter((role) => role.base_role === 'trainer' && role.is_active));
     } catch (err) {
       console.error('Ошибка загрузки тренеров', err);
     }
@@ -984,19 +966,6 @@ const StudentsPage: React.FC = () => {
     return list;
   }, [parents, parentSearch]);
 
-  const filteredTrainers = useMemo(() => {
-    let list = trainers.filter((t) => t.is_active !== false);
-    const q = (trainerSearch || '').trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (t) =>
-          (t.full_name || '').toLowerCase().includes(q) ||
-          (t.email || '').toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [trainers, trainerSearch]);
-
   const getDiscountLabel = (ab: Abonement): string => {
     if (ab.discount_type === 'none') return '—';
     if (ab.discount_type === 'percent') return `${ab.discount_value}%`;
@@ -1056,7 +1025,6 @@ const StudentsPage: React.FC = () => {
         <Tabs value={studentsTab} onChange={(_, v) => setStudentsTab(v as PageTab)}>
           <Tab label="Ученики" value="students" />
           {hasFullStudentsView && <Tab label="Родители" value="parents" />}
-          {hasFullStudentsView && !isOwner && <Tab label="Тренеры" value="trainers" />}
         </Tabs>
       </Box>
 
@@ -1333,51 +1301,6 @@ const StudentsPage: React.FC = () => {
                           <Button size="small" color="warning" onClick={async () => { try { await usersApi.update(parent.id, { is_active: false }); loadParents(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Архивировать</Button>
                         ) : (
                           <Button size="small" color="success" onClick={async () => { try { await usersApi.update(parent.id, { is_active: true }); loadParents(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Разархивировать</Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </>
-      )}
-
-      {studentsTab === 'trainers' && hasFullStudentsView && !isOwner && (
-        <>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h5">Тренеры</Typography>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setTrainerOpen(true); setNewTrainer({ full_name: '', email: '', password: '', custom_role_id: '' }); }}>Создать тренера</Button>
-          </Box>
-          <Box sx={{ mb: 2 }}>
-            <TextField size="small" placeholder="Поиск по ФИО / email..." value={trainerSearch} onChange={(e) => setTrainerSearch(e.target.value)} sx={{ minWidth: 280 }} />
-          </Box>
-          <TableContainer component={Paper}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>ФИО</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Статус</TableCell>
-                  <TableCell>Кол-во групп</TableCell>
-                  <TableCell>Действия</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredTrainers.map((trainer) => {
-                  const groupsCount = groups.filter((g) => g.trainer_id === trainer.id).length;
-                  return (
-                    <TableRow key={trainer.id}>
-                      <TableCell>{trainer.full_name}</TableCell>
-                      <TableCell>{trainer.email}</TableCell>
-                      <TableCell>{trainer.is_active ? 'Активен' : 'Неактивен'}</TableCell>
-                      <TableCell>{groupsCount}</TableCell>
-                      <TableCell>
-                        {trainer.is_active ? (
-                          <Button size="small" color="warning" onClick={async () => { try { await usersApi.update(trainer.id, { is_active: false }); loadTrainers(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Архивировать</Button>
-                        ) : (
-                          <Button size="small" color="success" onClick={async () => { try { await usersApi.update(trainer.id, { is_active: true }); loadTrainers(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Разархивировать</Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -2013,90 +1936,6 @@ const StudentsPage: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
-
-      {!isOwner && (
-        <Dialog open={trainerOpen} onClose={() => setTrainerOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Создать тренера</DialogTitle>
-          <DialogContent>
-            <TextField
-              fullWidth
-              label="ФИО тренера *"
-              value={newTrainer.full_name}
-              onChange={(e) => setNewTrainer({ ...newTrainer, full_name: e.target.value })}
-              sx={{ mt: 2 }}
-              required
-            />
-            <TextField
-              fullWidth
-              label="Email *"
-              type="email"
-              value={newTrainer.email}
-              onChange={(e) => setNewTrainer({ ...newTrainer, email: e.target.value })}
-              sx={{ mt: 2 }}
-              required
-            />
-            <TextField
-              fullWidth
-              label="Пароль *"
-              type="password"
-              value={newTrainer.password}
-              onChange={(e) => setNewTrainer({ ...newTrainer, password: e.target.value })}
-              sx={{ mt: 2 }}
-              required
-              helperText="Минимум 8 символов, хотя бы одна буква и одна цифра"
-            />
-            <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>Кастомная роль</InputLabel>
-              <Select
-                label="Кастомная роль"
-                value={newTrainer.custom_role_id}
-                onChange={(e) => setNewTrainer({ ...newTrainer, custom_role_id: String(e.target.value) })}
-              >
-                <MenuItem value="">Без кастомной роли</MenuItem>
-                {trainerRoles.map((role) => (
-                  <MenuItem key={role.id} value={String(role.id)}>
-                    {role.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setTrainerOpen(false)}>Отмена</Button>
-            <Button
-              onClick={async () => {
-                if (!newTrainer.full_name.trim() || !newTrainer.email.trim() || !newTrainer.password.trim()) {
-                  setError('Заполните все поля');
-                  return;
-                }
-                if (newTrainer.password.length < 8 || !/[A-Za-zА-Яа-яЁё]/.test(newTrainer.password) || !/\d/.test(newTrainer.password)) {
-                  setError('Пароль должен быть минимум 8 символов и содержать хотя бы одну букву и одну цифру');
-                  return;
-                }
-                try {
-                  await usersApi.create({
-                    full_name: newTrainer.full_name.trim(),
-                    email: newTrainer.email.trim(),
-                    password: newTrainer.password,
-                    role: 'trainer',
-                    custom_role_id: newTrainer.custom_role_id ? Number(newTrainer.custom_role_id) : undefined,
-                  });
-                  setTrainerOpen(false);
-                  setNewTrainer({ full_name: '', email: '', password: '', custom_role_id: '' });
-                  setError('');
-                  loadTrainers(); // Обновляем список тренеров
-                  loadGroups(); // Обновляем группы, так как там может быть новый тренер
-                } catch (err: any) {
-                  setError(err.response?.data?.detail || 'Ошибка создания тренера');
-                }
-              }}
-              variant="contained"
-            >
-              Создать
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
 
       <Dialog open={accountsDialogOpen} onClose={() => { setAccountsDialogOpen(false); setAccountsError(''); }} maxWidth="sm" fullWidth>
         <DialogTitle>Счета: {accountsStudent?.full_name}</DialogTitle>

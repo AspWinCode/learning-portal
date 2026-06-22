@@ -948,7 +948,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskDeadlineFrom, setTaskDeadlineFrom] = useState('');
   const [taskDeadlineTo, setTaskDeadlineTo] = useState('');
   const [taskOverdueOnly, setTaskOverdueOnly] = useState(false);
-  const [taskActiveOnly, setTaskActiveOnly] = useState(false);
+  const [taskActiveOnly, setTaskActiveOnly] = useState(true);
   const [taskAssigneeFilter, setTaskAssigneeFilter] = useState<number | ''>('');
   const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
   // Сворачиваемые панели вкладки «Задачи» (уменьшают визуальный перегруз)

@@ -318,7 +318,13 @@ export interface LessonSlotExtraPolicy {
   extra_rate_per_unit?: number | null;
 }
 
-export type AbsenceFollowUpStage = 'missed' | 'assigned' | 'link_sent' | 'made_up' | 'missed_makeup';
+export type AbsenceFollowUpStage =
+  | 'missed'
+  | 'assigned'
+  | 'link_sent'
+  | 'made_up'
+  | 'missed_makeup'
+  | 'no_makeup_needed';
 
 export interface AbsenceFollowUp {
   id: number;

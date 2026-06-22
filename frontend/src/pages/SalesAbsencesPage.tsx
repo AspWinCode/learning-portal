@@ -33,6 +33,7 @@ const STAGES: { value: string; label: string; filter: (a: AbsenceFollowUp) => bo
   { value: 'link_sent', label: 'Ссылка отправлена', filter: (a) => a.stage === 'link_sent' },
   { value: 'assigned', label: 'Отработка назначена', filter: (a) => a.stage === 'assigned' },
   { value: 'made_up', label: 'Отработал', filter: (a) => a.stage === 'made_up' },
+  { value: 'no_makeup_needed', label: 'Отработка не нужна', filter: (a) => a.stage === 'no_makeup_needed' },
   { value: 'missed_makeup', label: 'Пропустил отработку — переназначить', filter: (a) => a.stage === 'missed_makeup' },
 ];
 
@@ -80,7 +81,12 @@ const SalesAbsencesPage: React.FC = () => {
   const handleStageChange = async (absenceId: number, newStage: string) => {
     try {
       const updated = await salesApi.updateAbsenceStage(absenceId, newStage);
-      setItems((prev) => prev.map((a) => (a.id === absenceId ? updated : a)));
+      setItems((prev) => {
+        if (newStage === 'no_makeup_needed' && stageFilter !== 'no_makeup_needed') {
+          return prev.filter((a) => a.id !== absenceId);
+        }
+        return prev.map((a) => (a.id === absenceId ? updated : a));
+      });
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось обновить этап'));
     }
@@ -182,7 +188,7 @@ const SalesAbsencesPage: React.FC = () => {
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(6, 1fr)' },
               gap: 2,
             }}
           >
@@ -242,6 +248,7 @@ const SalesAbsencesPage: React.FC = () => {
                                 <MenuItem value="link_sent">Ссылка отправлена</MenuItem>
                                 <MenuItem value="assigned">Отработка назначена</MenuItem>
                                 <MenuItem value="made_up">Отработал</MenuItem>
+                                <MenuItem value="no_makeup_needed">Отработка не нужна</MenuItem>
                                 <MenuItem value="missed_makeup">Пропустил отработку — переназначить</MenuItem>
                               </Select>
                             </FormControl>

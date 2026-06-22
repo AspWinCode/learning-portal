@@ -102,6 +102,8 @@ async def list_absences(
     query = db.query(AbsenceFollowUp).order_by(AbsenceFollowUp.lesson_date.desc(), AbsenceFollowUp.id.desc())
     if stage:
         query = query.filter(AbsenceFollowUp.stage == stage)
+    else:
+        query = query.filter(AbsenceFollowUp.stage != "no_makeup_needed")
     if student_id is not None:
         query = query.filter(AbsenceFollowUp.student_id == student_id)
     return [_absence_to_response(db, item) for item in query.all()]
@@ -115,7 +117,7 @@ async def update_absence_stage(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     _require_sales_admin_owner(current_user)
-    valid_stages = ("missed", "assigned", "link_sent", "made_up", "missed_makeup")
+    valid_stages = ("missed", "assigned", "link_sent", "made_up", "missed_makeup", "no_makeup_needed")
     if payload.stage not in valid_stages:
         raise HTTPException(status_code=400, detail=f"stage должен быть один из: {valid_stages}")
     absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
@@ -123,9 +125,10 @@ async def update_absence_stage(
         raise HTTPException(status_code=404, detail="Пропуск не найден")
     prev_stage = absence.stage
     absence.stage = payload.stage
-    if payload.stage == "missed_makeup":
+    if payload.stage in ("missed_makeup", "no_makeup_needed"):
         absence.makeup_group_id = None
         absence.makeup_lesson_date = None
+        absence.makeup_custom_lesson_id = None
     db.commit()
     db.refresh(absence)
     if payload.stage == "link_sent" and prev_stage != "link_sent":

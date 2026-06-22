@@ -932,14 +932,14 @@ def _sync_meeting_links(
         for contact_id in dict.fromkeys(contact_ids):
             contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
             if not contact:
-                raise HTTPException(status_code=404, detail="РљРѕРЅС‚Р°РєС‚ РЅРµ РЅР°Р№РґРµРЅ")
+                raise HTTPException(status_code=404, detail="Контакт не найден")
             db.add(OwnerWorkspaceMeetingContact(meeting_id=meeting_id, contact_id=contact_id))
     if participant_user_ids is not None:
         db.query(OwnerWorkspaceMeetingUser).filter(OwnerWorkspaceMeetingUser.meeting_id == meeting_id).delete()
         for user_id in dict.fromkeys(participant_user_ids):
             user = db.query(User).filter(User.id == user_id).first()
             if not user:
-                raise HTTPException(status_code=404, detail="РЈС‡Р°СЃС‚РЅРёРє РЅРµ РЅР°Р№РґРµРЅ")
+                raise HTTPException(status_code=404, detail="Участник не найден")
             db.add(OwnerWorkspaceMeetingUser(meeting_id=meeting_id, user_id=user_id))
 
 
@@ -1015,12 +1015,12 @@ def _assert_meeting_refs_visible(
     if project_id is not None:
         project = db.query(OwnerWorkspaceProject).filter(OwnerWorkspaceProject.id == project_id).first()
         if not project or not project_visible(ctx, project_id):
-            raise HTTPException(status_code=404, detail="РџСЂРѕРµРєС‚ РЅРµ РЅР°Р№РґРµРЅ")
+            raise HTTPException(status_code=404, detail="Проект не найден")
     if contact_ids:
         for contact_id in contact_ids:
             contact = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == contact_id).first()
             if not contact or not contact_visible(ctx, contact_id):
-                raise HTTPException(status_code=404, detail="РљРѕРЅС‚Р°РєС‚ РЅРµ РЅР°Р№РґРµРЅ")
+                raise HTTPException(status_code=404, detail="Контакт не найден")
 
 
 @router.get("/meetings", response_model=List[OwnerWorkspaceMeetingResponse])
@@ -1162,7 +1162,7 @@ async def get_meeting(
 ):
     row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
     return _meeting_to_response(db, row)
 
 
@@ -1176,7 +1176,7 @@ async def update_meeting(
     assert_full_workspace(ctx)
     row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
     data = payload.model_dump(exclude_unset=True)
     _assert_meeting_refs_visible(db, ctx, project_id=data.get("project_id"), contact_ids=data.get("contact_ids"))
     contact_ids = data.pop("contact_ids", None)
@@ -1205,7 +1205,7 @@ async def reschedule_meeting(
     assert_full_workspace(ctx)
     row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
     db.add(OwnerWorkspaceMeetingReschedule(
         meeting_id=row.id,
         old_date=row.meeting_date,
@@ -1234,9 +1234,9 @@ async def close_meeting(
     assert_full_workspace(ctx)
     row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
     if not payload.meeting_result.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Р—Р°РїРѕР»РЅРёС‚Рµ РёС‚РѕРіРё РІСЃС‚СЂРµС‡Рё")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Заполните итоги встречи")
     row.meeting_result = payload.meeting_result
     row.next_steps = payload.next_steps
     row.status = "completed"
@@ -1256,7 +1256,7 @@ async def cancel_meeting(
     assert_full_workspace(ctx)
     row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
     row.status = "cancelled"
     _log_audit(db, entity_type="meeting", entity_id=row.id, action_type="cancel", author_id=ctx.user.id)
     db.commit()
@@ -1273,7 +1273,7 @@ async def delete_meeting(
     assert_full_workspace(ctx)
     row = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
     if not row:
-        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
     db.delete(row)
     _log_audit(db, entity_type="meeting", entity_id=meeting_id, action_type="delete", author_id=ctx.user.id)
     db.commit()
@@ -1290,7 +1290,7 @@ async def create_task_from_meeting(
     assert_full_workspace(ctx)
     meeting = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
     contact_link = db.query(OwnerWorkspaceMeetingContact).filter(OwnerWorkspaceMeetingContact.meeting_id == meeting.id).first()
     task = OwnerWorkspaceTask(
         title=payload.title.strip(),
@@ -1321,7 +1321,7 @@ async def list_meeting_tasks(
 ):
     meeting = db.query(OwnerWorkspaceMeeting).filter(OwnerWorkspaceMeeting.id == meeting_id).first()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Р’СЃС‚СЂРµС‡Р° РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
     rows = (
         db.query(OwnerWorkspaceTask)
         .join(OwnerWorkspaceMeetingTask, OwnerWorkspaceMeetingTask.task_id == OwnerWorkspaceTask.id)
@@ -3002,7 +3002,7 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Task not found")
     _assert_task_write_access(db, ctx, row)
     if not can_update_task_content(db, ctx, row):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
 
     data = payload.model_dump(exclude_unset=True)
     new_project_id = data.get("project_id", row.project_id)
@@ -3096,7 +3096,7 @@ async def bulk_update_tasks(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     if not can_bulk_update_tasks(db, ctx):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     data = payload.model_dump(exclude_unset=True)
     task_ids = data.pop("task_ids", [])
     if not data:
@@ -3157,7 +3157,7 @@ async def complete_task(
         raise HTTPException(status_code=404, detail="Task not found")
     _assert_task_write_access(db, ctx, row)
     if not can_complete_task(db, ctx, row):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     row.status = "completed"
     row.completed_at = datetime.now(timezone.utc)
     _log_audit(
@@ -3379,7 +3379,7 @@ async def link_message_to_task(
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
     if not can_link_task_messages(db, ctx, task):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == payload.message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -3406,7 +3406,7 @@ async def unlink_message_from_task(
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
     if not can_link_task_messages(db, ctx, task):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     link = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == task_id,
         OwnerWorkspaceTaskMessage.message_id == message_id,
@@ -3617,7 +3617,7 @@ async def link_message_with_task(
     if not task or not task_visible(ctx, task):
         raise HTTPException(status_code=404, detail="Task not found")
     if not can_link_task_messages(db, ctx, task):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     exists = db.query(OwnerWorkspaceTaskMessage).filter(
         OwnerWorkspaceTaskMessage.task_id == payload.task_id,
         OwnerWorkspaceTaskMessage.message_id == message_id,

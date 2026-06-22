@@ -63,7 +63,7 @@ def _can_access_student(db: Session, user: User, student_id: int) -> bool:
 def _get_account_and_check(db: Session, account_id: int, current_user: User) -> StudentAccount:
     account = db.query(StudentAccount).filter(StudentAccount.id == account_id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="РЎС‡РµС‚ РЅРµ РЅР°Р№РґРµРЅ")
+        raise HTTPException(status_code=404, detail="Счет не найден")
     if not _can_access_student(db, current_user, account.student_id):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     return account
@@ -83,7 +83,7 @@ async def get_student_account(
         .first()
     )
     if not account:
-        raise HTTPException(status_code=404, detail="РЎС‡РµС‚ РЅРµ РЅР°Р№РґРµРЅ")
+        raise HTTPException(status_code=404, detail="Счет не найден")
     if not _can_access_student(db, current_user, account.student_id):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     return account
@@ -100,7 +100,7 @@ async def update_student_account(
     if payload.name is not None:
         name = (payload.name or "").strip()
         if not name:
-            raise HTTPException(status_code=400, detail="РќР°Р·РІР°РЅРёРµ СЃС‡РµС‚Р° РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј")
+            raise HTTPException(status_code=400, detail="Название счета не может быть пустым")
         account.name = name
     with db_transaction(db):
         pass
@@ -115,13 +115,13 @@ async def add_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """РџРѕРїРѕР»РЅРµРЅРёРµ СЃС‡РµС‚Р° (РѕРїР»Р°С‚Р°)."""
+    """Пополнение счета (оплата)."""
     account = _get_account_and_check(db, account_id, current_user)
     auth.ensure_permission(current_user, "student_accounts.payment")
 
     amount = float(payload.amount)
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="РЎСѓРјРјР° РїРѕРїРѕР»РЅРµРЅРёСЏ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ Р±РѕР»СЊС€Рµ 0")
+        raise HTTPException(status_code=400, detail="Сумма пополнения должна быть больше 0")
 
     tx = StudentAccountTransaction(
         account_id=account_id,
@@ -140,8 +140,8 @@ async def add_payment(
             db,
             student_id=account.student_id,
             activity_type="payment_received",
-            title="РџРѕР»СѓС‡РµРЅР° РѕРїР»Р°С‚Р°",
-            description=f"РЎСѓРјРјР°: {amount} в‚Ѕ",
+            title="Получена оплата",
+            description=f"Сумма: {amount} ₽",
             created_by=current_user.id,
             payload_json={"account_id": account.id, "amount": amount, "note": payload.note},
         )
@@ -158,13 +158,13 @@ async def deduct_lesson(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """РЎРїРёСЃР°РЅРёРµ Р·Р° Р·Р°РЅСЏС‚РёРµ."""
+    """Списание за занятие."""
     account = _get_account_and_check(db, account_id, current_user)
     auth.ensure_permission(current_user, "student_accounts.manage")
 
     amount = float(payload.amount)
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="РЎСѓРјРјР° СЃРїРёСЃР°РЅРёСЏ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ Р±РѕР»СЊС€Рµ 0")
+        raise HTTPException(status_code=400, detail="Сумма списания должна быть больше 0")
 
     tx = StudentAccountTransaction(
         account_id=account_id,
@@ -201,7 +201,7 @@ async def delete_account_transaction(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("student_accounts.manage")),
 ):
-    """РЈРґР°Р»РёС‚СЊ РѕРїРµСЂР°С†РёСЋ РїРѕ СЃС‡С‘С‚Сѓ СѓС‡РµРЅРёРєР°."""
+    """Удалить операцию по счёту ученика."""
     account = _get_account_and_check(db, account_id, current_user)
     tx = (
         db.query(StudentAccountTransaction)
@@ -212,7 +212,7 @@ async def delete_account_transaction(
         .first()
     )
     if not tx:
-        raise HTTPException(status_code=404, detail="РћРїРµСЂР°С†РёСЏ РЅРµ РЅР°Р№РґРµРЅР°")
+        raise HTTPException(status_code=404, detail="Операция не найдена")
 
     kind = tx.kind
     with db_transaction(db):
@@ -242,12 +242,12 @@ async def delete_student_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("student_accounts.manage")),
 ):
-    """РЈРґР°Р»РёС‚СЊ СЃС‡С‘С‚ СѓС‡РµРЅРёРєР°, РµСЃР»Рё РїРѕ РЅРµРјСѓ РЅРµС‚ РѕРїРµСЂР°С†РёР№."""
+    """Удалить счёт ученика, если по нему нет операций."""
     account = db.query(StudentAccount).filter(StudentAccount.id == account_id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="РЎС‡РµС‚ РЅРµ РЅР°Р№РґРµРЅ")
+        raise HTTPException(status_code=404, detail="Счет не найден")
     if account.transactions:
-        raise HTTPException(status_code=400, detail="РќРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ СЃС‡РµС‚ СЃ РѕРїРµСЂР°С†РёСЏРјРё")
+        raise HTTPException(status_code=400, detail="Нельзя удалить счет с операциями")
     if not _can_access_student(db, current_user, account.student_id):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 

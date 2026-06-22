@@ -637,10 +637,10 @@ const FinanceOverviewPageContent: React.FC = () => {
       });
       setJournalRows((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       setEditingTransaction(null);
-      setMessage('РћРїРµСЂР°С†РёСЏ РѕР±РЅРѕРІР»РµРЅР°');
+      setMessage('Операция обновлена');
       if (selectedTargetId) await loadModelData(selectedTargetId);
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РѕРїРµСЂР°С†РёСЋ');
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось обновить операцию');
     } finally {
       setLoading(false);
     }

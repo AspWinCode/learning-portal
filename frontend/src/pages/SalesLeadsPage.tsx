@@ -97,7 +97,6 @@ const leadAiStageMeta: Record<string, { label: string; color: 'success' | 'warni
   cold: { label: 'Холодный', color: 'error' },
 };
 
-/** h1dh�dddd h�h[dh[h\hQhU hdh[h$h�hb B$ hah$hUh\dhc dhhUdh[hQ h$hWd hWhUh$h[h� hU h�h[dh[h\hQhU */
 /** Тег лида: пригласить на следующее мероприятие (воронка → колонка «Следующее мероприятие») */
 const TAG_REINVITE_NEXT_EVENT = 'reinvite_next_event';
 
@@ -111,7 +110,7 @@ const PIPELINE_STATUSES: LeadStatus[] = [
   'decided_immediately',
 ];
 
-/** h1dh�dddd hWhUh$h� h[dh[h�dh�hbh�dddd h� hQh[hWh[h\hQha h�h[dh[h\hQhU (h$hWd ddh�ddd ddh�dddh[h� B$ h]h�hhhUh\h) */
+/** Маппинг финальных/служебных статусов в колонки воронки. */
 function getPipelineColumnForStatus(status: LeadStatus): LeadStatus {
   const map: Partial<Record<LeadStatus, LeadStatus>> = {
     contacted: 'thinking',
@@ -903,7 +902,7 @@ const SalesLeadsPage: React.FC = () => {
     try {
       await salesApi.logLeadCommunication(selectedLead.id, {
         channel,
-        message: channel === 'call' ? '[quick-call] h!dddddhc hVh�h[h\h[hQ' : '[quick-messenger] h!ddddh[ha dh[h[h�dhah\hUha',
+        message: channel === 'call' ? '[quick-call] Звонок зафиксирован' : '[quick-messenger] Сообщение зафиксировано',
       });
       await loadLeadDetails(selectedLead);
       await loadLeads();
@@ -945,7 +944,7 @@ const SalesLeadsPage: React.FC = () => {
   };
 
   const handleRowQuickFollowUp = async (lead: Lead) => {
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('push')) || taskTemplates[0];
     if (!pushTemplate) {
       setError('Ошибка операции');
       return;
@@ -1016,7 +1015,7 @@ const SalesLeadsPage: React.FC = () => {
       setError('Ошибка операции');
       return;
     }
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('push')) || taskTemplates[0];
     if (!pushTemplate) {
       setError('Ошибка операции');
       return;
@@ -1051,8 +1050,8 @@ const SalesLeadsPage: React.FC = () => {
     setToast({
       open: true,
       message: failed
-        ? `Follow-up h\h�hVh\h�dhah\: ${success}, h[dhUh�h[hQ: ${failed}. ${failedNames.length ? `h/dh[h�hWhah]h\dha hWhUh$d: ${failedNames.join(', ')}` : ''}`
-        : `Follow-up h\h�hVh\h�dhah\: ${success}`,
+        ? `Follow-up запланирован: ${success}, ошибок: ${failed}. ${failedNames.length ? `Проблемные лиды: ${failedNames.join(', ')}` : ''}`
+        : `Follow-up запланирован: ${success}`,
       severity: failed ? 'warning' : 'success',
     });
   };
@@ -1105,8 +1104,8 @@ const SalesLeadsPage: React.FC = () => {
     setToast({
       open: true,
       message: failed
-        ? `h(h\dh[ h[dhdh�h�hWhah\h[: ${success}, h[dhUh�h[hQ: ${failed}. ${failedNames.length ? `h/dh[h�hWhah]h\dha hWhUh$d: ${failedNames.join(', ')}` : ''}`
-        : `h(h\dh[ h[dhdh�h�hWhah\h[: ${success}`,
+        ? `Шаблон отправлен: ${success}, ошибок: ${failed}. ${failedNames.length ? `Проблемные лиды: ${failedNames.join(', ')}` : ''}`
+        : `Шаблон отправлен: ${success}`,
       severity: failed ? 'warning' : 'success',
     });
   };
@@ -1329,7 +1328,7 @@ const SalesLeadsPage: React.FC = () => {
       setError('Ошибка операции');
       return;
     }
-    if (sendInfoForm.pause_reason && !['hbh$d!h] h[dh�had', 'hh[h$dh]h�dd', 'h\had h�dhah]hah\hU'].includes(sendInfoForm.pause_reason)) {
+    if (sendInfoForm.pause_reason && !['нет ответа', 'подумают', 'после мероприятия'].includes(sendInfoForm.pause_reason)) {
       setError('Ошибка операции');
       return;
     }
@@ -1351,7 +1350,7 @@ const SalesLeadsPage: React.FC = () => {
 
   const handleAssignPush = async () => {
     if (!selectedLead) return;
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('push')) || taskTemplates[0];
     if (!pushTemplate) {
       setError('Ошибка операции');
       return;
@@ -1362,7 +1361,7 @@ const SalesLeadsPage: React.FC = () => {
       await salesApi.createTask(selectedLead.id, {
         template_id: pushTemplate.id,
         status_option_id: taskStatusOptionId ? Number(taskStatusOptionId) : undefined,
-        note: 'h!dddddhc h$h[hbhUh]',
+        note: 'Назначен Push',
         channel: 'call',
         due_at: due.toISOString(),
       });
@@ -1374,7 +1373,7 @@ const SalesLeadsPage: React.FC = () => {
 
   const handleAssignPushTemplateStep = async (step: 'first' | 'second' | 'final') => {
     if (!selectedLead) return;
-    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('h$h[hbhUh]')) || taskTemplates[0];
+    const pushTemplate = taskTemplates.find((t) => t.name.toLowerCase().includes('push')) || taskTemplates[0];
     if (!pushTemplate) {
       setError('Ошибка операции');
       return;
@@ -1383,13 +1382,13 @@ const SalesLeadsPage: React.FC = () => {
     let note = '';
     if (step === 'first') {
       due.setHours(due.getHours() + 24);
-      note = 'h$h[hbhUh]: 1-hc hQh[h\dh�hQd';
+      note = 'Push: 1-й контакт';
     } else if (step === 'second') {
       due.setHours(due.getHours() + 48);
-      note = 'h$h[hbhUh]: 2-hc hQh[h\dh�hQd';
+      note = 'Push: 2-й контакт';
     } else {
       due.setHours(due.getHours() + 72);
-      note = 'h$h[hbhUh]: dhUh\h�hWdh\dhc hQh[h\dh�hQd';
+      note = 'Push: финальный контакт';
     }
     try {
       await salesApi.createTask(selectedLead.id, {
@@ -1486,9 +1485,9 @@ const SalesLeadsPage: React.FC = () => {
       const result = await salesApi.importLeadsXlsx(file);
       await loadLeads();
       if (result.errors?.length) {
-        setError(`h(h]hh[dd hVh�h�haddhah\: dh[hVh$h�h\h[ ${result.created}, hdh[hddhah\h[ ${result.skipped}. h.dhUh�hQhU: ${result.errors.join('; ')}`);
+        setError(`Импорт завершён: создано ${result.created}, пропущено ${result.skipped}. Ошибки: ${result.errors.join('; ')}`);
       } else {
-        setError(`h(h]hh[dd hVh�h�haddhah\: dh[hVh$h�h\h[ ${result.created}, hdh[hddhah\h[ ${result.skipped}`);
+        setError(`Импорт завершён: создано ${result.created}, пропущено ${result.skipped}`);
       }
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка операции'));
@@ -1876,9 +1875,9 @@ const SalesLeadsPage: React.FC = () => {
       if (schoolTrim) {
         source = source.filter((l) => (l.school_name || '').toLowerCase().includes(schoolTrim));
       }
-      // h*h[hh$h� h�ddhUh� dhQddd B$ hWhUh$d dh[ ddh�dddh[h] ,;h'h�hQddd,W h\ha hh[hQh�hVdh�h�hah] h� h�h[dh[h\hQha h�h[h[h�dha
+      // Архивные лиды показываем только при включенной колонке архива.
       const visibleSource = showArchiveColumn ? source : source.filter((l) => l.status !== 'lost');
-      // h+hUh$d d h\hadh�hQh[hc hh[hQh�hVdh�h�hah] dh[hWdhQh[ h� hQh[hWh[h\hQha ,;h1hWhah$ h]hadh[hdhUddhUha,W, hUhV h[ddh�hWdh\dd hQh[hWh[h\h[hQ dh�hUdh�hah]
+      // Лиды в колонке следующего мероприятия и no-show исключаются из основных колонок.
       const notInNextEventColumn = (l: Lead) => !noShowLeadIds.has(l.id) && !reinviteLeadIds.has(l.id);
       const base = PIPELINE_STATUSES.map((st) => ({
         status: st as LeadStatus | 'archive' | 'next_event',

@@ -310,8 +310,8 @@ async def read_students_paginated(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     status_filter: Optional[StudentStatus] = Query(None, alias="status"),
-    q: Optional[str] = Query(None, description="РџРѕРёСЃРє РїРѕ Р¤РРћ (РїРѕРґСЃС‚СЂРѕРєР°)"),
-    ids: Optional[str] = Query(None, description="РЎРїРёСЃРѕРє ID С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ"),
+    q: Optional[str] = Query(None, description="Поиск по ФИО (подстрока)"),
+    ids: Optional[str] = Query(None, description="Список ID через запятую"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):

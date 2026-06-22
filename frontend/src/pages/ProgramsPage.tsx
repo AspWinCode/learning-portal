@@ -277,10 +277,10 @@ const ProgramsPage: React.FC = () => {
       await programsApi.update(editNameProgram.id, { name: editNameValue.trim() });
       setEditNameOpen(false);
       setEditNameProgram(null);
-      setInfo('РќР°Р·РІР°РЅРёРµ РїСЂРѕРіСЂР°РјРјС‹ РѕР±РЅРѕРІР»РµРЅРѕ');
+      setInfo('Название программы обновлено');
       loadPrograms();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ РЅР°Р·РІР°РЅРёСЏ');
+      setError(err.response?.data?.detail || 'Ошибка обновления названия');
     }
   };
 
@@ -522,10 +522,10 @@ const ProgramsPage: React.FC = () => {
       {canManagePrograms && (
         <FormDialog
           open={open}
-          title="РЎРѕР·РґР°С‚СЊ РїСЂРѕРіСЂР°РјРјСѓ"
+          title="Создать программу"
           onClose={() => setOpen(false)}
           onSubmit={handleCreate}
-          submitLabel="РЎРѕР·РґР°С‚СЊ"
+          submitLabel="Создать"
           maxWidth="md"
         >
           <DialogTitle>Создать программу</DialogTitle>
@@ -747,7 +747,7 @@ const ProgramsPage: React.FC = () => {
         title=""
         onClose={() => setEditNameOpen(false)}
         onSubmit={handleSaveProgramName}
-        submitLabel="РЎРѕС…СЂР°РЅРёС‚СЊ"
+        submitLabel="Сохранить"
         maxWidth="sm"
       >
         <DialogTitle>Изменить название программы</DialogTitle>

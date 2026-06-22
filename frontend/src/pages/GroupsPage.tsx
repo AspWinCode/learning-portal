@@ -890,9 +890,9 @@ const GroupsPage: React.FC = () => {
 
       <ConfirmDialog
         open={Boolean(archiveTarget)}
-        title={archiveTarget?.status === 'active' ? 'РћС‚РїСЂР°РІРёС‚СЊ РіСЂСѓРїРїСѓ РІ Р°СЂС…РёРІ?' : 'Р’РµСЂРЅСѓС‚СЊ РіСЂСѓРїРїСѓ РёР· Р°СЂС…РёРІР°?'}
-        description={archiveTarget ? `Р“СЂСѓРїРїР°: ${archiveTarget.name}` : undefined}
-        confirmLabel={archiveTarget?.status === 'active' ? 'Р’ Р°СЂС…РёРІ' : 'Р Р°Р·Р°СЂС…РёРІРёСЂРѕРІР°С‚СЊ'}
+        title={archiveTarget?.status === 'active' ? 'Отправить группу в архив?' : 'Вернуть группу из архива?'}
+        description={archiveTarget ? `Группа: ${archiveTarget.name}` : undefined}
+        confirmLabel={archiveTarget?.status === 'active' ? 'В архив' : 'Разархивировать'}
         destructive={archiveTarget?.status === 'active'}
         onClose={() => setArchiveTarget(null)}
         onConfirm={async () => {

@@ -132,9 +132,10 @@ async def update_trainer_rate(
     user = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
     if not user:
         raise HTTPException(status_code=404, detail="Trainer not found")
-    if payload.rate_per_lesson is not None:
+    payload_fields = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    if "rate_per_lesson" in payload_fields:
         user.trainer_rate = payload.rate_per_lesson
-    if payload.rate_per_hour is not None:
+    if "rate_per_hour" in payload_fields:
         user.trainer_rate_per_hour = payload.rate_per_hour
     db.commit()
     return {"ok": True}

@@ -90,10 +90,7 @@ const CalculationsPage: React.FC = () => {
     payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }
   ) => {
     try {
-      await ownerCalculationsApi.updateTrainerRate(trainerId, {
-        rate_per_lesson: payload.rate_per_lesson ?? undefined,
-        rate_per_hour: payload.rate_per_hour ?? undefined,
-      });
+      await ownerCalculationsApi.updateTrainerRate(trainerId, payload);
       load();
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось сохранить ставку'));
@@ -179,33 +176,28 @@ const CalculationsPage: React.FC = () => {
                     )}
                   </TableCell>
                   <TableCell>
-                    {row.is_individual_format ? (
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={row.rate_per_hour ?? ''}
-                        onChange={(e) => {
-                          const v = e.target.value === '' ? null : Number(e.target.value);
-                          setRows((prev) =>
-                            prev.map((r) =>
-                              r.trainer_id === row.trainer_id ? { ...r, rate_per_hour: v } : r
-                            )
-                          );
-                        }}
-                        onBlur={(e) => {
-                          const v = e.target.value === '' ? null : Number((e.target as HTMLInputElement).value);
-                          if (Number.isNaN(v)) return;
-                          handleRateBlur(row.trainer_id, {
-                            rate_per_lesson: row.rate_per_lesson,
-                            rate_per_hour: v,
-                          });
-                        }}
-                        inputProps={{ min: 0, step: 0.01 }}
-                        sx={{ width: 100 }}
-                      />
-                    ) : (
-                      '—'
-                    )}
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={row.rate_per_hour ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value === '' ? null : Number(e.target.value);
+                        setRows((prev) =>
+                          prev.map((r) =>
+                            r.trainer_id === row.trainer_id ? { ...r, rate_per_hour: v } : r
+                          )
+                        );
+                      }}
+                      onBlur={(e) => {
+                        const v = e.target.value === '' ? null : Number((e.target as HTMLInputElement).value);
+                        if (Number.isNaN(v)) return;
+                        handleRateBlur(row.trainer_id, {
+                          rate_per_hour: v,
+                        });
+                      }}
+                      inputProps={{ min: 0, step: 0.01 }}
+                      sx={{ width: 100 }}
+                    />
                   </TableCell>
                   <TableCell>{row.is_individual_format ? '—' : row.lessons_count}</TableCell>
                   <TableCell>{row.is_individual_format ? row.hours_count : '—'}</TableCell>

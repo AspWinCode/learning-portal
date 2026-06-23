@@ -48,6 +48,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 
 import type { OwnerWorkspaceContact, OwnerWorkspaceProject, User } from '../../types';
+import { applyPhoneMask, isValidPhone } from '../../utils/phoneMask';
 
 type ContactViewMode = 'table' | 'cards';
 type ContactSortBy = 'full_name' | 'company' | 'projects' | 'active_tasks' | 'last_interaction' | 'owner';
@@ -291,6 +292,11 @@ export function OwnerWorkspaceContactsTab({
   const hasActiveFilters = Boolean(
     contactListSearchInput.trim() || projectFilterIds.length || managerFilterIds.length || tagFilters.length || activityFilter !== 'all' || activeTaskFilter !== 'all'
   );
+  const draftPhoneInvalid = draft.phone.trim().length > 0 && !isValidPhone(draft.phone);
+  const canSubmitCreateContact = canCreateContactUi
+    && draft.full_name.trim().length > 0
+    && isValidPhone(draft.phone)
+    && (isWorkspaceFullAccess || newContactProjectId !== '');
 
   const setView = (_: React.MouseEvent<HTMLElement>, next: ContactViewMode | null) => {
     if (!next) return;
@@ -320,10 +326,10 @@ export function OwnerWorkspaceContactsTab({
   };
 
   const submitCreateContact = async () => {
-    if (!draft.full_name.trim() || !draft.phone.trim()) return;
+    if (!draft.full_name.trim() || !isValidPhone(draft.phone)) return;
     await onCreateContactDraft({
       full_name: draft.full_name.trim(),
-      phone: draft.phone.trim(),
+      phone: applyPhoneMask(draft.phone),
       email: draft.email?.trim() || null,
       company: draft.company?.trim() || null,
       tags: draft.tags ?? [],
@@ -741,7 +747,15 @@ export function OwnerWorkspaceContactsTab({
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField label="ФИО" value={draft.full_name} onChange={(e) => setDraft((prev) => ({ ...prev, full_name: e.target.value }))} autoFocus />
-            <TextField label="Телефон" value={draft.phone} onChange={(e) => setDraft((prev) => ({ ...prev, phone: e.target.value }))} />
+            <TextField
+              label="Телефон"
+              value={draft.phone}
+              onChange={(e) => setDraft((prev) => ({ ...prev, phone: applyPhoneMask(e.target.value) }))}
+              onBlur={() => setDraft((prev) => ({ ...prev, phone: applyPhoneMask(prev.phone) }))}
+              placeholder="+7(999) 123-45-67"
+              error={draftPhoneInvalid}
+              helperText={draftPhoneInvalid ? 'Введите 10 цифр номера' : ''}
+            />
             <TextField label="Email" value={draft.email || ''} onChange={(e) => setDraft((prev) => ({ ...prev, email: e.target.value }))} />
             <TextField label="Компания" value={draft.company || ''} onChange={(e) => setDraft((prev) => ({ ...prev, company: e.target.value }))} />
             <Autocomplete
@@ -766,7 +780,7 @@ export function OwnerWorkspaceContactsTab({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateDialogOpen(false)}>Отмена</Button>
-          <Button variant="contained" disabled={!canCreateContactUi || !draft.full_name.trim() || !draft.phone.trim() || (!isWorkspaceFullAccess && newContactProjectId === '')} onClick={() => void submitCreateContact()}>
+          <Button variant="contained" disabled={!canSubmitCreateContact} onClick={() => void submitCreateContact()}>
             Создать
           </Button>
         </DialogActions>

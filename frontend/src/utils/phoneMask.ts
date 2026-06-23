@@ -1,7 +1,14 @@
 /** Из строки оставляем только цифры; для номера РФ — 10 цифр (после 7/8). */
 export function getPhoneDigits(input: string): string {
-  const digits = input.replace(/\D/g, '');
-  if (digits.length >= 11 && (digits[0] === '7' || digits[0] === '8')) {
+  const raw = input.trim();
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 0) {
+    return '';
+  }
+  if (!raw.startsWith('+') && digits.length === 1 && (digits[0] === '7' || digits[0] === '8')) {
+    return '';
+  }
+  if (raw.startsWith('+7') || digits.length >= 11 && (digits[0] === '7' || digits[0] === '8')) {
     return digits.slice(1, 11);
   }
   return digits.slice(0, 10);

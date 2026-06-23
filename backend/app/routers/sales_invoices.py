@@ -54,16 +54,7 @@ def _add_activity(
 
 
 def _compute_price(abonement: Abonement) -> float:
-    price = abonement.price or 0.0
-    if abonement.discount_type is None:
-        return price
-    if hasattr(abonement, "discount_type"):
-        discount_type = getattr(abonement.discount_type, "value", abonement.discount_type)
-        if discount_type == "amount":
-            price = max(price - (abonement.discount_value or 0.0), 0.0)
-        elif discount_type == "percent":
-            price = price * (1 - (abonement.discount_value or 0.0) / 100)
-    return round(price, 2)
+    return round(abonement.price or 0.0, 2)
 
 
 @router.post("/leads/{lead_id}/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)

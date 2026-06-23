@@ -480,7 +480,13 @@ async def open_parent_cabinet_from_card(
     parent_full_name = (getattr(card, "parent_full_name", None) or "").strip() or "Родитель"
 
     if not getattr(card, "student_id", None):
-        student = Student(full_name=(card.student_full_name or "").strip() or "Ученик", status=StudentStatus.ACTIVE)
+        student = Student(
+            full_name=(card.student_full_name or "").strip() or "Ученик",
+            abonement_id=getattr(card, "abonement_id", None),
+            discount_type=getattr(card, "discount_type", None) or DiscountType.NONE,
+            discount_value=getattr(card, "discount_value", 0.0) or 0.0,
+            status=StudentStatus.ACTIVE,
+        )
         db.add(student)
         db.flush()
         ensure_default_student_account(db, student.id)

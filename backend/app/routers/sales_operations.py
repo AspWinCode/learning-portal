@@ -43,6 +43,7 @@ from app.services.payment_status import (
     get_payment_status_list as payment_status_list_svc,
     get_payment_status_summary as payment_status_summary_svc,
 )
+from app.services.pricing import student_abonement_price
 from app.services.student_activity import log_student_activity
 from app.student_display import get_student_display_name
 
@@ -125,7 +126,7 @@ def _resolve_close_by_fact_summary(db: Session, student_id: int):
         abonement = db.query(Abonement).filter(Abonement.id == card.abonement_id).first() or abonement
     price_per_lesson = 0.0
     if abonement and (abonement.lessons_count or 8) > 0:
-        price_per_lesson = float(abonement.price or 0) / (abonement.lessons_count or 8)
+        price_per_lesson = student_abonement_price(student, abonement) / (abonement.lessons_count or 8)
     amount = round(price_per_lesson * attended, 2)
     return student, card, period_start, period_end, attended, amount
 

@@ -434,7 +434,12 @@ export const studentsApi = {
     return response.data;
   },
   createWithParent: async (data: {
-    student: { full_name: string; abonement_id?: number | null };
+    student: {
+      full_name: string;
+      abonement_id?: number | null;
+      discount_type?: 'none' | 'amount' | 'percent';
+      discount_value?: number;
+    };
     parent: { id?: number | null; full_name: string; email?: string | null };
   }): Promise<{ student: Student; parent: { id: number; full_name: string; email: string } }> => {
     const response = await api.post('/api/students/with-parent', data);

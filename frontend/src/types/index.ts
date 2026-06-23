@@ -228,6 +228,8 @@ export interface Student {
   parent_id?: number | null;
   from_lead_id?: number | null;
   abonement_id?: number | null;
+  discount_type?: 'none' | 'amount' | 'percent';
+  discount_value?: number;
   status: 'active' | 'archived';
   training_start_date?: string | null;
   created_at: string;

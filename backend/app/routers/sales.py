@@ -29,6 +29,7 @@ from app.services.lead_post_visit import update_lead_post_visit_stage as lead_po
 from app.services.student_activity import log_student_activity
 from app.services.student_account_finance import ensure_default_student_account
 from app.services.person_sync import sync_lead_person, sync_student_card_person
+from app.services.pricing import student_abonement_price
 from app.utils.datetime import utcnow
 from app.models import (
     Lead,
@@ -1839,6 +1840,9 @@ async def open_parent_cabinet_from_card(
     if not getattr(card, "student_id", None):
         student = Student(
             full_name=(card.student_full_name or "").strip() or "Ученик",
+            abonement_id=getattr(card, "abonement_id", None),
+            discount_type=getattr(card, "discount_type", None) or DiscountType.NONE,
+            discount_value=getattr(card, "discount_value", 0.0) or 0.0,
             status=StudentStatus.ACTIVE,
         )
         db.add(student)
@@ -2575,7 +2579,7 @@ async def close_by_fact_preview(
         abonement = db.query(Abonement).filter(Abonement.id == card.abonement_id).first() or abonement
     price_per_lesson = 0.0
     if abonement and (abonement.lessons_count or 8) > 0:
-        price_per_lesson = float(abonement.price or 0) / (abonement.lessons_count or 8)
+        price_per_lesson = student_abonement_price(student, abonement) / (abonement.lessons_count or 8)
     amount = round(price_per_lesson * attended, 2)
     return CloseByFactPreview(
         lessons_attended_in_period=attended,
@@ -2613,7 +2617,7 @@ async def close_by_fact_confirm(
     abonement = student.abonement or (db.query(Abonement).filter(Abonement.id == student.abonement_id).first() if student.abonement_id else None)
     if card and getattr(card, "abonement_id", None):
         abonement = db.query(Abonement).filter(Abonement.id == card.abonement_id).first() or abonement
-    price_per_lesson = float(abonement.price or 0) / (abonement.lessons_count or 8) if abonement and (abonement.lessons_count or 8) > 0 else 0.0
+    price_per_lesson = student_abonement_price(student, abonement) / (abonement.lessons_count or 8) if abonement and (abonement.lessons_count or 8) > 0 else 0.0
     amount = round(price_per_lesson * attended, 2)
     account = db.query(StudentAccount).filter(StudentAccount.student_id == student_id).order_by(StudentAccount.id).first()
     if account and amount > 0:
@@ -2678,16 +2682,7 @@ def _filter_query_by_role(query, user: User):
 
 
 def _compute_price(abonement: Abonement) -> float:
-    price = abonement.price or 0.0
-    if abonement.discount_type is None:
-        return price
-    if hasattr(abonement, "discount_type"):
-        dt = getattr(abonement.discount_type, "value", abonement.discount_type)
-        if dt == "amount":
-            price = max(price - (abonement.discount_value or 0.0), 0.0)
-        elif dt == "percent":
-            price = price * (1 - (abonement.discount_value or 0.0) / 100)
-    return round(price, 2)
+    return round(abonement.price or 0.0, 2)
 
 
 def _normalize_source_name(name: Optional[str]) -> Optional[str]:

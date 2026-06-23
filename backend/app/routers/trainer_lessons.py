@@ -774,7 +774,8 @@ async def save_attendance(
                 abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
             price_per_unit = 0.0
             if abonement and abonement.price is not None and BASE_UNITS > 0:
-                price_per_unit = float(abonement.price) / BASE_UNITS
+                from app.services.pricing import student_abonement_price
+                price_per_unit = student_abonement_price(student, abonement) / BASE_UNITS
 
             account = None
             accounts = db.query(StudentAccount).filter(

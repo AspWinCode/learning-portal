@@ -5,18 +5,11 @@ from sqlalchemy.orm import Session
 from app.cache import CACHE_NS_ABONEMENTS, invalidate_namespace, shared_key_builder
 from app.database import get_db
 from app import auth
-from app.models import Abonement, AbonementStatus, DiscountType, User
+from app.models import Abonement, AbonementStatus, User
 from app.schemas.abonements import AbonementCreate, AbonementListResponse, AbonementResponse, AbonementUpdate
 from app.routers.action_log import log_action
 
 router = APIRouter()
-
-
-def _validate_discount(discount_type: DiscountType, discount_value: float) -> None:
-    if discount_value < 0:
-        raise HTTPException(status_code=400, detail="Discount must be >= 0")
-    if discount_type == DiscountType.PERCENT and discount_value > 100:
-        raise HTTPException(status_code=400, detail="Percent discount must be <= 100")
 
 
 def _validate_price(price: float) -> None:
@@ -64,13 +57,10 @@ async def create_abonement(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("abonements.manage")),
 ):
-    _validate_discount(abonement.discount_type, abonement.discount_value)
     _validate_price(float(abonement.price))
     db_abonement = Abonement(
         name=abonement.name,
         price=abonement.price,
-        discount_type=abonement.discount_type,
-        discount_value=abonement.discount_value,
         status=AbonementStatus.ACTIVE,
         abonement_format=abonement.abonement_format,
     )
@@ -96,10 +86,8 @@ async def update_abonement(
     update_data = abonement_update.dict(exclude_unset=True)
     if "price" in update_data:
         _validate_price(float(update_data.get("price") or 0))
-    if "discount_type" in update_data or "discount_value" in update_data:
-        discount_type = update_data.get("discount_type", db_abonement.discount_type)
-        discount_value = update_data.get("discount_value", db_abonement.discount_value)
-        _validate_discount(discount_type, float(discount_value or 0))
+    update_data.pop("discount_type", None)
+    update_data.pop("discount_value", None)
 
     for key, value in update_data.items():
         setattr(db_abonement, key, value)

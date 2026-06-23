@@ -27,7 +27,7 @@ import { Abonement, ABONEMENT_FORMAT_LABELS, AbonementFormat } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 
-const emptyForm = { name: '', price: '' as string | number, discount_type: 'none', discount_value: '' as string | number, abonement_format: '' as '' | AbonementFormat };
+const emptyForm = { name: '', price: '' as string | number, abonement_format: '' as '' | AbonementFormat };
 
 const AbonementsPage: React.FC = () => {
   const { user } = useAuth();
@@ -39,8 +39,6 @@ const AbonementsPage: React.FC = () => {
   const [form, setForm] = useState({
     name: '',
     price: '' as string | number,
-    discount_type: 'none',
-    discount_value: '' as string | number,
     abonement_format: '' as '' | AbonementFormat,
   });
   const canManageAbonements = hasPermission(user, 'abonements.manage');
@@ -67,8 +65,6 @@ const AbonementsPage: React.FC = () => {
       await abonementsApi.create({
         name: form.name.trim(),
         price: Number(form.price) || 0,
-        discount_type: form.discount_type as Abonement['discount_type'],
-        discount_value: Number(form.discount_value) || 0,
         abonement_format: form.abonement_format || undefined,
       });
       setOpen(false);
@@ -89,8 +85,6 @@ const AbonementsPage: React.FC = () => {
       await abonementsApi.update(editing.id, {
         name: form.name.trim(),
         price: Number(form.price) || 0,
-        discount_type: form.discount_type as Abonement['discount_type'],
-        discount_value: Number(form.discount_value) || 0,
         abonement_format: form.abonement_format || undefined,
       });
       setEditOpen(false);
@@ -100,12 +94,6 @@ const AbonementsPage: React.FC = () => {
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка обновления абонемента');
     }
-  };
-
-  const renderDiscount = (abonement: Abonement) => {
-    if (abonement.discount_type === 'none') return '—';
-    if (abonement.discount_type === 'amount') return `${abonement.discount_value} ₽`;
-    return `${abonement.discount_value}%`;
   };
 
   return (
@@ -137,8 +125,6 @@ const AbonementsPage: React.FC = () => {
               <TableCell>Название</TableCell>
               <TableCell>Цена</TableCell>
               <TableCell>Формат</TableCell>
-              <TableCell>Тип скидки</TableCell>
-              <TableCell>Скидка</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Действия</TableCell>
             </TableRow>
@@ -151,8 +137,6 @@ const AbonementsPage: React.FC = () => {
                 <TableCell>
                   {abonement.abonement_format ? ABONEMENT_FORMAT_LABELS[abonement.abonement_format] : '—'}
                 </TableCell>
-                <TableCell>{abonement.discount_type}</TableCell>
-                <TableCell>{renderDiscount(abonement)}</TableCell>
                 <TableCell>{abonement.status === 'active' ? 'Активен' : 'Архивирован'}</TableCell>
                 <TableCell>
                   <Button
@@ -163,8 +147,6 @@ const AbonementsPage: React.FC = () => {
                       setForm({
                         name: abonement.name,
                         price: abonement.price,
-                        discount_type: abonement.discount_type,
-                        discount_value: abonement.discount_value,
                         abonement_format: abonement.abonement_format || '',
                       });
                       setEditOpen(true);
@@ -253,29 +235,6 @@ const AbonementsPage: React.FC = () => {
               <MenuItem value="group">{ABONEMENT_FORMAT_LABELS.group}</MenuItem>
             </Select>
           </FormControl>
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Тип скидки</InputLabel>
-            <Select
-              value={form.discount_type}
-              label="Тип скидки"
-              onChange={(e) => setForm({ ...form, discount_type: e.target.value })}
-            >
-              <MenuItem value="none">Нет скидки</MenuItem>
-              <MenuItem value="amount">Скидка в рублях</MenuItem>
-              <MenuItem value="percent">Скидка в процентах</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            type="number"
-            label="Размер скидки"
-            value={form.discount_value}
-            onChange={(e) => setForm({ ...form, discount_value: e.target.value })}
-            onFocus={(e) => e.target.select()}
-            inputProps={{ min: 0 }}
-            sx={{ mt: 2 }}
-            helperText={form.discount_type === 'percent' ? 'Укажите процент' : 'Укажите сумму'}
-          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Отмена</Button>
@@ -304,29 +263,6 @@ const AbonementsPage: React.FC = () => {
             onFocus={(e) => e.target.select()}
             inputProps={{ min: 0 }}
             sx={{ mt: 2 }}
-          />
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Тип скидки</InputLabel>
-            <Select
-              value={form.discount_type}
-              label="Тип скидки"
-              onChange={(e) => setForm({ ...form, discount_type: e.target.value })}
-            >
-              <MenuItem value="none">Нет скидки</MenuItem>
-              <MenuItem value="amount">Скидка в рублях</MenuItem>
-              <MenuItem value="percent">Скидка в процентах</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            type="number"
-            label="Размер скидки"
-            value={form.discount_value}
-            onChange={(e) => setForm({ ...form, discount_value: e.target.value })}
-            onFocus={(e) => e.target.select()}
-            inputProps={{ min: 0 }}
-            sx={{ mt: 2 }}
-            helperText={form.discount_type === 'percent' ? 'Укажите процент' : 'Укажите сумму'}
           />
         </DialogContent>
         <DialogActions>

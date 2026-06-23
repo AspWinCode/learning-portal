@@ -225,6 +225,12 @@ class Student(Base):
     parent_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     from_lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
     abonement_id = Column(Integer, ForeignKey("abonements.id"), nullable=True, index=True)
+    discount_type = Column(
+        SQLEnum(DiscountType, name="discounttype", values_callable=_enum_values),
+        default=DiscountType.NONE,
+        nullable=False,
+    )
+    discount_value = Column(Float, default=0.0, nullable=False)
     status = Column(_StudentStatusType(), default=StudentStatus.ACTIVE)
     training_start_date = Column(Date, nullable=True)  # с этой даты ученик в уроках; от неё считаются оплата и напоминания
     created_at = Column(DateTime(timezone=True), server_default=func.now())

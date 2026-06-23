@@ -64,6 +64,8 @@ const StudentsPage: React.FC = () => {
     group_id: '',
     program_id: '',
     abonement_id: '',
+    discount_type: 'none' as 'none' | 'amount' | 'percent',
+    discount_value: '',
     training_start_date: '',
   });
   const [parentCreateMode, setParentCreateMode] = useState<'none' | 'existing' | 'new'>('new');
@@ -498,8 +500,17 @@ const StudentsPage: React.FC = () => {
       canAssignAbonement && newStudent.abonement_id && newStudent.abonement_id.trim() !== ''
         ? parseInt(newStudent.abonement_id)
         : null;
+    const discountValue = Number(newStudent.discount_value) || 0;
     if (abonementId !== null && isNaN(abonementId)) {
       setError('Некорректный абонемент');
+      return;
+    }
+    if (newStudent.discount_type !== 'none' && discountValue < 0) {
+      setError('Скидка не может быть отрицательной');
+      return;
+    }
+    if (newStudent.discount_type === 'percent' && discountValue > 100) {
+      setError('Скидка в процентах не может быть больше 100');
       return;
     }
 
@@ -510,6 +521,8 @@ const StudentsPage: React.FC = () => {
         const studentData: any = {
           full_name: newStudent.full_name.trim(),
           abonement_id: abonementId ?? undefined,
+          discount_type: canAssignAbonement ? newStudent.discount_type : 'none',
+          discount_value: canAssignAbonement && newStudent.discount_type !== 'none' ? discountValue : 0,
         };
         const createdStudent = await studentsApi.create(studentData);
         await assignProgramAndGroup(createdStudent.id);
@@ -562,7 +575,12 @@ const StudentsPage: React.FC = () => {
           : { id: null as number | null, full_name: newParent.full_name.trim(), email: newParent.email.trim() };
 
       const { student: createdStudent, parent: createdParent } = await studentsApi.createWithParent({
-        student: { full_name: newStudent.full_name.trim(), abonement_id: abonementId ?? undefined },
+        student: {
+          full_name: newStudent.full_name.trim(),
+          abonement_id: abonementId ?? undefined,
+          discount_type: canAssignAbonement ? newStudent.discount_type : 'none',
+          discount_value: canAssignAbonement && newStudent.discount_type !== 'none' ? discountValue : 0,
+        },
         parent: parentPayload,
       });
 
@@ -658,8 +676,8 @@ const StudentsPage: React.FC = () => {
       source: cardFields.source.trim() || undefined,
       comment: cardFields.comment.trim() || undefined,
       payment_link: isAdminLike ? (cardFields.payment_link.trim() || undefined) : undefined,
-      discount_type: 'none',
-      discount_value: 0,
+      discount_type: canAssignAbonement ? newStudent.discount_type : 'none',
+      discount_value: canAssignAbonement && newStudent.discount_type !== 'none' ? Number(newStudent.discount_value) || 0 : 0,
     });
   };
 
@@ -687,7 +705,7 @@ const StudentsPage: React.FC = () => {
   });
 
   const resetCreateForm = () => {
-    setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '', training_start_date: '' });
+    setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '', discount_type: 'none', discount_value: '', training_start_date: '' });
     setParentCreateMode('new');
     setParentSearchQuery('');
     setParentSearchResults([]);
@@ -707,6 +725,8 @@ const StudentsPage: React.FC = () => {
       group_id: studentGroup?.id?.toString() || '',
       program_id: '',
       abonement_id: student.abonement_id?.toString() || '',
+      discount_type: student.discount_type || 'none',
+      discount_value: student.discount_value ? String(student.discount_value) : '',
       training_start_date: student.training_start_date ? String(student.training_start_date).slice(0, 10) : '',
     });
     setParentCreateMode(student.parent_id ? 'existing' : 'none');
@@ -768,6 +788,8 @@ const StudentsPage: React.FC = () => {
         } else {
           updateData.abonement_id = null;
         }
+        updateData.discount_type = newStudent.discount_type;
+        updateData.discount_value = newStudent.discount_type !== 'none' ? Number(newStudent.discount_value) || 0 : 0;
       }
       updateData.training_start_date = newStudent.training_start_date?.trim() ? newStudent.training_start_date.trim() : null;
 
@@ -826,7 +848,11 @@ const StudentsPage: React.FC = () => {
           if (editingCardId) {
             await studentCardsApi.update(editingCardId, cardPayload);
           } else {
-            await studentCardsApi.create({ ...cardPayload, discount_type: 'none', discount_value: 0 });
+            await studentCardsApi.create({
+              ...cardPayload,
+              discount_type: canAssignAbonement ? newStudent.discount_type : 'none',
+              discount_value: canAssignAbonement && newStudent.discount_type !== 'none' ? Number(newStudent.discount_value) || 0 : 0,
+            });
           }
         } catch (cardErr: any) {
           setError(cardErr.response?.data?.detail || 'Ученик сохранён, но не удалось сохранить карточку');
@@ -855,6 +881,8 @@ const StudentsPage: React.FC = () => {
         group_id: '',
         program_id: '',
         abonement_id: '',
+        discount_type: 'none',
+        discount_value: '',
         training_start_date: '',
       });
     } catch (err: any) {
@@ -966,16 +994,21 @@ const StudentsPage: React.FC = () => {
     return list;
   }, [parents, parentSearch]);
 
-  const getDiscountLabel = (ab: Abonement): string => {
-    if (ab.discount_type === 'none') return '—';
-    if (ab.discount_type === 'percent') return `${ab.discount_value}%`;
-    return `${ab.discount_value} ₽`;
+  const getDiscountLabel = (student: Student): string => {
+    const type = student.discount_type || 'none';
+    const value = student.discount_value || 0;
+    if (type === 'none' || value <= 0) return '—';
+    if (type === 'percent') return `${value}%`;
+    return `${value} ₽`;
   };
 
-  const getPriceWithDiscount = (ab: Abonement): number => {
-    if (ab.discount_type === 'none') return ab.price;
-    if (ab.discount_type === 'percent') return Math.round(ab.price * (1 - ab.discount_value / 100) * 100) / 100;
-    return Math.max(0, ab.price - ab.discount_value);
+  const getPriceWithDiscount = (student: Student, ab?: Abonement): number => {
+    if (!ab) return 0;
+    const type = student.discount_type || 'none';
+    const value = student.discount_value || 0;
+    if (type === 'none') return ab.price;
+    if (type === 'percent') return Math.round(ab.price * (1 - value / 100) * 100) / 100;
+    return Math.max(0, ab.price - value);
   };
 
   const handleAbonementAssign = async (studentId: number, abonementId: string) => {
@@ -987,6 +1020,53 @@ const StudentsPage: React.FC = () => {
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка назначения абонемента');
     }
+  };
+
+  const renderStudentDiscountFields = () => {
+    const selectedAbonement = newStudent.abonement_id
+      ? abonements.find((a) => a.id === Number(newStudent.abonement_id))
+      : undefined;
+    const discountValue = Number(newStudent.discount_value) || 0;
+    const previewStudent = {
+      discount_type: newStudent.discount_type,
+      discount_value: discountValue,
+    } as Student;
+    const finalPrice = selectedAbonement ? getPriceWithDiscount(previewStudent, selectedAbonement) : 0;
+
+    return (
+      <Stack spacing={1.5} sx={{ mt: 2 }}>
+        <Typography variant="subtitle2">Персональная скидка ученика</Typography>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Тип скидки</InputLabel>
+            <Select
+              value={newStudent.discount_type}
+              label="Тип скидки"
+              onChange={(e) => setNewStudent({ ...newStudent, discount_type: e.target.value as 'none' | 'amount' | 'percent', discount_value: e.target.value === 'none' ? '' : newStudent.discount_value })}
+            >
+              <MenuItem value="none">Нет скидки</MenuItem>
+              <MenuItem value="amount">Сумма</MenuItem>
+              <MenuItem value="percent">Процент</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            fullWidth
+            type="number"
+            label={newStudent.discount_type === 'percent' ? 'Процент скидки' : 'Сумма скидки'}
+            value={newStudent.discount_value}
+            onChange={(e) => setNewStudent({ ...newStudent, discount_value: e.target.value })}
+            disabled={newStudent.discount_type === 'none'}
+            inputProps={{ min: 0, max: newStudent.discount_type === 'percent' ? 100 : undefined }}
+          />
+        </Stack>
+        {selectedAbonement && (
+          <Typography variant="caption" color="text.secondary">
+            Абонемент: {selectedAbonement.price} ₽ · скидка: {getDiscountLabel(previewStudent)} · к оплате: {finalPrice} ₽
+          </Typography>
+        )}
+      </Stack>
+    );
   };
 
   if (!hasFullStudentsView) {
@@ -1556,6 +1636,7 @@ const StudentsPage: React.FC = () => {
               </Select>
             </FormControl>
           )}
+          {canAssignAbonement && renderStudentDiscountFields()}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Отмена</Button>
@@ -1852,6 +1933,7 @@ const StudentsPage: React.FC = () => {
               </Select>
             </FormControl>
           )}
+          {canAssignAbonement && renderStudentDiscountFields()}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setEditOpen(false); setEditingCardId(null); }}>Отмена</Button>

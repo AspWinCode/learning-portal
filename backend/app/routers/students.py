@@ -18,7 +18,7 @@ from app.schemas.students import (
     StudentWithParentCreate,
     StudentWithParentResponse,
 )
-from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group, StudentActivityLog, Grade, Program, ProgramStatus, Topic, Module
+from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, DiscountType, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group, StudentActivityLog, Grade, Program, ProgramStatus, Topic, Module
 from app.routers.action_log import log_action
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
@@ -26,6 +26,19 @@ from app.services.student_activity import log_student_activity
 from app.services.student_account_finance import ensure_default_student_account
 
 router = APIRouter()
+
+
+def _validate_student_discount(discount_type: DiscountType, discount_value: float) -> None:
+    if discount_value < 0:
+        raise HTTPException(status_code=400, detail="Discount must be >= 0")
+    if discount_type == DiscountType.PERCENT and discount_value > 100:
+        raise HTTPException(status_code=400, detail="Percent discount must be <= 100")
+
+
+def _normalized_discount_value(discount_type: DiscountType, discount_value: Optional[float]) -> float:
+    value = float(discount_value or 0)
+    discount_kind = getattr(discount_type, "value", discount_type)
+    return 0.0 if discount_kind in (None, DiscountType.NONE.value) else value
 
 
 def _student_effective_role(current_user: User) -> UserRole:
@@ -191,10 +204,14 @@ async def create_student_with_parent(
             raise HTTPException(status_code=400, detail="Abonement is archived")
         abonement_id = abonement.id
 
+    _validate_student_discount(payload.student.discount_type, float(payload.student.discount_value or 0))
+
     db_student = Student(
         full_name=payload.student.full_name.strip(),
         parent_id=parent_user.id,
         abonement_id=abonement_id,
+        discount_type=payload.student.discount_type,
+        discount_value=_normalized_discount_value(payload.student.discount_type, payload.student.discount_value),
         status=StudentStatus.ACTIVE,
     )
     db.add(db_student)
@@ -223,6 +240,8 @@ async def create_student_with_parent(
         full_name=display_name,
         parent_id=db_student.parent_id,
         abonement_id=db_student.abonement_id,
+        discount_type=db_student.discount_type,
+        discount_value=db_student.discount_value,
         status=db_student.status,
         created_at=db_student.created_at,
         parent=parent_user,
@@ -283,10 +302,14 @@ async def create_student(
             raise HTTPException(status_code=400, detail="Abonement is archived")
         abonement_id = abonement.id
 
+    _validate_student_discount(student.discount_type, float(student.discount_value or 0))
+
     db_student = Student(
         full_name=student.full_name,
         parent_id=student.parent_id if student.parent_id else None,
         abonement_id=abonement_id,
+        discount_type=student.discount_type,
+        discount_value=_normalized_discount_value(student.discount_type, student.discount_value),
         status=StudentStatus.ACTIVE
     )
     db.add(db_student)
@@ -703,6 +726,13 @@ async def update_student(
                 raise HTTPException(status_code=400, detail="Abonement is archived")
         else:
             update_data["abonement_id"] = None
+
+    if "discount_type" in update_data or "discount_value" in update_data:
+        discount_type = update_data.get("discount_type", db_student.discount_type) or DiscountType.NONE
+        discount_value = update_data.get("discount_value", db_student.discount_value)
+        _validate_student_discount(discount_type, float(discount_value or 0))
+        update_data["discount_type"] = discount_type
+        update_data["discount_value"] = _normalized_discount_value(discount_type, discount_value)
     
     # При архивации проверяем, нужно ли деактивировать родителя
     if "status" in update_data and update_data["status"] == StudentStatus.ARCHIVED:

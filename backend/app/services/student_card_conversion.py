@@ -92,6 +92,9 @@ def convert_student_card_to_student(
         student = Student(
             full_name=student_full_name,
             parent_id=parent_user.id,
+            abonement_id=getattr(card, "abonement_id", None),
+            discount_type=getattr(card, "discount_type", None) or "none",
+            discount_value=getattr(card, "discount_value", 0.0) or 0.0,
             status=StudentStatus.ACTIVE,
         )
         db.add(student)
@@ -154,6 +157,9 @@ def convert_student_card_to_student(
     student = Student(
         full_name=student_full_name,
         parent_id=parent_user.id,
+        abonement_id=getattr(card, "abonement_id", None),
+        discount_type=getattr(card, "discount_type", None) or "none",
+        discount_value=getattr(card, "discount_value", 0.0) or 0.0,
         status=StudentStatus.ACTIVE,
     )
     db.add(student)

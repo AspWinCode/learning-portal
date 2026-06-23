@@ -4,7 +4,7 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.schemas.abonements import AbonementResponse
-from app.schemas.common import StudentStatus
+from app.schemas.common import DiscountType, StudentStatus
 from app.schemas.programs import ProgramSummaryResponse
 from app.schemas.users import UserResponse
 
@@ -16,6 +16,8 @@ class StudentBase(BaseModel):
 class StudentCreate(StudentBase):
     parent_id: Optional[int] = None
     abonement_id: Optional[int] = None
+    discount_type: DiscountType = DiscountType.NONE
+    discount_value: float = 0.0
 
 
 class StudentUpdate(BaseModel):
@@ -23,6 +25,8 @@ class StudentUpdate(BaseModel):
     parent_id: Optional[int] = None
     status: Optional[StudentStatus] = None
     abonement_id: Optional[int] = None
+    discount_type: Optional[DiscountType] = None
+    discount_value: Optional[float] = None
     training_start_date: Optional[date] = None
 
 
@@ -31,6 +35,8 @@ class StudentResponse(StudentBase):
     parent_id: Optional[int] = None
     from_lead_id: Optional[int] = None
     abonement_id: Optional[int] = None
+    discount_type: DiscountType = DiscountType.NONE
+    discount_value: float = 0.0
     status: StudentStatus
     training_start_date: Optional[date] = None
     created_at: datetime
@@ -58,6 +64,8 @@ class StudentWithParentParentPayload(BaseModel):
 class StudentWithParentStudentPayload(BaseModel):
     full_name: str = Field(..., min_length=1)
     abonement_id: Optional[int] = None
+    discount_type: DiscountType = DiscountType.NONE
+    discount_value: float = 0.0
 
 
 class StudentWithParentCreate(BaseModel):

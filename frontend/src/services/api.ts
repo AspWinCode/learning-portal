@@ -212,6 +212,10 @@ export const authApi = {
     const response = await api.post('/api/auth/guest');
     return response.data as { access_token: string; token_type: string };
   },
+  refreshSession: async () => {
+    const response = await api.post('/api/auth/refresh');
+    return response.data as { access_token: string; token_type: string };
+  },
   getCurrentUser: async (): Promise<User> => {
     const response = await api.get('/api/auth/me');
     return response.data;

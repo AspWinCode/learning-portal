@@ -77,6 +77,24 @@ async def logout(
     return {"message": "Logged out"}
 
 
+@router.post("/refresh", response_model=Token)
+async def refresh_session(current_user: User = Depends(auth.get_current_active_user)):
+    if int(current_user.id) == auth.GUEST_USER_ID:
+        access_token_expires = timedelta(hours=auth.GUEST_TOKEN_EXPIRE_HOURS)
+        access_token = auth.create_access_token(
+            data={"sub": "guest", "role": "guest"},
+            expires_delta=access_token_expires,
+        )
+    else:
+        access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+        effective_role = auth.resolve_effective_role(current_user)
+        access_token = auth.create_access_token(
+            data={"sub": current_user.email, "role": effective_role.value},
+            expires_delta=access_token_expires,
+        )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
 @router.post("/password-reset")
 @limiter.limit("5/minute")
 async def password_reset(

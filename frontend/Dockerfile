@@ -12,7 +12,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm install --no-audit --no-fund
 COPY frontend/ ./
 # В проде запросы идут на тот же домен; Caddy проксирует /api/* на backend. Не использовать localhost.
-ARG VITE_API_URL=
+ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=$VITE_API_URL
 ARG REACT_APP_API_URL=
 ENV REACT_APP_API_URL=$REACT_APP_API_URL

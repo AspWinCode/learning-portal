@@ -879,6 +879,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [contacts, setContacts] = useState<OwnerWorkspaceContact[]>([]);
   const [contactsCatalog, setContactsCatalog] = useState<OwnerWorkspaceContact[]>([]);
   const [tasks, setTasks] = useState<OwnerWorkspaceTask[]>([]);
+  const [meetingsCount, setMeetingsCount] = useState(0);
   const [conversations, setConversations] = useState<OwnerWorkspaceConversation[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [historyLogs, setHistoryLogs] = useState<OwnerWorkspaceAuditLog[]>([]);
@@ -1694,6 +1695,15 @@ const OwnerWorkspacePage: React.FC = () => {
     contactListTag,
   ]);
 
+  const loadMeetingsCount = useCallback(async () => {
+    try {
+      const rows = await ownerWorkspaceApi.listMeetings({ limit: 500 });
+      setMeetingsCount(rows.length);
+    } catch {
+      setMeetingsCount(0);
+    }
+  }, []);
+
   const loadTasksFiltered = useCallback(async (opts?: { statusFilter?: string }) => {
     try {
       const usePaging = taskViewMode === 'list';
@@ -1917,11 +1927,11 @@ const OwnerWorkspacePage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([loadProjectsAndContacts(), loadTasksFiltered(), loadMeta()]);
+      await Promise.all([loadProjectsAndContacts(), loadTasksFiltered(), loadMeta(), loadMeetingsCount()]);
     } finally {
       setLoading(false);
     }
-  }, [loadProjectsAndContacts, loadTasksFiltered, loadMeta]);
+  }, [loadProjectsAndContacts, loadTasksFiltered, loadMeta, loadMeetingsCount]);
 
   useEffect(() => {
     if (tab === OW_TAB_SETTINGS && isWorkspaceFullAccess) {
@@ -5551,7 +5561,7 @@ const OwnerWorkspacePage: React.FC = () => {
           <Tab value={OW_TAB_PROJECTS} label={`Проекты (${projects.length})`} />
           <Tab value={OW_TAB_CONTACTS} label={`Контакты (${contacts.length})`} />
           <Tab value={OW_TAB_TASKS} label={`Задачи (${taskListTotal})`} />
-          <Tab value={OW_TAB_MEETINGS} label="Мероприятия" />
+          <Tab value={OW_TAB_MEETINGS} label={`Встречи (${meetingsCount})`} />
           <Tab value={OW_TAB_REPORTS} label="Отчёты" />
           <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
           <Tab value={OW_TAB_HISTORY} label="История" />
@@ -6356,6 +6366,7 @@ const OwnerWorkspacePage: React.FC = () => {
             contacts={contactsCatalog}
             users={userOptions}
             canCreate={isWorkspaceFullAccess}
+            onCountChange={setMeetingsCount}
           />
         </Suspense>
       )}

@@ -59,6 +59,7 @@ type Props = {
   contacts: OwnerWorkspaceContact[];
   users: User[];
   canCreate: boolean;
+  onCountChange?: (count: number) => void;
 };
 
 const statusLabels: Record<string, string> = {
@@ -106,7 +107,7 @@ function isOverdue(meeting: OwnerWorkspaceMeeting): boolean {
   return new Date(`${meeting.meeting_date}T${meeting.meeting_time || '00:00'}`).getTime() < Date.now();
 }
 
-export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate }: Props) {
+export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate, onCountChange }: Props) {
   const [meetings, setMeetings] = useState<OwnerWorkspaceMeeting[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +150,9 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
         limit: 500,
       });
       setMeetings(rows);
+      if (!search.trim() && !status && !projectId && !contactId && !responsibleId && !meetingType && !dateFrom && !dateTo && !overdueOnly) {
+        onCountChange?.(rows.length);
+      }
     } catch (e) {
       setError(extractApiError(e, 'Не удалось загрузить мероприятия'));
     } finally {

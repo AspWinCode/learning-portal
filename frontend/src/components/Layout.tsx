@@ -90,6 +90,48 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
+const pageTitleVariants = new Set(['h1', 'h2', 'h3', 'h4', 'h5']);
+
+const normalizeTitle = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
+
+const getPlainText = (node: React.ReactNode): string => {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(getPlainText).join('');
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return getPlainText(node.props.children);
+  return '';
+};
+
+const removeDuplicateContentTitle = (
+  node: React.ReactNode,
+  appBarTitle: string,
+  removed: { current: boolean },
+  depth = 0,
+): React.ReactNode => {
+  if (removed.current || !node) return node;
+
+  if (Array.isArray(node)) {
+    return node.map((child) => removeDuplicateContentTitle(child, appBarTitle, removed, depth));
+  }
+
+  if (!React.isValidElement<{ children?: React.ReactNode; variant?: string }>(node)) return node;
+
+  const variant = node.props.variant;
+  const titleMatches =
+    typeof variant === 'string' &&
+    pageTitleVariants.has(variant) &&
+    normalizeTitle(getPlainText(node.props.children)) === normalizeTitle(appBarTitle);
+
+  if (titleMatches) {
+    removed.current = true;
+    return null;
+  }
+
+  if (depth >= 3 || !node.props.children) return node;
+
+  const nextChildren = removeDuplicateContentTitle(node.props.children, appBarTitle, removed, depth + 1);
+  return nextChildren === node.props.children ? node : React.cloneElement(node, undefined, nextChildren);
+};
+
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -448,6 +490,11 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     'Портал управления обучением';
 
   // Группируем видимые пункты меню
+  const contentChildren = React.useMemo(() => {
+    if (isPwaNavigation) return children;
+    return removeDuplicateContentTitle(children, appBarPageTitle, { current: false });
+  }, [appBarPageTitle, children, isPwaNavigation]);
+
   const allGroupedPaths = new Set(NAV_GROUPS.flatMap(g => [...g.paths]));
   const grouped = NAV_GROUPS.map(g => {
     const pathOrder = new Map([...g.paths].map((path, index) => [path, index]));
@@ -772,7 +819,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         }}
       >
         <Toolbar />
-        <Box sx={{ maxWidth: isPwaNavigation ? '100%' : 1240, mx: 'auto' }}>{children}</Box>
+        <Box sx={{ maxWidth: isPwaNavigation ? '100%' : 1240, mx: 'auto' }}>{contentChildren}</Box>
       </Box>
 
       {isPwaNavigation && pwaBottomItems.length > 0 && (

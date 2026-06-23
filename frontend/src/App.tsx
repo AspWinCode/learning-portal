@@ -84,6 +84,12 @@ const PasswordsPage = React.lazy(() => import('./pages/PasswordsPage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const isStandalonePwa =
+    typeof window !== 'undefined' &&
+    (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true);
+  const isPwaLaunch = isStandalonePwa || new URLSearchParams(location.search).get('pwa') === '1';
+  if (isPwaLaunch) return <Navigate to="/mobile?pwa=1" replace />;
   const effectiveRole = getEffectiveRole(user);
   if (effectiveRole === 'guest') return <Navigate to="/programs" replace />;
   if (effectiveRole === 'parent') return <Navigate to="/parent-dashboard" replace />;

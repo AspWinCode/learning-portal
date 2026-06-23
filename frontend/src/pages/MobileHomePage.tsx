@@ -63,7 +63,7 @@ const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> =>
 const getFallbackModules = (user: ReturnType<typeof useAuth>['user']): PwaModule[] => {
   const effectiveRole = getEffectiveRole(user);
   const candidates: PwaModule[] = [
-    { key: 'dashboard', label: 'Главная', description: 'Сводка и основные показатели', route: '/dashboard' },
+    { key: 'dashboard', label: 'Главная', description: 'Сводка и основные показатели', route: '/mobile' },
     { key: 'parent_dashboard', label: 'Кабинет родителя', description: 'Обучение, оплаты и сообщения', route: '/mobile/parent-dashboard', required_permission: 'parent_dashboard.access' },
     { key: 'trainer_cockpit', label: 'Кокпит тренера', description: 'Занятия и рабочий день тренера', route: '/mobile/trainer-cockpit', required_permission: 'trainer_cockpit.access' },
     { key: 'tasks', label: 'Задачи', description: 'Рабочие задачи и напоминания', route: '/mobile/tasks', required_permission: 'tasks.access' },

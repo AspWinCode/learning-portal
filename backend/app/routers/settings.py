@@ -105,7 +105,7 @@ PWA_MODULES = [
         "key": "dashboard",
         "label": "Главная",
         "description": "Краткий обзор портала.",
-        "route": "/dashboard",
+        "route": "/mobile",
         "required_permission": None,
         "default_roles": ["admin", "owner"],
     },

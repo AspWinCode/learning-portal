@@ -1,23 +1,19 @@
 import React from 'react';
 import {
   Alert,
-  AppBar,
   Box,
   Button,
   Chip,
   CircularProgress,
-  Container,
   Divider,
   IconButton,
   InputAdornment,
   Paper,
   Stack,
   TextField,
-  Toolbar,
   Typography,
 } from '@mui/material';
 import {
-  ArrowBack,
   Business,
   Email,
   Person,
@@ -31,6 +27,7 @@ import { ownerWorkspaceApi } from '../services/api/ownerWorkspace';
 import { OwnerWorkspaceContact } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 import { phoneFromApi } from '../utils/phoneMask';
+import { MobileShell, mobileCardSx } from '../components/mobile/MobileShell';
 
 function phoneHref(phone?: string | null): string | null {
   const raw = String(phone || '').trim();
@@ -145,27 +142,16 @@ const MobileContactsPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#f6f8fb', pb: 3 }}>
-      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid rgba(15, 23, 42, 0.08)' }}>
-        <Toolbar>
-          <IconButton edge="start" onClick={() => navigate(contactId ? '/mobile/contacts' : '/mobile')} aria-label="Назад">
-            <ArrowBack />
-          </IconButton>
-          <Box sx={{ flex: 1, minWidth: 0, ml: 1 }}>
-            <Typography variant="subtitle1" fontWeight={900} noWrap>
-              {headerTitle}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {headerSubtitle || 'PWA'}
-            </Typography>
-          </Box>
-          <IconButton onClick={() => (contactId ? loadContact() : loadContacts())} aria-label="Обновить">
+    <MobileShell
+      title={headerTitle}
+      subtitle={headerSubtitle || 'PWA'}
+      backTo={contactId ? '/mobile/contacts' : '/mobile'}
+      actions={(
+        <IconButton onClick={() => (contactId ? loadContact() : loadContacts())} aria-label="Обновить">
             <Refresh />
           </IconButton>
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="sm" sx={{ pt: 2 }}>
+      )}
+    >
         <Stack spacing={1.5}>
           {error ? <Alert severity="error">{error}</Alert> : null}
 
@@ -183,6 +169,13 @@ const MobileContactsPage: React.FC = () => {
                   </InputAdornment>
                 ),
               }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: '#fff',
+                  borderRadius: 2,
+                  boxShadow: '0 8px 22px rgba(15, 23, 42, 0.05)',
+                },
+              }}
             />
           ) : null}
 
@@ -192,7 +185,7 @@ const MobileContactsPage: React.FC = () => {
             </Box>
           ) : contactId ? (
             contact ? (
-              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Paper variant="outlined" sx={{ ...mobileCardSx, p: 2 }}>
                 <Stack spacing={1.5}>
                   <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
                     <Box
@@ -275,7 +268,7 @@ const MobileContactsPage: React.FC = () => {
           ) : contacts.length ? (
             <Stack spacing={1}>
               {contacts.map((row) => (
-                <Paper key={row.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                <Paper key={row.id} variant="outlined" sx={{ ...mobileCardSx, p: 1.5 }}>
                   <Box onClick={() => navigate(`/mobile/contacts/${row.id}`)} sx={{ cursor: 'pointer' }}>
                     <Typography variant="body1" fontWeight={900}>
                       {row.full_name}
@@ -304,8 +297,7 @@ const MobileContactsPage: React.FC = () => {
             <Alert severity="info">Контакты не найдены.</Alert>
           )}
         </Stack>
-      </Container>
-    </Box>
+    </MobileShell>
   );
 };
 

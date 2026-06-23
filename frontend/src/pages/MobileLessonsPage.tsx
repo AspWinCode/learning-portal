@@ -1,27 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { addDays, format, startOfDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import {
   Alert,
-  AppBar,
   Box,
   Chip,
   CircularProgress,
-  Container,
-  Divider,
   IconButton,
   Paper,
   Stack,
-  Toolbar,
   Typography,
 } from '@mui/material';
-import { ArrowBack, CalendarToday, Refresh } from '@mui/icons-material';
+import { CalendarToday, Refresh } from '@mui/icons-material';
 import { trainerLessonsApi } from '../services/api';
+import { MobileShell, mobileCardSx } from '../components/mobile/MobileShell';
 
 const MobileLessonsPage: React.FC = () => {
-  const navigate = useNavigate();
   const today = useMemo(() => format(startOfDay(new Date()), 'yyyy-MM-dd'), []);
 
   const dates = useMemo(
@@ -42,23 +37,15 @@ const MobileLessonsPage: React.FC = () => {
   const groups = lessonsQuery.data ?? [];
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#f6f8fb', pb: 'calc(24px + env(safe-area-inset-bottom))' }}>
-      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid rgba(15,23,42,0.08)' }}>
-        <Toolbar>
-          <IconButton edge="start" onClick={() => navigate('/mobile')} aria-label="Назад">
-            <ArrowBack />
-          </IconButton>
-          <Box sx={{ flex: 1, minWidth: 0, ml: 1 }}>
-            <Typography variant="subtitle1" fontWeight={900} noWrap>Уроки</Typography>
-            <Typography variant="caption" color="text.secondary">Расписание на 7 дней</Typography>
-          </Box>
-          <IconButton onClick={() => setRefetchKey((k) => k + 1)} aria-label="Обновить">
-            <Refresh />
-          </IconButton>
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="sm" sx={{ pt: 2, px: { xs: 1.5, sm: 3 } }}>
+    <MobileShell
+      title="Уроки"
+      subtitle="Расписание на 7 дней"
+      actions={(
+        <IconButton onClick={() => setRefetchKey((k) => k + 1)} aria-label="Обновить">
+          <Refresh />
+        </IconButton>
+      )}
+    >
         {lessonsQuery.isLoading ? (
           <Box sx={{ py: 8, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>
         ) : lessonsQuery.isError ? (
@@ -85,7 +72,7 @@ const MobileLessonsPage: React.FC = () => {
                       <Paper
                         key={`${slot.lesson_date}-${slot.group_id}-${slot.start_time}`}
                         variant="outlined"
-                        sx={{ p: 1.5, borderRadius: 2 }}
+                        sx={{ ...mobileCardSx, p: 1.5 }}
                       >
                         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
                           <Box sx={{ minWidth: 0 }}>
@@ -112,8 +99,7 @@ const MobileLessonsPage: React.FC = () => {
             ))}
           </Stack>
         )}
-      </Container>
-    </Box>
+    </MobileShell>
   );
 };
 

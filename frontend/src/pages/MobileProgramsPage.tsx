@@ -1,26 +1,22 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
-  AppBar,
   Box,
   Chip,
   CircularProgress,
-  Container,
   Collapse,
   IconButton,
   Paper,
   Stack,
-  Toolbar,
   Typography,
 } from '@mui/material';
-import { ArrowBack, ExpandLess, ExpandMore, Refresh } from '@mui/icons-material';
+import { ExpandLess, ExpandMore, Refresh } from '@mui/icons-material';
 import { programsApi } from '../services/api';
 import type { Program } from '../types';
+import { MobileShell, mobileCardSx } from '../components/mobile/MobileShell';
 
 const MobileProgramsPage: React.FC = () => {
-  const navigate = useNavigate();
   const [expanded, setExpanded] = React.useState<number | null>(null);
 
   const programsQuery = useQuery({
@@ -31,23 +27,15 @@ const MobileProgramsPage: React.FC = () => {
   const programs = (programsQuery.data ?? []).filter((p: Program) => !(p as any).archived);
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#f6f8fb', pb: 'calc(24px + env(safe-area-inset-bottom))' }}>
-      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid rgba(15,23,42,0.08)' }}>
-        <Toolbar>
-          <IconButton edge="start" onClick={() => navigate('/mobile')} aria-label="Назад">
-            <ArrowBack />
-          </IconButton>
-          <Box sx={{ flex: 1, minWidth: 0, ml: 1 }}>
-            <Typography variant="subtitle1" fontWeight={900} noWrap>Программы</Typography>
-            <Typography variant="caption" color="text.secondary">{programs.length} программ</Typography>
-          </Box>
-          <IconButton onClick={() => programsQuery.refetch()} aria-label="Обновить">
-            <Refresh />
-          </IconButton>
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="sm" sx={{ pt: 2, px: { xs: 1.5, sm: 3 } }}>
+    <MobileShell
+      title="Программы"
+      subtitle={`${programs.length} программ`}
+      actions={(
+        <IconButton onClick={() => programsQuery.refetch()} aria-label="Обновить">
+          <Refresh />
+        </IconButton>
+      )}
+    >
         {programsQuery.isLoading ? (
           <Box sx={{ py: 8, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>
         ) : programsQuery.isError ? (
@@ -61,7 +49,7 @@ const MobileProgramsPage: React.FC = () => {
               const modules = (p as any).modules ?? [];
               const totalTopics = modules.reduce((acc: number, m: any) => acc + (m.topics?.length ?? 0), 0);
               return (
-                <Paper key={p.id} variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                <Paper key={p.id} variant="outlined" sx={{ ...mobileCardSx, overflow: 'hidden' }}>
                   <Box
                     sx={{
                       p: 1.5, cursor: 'pointer',
@@ -107,8 +95,7 @@ const MobileProgramsPage: React.FC = () => {
             })}
           </Stack>
         )}
-      </Container>
-    </Box>
+    </MobileShell>
   );
 };
 

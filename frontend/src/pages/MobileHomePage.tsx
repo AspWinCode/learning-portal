@@ -1,15 +1,12 @@
 import React from 'react';
 import {
   Alert,
-  AppBar,
   Box,
   Button,
   CircularProgress,
-  Container,
   IconButton,
   Paper,
   Stack,
-  Toolbar,
   Typography,
 } from '@mui/material';
 import {
@@ -33,6 +30,7 @@ import { PwaModule } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { extractApiError } from '../utils/extractApiError';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
+import { MobileShell, mobileCardSx } from '../components/mobile/MobileShell';
 
 const moduleIcons: Record<string, React.ReactNode> = {
   dashboard: <Dashboard />,
@@ -126,33 +124,25 @@ const MobileHomePage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#f6f8fb', pb: 'calc(20px + env(safe-area-inset-bottom))' }}>
-      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid rgba(15, 23, 42, 0.08)' }}>
-        <Toolbar>
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" fontWeight={800} noWrap>
-              Learning Portal
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {user?.full_name || 'PWA'}
-            </Typography>
-          </Box>
-          <IconButton onClick={handleLogout} aria-label="Выйти">
-            <Logout />
-          </IconButton>
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="sm" sx={{ pt: 2, px: { xs: 1.5, sm: 3 } }}>
+    <MobileShell
+      title="Learning Portal"
+      subtitle={user?.full_name || 'PWA'}
+      backTo="/"
+      actions={(
+        <IconButton onClick={handleLogout} aria-label="Выйти">
+          <Logout />
+        </IconButton>
+      )}
+    >
         <Stack spacing={2}>
-          <Box>
-            <Typography variant="h5" fontWeight={900}>
-              PWA
+          <Paper variant="outlined" sx={{ ...mobileCardSx, p: 2 }}>
+            <Typography variant="h5" fontWeight={900} sx={{ mb: 0.5 }}>
+              Рабочий день
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Доступные разделы зависят от PWA-настроек роли и ваших системных прав.
+              Быстрый доступ к разделам, доступным для вашей роли.
             </Typography>
-          </Box>
+          </Paper>
 
           {error ? <Alert severity="error">{error}</Alert> : null}
 
@@ -167,12 +157,12 @@ const MobileHomePage: React.FC = () => {
                   key={module.key}
                   variant="outlined"
                   sx={{
+                    ...mobileCardSx,
                     p: { xs: 1.25, sm: 1.5 },
-                    borderRadius: 2,
                     display: 'flex',
                     gap: 1.5,
                     alignItems: 'center',
-                    minHeight: 76,
+                    minHeight: 82,
                   }}
                 >
                   <Box
@@ -184,7 +174,8 @@ const MobileHomePage: React.FC = () => {
                       alignItems: 'center',
                       justifyContent: 'center',
                       color: 'primary.main',
-                      bgcolor: 'primary.50',
+                      bgcolor: 'rgba(83, 88, 255, 0.10)',
+                      flexShrink: 0,
                     }}
                   >
                     {moduleIcons[module.key] || <Dashboard />}
@@ -201,7 +192,7 @@ const MobileHomePage: React.FC = () => {
                     variant="contained"
                     size="small"
                     onClick={() => navigate(module.route)}
-                    sx={{ flexShrink: 0 }}
+                    sx={{ flexShrink: 0, minWidth: 92 }}
                   >
                     Открыть
                   </Button>
@@ -214,8 +205,7 @@ const MobileHomePage: React.FC = () => {
             </Alert>
           )}
         </Stack>
-      </Container>
-    </Box>
+    </MobileShell>
   );
 };
 

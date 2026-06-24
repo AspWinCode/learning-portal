@@ -504,6 +504,7 @@ export const studentAccountsApi = {
     accountId: number,
     data: {
       amount: number;
+      payment_date?: string;
       finance_account_id?: number | null;
       discount_type?: 'none' | 'amount' | 'percent';
       discount_value?: number;

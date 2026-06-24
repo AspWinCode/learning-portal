@@ -137,6 +137,8 @@ async def add_payment(
         raise HTTPException(status_code=400, detail="Discount percent cannot be greater than 100")
     if discount_type == "none":
         discount_value = 0.0
+    payment_date = payload.payment_date or date.today()
+    payment_datetime = datetime.combine(payment_date, datetime.min.time(), tzinfo=timezone.utc)
 
     finance_account = None
     if payload.finance_account_id is not None:
@@ -155,12 +157,13 @@ async def add_payment(
         finance_account_id=payload.finance_account_id,
         discount_type=discount_type,
         discount_value=discount_value,
+        created_at=payment_datetime,
         note=payload.note,
     )
     finance_tx = None
     if finance_account:
         finance_tx = FinanceTransaction(
-            occurred_at=datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc),
+            occurred_at=payment_datetime,
             amount=amount,
             direction=FinanceTransactionDirection.INCOME,
             account_id=finance_account.id,
@@ -180,7 +183,7 @@ async def add_payment(
         account.balance += amount
         from app.services.student_card_period import update_card_payment_dates
 
-        update_card_payment_dates(db, account.student_id, date.today())
+        update_card_payment_dates(db, account.student_id, payment_date)
         log_student_activity(
             db,
             student_id=account.student_id,
@@ -191,6 +194,7 @@ async def add_payment(
             payload_json={
                 "account_id": account.id,
                 "amount": amount,
+                "payment_date": payment_date.isoformat(),
                 "note": payload.note,
                 "finance_account_id": payload.finance_account_id,
                 "finance_transaction_id": tx.finance_transaction_id,
@@ -208,6 +212,7 @@ async def add_payment(
         account_id,
         {
             "amount": amount,
+            "payment_date": payment_date.isoformat(),
             "finance_account_id": payload.finance_account_id,
             "finance_transaction_id": tx.finance_transaction_id,
             "discount_type": discount_type,

@@ -133,6 +133,7 @@ class StudentAccountResponse(BaseModel):
 
 class StudentAccountPaymentRequest(BaseModel):
     amount: float = Field(..., gt=0)
+    payment_date: Optional[date] = None
     finance_account_id: Optional[int] = None
     discount_type: str = "none"
     discount_value: float = 0.0

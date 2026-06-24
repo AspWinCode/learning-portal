@@ -68,6 +68,13 @@ const STUDENT_TIMELINE_TYPE_LABELS: Record<string, string> = {
 
 type FinanceAccountOption = { id: number; code: string; name: string; owner_scope: string; is_active: boolean };
 
+const getLocalDateInputValue = (value = new Date()) => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const getTimelineIcon = (type: string) => {
   switch (type) {
     case 'enrolled':
@@ -115,6 +122,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [paymentDialog, setPaymentDialog] = useState<{ account: StudentAccount; type: 'payment' | 'deduct' } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [paymentDate, setPaymentDate] = useState(getLocalDateInputValue());
   const [paymentFinanceAccountId, setPaymentFinanceAccountId] = useState<number | ''>('');
   const [paymentDiscountType, setPaymentDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
   const [paymentDiscountValue, setPaymentDiscountValue] = useState('');
@@ -168,6 +176,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPaymentDialog(null);
     setPaymentAmount('');
     setPaymentNote('');
+    setPaymentDate(getLocalDateInputValue());
     setPaymentFinanceAccountId('');
     setPaymentDiscountType('none');
     setPaymentDiscountValue('');
@@ -291,6 +300,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPaymentDialog({ account, type });
     setPaymentAmount('');
     setPaymentNote('');
+    setPaymentDate(getLocalDateInputValue());
     setPaymentError(null);
     setPaymentFinanceAccountId(type === 'payment' ? financeAccounts[0]?.id || '' : '');
     setPaymentDiscountType(type === 'payment' ? defaultDiscount.type : 'none');
@@ -340,6 +350,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
         const discountValue = Number(paymentDiscountValue.replace(',', '.')) || 0;
         await studentAccountsApi.addPayment(paymentDialog.account.id, {
           amount,
+          payment_date: paymentDate || undefined,
           finance_account_id: paymentFinanceAccountId === '' ? null : Number(paymentFinanceAccountId),
           discount_type: paymentDiscountType,
           discount_value: paymentDiscountType === 'none' ? 0 : discountValue,
@@ -357,6 +368,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setPaymentDialog(null);
       setPaymentAmount('');
       setPaymentNote('');
+      setPaymentDate(getLocalDateInputValue());
       setPaymentFinanceAccountId('');
       setPaymentDiscountType('none');
       setPaymentDiscountValue('');
@@ -1054,6 +1066,17 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   ))}
                 </Select>
               </FormControl>
+            )}
+            {paymentDialog?.type === 'payment' && (
+              <TextField
+                label="Дата пополнения"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                type="date"
+                size="small"
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+              />
             )}
             <Stack spacing={1}>
               <TextField

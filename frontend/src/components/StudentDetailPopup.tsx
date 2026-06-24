@@ -131,6 +131,12 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [paymentApplyPersonalDiscount, setPaymentApplyPersonalDiscount] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [discountDialog, setDiscountDialog] = useState<{ account: StudentAccount } | null>(null);
+  const [discountType, setDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
+  const [discountValue, setDiscountValue] = useState('');
+  const [discountPeriodStart, setDiscountPeriodStart] = useState(getLocalDateInputValue());
+  const [discountLoading, setDiscountLoading] = useState(false);
+  const [discountError, setDiscountError] = useState<string | null>(null);
   const [financeAccounts, setFinanceAccounts] = useState<FinanceAccountOption[]>([]);
   const [transactions, setTransactions] = useState<StudentAccountTransaction[]>([]);
   const [transactionsAccountId, setTransactionsAccountId] = useState<number | null>(null);
@@ -184,6 +190,11 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPaymentDiscountType('none');
     setPaymentDiscountValue('');
     setPaymentApplyPersonalDiscount(false);
+    setDiscountDialog(null);
+    setDiscountType('none');
+    setDiscountValue('');
+    setDiscountPeriodStart(getLocalDateInputValue());
+    setDiscountError(null);
     setFinanceAccounts([]);
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
@@ -312,6 +323,15 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPaymentApplyPersonalDiscount(type === 'payment' && defaultDiscount.type !== 'none');
   };
 
+  const openDiscountDialog = (account: StudentAccount) => {
+    const currentDiscount = getDefaultPaymentDiscount();
+    setDiscountDialog({ account });
+    setDiscountType(currentDiscount.type);
+    setDiscountValue(currentDiscount.value);
+    setDiscountPeriodStart(studentCard?.learning_period_start || getLocalDateInputValue());
+    setDiscountError(null);
+  };
+
   const loadTimeline = async () => {
     if (!studentId) return;
     const data = await studentsApi.getTimeline(studentId, {
@@ -391,6 +411,45 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setPaymentError(err.response?.data?.detail || 'Ошибка операции');
     } finally {
       setPaymentLoading(false);
+    }
+  };
+
+  const handleApplyDiscount = async () => {
+    if (!discountDialog || !studentId) return;
+    const value = Number(discountValue.replace(',', '.')) || 0;
+    if (discountType !== 'none' && value < 0) {
+      setDiscountError('Размер скидки не может быть отрицательным');
+      return;
+    }
+    if (discountType === 'percent' && value > 100) {
+      setDiscountError('Процент скидки не может быть больше 100');
+      return;
+    }
+    setDiscountLoading(true);
+    setDiscountError(null);
+    try {
+      await studentAccountsApi.applyPersonalDiscount(discountDialog.account.id, {
+        discount_type: discountType,
+        discount_value: discountType === 'none' ? 0 : value,
+        period_start: discountPeriodStart || undefined,
+      });
+      const [updatedAccounts, freshStudent, freshCards] = await Promise.all([
+        studentsApi.getAccounts(studentId),
+        studentsApi.getById(studentId),
+        canSeeAbsences ? studentCardsApi.list({ student_id: studentId }).catch(() => []) : Promise.resolve([]),
+      ]);
+      setAccounts(updatedAccounts);
+      setStudent(freshStudent);
+      setStudentCard(Array.isArray(freshCards) && freshCards.length > 0 ? freshCards[0] : studentCard);
+      if (transactionsAccountId === discountDialog.account.id) {
+        const txs = await studentAccountsApi.getTransactions(discountDialog.account.id);
+        setTransactions(txs);
+      }
+      setDiscountDialog(null);
+    } catch (err: any) {
+      setDiscountError(err.response?.data?.detail || 'Не удалось применить скидку');
+    } finally {
+      setDiscountLoading(false);
     }
   };
 
@@ -819,6 +878,10 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                   onClick={() => openPaymentDialog(acc, 'deduct')}>
                                   Списать
                                 </Button>
+                                <Button size="small" variant="outlined"
+                                  onClick={() => openDiscountDialog(acc)}>
+                                  Скидка
+                                </Button>
                                 <Button size="small" variant="text"
                                   onClick={() => openTransactions(acc)}>
                                   {transactionsAccountId === acc.id ? 'Скрыть' : 'История'}
@@ -1182,6 +1245,64 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
             disabled={!paymentAmount || paymentLoading}
           >
             {paymentLoading ? 'Сохранение…' : paymentDialog?.type === 'payment' ? 'Пополнить' : 'Списать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!discountDialog} onClose={() => setDiscountDialog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Скидка и перерасчет</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {discountError && <Alert severity="error" onClose={() => setDiscountError(null)}>{discountError}</Alert>}
+            <Typography variant="body2" color="text.secondary">
+              Счет ученика: <strong>{discountDialog?.account.name}</strong>. Скидка будет применена к ученику без пополнения счета.
+            </Typography>
+            <TextField
+              label="Дата начала пересчета"
+              value={discountPeriodStart}
+              onChange={(e) => setDiscountPeriodStart(e.target.value)}
+              type="date"
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px 1fr' }, gap: 1 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Скидка</InputLabel>
+                <Select
+                  value={discountType}
+                  label="Скидка"
+                  onChange={(e) => {
+                    const next = e.target.value as 'none' | 'amount' | 'percent';
+                    setDiscountType(next);
+                    if (next === 'none') setDiscountValue('');
+                  }}
+                >
+                  <MenuItem value="none">Нет</MenuItem>
+                  <MenuItem value="amount">Сумма</MenuItem>
+                  <MenuItem value="percent">Процент</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                label={discountType === 'percent' ? 'Размер скидки, %' : 'Размер скидки, ₽'}
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                disabled={discountType === 'none'}
+                type="number"
+                size="small"
+                inputProps={{ min: 0, max: discountType === 'percent' ? 100 : undefined, step: 1 }}
+                fullWidth
+              />
+            </Box>
+            <Alert severity="info">
+              Система обновит персональную скидку ученика и пересчитает уже созданные базовые списания по этому счету начиная с выбранной даты.
+            </Alert>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDiscountDialog(null)}>Отмена</Button>
+          <Button variant="contained" onClick={handleApplyDiscount} disabled={discountLoading}>
+            {discountLoading ? 'Пересчет…' : 'Применить и пересчитать'}
           </Button>
         </DialogActions>
       </Dialog>

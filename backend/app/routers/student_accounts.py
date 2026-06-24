@@ -29,6 +29,7 @@ from app.models import (
 from app.routers.action_log import log_action
 from app.schemas.students import (
     StudentAccountDeductRequest,
+    StudentAccountDiscountRecalculateRequest,
     StudentAccountPaymentRequest,
     StudentAccountResponse,
     StudentAccountTransactionResponse,
@@ -37,6 +38,39 @@ from app.schemas.students import (
 from app.services.student_activity import log_student_activity
 
 router = APIRouter()
+
+
+def _normalize_discount(discount_type: str, discount_value: float) -> tuple[str, float, DiscountType]:
+    normalized_type = (discount_type or "none").strip().lower()
+    if normalized_type not in {"none", "amount", "percent"}:
+        raise HTTPException(status_code=400, detail="Invalid discount type")
+    normalized_value = float(discount_value or 0.0)
+    if normalized_value < 0:
+        raise HTTPException(status_code=400, detail="Discount cannot be negative")
+    if normalized_type == "percent" and normalized_value > 100:
+        raise HTTPException(status_code=400, detail="Discount percent cannot be greater than 100")
+    if normalized_type == "none":
+        normalized_value = 0.0
+    return normalized_type, normalized_value, DiscountType(normalized_type)
+
+
+def _get_or_create_student_card(db: Session, student: Student) -> StudentCard:
+    card = db.query(StudentCard).filter(StudentCard.student_id == student.id).first()
+    if card:
+        return card
+    card = StudentCard(student_id=student.id, student_full_name=student.full_name)
+    db.add(card)
+    db.flush()
+    return card
+
+
+def _apply_student_discount(db: Session, student: Student, discount_type: DiscountType, discount_value: float) -> StudentCard:
+    student.discount_type = discount_type
+    student.discount_value = discount_value
+    card = _get_or_create_student_card(db, student)
+    card.discount_type = discount_type
+    card.discount_value = discount_value
+    return card
 
 
 def _recalculate_current_period_lesson_deductions(db: Session, account: StudentAccount, period_start: date) -> None:
@@ -165,17 +199,7 @@ async def add_payment(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма пополнения должна быть больше 0")
 
-    discount_type = (payload.discount_type or "none").strip().lower()
-    if discount_type not in {"none", "amount", "percent"}:
-        raise HTTPException(status_code=400, detail="Invalid discount type")
-    discount_value = float(payload.discount_value or 0.0)
-    if discount_value < 0:
-        raise HTTPException(status_code=400, detail="Discount cannot be negative")
-    if discount_type == "percent" and discount_value > 100:
-        raise HTTPException(status_code=400, detail="Discount percent cannot be greater than 100")
-    if discount_type == "none":
-        discount_value = 0.0
-    discount_enum = DiscountType(discount_type)
+    discount_type, discount_value, discount_enum = _normalize_discount(payload.discount_type, payload.discount_value)
     apply_personal_discount = bool(payload.apply_personal_discount)
     payment_date = payload.payment_date or date.today()
     payment_datetime = datetime.combine(payment_date, datetime.min.time(), tzinfo=timezone.utc)
@@ -224,16 +248,11 @@ async def add_payment(
         if apply_personal_discount:
             student = db.query(Student).filter(Student.id == account.student_id).first()
             if student:
-                student.discount_type = discount_enum
-                student.discount_value = discount_value
+                _apply_student_discount(db, student, discount_enum, discount_value)
         from app.services.student_card_period import update_card_payment_dates
 
         update_card_payment_dates(db, account.student_id, payment_date)
         if apply_personal_discount:
-            card = db.query(StudentCard).filter(StudentCard.student_id == account.student_id).first()
-            if card:
-                card.discount_type = discount_enum
-                card.discount_value = discount_value
             _recalculate_current_period_lesson_deductions(db, account, payment_date)
         log_student_activity(
             db,
@@ -270,6 +289,42 @@ async def add_payment(
             "discount_type": discount_type,
             "discount_value": discount_value,
             "apply_personal_discount": apply_personal_discount,
+        },
+    )
+    return account
+
+
+@router.post("/{account_id}/personal-discount", response_model=StudentAccountResponse)
+async def apply_personal_discount_and_recalculate(
+    account_id: int,
+    payload: StudentAccountDiscountRecalculateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("student_accounts.manage")),
+):
+    account = _get_account_and_check(db, account_id, current_user)
+    student = db.query(Student).filter(Student.id == account.student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    discount_type, discount_value, discount_enum = _normalize_discount(payload.discount_type, payload.discount_value)
+    card = db.query(StudentCard).filter(StudentCard.student_id == student.id).first()
+    period_start = payload.period_start or (card.learning_period_start if card and card.learning_period_start else date.today())
+
+    with db_transaction(db):
+        _apply_student_discount(db, student, discount_enum, discount_value)
+        _recalculate_current_period_lesson_deductions(db, account, period_start)
+
+    db.refresh(account)
+    log_action(
+        db,
+        current_user.id,
+        "student_account_discount_recalculate",
+        "student_account",
+        account_id,
+        {
+            "discount_type": discount_type,
+            "discount_value": discount_value,
+            "period_start": period_start.isoformat(),
         },
     )
     return account

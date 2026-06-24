@@ -141,6 +141,12 @@ class StudentAccountPaymentRequest(BaseModel):
     note: Optional[str] = None
 
 
+class StudentAccountDiscountRecalculateRequest(BaseModel):
+    discount_type: str = "none"
+    discount_value: float = 0.0
+    period_start: Optional[date] = None
+
+
 class StudentAccountDeductRequest(BaseModel):
     amount: float = Field(..., gt=0)
     note: Optional[str] = None

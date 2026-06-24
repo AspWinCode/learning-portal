@@ -515,6 +515,17 @@ export const studentAccountsApi = {
     const response = await api.post(`/api/student-accounts/${accountId}/payment`, data);
     return response.data;
   },
+  applyPersonalDiscount: async (
+    accountId: number,
+    data: {
+      discount_type: 'none' | 'amount' | 'percent';
+      discount_value: number;
+      period_start?: string;
+    }
+  ): Promise<StudentAccount> => {
+    const response = await api.post(`/api/student-accounts/${accountId}/personal-discount`, data);
+    return response.data;
+  },
   deduct: async (accountId: number, data: { amount: number; note?: string; lesson_attendance_id?: number }): Promise<StudentAccount> => {
     const response = await api.post(`/api/student-accounts/${accountId}/deduct`, data);
     return response.data;

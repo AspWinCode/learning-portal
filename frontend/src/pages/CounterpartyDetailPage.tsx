@@ -1201,12 +1201,20 @@ const CounterpartyDetailPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <TextField
-              label="Ответственный (ID)"
-              value={projectForm.owner_id}
-              onChange={(e) => setProjectForm((prev) => ({ ...prev, owner_id: e.target.value }))}
-              fullWidth
-              type="number"
+            <Autocomplete
+              options={users}
+              getOptionLabel={(option) => option.full_name || option.email || `#${option.id}`}
+              value={users.find((item) => String(item.id) === projectForm.owner_id) || null}
+              onChange={(_, value) =>
+                setProjectForm((prev) => ({
+                  ...prev,
+                  owner_id: value ? String(value.id) : '',
+                }))
+              }
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              renderInput={(params) => (
+                <TextField {...params} label="Ответственный" placeholder="Выберите пользователя" fullWidth />
+              )}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField

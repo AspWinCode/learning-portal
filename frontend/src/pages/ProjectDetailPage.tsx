@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
+  Autocomplete,
   Box,
   Breadcrumbs,
   Button,
@@ -1268,12 +1269,20 @@ const ProjectDetailPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <TextField
-              label="Ответственный (ID)"
-              value={editForm.owner_id}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, owner_id: e.target.value }))}
-              fullWidth
-              type="number"
+            <Autocomplete
+              options={users}
+              getOptionLabel={(option) => option.full_name || option.email || `#${option.id}`}
+              value={users.find((item) => String(item.id) === editForm.owner_id) || null}
+              onChange={(_, value) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  owner_id: value ? String(value.id) : '',
+                }))
+              }
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              renderInput={(params) => (
+                <TextField {...params} label="Ответственный" placeholder="Выберите пользователя" fullWidth />
+              )}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
@@ -1472,17 +1481,21 @@ const ProjectDetailPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Ответственный (ID)"
-                value={subprojectForm.owner_id}
-                onChange={(e) =>
-                  setSubprojectForm((prev) => ({ ...prev, owner_id: e.target.value }))
-                }
-                fullWidth
-                type="number"
-              />
-            </Stack>
+            <Autocomplete
+              options={users}
+              getOptionLabel={(option) => option.full_name || option.email || `#${option.id}`}
+              value={users.find((item) => String(item.id) === subprojectForm.owner_id) || null}
+              onChange={(_, value) =>
+                setSubprojectForm((prev) => ({
+                  ...prev,
+                  owner_id: value ? String(value.id) : '',
+                }))
+              }
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              renderInput={(params) => (
+                <TextField {...params} label="Ответственный" placeholder="Выберите пользователя" fullWidth />
+              )}
+            />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
                 label="Начало проекта"

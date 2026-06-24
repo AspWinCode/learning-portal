@@ -500,7 +500,16 @@ export const studentAccountsApi = {
     const response = await api.patch(`/api/student-accounts/${accountId}`, data);
     return response.data;
   },
-  addPayment: async (accountId: number, data: { amount: number; note?: string }): Promise<StudentAccount> => {
+  addPayment: async (
+    accountId: number,
+    data: {
+      amount: number;
+      finance_account_id?: number | null;
+      discount_type?: 'none' | 'amount' | 'percent';
+      discount_value?: number;
+      note?: string;
+    }
+  ): Promise<StudentAccount> => {
     const response = await api.post(`/api/student-accounts/${accountId}/payment`, data);
     return response.data;
   },

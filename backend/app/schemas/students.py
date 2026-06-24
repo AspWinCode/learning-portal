@@ -108,6 +108,10 @@ class StudentAccountTransactionResponse(BaseModel):
     account_id: int
     amount: float
     kind: str
+    finance_account_id: Optional[int] = None
+    finance_transaction_id: Optional[int] = None
+    discount_type: str = "none"
+    discount_value: float = 0.0
     note: Optional[str] = None
     lesson_attendance_id: Optional[int] = None
     created_at: datetime
@@ -129,6 +133,9 @@ class StudentAccountResponse(BaseModel):
 
 class StudentAccountPaymentRequest(BaseModel):
     amount: float = Field(..., gt=0)
+    finance_account_id: Optional[int] = None
+    discount_type: str = "none"
+    discount_value: float = 0.0
     note: Optional[str] = None
 
 

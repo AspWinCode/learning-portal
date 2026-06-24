@@ -1,6 +1,6 @@
 """Student accounts: top-ups and lesson deductions."""
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,6 +9,10 @@ from sqlalchemy.orm import Session, selectinload
 from app import auth
 from app.database import db_transaction, get_db
 from app.models import (
+    FinanceAccount,
+    FinanceTransaction,
+    FinanceTransactionDirection,
+    FinanceTransactionStatus,
     Group,
     GroupStudent,
     Student,
@@ -123,14 +127,55 @@ async def add_payment(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма пополнения должна быть больше 0")
 
+    discount_type = (payload.discount_type or "none").strip().lower()
+    if discount_type not in {"none", "amount", "percent"}:
+        raise HTTPException(status_code=400, detail="Invalid discount type")
+    discount_value = float(payload.discount_value or 0.0)
+    if discount_value < 0:
+        raise HTTPException(status_code=400, detail="Discount cannot be negative")
+    if discount_type == "percent" and discount_value > 100:
+        raise HTTPException(status_code=400, detail="Discount percent cannot be greater than 100")
+    if discount_type == "none":
+        discount_value = 0.0
+
+    finance_account = None
+    if payload.finance_account_id is not None:
+        finance_account = (
+            db.query(FinanceAccount)
+            .filter(FinanceAccount.id == payload.finance_account_id, FinanceAccount.is_active.is_(True))
+            .first()
+        )
+        if not finance_account:
+            raise HTTPException(status_code=400, detail="Finance account not found or inactive")
+
     tx = StudentAccountTransaction(
         account_id=account_id,
         amount=amount,
         kind=StudentAccountTransactionKind.PAYMENT,
+        finance_account_id=payload.finance_account_id,
+        discount_type=discount_type,
+        discount_value=discount_value,
         note=payload.note,
     )
+    finance_tx = None
+    if finance_account:
+        finance_tx = FinanceTransaction(
+            occurred_at=datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc),
+            amount=amount,
+            direction=FinanceTransactionDirection.INCOME,
+            account_id=finance_account.id,
+            counterparty_name=account.student.full_name if account.student else None,
+            description_raw=payload.note or f"Student account payment: {account.name}",
+            bank_source="student_account",
+            student_id=account.student_id,
+            status=FinanceTransactionStatus.CLASSIFIED,
+        )
 
     with db_transaction(db):
+        if finance_tx:
+            db.add(finance_tx)
+            db.flush()
+            tx.finance_transaction_id = finance_tx.id
         db.add(tx)
         account.balance += amount
         from app.services.student_card_period import update_card_payment_dates
@@ -143,11 +188,32 @@ async def add_payment(
             title="Получена оплата",
             description=f"Сумма: {amount} ₽",
             created_by=current_user.id,
-            payload_json={"account_id": account.id, "amount": amount, "note": payload.note},
+            payload_json={
+                "account_id": account.id,
+                "amount": amount,
+                "note": payload.note,
+                "finance_account_id": payload.finance_account_id,
+                "finance_transaction_id": tx.finance_transaction_id,
+                "discount_type": discount_type,
+                "discount_value": discount_value,
+            },
         )
 
     db.refresh(account)
-    log_action(db, current_user.id, "student_account_payment", "student_account", account_id, {"amount": amount})
+    log_action(
+        db,
+        current_user.id,
+        "student_account_payment",
+        "student_account",
+        account_id,
+        {
+            "amount": amount,
+            "finance_account_id": payload.finance_account_id,
+            "finance_transaction_id": tx.finance_transaction_id,
+            "discount_type": discount_type,
+            "discount_value": discount_value,
+        },
+    )
     return account
 
 
@@ -215,8 +281,13 @@ async def delete_account_transaction(
         raise HTTPException(status_code=404, detail="Операция не найдена")
 
     kind = tx.kind
+    finance_transaction_id = tx.finance_transaction_id
     with db_transaction(db):
         account.balance -= float(tx.amount or 0.0)
+        if finance_transaction_id:
+            finance_tx = db.query(FinanceTransaction).filter(FinanceTransaction.id == finance_transaction_id).first()
+            if finance_tx:
+                db.delete(finance_tx)
         db.delete(tx)
 
         if kind == StudentAccountTransactionKind.PAYMENT:

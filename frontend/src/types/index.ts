@@ -257,6 +257,10 @@ export interface StudentAccountTransaction {
   account_id: number;
   amount: number;
   kind: 'payment' | 'lesson_deduction';
+  finance_account_id?: number | null;
+  finance_transaction_id?: number | null;
+  discount_type?: 'none' | 'amount' | 'percent';
+  discount_value?: number;
   note?: string | null;
   lesson_attendance_id?: number | null;
   created_at: string;

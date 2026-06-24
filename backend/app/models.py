@@ -295,11 +295,17 @@ class StudentAccountTransaction(Base):
         SQLEnum(StudentAccountTransactionKind, values_callable=_enum_values, native_enum=False),
         nullable=False,
     )
+    finance_account_id = Column(Integer, ForeignKey("finance_accounts.id"), nullable=True, index=True)
+    finance_transaction_id = Column(Integer, ForeignKey("finance_transactions.id"), nullable=True, index=True)
+    discount_type = Column(String(16), nullable=False, default="none")
+    discount_value = Column(Float, nullable=False, default=0.0)
     note = Column(String, nullable=True)
     lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     account = relationship("StudentAccount", back_populates="transactions")
+    finance_account = relationship("FinanceAccount", foreign_keys=[finance_account_id])
+    finance_transaction = relationship("FinanceTransaction", foreign_keys=[finance_transaction_id])
 
 
 class Abonement(Base):

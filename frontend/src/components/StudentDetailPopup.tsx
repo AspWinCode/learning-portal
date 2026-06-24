@@ -38,7 +38,7 @@ import StarIcon from '@mui/icons-material/Star';
 import DescriptionIcon from '@mui/icons-material/Description';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi } from '../services/api';
+import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi, financeApi } from '../services/api';
 import { Student, Abonement, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentAccountTransaction, StudentCard, StudentTimelineEvent } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
@@ -65,6 +65,8 @@ const STUDENT_TIMELINE_TYPE_LABELS: Record<string, string> = {
   makeup_scheduled: 'Отработка назначена',
   makeup_done: 'Отработка проведена',
 };
+
+type FinanceAccountOption = { id: number; code: string; name: string; owner_scope: string; is_active: boolean };
 
 const getTimelineIcon = (type: string) => {
   switch (type) {
@@ -113,8 +115,12 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [paymentDialog, setPaymentDialog] = useState<{ account: StudentAccount; type: 'payment' | 'deduct' } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [paymentFinanceAccountId, setPaymentFinanceAccountId] = useState<number | ''>('');
+  const [paymentDiscountType, setPaymentDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
+  const [paymentDiscountValue, setPaymentDiscountValue] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [financeAccounts, setFinanceAccounts] = useState<FinanceAccountOption[]>([]);
   const [transactions, setTransactions] = useState<StudentAccountTransaction[]>([]);
   const [transactionsAccountId, setTransactionsAccountId] = useState<number | null>(null);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
@@ -127,6 +133,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const canSeeAbsences = hasPermission(user, 'sales.access');
   const canAccessAccounts = hasPermission(user, 'student_accounts.access');
   const canManageAccounts = hasPermission(user, 'student_accounts.manage');
+  const canRecordPayments = hasPermission(user, 'student_accounts.payment');
   const canInviteParent = hasPermission(user, 'students.manage') && !!student?.parent_id;
   const isOwner = effectiveRole === 'owner';
   const [freezes, setFreezes] = useState<Array<{ id: number; freeze_start: string; freeze_end: string }>>([]);
@@ -161,6 +168,10 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPaymentDialog(null);
     setPaymentAmount('');
     setPaymentNote('');
+    setPaymentFinanceAccountId('');
+    setPaymentDiscountType('none');
+    setPaymentDiscountValue('');
+    setFinanceAccounts([]);
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),
@@ -169,6 +180,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       canAccessAccounts ? studentsApi.getAccounts(studentId) : Promise.resolve([]),
       canSeeAbsences ? studentCardsApi.list({ student_id: studentId }).then((cards) => (cards && cards[0]) || null) : Promise.resolve(null),
       abonementsApi.getAll().catch(() => []),
+      canRecordPayments ? financeApi.listAccounts().catch(() => []) : Promise.resolve([]),
     ];
     if (isOwner) promises.push(salesApi.getStudentFreezes(studentId));
     Promise.all(promises)
@@ -180,7 +192,8 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
         const acc = results[4];
         const card = results[5] as StudentCard | null;
         const abons = results[6] as Abonement[];
-        const frz = results[7];
+        const finAccounts = results[7] as FinanceAccountOption[];
+        const frz = results[8];
         setStudent(s);
         setAttendances(att);
         setTimelineEvents((timeline || []) as StudentTimelineEvent[]);
@@ -188,13 +201,14 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
         setAccounts((acc || []) as StudentAccount[]);
         setStudentCard(card ?? null);
         setAbonements(Array.isArray(abons) ? abons : []);
+        setFinanceAccounts(Array.isArray(finAccounts) ? finAccounts : []);
         setTochkaPayerEdit(false);
         setTochkaPayerValue(card?.tochka_payer_name || '');
         if (isOwner && Array.isArray(frz)) setFreezes(frz.map((f: any) => ({ id: f.id, freeze_start: f.freeze_start, freeze_end: f.freeze_end })));
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Ошибка загрузки'))
       .finally(() => setLoading(false));
-  }, [open, studentId, canSeeAbsences, canAccessAccounts, isOwner]);
+  }, [open, studentId, canSeeAbsences, canAccessAccounts, canRecordPayments, isOwner]);
 
   const loadAccounts = async () => {
     if (!studentId) return;
@@ -241,6 +255,48 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     }
   };
 
+  const formatMoney = (value: number) =>
+    new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(value || 0);
+
+  const getPaymentAbonement = (): Abonement | undefined => {
+    const abonementId = studentCard?.abonement_id ?? student?.abonement_id;
+    return studentCard?.abonement || student?.abonement || abonements.find((a) => a.id === abonementId);
+  };
+
+  const getCurrentPaymentDiscount = () => {
+    const type = paymentDiscountType;
+    const value = Number(paymentDiscountValue.replace(',', '.')) || 0;
+    return { type, value: type === 'none' ? 0 : value };
+  };
+
+  const getPaymentAmountFromAbonement = () => {
+    const abonement = getPaymentAbonement();
+    if (!abonement) return null;
+    const base = Number(abonement.price || 0);
+    const { type, value } = getCurrentPaymentDiscount();
+    const discount = type === 'percent' ? (base * Math.min(value, 100)) / 100 : type === 'amount' ? value : 0;
+    return Math.max(0, Math.round((base - discount) * 100) / 100);
+  };
+
+  const getDefaultPaymentDiscount = () => {
+    const source = studentCard || student;
+    return {
+      type: (source?.discount_type || 'none') as 'none' | 'amount' | 'percent',
+      value: source?.discount_value ? String(source.discount_value) : '',
+    };
+  };
+
+  const openPaymentDialog = (account: StudentAccount, type: 'payment' | 'deduct') => {
+    const defaultDiscount = getDefaultPaymentDiscount();
+    setPaymentDialog({ account, type });
+    setPaymentAmount('');
+    setPaymentNote('');
+    setPaymentError(null);
+    setPaymentFinanceAccountId(type === 'payment' ? financeAccounts[0]?.id || '' : '');
+    setPaymentDiscountType(type === 'payment' ? defaultDiscount.type : 'none');
+    setPaymentDiscountValue(type === 'payment' ? defaultDiscount.value : '');
+  };
+
   const loadTimeline = async () => {
     if (!studentId) return;
     const data = await studentsApi.getTimeline(studentId, {
@@ -281,7 +337,14 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPaymentError(null);
     try {
       if (paymentDialog.type === 'payment') {
-        await studentAccountsApi.addPayment(paymentDialog.account.id, { amount, note: paymentNote.trim() || undefined });
+        const discountValue = Number(paymentDiscountValue.replace(',', '.')) || 0;
+        await studentAccountsApi.addPayment(paymentDialog.account.id, {
+          amount,
+          finance_account_id: paymentFinanceAccountId === '' ? null : Number(paymentFinanceAccountId),
+          discount_type: paymentDiscountType,
+          discount_value: paymentDiscountType === 'none' ? 0 : discountValue,
+          note: paymentNote.trim() || undefined,
+        });
       } else {
         await studentAccountsApi.deduct(paymentDialog.account.id, { amount, note: paymentNote.trim() || undefined });
       }
@@ -294,6 +357,9 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setPaymentDialog(null);
       setPaymentAmount('');
       setPaymentNote('');
+      setPaymentFinanceAccountId('');
+      setPaymentDiscountType('none');
+      setPaymentDiscountValue('');
     } catch (err: any) {
       setPaymentError(err.response?.data?.detail || 'Ошибка операции');
     } finally {
@@ -719,11 +785,11 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                             {canManageAccounts && (
                               <Stack direction="row" spacing={1}>
                                 <Button size="small" variant="contained" color="success"
-                                  onClick={() => { setPaymentDialog({ account: acc, type: 'payment' }); setPaymentAmount(''); setPaymentNote(''); setPaymentError(null); }}>
+                                  onClick={() => openPaymentDialog(acc, 'payment')}>
                                   Пополнить
                                 </Button>
                                 <Button size="small" variant="outlined" color="warning"
-                                  onClick={() => { setPaymentDialog({ account: acc, type: 'deduct' }); setPaymentAmount(''); setPaymentNote(''); setPaymentError(null); }}>
+                                  onClick={() => openPaymentDialog(acc, 'deduct')}>
                                   Списать
                                 </Button>
                                 <Button size="small" variant="text"
@@ -767,10 +833,20 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                         <TableCell align="right" sx={{ color: tx.kind === 'payment' ? 'success.main' : 'text.secondary', fontWeight: 500 }}>
                                           {tx.kind === 'payment' ? '+' : '-'}{Math.abs(tx.amount)} ₽
                                         </TableCell>
-                                        <TableCell sx={{ maxWidth: 200 }}>
+                                        <TableCell sx={{ maxWidth: 260 }}>
                                           <Typography variant="body2" noWrap title={tx.note || ''}>
                                             {tx.note || '—'}
                                           </Typography>
+                                          {tx.kind === 'payment' && tx.finance_account_id ? (
+                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }} noWrap>
+                                              Счёт поступления: {financeAccounts.find((acc) => acc.id === tx.finance_account_id)?.name || `#${tx.finance_account_id}`}
+                                            </Typography>
+                                          ) : null}
+                                          {tx.kind === 'payment' && tx.discount_type && tx.discount_type !== 'none' ? (
+                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                              Скидка: {tx.discount_type === 'percent' ? `${tx.discount_value || 0}%` : formatMoney(tx.discount_value || 0)}
+                                            </Typography>
+                                          ) : null}
                                         </TableCell>
                                       </TableRow>
                                     ))}
@@ -898,7 +974,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
         )}
       </DialogContent>
 
-      <Dialog open={!!paymentDialog} onClose={() => setPaymentDialog(null)} maxWidth="xs" fullWidth>
+      <Dialog open={false && !!paymentDialog} onClose={() => setPaymentDialog(null)} maxWidth="sm" fullWidth>
         <DialogTitle>{paymentDialog?.type === 'payment' ? 'Пополнение счёта' : 'Списание со счёта'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
@@ -929,6 +1005,109 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   >
                     Цена абонемента: {abonPrice} ₽
                   </Button>
+                );
+              })()}
+            </Stack>
+            <TextField
+              label="Примечание (необязательно)"
+              value={paymentNote}
+              onChange={(e) => setPaymentNote(e.target.value)}
+              fullWidth
+              size="small"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentDialog(null)}>Отмена</Button>
+          <Button
+            variant="contained"
+            color={paymentDialog?.type === 'payment' ? 'success' : 'warning'}
+            onClick={handlePaymentOrDeduct}
+            disabled={!paymentAmount || paymentLoading}
+          >
+            {paymentLoading ? 'Сохранение…' : paymentDialog?.type === 'payment' ? 'Пополнить' : 'Списать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!paymentDialog} onClose={() => setPaymentDialog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{paymentDialog?.type === 'payment' ? 'Пополнение счёта' : 'Списание со счёта'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {paymentError && <Alert severity="error" onClose={() => setPaymentError(null)}>{paymentError}</Alert>}
+            <Typography variant="body2" color="text.secondary">
+              Счёт ученика: <strong>{paymentDialog?.account.name}</strong> · Баланс: {formatMoney(paymentDialog?.account.balance ?? 0)}
+            </Typography>
+            {paymentDialog?.type === 'payment' && (
+              <FormControl fullWidth size="small">
+                <InputLabel>Куда поступили деньги</InputLabel>
+                <Select
+                  value={paymentFinanceAccountId}
+                  label="Куда поступили деньги"
+                  onChange={(e) => setPaymentFinanceAccountId(e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  <MenuItem value="">Не указывать</MenuItem>
+                  {financeAccounts.map((account) => (
+                    <MenuItem key={account.id} value={account.id}>
+                      {account.name}{account.code ? ` (${account.code})` : ''}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            <Stack spacing={1}>
+              <TextField
+                label="Сумма, ₽"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                type="number"
+                inputProps={{ min: 0, step: 1 }}
+                autoFocus
+                fullWidth
+              />
+              {paymentDialog?.type === 'payment' && (() => {
+                const abonement = getPaymentAbonement();
+                const finalAmount = getPaymentAmountFromAbonement();
+                if (!abonement || finalAmount == null) return null;
+                return (
+                  <Stack spacing={1}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px 1fr' }, gap: 1 }}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Скидка</InputLabel>
+                        <Select
+                          value={paymentDiscountType}
+                          label="Скидка"
+                          onChange={(e) => {
+                            const next = e.target.value as 'none' | 'amount' | 'percent';
+                            setPaymentDiscountType(next);
+                            if (next === 'none') setPaymentDiscountValue('');
+                          }}
+                        >
+                          <MenuItem value="none">Нет</MenuItem>
+                          <MenuItem value="amount">Сумма</MenuItem>
+                          <MenuItem value="percent">Процент</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        label={paymentDiscountType === 'percent' ? 'Размер скидки, %' : 'Размер скидки, ₽'}
+                        value={paymentDiscountValue}
+                        onChange={(e) => setPaymentDiscountValue(e.target.value)}
+                        disabled={paymentDiscountType === 'none'}
+                        type="number"
+                        size="small"
+                        inputProps={{ min: 0, max: paymentDiscountType === 'percent' ? 100 : undefined, step: 1 }}
+                        fullWidth
+                      />
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      sx={{ alignSelf: 'flex-start' }}
+                      onClick={() => setPaymentAmount(String(finalAmount))}
+                    >
+                      Подставить сумму абонемента: {formatMoney(abonement.price)} → {formatMoney(finalAmount)}
+                    </Button>
+                  </Stack>
                 );
               })()}
             </Stack>

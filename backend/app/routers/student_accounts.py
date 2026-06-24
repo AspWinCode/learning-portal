@@ -15,10 +15,13 @@ from app.models import (
     FinanceTransactionStatus,
     Group,
     GroupStudent,
+    LessonAttendance,
+    DiscountType,
     Student,
     StudentAccount,
     StudentAccountTransaction,
     StudentAccountTransactionKind,
+    StudentCard,
     StudentStatus,
     User,
     UserRole,
@@ -34,6 +37,41 @@ from app.schemas.students import (
 from app.services.student_activity import log_student_activity
 
 router = APIRouter()
+
+
+def _recalculate_current_period_lesson_deductions(db: Session, account: StudentAccount, period_start: date) -> None:
+    student = db.query(Student).filter(Student.id == account.student_id).first()
+    if not student:
+        return
+    abonement = getattr(student, "abonement", None)
+    if not abonement and student.abonement_id:
+        from app.models import Abonement
+
+        abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
+    if not abonement or not getattr(abonement, "price", None):
+        return
+
+    from app.services.pricing import student_abonement_price
+
+    price_per_unit = student_abonement_price(student, abonement) / 8
+    rows = (
+        db.query(StudentAccountTransaction, LessonAttendance)
+        .join(LessonAttendance, LessonAttendance.id == StudentAccountTransaction.lesson_attendance_id)
+        .filter(
+            StudentAccountTransaction.account_id == account.id,
+            StudentAccountTransaction.kind == StudentAccountTransactionKind.LESSON_DEDUCTION,
+            LessonAttendance.lesson_date >= period_start,
+        )
+        .all()
+    )
+    for tx, attendance in rows:
+        units = float(getattr(attendance, "base_units_applied", None) or 1)
+        new_amount = -round(price_per_unit * units, 2)
+        old_amount = float(tx.amount or 0.0)
+        if round(old_amount, 2) == new_amount:
+            continue
+        tx.amount = new_amount
+        account.balance += new_amount - old_amount
 
 
 def _student_accounts_effective_role(user: User) -> UserRole:
@@ -137,6 +175,8 @@ async def add_payment(
         raise HTTPException(status_code=400, detail="Discount percent cannot be greater than 100")
     if discount_type == "none":
         discount_value = 0.0
+    discount_enum = DiscountType(discount_type)
+    apply_personal_discount = bool(payload.apply_personal_discount)
     payment_date = payload.payment_date or date.today()
     payment_datetime = datetime.combine(payment_date, datetime.min.time(), tzinfo=timezone.utc)
 
@@ -181,9 +221,20 @@ async def add_payment(
             tx.finance_transaction_id = finance_tx.id
         db.add(tx)
         account.balance += amount
+        if apply_personal_discount:
+            student = db.query(Student).filter(Student.id == account.student_id).first()
+            if student:
+                student.discount_type = discount_enum
+                student.discount_value = discount_value
         from app.services.student_card_period import update_card_payment_dates
 
         update_card_payment_dates(db, account.student_id, payment_date)
+        if apply_personal_discount:
+            card = db.query(StudentCard).filter(StudentCard.student_id == account.student_id).first()
+            if card:
+                card.discount_type = discount_enum
+                card.discount_value = discount_value
+            _recalculate_current_period_lesson_deductions(db, account, payment_date)
         log_student_activity(
             db,
             student_id=account.student_id,
@@ -200,6 +251,7 @@ async def add_payment(
                 "finance_transaction_id": tx.finance_transaction_id,
                 "discount_type": discount_type,
                 "discount_value": discount_value,
+                "apply_personal_discount": apply_personal_discount,
             },
         )
 
@@ -217,6 +269,7 @@ async def add_payment(
             "finance_transaction_id": tx.finance_transaction_id,
             "discount_type": discount_type,
             "discount_value": discount_value,
+            "apply_personal_discount": apply_personal_discount,
         },
     )
     return account

@@ -508,6 +508,7 @@ export const studentAccountsApi = {
       finance_account_id?: number | null;
       discount_type?: 'none' | 'amount' | 'percent';
       discount_value?: number;
+      apply_personal_discount?: boolean;
       note?: string;
     }
   ): Promise<StudentAccount> => {

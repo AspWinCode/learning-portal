@@ -137,6 +137,7 @@ class StudentAccountPaymentRequest(BaseModel):
     finance_account_id: Optional[int] = None
     discount_type: str = "none"
     discount_value: float = 0.0
+    apply_personal_discount: bool = False
     note: Optional[str] = None
 
 

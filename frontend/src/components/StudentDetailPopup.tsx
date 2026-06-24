@@ -27,6 +27,8 @@ import {
   Button,
   Tabs,
   Tab,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import HistoryIcon from '@mui/icons-material/History';
@@ -126,6 +128,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [paymentFinanceAccountId, setPaymentFinanceAccountId] = useState<number | ''>('');
   const [paymentDiscountType, setPaymentDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
   const [paymentDiscountValue, setPaymentDiscountValue] = useState('');
+  const [paymentApplyPersonalDiscount, setPaymentApplyPersonalDiscount] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [financeAccounts, setFinanceAccounts] = useState<FinanceAccountOption[]>([]);
@@ -180,6 +183,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPaymentFinanceAccountId('');
     setPaymentDiscountType('none');
     setPaymentDiscountValue('');
+    setPaymentApplyPersonalDiscount(false);
     setFinanceAccounts([]);
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
@@ -305,6 +309,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPaymentFinanceAccountId(type === 'payment' ? financeAccounts[0]?.id || '' : '');
     setPaymentDiscountType(type === 'payment' ? defaultDiscount.type : 'none');
     setPaymentDiscountValue(type === 'payment' ? defaultDiscount.value : '');
+    setPaymentApplyPersonalDiscount(type === 'payment' && defaultDiscount.type !== 'none');
   };
 
   const loadTimeline = async () => {
@@ -354,8 +359,17 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
           finance_account_id: paymentFinanceAccountId === '' ? null : Number(paymentFinanceAccountId),
           discount_type: paymentDiscountType,
           discount_value: paymentDiscountType === 'none' ? 0 : discountValue,
+          apply_personal_discount: paymentApplyPersonalDiscount,
           note: paymentNote.trim() || undefined,
         });
+        if (paymentApplyPersonalDiscount) {
+          const [freshStudent, freshCards] = await Promise.all([
+            studentsApi.getById(studentId),
+            canSeeAbsences ? studentCardsApi.list({ student_id: studentId }).catch(() => []) : Promise.resolve([]),
+          ]);
+          setStudent(freshStudent);
+          setStudentCard(Array.isArray(freshCards) && freshCards.length > 0 ? freshCards[0] : studentCard);
+        }
       } else {
         await studentAccountsApi.deduct(paymentDialog.account.id, { amount, note: paymentNote.trim() || undefined });
       }
@@ -372,6 +386,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setPaymentFinanceAccountId('');
       setPaymentDiscountType('none');
       setPaymentDiscountValue('');
+      setPaymentApplyPersonalDiscount(false);
     } catch (err: any) {
       setPaymentError(err.response?.data?.detail || 'Ошибка операции');
     } finally {
@@ -1103,7 +1118,12 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                           onChange={(e) => {
                             const next = e.target.value as 'none' | 'amount' | 'percent';
                             setPaymentDiscountType(next);
-                            if (next === 'none') setPaymentDiscountValue('');
+                            if (next === 'none') {
+                              setPaymentDiscountValue('');
+                              setPaymentApplyPersonalDiscount(false);
+                            } else {
+                              setPaymentApplyPersonalDiscount(true);
+                            }
                           }}
                         >
                           <MenuItem value="none">Нет</MenuItem>
@@ -1122,6 +1142,16 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                         fullWidth
                       />
                     </Box>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={paymentApplyPersonalDiscount}
+                          onChange={(e) => setPaymentApplyPersonalDiscount(e.target.checked)}
+                          disabled={paymentDiscountType === 'none'}
+                        />
+                      }
+                      label="Применить скидку к ученику и пересчитать стоимость уроков в текущем периоде"
+                    />
                     <Button
                       size="small"
                       variant="outlined"

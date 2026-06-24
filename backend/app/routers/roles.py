@@ -5,12 +5,20 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import Role, User
+from app.models import Role, User, UserRole
 from app.permissions import PERMISSION_CATALOG
 from app.routers.action_log import log_action
 from app.schemas.roles import RoleCreate, RoleResponse, RoleUpdate
 
 router = APIRouter()
+
+
+ELEVATED_BASE_ROLES = {UserRole.ADMIN, UserRole.OWNER}
+
+
+def _ensure_owner_for_elevated_base_role(current_user: User, base_role: UserRole | None) -> None:
+    if base_role in ELEVATED_BASE_ROLES and auth.resolve_effective_role(current_user) != UserRole.OWNER:
+        raise HTTPException(status_code=403, detail="Only owner can create or edit admin/owner roles")
 
 PERMISSION_DISPLAY_OVERRIDES: Dict[str, Dict[str, str]] = {
     "persons.access": {
@@ -158,6 +166,7 @@ async def create_role(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("roles.manage")),
 ):
+    _ensure_owner_for_elevated_base_role(current_user, payload.base_role)
     exists = db.query(Role).filter(Role.key == payload.key).first()
     if exists:
         raise HTTPException(status_code=400, detail="Role key already exists")
@@ -199,6 +208,8 @@ async def update_role(
         raise HTTPException(status_code=400, detail="System roles cannot be edited")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "base_role" in update_data:
+        _ensure_owner_for_elevated_base_role(current_user, update_data["base_role"])
     for field, value in update_data.items():
         setattr(role, field, value)
     db.commit()

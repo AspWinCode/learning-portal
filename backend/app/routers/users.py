@@ -15,6 +15,14 @@ from app.utils.phone import normalize_phone
 router = APIRouter()
 
 
+ELEVATED_USER_ROLES = {UserRole.ADMIN, UserRole.OWNER}
+
+
+def _ensure_owner_for_elevated_role_assignment(current_user: User, target_role: UserRole) -> None:
+    if target_role in ELEVATED_USER_ROLES and auth.resolve_effective_role(current_user) != UserRole.OWNER:
+        raise HTTPException(status_code=403, detail="Only owner can assign admin or owner roles")
+
+
 def _apply_trainer_profile(db_user: User, data: dict) -> None:
     """Записать поля профиля тренера из словаря (create/update)."""
     for key in (
@@ -62,13 +70,17 @@ async def create_user(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    custom_role = _resolve_custom_role(db, user.custom_role_id, UserRole(user.role))
+    requested_role = UserRole(user.role)
+    _ensure_owner_for_elevated_role_assignment(current_user, requested_role)
+    custom_role = _resolve_custom_role(db, user.custom_role_id, requested_role)
+    if custom_role is not None:
+        _ensure_owner_for_elevated_role_assignment(current_user, custom_role.base_role)
     hashed_password = auth.get_password_hash(user.password)
     db_user = User(
         email=user.email,
         hashed_password=hashed_password,
         full_name=user.full_name,
-        role=UserRole(user.role),
+        role=requested_role,
         custom_role_id=custom_role.id if custom_role else None,
     )
     db.add(db_user)
@@ -206,7 +218,11 @@ async def update_user(
 
     if "custom_role_id" in update_data:
         requested_role = update_data.get("role", db_user.role)
-        custom_role = _resolve_custom_role(db, update_data["custom_role_id"], UserRole(requested_role))
+        requested_role = UserRole(requested_role)
+        _ensure_owner_for_elevated_role_assignment(current_user, requested_role)
+        custom_role = _resolve_custom_role(db, update_data["custom_role_id"], requested_role)
+        if custom_role is not None:
+            _ensure_owner_for_elevated_role_assignment(current_user, custom_role.base_role)
         db_user.custom_role_id = custom_role.id if custom_role else None
         if custom_role is not None:
             db_user.role = custom_role.base_role
@@ -214,7 +230,9 @@ async def update_user(
         update_data["role"] = db_user.role
 
     if "role" in update_data and "custom_role_id" not in update_data:
-        db_user.role = UserRole(update_data["role"])
+        requested_role = UserRole(update_data["role"])
+        _ensure_owner_for_elevated_role_assignment(current_user, requested_role)
+        db_user.role = requested_role
         update_data["role"] = db_user.role
         if db_user.custom_role_id is not None and db_user.custom_role and db_user.custom_role.base_role != db_user.role:
             db_user.custom_role_id = None

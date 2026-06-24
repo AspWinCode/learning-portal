@@ -29,7 +29,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { rolesApi, usersApi } from '../services/api';
 import type { PermissionCatalogItem, Role, User } from '../types';
 import { extractApiError } from '../utils/extractApiError';
-import { hasPermission } from '../utils/permissions';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
 const BASE_ROLE_OPTIONS: Array<Role['base_role']> = ['owner', 'admin', 'sales', 'trainer', 'parent', 'guest'];
 
@@ -110,6 +110,8 @@ const RolesPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const effectiveRole = getEffectiveRole(user);
+  const isOwner = effectiveRole === 'owner';
   const canViewRoles = hasPermission(user, 'roles.access') || hasPermission(user, 'roles.manage');
   const canManageRoles = hasPermission(user, 'roles.manage');
   const canViewUsers = hasPermission(user, 'users.access') || hasPermission(user, 'users.manage');
@@ -202,6 +204,13 @@ const RolesPage: React.FC = () => {
   }, [focusedUserId, sortedUsers]);
 
   const createUserRoleOptions = customRoleOptionsByBase.get(userForm.role) || [];
+  const manageableBaseRoleOptions = useMemo(
+    () => BASE_ROLE_OPTIONS.filter((option) => isOwner || (option !== 'owner' && option !== 'admin')),
+    [isOwner]
+  );
+  const roleFormBaseRoleOptions = manageableBaseRoleOptions.includes(roleForm.base_role)
+    ? manageableBaseRoleOptions
+    : [roleForm.base_role, ...manageableBaseRoleOptions];
 
   const openCreateRoleDialog = () => {
     setEditingRole(null);
@@ -492,6 +501,9 @@ const RolesPage: React.FC = () => {
                 {sortedUsers.map((targetUser) => {
                   const currentBaseRole = targetUser.role as Role['base_role'];
                   const roleOptions = customRoleOptionsByBase.get(currentBaseRole) || [];
+                  const baseRoleOptionsForUser = manageableBaseRoleOptions.includes(currentBaseRole)
+                    ? manageableBaseRoleOptions
+                    : [currentBaseRole, ...manageableBaseRoleOptions];
                   const isBusy = updatingUserId === targetUser.id;
                   return (
                     <TableRow
@@ -525,7 +537,7 @@ const RolesPage: React.FC = () => {
                             void handleUserBaseRoleChange(targetUser, event.target.value as Role['base_role'])
                           }
                         >
-                          {BASE_ROLE_OPTIONS.map((option) => (
+                          {baseRoleOptionsForUser.map((option) => (
                             <MenuItem key={option} value={option}>
                               {BASE_ROLE_LABELS[option]}
                             </MenuItem>
@@ -629,7 +641,7 @@ const RolesPage: React.FC = () => {
               }
               fullWidth
             >
-              {BASE_ROLE_OPTIONS.map((option) => (
+              {roleFormBaseRoleOptions.map((option) => (
                 <MenuItem key={option} value={option}>
                   {BASE_ROLE_LABELS[option]}
                 </MenuItem>
@@ -733,7 +745,7 @@ const RolesPage: React.FC = () => {
               }
               fullWidth
             >
-              {BASE_ROLE_OPTIONS.map((option) => (
+              {manageableBaseRoleOptions.map((option) => (
                 <MenuItem key={option} value={option}>
                   {BASE_ROLE_LABELS[option]}
                 </MenuItem>

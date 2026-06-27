@@ -213,6 +213,39 @@ def _find_single_tochka_candidate(
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _find_tochka_income_candidate_by_real_name(
+    db: Session,
+    account_id: str,
+    amount: float,
+    tx_date: str,
+    payer_name: str,
+) -> Optional[BankTransaction]:
+    """Ищет существующую запись без телефона с тем же именем (реальным) ИЛИ с именем-заглушкой
+    «ООО Банк Точка» (созданной вебхуком до импорта выписки).
+    Нужен для дедупликации: вебхук создаёт запись с generic-именем, выписка — с реальным.
+    """
+    if not payer_name or _is_generic_tochka_counterparty(payer_name):
+        return None
+    candidates = (
+        db.query(BankTransaction)
+        .filter(
+            BankTransaction.tochka_account_id == account_id,
+            BankTransaction.amount == amount,
+            BankTransaction.payment_date == tx_date,
+            BankTransaction.payer_phone.is_(None),
+            BankTransaction.status != BankTransactionStatus.IGNORED.value,
+        )
+        .order_by(BankTransaction.id.asc())
+        .all()
+    )
+    matched = [
+        c for c in candidates
+        if _is_generic_tochka_counterparty(c.payer_name)
+        or (c.payer_name and c.payer_name.strip()[:512] == payer_name[:512])
+    ]
+    return matched[0] if len(matched) == 1 else None
+
+
 def _decode_tochka_webhook(raw_body: bytes) -> Dict[str, Any]:
     body = raw_body.decode("utf-8").strip()
     if not body:
@@ -308,6 +341,10 @@ def _upsert_tochka_bank_transaction(
             amount,
             tx_date,
             require_missing_phone=True,
+        )
+    if bank_transaction is None and not is_expense:
+        bank_transaction = _find_tochka_income_candidate_by_real_name(
+            db, account_id, amount, tx_date, payer_name
         )
     if bank_transaction is None:
         bank_transaction = BankTransaction(
@@ -410,6 +447,12 @@ def do_tochka_import_and_apply(
                     amount,
                     tx_date,
                     require_enriched=True,
+                )
+            # Выписка содержит реальное имя плательщика, но вебхук ранее создал запись
+            # с именем-заглушкой «ООО Банк Точка» и другим operation_id — ищем её.
+            if bank_transaction is None and not is_expense:
+                bank_transaction = _find_tochka_income_candidate_by_real_name(
+                    db, account_id, amount, tx_date, payer_name
                 )
             if bank_transaction is not None and bank_transaction.status == BankTransactionStatus.IGNORED.value:
                 continue

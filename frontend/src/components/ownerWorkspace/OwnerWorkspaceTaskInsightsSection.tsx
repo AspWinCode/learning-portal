@@ -38,12 +38,12 @@ type OwnerWorkspaceTaskInsightsSectionProps = {
   assigneeAnalyticsRows: AssigneeAnalyticsRow[];
   assigneeAnalyticsSummary: AssigneeAnalyticsSummary;
   assigneeAttentionRows: AssigneeAnalyticsRow[];
-  taskViewMode: 'list' | 'kanban' | 'calendar';
+  taskViewMode: 'list' | 'kanban' | 'calendar' | 'gantt';
   taskListTotal: number;
   taskFetchCap: number;
   /** Скрыть переключатель вида и подсказку (когда они вынесены в общий тулбар). */
   hideViewControls?: boolean;
-  onTaskViewModeChange: (value: 'list' | 'kanban' | 'calendar') => void;
+  onTaskViewModeChange: (value: 'list' | 'kanban' | 'calendar' | 'gantt') => void;
   onDrillDownToAssigneeTasks: (assigneeId: number | null, options?: { overdueOnly?: boolean }) => void | Promise<void>;
 };
 
@@ -193,6 +193,7 @@ export function OwnerWorkspaceTaskInsightsSection({
             <ToggleButton value="list">Список</ToggleButton>
             <ToggleButton value="kanban">Канбан</ToggleButton>
             <ToggleButton value="calendar">Календарь</ToggleButton>
+            <ToggleButton value="gantt">Гант</ToggleButton>
           </ToggleButtonGroup>
           <Typography variant="caption" color="text.secondary">
             В канбане перетащите карточку на другую колонку, чтобы сменить статус.

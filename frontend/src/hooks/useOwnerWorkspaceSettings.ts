@@ -43,7 +43,7 @@ export function useOwnerWorkspaceSettings() {
   const [loading, setLoading] = useState(true);
 
   // ── Task view preferences ─────────────────────────────────────────────────
-  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
+  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar' | 'gantt'>('list');
   const [taskListRowsPerPage, setTaskListRowsPerPage] = useState(25);
   const [digestDueHours, setDigestDueHours] = useState(48);
   const [digestScope, setDigestScope] = useState<'all' | 'mine'>('all');

@@ -43,7 +43,7 @@ type PermissionMatrixRow = {
 };
 
 type OwnerWorkspaceSettingsConfigSectionProps = {
-  taskViewMode: 'list' | 'kanban' | 'calendar';
+  taskViewMode: 'list' | 'kanban' | 'calendar' | 'gantt';
   taskListRowsPerPage: number;
   digestDueHours: number;
   digestScope: 'all' | 'mine';
@@ -84,7 +84,7 @@ type OwnerWorkspaceSettingsConfigSectionProps = {
   counterpartyRoleDictionarySaving: boolean;
   counterpartyIndustryDictionaryDraft: OwnerWorkspaceTagDictionary;
   counterpartyIndustryDictionarySaving: boolean;
-  onTaskViewModeChange: (value: 'list' | 'kanban' | 'calendar') => void;
+  onTaskViewModeChange: (value: 'list' | 'kanban' | 'calendar' | 'gantt') => void;
   onTaskListRowsPerPageChange: (value: number) => void;
   onDigestDueHoursChange: (value: number) => void;
   onDigestScopeChange: (value: 'all' | 'mine') => void;
@@ -231,11 +231,12 @@ export function OwnerWorkspaceSettingsConfigSection({
           fullWidth
           label="Вид списка задач по умолчанию"
           value={taskViewMode}
-          onChange={(e) => onTaskViewModeChange(e.target.value as 'list' | 'kanban' | 'calendar')}
+          onChange={(e) => onTaskViewModeChange(e.target.value as 'list' | 'kanban' | 'calendar' | 'gantt')}
         >
           <MenuItem value="list">Список</MenuItem>
           <MenuItem value="kanban">Канбан</MenuItem>
           <MenuItem value="calendar">Календарь</MenuItem>
+          <MenuItem value="gantt">Гант</MenuItem>
         </TextField>
         <TextField
           fullWidth

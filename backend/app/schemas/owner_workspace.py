@@ -720,7 +720,7 @@ class OwnerWorkspaceNotificationsEnvelope(BaseModel):
 
 
 class OwnerWorkspaceUserPreferencesResponse(BaseModel):
-    default_task_view: Literal["list", "kanban", "calendar"] = "list"
+    default_task_view: Literal["list", "kanban", "calendar", "gantt"] = "list"
     task_list_rows_per_page: int = 25
     digest_due_within_hours: int = 48
     digest_scope: Literal["all", "mine"] = "all"
@@ -736,7 +736,7 @@ class OwnerWorkspaceUserPreferencesResponse(BaseModel):
 
 
 class OwnerWorkspaceUserPreferencesPatch(BaseModel):
-    default_task_view: Optional[Literal["list", "kanban", "calendar"]] = None
+    default_task_view: Optional[Literal["list", "kanban", "calendar", "gantt"]] = None
     task_list_rows_per_page: Optional[int] = Field(None, ge=5, le=100)
     digest_due_within_hours: Optional[int] = Field(None, ge=8, le=336)
     digest_scope: Optional[Literal["all", "mine"]] = None

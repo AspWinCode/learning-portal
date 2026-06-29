@@ -138,6 +138,12 @@ const OwnerWorkspaceTaskBoardCalendarSection = React.lazy(
       default: module.OwnerWorkspaceTaskBoardCalendarSection,
     }))
 );
+const OwnerWorkspaceGanttSection = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceGanttSection').then((module) => ({
+      default: module.OwnerWorkspaceGanttSection,
+    }))
+);
 const OwnerWorkspaceNotificationsTab = React.lazy(
   () =>
     import('../components/ownerWorkspace/OwnerWorkspaceNotificationsTab').then((module) => ({
@@ -951,7 +957,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskOverdueOnly, setTaskOverdueOnly] = useState(false);
   const [taskActiveOnly, setTaskActiveOnly] = useState(true);
   const [taskAssigneeFilter, setTaskAssigneeFilter] = useState<number | ''>('');
-  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
+  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar' | 'gantt'>('list');
   // Сворачиваемые панели вкладки «Задачи» (уменьшают визуальный перегруз)
   const [showFiltersPanel, setShowFiltersPanel] = useState(
     () => localStorage.getItem('ow_tasks_panel_filters') === '1'
@@ -5774,6 +5780,7 @@ const OwnerWorkspacePage: React.FC = () => {
                     <ToggleButton value="list">Таблица</ToggleButton>
                     <ToggleButton value="kanban">Канбан</ToggleButton>
                     <ToggleButton value="calendar">Календарь</ToggleButton>
+                    <ToggleButton value="gantt">Гант</ToggleButton>
                   </ToggleButtonGroup>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     {canCreateTaskUi && (
@@ -6300,10 +6307,18 @@ const OwnerWorkspacePage: React.FC = () => {
                 labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count !== -1 ? count : `более ${to}`}`}
               />
             </Stack>
+          ) : taskViewMode === 'gantt' ? (
+            <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+              <OwnerWorkspaceGanttSection
+                tasks={tasks}
+                onOpenTask={openTaskDialog}
+                userOptions={userOptions}
+              />
+            </Suspense>
           ) : (
             <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
               <OwnerWorkspaceTaskBoardCalendarSection
-                taskViewMode={taskViewMode}
+                taskViewMode={taskViewMode as 'kanban' | 'calendar'}
                 tasks={tasks}
                 kanbanColumns={KANBAN_COLUMNS}
                 coerceTaskStatus={coerceTaskStatus}

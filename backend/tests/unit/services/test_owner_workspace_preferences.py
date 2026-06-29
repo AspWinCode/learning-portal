@@ -31,3 +31,7 @@ class TestNormalizePreferences:
         assert out["task_list_rows_per_page"] == 50
         assert out["digest_due_within_hours"] == 72
         assert out["digest_scope"] == "mine"
+
+    def test_gantt_view_is_valid(self):
+        out = normalize_preferences({"default_task_view": "gantt"})
+        assert out["default_task_view"] == "gantt"

@@ -1839,7 +1839,7 @@ export interface OwnerWorkspaceNotificationsEnvelope {
 
 /** Персональные настройки UI задачника (GET/PATCH /owner-workspace/me/preferences) */
 export interface OwnerWorkspaceUserPreferences {
-  default_task_view: 'list' | 'kanban' | 'calendar';
+  default_task_view: 'list' | 'kanban' | 'calendar' | 'gantt';
   task_list_rows_per_page: number;
   digest_due_within_hours: number;
   digest_scope: 'all' | 'mine';

@@ -24,7 +24,7 @@ DEFAULT_PREFERENCES: Dict[str, Any] = {
     "notify_task_mention": True,
 }
 
-_VALID_VIEWS = frozenset({"list", "kanban", "calendar"})
+_VALID_VIEWS = frozenset({"list", "kanban", "calendar", "gantt"})
 _VALID_SCOPES = frozenset({"all", "mine"})
 
 

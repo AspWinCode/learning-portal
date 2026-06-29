@@ -12,6 +12,8 @@ import {
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import TodayIcon from '@mui/icons-material/Today';
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import {
   addDays,
   addMonths,
@@ -24,15 +26,24 @@ import {
   subMonths,
 } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import type { OwnerWorkspaceTask } from '../../types';
+import type { OwnerWorkspaceProject, OwnerWorkspaceTask } from '../../types';
 
 type GanttScale = 'days' | 'weeks';
 type UserOption = { id: number; full_name: string };
+type ProjectKey = number | 'none'; // 'none' = no project
 
 type Props = {
   tasks: OwnerWorkspaceTask[];
   onOpenTask: (task: OwnerWorkspaceTask) => void;
   userOptions?: UserOption[];
+  projects?: OwnerWorkspaceProject[];
+};
+
+type ProjectGroup = {
+  key: ProjectKey;
+  name: string;
+  tasksWithDates: OwnerWorkspaceTask[];
+  tasksNoDates: OwnerWorkspaceTask[];
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,19 +69,18 @@ const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Критический',
 };
 
-// pixels per day
 const DAY_PX: Record<GanttScale, number> = { days: 32, weeks: 12 };
-// how many days to show in viewport
 const DAYS_SHOWN: Record<GanttScale, number> = { days: 42, weeks: 90 };
 
 const ROW_H = 40;
+const GROUP_H = 32;
 const HEADER_H = 52;
 const LEFT_W = 268;
 
-export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = [] }: Props) {
+export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = [], projects = [] }: Props) {
   const [scale, setScale] = useState<GanttScale>('days');
   const [rangeStart, setRangeStart] = useState<Date>(() => addDays(startOfDay(new Date()), -7));
-  // ref to the header scrollable container — synced from body scroll
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<ProjectKey>>(new Set());
   const headerScrollRef = useRef<HTMLDivElement>(null);
 
   const dayWidth = DAY_PX[scale];
@@ -112,17 +122,62 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
 
   const headerGroups = scale === 'weeks' ? weekGroups : monthGroups;
 
-  const { tasksWithDates, tasksNoDates } = useMemo(() => {
-    const withDates = tasks
-      .filter((t) => t.deadline_at || t.start_at)
-      .sort((a, b) => {
+  // Group tasks by project
+  const projectGroups = useMemo<ProjectGroup[]>(() => {
+    const map = new Map<ProjectKey, ProjectGroup>();
+
+    for (const task of tasks) {
+      const rawKey = task.project_id ?? null;
+      const key: ProjectKey = rawKey === null ? 'none' : rawKey;
+
+      if (!map.has(key)) {
+        const proj = rawKey !== null ? projects.find((p) => p.id === rawKey) : null;
+        map.set(key, {
+          key,
+          name: proj?.name ?? (key === 'none' ? 'Без проекта' : `Проект #${rawKey}`),
+          tasksWithDates: [],
+          tasksNoDates: [],
+        });
+      }
+
+      const g = map.get(key)!;
+      if (task.deadline_at || task.start_at) {
+        g.tasksWithDates.push(task);
+      } else {
+        g.tasksNoDates.push(task);
+      }
+    }
+
+    // Sort tasks within groups
+    for (const g of map.values()) {
+      g.tasksWithDates.sort((a, b) => {
         const aD = a.deadline_at || a.start_at || '';
         const bD = b.deadline_at || b.start_at || '';
         return aD.localeCompare(bD);
       });
-    const noDates = tasks.filter((t) => !t.deadline_at && !t.start_at);
-    return { tasksWithDates: withDates, tasksNoDates: noDates };
-  }, [tasks]);
+    }
+
+    // Sort groups: named projects alphabetically, "Без проекта" last
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.key === 'none') return 1;
+      if (b.key === 'none') return -1;
+      return a.name.localeCompare(b.name, 'ru');
+    });
+  }, [tasks, projects]);
+
+  const allKeys = useMemo(() => projectGroups.map((g) => g.key), [projectGroups]);
+
+  const toggleGroup = (key: ProjectKey) => {
+    setCollapsedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const expandAll = () => setCollapsedKeys(new Set());
+  const collapseAll = () => setCollapsedKeys(new Set(allKeys));
 
   const getBarProps = (task: OwnerWorkspaceTask) => {
     const taskStart = task.start_at
@@ -154,6 +209,40 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
     };
   };
 
+  // Summary bar for a project group header
+  const getGroupBarProps = (group: ProjectGroup) => {
+    if (group.tasksWithDates.length === 0) return null;
+
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+
+    for (const task of group.tasksWithDates) {
+      const s = task.start_at
+        ? startOfDay(parseISO(task.start_at))
+        : task.created_at
+        ? startOfDay(parseISO(task.created_at))
+        : task.deadline_at
+        ? startOfDay(parseISO(task.deadline_at))
+        : null;
+      const e = task.deadline_at ? startOfDay(parseISO(task.deadline_at)) : null;
+
+      if (s && (!minDate || s < minDate)) minDate = s;
+      if (e && (!maxDate || e > maxDate)) maxDate = e;
+    }
+
+    if (!minDate || !maxDate) return null;
+
+    const clampedStart = minDate < rangeStart ? rangeStart : minDate;
+    const clampedEnd = maxDate > rangeEnd ? rangeEnd : maxDate;
+
+    if (clampedStart > rangeEnd || clampedEnd < rangeStart) return null;
+
+    const leftDays = differenceInDays(clampedStart, rangeStart);
+    const widthDays = Math.max(1, differenceInDays(clampedEnd, clampedStart) + 1);
+
+    return { left: leftDays * dayWidth, width: widthDays * dayWidth - 4 };
+  };
+
   const todayOffset = differenceInDays(startOfDay(new Date()), rangeStart);
 
   const navigate = (dir: -1 | 1) => {
@@ -182,11 +271,107 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
     }
   };
 
-  const renderTaskLeftCell = (task: OwnerWorkspaceTask, index: number, dimmed?: boolean) => {
+  // ─── Row renderers ───────────────────────────────────────────────────────────
+
+  const renderGroupHeaderLeft = (group: ProjectGroup) => {
+    const isCollapsed = collapsedKeys.has(group.key);
+    const total = group.tasksWithDates.length + group.tasksNoDates.length;
+    return (
+      <Box
+        key={`gh-left-${group.key}`}
+        sx={{
+          height: GROUP_H,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
+          px: 1,
+          borderRight: 1,
+          borderBottom: 1,
+          borderColor: 'divider',
+          bgcolor: 'action.selected',
+          cursor: 'pointer',
+          userSelect: 'none',
+          '&:hover': { bgcolor: 'action.focus' },
+        }}
+        onClick={() => toggleGroup(group.key)}
+      >
+        <Typography
+          variant="caption"
+          sx={{ fontSize: 13, color: 'text.secondary', lineHeight: 1, flexShrink: 0 }}
+        >
+          {isCollapsed ? '▶' : '▼'}
+        </Typography>
+        <Typography
+          variant="caption"
+          fontWeight={700}
+          noWrap
+          sx={{ flex: 1, fontSize: 12, color: 'text.primary' }}
+        >
+          {group.name}
+        </Typography>
+        <Chip
+          size="small"
+          label={total}
+          sx={{ height: 16, fontSize: 10, minWidth: 20, flexShrink: 0 }}
+        />
+      </Box>
+    );
+  };
+
+  const renderGroupHeaderRight = (group: ProjectGroup) => {
+    const bar = getGroupBarProps(group);
+    return (
+      <Box
+        key={`gh-right-${group.key}`}
+        sx={{
+          height: GROUP_H,
+          position: 'relative',
+          borderBottom: 1,
+          borderColor: 'divider',
+          bgcolor: 'action.selected',
+          cursor: 'pointer',
+        }}
+        onClick={() => toggleGroup(group.key)}
+      >
+        {todayOffset >= 0 && todayOffset < daysCount && (
+          <Box
+            sx={{
+              position: 'absolute',
+              left: todayOffset * dayWidth,
+              top: 0,
+              bottom: 0,
+              width: dayWidth,
+              bgcolor: 'primary.main',
+              opacity: 0.06,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {bar && (
+          <Box
+            sx={{
+              position: 'absolute',
+              left: bar.left + 2,
+              width: Math.max(bar.width, 6),
+              top: '50%',
+              transform: 'translateY(-50%)',
+              height: 8,
+              bgcolor: '#78909c',
+              opacity: 0.45,
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+      </Box>
+    );
+  };
+
+  const renderTaskLeftCell = (task: OwnerWorkspaceTask, rowIndex: number, dimmed?: boolean) => {
     const assignee = userOptions.find((u) => u.id === task.assignee_id);
     return (
       <Box
-        key={task.id}
+        key={`tl-${task.id}`}
         sx={{
           height: ROW_H,
           display: 'flex',
@@ -197,7 +382,7 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
           borderBottom: 1,
           borderColor: 'divider',
           cursor: 'pointer',
-          bgcolor: index % 2 === 0 ? 'transparent' : 'action.hover',
+          bgcolor: rowIndex % 2 === 0 ? 'transparent' : 'action.hover',
           '&:hover': { bgcolor: 'action.selected' },
           overflow: 'hidden',
           opacity: dimmed ? 0.6 : 1,
@@ -244,21 +429,20 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
     );
   };
 
-  const renderTaskBar = (task: OwnerWorkspaceTask, index: number, dimmed?: boolean) => {
+  const renderTaskBar = (task: OwnerWorkspaceTask, rowIndex: number, dimmed?: boolean) => {
     const bar = getBarProps(task);
     return (
       <Box
-        key={task.id}
+        key={`tb-${task.id}`}
         sx={{
           height: ROW_H,
           position: 'relative',
           borderBottom: 1,
           borderColor: 'divider',
-          bgcolor: index % 2 === 0 ? 'transparent' : 'action.hover',
+          bgcolor: rowIndex % 2 === 0 ? 'transparent' : 'action.hover',
           opacity: dimmed ? 0.6 : 1,
         }}
       >
-        {/* Today highlight column */}
         {todayOffset >= 0 && todayOffset < daysCount && (
           <Box
             sx={{
@@ -336,6 +520,35 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
     );
   };
 
+  // ─── Build flat row list ──────────────────────────────────────────────────────
+
+  const isEmpty = tasks.length === 0;
+
+  // Rows for left and right columns, built together so they stay in sync
+  type LeftRow =
+    | { kind: 'groupHeader'; group: ProjectGroup }
+    | { kind: 'task'; task: OwnerWorkspaceTask; rowIndex: number; dimmed: boolean };
+
+  const rows = useMemo<LeftRow[]>(() => {
+    const result: LeftRow[] = [];
+    let rowIndex = 0;
+
+    for (const group of projectGroups) {
+      result.push({ kind: 'groupHeader', group });
+
+      if (!collapsedKeys.has(group.key)) {
+        for (const task of group.tasksWithDates) {
+          result.push({ kind: 'task', task, rowIndex: rowIndex++, dimmed: false });
+        }
+        for (const task of group.tasksNoDates) {
+          result.push({ kind: 'task', task, rowIndex: rowIndex++, dimmed: true });
+        }
+      }
+    }
+
+    return result;
+  }, [projectGroups, collapsedKeys]);
+
   return (
     <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
       {/* ── Toolbar ── */}
@@ -361,6 +574,27 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
           {format(rangeEnd, 'd MMM yyyy', { locale: ru })}
         </Typography>
         <Box flex={1} />
+
+        {/* Expand / collapse all */}
+        {projectGroups.length > 1 && (
+          <Stack direction="row" spacing={0.5}>
+            <Tooltip title="Развернуть все">
+              <span>
+                <IconButton size="small" onClick={expandAll} disabled={collapsedKeys.size === 0}>
+                  <UnfoldMoreIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Свернуть все">
+              <span>
+                <IconButton size="small" onClick={collapseAll} disabled={collapsedKeys.size === allKeys.length}>
+                  <UnfoldLessIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
+        )}
+
         <ToggleButtonGroup size="small" value={scale} exclusive onChange={handleScaleChange}>
           <ToggleButton value="days" sx={{ px: 1.5, fontSize: 12 }}>По дням</ToggleButton>
           <ToggleButton value="weeks" sx={{ px: 1.5, fontSize: 12 }}>Обзор</ToggleButton>
@@ -369,7 +603,6 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
 
       {/* ── Header (sticky) ── */}
       <Box sx={{ display: 'flex', borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper', position: 'sticky', top: 0, zIndex: 4 }}>
-        {/* Left header cell */}
         <Box
           sx={{
             width: LEFT_W,
@@ -384,14 +617,12 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
           }}
         >
           <Typography variant="caption" fontWeight={700} color="text.secondary" letterSpacing={0.5}>
-            ЗАДАЧА
+            ЗАДАЧА / ПРОЕКТ
           </Typography>
         </Box>
 
-        {/* Timeline header — overflow hidden, scrolled programmatically */}
         <Box ref={headerScrollRef} sx={{ flex: 1, overflow: 'hidden' }}>
           <Box sx={{ width: totalWidth }}>
-            {/* Top row: month / week labels */}
             <Box sx={{ display: 'flex', height: HEADER_H / 2, borderBottom: 1, borderColor: 'divider' }}>
               {headerGroups.map((g, i) => (
                 <Box
@@ -414,7 +645,6 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
               ))}
             </Box>
 
-            {/* Bottom row: day numbers */}
             <Box sx={{ display: 'flex', height: HEADER_H / 2 }}>
               {days.map((day, i) => {
                 const today = isToday(day);
@@ -453,36 +683,18 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
       </Box>
 
       {/* ── Body ── */}
-      <Box sx={{ display: 'flex', maxHeight: 560, overflowY: 'auto' }}>
+      <Box sx={{ display: 'flex', maxHeight: 600, overflowY: 'auto' }}>
         {/* Left fixed column */}
         <Box sx={{ width: LEFT_W, flexShrink: 0 }}>
-          {tasksWithDates.length === 0 && tasksNoDates.length === 0 && (
+          {isEmpty && (
             <Box sx={{ px: 2, py: 4 }}>
               <Typography color="text.secondary" variant="body2">Нет задач</Typography>
             </Box>
           )}
-          {tasksWithDates.map((task, i) => renderTaskLeftCell(task, i))}
-
-          {tasksNoDates.length > 0 && (
-            <>
-              <Box
-                sx={{
-                  height: 28,
-                  display: 'flex',
-                  alignItems: 'center',
-                  px: 1.5,
-                  borderRight: 1,
-                  borderBottom: 1,
-                  borderColor: 'divider',
-                  bgcolor: 'action.hover',
-                }}
-              >
-                <Typography variant="caption" fontWeight={600} color="text.secondary">
-                  БЕЗ ДАТ ({tasksNoDates.length})
-                </Typography>
-              </Box>
-              {tasksNoDates.map((task, i) => renderTaskLeftCell(task, i, true))}
-            </>
+          {rows.map((row) =>
+            row.kind === 'groupHeader'
+              ? renderGroupHeaderLeft(row.group)
+              : renderTaskLeftCell(row.task, row.rowIndex, row.dimmed)
           )}
         </Box>
 
@@ -508,14 +720,10 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
                 }}
               />
             )}
-
-            {tasksWithDates.map((task, i) => renderTaskBar(task, i))}
-
-            {tasksNoDates.length > 0 && (
-              <>
-                <Box sx={{ height: 28, borderBottom: 1, borderColor: 'divider', bgcolor: 'action.hover' }} />
-                {tasksNoDates.map((task, i) => renderTaskBar(task, i, true))}
-              </>
+            {rows.map((row) =>
+              row.kind === 'groupHeader'
+                ? renderGroupHeaderRight(row.group)
+                : renderTaskBar(row.task, row.rowIndex, row.dimmed)
             )}
           </Box>
         </Box>
@@ -538,6 +746,11 @@ export function OwnerWorkspaceGanttSection({ tasks, onOpenTask, userOptions = []
         <Stack direction="row" spacing={0.5} alignItems="center">
           <Box sx={{ width: 12, height: 12, borderRadius: '3px', bgcolor: '#ef9a9a', outline: '2px solid #d32f2f' }} />
           <Typography variant="caption" color="text.secondary">Просрочена</Typography>
+        </Stack>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            Затемнённые — задачи без дат
+          </Typography>
         </Stack>
       </Stack>
     </Box>

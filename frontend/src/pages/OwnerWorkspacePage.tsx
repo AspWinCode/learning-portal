@@ -6313,6 +6313,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 tasks={tasks}
                 onOpenTask={openTaskDialog}
                 userOptions={userOptions}
+                projects={projectsCatalog}
               />
             </Suspense>
           ) : (

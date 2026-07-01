@@ -16,6 +16,7 @@ from app.background_jobs import (
     run_scheduled_messages,
     run_student_class_autopromo,
     run_tochka_auto_import,
+    run_transcription,
 )
 
 
@@ -77,3 +78,8 @@ def task_owner_workspace_notification_web_push_dispatch() -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_owner_workspace_task_reminders() -> None:
     run_owner_workspace_task_reminders()
+
+
+@dramatiq.actor(queue_name="delivery", max_retries=0)
+def task_transcribe_audio(transcription_id: int) -> None:
+    run_transcription(transcription_id)

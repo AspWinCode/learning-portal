@@ -52,6 +52,7 @@ from app.routers import (
     telegram,
     trainer_cockpit,
     trainer_lessons,
+    transcription,
     users,
 )
 
@@ -437,6 +438,7 @@ app.include_router(sms.router, prefix="/api/v1", tags=["sms"])
 app.include_router(max_messenger.router, prefix="/api/v1", tags=["max"])
 app.include_router(owner_workspace.router, prefix="/api/v1/owner-workspace", tags=["owner_workspace"])
 app.include_router(disk.router, prefix="/api/v1/disk", tags=["disk"])
+app.include_router(transcription.router, prefix="/api/v1/transcription", tags=["transcription"])
 
 
 @app.exception_handler(Exception)

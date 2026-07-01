@@ -107,6 +107,8 @@ import {
   PersonSearchResponse,
   DiskItem,
   DiskItemsResponse,
+  Transcription,
+  TranscriptionsListResponse,
   PasswordEntry,
   PasswordEntryPayload,
   PersonAttachRecordRequest,
@@ -3617,6 +3619,29 @@ export const diskApi = {
   },
   deleteItem: async (itemId: number): Promise<void> => {
     await api.delete(`/disk/items/${itemId}`);
+  },
+};
+
+export const transcriptionApi = {
+  list: async (): Promise<TranscriptionsListResponse> => {
+    const response = await api.get('/transcription/items');
+    return response.data;
+  },
+  get: async (id: number): Promise<Transcription> => {
+    const response = await api.get(`/transcription/items/${id}`);
+    return response.data;
+  },
+  upload: async (file: File): Promise<Transcription> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/transcription/items', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    });
+    return response.data;
+  },
+  remove: async (id: number): Promise<void> => {
+    await api.delete(`/transcription/items/${id}`);
   },
 };
 

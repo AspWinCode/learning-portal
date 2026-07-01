@@ -2188,6 +2188,25 @@ export interface DiskItemsResponse {
   breadcrumbs: DiskItem[];
 }
 
+export interface Transcription {
+  id: number;
+  filename: string;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  status: 'pending' | 'processing' | 'done' | 'error';
+  language?: string | null;
+  text?: string | null;
+  error_message?: string | null;
+  owner_id?: number | null;
+  owner_name?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface TranscriptionsListResponse {
+  items: Transcription[];
+}
+
 export interface PasswordEntry {
   id: number;
   name: string;

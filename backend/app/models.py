@@ -2811,3 +2811,33 @@ class OwnerFunnelItem(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+
+class TranscriptionStatus(str, enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    DONE = "done"
+    ERROR = "error"
+
+
+class Transcription(Base):
+    __tablename__ = "transcriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String(255), nullable=False)
+    storage_key = Column(String(255), nullable=False, unique=True)
+    content_type = Column(String(128), nullable=True)
+    size_bytes = Column(BigInteger, nullable=False, server_default="0")
+    status = Column(
+        SQLEnum(TranscriptionStatus, name="transcriptionstatus", values_callable=_enum_values),
+        nullable=False,
+        default=TranscriptionStatus.PENDING,
+    )
+    language = Column(String(16), nullable=True)
+    text = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    owner = relationship("User", foreign_keys=[owner_id])
+

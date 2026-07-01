@@ -126,6 +126,9 @@ services:
     environment:
       <<: *app_common_env
       IN_PROCESS_SCHEDULER_ENABLED: "0"
+      DISK_STORAGE_ROOT: ${DISK_STORAGE_ROOT:-/app/storage/disk}
+    volumes:
+      - disk_storage:/app/storage
     depends_on:
       migrator:
         condition: service_completed_successfully

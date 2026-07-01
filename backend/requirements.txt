@@ -24,4 +24,5 @@ slowapi>=0.1.9
 fastapi-cache2>=0.2.1
 prometheus-fastapi-instrumentator>=6.1.0,<7.0.0
 sentry-sdk[fastapi]>=2.0.0
+faster-whisper>=1.0.0
 

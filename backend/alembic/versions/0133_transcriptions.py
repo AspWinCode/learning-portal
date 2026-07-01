@@ -7,19 +7,28 @@ Create Date: 2026-07-02
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision = "0133_transcriptions"
 down_revision = "0132_dedupe_tochka_generic_name_duplicates"
 branch_labels = None
 depends_on = None
 
-TRANSCRIPTION_STATUS_ENUM = sa.Enum(
-    "pending", "processing", "done", "error", name="transcriptionstatus"
-)
-
 
 def upgrade() -> None:
-    TRANSCRIPTION_STATUS_ENUM.create(op.get_bind(), checkfirst=True)
+    op.execute(
+        """
+        DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transcriptionstatus') THEN
+                CREATE TYPE transcriptionstatus AS ENUM ('pending', 'processing', 'done', 'error');
+            END IF;
+        END $$;
+        """
+    )
+    transcription_status_enum = postgresql.ENUM(
+        "pending", "processing", "done", "error", name="transcriptionstatus", create_type=False
+    )
+
     op.create_table(
         "transcriptions",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -27,12 +36,7 @@ def upgrade() -> None:
         sa.Column("storage_key", sa.String(length=255), nullable=False),
         sa.Column("content_type", sa.String(length=128), nullable=True),
         sa.Column("size_bytes", sa.BigInteger(), nullable=False, server_default="0"),
-        sa.Column(
-            "status",
-            sa.Enum("pending", "processing", "done", "error", name="transcriptionstatus", create_type=False),
-            nullable=False,
-            server_default="pending",
-        ),
+        sa.Column("status", transcription_status_enum, nullable=False, server_default="pending"),
         sa.Column("language", sa.String(length=16), nullable=True),
         sa.Column("text", sa.Text(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
@@ -53,4 +57,4 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_transcriptions_owner_id"), table_name="transcriptions")
     op.drop_index(op.f("ix_transcriptions_id"), table_name="transcriptions")
     op.drop_table("transcriptions")
-    TRANSCRIPTION_STATUS_ENUM.drop(op.get_bind(), checkfirst=True)
+    op.execute("DROP TYPE IF EXISTS transcriptionstatus")

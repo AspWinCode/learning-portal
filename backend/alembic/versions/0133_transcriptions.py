@@ -27,7 +27,12 @@ def upgrade() -> None:
         sa.Column("storage_key", sa.String(length=255), nullable=False),
         sa.Column("content_type", sa.String(length=128), nullable=True),
         sa.Column("size_bytes", sa.BigInteger(), nullable=False, server_default="0"),
-        sa.Column("status", TRANSCRIPTION_STATUS_ENUM, nullable=False, server_default="pending"),
+        sa.Column(
+            "status",
+            sa.Enum("pending", "processing", "done", "error", name="transcriptionstatus", create_type=False),
+            nullable=False,
+            server_default="pending",
+        ),
         sa.Column("language", sa.String(length=16), nullable=True),
         sa.Column("text", sa.Text(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),

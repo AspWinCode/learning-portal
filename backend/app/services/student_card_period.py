@@ -107,8 +107,10 @@ def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
 def release_students_from_archived_group(db: Session, group_id: int) -> int:
     """Когда группа архивируется (курс завершён), больше уроков не будет —
     снять «висящий» долг за следующий период с учеников, у которых нет других
-    активных групп. Возвращает количество затронутых карточек."""
-    from app.models import Group, GroupStatus, GroupStudent
+    активных групп, и закрыть их открытые автозадачи "оплата просрочена"
+    (иначе они продолжат висеть в «Плане на сегодня» без причины).
+    Возвращает количество затронутых карточек."""
+    from app.models import Group, GroupStatus, GroupStudent, Task, TaskStudent
 
     member_ids = [
         row[0]
@@ -134,9 +136,29 @@ def release_students_from_archived_group(db: Session, group_id: int) -> int:
         )
         if has_other_active_group:
             continue
+
+        touched = False
+
+        open_tasks = (
+            db.query(Task)
+            .join(TaskStudent, TaskStudent.task_id == Task.id)
+            .filter(
+                TaskStudent.student_id == student_id,
+                Task.task_kind == "payment_overdue",
+                Task.status == "active",
+            )
+            .all()
+        )
+        for task in open_tasks:
+            task.status = "archived"
+            touched = True
+
         card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
         if card and card.next_payment_date is not None:
             card.next_payment_date = None
+            touched = True
+
+        if touched:
             released += 1
     return released
 

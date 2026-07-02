@@ -640,6 +640,7 @@ class StudentCardResponse(StudentCardBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     abonement: Optional[AbonementResponse] = None
+    prepaid_periods: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

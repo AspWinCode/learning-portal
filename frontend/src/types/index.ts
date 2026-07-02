@@ -916,6 +916,7 @@ export interface StudentCard {
   discount_value: number;
   learning_period_start?: string | null;
   next_payment_date?: string | null;
+  prepaid_periods?: number;
   archived: boolean;
   anketa_status?: string; // draft | filled | converted | cancelled
   primary_for_bank_payments?: boolean;

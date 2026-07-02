@@ -68,12 +68,14 @@ def _has_payment_since(db: Session, student_id: int, since: "date | None") -> bo
 
 
 def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
-    """Проверить нужна ли оплата после отметки посещаемости.
+    """Проверить нужна ли оплата после отметки посещаемости (вызывается только для
+    учеников, реально присутствовавших на уроке — см. вызов в trainer_lessons.py).
 
     Логика:
     - Урок посещён и оплаты за текущий период нет → next_payment_date = сегодня
-    - Уроков накоплено >= порога (8) и была оплата → начать новый период,
-      снова поставить next_payment_date (нужна следующая оплата)
+    - Уроков накоплено >= порога (8) и была оплата → начать новый период.
+      Если есть оплаченные вперёд периоды (prepaid_periods > 0) — списать один
+      и не помечать долгом. Иначе — снова поставить next_payment_date (нужна оплата).
     """
     card = _get_or_create_card(db, student_id)
     if not card:
@@ -90,16 +92,30 @@ def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
         if not card.next_payment_date:
             card.next_payment_date = date.today()
     elif lessons >= threshold:
-        # Оплата была, но период закончился (8 уроков) → новый период нужна следующая оплата
+        # Период закончился (8 уроков) → новый период
         card.learning_period_start = date.today()
-        card.next_payment_date = date.today()
+        if (card.prepaid_periods or 0) > 0:
+            # Родитель уже оплатил этот период заранее — списываем из запаса
+            card.prepaid_periods -= 1
+            card.next_payment_date = None
+        else:
+            card.next_payment_date = date.today()
 
 
 def update_card_payment_dates(db: Session, student_id: int, payment_date: date) -> None:
-    """Зафиксировать оплату: сбросить next_payment_date, начать новый период.
-    Если StudentCard ещё нет — создаётся автоматически."""
+    """Зафиксировать оплату. Если StudentCard ещё нет — создаётся автоматически.
+
+    Если на карточке уже нет текущего долга (next_payment_date пуст, а период уже
+    начат) — это оплата ВПЕРЁД: она не трогает текущий период, а откладывается
+    в prepaid_periods и будет списана, когда наступит следующий период.
+    Иначе (первая оплата или закрытие текущего долга) — оплата закрывает
+    текущий период как обычно.
+    """
     card = _get_or_create_card(db, student_id)
     if not card:
+        return
+    if card.learning_period_start is not None and card.next_payment_date is None:
+        card.prepaid_periods = (card.prepaid_periods or 0) + 1
         return
     card.learning_period_start = payment_date
     card.next_payment_date = None

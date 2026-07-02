@@ -648,6 +648,7 @@ class StudentCard(Base):
     discount_value = Column(Float, default=0.0, nullable=False)
     learning_period_start = Column(Date, nullable=True)  # дата старта периода (ТЗ п.2.2)
     next_payment_date = Column(Date, nullable=True)  # дата следующей оплаты
+    prepaid_periods = Column(Integer, default=0, nullable=False, server_default="0")  # оплачено вперёд периодов (родитель заплатил раньше срока)
     archived = Column(Boolean, default=False, nullable=False, index=True)
     # Жизненный цикл анкеты: draft (черновик), filled (готова к конверсии), converted (ученик создан), cancelled
     anketa_status = Column(String(32), default="converted", nullable=False, index=True)

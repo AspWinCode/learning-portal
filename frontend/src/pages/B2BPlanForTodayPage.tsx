@@ -24,7 +24,7 @@ import Refresh from '@mui/icons-material/Refresh';
 import Done from '@mui/icons-material/Done';
 import PushPin from '@mui/icons-material/PushPin';
 import WarningAmber from '@mui/icons-material/WarningAmber';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { b2bApi, ownerWorkspaceApi, tasksApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
@@ -255,7 +255,6 @@ const TaskCard: React.FC<{
   onPinToday: (task: PlannerTask) => void;
   actionLoadingId: string | null;
 }> = ({ task, onComplete, onPinToday, actionLoadingId }) => {
-  const navigate = useNavigate();
   const loading = actionLoadingId === task.id;
   return (
     <Card variant="outlined" sx={{ borderColor: task.overdue ? 'error.light' : task.score >= 75 ? 'warning.light' : 'divider' }}>
@@ -302,7 +301,7 @@ const TaskCard: React.FC<{
                   Закрыть
                 </Button>
               )}
-              <Button size="small" startIcon={<OpenInNew />} onClick={() => navigate(task.openUrl)}>
+              <Button size="small" startIcon={<OpenInNew />} component={RouterLink} to={task.openUrl}>
                 Открыть
               </Button>
             </Stack>

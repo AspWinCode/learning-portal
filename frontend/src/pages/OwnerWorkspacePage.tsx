@@ -5571,7 +5571,6 @@ const OwnerWorkspacePage: React.FC = () => {
           <Tab value={OW_TAB_REPORTS} label="Отчёты" />
           <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
           <Tab value={OW_TAB_HISTORY} label="История" />
-          {isWorkspaceFullAccess && <Tab value={OW_TAB_SETTINGS} label="Настройки" />}
         </Tabs>
       </Box>
 

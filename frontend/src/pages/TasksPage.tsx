@@ -63,7 +63,7 @@ import type { Student } from '../types';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import Refresh from '@mui/icons-material/Refresh';
 import Phone from '@mui/icons-material/Phone';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 const WEEKDAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
@@ -91,6 +91,7 @@ const normalizeTaskCategory = (value: TaskResponse['category'] | undefined, fall
 };
 
 const TasksPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const effectiveRole = getEffectiveRole(user);
   const isAdminOrOwner = effectiveRole === 'admin' || effectiveRole === 'owner';
@@ -494,6 +495,21 @@ const TasksPage: React.FC = () => {
     setTaskIsParentResponses(task?.tags?.includes('parent_responses') ?? false);
     setTaskDialogOpen(true);
   };
+
+  const openedFromUrlRef = useRef(false);
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading || openedFromUrlRef.current) return;
+    const taskId = Number(openId);
+    if (Number.isNaN(taskId)) return;
+    const found = tasks.find((t) => t.id === taskId);
+    if (found) {
+      openedFromUrlRef.current = true;
+      openTaskDialog(found);
+      setSearchParams((prev) => { prev.delete('open'); return prev; }, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, loading, searchParams]);
 
   const refreshAfterTaskChange = () => {
     loadTasks();

@@ -403,7 +403,7 @@ const B2BPlanForTodayPage: React.FC = () => {
           estimatedDuration: estimateTaskDuration(task),
           assignee: task.assigned_to_id,
           reason: task.pinned_today ? 'Закреплено в плане' : 'Открытая задача',
-          openUrl: '/tasks',
+          openUrl: `/tasks?open=${task.id}`,
           raw: task,
         }));
       });
@@ -506,14 +506,19 @@ const B2BPlanForTodayPage: React.FC = () => {
     };
   }, [tasks]);
 
-  const mustToday = useMemo(() => tasks.filter((task) => task.bucket === 'must').slice(0, 25), [tasks]);
-  const shouldToday = useMemo(() => tasks.filter((task) => task.bucket === 'should').slice(0, 25), [tasks]);
-  const canMove = useMemo(() => tasks.filter((task) => task.bucket === 'can_move').slice(0, 25), [tasks]);
-  const weekPlan = useMemo(() => tasks.filter((task) => task.dueThisWeek && !task.overdue).slice(0, 50), [tasks]);
-  const risks = useMemo(() => tasks.filter((task) => task.overdue || task.score >= 75 || task.riskScore >= 70).slice(0, 50), [tasks]);
+  const activeTasks = useMemo(
+    () => tasks.filter((t) => t.status !== 'completed' && t.status !== 'archived' && t.status !== 'cancelled' && t.status !== 'done'),
+    [tasks],
+  );
+  const mustToday = useMemo(() => activeTasks.filter((task) => task.bucket === 'must').slice(0, 25), [activeTasks]);
+  const shouldToday = useMemo(() => activeTasks.filter((task) => task.bucket === 'should').slice(0, 25), [activeTasks]);
+  const canMove = useMemo(() => activeTasks.filter((task) => task.bucket === 'can_move').slice(0, 25), [activeTasks]);
+  const weekPlan = useMemo(() => activeTasks.filter((task) => task.dueThisWeek && !task.overdue).slice(0, 50), [activeTasks]);
+  const risks = useMemo(() => activeTasks.filter((task) => task.overdue || task.score >= 75 || task.riskScore >= 70).slice(0, 50), [activeTasks]);
 
   const handleComplete = async (task: PlannerTask) => {
     setActionLoadingId(task.id);
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
     try {
       if (task.source === 'task_tracker' && task.id.startsWith('task_tracker:')) {
         await tasksApi.completeTask(Number(task.entityId));
@@ -522,6 +527,8 @@ const B2BPlanForTodayPage: React.FC = () => {
       } else if (task.source === 'schools') {
         await b2bApi.updateSchool(Number(task.entityId), { next_step: null, next_step_date: null });
       }
+      await loadPlanner();
+    } catch {
       await loadPlanner();
     } finally {
       setActionLoadingId(null);

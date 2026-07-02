@@ -3,7 +3,7 @@
  * Used by both OwnerWorkspacePage (legacy) and OwnerWorkspaceSettingsPage.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { legacyOwnerWorkspaceApi, settingsApi } from '../services/api';
+import { legacyOwnerWorkspaceApi, ownerWorkspaceApi, settingsApi } from '../services/api';
 import type {
   OwnerWorkspaceNotificationConfig,
   OwnerWorkspaceNotificationDeliveryStats,
@@ -14,8 +14,31 @@ import type {
   OwnerWorkspaceSettingsBundle,
   OwnerWorkspaceSettingsBundleEnvelope,
   OwnerWorkspaceSettingsSnapshot,
+  OwnerWorkspaceWebPushStatus,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const normalized = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(normalized);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+  if (!buffer) return '';
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return window.btoa(binary);
+}
 
 const DEFAULT_OWNER_WS_PERMISSION_POLICY: OwnerWorkspacePermissionPolicy = {
   manager_can_manage_team: true,
@@ -58,11 +81,11 @@ export function useOwnerWorkspaceSettings() {
   const [notifyTaskUpdated, setNotifyTaskUpdated] = useState(false);
   const [notifyContactIncomingMessage, setNotifyContactIncomingMessage] = useState(true);
   const [notifyTaskMention, setNotifyTaskMention] = useState(true);
-  const [webPushStatus] = useState<import('../types').OwnerWorkspaceWebPushStatus>({ configured: false, public_key: null, subscription_count: 0 });
-  const [webPushBrowserSupported] = useState(false);
-  const [webPushPermission] = useState<string>('default');
-  const [webPushConnected] = useState(false);
-  const [webPushBusy] = useState(false);
+  const [webPushStatus, setWebPushStatus] = useState<OwnerWorkspaceWebPushStatus | null>(null);
+  const [webPushBrowserSupported, setWebPushBrowserSupported] = useState(false);
+  const [webPushPermission, setWebPushPermission] = useState<string>('default');
+  const [webPushConnected, setWebPushConnected] = useState(false);
+  const [webPushBusy, setWebPushBusy] = useState(false);
   const [notificationLabels] = useState<Record<string, string>>({});
   const [notificationConfigMap] = useState<Record<string, { enabled: boolean; label: string }>>({});
 
@@ -209,6 +232,102 @@ export function useOwnerWorkspaceSettings() {
   }, []);
 
   useEffect(() => { void loadSettings(); void loadSettingsSnapshots(); }, [loadSettings, loadSettingsSnapshots]);
+
+  // ── Web push ───────────────────────────────────────────────────────────────
+  const refreshWebPushState = useCallback(async () => {
+    const supported =
+      typeof window !== 'undefined' &&
+      'serviceWorker' in navigator &&
+      'PushManager' in window &&
+      typeof Notification !== 'undefined';
+    setWebPushBrowserSupported(supported);
+    setWebPushPermission(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+    try {
+      const status = await ownerWorkspaceApi.getMyWebPushStatus();
+      setWebPushStatus(status);
+    } catch {
+      setWebPushStatus(null);
+    }
+    if (!supported) {
+      setWebPushConnected(false);
+      return;
+    }
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const subscription = await registration.pushManager.getSubscription();
+      setWebPushConnected(Boolean(subscription));
+    } catch {
+      setWebPushConnected(false);
+    }
+  }, []);
+
+  useEffect(() => { void refreshWebPushState(); }, [refreshWebPushState]);
+
+  const connectWebPush = useCallback(async () => {
+    if (webPushBusy) return;
+    if (!webPushStatus?.configured || !webPushStatus.public_key) {
+      setError('Web push не настроен на сервере: отсутствует публичный VAPID ключ.');
+      return;
+    }
+    if (!webPushBrowserSupported || typeof Notification === 'undefined') {
+      setError('Этот браузер не поддерживает web push.');
+      return;
+    }
+    setWebPushBusy(true);
+    try {
+      let permission = Notification.permission;
+      if (permission !== 'granted') {
+        permission = await Notification.requestPermission();
+      }
+      setWebPushPermission(permission);
+      if (permission !== 'granted') {
+        setError('Браузер не выдал разрешение на push-уведомления.');
+        return;
+      }
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(webPushStatus.public_key),
+        });
+      }
+      await ownerWorkspaceApi.upsertMyWebPushSubscription({
+        endpoint: subscription.endpoint,
+        p256dh: arrayBufferToBase64(subscription.getKey('p256dh')),
+        auth: arrayBufferToBase64(subscription.getKey('auth')),
+        user_agent: navigator.userAgent,
+      });
+      setError('');
+      await refreshWebPushState();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось подключить web push.'));
+    } finally {
+      setWebPushBusy(false);
+    }
+  }, [refreshWebPushState, webPushBrowserSupported, webPushBusy, webPushStatus]);
+
+  const disconnectWebPush = useCallback(async () => {
+    if (webPushBusy || !webPushBrowserSupported) return;
+    setWebPushBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const subscription = await registration.pushManager.getSubscription();
+      const endpoint = subscription?.endpoint || '';
+      if (subscription) {
+        await subscription.unsubscribe();
+      }
+      if (endpoint) {
+        await ownerWorkspaceApi.removeMyWebPushSubscription(endpoint);
+      }
+      setError('');
+      await refreshWebPushState();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось отключить web push.'));
+    } finally {
+      setWebPushBusy(false);
+    }
+  }, [refreshWebPushState, webPushBrowserSupported, webPushBusy]);
 
   // ── Notification delivery stats ───────────────────────────────────────────
   const loadNotificationDeliveryStats = useCallback(async () => {
@@ -430,6 +549,7 @@ export function useOwnerWorkspaceSettings() {
     notifyContactIncomingMessage, setNotifyContactIncomingMessage,
     notifyTaskMention, setNotifyTaskMention,
     webPushStatus, webPushBrowserSupported, webPushPermission, webPushConnected, webPushBusy,
+    connectWebPush, disconnectWebPush,
     notificationLabels, notificationConfigMap,
     settingsSaving,
     taskConfig, taskConfigDraft, setTaskConfigDraft, taskConfigSaving,

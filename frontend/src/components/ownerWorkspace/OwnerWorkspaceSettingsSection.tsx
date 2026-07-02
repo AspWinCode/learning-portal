@@ -19,8 +19,6 @@ const OwnerWorkspaceSettingsConfigSection = React.lazy(() =>
   }))
 );
 
-const noop = async () => {};
-
 export function OwnerWorkspaceSettingsSection() {
   const { user } = useAuth();
   const effectiveRole = getEffectiveRole(user);
@@ -104,8 +102,8 @@ export function OwnerWorkspaceSettingsSection() {
           onNotifyTaskUpdatedChange={s.setNotifyTaskUpdated}
           onNotifyContactIncomingMessageChange={s.setNotifyContactIncomingMessage}
           onNotifyTaskMentionChange={s.setNotifyTaskMention}
-          onConnectWebPush={noop}
-          onDisconnectWebPush={noop}
+          onConnectWebPush={s.connectWebPush}
+          onDisconnectWebPush={s.disconnectWebPush}
           onSaveWorkspaceSettings={s.saveWorkspaceSettings}
           onTaskStatusLabelChange={(index, value) =>
             s.setTaskConfigDraft((prev) =>

@@ -25,7 +25,7 @@ from sqlalchemy.pool import StaticPool
 from app import auth
 from app.database import Base, get_db
 from app.main import app
-from app.models import User, TaskSubtask
+from app.models import User
 
 
 # ---------------------------------------------------------------------------

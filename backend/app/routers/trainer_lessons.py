@@ -10,7 +10,6 @@ from app.academic_month import get_academic_window
 from app.database import get_db
 from app import auth
 from app.services.communication_hub import CommunicationService
-from app.services.makeup_selection import queue_makeup_selection_request
 from app.services.student_activity import log_student_activity
 from app.services.student_card_period import check_lesson_payment_threshold, set_card_payment_dates_from_training_start
 from app.models import (

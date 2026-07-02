@@ -104,6 +104,43 @@ def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
             card.next_payment_date = date.today()
 
 
+def release_students_from_archived_group(db: Session, group_id: int) -> int:
+    """Когда группа архивируется (курс завершён), больше уроков не будет —
+    снять «висящий» долг за следующий период с учеников, у которых нет других
+    активных групп. Возвращает количество затронутых карточек."""
+    from app.models import Group, GroupStatus, GroupStudent
+
+    member_ids = [
+        row[0]
+        for row in db.query(GroupStudent.student_id)
+        .filter(GroupStudent.group_id == group_id, GroupStudent.left_at.is_(None))
+        .all()
+    ]
+    if not member_ids:
+        return 0
+
+    released = 0
+    for student_id in member_ids:
+        has_other_active_group = (
+            db.query(GroupStudent.id)
+            .join(Group, Group.id == GroupStudent.group_id)
+            .filter(
+                GroupStudent.student_id == student_id,
+                GroupStudent.group_id != group_id,
+                GroupStudent.left_at.is_(None),
+                Group.status == GroupStatus.ACTIVE,
+            )
+            .first()
+        )
+        if has_other_active_group:
+            continue
+        card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+        if card and card.next_payment_date is not None:
+            card.next_payment_date = None
+            released += 1
+    return released
+
+
 def update_card_payment_dates(db: Session, student_id: int, payment_date: date) -> None:
     """Зафиксировать оплату. Если StudentCard ещё нет — создаётся автоматически.
 

@@ -19,6 +19,7 @@ from app.schemas.students import StudentResponse
 from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, ProgramStatus, GroupProgram, Program
 from app.routers.action_log import log_action
 from app.services.student_activity import log_student_activity
+from app.services.student_card_period import release_students_from_archived_group
 from app.student_display import get_students_display_names
 
 router = APIRouter()
@@ -306,11 +307,15 @@ async def update_group(
             raise HTTPException(status_code=404, detail="Trainer not found")
 
     # Валидация статуса (если меняем)
+    status_just_archived = False
     if "status" in update_data and update_data["status"] is not None:
         try:
             update_data["status"] = GroupStatus(update_data["status"])
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid group status")
+        status_just_archived = (
+            update_data["status"] == GroupStatus.ARCHIVED and db_group.status != GroupStatus.ARCHIVED
+        )
 
     if "lesson_format" in update_data and update_data["lesson_format"] is not None:
         v = (update_data["lesson_format"] or "").strip().lower()
@@ -325,6 +330,9 @@ async def update_group(
             start = s.start_time if hasattr(s.start_time, "hour") else _parse_time(s.start_time)
             end = s.end_time if hasattr(s.end_time, "hour") else _parse_time(s.end_time)
             db.add(GroupSchedule(group_id=group_id, day_of_week=s.day_of_week, start_time=start, end_time=end))
+
+    if status_just_archived:
+        release_students_from_archived_group(db, group_id)
 
     db.commit()
     db.refresh(db_group)
@@ -629,8 +637,9 @@ async def delete_group(
         raise HTTPException(status_code=404, detail="Group not found")
     
     db_group.status = GroupStatus.ARCHIVED
+    release_students_from_archived_group(db, group_id)
     db.commit()
-    
+
     log_action(db, current_user.id, "archive", "group", group_id)
     await invalidate_namespace(CACHE_NS_GROUPS)
     return {"message": "Group archived"}

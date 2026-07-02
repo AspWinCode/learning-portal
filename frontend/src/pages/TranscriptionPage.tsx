@@ -5,6 +5,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   IconButton,
   LinearProgress,
   Paper,
@@ -16,6 +17,10 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import MicIcon from '@mui/icons-material/Mic';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import Layout from '../components/Layout';
 import { transcriptionApi } from '../services/api';
 import type { Transcription } from '../types';
@@ -41,12 +46,18 @@ function formatSize(bytes?: number | null): string {
   return mb >= 1 ? `${mb.toFixed(1)} МБ` : `${Math.max(1, Math.round(bytes / 1024))} КБ`;
 }
 
+function previewText(text: string, maxLength = 120): string {
+  const singleLine = text.replace(/\s+/g, ' ').trim();
+  return singleLine.length > maxLength ? `${singleLine.slice(0, maxLength)}…` : singleLine;
+}
+
 const TranscriptionPage: React.FC = () => {
   const [items, setItems] = useState<Transcription[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
@@ -107,6 +118,18 @@ const TranscriptionPage: React.FC = () => {
     setMessage('Текст скопирован');
   };
 
+  const toggleExpanded = (id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const expandAll = () => setExpandedIds(new Set(items.filter((item) => item.status === 'done').map((item) => item.id)));
+  const collapseAll = () => setExpandedIds(new Set());
+
   return (
     <Layout>
       <Box sx={{ p: { xs: 1.5, md: 3 } }}>
@@ -141,6 +164,17 @@ const TranscriptionPage: React.FC = () => {
           {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
           {message && <Alert severity="success" onClose={() => setMessage(null)}>{message}</Alert>}
 
+          {items.some((item) => item.status === 'done') && (
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Button size="small" startIcon={<UnfoldMoreIcon fontSize="small" />} onClick={expandAll}>
+                Развернуть все
+              </Button>
+              <Button size="small" startIcon={<UnfoldLessIcon fontSize="small" />} onClick={collapseAll}>
+                Свернуть все
+              </Button>
+            </Stack>
+          )}
+
           {!loading && items.length === 0 && (
             <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 1 }}>
               <MicIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
@@ -153,51 +187,74 @@ const TranscriptionPage: React.FC = () => {
             </Paper>
           )}
 
-          <Stack spacing={1.5}>
-            {items.map((item) => (
-              <Paper key={item.id} variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
-                <Stack spacing={1}>
-                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-                      <MicIcon fontSize="small" color="action" />
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
-                        {item.filename}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatSize(item.size_bytes)}
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Chip size="small" label={STATUS_LABEL[item.status]} color={STATUS_COLOR[item.status]} />
-                      {item.text && (
-                        <Tooltip title="Копировать текст">
-                          <IconButton size="small" onClick={() => handleCopy(item)}>
-                            <ContentCopyIcon fontSize="small" />
+          <Stack spacing={1}>
+            {items.map((item) => {
+              const isExpandable = item.status === 'done' && !!item.text;
+              const isExpanded = isExpandable && expandedIds.has(item.id);
+              return (
+                <Paper key={item.id} variant="outlined" sx={{ px: 2, py: 1.25, borderRadius: 1 }}>
+                  <Stack spacing={0.75}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      justifyContent="space-between"
+                      sx={{ cursor: isExpandable ? 'pointer' : 'default' }}
+                      onClick={() => isExpandable && toggleExpanded(item.id)}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+                        {isExpandable && (
+                          <IconButton size="small" onClick={(event) => { event.stopPropagation(); toggleExpanded(item.id); }}>
+                            {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                          </IconButton>
+                        )}
+                        <MicIcon fontSize="small" color="action" />
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, flexShrink: 0 }} noWrap>
+                          {item.filename}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                          {formatSize(item.size_bytes)}
+                        </Typography>
+                        {isExpandable && !isExpanded && (
+                          <Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
+                            {previewText(item.text || '')}
+                          </Typography>
+                        )}
+                      </Stack>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+                        <Chip size="small" label={STATUS_LABEL[item.status]} color={STATUS_COLOR[item.status]} />
+                        {item.text && (
+                          <Tooltip title="Копировать текст">
+                            <IconButton size="small" onClick={(event) => { event.stopPropagation(); handleCopy(item); }}>
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        <Tooltip title="Удалить">
+                          <IconButton size="small" color="error" onClick={(event) => { event.stopPropagation(); handleDelete(item); }}>
+                            <DeleteOutlineIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                      )}
-                      <Tooltip title="Удалить">
-                        <IconButton size="small" color="error" onClick={() => handleDelete(item)}>
-                          <DeleteOutlineIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      </Stack>
                     </Stack>
+
+                    {(item.status === 'pending' || item.status === 'processing') && <LinearProgress />}
+
+                    {item.status === 'error' && (
+                      <Alert severity="error">{item.error_message || 'Не удалось распознать аудио'}</Alert>
+                    )}
+
+                    {isExpandable && (
+                      <Collapse in={isExpanded}>
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', pl: 4.5, pt: 0.5 }}>
+                          {item.text}
+                        </Typography>
+                      </Collapse>
+                    )}
                   </Stack>
-
-                  {(item.status === 'pending' || item.status === 'processing') && <LinearProgress />}
-
-                  {item.status === 'error' && (
-                    <Alert severity="error">{item.error_message || 'Не удалось распознать аудио'}</Alert>
-                  )}
-
-                  {item.status === 'done' && (
-                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                      {item.text || '—'}
-                    </Typography>
-                  )}
-                </Stack>
-              </Paper>
-            ))}
+                </Paper>
+              );
+            })}
           </Stack>
         </Stack>
       </Box>

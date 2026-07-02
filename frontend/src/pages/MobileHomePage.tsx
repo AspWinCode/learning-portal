@@ -18,6 +18,7 @@ import {
   EventAvailable,
   Grade,
   Logout,
+  Notifications,
   Paid,
   People,
   Person,
@@ -30,6 +31,7 @@ import { PwaModule } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { extractApiError } from '../utils/extractApiError';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
+import { useWebPush } from '../hooks/useWebPush';
 import { MobileShell, mobileCardSx } from '../components/mobile/MobileShell';
 
 const moduleIcons: Record<string, React.ReactNode> = {
@@ -91,6 +93,7 @@ const MobileHomePage: React.FC = () => {
   const [modules, setModules] = React.useState<PwaModule[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const webPush = useWebPush();
 
   React.useEffect(() => {
     try {
@@ -143,6 +146,42 @@ const MobileHomePage: React.FC = () => {
               Быстрый доступ к разделам, доступным для вашей роли.
             </Typography>
           </Paper>
+
+          {webPush.browserSupported && webPush.status?.configured && !webPush.connected && webPush.permission !== 'denied' && (
+            <Paper
+              variant="outlined"
+              sx={{
+                ...mobileCardSx,
+                p: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                borderColor: 'rgba(83, 88, 255, 0.35)',
+                bgcolor: 'rgba(83, 88, 255, 0.06)',
+              }}
+            >
+              <Notifications color="primary" />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="body2" fontWeight={800}>
+                  Включить уведомления
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Напоминания о задачах будут приходить сюда
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                size="small"
+                disabled={webPush.busy}
+                onClick={() => void webPush.connect()}
+                sx={{ flexShrink: 0 }}
+              >
+                {webPush.busy ? '...' : 'Включить'}
+              </Button>
+            </Paper>
+          )}
+
+          {webPush.error ? <Alert severity="warning">{webPush.error}</Alert> : null}
 
           {error ? <Alert severity="error">{error}</Alert> : null}
 

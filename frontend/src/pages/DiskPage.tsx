@@ -284,7 +284,7 @@ const DiskPage: React.FC = () => {
                       <>
                         <IconButton
                           size="small"
-                          onClick={() => window.open(diskApi.viewFileUrl(item.id), '_blank')}
+                          onClick={() => void diskApi.viewFileInline(item.id)}
                           aria-label="Открыть онлайн"
                         >
                           <VisibilityIcon fontSize="small" />

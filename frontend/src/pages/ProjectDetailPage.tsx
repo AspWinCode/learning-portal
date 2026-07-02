@@ -1056,12 +1056,7 @@ const ProjectDetailPage: React.FC = () => {
                       <IconButton
                         size="small"
                         title="Открыть онлайн"
-                        onClick={() =>
-                          window.open(
-                            ownerWorkspaceApi.viewProjectDocumentUrl(projectId, doc.id),
-                            '_blank'
-                          )
-                        }
+                        onClick={() => void ownerWorkspaceApi.openProjectDocumentInline(projectId, doc.id)}
                       >
                         <VisibilityIcon fontSize="small" />
                       </IconButton>

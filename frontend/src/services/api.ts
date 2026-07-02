@@ -3614,7 +3614,17 @@ export const diskApi = {
     const response = await api.patch(`/disk/items/${itemId}`, payload);
     return response.data;
   },
-  viewFileUrl: (itemId: number): string => `/api/v1/disk/files/${itemId}/download?inline=true`,
+  viewFileInline: async (itemId: number): Promise<void> => {
+    const response = await api.get(`/disk/files/${itemId}/download`, {
+      params: { inline: true },
+      responseType: 'blob',
+      timeout: 120000,
+    });
+    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    const blob = new Blob([response.data], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  },
   downloadFile: async (itemId: number): Promise<{ blob: Blob; filename: string }> => {
     const response = await api.get(`/disk/files/${itemId}/download`, { responseType: 'blob', timeout: 120000 });
     const disposition = String(response.headers['content-disposition'] || '');

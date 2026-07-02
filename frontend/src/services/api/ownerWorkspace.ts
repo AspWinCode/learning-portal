@@ -109,8 +109,16 @@ export const ownerWorkspaceApi = {
   },
   downloadProjectDocumentUrl: (projectId: number, documentId: number): string =>
     `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download`,
-  viewProjectDocumentUrl: (projectId: number, documentId: number): string =>
-    `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download?inline=true`,
+  openProjectDocumentInline: async (projectId: number, documentId: number): Promise<void> => {
+    const response = await api.get(
+      `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download`,
+      { params: { inline: true }, responseType: 'blob' }
+    );
+    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    const blob = new Blob([response.data], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  },
   renameProjectDocument: async (
     projectId: number,
     documentId: number,

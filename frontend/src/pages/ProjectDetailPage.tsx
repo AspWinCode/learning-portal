@@ -31,12 +31,14 @@ import {
   Archive as ArchiveIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
+  DriveFileRenameOutline as RenameIcon,
   Edit as EditIcon,
   CreateNewFolder as CreateNewFolderIcon,
   Folder as FolderIcon,
   InsertDriveFile as FileIcon,
   NavigateNext as NavigateNextIcon,
   UploadFile as UploadFileIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 
 import Layout from '../components/Layout';
@@ -233,6 +235,9 @@ const ProjectDetailPage: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deleteDocTarget, setDeleteDocTarget] = useState<OwnerWorkspaceProjectDocument | null>(null);
+  const [renameDocTarget, setRenameDocTarget] = useState<OwnerWorkspaceProjectDocument | null>(null);
+  const [renameDocFilename, setRenameDocFilename] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   // Contacts
   const [contacts, setContacts] = useState<OwnerWorkspaceContact[]>([]);
@@ -586,6 +591,23 @@ const ProjectDetailPage: React.FC = () => {
       await loadDocuments();
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось удалить документ.'));
+    }
+  };
+
+  const handleRenameDocument = async () => {
+    if (!renameDocTarget) return;
+    const trimmed = renameDocFilename.trim();
+    if (!trimmed) return;
+    setRenameSaving(true);
+    try {
+      const updated = await ownerWorkspaceApi.renameProjectDocument(projectId, renameDocTarget.id, trimmed);
+      setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+      setSuccess('Документ переименован.');
+      setRenameDocTarget(null);
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось переименовать документ.'));
+    } finally {
+      setRenameSaving(false);
     }
   };
 
@@ -1033,6 +1055,19 @@ const ProjectDetailPage: React.FC = () => {
                     <Stack direction="row" spacing={1}>
                       <IconButton
                         size="small"
+                        title="Открыть онлайн"
+                        onClick={() =>
+                          window.open(
+                            ownerWorkspaceApi.viewProjectDocumentUrl(projectId, doc.id),
+                            '_blank'
+                          )
+                        }
+                      >
+                        <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        title="Скачать"
                         onClick={() =>
                           window.open(
                             ownerWorkspaceApi.downloadProjectDocumentUrl(projectId, doc.id),
@@ -1044,7 +1079,18 @@ const ProjectDetailPage: React.FC = () => {
                       </IconButton>
                       <IconButton
                         size="small"
+                        title="Переименовать"
+                        onClick={() => {
+                          setRenameDocTarget(doc);
+                          setRenameDocFilename(doc.filename);
+                        }}
+                      >
+                        <RenameIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
                         color="error"
+                        title="Удалить"
                         onClick={() => setDeleteDocTarget(doc)}
                       >
                         <DeleteIcon fontSize="small" />
@@ -1397,6 +1443,32 @@ const ProjectDetailPage: React.FC = () => {
         onClose={() => setDeleteDocTarget(null)}
         onConfirm={handleDeleteDocument}
       />
+
+      {/* Rename document dialog */}
+      <Dialog open={Boolean(renameDocTarget)} onClose={() => setRenameDocTarget(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Переименовать документ</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Имя файла"
+            value={renameDocFilename}
+            onChange={(e) => setRenameDocFilename(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleRenameDocument(); }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameDocTarget(null)}>Отмена</Button>
+          <Button
+            variant="contained"
+            disabled={renameSaving || !renameDocFilename.trim()}
+            onClick={() => void handleRenameDocument()}
+          >
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Add contact dialog */}
       <Dialog

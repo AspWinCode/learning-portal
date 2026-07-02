@@ -3614,6 +3614,7 @@ export const diskApi = {
     const response = await api.patch(`/disk/items/${itemId}`, payload);
     return response.data;
   },
+  viewFileUrl: (itemId: number): string => `/api/v1/disk/files/${itemId}/download?inline=true`,
   downloadFile: async (itemId: number): Promise<{ blob: Blob; filename: string }> => {
     const response = await api.get(`/disk/files/${itemId}/download`, { responseType: 'blob', timeout: 120000 });
     const disposition = String(response.headers['content-disposition'] || '');

@@ -27,6 +27,7 @@ import {
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import FolderIcon from '@mui/icons-material/Folder';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
@@ -280,9 +281,18 @@ const DiskPage: React.FC = () => {
                   <TableCell>{formatDate(item.updated_at || item.created_at)}</TableCell>
                   <TableCell align="right">
                     {item.item_type === 'file' && (
-                      <IconButton size="small" onClick={() => void downloadFile(item)} aria-label="Скачать">
-                        <DownloadIcon fontSize="small" />
-                      </IconButton>
+                      <>
+                        <IconButton
+                          size="small"
+                          onClick={() => window.open(diskApi.viewFileUrl(item.id), '_blank')}
+                          aria-label="Открыть онлайн"
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => void downloadFile(item)} aria-label="Скачать">
+                          <DownloadIcon fontSize="small" />
+                        </IconButton>
+                      </>
                     )}
                     <IconButton size="small" onClick={(event) => openMenu(event, item)} aria-label="Меню">
                       <MoreVertIcon fontSize="small" />

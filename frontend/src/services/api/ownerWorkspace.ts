@@ -109,6 +109,19 @@ export const ownerWorkspaceApi = {
   },
   downloadProjectDocumentUrl: (projectId: number, documentId: number): string =>
     `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download`,
+  viewProjectDocumentUrl: (projectId: number, documentId: number): string =>
+    `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download?inline=true`,
+  renameProjectDocument: async (
+    projectId: number,
+    documentId: number,
+    filename: string
+  ): Promise<OwnerWorkspaceProjectDocument> => {
+    const response = await api.patch(
+      `/api/owner-workspace/projects/${projectId}/documents/${documentId}`,
+      { filename }
+    );
+    return response.data;
+  },
   deleteProjectDocument: async (projectId: number, documentId: number): Promise<void> => {
     await api.delete(`/api/owner-workspace/projects/${projectId}/documents/${documentId}`);
   },

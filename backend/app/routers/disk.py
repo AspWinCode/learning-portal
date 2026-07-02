@@ -219,6 +219,7 @@ async def update_disk_item(
 @router.get("/files/{item_id}/download")
 async def download_disk_file(
     item_id: int,
+    inline: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("owner_workspace.access")),
 ):
@@ -229,11 +230,12 @@ async def download_disk_file(
     if DISK_STORAGE_ROOT not in path.parents or not path.exists():
         raise HTTPException(status_code=404, detail="Stored file is missing")
     encoded_name = quote(item.name)
+    disposition = "inline" if inline else "attachment"
     return FileResponse(
         path,
         media_type=item.content_type or "application/octet-stream",
         filename=item.name,
-        headers={"Content-Disposition": f'attachment; filename="{encoded_name}"; filename*=UTF-8\'\'{encoded_name}'},
+        headers={"Content-Disposition": f'{disposition}; filename="{encoded_name}"; filename*=UTF-8\'\'{encoded_name}'},
     )
 
 

@@ -122,6 +122,7 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceProjectDocumentFolderResponse,
     OwnerWorkspaceProjectDocumentFolderUpdate,
     OwnerWorkspaceProjectDocumentResponse,
+    OwnerWorkspaceProjectDocumentUpdate,
     OwnerWorkspaceProjectParticipantAdd,
     OwnerWorkspaceProjectParticipantRolePatch,
     OwnerWorkspaceProjectResponse,
@@ -1938,6 +1939,7 @@ async def upload_project_document(
 async def download_project_document(
     project_id: int,
     document_id: int,
+    inline: bool = False,
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
@@ -1951,10 +1953,61 @@ async def download_project_document(
         raise HTTPException(status_code=404, detail="Document not found")
     from urllib.parse import quote
     encoded = quote(row.filename, safe="")
+    disposition = "inline" if inline else "attachment"
     return StreamingResponse(
         BytesIO(row.data),
         media_type=row.content_type,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"},
+        headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{encoded}"},
+    )
+
+
+@router.patch("/projects/{project_id}/documents/{document_id}", response_model=OwnerWorkspaceProjectDocumentResponse)
+async def rename_project_document(
+    project_id: int,
+    document_id: int,
+    payload: OwnerWorkspaceProjectDocumentUpdate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not project_visible(ctx, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_edit_project_content(db, ctx, project_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    row = db.query(OwnerWorkspaceProjectDocument).filter(
+        OwnerWorkspaceProjectDocument.id == document_id,
+        OwnerWorkspaceProjectDocument.project_id == project_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if payload.filename is not None:
+        new_name = payload.filename.strip()
+        if new_name:
+            _log_audit(
+                db,
+                entity_type="project",
+                entity_id=project_id,
+                action_type="document_rename",
+                author_id=ctx.user.id,
+                old_value={"filename": row.filename},
+                new_value={"filename": new_name},
+            )
+            row.filename = new_name
+    db.commit()
+    db.refresh(row)
+    uploader_name = None
+    if row.uploaded_by_id:
+        u = db.query(User).filter(User.id == row.uploaded_by_id).first()
+        uploader_name = u.full_name if u else None
+    return OwnerWorkspaceProjectDocumentResponse(
+        id=row.id,
+        project_id=row.project_id,
+        folder_id=row.folder_id,
+        filename=row.filename,
+        content_type=row.content_type,
+        size_bytes=row.size_bytes,
+        uploaded_by_id=row.uploaded_by_id,
+        uploaded_by_name=uploader_name,
+        created_at=row.created_at,
     )
 
 

@@ -89,6 +89,10 @@ class OwnerWorkspaceProjectDocumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class OwnerWorkspaceProjectDocumentUpdate(BaseModel):
+    filename: Optional[str] = Field(default=None, min_length=1, max_length=255)
+
+
 class OwnerWorkspaceProjectDocumentFolderCreate(BaseModel):
     parent_id: Optional[int] = None
     name: str = Field(..., min_length=1, max_length=255)

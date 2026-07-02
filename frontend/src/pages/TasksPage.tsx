@@ -2404,6 +2404,16 @@ const TasksPage: React.FC = () => {
                           <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1} flexWrap="wrap">
                             <Box sx={{ flex: 1, minWidth: 0 }}>
                               <Typography variant="subtitle2">{task.title}</Typography>
+                              {task.student_ids && task.student_ids.length > 0 && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                  {task.student_ids
+                                    .slice(0, 4)
+                                    .map((id) => students.find((s) => s.id === id)?.full_name)
+                                    .filter(Boolean)
+                                    .join(', ')}
+                                  {task.student_ids.length > 4 ? ` и ещё ${task.student_ids.length - 4}` : ''}
+                                </Typography>
+                              )}
                               <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
                                 <Chip size="small" label={categoryLabel} variant="outlined" sx={{ height: 20 }} />
                                 {dueLabel && <Chip size="small" label={dueLabel} color="warning" sx={{ height: 20 }} />}
@@ -2763,6 +2773,16 @@ const TasksPage: React.FC = () => {
                           {expandedTaskId === task.id ? <ExpandLess /> : <ExpandMore />}
                           <Box sx={{ flex: 1 }}>
                             <Typography variant="subtitle1">{task.title}</Typography>
+                            {task.student_ids && task.student_ids.length > 0 && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                {task.student_ids
+                                  .slice(0, 4)
+                                  .map((id) => students.find((s) => s.id === id)?.full_name)
+                                  .filter(Boolean)
+                                  .join(', ')}
+                                {task.student_ids.length > 4 ? ` и ещё ${task.student_ids.length - 4}` : ''}
+                              </Typography>
+                            )}
                             {task.description && (
                               <Typography variant="body2" color="text.secondary" noWrap>
                                 {task.description}

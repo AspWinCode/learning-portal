@@ -2017,6 +2017,38 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   }, [refreshWebPushState, webPushBrowserSupported, webPushBusy, webPushStatus]);
 
+  /** Одна кнопка «Включить уведомления»: подключает браузер/PWA и сразу сохраняет тумблер web push, без похода в настройки. */
+  const enablePushOneTap = useCallback(async () => {
+    await connectWebPush();
+    setNotifyWebPushEnabled(true);
+    setSettingsSaving(true);
+    try {
+      await ownerWorkspaceApi.patchMyPreferences({
+        default_task_view: taskViewMode,
+        task_list_rows_per_page: taskListRowsPerPage,
+        digest_due_within_hours: digestDueHours,
+        digest_scope: digestScope,
+        notify_email_enabled: notifyEmailEnabled,
+        notify_web_push_enabled: true,
+        notify_task_overdue: notifyTaskOverdue,
+        notify_task_due_soon: notifyTaskDueSoon,
+        notify_task_assigned: notifyTaskAssigned,
+        notify_task_comment: notifyTaskComment,
+        notify_task_updated: notifyTaskUpdated,
+        notify_contact_incoming_message: notifyContactIncomingMessage,
+        notify_task_mention: notifyTaskMention,
+      });
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось сохранить настройку web push'));
+    } finally {
+      setSettingsSaving(false);
+    }
+  }, [
+    connectWebPush, taskViewMode, taskListRowsPerPage, digestDueHours, digestScope,
+    notifyEmailEnabled, notifyTaskOverdue, notifyTaskDueSoon, notifyTaskAssigned,
+    notifyTaskComment, notifyTaskUpdated, notifyContactIncomingMessage, notifyTaskMention,
+  ]);
+
   const disconnectWebPush = useCallback(async () => {
     if (webPushBusy || !webPushBrowserSupported) return;
     setWebPushBusy(true);
@@ -5455,6 +5487,42 @@ const OwnerWorkspacePage: React.FC = () => {
           )}
         </Stack>
       </Box>
+      {webPushBrowserSupported && webPushStatus?.configured && !webPushConnected && webPushPermission !== 'denied' && (
+        <Box
+          sx={{
+            border: '1px solid rgba(79,70,229,0.3)',
+            mb: { xs: 2, md: 3 },
+            p: 2,
+            borderRadius: 3,
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1.5,
+            justifyContent: 'space-between',
+            bgcolor: 'rgba(79,70,229,0.06)',
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
+            <NotificationsIcon color="primary" />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Включить push-уведомления на этом устройстве
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Напоминания о задачах и дедлайнах будут приходить сюда, даже если это приложение свёрнуто.
+              </Typography>
+            </Box>
+          </Stack>
+          <Button
+            variant="contained"
+            disabled={webPushBusy || settingsSaving}
+            onClick={() => void enablePushOneTap()}
+            sx={{ flexShrink: 0 }}
+          >
+            {webPushBusy || settingsSaving ? 'Подключаем…' : 'Включить уведомления'}
+          </Button>
+        </Box>
+      )}
       <Menu
         anchorEl={notifAnchor}
         open={Boolean(notifAnchor)}

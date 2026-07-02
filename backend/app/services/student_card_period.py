@@ -1,5 +1,5 @@
 """Обновление периода обучения и даты следующей оплаты на карточке ученика."""
-from datetime import date
+from datetime import date, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -92,8 +92,10 @@ def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
         if not card.next_payment_date:
             card.next_payment_date = date.today()
     elif lessons >= threshold:
-        # Период закончился (8 уроков) → новый период
-        card.learning_period_start = date.today()
+        # Период закончился (8 уроков) → новый период.
+        # Начинаем со следующего дня: сам завершающий урок ещё относится к старому
+        # периоду, а не к новому — иначе он задваивается в счётчике (см. отчёт бага).
+        card.learning_period_start = date.today() + timedelta(days=1)
         if (card.prepaid_periods or 0) > 0:
             # Родитель уже оплатил этот период заранее — списываем из запаса
             card.prepaid_periods -= 1

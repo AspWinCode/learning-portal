@@ -3494,6 +3494,10 @@ export const tasksApi = {
     const response = await api.post(`/api/tasks/${taskId}/complete`);
     return response.data;
   },
+  getTask: async (taskId: number): Promise<import('../types').TaskResponse> => {
+    const response = await api.get(`/api/tasks/${taskId}`);
+    return response.data;
+  },
 };
 
 // SMS (Gateway) — отправка только через backend

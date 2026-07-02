@@ -499,17 +499,16 @@ const TasksPage: React.FC = () => {
   const openedFromUrlRef = useRef(false);
   useEffect(() => {
     const openId = searchParams.get('open');
-    if (!openId || loading || openedFromUrlRef.current) return;
+    if (!openId || openedFromUrlRef.current) return;
     const taskId = Number(openId);
     if (Number.isNaN(taskId)) return;
-    const found = tasks.find((t) => t.id === taskId);
-    if (found) {
-      openedFromUrlRef.current = true;
+    openedFromUrlRef.current = true;
+    setSearchParams((prev) => { prev.delete('open'); return prev; }, { replace: true });
+    tasksApi.getTask(taskId).then((found) => {
       openTaskDialog(found);
-      setSearchParams((prev) => { prev.delete('open'); return prev; }, { replace: true });
-    }
+    }).catch(() => { /* task not found or no access — ignore */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, loading, searchParams]);
+  }, [searchParams]);
 
   const refreshAfterTaskChange = () => {
     loadTasks();

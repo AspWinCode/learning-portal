@@ -4,6 +4,8 @@ x-app-common-env: &app_common_env
   CACHE_REDIS_URL: redis://redis:6379/1
   DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
   SECRET_KEY: ${SECRET_KEY:-change_me_min_32_chars_change_me_min_32_chars}
+  SSO_KODEX_SHARED_SECRET: ${SSO_KODEX_SHARED_SECRET:-}
+  SSO_KODEX_TOKEN_TTL_SECONDS: ${SSO_KODEX_TOKEN_TTL_SECONDS:-60}
   TOCHKA_CLIENT_ID: ${TOCHKA_CLIENT_ID:-}
   TOCHKA_CLIENT_SECRET: ${TOCHKA_CLIENT_SECRET:-}
   TOCHKA_JWT_TOKEN: ${TOCHKA_JWT_TOKEN:-}

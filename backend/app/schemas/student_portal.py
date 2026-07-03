@@ -74,6 +74,12 @@ class StudentCredentialCreate(BaseModel):
     password: str
 
 
+class StudentCredentialUpdate(BaseModel):
+    login: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
 class StudentCredentialOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

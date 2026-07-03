@@ -161,6 +161,10 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [newPassword, setNewPassword] = useState('');
   const [creatingCredential, setCreatingCredential] = useState(false);
   const [accessBusyId, setAccessBusyId] = useState<number | null>(null);
+  const [editCredentialOpen, setEditCredentialOpen] = useState(false);
+  const [editLogin, setEditLogin] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [savingCredential, setSavingCredential] = useState(false);
   const isOwner = effectiveRole === 'owner';
   const [freezes, setFreezes] = useState<Array<{ id: number; freeze_start: string; freeze_end: string }>>([]);
   const [freezeStart, setFreezeStart] = useState('');
@@ -300,6 +304,30 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setPortalError(err.response?.data?.detail || err.message || 'Не удалось создать логин');
     } finally {
       setCreatingCredential(false);
+    }
+  };
+
+  const openEditCredential = () => {
+    if (!portalView?.credential) return;
+    setEditLogin(portalView.credential.login);
+    setEditPassword('');
+    setEditCredentialOpen(true);
+  };
+
+  const handleSaveCredential = async () => {
+    if (!portalView?.credential || !editLogin.trim()) return;
+    setSavingCredential(true);
+    setPortalError(null);
+    try {
+      const payload: { login?: string; password?: string } = { login: editLogin.trim() };
+      if (editPassword.trim()) payload.password = editPassword;
+      const updated = await studentPortalAdminApi.updateCredential(portalView.credential.id, payload);
+      setPortalView((prev) => (prev ? { ...prev, credential: updated } : prev));
+      setEditCredentialOpen(false);
+    } catch (err: any) {
+      setPortalError(err.response?.data?.detail || err.message || 'Не удалось сохранить изменения');
+    } finally {
+      setSavingCredential(false);
     }
   };
 
@@ -1169,6 +1197,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                             label={portalView.credential.is_active ? 'Активен' : 'Отключён'}
                             color={portalView.credential.is_active ? 'success' : 'default'}
                           />
+                          <Button size="small" variant="text" onClick={openEditCredential}>Изменить</Button>
                         </Stack>
                       ) : (
                         <Stack direction="row" spacing={1} alignItems="center">
@@ -1481,6 +1510,36 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
           <Button onClick={() => setDiscountDialog(null)}>Отмена</Button>
           <Button variant="contained" onClick={handleApplyDiscount} disabled={discountLoading}>
             {discountLoading ? 'Пересчет…' : 'Применить и пересчитать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={editCredentialOpen} onClose={() => setEditCredentialOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Изменить логин кабинета</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Логин"
+              value={editLogin}
+              onChange={(e) => setEditLogin(e.target.value)}
+              fullWidth
+              size="small"
+            />
+            <TextField
+              label="Новый пароль"
+              placeholder="Оставьте пустым, чтобы не менять"
+              type="password"
+              value={editPassword}
+              onChange={(e) => setEditPassword(e.target.value)}
+              fullWidth
+              size="small"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditCredentialOpen(false)} disabled={savingCredential}>Отмена</Button>
+          <Button variant="contained" onClick={handleSaveCredential} disabled={!editLogin.trim() || savingCredential}>
+            {savingCredential ? 'Сохранение…' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>

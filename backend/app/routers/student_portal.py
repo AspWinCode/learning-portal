@@ -24,6 +24,7 @@ from app.schemas.student_portal import (
     StudentCourseAccessOut,
     StudentCredentialCreate,
     StudentCredentialOut,
+    StudentCredentialUpdate,
     StudentLoginRequest,
     StudentLoginResponse,
     StudentPortalAdminView,
@@ -235,6 +236,38 @@ async def admin_create_student_credential(
         password_hash=auth.get_password_hash(payload.password),
     )
     db.add(credential)
+    db.commit()
+    db.refresh(credential)
+    return StudentCredentialOut.model_validate(credential)
+
+
+@router.patch("/admin/credentials/{credential_id}", response_model=StudentCredentialOut)
+async def admin_update_student_credential(
+    credential_id: int,
+    payload: StudentCredentialUpdate,
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    credential = db.query(StudentCredential).filter(StudentCredential.id == credential_id).first()
+    if not credential:
+        raise HTTPException(status_code=404, detail="Логин не найден")
+
+    if payload.login is not None and payload.login != credential.login:
+        login_taken = (
+            db.query(StudentCredential)
+            .filter(StudentCredential.login == payload.login, StudentCredential.id != credential_id)
+            .first()
+        )
+        if login_taken:
+            raise HTTPException(status_code=400, detail="Логин уже занят")
+        credential.login = payload.login
+
+    if payload.password:
+        credential.password_hash = auth.get_password_hash(payload.password)
+
+    if payload.is_active is not None:
+        credential.is_active = payload.is_active
+
     db.commit()
     db.refresh(credential)
     return StudentCredentialOut.model_validate(credential)

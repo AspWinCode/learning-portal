@@ -1,5 +1,5 @@
 """Страница «Расчёты» для owner: тренеры, ставки, уроки/часы, премии, выплаты."""
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,14 +8,19 @@ from sqlalchemy.orm import Session, selectinload
 from app import auth
 from app.database import get_db
 from app.models import (
-    User,
-    UserRole,
+    FinanceArticle,
+    FinanceTarget,
+    FinanceTransaction,
+    FinanceTransactionDirection,
+    FinanceTransactionStatus,
     Group,
     GroupStatus,
     LessonAttendance,
     LessonTrainerOverride,
     TrainerPeriodBonus,
     TrainerPayout,
+    User,
+    UserRole,
 )
 from app.schemas.owner_calculations import (
     TrainerBonusPayload,
@@ -38,8 +43,7 @@ def _time_eq(a: Optional[time], b: Optional[time]) -> bool:
 def _slot_duration_hours(start_t: Optional[time], end_t: Optional[time]) -> float:
     if start_t is None or end_t is None:
         return 0.0
-    from datetime import datetime as dt
-    d = dt.combine(date.today(), end_t) - dt.combine(date.today(), start_t)
+    d = datetime.combine(date.today(), end_t) - datetime.combine(date.today(), start_t)
     return max(0, d.total_seconds() / 3600.0)
 
 
@@ -280,5 +284,39 @@ async def pay_trainer(
             total=round(total, 2),
         )
     )
+
+    # Создаём запись расхода в финансовом журнале (Академия / Зарплата тренеров)
+    if total > 0:
+        target = db.query(FinanceTarget).filter(FinanceTarget.code == "academy").first()
+        article = (
+            db.query(FinanceArticle)
+            .filter(FinanceArticle.name == "Зарплата тренеров")
+            .first()
+        )
+        period_label = f"{year}-{month_num:02d}"
+        description = f"Выплата тренеру {user.full_name} за {period_label}"
+        db.add(
+            FinanceTransaction(
+                occurred_at=datetime.now(tz=timezone.utc),
+                amount=round(total, 2),
+                direction=FinanceTransactionDirection.EXPENSE,
+                account_id=None,
+                to_account_id=None,
+                transfer_group_id=None,
+                counterparty_name=user.full_name,
+                counterparty_phone=None,
+                description_raw=description,
+                bank_source="manual",
+                bank_operation_id=None,
+                dedup_hash=None,
+                target_id=target.id if target else None,
+                article_id=article.id if article else None,
+                teacher_id=trainer_id,
+                student_id=None,
+                group_id=None,
+                status=FinanceTransactionStatus.CLASSIFIED,
+            )
+        )
+
     db.commit()
     return {"ok": True}

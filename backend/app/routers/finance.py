@@ -1476,6 +1476,7 @@ async def get_command_center(
                 proj_agg[key]["other"] += abs(amt)
 
     cc_projects: List[CommandCenterProjectColumn] = []
+    cc_personal_projects: List[CommandCenterProjectColumn] = []
     for target_id_key, agg in sorted(proj_agg.items(), key=lambda x: -(x[1]["income"])):
         target = targets_map.get(target_id_key) if target_id_key else None
         income = agg["income"]
@@ -1485,7 +1486,7 @@ async def get_command_center(
         gross = income - var_exp
         net = income - var_exp - fixed_exp - other_exp
         margin = round(net / income * 100, 1) if income else 0.0
-        cc_projects.append(CommandCenterProjectColumn(
+        col = CommandCenterProjectColumn(
             target_id=target_id_key,
             target_code=target.code if target else "unknown",
             target_name=target.name if target else "Без проекта",
@@ -1496,7 +1497,11 @@ async def get_command_center(
             gross_profit=round(gross, 2),
             net_profit=round(net, 2),
             net_margin=margin,
-        ))
+        )
+        if target and getattr(target, "is_personal", False):
+            cc_personal_projects.append(col)
+        else:
+            cc_projects.append(col)
 
     # ── Cash flow last 6 months ───────────────────────────────────────────────
     cashflow: List[CommandCenterCashFlowPoint] = []
@@ -1590,6 +1595,7 @@ async def get_command_center(
         ),
         accounts=cc_accounts,
         projects=cc_projects,
+        personal_projects=cc_personal_projects,
         cashflow=cashflow,
         recent_transactions=recent_transactions,
         alerts=alerts,

@@ -568,6 +568,7 @@ class CommandCenterResponse(BaseModel):
     kpi: CommandCenterKpi
     accounts: List[CommandCenterAccount]
     projects: List[CommandCenterProjectColumn]
+    personal_projects: List[CommandCenterProjectColumn]
     cashflow: List[CommandCenterCashFlowPoint]
     recent_transactions: List[CommandCenterTransaction]
     alerts: List[CommandCenterAlert]

@@ -89,6 +89,7 @@ const FinanceCommandCenter: React.FC<Props> = ({ onNavigateToJournal }) => {
 
   const totalIncome = data?.projects.reduce((s, p) => s + p.income, 0) ?? 0;
 
+
   return (
     <Stack spacing={1.5}>
       {/* Period selector */}
@@ -405,6 +406,59 @@ const FinanceCommandCenter: React.FC<Props> = ({ onNavigateToJournal }) => {
           )}
         </Stack>
       </Box>
+
+      {/* Personal finances block */}
+      {data && data.personal_projects.length > 0 && (
+        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.68rem', fontWeight: 500, display: 'block', mb: 1.5 }}>
+            Личные финансы — {monthLabel(data.period)}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            {data.personal_projects.map((p, i) => {
+              const color = PROJECT_COLORS[(i + 4) % PROJECT_COLORS.length];
+              const totalExp = p.variable_expense + p.fixed_expense + p.other_expense;
+              return (
+                <Box
+                  key={p.target_code}
+                  sx={{
+                    flex: '1 1 200px',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1.5,
+                    p: 1.5,
+                    borderLeft: `3px solid ${color}`,
+                  }}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.82rem', mb: 1 }}>
+                    {p.target_name}
+                  </Typography>
+                  <Stack spacing={0.5}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="caption" color="text.secondary">Поступления</Typography>
+                      <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 500 }}>
+                        {p.income ? `+${fmt(p.income)}` : '—'} ₽
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="caption" color="text.secondary">Расходы</Typography>
+                      <Typography variant="caption" sx={{ color: totalExp ? 'error.main' : 'text.disabled', fontWeight: 500 }}>
+                        {totalExp ? `−${fmt(totalExp)}` : '—'} ₽
+                      </Typography>
+                    </Box>
+                    <Box sx={{ height: '0.5px', bgcolor: 'divider', my: 0.3 }} />
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>Остаток</Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: p.net_profit >= 0 ? 'success.main' : 'error.main' }}>
+                        {fmt(p.net_profit)} ₽
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Box>
+        </Paper>
+      )}
 
       {/* Bottom row: cashflow + recent transactions */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>

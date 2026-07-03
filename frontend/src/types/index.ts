@@ -2323,6 +2323,7 @@ export interface CommandCenterResponse {
   kpi: CommandCenterKpi;
   accounts: CommandCenterAccount[];
   projects: CommandCenterProjectColumn[];
+  personal_projects: CommandCenterProjectColumn[];
   cashflow: CommandCenterCashFlowPoint[];
   recent_transactions: CommandCenterTransaction[];
   alerts: CommandCenterAlert[];

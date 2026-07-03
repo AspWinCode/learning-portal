@@ -761,6 +761,7 @@ class FinanceTarget(Base):
     code = Column(String(64), nullable=False, unique=True, index=True)
     name = Column(String(256), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
+    is_personal = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

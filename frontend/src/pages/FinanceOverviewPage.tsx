@@ -1166,7 +1166,12 @@ const FinanceOverviewPageContent: React.FC = () => {
   const renderJournal = () => (
     <Stack spacing={isPwaJournal ? 1 : 2}>
       <Paper variant="outlined" sx={{ p: { xs: 1, sm: 2 }, borderRadius: 1 }}>
-        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={isPwaJournal ? 1 : 1.5} alignItems={{ xs: 'stretch', lg: 'center' }}>
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          spacing={isPwaJournal ? 1 : 1.5}
+          alignItems={{ xs: 'stretch', lg: 'center' }}
+          sx={{ flexWrap: { lg: 'wrap' }, rowGap: isPwaJournal ? 1 : 1.5 }}
+        >
           {isPwaJournal && (
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Box>
@@ -1291,6 +1296,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             onClick={() => setUnclassifiedOnly((value) => !value)}
             fullWidth={isJournalMobile}
             size={isPwaJournal ? 'small' : 'medium'}
+            sx={{ flexShrink: 0 }}
           >
             Неразобранные
           </Button>
@@ -1300,6 +1306,7 @@ const FinanceOverviewPageContent: React.FC = () => {
               startIcon={<Refresh />}
               variant="outlined"
               fullWidth={isJournalMobile}
+              sx={{ flexShrink: 0 }}
               onClick={async () => {
                 setJournalLoading(true);
                 try {
@@ -1322,6 +1329,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             startIcon={<Add />}
             variant="contained"
             fullWidth={isJournalMobile}
+            sx={{ flexShrink: 0 }}
             onClick={() => {
               setManualAccountId(accounts[0]?.id || '');
               setManualToAccountId('');

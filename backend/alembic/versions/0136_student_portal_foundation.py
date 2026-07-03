@@ -29,7 +29,7 @@ def upgrade() -> None:
     op.create_index("ix_student_credentials_student_id", "student_credentials", ["student_id"])
     op.create_index("ix_student_credentials_login", "student_credentials", ["login"])
 
-    coursecatalogitemkind = sa.Enum("internal", "external", name="coursecatalogitemkind")
+    coursecatalogitemkind = sa.Enum("internal", "external", name="coursecatalogitemkind", create_type=False)
     coursecatalogitemkind.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
@@ -48,7 +48,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_course_catalog_items_code", "course_catalog_items", ["code"])
 
-    studentcourseaccessstatus = sa.Enum("active", "revoked", name="studentcourseaccessstatus")
+    studentcourseaccessstatus = sa.Enum("active", "revoked", name="studentcourseaccessstatus", create_type=False)
     studentcourseaccessstatus.create(op.get_bind(), checkfirst=True)
 
     op.create_table(

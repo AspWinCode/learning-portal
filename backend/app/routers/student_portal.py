@@ -19,6 +19,7 @@ from app.schemas.student_portal import (
     CourseCatalogItemCreate,
     CourseCatalogItemOut,
     CourseCatalogItemUpdate,
+    CourseLaunchResponse,
     GrantCourseAccessRequest,
     StudentCourseAccessOut,
     StudentCredentialCreate,
@@ -27,6 +28,7 @@ from app.schemas.student_portal import (
     StudentLoginResponse,
     StudentProfileOut,
 )
+from app.services.kodex_sso import build_launch_redirect_url
 
 router = APIRouter()
 
@@ -91,6 +93,38 @@ async def list_my_courses(
         )
         for item in items
     ]
+
+
+@router.post("/courses/{item_id}/launch", response_model=CourseLaunchResponse)
+async def launch_course(
+    item_id: int,
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    grant = (
+        db.query(StudentCourseAccess)
+        .filter(
+            StudentCourseAccess.student_id == current_student.id,
+            StudentCourseAccess.catalog_item_id == item_id,
+            StudentCourseAccess.status == StudentCourseAccessStatus.ACTIVE,
+        )
+        .first()
+    )
+    if not grant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к этому курсу")
+
+    item = db.query(CourseCatalogItem).filter(CourseCatalogItem.id == item_id, CourseCatalogItem.is_active.is_(True)).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+
+    if item.kind != CourseCatalogItemKind.EXTERNAL:
+        raise HTTPException(status_code=400, detail="Этот курс не поддерживает внешний запуск")
+
+    redirect_url = build_launch_redirect_url(current_student, item)
+    if not redirect_url:
+        raise HTTPException(status_code=503, detail="Курс временно недоступен (не настроен переход)")
+
+    return CourseLaunchResponse(redirect_url=redirect_url)
 
 
 # ─── Админ: витрина курсов (CRUD) ────────────────────────────────────────────

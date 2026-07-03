@@ -64,6 +64,10 @@ class CourseCatalogItemUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
+class CourseLaunchResponse(BaseModel):
+    redirect_url: str
+
+
 class StudentCredentialCreate(BaseModel):
     student_id: int
     login: str

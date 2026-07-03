@@ -182,6 +182,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [journalTo, setJournalTo] = useState(today());
   const [journalTargetFilter, setJournalTargetFilter] = useState<'all' | number>('all');
   const [journalDirectionFilter, setJournalDirectionFilter] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
+  const [journalAccountFilter, setJournalAccountFilter] = useState<'all' | number>('all');
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
 
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
@@ -273,11 +274,13 @@ const FinanceOverviewPageContent: React.FC = () => {
     setJournalLoading(true);
     setError(null);
     const effectiveTargetFilter = journalTargetFilter === 'all' ? null : journalTargetFilter;
+    const effectiveAccountFilter = journalAccountFilter === 'all' ? null : journalAccountFilter;
     try {
       const rows = await financeApi.listJournalTransactions({
         unclassified_only: unclassifiedOnly,
         target_ids: effectiveTargetFilter ? [effectiveTargetFilter] : undefined,
         include_unassigned_targets: Boolean(effectiveTargetFilter),
+        account_ids: effectiveAccountFilter ? [effectiveAccountFilter] : undefined,
         direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
         date_from: journalFrom || undefined,
         date_to: journalTo || undefined,
@@ -346,7 +349,7 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   useEffect(() => {
     loadJournal();
-  }, [journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, unclassifiedOnly]);
+  }, [journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, journalAccountFilter, unclassifiedOnly]);
 
   useEffect(() => {
     if (tab === 'unit') {
@@ -671,6 +674,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           value={selectedModelId === '' ? '' : String(selectedModelId)}
           onChange={(event) => setSelectedModelId(event.target.value === '' ? '' : Number(event.target.value))}
         >
+          <MenuItem value=""><em>Все модели</em></MenuItem>
           {models.map((model) => (
             <MenuItem key={model.id} value={model.id}>
               {model.name}
@@ -1248,6 +1252,23 @@ const FinanceOverviewPageContent: React.FC = () => {
               {targets.map((target) => (
                 <MenuItem key={target.id} value={target.id}>
                   {target.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: { xs: 0, lg: 170 }, width: { xs: '100%', lg: 'auto' } }}>
+            <InputLabel>Счёт</InputLabel>
+            <Select
+              label="Счёт"
+              value={journalAccountFilter === 'all' ? 'all' : String(journalAccountFilter)}
+              onChange={(event) =>
+                setJournalAccountFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))
+              }
+            >
+              <MenuItem value="all">Все счета</MenuItem>
+              {accounts.map((account) => (
+                <MenuItem key={account.id} value={account.id}>
+                  {account.name}
                 </MenuItem>
               ))}
             </Select>

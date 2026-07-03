@@ -1562,6 +1562,7 @@ async def get_command_center(
                 FinanceTransactionDirection.EXPENSE,
             ]),
             (FinanceTransaction.article_id.is_(None)) | (FinanceTransaction.target_id.is_(None)),
+            FinanceTransaction.transfer_group_id.is_(None),  # переводы не требуют статьи
         )
         .scalar() or 0
     )

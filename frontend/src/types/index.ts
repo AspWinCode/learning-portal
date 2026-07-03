@@ -2329,6 +2329,37 @@ export interface CommandCenterResponse {
   alerts: CommandCenterAlert[];
 }
 
+export interface CourseCatalogItemOut {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  cover_image_url?: string | null;
+  kind: 'internal' | 'external';
+  has_access: boolean;
+}
+
+export interface StudentCredentialOut {
+  id: number;
+  student_id: number;
+  login: string;
+  is_active: boolean;
+  last_login_at?: string | null;
+}
+
+export interface StudentCourseAccessOut {
+  id: number;
+  student_id: number;
+  catalog_item_id: number;
+  status: 'active' | 'revoked';
+  granted_at?: string | null;
+}
+
+export interface StudentPortalAdminView {
+  credential: StudentCredentialOut | null;
+  access_grants: StudentCourseAccessOut[];
+}
+
 export interface PLReportRow {
   row_type: 'header' | 'article' | 'total' | 'calculated' | 'spacer';
   id?: number | null;

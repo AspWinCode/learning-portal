@@ -26,6 +26,7 @@ from app.schemas.student_portal import (
     StudentCredentialOut,
     StudentLoginRequest,
     StudentLoginResponse,
+    StudentPortalAdminView,
     StudentProfileOut,
 )
 from app.services.kodex_sso import build_launch_redirect_url
@@ -188,6 +189,25 @@ async def admin_update_catalog_item(
     return CourseCatalogItemOut(
         id=item.id, code=item.code, name=item.name, description=item.description,
         cover_image_url=item.cover_image_url, kind=item.kind, has_access=False,
+    )
+
+
+# ─── Админ: карточка кабинета конкретного ученика ────────────────────────────
+
+@router.get("/admin/students/{student_id}", response_model=StudentPortalAdminView)
+async def admin_get_student_portal_view(
+    student_id: int,
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    credential = db.query(StudentCredential).filter(StudentCredential.student_id == student_id).first()
+    grants = db.query(StudentCourseAccess).filter(StudentCourseAccess.student_id == student_id).all()
+    return StudentPortalAdminView(
+        credential=StudentCredentialOut.model_validate(credential) if credential else None,
+        access_grants=[StudentCourseAccessOut.model_validate(g) for g in grants],
     )
 
 

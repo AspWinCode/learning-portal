@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -97,3 +97,9 @@ class StudentCourseAccessOut(BaseModel):
     catalog_item_id: int
     status: StudentCourseAccessStatus
     granted_at: Optional[datetime] = None
+
+
+class StudentPortalAdminView(BaseModel):
+    """Сводка по кабинету конкретного ученика — для карточки ученика в админке."""
+    credential: Optional[StudentCredentialOut] = None
+    access_grants: List[StudentCourseAccessOut] = []

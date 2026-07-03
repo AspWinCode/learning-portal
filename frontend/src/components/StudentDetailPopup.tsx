@@ -40,8 +40,8 @@ import StarIcon from '@mui/icons-material/Star';
 import DescriptionIcon from '@mui/icons-material/Description';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi, financeApi } from '../services/api';
-import { Student, Abonement, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentAccountTransaction, StudentCard, StudentTimelineEvent } from '../types';
+import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi, financeApi, studentPortalAdminApi } from '../services/api';
+import { Student, Abonement, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentAccountTransaction, StudentCard, StudentTimelineEvent, CourseCatalogItemOut, StudentPortalAdminView } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
@@ -120,7 +120,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
-  const [tab, setTab] = useState<'overview' | 'history' | 'accounts'>('overview');
+  const [tab, setTab] = useState<'overview' | 'history' | 'accounts' | 'cabinet'>('overview');
   const [paymentDialog, setPaymentDialog] = useState<{ account: StudentAccount; type: 'payment' | 'deduct' } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
@@ -152,6 +152,15 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const canManageAccounts = hasPermission(user, 'student_accounts.manage');
   const canRecordPayments = hasPermission(user, 'student_accounts.payment');
   const canInviteParent = hasPermission(user, 'students.manage') && !!student?.parent_id;
+  const canManageStudentPortal = hasPermission(user, 'student_portal.manage');
+  const [portalView, setPortalView] = useState<StudentPortalAdminView | null>(null);
+  const [catalog, setCatalog] = useState<CourseCatalogItemOut[]>([]);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
+  const [newLogin, setNewLogin] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [creatingCredential, setCreatingCredential] = useState(false);
+  const [accessBusyId, setAccessBusyId] = useState<number | null>(null);
   const isOwner = effectiveRole === 'owner';
   const [freezes, setFreezes] = useState<Array<{ id: number; freeze_start: string; freeze_end: string }>>([]);
   const [freezeStart, setFreezeStart] = useState('');
@@ -248,6 +257,86 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     }
   };
   void loadAccounts;
+
+  const loadPortalData = async () => {
+    if (!studentId) return;
+    setPortalLoading(true);
+    setPortalError(null);
+    try {
+      const [view, catalogList] = await Promise.all([
+        studentPortalAdminApi.getStudentView(studentId),
+        studentPortalAdminApi.listCatalog(),
+      ]);
+      setPortalView(view);
+      setCatalog(catalogList);
+    } catch (err: any) {
+      setPortalError(err.response?.data?.detail || err.message || 'Не удалось загрузить кабинет');
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'cabinet' && studentId && canManageStudentPortal) {
+      void loadPortalData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, studentId]);
+
+  const handleCreateCredential = async () => {
+    if (!studentId || !newLogin.trim() || !newPassword.trim()) return;
+    setCreatingCredential(true);
+    setPortalError(null);
+    try {
+      const credential = await studentPortalAdminApi.createCredential({
+        student_id: studentId,
+        login: newLogin.trim(),
+        password: newPassword,
+      });
+      setPortalView((prev) => (prev ? { ...prev, credential } : { credential, access_grants: [] }));
+      setNewLogin('');
+      setNewPassword('');
+    } catch (err: any) {
+      setPortalError(err.response?.data?.detail || err.message || 'Не удалось создать логин');
+    } finally {
+      setCreatingCredential(false);
+    }
+  };
+
+  const handleGrantAccess = async (catalogItemId: number) => {
+    if (!studentId) return;
+    setAccessBusyId(catalogItemId);
+    setPortalError(null);
+    try {
+      const grant = await studentPortalAdminApi.grantAccess({ student_id: studentId, catalog_item_id: catalogItemId });
+      setPortalView((prev) =>
+        prev
+          ? { ...prev, access_grants: [...prev.access_grants.filter((g) => g.catalog_item_id !== catalogItemId), grant] }
+          : { credential: null, access_grants: [grant] }
+      );
+    } catch (err: any) {
+      setPortalError(err.response?.data?.detail || err.message || 'Не удалось выдать доступ');
+    } finally {
+      setAccessBusyId(null);
+    }
+  };
+
+  const handleRevokeAccess = async (accessId: number, catalogItemId: number) => {
+    setAccessBusyId(catalogItemId);
+    setPortalError(null);
+    try {
+      await studentPortalAdminApi.revokeAccess(accessId);
+      setPortalView((prev) =>
+        prev
+          ? { ...prev, access_grants: prev.access_grants.map((g) => (g.id === accessId ? { ...g, status: 'revoked' } : g)) }
+          : prev
+      );
+    } catch (err: any) {
+      setPortalError(err.response?.data?.detail || err.message || 'Не удалось отозвать доступ');
+    } finally {
+      setAccessBusyId(null);
+    }
+  };
 
   const handleCreateAccount = async () => {
     if (!studentId || !newAccountName.trim()) return;
@@ -487,6 +576,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
               <Tab value="overview" label="Обзор" />
               <Tab value="history" label="История" />
               {canAccessAccounts && <Tab value="accounts" label="Счёт" />}
+              {canManageStudentPortal && <Tab value="cabinet" label="Кабинет" />}
             </Tabs>
             {tab === 'overview' && (
               <>
@@ -1056,6 +1146,94 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                         </Box>
                       </Box>
                     ))}
+                  </Stack>
+                )}
+              </Paper>
+            )}
+
+            {tab === 'cabinet' && canManageStudentPortal && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>Личный кабинет ученика</Typography>
+                {portalError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPortalError(null)}>{portalError}</Alert>}
+                {portalLoading && !portalView ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={24} /></Box>
+                ) : (
+                  <Stack spacing={3}>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Вход в кабинет</Typography>
+                      {portalView?.credential ? (
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Chip label={`Логин: ${portalView.credential.login}`} />
+                          <Chip
+                            size="small"
+                            label={portalView.credential.is_active ? 'Активен' : 'Отключён'}
+                            color={portalView.credential.is_active ? 'success' : 'default'}
+                          />
+                        </Stack>
+                      ) : (
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <TextField size="small" label="Логин" value={newLogin} onChange={(e) => setNewLogin(e.target.value)} sx={{ width: 160 }} />
+                          <TextField size="small" label="Пароль" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} sx={{ width: 160 }} />
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={handleCreateCredential}
+                            disabled={!newLogin.trim() || !newPassword.trim() || creatingCredential}
+                          >
+                            Создать логин
+                          </Button>
+                        </Stack>
+                      )}
+                    </Box>
+
+                    <Box>
+                      <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Доступ к курсам</Typography>
+                      {catalog.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">Витрина курсов пуста.</Typography>
+                      ) : (
+                        <Stack spacing={1}>
+                          {catalog.map((item) => {
+                            const grant = portalView?.access_grants.find((g) => g.catalog_item_id === item.id);
+                            const isActive = grant?.status === 'active';
+                            return (
+                              <Stack key={item.id} direction="row" alignItems="center" justifyContent="space-between" sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                                <Box>
+                                  <Typography variant="body2" fontWeight={500}>{item.name}</Typography>
+                                  {item.description && (
+                                    <Typography variant="caption" color="text.secondary">{item.description}</Typography>
+                                  )}
+                                </Box>
+                                {isActive ? (
+                                  <Button
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    disabled={accessBusyId === item.id}
+                                    onClick={() => grant && handleRevokeAccess(grant.id, item.id)}
+                                  >
+                                    Отозвать
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    disabled={!portalView?.credential || accessBusyId === item.id}
+                                    onClick={() => handleGrantAccess(item.id)}
+                                  >
+                                    Выдать доступ
+                                  </Button>
+                                )}
+                              </Stack>
+                            );
+                          })}
+                        </Stack>
+                      )}
+                      {!portalView?.credential && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                          Сначала создайте логин — без него ученик не сможет войти в кабинет.
+                        </Typography>
+                      )}
+                    </Box>
                   </Stack>
                 )}
               </Paper>

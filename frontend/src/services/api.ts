@@ -119,6 +119,10 @@ import {
   PLReportResponse,
   CommandCenterResponse,
   UnitEconomicsResponse,
+  StudentPortalAdminView,
+  CourseCatalogItemOut,
+  StudentCredentialOut,
+  StudentCourseAccessOut,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
@@ -542,6 +546,29 @@ export const studentAccountsApi = {
   },
   remove: async (accountId: number): Promise<void> => {
     await api.delete(`/api/student-accounts/${accountId}`);
+  },
+};
+
+// Student Portal (личный кабинет ученика) — управление админом/тренером
+export const studentPortalAdminApi = {
+  getStudentView: async (studentId: number): Promise<StudentPortalAdminView> => {
+    const response = await api.get(`/api/student-portal/admin/students/${studentId}`);
+    return response.data;
+  },
+  listCatalog: async (): Promise<CourseCatalogItemOut[]> => {
+    const response = await api.get('/api/student-portal/admin/catalog');
+    return response.data;
+  },
+  createCredential: async (payload: { student_id: number; login: string; password: string }): Promise<StudentCredentialOut> => {
+    const response = await api.post('/api/student-portal/admin/credentials', payload);
+    return response.data;
+  },
+  grantAccess: async (payload: { student_id: number; catalog_item_id: number }): Promise<StudentCourseAccessOut> => {
+    const response = await api.post('/api/student-portal/admin/access', payload);
+    return response.data;
+  },
+  revokeAccess: async (accessId: number): Promise<void> => {
+    await api.delete(`/api/student-portal/admin/access/${accessId}`);
   },
 };
 

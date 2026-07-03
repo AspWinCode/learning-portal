@@ -1,13 +1,205 @@
+:root,
+[data-theme="light"] {
+  /* поверхности */
+  --surface-0: #FAFAF8;
+  --surface-1: #FFFFFF;
+  --surface-2: #F1F0EC;
+  --surface-accent: #F5EEFC;
+  --bg-success: #E1F5EE;
+  --bg-error: #FCEBEB;
+  --bg-warning: #FAEEDA;
+  --bg-info: #E6F1FB;
+
+  /* текст */
+  --text-primary: #1C1B22;
+  --text-secondary: #5F5E5A;
+  --text-muted: #8B8980;
+  --text-accent: #57188B;
+  --text-on-accent: #FFFFFF;
+  --text-success: #085041;
+  --text-error: #791F1F;
+  --text-warning: #633806;
+
+  /* границы */
+  --border: #E7E5DE;
+  --border-strong: #D3D1C7;
+  --border-accent: #CFA8F0;
+
+  /* заливки */
+  --fill-accent: #7F23CC;
+  --fill-accent-hover: #57188B;
+  --fill-secondary: #F1F0EC;
+  --fill-secondary-hover: #E7E5DE;
+  --fill-success: #1D9E75;
+  --fill-error: #E24B4A;
+  --fill-warning: #BA7517;
+
+  /* радиусы */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+  --space-10: 64px;
+  --space-12: 96px;
+
+  /* высота контролов */
+  --h-control-sm: 32px;
+  --h-control-md: 40px;
+  --h-control-lg: 48px;
+  --control-padding-x: 16px;
+
+  /* иконки */
+  --icon-xs: 14px;
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+  --icon-xl: 32px;
+  --icon-2xl: 48px;
+
+  /* тени */
+  --shadow-none: none;
+  --shadow-xs: 0 1px 2px rgba(28, 27, 34, 0.04);
+  --shadow-sm: 0 2px 8px rgba(28, 27, 34, 0.06);
+  --shadow-md: 0 8px 24px rgba(28, 27, 34, 0.08);
+  --shadow-lg: 0 16px 40px rgba(28, 27, 34, 0.10);
+
+  /* focus */
+  --focus-ring: 0 0 0 3px rgba(127, 35, 204, 0.25);
+  --focus-ring-color: #7F23CC;
+
+  /* motion */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 250ms;
+  --duration-slower: 300ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --transition-tap: transform var(--duration-instant) var(--ease-standard);
+  --transition-hover: background-color var(--duration-fast) var(--ease-standard),
+                      border-color var(--duration-fast) var(--ease-standard),
+                      color var(--duration-fast) var(--ease-standard);
+  --transition-appear: opacity var(--duration-base) var(--ease-out),
+                       transform var(--duration-base) var(--ease-out);
+  --transition-panel: transform var(--duration-slow) var(--ease-out);
+  --transition-fill: width var(--duration-slower) var(--ease-standard);
+
+  /* шрифты */
+  --font-heading: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Open Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --surface-0: #121117;
+  --surface-1: #1E1D26;
+  --surface-2: #26242F;
+  --surface-accent: #360F57;
+  --bg-success: #085041;
+  --bg-error: #791F1F;
+  --bg-warning: #633806;
+  --bg-info: #0C447C;
+  --text-primary: #F0EEF6;
+  --text-secondary: #B3AFC2;
+  --text-muted: #7A7788;
+  --text-accent: #AB67E5;
+  --text-on-accent: #121117;
+  --text-success: #5DCAA5;
+  --text-error: #F09595;
+  --text-warning: #EF9F27;
+  --border: #2A2833;
+  --border-strong: #3A3844;
+  --border-accent: #57188B;
+  --fill-accent: #AB67E5;
+  --fill-accent-hover: #A897F2;
+  --fill-secondary: #26242F;
+  --fill-secondary-hover: #302E3B;
+  --fill-success: #5DCAA5;
+  --fill-error: #F09595;
+  --fill-warning: #EF9F27;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.4);
+  --focus-ring: 0 0 0 3px rgba(171, 103, 229, 0.3);
+  --focus-ring-color: #AB67E5;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: #121117;
+    --surface-1: #1E1D26;
+    --surface-2: #26242F;
+    --surface-accent: #360F57;
+    --bg-success: #085041;
+    --bg-error: #791F1F;
+    --bg-warning: #633806;
+    --bg-info: #0C447C;
+    --text-primary: #F0EEF6;
+    --text-secondary: #B3AFC2;
+    --text-muted: #7A7788;
+    --text-accent: #AB67E5;
+    --text-on-accent: #121117;
+    --text-success: #5DCAA5;
+    --text-error: #F09595;
+    --text-warning: #EF9F27;
+    --border: #2A2833;
+    --border-strong: #3A3844;
+    --border-accent: #57188B;
+    --fill-accent: #AB67E5;
+    --fill-accent-hover: #A897F2;
+    --fill-secondary: #26242F;
+    --fill-secondary-hover: #302E3B;
+    --fill-success: #5DCAA5;
+    --fill-error: #F09595;
+    --fill-warning: #EF9F27;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.24);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.4);
+    --focus-ring: 0 0 0 3px rgba(171, 103, 229, 0.3);
+    --focus-ring-color: #AB67E5;
+    color-scheme: dark;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html {
+  min-height: 100%;
+  background: var(--surface-0);
+  color-scheme: light dark;
+}
+
 body {
   margin: 0;
-  font-family: Manrope, system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans',
-    Arial, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
@@ -15,20 +207,19 @@ body {
   overflow-x: hidden;
   overscroll-behavior-y: none;
   touch-action: manipulation;
+  background: var(--surface-0);
+  color: var(--text-primary);
 }
 
-html {
-  min-height: 100%;
-  background: #f6f8fb;
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+code, pre, .code-editor {
+  font-family: var(--font-mono);
 }
 
 #root {
   min-height: 100vh;
   min-height: 100dvh;
 }
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-

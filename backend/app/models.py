@@ -257,6 +257,77 @@ class Student(Base):
             if getattr(sp, "status", StudentProgramLinkStatus.ACTIVE) == StudentProgramLinkStatus.ACTIVE
         ]
 
+    credential = relationship("StudentCredential", back_populates="student", uselist=False, cascade="all, delete-orphan")
+    course_access = relationship("StudentCourseAccess", back_populates="student", cascade="all, delete-orphan")
+
+
+class StudentCredential(Base):
+    """Логин/пароль ученика для личного кабинета (независимо от аккаунта родителя)."""
+
+    __tablename__ = "student_credentials"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    login = Column(String(64), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    student = relationship("Student", back_populates="credential")
+
+
+class CourseCatalogItemKind(str, enum.Enum):
+    INTERNAL = "internal"
+    EXTERNAL = "external"
+
+
+class CourseCatalogItem(Base):
+    """Пункт витрины курсов в кабинете ученика (внутренний контент или внешний сервис вроде Кодэкс)."""
+
+    __tablename__ = "course_catalog_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+    cover_image_url = Column(String(512), nullable=True)
+    kind = Column(SQLEnum(CourseCatalogItemKind, name="coursecatalogitemkind", values_callable=lambda e: [i.value for i in e]), nullable=False, default=CourseCatalogItemKind.EXTERNAL)
+    external_url = Column(String(512), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    access_grants = relationship("StudentCourseAccess", back_populates="catalog_item", cascade="all, delete-orphan")
+
+
+class StudentCourseAccessStatus(str, enum.Enum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+class StudentCourseAccess(Base):
+    """Выданный ученику доступ к пункту витрины курсов (выдаёт тренер/админ)."""
+
+    __tablename__ = "student_course_access"
+    __table_args__ = (
+        UniqueConstraint("student_id", "catalog_item_id", name="uq_student_course_access"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    catalog_item_id = Column(Integer, ForeignKey("course_catalog_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    granted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(SQLEnum(StudentCourseAccessStatus, name="studentcourseaccessstatus", values_callable=lambda e: [i.value for i in e]), nullable=False, default=StudentCourseAccessStatus.ACTIVE)
+    granted_at = Column(DateTime(timezone=True), server_default=func.now())
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    student = relationship("Student", back_populates="course_access")
+    catalog_item = relationship("CourseCatalogItem", back_populates="access_grants")
+    granted_by = relationship("User", foreign_keys=[granted_by_user_id])
+
 
 class StudentAccountTransactionKind(str, enum.Enum):
     PAYMENT = "payment"

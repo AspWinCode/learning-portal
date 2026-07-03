@@ -47,6 +47,7 @@ from app.routers import (
     settings,
     sms,
     student_accounts,
+    student_portal,
     students,
     tasks,
     telegram,
@@ -438,6 +439,7 @@ app.include_router(sms.router, prefix="/api/v1", tags=["sms"])
 app.include_router(max_messenger.router, prefix="/api/v1", tags=["max"])
 app.include_router(owner_workspace.router, prefix="/api/v1/owner-workspace", tags=["owner_workspace"])
 app.include_router(disk.router, prefix="/api/v1/disk", tags=["disk"])
+app.include_router(student_portal.router, prefix="/api/v1/student-portal", tags=["student_portal"])
 app.include_router(transcription.router, prefix="/api/v1/transcription", tags=["transcription"])
 
 

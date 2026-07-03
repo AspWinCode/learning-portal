@@ -24,6 +24,8 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 GUEST_TOKEN_EXPIRE_HOURS = int(os.getenv("GUEST_TOKEN_EXPIRE_HOURS", "24"))
 GUEST_USER_ID = -1
+STUDENT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("STUDENT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+STUDENT_TOKEN_TYPE = "student_portal"
 REDIS_URL = (os.getenv("REDIS_URL") or "redis://redis:6379/0").strip()
 TOKEN_BLACKLIST_PREFIX = "auth:blacklist:jti:"
 
@@ -66,6 +68,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "lessons.manage",
         "telegram.link",
         "trainer_cockpit.access",
+        "student_portal.manage",
     },
     UserRole.PARENT.value: {
         "programs.access",
@@ -170,6 +173,56 @@ def blacklist_token(token: str) -> None:
     if not jti:
         return
     add_token_to_blacklist(jti, get_token_ttl_seconds(payload))
+
+
+student_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/student-portal/auth/login", auto_error=False)
+
+
+def create_student_access_token(student_id: int, login: str) -> str:
+    """Отдельный JWT-скоуп для кабинета ученика — не пересекается с токенами User."""
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=STUDENT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {
+        "sub": login,
+        "student_id": student_id,
+        "type": STUDENT_TOKEN_TYPE,
+        "jti": str(uuid4()),
+        "exp": expire,
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+async def get_current_student(
+    token: Optional[str] = Depends(student_oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    from app.models import Student, StudentCredential
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate student credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if not token:
+        raise credentials_exception
+    try:
+        payload = decode_access_token(token)
+        if payload.get("type") != STUDENT_TOKEN_TYPE:
+            raise credentials_exception
+        student_id = payload.get("student_id")
+        jti = str(payload.get("jti") or "").strip()
+        if student_id is None or not jti or is_token_blacklisted(jti):
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    student = db.query(Student).filter(Student.id == int(student_id)).first()
+    if student is None:
+        raise credentials_exception
+    credential = db.query(StudentCredential).filter(StudentCredential.student_id == student.id).first()
+    if credential is None or not credential.is_active:
+        raise credentials_exception
+    return student
 
 
 def ensure_persisted_user_id(user_id: int) -> int:

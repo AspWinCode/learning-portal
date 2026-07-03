@@ -12,16 +12,16 @@ const INK_600 = '#5F5E5A';    // text-secondary light
 const INK_100 = '#E7E5DE';    // border light
 const INK_50  = '#F1F0EC';    // surface-2 / fill-secondary
 
-// Sidebar — использует --surface-1 (белый) + border, светлая тема
-export const SIDEBAR_BG       = '#FFFFFF';
-export const SIDEBAR_BORDER   = '#E7E5DE';
-export const SIDEBAR_ITEM_HO  = '#F1F0EC';        // fill-secondary
-export const SIDEBAR_ITEM_SEL = '#F5EEFC';        // surface-accent
-export const SIDEBAR_ICON     = '#8B8980';        // text-muted
-export const SIDEBAR_ICON_SEL = VIOLET_800;       // text-accent
-export const SIDEBAR_TEXT     = INK_600;
-export const SIDEBAR_TEXT_SEL = VIOLET_800;
-export const SIDEBAR_TEXT_DIM = '#8B8980';
+// Sidebar — тёмный фирменный (тёплый графит ink-900)
+export const SIDEBAR_BG       = '#1C1B22';        // ink-900
+export const SIDEBAR_BORDER   = '#2A2833';        // --border dark
+export const SIDEBAR_ITEM_HO  = 'rgba(255,255,255,0.06)';
+export const SIDEBAR_ITEM_SEL = 'rgba(171,103,229,0.20)'; // violet-400 подложка
+export const SIDEBAR_ICON     = 'rgba(255,255,255,0.45)';
+export const SIDEBAR_ICON_SEL = '#CFA8F0';        // violet-200 — иконка активного пункта
+export const SIDEBAR_TEXT     = 'rgba(255,255,255,0.75)';
+export const SIDEBAR_TEXT_SEL = '#E7D3F8';        // violet-100
+export const SIDEBAR_TEXT_DIM = 'rgba(255,255,255,0.35)';
 
 export const appTheme = createTheme({
   palette: {
@@ -281,7 +281,7 @@ export const appTheme = createTheme({
       styleOverrides: {
         paper: {
           backgroundColor: SIDEBAR_BG,
-          borderRight: `1px solid ${SIDEBAR_BORDER}`,
+          borderRight: 'none',
           backgroundImage: 'none',
           boxShadow: 'none',
         },

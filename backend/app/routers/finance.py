@@ -18,6 +18,7 @@ from app.models import (
     LeadStatus,
     BankTransaction,
     BankTransactionStatus,
+    Student,
     FinanceTransaction,
     FinanceAccount,
     FinanceAccountOwnerScope,
@@ -95,6 +96,7 @@ from app.services.student_account_finance import create_student_account as finan
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
 from app.services.payment_status import get_payment_status_summary
 from app.dependencies import require_finance_access as dep_require_finance_access
+from app.student_display import get_student_display_name
 
 
 router = APIRouter()
@@ -104,6 +106,28 @@ def _require_finance_access(user: User) -> None:
     """Права доступа к финансовому журналу: admin / owner / sales."""
     if not auth.has_permission(user, "finance.access"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для работы с финансовым журналом")
+
+
+def _bank_transaction_status_map(db: Session, operation_ids: List[str]) -> Dict[str, str]:
+    """Статус исходной банковской операции (no_match/ambiguous/applied/expense/new)
+    по operation_id — чтобы показать в журнале, зачислен ли платёж ученику."""
+    ids = [op_id for op_id in set(operation_ids) if op_id]
+    if not ids:
+        return {}
+    rows = (
+        db.query(BankTransaction.operation_id, BankTransaction.status)
+        .filter(BankTransaction.operation_id.in_(ids))
+        .all()
+    )
+    return {op_id: str(getattr(bank_status, "value", bank_status)) for op_id, bank_status in rows}
+
+
+def _student_name_map(db: Session, student_ids: List[int]) -> Dict[int, str]:
+    ids = [sid for sid in set(student_ids) if sid]
+    if not ids:
+        return {}
+    students = db.query(Student).filter(Student.id.in_(ids)).all()
+    return {student.id: get_student_display_name(db, student) for student in students}
 
 
 def _slug(value: str) -> str:
@@ -2951,6 +2975,9 @@ async def list_finance_transactions(
 
     items: List[FinanceTransaction] = q.limit(limit).all()
 
+    bank_status_map = _bank_transaction_status_map(db, [tx.bank_operation_id for tx in items])
+    student_name_map = _student_name_map(db, [tx.student_id for tx in items])
+
     rows: List[FinanceLedgerBankRow] = []
     for tx in items:
         account: Optional[FinanceAccount] = getattr(tx, "account", None)
@@ -2983,6 +3010,8 @@ async def list_finance_transactions(
                 article_id=tx.article_id,
                 article_name=getattr(article, "name", None),
                 student_id=tx.student_id,
+                student_name=student_name_map.get(tx.student_id) if tx.student_id else None,
+                bank_transaction_status=bank_status_map.get(tx.bank_operation_id) if tx.bank_operation_id else None,
             )
         )
 
@@ -3111,6 +3140,8 @@ async def update_finance_transaction(
         article_id=tx.article_id,
         article_name=getattr(article, "name", None),
         student_id=tx.student_id,
+        student_name=_student_name_map(db, [tx.student_id]).get(tx.student_id) if tx.student_id else None,
+        bank_transaction_status=_bank_transaction_status_map(db, [tx.bank_operation_id]).get(tx.bank_operation_id) if tx.bank_operation_id else None,
     )
 
 @router.delete("/transactions/{transaction_id}")
@@ -3189,7 +3220,7 @@ async def apply_finance_transaction_to_student(
     note = tx.counterparty_name or tx.description_raw or "Платёж из журнала"
     try:
         from app.services.student_account_payment import add_payment_to_student_account
-        add_payment_to_student_account(db, payload.student_id, amount, note, pay_date)
+        payment_result = add_payment_to_student_account(db, payload.student_id, amount, note, pay_date)
     except ValueError as e:
         if "не найден" in str(e).lower():
             raise HTTPException(status_code=404, detail=str(e))
@@ -3198,6 +3229,18 @@ async def apply_finance_transaction_to_student(
     with db_transaction(db):
         tx.status = FinanceTransactionStatus.APPLIED
         tx.student_id = payload.student_id
+        # Синхронизируем исходную банковскую операцию, иначе автоимпорт Точки
+        # позже попробует зачислить её повторно (см. do_tochka_import_and_apply).
+        if tx.bank_source and tx.bank_operation_id:
+            bank_transaction = (
+                db.query(BankTransaction)
+                .filter(BankTransaction.operation_id == tx.bank_operation_id)
+                .first()
+            )
+            if bank_transaction is not None and bank_transaction.status != BankTransactionStatus.APPLIED.value:
+                bank_transaction.status = BankTransactionStatus.APPLIED.value
+                bank_transaction.student_id = payload.student_id
+                bank_transaction.student_account_id = payment_result.account.id
     db.refresh(tx)
 
     account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)
@@ -3228,6 +3271,10 @@ async def apply_finance_transaction_to_student(
         article_id=tx.article_id,
         article_name=getattr(article_obj, "name", None),
         student_id=tx.student_id,
+        student_name=_student_name_map(db, [tx.student_id]).get(tx.student_id) if tx.student_id else None,
+        bank_transaction_status=(
+            BankTransactionStatus.APPLIED.value if tx.bank_source and tx.bank_operation_id else None
+        ),
     )
 
 

@@ -84,6 +84,8 @@ class FinanceLedgerBankRow(BaseModel):
     article_id: Optional[int] = None
     article_name: Optional[str] = None
     student_id: Optional[int] = None
+    student_name: Optional[str] = None
+    bank_transaction_status: Optional[str] = None
 
 
 class FinanceAccountResponse(BaseModel):

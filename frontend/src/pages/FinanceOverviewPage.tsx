@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -26,6 +28,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Tabs,
   TextField,
   Tooltip,
@@ -41,6 +44,7 @@ import {
   Hub,
   Delete,
   Edit,
+  PersonAddAlt,
   Refresh,
   Save,
   TableChart,
@@ -48,7 +52,7 @@ import {
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import FinanceCommandCenter from '../components/FinanceCommandCenter';
-import { financeApi } from '../services/api';
+import { financeApi, studentsApi } from '../services/api';
 import type {
   BudgetEntry,
   DashboardWidgetComputed,
@@ -58,6 +62,7 @@ import type {
   FinanceModel,
   MetricDefinition,
   PLReportResponse,
+  Student,
   UnitEconomicsResponse,
 } from '../types';
 import { transliterate } from '../utils/transliterate';
@@ -184,6 +189,23 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [journalDirectionFilter, setJournalDirectionFilter] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
   const [journalAccountFilter, setJournalAccountFilter] = useState<'all' | number>('all');
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
+  const [needsAssignmentOnly, setNeedsAssignmentOnly] = useState(false);
+  const [journalSort, setJournalSort] = useState<{ field: 'occurred_at' | 'amount'; dir: 'asc' | 'desc' }>({
+    field: 'occurred_at',
+    dir: 'desc',
+  });
+
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assignRow, setAssignRow] = useState<FinanceLedgerBankRow | null>(null);
+  const [assignQuery, setAssignQuery] = useState('');
+  const [assignOptions, setAssignOptions] = useState<Student[]>([]);
+  const [assignSelected, setAssignSelected] = useState<Student | null>(null);
+  const [assignLoading, setAssignLoading] = useState(false);
+
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<number>>(new Set());
+  const [bulkTargetId, setBulkTargetId] = useState<number | ''>('');
+  const [bulkArticleId, setBulkArticleId] = useState<number | ''>('');
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualAccountId, setManualAccountId] = useState<number | ''>('');
@@ -287,6 +309,7 @@ const FinanceOverviewPageContent: React.FC = () => {
         limit: 5000,
       });
       setJournalRows(rows);
+      setSelectedRowIds(new Set());
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || 'Не удалось загрузить журнал операций');
       setJournalRows([]);
@@ -663,6 +686,145 @@ const FinanceOverviewPageContent: React.FC = () => {
     await financeApi.deleteTransaction(rowId);
     setJournalRows((prev) => prev.filter((row) => row.id !== rowId));
     if (selectedTargetId) await loadModelData(selectedTargetId);
+  };
+
+  const needsAssignment = (row: FinanceLedgerBankRow) =>
+    row.direction === 'income' &&
+    !row.student_id &&
+    (row.bank_transaction_status === 'no_match' || row.bank_transaction_status === 'ambiguous');
+
+  const matchStatusChip = (row: FinanceLedgerBankRow) => {
+    if (row.direction !== 'income') return null;
+    if (row.student_id) {
+      return (
+        <Chip
+          size="small"
+          color="success"
+          variant="outlined"
+          label={row.student_name ? `Ученику: ${row.student_name}` : 'Зачислено'}
+        />
+      );
+    }
+    if (row.bank_transaction_status === 'no_match') {
+      return <Chip size="small" color="error" variant="outlined" label="Нет соответствия" />;
+    }
+    if (row.bank_transaction_status === 'ambiguous') {
+      return <Chip size="small" color="warning" variant="outlined" label="Несколько кандидатов" />;
+    }
+    return null;
+  };
+
+  const sortedJournalRows = useMemo(() => {
+    const rows = [...journalRows];
+    rows.sort((a, b) => {
+      const cmp =
+        journalSort.field === 'amount'
+          ? (a.amount || 0) - (b.amount || 0)
+          : new Date(a.occurred_at || 0).getTime() - new Date(b.occurred_at || 0).getTime();
+      return journalSort.dir === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [journalRows, journalSort]);
+
+  const unassignedCount = useMemo(() => journalRows.filter(needsAssignment).length, [journalRows]);
+
+  const displayedJournalRows = useMemo(
+    () => (needsAssignmentOnly ? sortedJournalRows.filter(needsAssignment) : sortedJournalRows),
+    [sortedJournalRows, needsAssignmentOnly]
+  );
+
+  const toggleJournalSort = (field: 'occurred_at' | 'amount') => {
+    setJournalSort((prev) =>
+      prev.field === field ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { field, dir: 'asc' }
+    );
+  };
+
+  const openAssignDialog = (row: FinanceLedgerBankRow) => {
+    setAssignRow(row);
+    setAssignQuery('');
+    setAssignOptions([]);
+    setAssignSelected(null);
+    setAssignDialogOpen(true);
+  };
+
+  useEffect(() => {
+    if (!assignDialogOpen) return;
+    const q = assignQuery.trim();
+    if (q.length < 2) {
+      setAssignOptions([]);
+      return;
+    }
+    let active = true;
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await studentsApi.getAll({ q, limit: 20 });
+        if (active) setAssignOptions(result);
+      } catch {
+        if (active) setAssignOptions([]);
+      }
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
+  }, [assignQuery, assignDialogOpen]);
+
+  const confirmAssignStudent = async () => {
+    if (!assignRow || !assignSelected) return;
+    setAssignLoading(true);
+    setError(null);
+    try {
+      const updated = await financeApi.applyTransactionToStudent(assignRow.id, { student_id: assignSelected.id });
+      setJournalRows((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setMessage(`Платёж зачислен ученику: ${assignSelected.full_name}`);
+      setAssignDialogOpen(false);
+      if (selectedTargetId) await loadModelData(selectedTargetId);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось зачислить платёж ученику');
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  const toggleRowSelected = (id: number) => {
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedRowIds((prev) => {
+      if (displayedJournalRows.length > 0 && displayedJournalRows.every((row) => prev.has(row.id))) {
+        return new Set();
+      }
+      return new Set(displayedJournalRows.map((row) => row.id));
+    });
+  };
+
+  const applyBulkClassification = async () => {
+    if (selectedRowIds.size === 0 || (!bulkTargetId && !bulkArticleId)) return;
+    setBulkApplying(true);
+    setError(null);
+    try {
+      const payload: Parameters<typeof financeApi.updateTransaction>[1] = {};
+      if (bulkTargetId) payload.target_id = Number(bulkTargetId);
+      if (bulkArticleId) payload.article_id = Number(bulkArticleId);
+      const ids = Array.from(selectedRowIds);
+      const updated = await Promise.all(ids.map((id) => financeApi.updateTransaction(id, payload)));
+      setJournalRows((prev) => prev.map((item) => updated.find((u) => u.id === item.id) || item));
+      setMessage(`Обновлено операций: ${updated.length}`);
+      setSelectedRowIds(new Set());
+      setBulkTargetId('');
+      setBulkArticleId('');
+      if (selectedTargetId) await loadModelData(selectedTargetId);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось обновить операции');
+    } finally {
+      setBulkApplying(false);
+    }
   };
 
   const renderModelSelector = () => (
@@ -1300,6 +1462,16 @@ const FinanceOverviewPageContent: React.FC = () => {
           >
             Неразобранные
           </Button>
+          <Button
+            variant={needsAssignmentOnly ? 'contained' : 'outlined'}
+            color="warning"
+            onClick={() => setNeedsAssignmentOnly((value) => !value)}
+            fullWidth={isJournalMobile}
+            size={isPwaJournal ? 'small' : 'medium'}
+            sx={{ flexShrink: 0 }}
+          >
+            Требует зачисления{unassignedCount > 0 ? ` (${unassignedCount})` : ''}
+          </Button>
           {!isPwaJournal && (
           <Tooltip title="Перенести все банковские операции в журнал (бэкфилл)">
             <Button
@@ -1348,10 +1520,74 @@ const FinanceOverviewPageContent: React.FC = () => {
         </Stack>
       </Paper>
 
+      {unassignedCount > 0 && !needsAssignmentOnly && (
+        <Alert
+          severity="warning"
+          action={
+            <Button color="inherit" size="small" onClick={() => setNeedsAssignmentOnly(true)}>
+              Показать
+            </Button>
+          }
+        >
+          {unassignedCount === 1
+            ? 'Есть 1 доходная операция без зачисления ученику.'
+            : `Есть ${unassignedCount} доходных операций без зачисления ученику.`}
+        </Alert>
+      )}
+
+      {!isJournalMobile && selectedRowIds.size > 0 && (
+        <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
+          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Выбрано: {selectedRowIds.size}
+            </Typography>
+            <FormControl size="small" sx={{ minWidth: 190 }}>
+              <InputLabel>Проект</InputLabel>
+              <Select
+                label="Проект"
+                value={bulkTargetId === '' ? '' : String(bulkTargetId)}
+                displayEmpty
+                onChange={(event) => setBulkTargetId(event.target.value === '' ? '' : Number(event.target.value))}
+              >
+                <MenuItem value=""><em>Не менять</em></MenuItem>
+                {targets.map((target) => (
+                  <MenuItem key={target.id} value={target.id}>{target.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 210 }}>
+              <InputLabel>Статья</InputLabel>
+              <Select
+                label="Статья"
+                value={bulkArticleId === '' ? '' : String(bulkArticleId)}
+                displayEmpty
+                onChange={(event) => setBulkArticleId(event.target.value === '' ? '' : Number(event.target.value))}
+              >
+                <MenuItem value=""><em>Не менять</em></MenuItem>
+                {articles.map((article) => (
+                  <MenuItem key={article.id} value={article.id}>{article.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={bulkApplying || (!bulkTargetId && !bulkArticleId)}
+              onClick={applyBulkClassification}
+            >
+              Применить к выбранным
+            </Button>
+            <Button size="small" onClick={() => setSelectedRowIds(new Set())}>
+              Отменить выбор
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+
       {journalLoading && <LinearProgress />}
       {isJournalMobile && (
         <Stack spacing={1.25}>
-          {journalRows.map((row) => {
+          {displayedJournalRows.map((row) => {
             const accountLabel = row.transfer_group_id
               ? `${row.account_name || row.account_code || '?'} → ${row.to_account_name || row.to_account_code || '?'}`
               : (row.account_name || row.account_code || '—');
@@ -1394,9 +1630,15 @@ const FinanceOverviewPageContent: React.FC = () => {
                   </Stack>
 
                   {!isPwaJournal && (
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
                     <Chip size="small" label={row.target_name || 'Проект не выбран'} variant={row.target_id ? 'filled' : 'outlined'} />
                     <Chip size="small" label={row.article_name || 'Статья не выбрана'} variant={row.article_id ? 'filled' : 'outlined'} />
+                    {matchStatusChip(row)}
+                    {needsAssignment(row) && (
+                      <Button size="small" startIcon={<PersonAddAlt fontSize="small" />} onClick={() => openAssignDialog(row)}>
+                        Зачислить
+                      </Button>
+                    )}
                   </Stack>
                   )}
 
@@ -1486,7 +1728,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             );
           })}
 
-          {journalRows.length === 0 && !journalLoading && (
+          {displayedJournalRows.length === 0 && !journalLoading && (
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">
                 Операций за выбранный период нет.
@@ -1498,23 +1740,54 @@ const FinanceOverviewPageContent: React.FC = () => {
       {!isJournalMobile && (
       <Paper variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
         <TableContainer sx={{ overflowX: 'auto' }}>
-        <Table size="small" sx={{ minWidth: 1500 }}>
+        <Table size="small" sx={{ minWidth: 1650 }}>
           <TableHead>
             <TableRow>
-              <TableCell>Дата</TableCell>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  size="small"
+                  indeterminate={selectedRowIds.size > 0 && selectedRowIds.size < displayedJournalRows.length}
+                  checked={displayedJournalRows.length > 0 && selectedRowIds.size === displayedJournalRows.length}
+                  onChange={toggleSelectAllVisible}
+                />
+              </TableCell>
+              <TableCell sortDirection={journalSort.field === 'occurred_at' ? journalSort.dir : false}>
+                <TableSortLabel
+                  active={journalSort.field === 'occurred_at'}
+                  direction={journalSort.field === 'occurred_at' ? journalSort.dir : 'desc'}
+                  onClick={() => toggleJournalSort('occurred_at')}
+                >
+                  Дата
+                </TableSortLabel>
+              </TableCell>
               <TableCell>Счет</TableCell>
               <TableCell>Проект</TableCell>
               <TableCell>Статья</TableCell>
               <TableCell>Тип</TableCell>
-              <TableCell align="right">Сумма</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell align="right" sortDirection={journalSort.field === 'amount' ? journalSort.dir : false}>
+                <TableSortLabel
+                  active={journalSort.field === 'amount'}
+                  direction={journalSort.field === 'amount' ? journalSort.dir : 'desc'}
+                  onClick={() => toggleJournalSort('amount')}
+                >
+                  Сумма
+                </TableSortLabel>
+              </TableCell>
               <TableCell>Контрагент</TableCell>
               <TableCell>Описание</TableCell>
               <TableCell />
             </TableRow>
           </TableHead>
           <TableBody>
-            {journalRows.map((row) => (
-              <TableRow key={row.id}>
+            {displayedJournalRows.map((row) => {
+              const rowArticles = articles.filter((article) => article.direction === row.direction);
+              const selectedArticle = rowArticles.find((article) => article.id === row.article_id) || null;
+              return (
+              <TableRow key={row.id} selected={selectedRowIds.has(row.id)}>
+                <TableCell padding="checkbox">
+                  <Checkbox size="small" checked={selectedRowIds.has(row.id)} onChange={() => toggleRowSelected(row.id)} />
+                </TableCell>
                 <TableCell>{row.occurred_at ? new Date(row.occurred_at).toLocaleString('ru-RU') : '—'}</TableCell>
                 <TableCell>
                   {row.transfer_group_id
@@ -1546,30 +1819,35 @@ const FinanceOverviewPageContent: React.FC = () => {
                   {row.direction === 'transfer' ? (
                     row.article_name || '—'
                   ) : (
-                    <FormControl size="small" sx={{ minWidth: 190 }}>
-                      <Select
-                        value={row.article_id ?? ''}
-                        displayEmpty
-                        onChange={async (event) => {
-                          const article_id = event.target.value === '' ? null : Number(event.target.value);
-                          await updateJournalTransaction(row.id, { article_id });
-                        }}
-                      >
-                        <MenuItem value="">
-                          <em>Не выбрана</em>
-                        </MenuItem>
-                        {articles
-                          .filter((article) => article.direction === row.direction)
-                          .map((article) => (
-                            <MenuItem key={article.id} value={article.id}>
-                              {article.name}
-                            </MenuItem>
-                          ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      size="small"
+                      sx={{ minWidth: 200 }}
+                      options={rowArticles}
+                      value={selectedArticle}
+                      getOptionLabel={(option) => option.name}
+                      isOptionEqualToValue={(option, value) => option.id === value.id}
+                      onChange={async (_event, value) => {
+                        await updateJournalTransaction(row.id, { article_id: value ? value.id : null });
+                      }}
+                      renderInput={(params) => (
+                        <TextField {...params} placeholder="Не выбрана" variant="outlined" />
+                      )}
+                    />
                   )}
                 </TableCell>
                 <TableCell>{directionLabel(row.direction)}</TableCell>
+                <TableCell>
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    {matchStatusChip(row)}
+                    {needsAssignment(row) && (
+                      <Tooltip title="Зачислить платёж ученику">
+                        <IconButton size="small" color="warning" onClick={() => openAssignDialog(row)}>
+                          <PersonAddAlt fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Stack>
+                </TableCell>
                 <TableCell align="right" sx={{ color: row.direction === 'expense' ? 'error.main' : 'success.main' }}>
                   {money(row.amount)}
                 </TableCell>
@@ -1595,10 +1873,11 @@ const FinanceOverviewPageContent: React.FC = () => {
                   </Tooltip>
                 </TableCell>
               </TableRow>
-            ))}
-            {journalRows.length === 0 && !journalLoading && (
+              );
+            })}
+            {displayedJournalRows.length === 0 && !journalLoading && (
               <TableRow>
-                <TableCell colSpan={9} align="center">
+                <TableCell colSpan={11} align="center">
                   Операций за выбранный период нет.
                 </TableCell>
               </TableRow>
@@ -2168,6 +2447,39 @@ const FinanceOverviewPageContent: React.FC = () => {
             disabled={!editTxAccountId || !editTxAmount || Number(editTxAmount) <= 0 || (editTxDirection === 'transfer' && !editTxToAccountId)}
           >
             Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={assignDialogOpen} onClose={() => setAssignDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Зачислить платёж ученику</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {assignRow && (
+              <Alert severity="info" sx={{ '& .MuiAlert-message': { overflow: 'hidden' } }}>
+                {rub(assignRow.amount)} от {assignRow.counterparty_name || assignRow.counterparty_phone || 'неизвестного плательщика'}
+                {assignRow.occurred_at ? `, ${new Date(assignRow.occurred_at).toLocaleDateString('ru-RU')}` : ''}
+              </Alert>
+            )}
+            <Autocomplete
+              options={assignOptions}
+              value={assignSelected}
+              getOptionLabel={(option) => option.full_name}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              onChange={(_event, value) => setAssignSelected(value)}
+              onInputChange={(_event, value) => setAssignQuery(value)}
+              filterOptions={(x) => x}
+              noOptionsText={assignQuery.trim().length < 2 ? 'Введите минимум 2 символа' : 'Ученики не найдены'}
+              renderInput={(params) => (
+                <TextField {...params} label="Ученик" placeholder="Начните вводить ФИО" autoFocus />
+              )}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAssignDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={confirmAssignStudent} disabled={!assignSelected || assignLoading}>
+            Зачислить
           </Button>
         </DialogActions>
       </Dialog>

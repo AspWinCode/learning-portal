@@ -690,6 +690,8 @@ export interface FinanceLedgerBankRow {
   article_name?: string | null;
 
   student_id?: number | null;
+  student_name?: string | null;
+  bank_transaction_status?: string | null;
 }
 
 /** Строка транзакции журнала для дашборда личных финансов (по target). */

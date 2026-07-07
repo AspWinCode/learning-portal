@@ -246,6 +246,38 @@ def _find_tochka_income_candidate_by_real_name(
     return matched[0] if len(matched) == 1 else None
 
 
+def _find_tochka_real_income_candidate_for_generic(
+    db: Session,
+    account_id: str,
+    amount: float,
+    tx_date: str,
+) -> Optional[BankTransaction]:
+    """Обратный случай к _find_tochka_income_candidate_by_real_name: вебхук/выписка
+    пришли с именем-заглушкой «ООО Банк Точка», но запись с реальным именем плательщика
+    уже была создана раньше другим источником (выписка/более ранний вебхук).
+    Ищем её, чтобы не плодить дубль.
+    """
+    candidates = (
+        db.query(BankTransaction)
+        .filter(
+            BankTransaction.tochka_account_id == account_id,
+            BankTransaction.amount == amount,
+            BankTransaction.payment_date == tx_date,
+            BankTransaction.payer_phone.is_(None),
+            BankTransaction.status != BankTransactionStatus.IGNORED.value,
+        )
+        .order_by(BankTransaction.id.asc())
+        .all()
+    )
+    matched = [c for c in candidates if not _is_generic_tochka_counterparty(c.payer_name)]
+    return matched[0] if len(matched) == 1 else None
+
+
+def _should_keep_existing_payer_name(existing_name: Optional[str], incoming_name: Optional[str]) -> bool:
+    """Не даём затереть уже известное реальное имя плательщика именем-заглушкой «ООО Банк Точка»."""
+    return bool(existing_name) and not _is_generic_tochka_counterparty(existing_name) and _is_generic_tochka_counterparty(incoming_name)
+
+
 def _decode_tochka_webhook(raw_body: bytes) -> Dict[str, Any]:
     body = raw_body.decode("utf-8").strip()
     if not body:
@@ -346,6 +378,10 @@ def _upsert_tochka_bank_transaction(
         bank_transaction = _find_tochka_income_candidate_by_real_name(
             db, account_id, amount, tx_date, payer_name
         )
+    if bank_transaction is None and not is_expense and _is_generic_tochka_counterparty(payer_name):
+        bank_transaction = _find_tochka_real_income_candidate_for_generic(
+            db, account_id, amount, tx_date
+        )
     if bank_transaction is None:
         bank_transaction = BankTransaction(
             operation_id=operation_id,
@@ -364,7 +400,7 @@ def _upsert_tochka_bank_transaction(
             bank_transaction.payer_phone = None
         elif payer_phone:
             bank_transaction.payer_phone = payer_phone
-        if payer_name:
+        if payer_name and not _should_keep_existing_payer_name(bank_transaction.payer_name, payer_name):
             bank_transaction.payer_name = payer_name[:512]
         bank_transaction.payment_date = tx_date or bank_transaction.payment_date
         if is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
@@ -454,6 +490,12 @@ def do_tochka_import_and_apply(
                 bank_transaction = _find_tochka_income_candidate_by_real_name(
                     db, account_id, amount, tx_date, payer_name
                 )
+            # Обратный случай: выписка/вебхук вернули заглушку «ООО Банк Точка», а запись
+            # с реальным именем плательщика уже была создана раньше другим источником.
+            if bank_transaction is None and not is_expense and _is_generic_tochka_counterparty(payer_name):
+                bank_transaction = _find_tochka_real_income_candidate_for_generic(
+                    db, account_id, amount, tx_date
+                )
             if bank_transaction is not None and bank_transaction.status == BankTransactionStatus.IGNORED.value:
                 continue
             if bank_transaction is None:
@@ -474,11 +516,7 @@ def do_tochka_import_and_apply(
                     bank_transaction.payer_phone = None
                 elif payer_phone:
                     bank_transaction.payer_phone = payer_phone
-                if payer_name and not (
-                    not payer_phone
-                    and bank_transaction.payer_phone
-                    and _is_generic_tochka_counterparty(payer_name)
-                ):
+                if payer_name and not _should_keep_existing_payer_name(bank_transaction.payer_name, payer_name):
                     bank_transaction.payer_name = payer_name[:512]
                 bank_transaction.payment_date = tx_date or bank_transaction.payment_date
                 if not is_expense:

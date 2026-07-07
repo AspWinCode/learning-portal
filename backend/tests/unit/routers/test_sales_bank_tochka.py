@@ -162,7 +162,7 @@ def test_tochka_upsert_preserves_existing_phone_when_statement_has_no_phone(monk
 
     assert result is bank_transaction
     assert bank_transaction.payer_phone == "+79991112233"
-    assert bank_transaction.payer_name == 'ООО "Банк Точка"'
+    assert bank_transaction.payer_name == "Old"
     ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
 
 
@@ -266,6 +266,42 @@ def test_tochka_import_reuses_enriched_webhook_transaction(monkeypatch):
     db.add.assert_not_called()
     assert ensure_finance.call_count == 2
     ensure_finance.assert_called_with(db, bank_transaction, bank_source="tochka")
+
+
+def test_tochka_webhook_generic_name_reuses_existing_real_name_transaction(monkeypatch):
+    """Регрессия: реальное имя пришло первым (из выписки), а вебхук с именем-заглушкой
+    «ООО Банк Точка» по этой же операции прилетел позже — не должен плодить дубль
+    и не должен затирать уже известное реальное имя."""
+    bank_transaction = MagicMock()
+    bank_transaction.operation_id = "c2b-real-first"
+    bank_transaction.status = BankTransactionStatus.NEW.value
+    bank_transaction.payer_phone = None
+    bank_transaction.payer_name = "Надежда Сергеевна Д."
+    bank_transaction.payment_date = "2026-07-05"
+    bank_transaction.amount = 1500
+
+    db = MagicMock()
+    db.query.side_effect = [_query_mock(None), _query_mock([]), _query_mock([]), _query_mock([bank_transaction])]
+    ensure_finance = MagicMock()
+    monkeypatch.setattr("app.routers.sales_bank.ensure_finance_transaction_for_bank_transaction", ensure_finance)
+
+    result = _upsert_tochka_bank_transaction(
+        db,
+        "account-1",
+        {
+            "operation_id": "cbs-tb;123",
+            "amount": 1500,
+            "date": "2026-07-05",
+            "direction": "income",
+            "payer_name": 'ООО "Банк Точка"',
+            "payer_phone_raw": "",
+        },
+    )
+
+    assert result is bank_transaction
+    assert bank_transaction.payer_name == "Надежда Сергеевна Д."
+    db.add.assert_not_called()
+    ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
 
 
 def test_tochka_import_skips_ignored_transaction(monkeypatch):

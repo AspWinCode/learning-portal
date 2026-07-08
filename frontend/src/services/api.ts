@@ -755,6 +755,10 @@ export const financeApi = {
   deleteModel: async (modelId: number): Promise<void> => {
     await api.delete(`/api/finance/models/${modelId}`);
   },
+  syncModelTemplate: async (modelId: number): Promise<{ created_articles: number; created_metrics: number }> => {
+    const response = await api.post(`/api/finance/models/${modelId}/sync-template`);
+    return response.data;
+  },
   listBudget: async (params: { target_id: number; period: string }): Promise<BudgetEntry[]> => {
     const response = await api.get('/api/finance/budget', { params });
     return response.data;

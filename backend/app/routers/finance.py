@@ -524,6 +524,79 @@ async def create_finance_model(
     return _model_response(model)
 
 
+@router.post("/models/{model_id}/sync-template")
+async def sync_finance_model_template(
+    model_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> Dict[str, int]:
+    """
+    Добавляет в модель статьи/метрики, которых нет, из текущей версии её шаблона.
+
+    Материализация шаблона в статьи происходит только один раз — при создании модели
+    (create_finance_model). Если шаблон потом отредактировали и добавили туда новые
+    статьи, у существующих моделей они сами не появляются — нужно применить вручную.
+    Уже существующие статьи (по code) и метрики (по name) не трогает и не дублирует.
+    """
+    _require_finance_access(current_user)
+    model = db.query(FinanceModel).filter(FinanceModel.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Finance model not found")
+    if not model.target_id:
+        raise HTTPException(status_code=400, detail="У модели нет проекта — применять шаблон некуда")
+
+    target_id = model.target_id
+    template = get_template(model.template_key, db=db)
+
+    articles_before = db.query(FinanceArticle.id).filter(FinanceArticle.target_id == target_id).count()
+    metrics_before = db.query(MetricDefinition.id).filter(MetricDefinition.target_id == target_id).count()
+
+    with db_transaction(db):
+        for index, item in enumerate(template.get("articles") or []):
+            if isinstance(item, dict):
+                _create_article_from_template(db, target_id, item, None, index)
+        for index, metric_data in enumerate(template.get("metrics") or []):
+            if not isinstance(metric_data, dict):
+                continue
+            metric_name = str(metric_data.get("name") or "Metric")
+            existing_metric = (
+                db.query(MetricDefinition)
+                .filter(MetricDefinition.target_id == target_id, MetricDefinition.name == metric_name)
+                .first()
+            )
+            if existing_metric:
+                continue
+            metric = MetricDefinition(
+                target_id=target_id,
+                name=metric_name,
+                formula=str(metric_data.get("formula") or "0"),
+                unit=metric_data.get("unit") if metric_data.get("unit") is not None else None,
+                sort_order=metrics_before + index,
+            )
+            db.add(metric)
+            db.flush()
+            db.add(
+                DashboardWidget(
+                    owner_id=current_user.id,
+                    metric_id=metric.id,
+                    target_id=target_id,
+                    widget_type="number",
+                    period_type="current_month",
+                    position_x=0,
+                    position_y=0,
+                    width=1,
+                )
+            )
+
+    articles_after = db.query(FinanceArticle.id).filter(FinanceArticle.target_id == target_id).count()
+    metrics_after = db.query(MetricDefinition.id).filter(MetricDefinition.target_id == target_id).count()
+
+    return {
+        "created_articles": articles_after - articles_before,
+        "created_metrics": metrics_after - metrics_before,
+    }
+
+
 @router.get("/models/{model_id}", response_model=FinanceModelResponse)
 async def get_finance_model(
     model_id: int,

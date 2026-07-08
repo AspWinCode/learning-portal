@@ -47,6 +47,7 @@ import {
   PersonAddAlt,
   Refresh,
   Save,
+  Sync,
   TableChart,
   TableRows,
 } from '@mui/icons-material';
@@ -454,6 +455,25 @@ const FinanceOverviewPageContent: React.FC = () => {
       setMessage('Финансовая модель удалена');
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || 'Не удалось удалить финансовую модель');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const syncModelTemplate = async (model: FinanceModel) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await financeApi.syncModelTemplate(model.id);
+      if (result.created_articles === 0 && result.created_metrics === 0) {
+        setMessage('В модели уже есть все статьи и метрики из шаблона — новых не найдено');
+      } else {
+        setMessage(`Добавлено из шаблона: статей — ${result.created_articles}, метрик — ${result.created_metrics}`);
+      }
+      if (model.target_id) await loadModelData(model.target_id);
+      await loadBase();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось применить шаблон к модели');
     } finally {
       setLoading(false);
     }
@@ -973,6 +993,13 @@ const FinanceOverviewPageContent: React.FC = () => {
                 <Button size="small" onClick={() => { setSelectedModelId(model.id); setTab('dashboard'); }}>
                   Открыть
                 </Button>
+                <Tooltip title="Добавить в модель новые статьи и метрики, появившиеся в шаблоне после её создания">
+                  <span>
+                    <IconButton size="small" disabled={!model.target_id} onClick={() => syncModelTemplate(model)}>
+                      <Sync fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
                 <Tooltip title="Редактировать">
                   <IconButton size="small" onClick={() => openEditModel(model)}>
                     <Edit fontSize="small" />

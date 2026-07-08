@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import (
+    CourseCatalogItem,
     Grade,
     Group,
     GroupSchedule,
@@ -18,6 +19,7 @@ from app.models import (
     Student,
     StudentAccount,
     StudentCard,
+    StudentCourseProgress,
     StudentProgram,
     StudentStatus,
     Topic,
@@ -114,6 +116,25 @@ def build_parent_dashboard_summary(db: Session, parent_user_id: int) -> Dict[str
             .scalar()
             or 0.0
         )
+        progress_rows = (
+            db.query(StudentCourseProgress, CourseCatalogItem)
+            .join(CourseCatalogItem, CourseCatalogItem.id == StudentCourseProgress.catalog_item_id)
+            .filter(StudentCourseProgress.student_id == student.id)
+            .all()
+        )
+        course_progress = [
+            {
+                "course_code": ci.code,
+                "course_name": ci.name,
+                "cases_solved": p.cases_solved,
+                "cases_total": p.cases_total,
+                "rank_name": p.rank_name,
+                "badges_count": p.badges_count,
+                "last_badge_name": p.last_badge_name,
+                "updated_at": p.updated_at,
+            }
+            for p, ci in progress_rows
+        ]
         items.append(
             {
                 "student_id": student.id,
@@ -123,6 +144,7 @@ def build_parent_dashboard_summary(db: Session, parent_user_id: int) -> Dict[str
                 "payment_link": getattr(card, "payment_link", None),
                 "nearest_lesson": _resolve_nearest_lesson(db, student.id),
                 "ai_insight": build_student_learning_ai_snapshot(db, student_id=student.id),
+                "course_progress": course_progress,
             }
         )
     return {"students": items}

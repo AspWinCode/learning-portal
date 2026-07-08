@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CourseCatalogItemKind(str, Enum):
@@ -33,6 +33,18 @@ class StudentLoginResponse(BaseModel):
     student: StudentProfileOut
 
 
+class CourseProgressOut(BaseModel):
+    """Последний снимок прогресса ученика во внешнем курсе."""
+    model_config = ConfigDict(from_attributes=True)
+
+    cases_solved: int = 0
+    cases_total: int = 0
+    rank_name: Optional[str] = None
+    badges_count: int = 0
+    last_badge_name: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
 class CourseCatalogItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,6 +55,7 @@ class CourseCatalogItemOut(BaseModel):
     cover_image_url: Optional[str] = None
     kind: CourseCatalogItemKind
     has_access: bool = False
+    progress: Optional[CourseProgressOut] = None
 
 
 class CourseCatalogItemCreate(BaseModel):
@@ -109,3 +122,14 @@ class StudentPortalAdminView(BaseModel):
     """Сводка по кабинету конкретного ученика — для карточки ученика в админке."""
     credential: Optional[StudentCredentialOut] = None
     access_grants: List[StudentCourseAccessOut] = []
+
+
+class ProgressSyncRequest(BaseModel):
+    """Тело запроса от сервера Кодэкс: прогресс одного ученика в одном курсе."""
+    external_ref: str = Field(..., description="Идентификатор вида lp-student-{id}")
+    catalog_item_code: str
+    cases_solved: int = Field(0, ge=0)
+    cases_total: int = Field(0, ge=0)
+    rank_name: Optional[str] = None
+    badges_count: int = Field(0, ge=0)
+    last_badge_name: Optional[str] = None

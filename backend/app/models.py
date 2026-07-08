@@ -259,6 +259,7 @@ class Student(Base):
 
     credential = relationship("StudentCredential", back_populates="student", uselist=False, cascade="all, delete-orphan")
     course_access = relationship("StudentCourseAccess", back_populates="student", cascade="all, delete-orphan")
+    course_progress = relationship("StudentCourseProgress", back_populates="student", cascade="all, delete-orphan")
 
 
 class StudentCredential(Base):
@@ -301,6 +302,7 @@ class CourseCatalogItem(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     access_grants = relationship("StudentCourseAccess", back_populates="catalog_item", cascade="all, delete-orphan")
+    progress_records = relationship("StudentCourseProgress", back_populates="catalog_item", cascade="all, delete-orphan")
 
 
 class StudentCourseAccessStatus(str, enum.Enum):
@@ -327,6 +329,28 @@ class StudentCourseAccess(Base):
     student = relationship("Student", back_populates="course_access")
     catalog_item = relationship("CourseCatalogItem", back_populates="access_grants")
     granted_by = relationship("User", foreign_keys=[granted_by_user_id])
+
+
+class StudentCourseProgress(Base):
+    """Прогресс ученика во внешнем курсе (последний снимок, перезаписывается при каждом синке)."""
+
+    __tablename__ = "student_course_progress"
+    __table_args__ = (
+        UniqueConstraint("student_id", "catalog_item_id", name="uq_student_course_progress"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    catalog_item_id = Column(Integer, ForeignKey("course_catalog_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    cases_solved = Column(Integer, nullable=False, default=0)
+    cases_total = Column(Integer, nullable=False, default=0)
+    rank_name = Column(String(64), nullable=True)
+    badges_count = Column(Integer, nullable=False, default=0)
+    last_badge_name = Column(String(128), nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    student = relationship("Student", back_populates="course_progress")
+    catalog_item = relationship("CourseCatalogItem", back_populates="progress_records")
 
 
 class StudentAccountTransactionKind(str, enum.Enum):

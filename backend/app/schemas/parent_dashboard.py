@@ -17,6 +17,18 @@ class ParentDashboardNearestLessonResponse(BaseModel):
     trainer_name: Optional[str] = None
 
 
+class ParentCourseProgressOut(BaseModel):
+    """Прогресс ученика в одном внешнем курсе — для отображения в дашборде родителя."""
+    course_code: str
+    course_name: str
+    cases_solved: int = 0
+    cases_total: int = 0
+    rank_name: Optional[str] = None
+    badges_count: int = 0
+    last_badge_name: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
 class ParentDashboardStudentSummaryResponse(BaseModel):
     student_id: int
     student_name: str
@@ -25,6 +37,7 @@ class ParentDashboardStudentSummaryResponse(BaseModel):
     payment_link: Optional[str] = None
     nearest_lesson: Optional[ParentDashboardNearestLessonResponse] = None
     ai_insight: Optional[StudentLearningAIInsightResponse] = None
+    course_progress: List[ParentCourseProgressOut] = []
 
 
 class ParentDashboardSummaryResponse(BaseModel):

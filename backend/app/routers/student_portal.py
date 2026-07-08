@@ -1,7 +1,11 @@
 """Личный кабинет ученика: свой логин, витрина курсов, выдача доступа админом/тренером."""
+import hashlib
+import hmac
+import os
+import re
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app import auth
@@ -12,6 +16,7 @@ from app.models import (
     Student,
     StudentCourseAccess,
     StudentCourseAccessStatus,
+    StudentCourseProgress,
     StudentCredential,
     User,
 )
@@ -20,7 +25,9 @@ from app.schemas.student_portal import (
     CourseCatalogItemOut,
     CourseCatalogItemUpdate,
     CourseLaunchResponse,
+    CourseProgressOut,
     GrantCourseAccessRequest,
+    ProgressSyncRequest,
     StudentCourseAccessOut,
     StudentCredentialCreate,
     StudentCredentialOut,
@@ -30,7 +37,15 @@ from app.schemas.student_portal import (
     StudentPortalAdminView,
     StudentProfileOut,
 )
-from app.services.kodex_sso import build_launch_redirect_url
+from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET, build_launch_redirect_url
+
+
+def _verify_kodex_signature(raw_body: bytes, signature_header: str) -> bool:
+    secret = SSO_KODEX_SHARED_SECRET.encode("utf-8")
+    if not secret or not signature_header:
+        return False
+    expected = hmac.new(secret, raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature_header)
 
 router = APIRouter()
 
@@ -83,6 +98,15 @@ async def list_my_courses(
         .order_by(CourseCatalogItem.sort_order)
         .all()
     )
+    progress_map = {
+        p.catalog_item_id: p
+        for p in db.query(StudentCourseProgress)
+        .filter(
+            StudentCourseProgress.student_id == current_student.id,
+            StudentCourseProgress.catalog_item_id.in_(item_ids),
+        )
+        .all()
+    }
     return [
         CourseCatalogItemOut(
             id=item.id,
@@ -92,6 +116,7 @@ async def list_my_courses(
             cover_image_url=item.cover_image_url,
             kind=item.kind,
             has_access=True,
+            progress=CourseProgressOut.model_validate(progress_map[item.id]) if item.id in progress_map else None,
         )
         for item in items
     ]
@@ -127,6 +152,55 @@ async def launch_course(
         raise HTTPException(status_code=503, detail="Курс временно недоступен (не настроен переход)")
 
     return CourseLaunchResponse(redirect_url=redirect_url)
+
+
+# ─── Синхронизация прогресса из Кодэкс ──────────────────────────────────────
+
+_EXTERNAL_REF_RE = re.compile(r"^lp-student-(\d+)$")
+
+
+@router.post("/progress-sync")
+async def progress_sync(request: Request, db: Session = Depends(get_db)):
+    """Принимает прогресс ученика от сервера Кодэкс.
+    Авторизация — HMAC-подпись тела заголовком X-Kodex-Signature."""
+    raw_body = await request.body()
+    signature = request.headers.get("X-Kodex-Signature", "")
+    if not _verify_kodex_signature(raw_body, signature):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверная подпись запроса")
+
+    payload = ProgressSyncRequest.model_validate_json(raw_body)
+
+    m = _EXTERNAL_REF_RE.match(payload.external_ref)
+    if not m:
+        raise HTTPException(status_code=404, detail="ученик не найден")
+    student_id = int(m.group(1))
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="ученик не найден")
+
+    item = db.query(CourseCatalogItem).filter(CourseCatalogItem.code == payload.catalog_item_code).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="курс не найден")
+
+    progress = (
+        db.query(StudentCourseProgress)
+        .filter(
+            StudentCourseProgress.student_id == student_id,
+            StudentCourseProgress.catalog_item_id == item.id,
+        )
+        .first()
+    )
+    if not progress:
+        progress = StudentCourseProgress(student_id=student_id, catalog_item_id=item.id)
+        db.add(progress)
+
+    progress.cases_solved = payload.cases_solved
+    progress.cases_total = payload.cases_total
+    progress.rank_name = payload.rank_name
+    progress.badges_count = payload.badges_count
+    progress.last_badge_name = payload.last_badge_name
+    db.commit()
+    return {"ok": True}
 
 
 # ─── Админ: витрина курсов (CRUD) ────────────────────────────────────────────

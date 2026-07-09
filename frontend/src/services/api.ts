@@ -2006,6 +2006,7 @@ export const salesApi = {
   createSalesSchool: async (payload: string | {
     name: string;
     city?: string | null;
+    district?: string | null;
     director?: string | null;
     email?: string | null;
     address?: string | null;
@@ -2018,6 +2019,7 @@ export const salesApi = {
   updateSalesSchool: async (id: number, payload: {
     name?: string;
     city?: string | null;
+    district?: string | null;
     director?: string | null;
     email?: string | null;
     address?: string | null;

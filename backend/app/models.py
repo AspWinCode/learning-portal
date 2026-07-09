@@ -656,6 +656,7 @@ class SalesSchool(Base):
     email = Column(String, nullable=True, index=True)
     address = Column(Text, nullable=True)
     phone = Column(String(64), nullable=True)
+    district = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

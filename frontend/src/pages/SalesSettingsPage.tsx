@@ -103,6 +103,7 @@ const SalesSettingsPage: React.FC = () => {
   const [newSchool, setNewSchool] = useState({
     name: '',
     city: '',
+    district: '',
     director: '',
     email: '',
     address: '',
@@ -458,12 +459,13 @@ const SalesSettingsPage: React.FC = () => {
       await salesApi.createSalesSchool({
         name,
         city: newSchool.city.trim() || null,
+        district: newSchool.district.trim() || null,
         director: newSchool.director.trim() || null,
         email: newSchool.email.trim() || null,
         address: newSchool.address.trim() || null,
         phone: newSchool.phone.trim() || null,
       });
-      setNewSchool({ name: '', city: '', director: '', email: '', address: '', phone: '' });
+      setNewSchool({ name: '', city: '', district: '', director: '', email: '', address: '', phone: '' });
       setSchoolImportResult(null);
     });
 
@@ -674,6 +676,12 @@ const SalesSettingsPage: React.FC = () => {
             />
             <TextField
               size="small"
+              label="Район"
+              value={newSchool.district}
+              onChange={(e) => setNewSchool((prev) => ({ ...prev, district: e.target.value }))}
+            />
+            <TextField
+              size="small"
               label="Директор/ИО"
               value={newSchool.director}
               onChange={(e) => setNewSchool((prev) => ({ ...prev, director: e.target.value }))}
@@ -709,12 +717,13 @@ const SalesSettingsPage: React.FC = () => {
                 await salesApi.createSalesSchool({
                   name: newSchool.name.trim(),
                   city: newSchool.city.trim() || null,
+                  district: newSchool.district.trim() || null,
                   director: newSchool.director.trim() || null,
                   email: newSchool.email.trim() || null,
                   address: newSchool.address.trim() || null,
                   phone: newSchool.phone.trim() || null,
                 });
-                setNewSchool({ name: '', city: '', director: '', email: '', address: '', phone: '' });
+                setNewSchool({ name: '', city: '', district: '', director: '', email: '', address: '', phone: '' });
               })}
             >
               Добавить
@@ -753,6 +762,7 @@ const SalesSettingsPage: React.FC = () => {
               <TableRow>
                 <TableCell>Название</TableCell>
                 <TableCell>Город</TableCell>
+                <TableCell>Район</TableCell>
                 <TableCell>Директор/ИО директора</TableCell>
                 <TableCell>Почта</TableCell>
                 <TableCell>Адрес</TableCell>
@@ -765,6 +775,7 @@ const SalesSettingsPage: React.FC = () => {
                 <TableRow key={s.id}>
                   <TableCell>{s.name}</TableCell>
                   <TableCell>{s.city || '—'}</TableCell>
+                  <TableCell>{s.district || '—'}</TableCell>
                   <TableCell>{s.director || '—'}</TableCell>
                   <TableCell>{s.email || '—'}</TableCell>
                   <TableCell>{s.address || '—'}</TableCell>

@@ -147,6 +147,8 @@ def _parse_school_import(data: bytes, filename: str) -> List[Dict[str, Optional[
                 parsed = [_school_payload_from_row(row) for row in reader]
                 if parsed:
                     parsed[0]["_raw_headers"] = first_cell[:200]
+                    parsed[0]["_delim"] = repr(delim)
+                    parsed[0]["_path"] = f"xlsx-1col-t{tab_c}s{semi_c}c{comma_c}"
                 return parsed
         headers = [str(h).strip() if h is not None else "" for h in rows[0]]
         result: List[Dict[str, Optional[str]]] = []
@@ -155,6 +157,8 @@ def _parse_school_import(data: bytes, filename: str) -> List[Dict[str, Optional[
             result.append(_school_payload_from_row(raw))
         if result:
             result[0]["_raw_headers"] = str(headers[:8])
+            result[0]["_delim"] = "xlsx-normal"
+            result[0]["_path"] = f"xlsx-{len(headers)}cols"
         return result
 
     try:
@@ -162,15 +166,21 @@ def _parse_school_import(data: bytes, filename: str) -> List[Dict[str, Optional[
     except UnicodeDecodeError:
         text = data.decode("cp1251")
     sample = text[:2048]
-    tab_c, semi_c, comma_c = sample.count("\t"), sample.count(";"), sample.count(",")
+    tab_c = sample.count("\t")
+    semi_c = sample.count(";")
+    comma_c = sample.count(",")
     max_c = max(tab_c, semi_c, comma_c)
     delimiter = "\t" if tab_c == max_c else (";" if semi_c == max_c else ",")
+    # Strip outer quotes from header line (Excel wraps entire header in one pair of quotes)
+    lines = text.splitlines(True)
+    if lines:
+        h = lines[0]
+        stripped_h = h.rstrip("\r\n")
+        if stripped_h.startswith('"') and stripped_h.endswith('"'):
+            lines[0] = stripped_h[1:-1] + h[len(stripped_h):]
+            text = "".join(lines)
     reader = csv.DictReader(StringIO(text), delimiter=delimiter)
-    parsed = [_school_payload_from_row(row) for row in reader]
-    if parsed:
-        raw_headers = list(csv.DictReader(StringIO(sample), delimiter=delimiter).fieldnames or [])
-        parsed[0]["_raw_headers"] = str(raw_headers[:8])
-    return parsed
+    return [_school_payload_from_row(row) for row in reader]
 
 
 @router.get("/dashboard", response_model=SalesDashboardResponse)
@@ -784,9 +794,6 @@ async def import_sales_schools(
     updated = 0
     skipped = 0
     errors: List[str] = []
-    if rows:
-        errors.append(f"[DEBUG] Оригинальные заголовки файла: {rows[0].get('_raw_headers', 'N/A')}")
-        errors.append(f"[DEBUG] Первая строка (name/city/district): name={rows[0].get('name')!r}, city={rows[0].get('city')!r}, district={rows[0].get('district')!r}")
     for index, row in enumerate(rows, start=2):
         name = _normalize_source_name(row.get("name"))
         if not name:

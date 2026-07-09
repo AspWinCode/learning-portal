@@ -67,7 +67,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
-  SIDEBAR_BG, SIDEBAR_ITEM_HO, SIDEBAR_ITEM_SEL,
+  SIDEBAR_BG, SIDEBAR_BORDER, SIDEBAR_ITEM_HO, SIDEBAR_ITEM_SEL,
   SIDEBAR_ICON, SIDEBAR_ICON_SEL,
   SIDEBAR_TEXT, SIDEBAR_TEXT_SEL, SIDEBAR_TEXT_DIM,
 } from '../theme';
@@ -557,7 +557,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       {/* Brand header */}
       <Toolbar sx={{ px: sidebarCollapsed ? 1 : 2, minHeight: '56px !important', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}>
         {sidebarCollapsed ? (
-          <Box sx={{ width: 32, height: 32, borderRadius: 1.5, background: 'linear-gradient(135deg, #818CF8 0%, #A78BFA 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
+          <Box sx={{ width: 32, height: 32, borderRadius: 1.5, background: 'linear-gradient(135deg, #7F23CC 0%, #AB67E5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
             🎓
           </Box>
         ) : (
@@ -565,7 +565,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
             {logoUrl ? (
               <Box component="img" src={logoUrl} alt="Логотип" sx={{ width: 30, height: 30, borderRadius: 1.5, objectFit: 'contain', flexShrink: 0 }} />
             ) : (
-              <Box sx={{ width: 30, height: 30, borderRadius: 1.5, flexShrink: 0, background: 'linear-gradient(135deg, #818CF8 0%, #A78BFA 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+              <Box sx={{ width: 30, height: 30, borderRadius: 1.5, flexShrink: 0, background: 'linear-gradient(135deg, #7F23CC 0%, #AB67E5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
                 🎓
               </Box>
             )}
@@ -581,7 +581,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         )}
       </Toolbar>
 
-      <Box sx={{ mx: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
+      <Box sx={{ mx: 1, height: '1px', bgcolor: SIDEBAR_BORDER, flexShrink: 0 }} />
 
       {/* Nav list */}
       <List
@@ -590,7 +590,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         onScroll={(event) => saveSidebarScroll(event.currentTarget)}
         sx={{ flex: 1, overflow: 'auto', py: 0.5, px: 0.25,
         '&::-webkit-scrollbar': { width: 3 },
-        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 4 },
+        '&::-webkit-scrollbar-thumb': { bgcolor: SIDEBAR_BORDER, borderRadius: 4 },
       }}
       >
         {/* Standalone items (guest, parent) */}
@@ -620,7 +620,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
                   : <ExpandMore sx={{ fontSize: 14, color: SIDEBAR_TEXT_DIM }} />}
               </ListItemButton>
             ) : (
-              <Box sx={{ mx: 1, my: 0.75, height: '1px', bgcolor: 'rgba(255,255,255,0.06)' }} />
+              <Box sx={{ mx: 1, my: 0.75, height: '1px', bgcolor: SIDEBAR_BORDER }} />
             )}
 
             <Collapse in={sidebarCollapsed || isGroupOpen(g.id)} timeout={160} unmountOnExit>
@@ -630,7 +630,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         ))}
       </List>
 
-      <Box sx={{ mx: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.08)' }} />
+      <Box sx={{ mx: 1, height: '1px', bgcolor: SIDEBAR_BORDER }} />
 
       {/* Collapse toggle */}
       <Box sx={{ display: 'flex', justifyContent: sidebarCollapsed ? 'center' : 'flex-end', px: 1, py: 0.75 }}>
@@ -688,8 +688,8 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
                   alignItems: 'center',
                   px: 1.5,
                   borderRadius: 2,
-                  bgcolor: 'rgba(79,70,229,0.08)',
-                  border: '1px solid rgba(79,70,229,0.15)',
+                  bgcolor: 'rgba(127,35,204,0.07)',
+                  border: '1px solid rgba(127,35,204,0.14)',
                 }}
               >
                 <Search fontSize="small" sx={{ color: 'text.secondary' }} />
@@ -728,7 +728,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
                 sx={{
                   width: 34,
                   height: 34,
-                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                  background: 'linear-gradient(135deg, #7F23CC 0%, #AB67E5 100%)',
                   fontSize: '0.875rem',
                   fontWeight: 700,
                 }}
@@ -858,7 +858,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
             },
             '& .Mui-selected': {
               color: 'primary.main',
-              bgcolor: 'rgba(83, 88, 255, 0.10)',
+              bgcolor: 'rgba(127, 35, 204, 0.10)',
             },
             '& .MuiBottomNavigationAction-label': {
               mt: 0.25,

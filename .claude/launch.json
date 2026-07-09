@@ -16,6 +16,13 @@
       "cwd": "frontend"
     },
     {
+      "name": "frontend-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview"],
+      "port": 4173,
+      "cwd": "frontend"
+    },
+    {
       "name": "kodex-onboarding",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["--yes", "serve", "-l", "4173", "."],

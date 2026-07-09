@@ -159,6 +159,20 @@ services:
     command: ["python", "-m", "app.background_scheduler"]
     restart: unless-stopped
 
+  app_delivery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      <<: *app_common_env
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "app.owner_workspace_delivery_worker"]
+    restart: unless-stopped
+
   telegram_bot:
     build:
       context: ./backend

@@ -1,3 +1,7 @@
+:root {
+  color-scheme: light dark;
+}
+
 :root,
 [data-theme="light"] {
   /* поверхности */
@@ -56,6 +60,14 @@
   --h-control-md: 40px;
   --h-control-lg: 48px;
   --control-padding-x: 16px;
+  --control-border-width: 1px;
+
+  /* контейнеры */
+  --container-sm: 100%;
+  --container-md: 720px;
+  --container-lg: 960px;
+  --container-xl: 1200px;
+  --container-gutter: var(--space-4);
 
   /* иконки */
   --icon-xs: 14px;

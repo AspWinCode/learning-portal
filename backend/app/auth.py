@@ -106,7 +106,11 @@ def is_token_blacklisted(jti: str) -> bool:
     normalized_jti = str(jti or "").strip()
     if not normalized_jti:
         return False
-    return bool(get_redis_client().exists(_blacklist_key(normalized_jti)))
+    try:
+        return bool(get_redis_client().exists(_blacklist_key(normalized_jti)))
+    except Exception:
+        # Redis unavailable — treat token as not blacklisted
+        return False
 
 
 def validate_password_strength(password: str) -> None:

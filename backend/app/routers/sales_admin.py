@@ -134,6 +134,15 @@ def _parse_school_import(data: bytes, filename: str) -> List[Dict[str, Optional[
         rows = list(ws.iter_rows(values_only=True))
         if not rows:
             return []
+        # Detect CSV-saved-as-XLSX: all data in column A with delimiter inside cells
+        non_none = [v for v in rows[0] if v is not None]
+        if len(non_none) == 1:
+            first_cell = str(non_none[0])
+            delim = ";" if first_cell.count(";") >= first_cell.count(",") else ","
+            if delim in first_cell:
+                all_text = "\n".join(str(r[0] or "") for r in rows if r and r[0] is not None)
+                reader = csv.DictReader(StringIO(all_text), delimiter=delim)
+                return [_school_payload_from_row(row) for row in reader]
         headers = [str(h).strip() if h is not None else "" for h in rows[0]]
         result: List[Dict[str, Optional[str]]] = []
         for values in rows[1:]:

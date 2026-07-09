@@ -118,6 +118,7 @@ def _school_payload_from_row(row: Dict[str, object]) -> Dict[str, Optional[str]]
     return {
         "name": pick("название", "школа", "school", "name"),
         "city": pick("город", "city"),
+        "district": pick("район", "district"),
         "director": pick("директор", "ио директора", "и.о. директора", "director"),
         "email": pick("почта", "email", "e-mail"),
         "address": pick("адрес", "address"),
@@ -722,11 +723,12 @@ async def export_sales_schools(
 ):
     output = StringIO()
     writer = csv.writer(output, delimiter=";")
-    writer.writerow(["Название", "Город", "Директор/ИО директора", "Почта", "Адрес", "Телефон", "Активна"])
+    writer.writerow(["Название", "Город", "Район", "Директор/ИО директора", "Почта", "Адрес", "Телефон", "Активна"])
     for school in db.query(SalesSchool).order_by(SalesSchool.name.asc()).all():
         writer.writerow([
             school.name,
             getattr(school, "city", None) or "",
+            getattr(school, "district", None) or "",
             getattr(school, "director", None) or "",
             getattr(school, "email", None) or "",
             getattr(school, "address", None) or "",
@@ -778,6 +780,7 @@ async def import_sales_schools(
         else:
             updated += 1
         school.city = _clean_optional_text(row.get("city"))
+        school.district = _clean_optional_text(row.get("district"))
         school.director = _clean_optional_text(row.get("director"))
         school.email = email
         school.address = _clean_optional_text(row.get("address"))
@@ -804,6 +807,7 @@ async def create_sales_school(
     item = SalesSchool(
         name=name,
         city=_clean_optional_text(payload.city),
+        district=_clean_optional_text(payload.district),
         director=_clean_optional_text(payload.director),
         email=str(payload.email) if payload.email else None,
         address=_clean_optional_text(payload.address),
@@ -835,7 +839,7 @@ async def update_sales_school(
         if not name:
             raise HTTPException(status_code=400, detail="School name is required")
         item.name = name
-    for field in ("city", "director", "address", "phone"):
+    for field in ("city", "district", "director", "address", "phone"):
         if field in data:
             setattr(item, field, _clean_optional_text(data[field]))
     if "email" in data:

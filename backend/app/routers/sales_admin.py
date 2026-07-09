@@ -138,16 +138,23 @@ def _parse_school_import(data: bytes, filename: str) -> List[Dict[str, Optional[
         non_none = [v for v in rows[0] if v is not None]
         if len(non_none) == 1:
             first_cell = str(non_none[0])
-            delim = ";" if first_cell.count(";") >= first_cell.count(",") else ","
-            if delim in first_cell:
+            tab_c, semi_c, comma_c = first_cell.count("\t"), first_cell.count(";"), first_cell.count(",")
+            max_c = max(tab_c, semi_c, comma_c)
+            if max_c > 0:
+                delim = "\t" if tab_c == max_c else (";" if semi_c == max_c else ",")
                 all_text = "\n".join(str(r[0] or "") for r in rows if r and r[0] is not None)
                 reader = csv.DictReader(StringIO(all_text), delimiter=delim)
-                return [_school_payload_from_row(row) for row in reader]
+                parsed = [_school_payload_from_row(row) for row in reader]
+                if parsed:
+                    parsed[0]["_raw_headers"] = first_cell[:200]
+                return parsed
         headers = [str(h).strip() if h is not None else "" for h in rows[0]]
         result: List[Dict[str, Optional[str]]] = []
         for values in rows[1:]:
             raw = {headers[i]: values[i] if i < len(values) else None for i in range(len(headers))}
             result.append(_school_payload_from_row(raw))
+        if result:
+            result[0]["_raw_headers"] = str(headers[:8])
         return result
 
     try:
@@ -155,9 +162,15 @@ def _parse_school_import(data: bytes, filename: str) -> List[Dict[str, Optional[
     except UnicodeDecodeError:
         text = data.decode("cp1251")
     sample = text[:2048]
-    delimiter = ";" if sample.count(";") >= sample.count(",") else ","
+    tab_c, semi_c, comma_c = sample.count("\t"), sample.count(";"), sample.count(",")
+    max_c = max(tab_c, semi_c, comma_c)
+    delimiter = "\t" if tab_c == max_c else (";" if semi_c == max_c else ",")
     reader = csv.DictReader(StringIO(text), delimiter=delimiter)
-    return [_school_payload_from_row(row) for row in reader]
+    parsed = [_school_payload_from_row(row) for row in reader]
+    if parsed:
+        raw_headers = list(csv.DictReader(StringIO(sample), delimiter=delimiter).fieldnames or [])
+        parsed[0]["_raw_headers"] = str(raw_headers[:8])
+    return parsed
 
 
 @router.get("/dashboard", response_model=SalesDashboardResponse)
@@ -771,6 +784,9 @@ async def import_sales_schools(
     updated = 0
     skipped = 0
     errors: List[str] = []
+    if rows:
+        errors.append(f"[DEBUG] Оригинальные заголовки файла: {rows[0].get('_raw_headers', 'N/A')}")
+        errors.append(f"[DEBUG] Первая строка (name/city/district): name={rows[0].get('name')!r}, city={rows[0].get('city')!r}, district={rows[0].get('district')!r}")
     for index, row in enumerate(rows, start=2):
         name = _normalize_source_name(row.get("name"))
         if not name:

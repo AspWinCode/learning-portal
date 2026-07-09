@@ -171,14 +171,21 @@ def _parse_school_import(data: bytes, filename: str) -> List[Dict[str, Optional[
     comma_c = sample.count(",")
     max_c = max(tab_c, semi_c, comma_c)
     delimiter = "\t" if tab_c == max_c else (";" if semi_c == max_c else ",")
-    # Strip outer quotes from header line (Excel wraps entire header in one pair of quotes)
+    # Strip outer quotes from each line (Excel wraps every row in one pair of outer quotes
+    # when saving tab-delimited text, so csv.DictReader would treat each row as one field)
     lines = text.splitlines(True)
-    if lines:
-        h = lines[0]
-        stripped_h = h.rstrip("\r\n")
-        if stripped_h.startswith('"') and stripped_h.endswith('"'):
-            lines[0] = stripped_h[1:-1] + h[len(stripped_h):]
-            text = "".join(lines)
+    fixed_lines = []
+    for line in lines:
+        stripped = line.rstrip("\r\n")
+        ending = line[len(stripped):]
+        if stripped.startswith('"') and stripped.endswith('"'):
+            # Only strip if the content itself doesn't look like a normal quoted CSV field
+            # (i.e., the inner content contains the delimiter)
+            inner = stripped[1:-1]
+            if delimiter in inner:
+                stripped = inner
+        fixed_lines.append(stripped + ending)
+    text = "".join(fixed_lines)
     reader = csv.DictReader(StringIO(text), delimiter=delimiter)
     return [_school_payload_from_row(row) for row in reader]
 

@@ -6237,8 +6237,20 @@ const OwnerWorkspacePage: React.FC = () => {
 
           {taskViewMode === 'list' ? (
             <Stack spacing={1}>
-              <TableContainer component={Card} variant="outlined" sx={{ display: { xs: 'none', sm: 'block' } }}>
-                <Table size="small">
+              <TableContainer component={Card} variant="outlined" sx={{ display: { xs: 'none', sm: 'block' }, overflow: 'hidden' }}>
+                <Table size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
+                  <colgroup>
+                    <col style={{ width: 48 }} />
+                    <col />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 95 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 110 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 76 }} />
+                  </colgroup>
                   <TableHead>
                     <TableRow>
                       <TableCell padding="checkbox">
@@ -6261,7 +6273,7 @@ const OwnerWorkspacePage: React.FC = () => {
                         ['deadline_at', 'Дедлайн'],
                         ['updated_at', 'Обновлено'],
                       ].map(([key, label]) => (
-                        <TableCell key={key}>
+                        <TableCell key={key} sx={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
                           <TableSortLabel
                             active={taskSortBy === key}
                             direction={taskSortBy === key ? taskSortDir : 'asc'}
@@ -6275,7 +6287,7 @@ const OwnerWorkspacePage: React.FC = () => {
                           </TableSortLabel>
                         </TableCell>
                       ))}
-                      <TableCell align="right">Действия</TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>Действия</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -6307,28 +6319,28 @@ const OwnerWorkspacePage: React.FC = () => {
                                 }}
                               />
                             </TableCell>
-                            <TableCell>
-                              <Stack direction="row" alignItems="center" spacing={0.5}>
+                            <TableCell sx={{ overflow: 'hidden' }}>
+                              <Stack direction="row" alignItems="flex-start" spacing={0.5} sx={{ minWidth: 0 }}>
                                 {hasChecklist && (
                                   <Tooltip title={isExpanded ? 'Скрыть подзадачи' : 'Показать подзадачи'}>
-                                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); toggleExpand(); }}>
+                                    <IconButton size="small" sx={{ flexShrink: 0, mt: '-2px' }} onClick={(e) => { e.stopPropagation(); toggleExpand(); }}>
                                       {isExpanded ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
                                     </IconButton>
                                   </Tooltip>
                                 )}
-                                <Box>
-                                  <Typography variant="body2" fontWeight={700}>{t.title}</Typography>
+                                <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
+                                  <Typography variant="body2" fontWeight={700} sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.title}>{t.title}</Typography>
                                   {hasChecklist && (
                                     <Typography variant="caption" color="text.secondary">
                                       {checklist.filter((c) => c.done).length}/{checklist.length} подзадач
                                     </Typography>
                                   )}
-                                  {overdue && <Chip size="small" color="error" label={taskOverdueLabel(t)} sx={{ mt: 0.5, display: 'block' }} />}
+                                  {overdue && <Chip size="small" color="error" label={taskOverdueLabel(t)} sx={{ mt: 0.5 }} />}
                                 </Box>
                               </Stack>
                             </TableCell>
-                            <TableCell><Chip size="small" label={statusLabels[t.status] || t.status} sx={taskStatusChipSx(t.status)} /></TableCell>
-                            <TableCell>
+                            <TableCell sx={{ overflow: 'hidden' }}><Chip size="small" label={statusLabels[t.status] || t.status} sx={taskStatusChipSx(t.status)} /></TableCell>
+                            <TableCell sx={{ overflow: 'hidden' }}>
                               <Chip
                                 size="small"
                                 label={priorityLabels[t.priority] || t.priority}
@@ -6336,13 +6348,13 @@ const OwnerWorkspacePage: React.FC = () => {
                                 variant={t.priority === 'low' ? 'outlined' : 'filled'}
                               />
                             </TableCell>
-                            <TableCell>{userName(t.assignee_id)}</TableCell>
-                            <TableCell>{projectDisplayName(t.project_id)}</TableCell>
-                            <TableCell>{contactNameById(t.contact_id)}</TableCell>
-                            <TableCell sx={{ color: overdue ? 'error.main' : undefined, fontWeight: overdue ? 700 : undefined }}>
+                            <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={userName(t.assignee_id) || undefined}>{userName(t.assignee_id)}</TableCell>
+                            <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={projectDisplayName(t.project_id) || undefined}>{projectDisplayName(t.project_id)}</TableCell>
+                            <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={contactNameById(t.contact_id) || undefined}>{contactNameById(t.contact_id)}</TableCell>
+                            <TableCell sx={{ overflow: 'hidden', whiteSpace: 'nowrap', color: overdue ? 'error.main' : undefined, fontWeight: overdue ? 700 : undefined }}>
                               {formatTaskDateTime(t.deadline_at)}
                             </TableCell>
-                            <TableCell>{formatTaskDateTime(t.updated_at)}</TableCell>
+                            <TableCell sx={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>{formatTaskDateTime(t.updated_at)}</TableCell>
                             <TableCell align="right">
                               <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                                 {t.status !== 'completed' && t.status !== 'cancelled' && (

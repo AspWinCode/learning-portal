@@ -32,6 +32,7 @@ from app.routers import (
     grades,
     groups,
     max_messenger,
+    notes,
     owner_calculations,
     owner_dashboard,
     owner_funnels,
@@ -441,6 +442,7 @@ app.include_router(owner_workspace.router, prefix="/api/v1/owner-workspace", tag
 app.include_router(disk.router, prefix="/api/v1/disk", tags=["disk"])
 app.include_router(student_portal.router, prefix="/api/v1/student-portal", tags=["student_portal"])
 app.include_router(transcription.router, prefix="/api/v1/transcription", tags=["transcription"])
+app.include_router(notes.router, prefix="/api/v1/notes", tags=["notes"])
 
 
 @app.exception_handler(Exception)

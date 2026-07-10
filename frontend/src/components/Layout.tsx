@@ -66,6 +66,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 import {
   SIDEBAR_BG, SIDEBAR_BORDER, SIDEBAR_ITEM_HO, SIDEBAR_ITEM_SEL,
   SIDEBAR_ICON, SIDEBAR_ICON_SEL,
@@ -82,7 +83,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
@@ -206,6 +207,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   })();
   const isPwaNavigation = hasPwaQuery || isStandalonePwa || hasStoredPwaMode;
   const [pwaAllowedRoutes, setPwaAllowedRoutes] = React.useState<Set<string> | null>(null);
+  const [notesEnabledRoles, setNotesEnabledRoles] = React.useState<string[]>(['owner']);
 
   React.useEffect(() => {
     (async () => {
@@ -214,6 +216,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         setLogoUrl(data.data_url || null);
       } catch {
         // ignore
+      }
+    })();
+    (async () => {
+      try {
+        const data = await settingsApi.getNotesEnabledRoles();
+        setNotesEnabledRoles(data.enabled_roles);
+      } catch {
+        // ignore — default to owner only
       }
     })();
   }, []);
@@ -356,6 +366,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessUsers = hasPermission(user, 'users.access');
   const canAccessRoles = hasPermission(user, 'roles.access');
   const canAccessPasswords = hasPermission(user, 'passwords.access');
+  const canAccessNotes = notesEnabledRoles.includes(role ?? '') || role === 'owner' || role === 'admin';
 
   const effectiveMenuItems = (() => {
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
@@ -365,6 +376,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Программы', icon: <Book />, path: '/programs' },
         { text: 'Оценки', icon: <Grade />, path: '/grades' },
         { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
+        ...(canAccessNotes ? [{ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' }] : []),
       ];
     if (role === 'sales' && canAccessSalesModule)
       return [
@@ -383,6 +395,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' },
         { text: 'Диск', icon: <Folder />, path: '/disk' },
         ...(canAccessPasswords ? [{ text: 'Пароли', icon: <Lock />, path: '/passwords' }] : []),
+        ...(canAccessNotes ? [{ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' }] : []),
       ];
 
     const items = [
@@ -403,6 +416,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Полезные ссылки', icon: <Link />, path: '/owner-workspace/links' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
+      if (canAccessNotes) items.push({ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' });
     }
 
     if (canAccessReports && role !== 'owner') items.push({ text: 'Отчёты', icon: <Assessment />, path: '/reports' });
@@ -426,6 +440,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       if (role === 'owner') items.push({ text: 'Транскрибация', icon: <Mic />, path: '/transcription' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
+      if (canAccessNotes) items.push({ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' });
     }
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });

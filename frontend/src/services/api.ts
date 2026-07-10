@@ -1650,6 +1650,14 @@ export const settingsApi = {
     const response = await api.delete(`/api/settings/owner-workspace-settings-snapshots/${snapshotId}`);
     return response.data.items;
   },
+  getNotesEnabledRoles: async (): Promise<{ enabled_roles: string[] }> => {
+    const response = await api.get('/api/settings/notes-roles');
+    return response.data;
+  },
+  setNotesEnabledRoles: async (enabled_roles: string[]): Promise<{ enabled_roles: string[] }> => {
+    const response = await api.post('/api/settings/notes-roles', { enabled_roles });
+    return response.data;
+  },
 };
 
 export const publicStudentQuestionnairesApi = {
@@ -3723,6 +3731,33 @@ export const passwordsApi = {
   },
   delete: async (entryId: number): Promise<void> => {
     await api.delete(`/passwords/${entryId}`);
+  },
+};
+
+export interface Note {
+  id: number;
+  user_id: number;
+  title: string;
+  content: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export const notesApi = {
+  list: async (q?: string): Promise<Note[]> => {
+    const response = await api.get('/notes', { params: q ? { q } : {} });
+    return response.data;
+  },
+  create: async (payload: { title?: string; content?: string }): Promise<Note> => {
+    const response = await api.post('/notes', payload);
+    return response.data;
+  },
+  update: async (noteId: number, payload: { title?: string; content?: string }): Promise<Note> => {
+    const response = await api.patch(`/notes/${noteId}`, payload);
+    return response.data;
+  },
+  delete: async (noteId: number): Promise<void> => {
+    await api.delete(`/notes/${noteId}`);
   },
 };
 

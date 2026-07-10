@@ -174,6 +174,8 @@ const SalesSettingsPage: React.FC = () => {
   const [maxPersonalProvider, setMaxPersonalProvider] = useState<'greenapi' | 'api_messenger' | null>(null);
   const [maxQrImg, setMaxQrImg] = useState<string | null>(null);
   const [maxQrLoading, setMaxQrLoading] = useState(false);
+  const [notesEnabledRoles, setNotesEnabledRoles] = useState<string[]>(['owner']);
+  const [notesSaving, setNotesSaving] = useState(false);
 
   const loadData = async () => {
     const errors: string[] = [];
@@ -203,6 +205,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
       load('Работа со школами', () => campaignsApi.getSettings(), setCampaignSettings),
       load('Причины отказа', async () => (await settingsApi.getRefusedReasons()).items, setRefusedReasons),
+      load('Доступ к заметкам', async () => (await settingsApi.getNotesEnabledRoles()).enabled_roles, setNotesEnabledRoles),
     ]);
     maxApi.isConfigured().then((r) => {
       setMaxPersonalConfigured(!!r.personal);
@@ -531,6 +534,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="templates" label="Шаблоны" />
           <Tab value="integrations" label="Интеграции" />
           <Tab value="programMakeup" label="Совместимость отработок" />
+          <Tab value="notes" label="Заметки" />
         </Tabs>
       </Paper>
 
@@ -1705,6 +1709,57 @@ const SalesSettingsPage: React.FC = () => {
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" mb={1}>Совместимость программ (отработки)</Typography>
             <ProgramMakeupContent />
+          </Paper>
+        )}
+
+        {settingsTab === 'notes' && (
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" mb={0.5}>Доступ к заметкам по ролям</Typography>
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Включите доступ к странице «Заметки» для нужных ролей. Владелец всегда имеет доступ.
+            </Typography>
+            <Stack spacing={1}>
+              {[
+                { key: 'owner', label: 'Владелец (Owner)' },
+                { key: 'admin', label: 'Администратор (Admin)' },
+                { key: 'trainer', label: 'Преподаватель (Trainer)' },
+                { key: 'sales', label: 'Продажи (Sales)' },
+                { key: 'parent', label: 'Родитель (Parent)' },
+                { key: 'guest', label: 'Гость (Guest)' },
+              ].map(({ key, label }) => (
+                <FormControlLabel
+                  key={key}
+                  control={
+                    <Switch
+                      checked={notesEnabledRoles.includes(key)}
+                      disabled={key === 'owner' || notesSaving}
+                      onChange={async (e) => {
+                        const next = e.target.checked
+                          ? [...notesEnabledRoles, key]
+                          : notesEnabledRoles.filter((r) => r !== key);
+                        setNotesSaving(true);
+                        try {
+                          const result = await settingsApi.setNotesEnabledRoles(next);
+                          setNotesEnabledRoles(result.enabled_roles);
+                        } catch (err: any) {
+                          setError(extractApiError(err, 'Не удалось сохранить'));
+                        } finally {
+                          setNotesSaving(false);
+                        }
+                      }}
+                    />
+                  }
+                  label={
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Typography variant="body2">{label}</Typography>
+                      {key === 'owner' && (
+                        <Typography variant="caption" color="text.disabled">(всегда включён)</Typography>
+                      )}
+                    </Stack>
+                  }
+                />
+              ))}
+            </Stack>
           </Paper>
         )}
       </Stack>

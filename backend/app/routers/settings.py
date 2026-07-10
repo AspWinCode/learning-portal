@@ -12,6 +12,7 @@ from uuid import uuid4
 from app.database import get_db
 from app import auth
 from app.models import AppSetting, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, StudentCard, User, UserRole
+from app.schemas.notes import NotesEnabledRolesResponse, NotesEnabledRolesUpdate
 from app.schemas.settings import (
     B2BDistrictsResponse,
     B2BDistrictsUpdate,
@@ -1783,3 +1784,52 @@ async def retry_owner_workspace_notification_delivery(
         retried_email=retried_email,
         retried_web_push=retried_web_push,
     )
+
+
+# ──────────────────────────────────────────────────────────────
+# Notes role settings
+# ──────────────────────────────────────────────────────────────
+
+NOTES_ENABLED_ROLES_KEY = "notes_enabled_roles"
+NOTES_DEFAULT_ENABLED_ROLES = ["owner"]
+VALID_ROLES = {"owner", "admin", "sales", "trainer", "parent", "guest"}
+
+
+def _get_notes_enabled_roles(db: Session) -> list[str]:
+    setting = db.query(AppSetting).filter(AppSetting.key == NOTES_ENABLED_ROLES_KEY).first()
+    if not setting or not setting.value:
+        return NOTES_DEFAULT_ENABLED_ROLES
+    try:
+        roles = json.loads(setting.value)
+        if "owner" not in roles:
+            roles = ["owner"] + roles
+        return roles
+    except (ValueError, TypeError):
+        return NOTES_DEFAULT_ENABLED_ROLES
+
+
+@router.get("/notes-roles", response_model=NotesEnabledRolesResponse)
+async def get_notes_enabled_roles(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    return NotesEnabledRolesResponse(enabled_roles=_get_notes_enabled_roles(db))
+
+
+@router.post("/notes-roles", response_model=NotesEnabledRolesResponse)
+async def set_notes_enabled_roles(
+    body: NotesEnabledRolesUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_role(["admin"])),
+):
+    roles = [r for r in body.enabled_roles if r in VALID_ROLES]
+    if "owner" not in roles:
+        roles = ["owner"] + roles
+    raw = json.dumps(roles)
+    setting = db.query(AppSetting).filter(AppSetting.key == NOTES_ENABLED_ROLES_KEY).first()
+    if setting:
+        setting.value = raw
+    else:
+        db.add(AppSetting(key=NOTES_ENABLED_ROLES_KEY, value=raw))
+    db.commit()
+    return NotesEnabledRolesResponse(enabled_roles=roles)

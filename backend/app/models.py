@@ -2826,6 +2826,19 @@ class PasswordEntry(Base):
     owner = relationship("User", foreign_keys=[owner_id])
 
 
+class Note(Base):
+    __tablename__ = "notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(512), nullable=False, server_default="Без названия")
+    content = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
 class OwnerWorkspaceUserPreference(Base):
     """Персональные настройки UI задачника (JSON, merge при PATCH)."""
 

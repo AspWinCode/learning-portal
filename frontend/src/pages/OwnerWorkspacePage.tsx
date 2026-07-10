@@ -6363,7 +6363,21 @@ const OwnerWorkspacePage: React.FC = () => {
                               <TableCell padding="checkbox" />
                               <TableCell>
                                 <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 4 }}>
-                                  <Checkbox size="small" checked={item.done} disabled sx={{ p: 0 }} />
+                                  <Checkbox
+                                    size="small"
+                                    checked={item.done}
+                                    sx={{ p: 0 }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={() => {
+                                      const updatedChecklist = checklist.map((c, i) =>
+                                        i === idx ? { ...c, done: !c.done } : c
+                                      );
+                                      const payload = updatedChecklist.map(({ text, done }) => ({ text, done }));
+                                      void ownerWorkspaceApi.updateTask(t.id, { checklist: payload }).then((updated) => {
+                                        setTasks((prev) => prev.map((x) => x.id === updated.id ? updated : x));
+                                      });
+                                    }}
+                                  />
                                   <Typography
                                     variant="body2"
                                     sx={{ textDecoration: item.done ? 'line-through' : 'none', color: item.done ? 'text.disabled' : 'text.primary' }}

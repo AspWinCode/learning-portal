@@ -22,7 +22,7 @@ import {
   Notes as NotesIcon,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { RichTextEditor } from '../components/RichTextEditor';
+import NotesEditor from '../components/NotesEditor';
 import { notesApi, Note } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 
@@ -317,11 +317,9 @@ const NotesPage: React.FC = () => {
 
             {/* Rich text editor */}
             <Box sx={{ flex: 1, overflow: 'auto' }}>
-              <RichTextEditor
+              <NotesEditor
                 value={editContent}
                 onChange={handleContentChange}
-                minHeight={400}
-                placeholder="Начните писать заметку…"
               />
             </Box>
           </Box>

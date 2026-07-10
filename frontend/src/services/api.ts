@@ -2453,6 +2453,10 @@ export const b2bApi = {
     const response = await api.get(`/api/b2b-schools/${id}`);
     return response.data;
   },
+  getSchoolsDocumentStatuses: async (): Promise<Record<number, boolean>> => {
+    const response = await api.get('/api/b2b-schools/documents-status');
+    return response.data;
+  },
   listSchoolLeads: async (schoolId: number): Promise<{ id: number; contact_name: string; phone: string; status: string; source: string | null; source_event: string | null; created_at: string }[]> => {
     const response = await api.get(`/api/b2b-schools/${schoolId}/leads`);
     return response.data;

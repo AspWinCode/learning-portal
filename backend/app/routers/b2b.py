@@ -721,6 +721,18 @@ def _on_b2b_partnership_updated(
             break
 
 
+@router.get("/b2b-schools/documents-status", response_model=Dict[int, bool])
+async def get_b2b_schools_documents_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
+):
+    """One-query endpoint: returns {school_id: has_signed_agreement} for all schools."""
+    rows = db.query(B2BDocument.b2b_school_id).filter(
+        B2BDocument.type.in_(["signed_agreement", "agreement"])
+    ).all()
+    return {row[0]: True for row in rows}
+
+
 def _load_school_with_contacts(db: Session, school_id: int) -> B2BSchool:
     school = db.query(B2BSchool).options(
         joinedload(B2BSchool.school_contacts),

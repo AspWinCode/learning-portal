@@ -504,83 +504,36 @@ const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClo
 
 const B2BSchoolsDirectoryTab: React.FC = () => {
   const [schools, setSchools] = React.useState<B2BSchool[]>([]);
-  const [documentsBySchool, setDocumentsBySchool] = React.useState<Record<number, B2BDocument[]>>({});
-  const [logoUrls, setLogoUrls] = React.useState<Record<number, string>>({});
-  const logoUrlsRef = React.useRef<Record<number, string>>({});
+  const [signedAgreements, setSignedAgreements] = React.useState<Record<number, boolean>>({});
   const [selectedSchool, setSelectedSchool] = React.useState<B2BSchool | null>(null);
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
-  const loadSchoolDocuments = React.useCallback(async (items: B2BSchool[]) => {
-    const docsEntries = await Promise.all(
-      items.map(async (school) => {
-        try {
-          const docs = await b2bApi.listDocuments(school.id);
-          return [school.id, docs] as const;
-        } catch {
-          return [school.id, []] as const;
-        }
-      })
-    );
-    const docsMap = Object.fromEntries(docsEntries);
-    setDocumentsBySchool((prev) => ({ ...prev, ...docsMap }));
-
-    const logoEntries = await Promise.all(
-      docsEntries.map(async ([schoolId, docs]) => {
-        const logo = latestDoc(docs as B2BDocument[], 'logo');
-        if (!logo) return [schoolId, ''] as const;
-        try {
-          const blob = await b2bApi.downloadDocument(schoolId, logo.id);
-          return [schoolId, URL.createObjectURL(blob)] as const;
-        } catch {
-          return [schoolId, ''] as const;
-        }
-      })
-    );
-    setLogoUrls((prev) => {
-      const next = { ...prev };
-      for (const [schoolId, url] of logoEntries) {
-        if (next[schoolId]) URL.revokeObjectURL(next[schoolId]);
-        if (url) {
-          next[schoolId] = url;
-        } else {
-          delete next[schoolId];
-        }
-      }
-      logoUrlsRef.current = next;
-      return next;
-    });
-  }, []);
-
   const loadSchools = React.useCallback(async () => {
     setLoading(true);
     try {
-      const data = await b2bApi.listSchools({ search });
+      const [data, statuses] = await Promise.all([
+        b2bApi.listSchools({ search }),
+        b2bApi.getSchoolsDocumentStatuses(),
+      ]);
       setSchools(data);
-      await loadSchoolDocuments(data);
+      setSignedAgreements(statuses);
       setError('');
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить школы'));
     } finally {
       setLoading(false);
     }
-  }, [loadSchoolDocuments, search]);
+  }, [search]);
 
   React.useEffect(() => {
     loadSchools();
   }, [loadSchools]);
 
-  React.useEffect(() => {
-    return () => {
-      Object.values(logoUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, []);
-
   const handleSaved = (updated: B2BSchool) => {
     setSchools((prev) => prev.map((school) => (school.id === updated.id ? { ...school, ...updated } : school)));
     setSelectedSchool((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
-    void loadSchoolDocuments([updated]);
   };
 
   return (
@@ -614,8 +567,6 @@ const B2BSchoolsDirectoryTab: React.FC = () => {
         <TableBody>
           {schools.map((school) => {
             const meta = statusMeta(school);
-            const docs = documentsBySchool[school.id] ?? [];
-            const logo = logoUrls[school.id];
             return (
               <TableRow
                 key={school.id}
@@ -641,16 +592,13 @@ const B2BSchoolsDirectoryTab: React.FC = () => {
                 }}
               >
                 <TableCell>
-                  <Stack direction="row" gap={1} alignItems="center">
-                    {logo && <Box component="img" src={logo} alt="" sx={{ width: 32, height: 32, objectFit: 'contain' }} />}
-                    <Box>
-                      <Typography variant="body2" fontWeight={700}>{school.name}</Typography>
-                      <Stack direction="row" gap={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                        <Chip size="small" label={meta.label} />
-                        {hasSignedAgreement(docs) && <Chip size="small" color="success" label="Соглашение подписано" />}
-                      </Stack>
-                    </Box>
-                  </Stack>
+                  <Box>
+                    <Typography variant="body2" fontWeight={700}>{school.name}</Typography>
+                    <Stack direction="row" gap={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                      <Chip size="small" label={meta.label} />
+                      {signedAgreements[school.id] && <Chip size="small" color="success" label="Соглашение подписано" />}
+                    </Stack>
+                  </Box>
                 </TableCell>
                 <TableCell>{school.city || '—'}</TableCell>
                 <TableCell>{school.director || '—'}</TableCell>

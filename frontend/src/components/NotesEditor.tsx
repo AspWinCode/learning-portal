@@ -19,12 +19,15 @@ import {
   ListItemIcon,
   ListItemText,
   Paper,
+  Stack,
   Tooltip,
 } from '@mui/material';
 import FormatBoldIcon from '@mui/icons-material/FormatBold';
 import FormatItalicIcon from '@mui/icons-material/FormatItalic';
 import FormatUnderlinedIcon from '@mui/icons-material/FormatUnderlined';
+import FormatStrikethroughIcon from '@mui/icons-material/FormatStrikethrough';
 import CodeIcon from '@mui/icons-material/Code';
+import CodeOffIcon from '@mui/icons-material/IntegrationInstructions';
 import FormatQuoteIcon from '@mui/icons-material/FormatQuote';
 import HighlightIcon from '@mui/icons-material/Highlight';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
@@ -426,6 +429,114 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
           </List>
         </Paper>
       )}
+
+      {/* Fixed toolbar */}
+      <Paper
+        variant="outlined"
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 0.25,
+          px: 0.75,
+          py: 0.5,
+          mb: 1,
+          borderRadius: 1.5,
+          bgcolor: 'background.paper',
+        }}
+      >
+        {/* Text formatting */}
+        <Stack direction="row" alignItems="center" spacing={0}>
+          <Tooltip title="Жирный · Ctrl+B">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }} color={editor.isActive('bold') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <FormatBoldIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Курсив · Ctrl+I">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }} color={editor.isActive('italic') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <FormatItalicIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Подчёркнутый · Ctrl+U">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }} color={editor.isActive('underline') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <FormatUnderlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Зачёркнутый">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleStrike().run(); }} color={editor.isActive('strike') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <FormatStrikethroughIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Маркер">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleHighlight().run(); }} color={editor.isActive('highlight') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <HighlightIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        {/* Headings */}
+        <Stack direction="row" alignItems="center" spacing={0}>
+          <Tooltip title="Заголовок 1">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleHeading({ level: 1 }).run(); }} color={editor.isActive('heading', { level: 1 }) ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <LooksOneIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Заголовок 2">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleHeading({ level: 2 }).run(); }} color={editor.isActive('heading', { level: 2 }) ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <LooksTwoIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Заголовок 3">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleHeading({ level: 3 }).run(); }} color={editor.isActive('heading', { level: 3 }) ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <Looks3Icon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        {/* Lists */}
+        <Stack direction="row" alignItems="center" spacing={0}>
+          <Tooltip title="Маркированный список">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run(); }} color={editor.isActive('bulletList') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <FormatListBulletedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Нумерованный список">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run(); }} color={editor.isActive('orderedList') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <FormatListNumberedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Список задач">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleTaskList().run(); }} color={editor.isActive('taskList') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <CheckBoxOutlineBlankIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        {/* Blocks */}
+        <Stack direction="row" alignItems="center" spacing={0}>
+          <Tooltip title="Цитата">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBlockquote().run(); }} color={editor.isActive('blockquote') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <FormatQuoteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Инлайн-код">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleCode().run(); }} color={editor.isActive('code') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <CodeIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Блок кода">
+            <IconButton size="small" onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleCodeBlock().run(); }} color={editor.isActive('codeBlock') ? 'primary' : 'default'} sx={{ width: 30, height: 30 }}>
+              <CodeOffIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      </Paper>
 
       <Box className="notes-editor">
         <EditorContent editor={editor} />

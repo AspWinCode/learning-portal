@@ -114,7 +114,7 @@ export const ownerWorkspaceApi = {
       `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download`,
       { params: { inline: true }, responseType: 'blob' }
     );
-    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    const contentType = String(response.headers['content-type'] || 'application/octet-stream');
     const blob = new Blob([response.data], { type: contentType });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');

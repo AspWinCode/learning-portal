@@ -3664,7 +3664,7 @@ export const diskApi = {
       responseType: 'blob',
       timeout: 120000,
     });
-    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    const contentType = String(response.headers['content-type'] || 'application/octet-stream');
     const blob = new Blob([response.data], { type: contentType });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');

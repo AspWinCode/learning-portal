@@ -119,7 +119,7 @@ def _school_payload_from_row(row: Dict[str, object]) -> Dict[str, Optional[str]]
         "name": pick("название", "школа", "school", "name"),
         "city": pick("город", "city"),
         "district": pick("район", "district"),
-        "director": pick("директор", "ио директора", "и.о. директора", "director"),
+        "director": pick("директор/ио директора", "директор/и.о. директора", "директор", "ио директора", "и.о. директора", "director"),
         "email": pick("почта", "email", "e-mail"),
         "address": pick("адрес", "address"),
         "phone": pick("телефон", "phone"),

@@ -757,39 +757,41 @@ const SalesSettingsPage: React.FC = () => {
               {schoolImportResult.errors.length > 0 && ` Ошибки: ${schoolImportResult.errors.join('; ')}`}
             </Alert>
           )}
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Название</TableCell>
-                <TableCell>Город</TableCell>
-                <TableCell>Район</TableCell>
-                <TableCell>Директор/ИО директора</TableCell>
-                <TableCell>Почта</TableCell>
-                <TableCell>Адрес</TableCell>
-                <TableCell>Телефон</TableCell>
-                <TableCell>Активна</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {schools.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>{s.name}</TableCell>
-                  <TableCell>{s.city || '—'}</TableCell>
-                  <TableCell>{s.district || '—'}</TableCell>
-                  <TableCell>{s.director || '—'}</TableCell>
-                  <TableCell>{s.email || '—'}</TableCell>
-                  <TableCell>{s.address || '—'}</TableCell>
-                  <TableCell>{s.phone || '—'}</TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={s.is_active}
-                      onChange={(e) => safeAction(() => salesApi.updateSalesSchool(s.id, { is_active: e.target.checked }))}
-                    />
-                  </TableCell>
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 900, '& .MuiTableCell-root': { fontSize: '0.75rem', py: 0.5, px: 1 } }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ minWidth: 180, maxWidth: 240 }}>Название</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>Город</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>Район</TableCell>
+                  <TableCell sx={{ minWidth: 130, maxWidth: 180 }}>Директор/ИО</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>Почта</TableCell>
+                  <TableCell sx={{ minWidth: 120, maxWidth: 180 }}>Адрес</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>Телефон</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>Активна</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHead>
+              <TableBody>
+                {schools.map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell sx={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.name}>{s.name}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{s.city || '—'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{s.district || '—'}</TableCell>
+                    <TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.director || ''}>{s.director || '—'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{s.email || '—'}</TableCell>
+                    <TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.address || ''}>{s.address || '—'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{s.phone || '—'}</TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={s.is_active}
+                        onChange={(e) => safeAction(() => salesApi.updateSalesSchool(s.id, { is_active: e.target.checked }))}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
         </Paper>
 
         <Paper sx={sectionPaperSx('classes')}>

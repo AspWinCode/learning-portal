@@ -59,6 +59,8 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import InsightsIcon from '@mui/icons-material/Insights';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import CheckIcon from '@mui/icons-material/Check';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import {
   format,
   startOfMonth,
@@ -1511,6 +1513,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskEditTags, setTaskEditTags] = useState<string[]>([]);
   const [taskEditChecklist, setTaskEditChecklist] = useState<ChecklistRow[]>([]);
   const [taskEditBulkOpen, setTaskEditBulkOpen] = useState(false);
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<number>>(new Set());
   const [taskEditBulkText, setTaskEditBulkText] = useState('');
   const [taskComments, setTaskComments] = useState<OwnerWorkspaceTaskComment[]>([]);
   const [newCommentText, setNewCommentText] = useState('');
@@ -6011,6 +6014,14 @@ const OwnerWorkspacePage: React.FC = () => {
                     getOptionLabel={(o) => o.name}
                     value={projectsCatalogSorted.find((p) => p.id === taskProjectFilter) || null}
                     onChange={(_, v) => setTaskProjectFilter(v ? v.id : '')}
+                    renderOption={(props, o) => (
+                      <li {...props} key={o.id}>
+                        <span style={{ flex: 1 }}>{o.name}</span>
+                        <span style={{ fontSize: '0.7rem', color: o.parent_project_id ? '#9c27b0' : '#1976d2', background: o.parent_project_id ? '#f3e5f5' : '#e3f2fd', borderRadius: 4, padding: '1px 6px', marginLeft: 8, whiteSpace: 'nowrap' }}>
+                          {o.parent_project_id ? 'Подпроект' : 'Проект'}
+                        </span>
+                      </li>
+                    )}
                     renderInput={(params) => <TextField {...params} label="Проект" />}
                   />
                 </Grid>
@@ -6270,59 +6281,101 @@ const OwnerWorkspacePage: React.FC = () => {
                   <TableBody>
                     {tasks.map((t) => {
                       const overdue = isTaskOverdue(t);
+                      const checklist = parseChecklistFromTask(t.checklist);
+                      const hasChecklist = checklist.length > 0;
+                      const isExpanded = expandedTaskIds.has(t.id);
+                      const toggleExpand = () => setExpandedTaskIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+                        return next;
+                      });
                       return (
-                        <TableRow
-                          key={t.id}
-                          hover
-                          selected={selectedTaskIds.includes(t.id)}
-                          onDoubleClick={() => void openTaskDialog(t)}
-                          sx={{ borderLeft: overdue ? '4px solid' : undefined, borderLeftColor: overdue ? 'error.main' : undefined }}
-                        >
-                          <TableCell padding="checkbox">
-                            <Checkbox
-                              checked={selectedTaskIds.includes(t.id)}
-                              onChange={() => {
-                                setSelectedTaskIds((prev) =>
-                                  prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
-                                );
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" fontWeight={700}>{t.title}</Typography>
-                            {overdue && <Chip size="small" color="error" label={taskOverdueLabel(t)} sx={{ mt: 0.5 }} />}
-                          </TableCell>
-                          <TableCell><Chip size="small" label={statusLabels[t.status] || t.status} sx={taskStatusChipSx(t.status)} /></TableCell>
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={priorityLabels[t.priority] || t.priority}
-                              color={t.priority === 'critical' ? 'error' : t.priority === 'high' ? 'warning' : t.priority === 'medium' ? 'primary' : 'default'}
-                              variant={t.priority === 'low' ? 'outlined' : 'filled'}
-                            />
-                          </TableCell>
-                          <TableCell>{userName(t.assignee_id)}</TableCell>
-                          <TableCell>{projectDisplayName(t.project_id)}</TableCell>
-                          <TableCell>{contactNameById(t.contact_id)}</TableCell>
-                          <TableCell sx={{ color: overdue ? 'error.main' : undefined, fontWeight: overdue ? 700 : undefined }}>
-                            {formatTaskDateTime(t.deadline_at)}
-                          </TableCell>
-                          <TableCell>{formatTaskDateTime(t.updated_at)}</TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                              {t.status !== 'completed' && t.status !== 'cancelled' && (
-                                <Tooltip title="Завершить">
-                                  <span>
-                                    <IconButton size="small" color="success" disabled={!canCompleteTaskActionUi(t)} onClick={() => setCompleteDialogTask(t)}>
-                                      <CheckIcon fontSize="small" />
+                        <React.Fragment key={t.id}>
+                          <TableRow
+                            hover
+                            selected={selectedTaskIds.includes(t.id)}
+                            onDoubleClick={() => void openTaskDialog(t)}
+                            sx={{ borderLeft: overdue ? '4px solid' : undefined, borderLeftColor: overdue ? 'error.main' : undefined }}
+                          >
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                checked={selectedTaskIds.includes(t.id)}
+                                onChange={() => {
+                                  setSelectedTaskIds((prev) =>
+                                    prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
+                                  );
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Stack direction="row" alignItems="center" spacing={0.5}>
+                                {hasChecklist && (
+                                  <Tooltip title={isExpanded ? 'Скрыть подзадачи' : 'Показать подзадачи'}>
+                                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); toggleExpand(); }}>
+                                      {isExpanded ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
                                     </IconButton>
-                                  </span>
-                                </Tooltip>
-                              )}
-                              {renderTaskActionButton(t)}
-                            </Stack>
-                          </TableCell>
-                        </TableRow>
+                                  </Tooltip>
+                                )}
+                                <Box>
+                                  <Typography variant="body2" fontWeight={700}>{t.title}</Typography>
+                                  {hasChecklist && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      {checklist.filter((c) => c.done).length}/{checklist.length} подзадач
+                                    </Typography>
+                                  )}
+                                  {overdue && <Chip size="small" color="error" label={taskOverdueLabel(t)} sx={{ mt: 0.5, display: 'block' }} />}
+                                </Box>
+                              </Stack>
+                            </TableCell>
+                            <TableCell><Chip size="small" label={statusLabels[t.status] || t.status} sx={taskStatusChipSx(t.status)} /></TableCell>
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                label={priorityLabels[t.priority] || t.priority}
+                                color={t.priority === 'critical' ? 'error' : t.priority === 'high' ? 'warning' : t.priority === 'medium' ? 'primary' : 'default'}
+                                variant={t.priority === 'low' ? 'outlined' : 'filled'}
+                              />
+                            </TableCell>
+                            <TableCell>{userName(t.assignee_id)}</TableCell>
+                            <TableCell>{projectDisplayName(t.project_id)}</TableCell>
+                            <TableCell>{contactNameById(t.contact_id)}</TableCell>
+                            <TableCell sx={{ color: overdue ? 'error.main' : undefined, fontWeight: overdue ? 700 : undefined }}>
+                              {formatTaskDateTime(t.deadline_at)}
+                            </TableCell>
+                            <TableCell>{formatTaskDateTime(t.updated_at)}</TableCell>
+                            <TableCell align="right">
+                              <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                                {t.status !== 'completed' && t.status !== 'cancelled' && (
+                                  <Tooltip title="Завершить">
+                                    <span>
+                                      <IconButton size="small" color="success" disabled={!canCompleteTaskActionUi(t)} onClick={() => setCompleteDialogTask(t)}>
+                                        <CheckIcon fontSize="small" />
+                                      </IconButton>
+                                    </span>
+                                  </Tooltip>
+                                )}
+                                {renderTaskActionButton(t)}
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                          {hasChecklist && isExpanded && checklist.map((item, idx) => (
+                            <TableRow key={`${t.id}-chk-${idx}`} sx={{ bgcolor: 'action.hover' }}>
+                              <TableCell padding="checkbox" />
+                              <TableCell>
+                                <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 4 }}>
+                                  <Checkbox size="small" checked={item.done} disabled sx={{ p: 0 }} />
+                                  <Typography
+                                    variant="body2"
+                                    sx={{ textDecoration: item.done ? 'line-through' : 'none', color: item.done ? 'text.disabled' : 'text.primary' }}
+                                  >
+                                    {item.text}
+                                  </Typography>
+                                </Stack>
+                              </TableCell>
+                              <TableCell colSpan={8} />
+                            </TableRow>
+                          ))}
+                        </React.Fragment>
                       );
                     })}
                   </TableBody>
@@ -8252,6 +8305,14 @@ const OwnerWorkspacePage: React.FC = () => {
               value={projectsCatalogSorted.find((p) => p.id === taskEditProjectId) || null}
               onChange={(_, v) => setTaskEditProjectId(v ? v.id : '')}
               disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
+              renderOption={(props, o) => (
+                <li {...props} key={o.id}>
+                  <span style={{ flex: 1 }}>{o.name}</span>
+                  <span style={{ fontSize: '0.7rem', color: o.parent_project_id ? '#9c27b0' : '#1976d2', background: o.parent_project_id ? '#f3e5f5' : '#e3f2fd', borderRadius: 4, padding: '1px 6px', marginLeft: 8, whiteSpace: 'nowrap' }}>
+                    {o.parent_project_id ? 'Подпроект' : 'Проект'}
+                  </span>
+                </li>
+              )}
               renderInput={(params) => <TextField {...params} label="Проект" />}
             />
             <Autocomplete
@@ -8374,19 +8435,55 @@ const OwnerWorkspacePage: React.FC = () => {
               );
             })()}
             <Divider />
-            <Typography variant="subtitle2">Вложения (JSON-массив)</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Например: [&#123; &quot;url&quot;: &quot;https://…&quot;, &quot;name&quot;: &quot;Документ&quot; &#125;]
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              minRows={4}
-              value={taskEditAttachmentsText}
-              onChange={(e) => setTaskEditAttachmentsText(e.target.value)}
-              disabled={taskFormLocked || !canEditTaskFieldsDialogContent}
-              InputProps={{ sx: { fontFamily: 'monospace', fontSize: 13 } }}
-            />
+            <Typography variant="subtitle2">Вложения</Typography>
+            {(() => {
+              let atts: Array<{ url?: string; name?: string }> = [];
+              try { atts = JSON.parse(taskEditAttachmentsText || '[]'); } catch {}
+              const canEdit = !taskFormLocked && canEditTaskFieldsDialogContent;
+              const update = (next: typeof atts) => setTaskEditAttachmentsText(JSON.stringify(next));
+              return (
+                <Stack spacing={1}>
+                  {atts.map((att, idx) => (
+                    <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField
+                        size="small"
+                        label="Название"
+                        value={att.name || ''}
+                        onChange={(e) => { const n = [...atts]; n[idx] = { ...n[idx], name: e.target.value }; update(n); }}
+                        sx={{ flex: 1 }}
+                        disabled={!canEdit}
+                      />
+                      <TextField
+                        size="small"
+                        label="URL"
+                        value={att.url || ''}
+                        onChange={(e) => { const n = [...atts]; n[idx] = { ...n[idx], url: e.target.value }; update(n); }}
+                        sx={{ flex: 2 }}
+                        disabled={!canEdit}
+                      />
+                      {att.url && (
+                        <IconButton size="small" component="a" href={att.url} target="_blank" rel="noopener noreferrer">
+                          <OpenInNewIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                      {canEdit && (
+                        <IconButton size="small" onClick={() => update(atts.filter((_, i) => i !== idx))}>
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Box>
+                  ))}
+                  {canEdit && (
+                    <Button size="small" startIcon={<AddIcon />} onClick={() => update([...atts, { url: '', name: '' }])} sx={{ alignSelf: 'flex-start' }}>
+                      Добавить вложение
+                    </Button>
+                  )}
+                  {atts.length === 0 && !canEdit && (
+                    <Typography variant="caption" color="text.secondary">Нет вложений</Typography>
+                  )}
+                </Stack>
+              );
+            })()}
             {(taskDialog?.linked_message_ids?.length ?? 0) > 0 && (
               <Typography variant="caption" color="text.secondary">
                 Связанные сообщения (id): {taskDialog!.linked_message_ids!.join(', ')}

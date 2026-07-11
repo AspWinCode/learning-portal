@@ -2,6 +2,7 @@
 Public read-only API — no authentication required.
 Exposes published blog posts and safe site settings for the landing site.
 """
+import re as _re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,7 +10,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import BlogPost, BlogPostStatus, BlogCategory, SiteSettings, CmsPage
+from app.models import BlogPost, BlogPostStatus, BlogCategory, SiteSettings, CmsPage, Lead, LeadStatus, User, UserRole
+from app.utils.phone import validate_phone_for_lead
+from app.services.person_sync import sync_lead_person
 
 router = APIRouter()
 
@@ -139,3 +142,81 @@ def get_cms_page(slug: str, db: Session = Depends(get_db)):
     if not page:
         return {}
     return page.content
+
+
+# ── Site lead (from landing site forms) ─────────────────────────────────────
+
+_SITE_TRACK_SOURCE = {
+    "game-studio":  "Сайт_Игровая студия",
+    "kodeks":       "Сайт_Кодэкс",
+    "technolab":    "Сайт_ТехноЛаб",
+    "oge":          "Сайт_ОГЭ",
+    "ege":          "Сайт_ЕГЭ",
+    "individual":   "Сайт_Индивидуальные",
+    "contact-form": "Сайт_Контакты",
+}
+
+
+class SiteLeadRequest(BaseModel):
+    name: str
+    contact: str          # phone or email
+    track: Optional[str] = None
+    message: Optional[str] = None
+
+
+@router.post("/leads/site-lead", status_code=201)
+def submit_site_lead(payload: SiteLeadRequest, db: Session = Depends(get_db)):
+    """Accept a lead from landing site forms (TrialForm / ContactForm). No auth required."""
+    name = payload.name.strip()
+    contact = payload.contact.strip()
+    if len(name) < 2 or len(contact) < 5:
+        raise HTTPException(status_code=422, detail="Укажите имя и контакт")
+
+    is_email = bool(_re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", contact))
+    if is_email:
+        phone_val = contact
+        phone_norm = None
+        email_val = contact
+    else:
+        phone_val, phone_err = validate_phone_for_lead(contact)
+        if phone_err:
+            phone_val = contact
+            phone_norm = None
+        else:
+            phone_norm = phone_val
+        email_val = None
+
+    source_label = _SITE_TRACK_SOURCE.get(payload.track or "", "Сайт")
+
+    owner = (
+        db.query(User)
+        .filter(User.role.in_([UserRole.SALES, UserRole.OWNER, UserRole.ADMIN]))
+        .order_by(User.id)
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=500, detail="Не настроен пользователь для приёма заявок")
+
+    parts = []
+    if payload.track:
+        parts.append(f"Трек: {payload.track}")
+    if payload.message and payload.message.strip():
+        parts.append(payload.message.strip())
+
+    lead = Lead(
+        owner_id=owner.id,
+        contact_name=name,
+        phone=phone_val,
+        phone_normalized=phone_norm,
+        email=email_val,
+        source=source_label,
+        status=LeadStatus.NEW,
+        tags=["site_lead"],
+        comment="\n\n".join(parts) or None,
+    )
+    db.add(lead)
+    db.flush()
+    sync_lead_person(db, lead)
+    db.commit()
+    db.refresh(lead)
+    return {"lead_id": lead.id}

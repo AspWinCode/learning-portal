@@ -3761,5 +3761,217 @@ export const notesApi = {
   },
 };
 
+export type SeoPageStatus = 'draft' | 'published';
+
+export interface SeoPage {
+  id: number;
+  title: string;
+  slug: string;
+  status: SeoPageStatus;
+  h1: string | null;
+  content: string | null;
+  seo_title: string | null;
+  seo_description: string | null;
+  canonical: string | null;
+  robots: string | null;
+  og_title: string | null;
+  og_description: string | null;
+  og_image: string | null;
+  author_id: number | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface SeoPageListResponse {
+  total: number;
+  items: SeoPage[];
+}
+
+export interface SeoPagePayload {
+  title: string;
+  slug: string;
+  status?: SeoPageStatus;
+  h1?: string | null;
+  content?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  canonical?: string | null;
+  robots?: string | null;
+  og_title?: string | null;
+  og_description?: string | null;
+  og_image?: string | null;
+}
+
+export const seoApi = {
+  listPages: async (params?: { q?: string; status?: SeoPageStatus }): Promise<SeoPageListResponse> => {
+    const response = await api.get('/seo/pages', { params });
+    return response.data;
+  },
+  getPage: async (pageId: number): Promise<SeoPage> => {
+    const response = await api.get(`/seo/pages/${pageId}`);
+    return response.data;
+  },
+  createPage: async (payload: SeoPagePayload): Promise<SeoPage> => {
+    const response = await api.post('/seo/pages', payload);
+    return response.data;
+  },
+  updatePage: async (pageId: number, payload: Partial<SeoPagePayload>): Promise<SeoPage> => {
+    const response = await api.patch(`/seo/pages/${pageId}`, payload);
+    return response.data;
+  },
+  deletePage: async (pageId: number): Promise<void> => {
+    await api.delete(`/seo/pages/${pageId}`);
+  },
+};
+
+// ─── Blog ────────────────────────────────────────────────────────────────────
+
+export type BlogPostStatus = 'draft' | 'published';
+
+export interface BlogCategory {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string | null;
+  created_at: string;
+}
+
+export interface BlogTag {
+  id: number;
+  name: string;
+  slug: string;
+  created_at: string;
+}
+
+export interface BlogPost {
+  id: number;
+  title: string;
+  slug: string;
+  status: BlogPostStatus;
+  excerpt?: string | null;
+  content?: string | null;
+  cover_image?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  og_title?: string | null;
+  og_description?: string | null;
+  og_image?: string | null;
+  canonical?: string | null;
+  author_id?: number | null;
+  category_id?: number | null;
+  category?: BlogCategory | null;
+  tags: BlogTag[];
+  published_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlogPostListResponse {
+  total: number;
+  items: BlogPost[];
+}
+
+export interface BlogPostPayload {
+  title: string;
+  slug: string;
+  status?: BlogPostStatus;
+  excerpt?: string | null;
+  content?: string | null;
+  cover_image?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  og_title?: string | null;
+  og_description?: string | null;
+  og_image?: string | null;
+  canonical?: string | null;
+  category_id?: number | null;
+  tag_ids?: number[] | null;
+}
+
+export const blogApi = {
+  // Categories
+  listCategories: async (): Promise<BlogCategory[]> => {
+    const r = await api.get('/blog/categories');
+    return r.data;
+  },
+  createCategory: async (payload: { name: string; slug: string; description?: string }): Promise<BlogCategory> => {
+    const r = await api.post('/blog/categories', payload);
+    return r.data;
+  },
+  updateCategory: async (id: number, payload: Partial<{ name: string; slug: string; description: string }>): Promise<BlogCategory> => {
+    const r = await api.patch(`/blog/categories/${id}`, payload);
+    return r.data;
+  },
+  deleteCategory: async (id: number): Promise<void> => {
+    await api.delete(`/blog/categories/${id}`);
+  },
+
+  // Tags
+  listTags: async (): Promise<BlogTag[]> => {
+    const r = await api.get('/blog/tags');
+    return r.data;
+  },
+  createTag: async (payload: { name: string; slug: string }): Promise<BlogTag> => {
+    const r = await api.post('/blog/tags', payload);
+    return r.data;
+  },
+  deleteTag: async (id: number): Promise<void> => {
+    await api.delete(`/blog/tags/${id}`);
+  },
+
+  // Posts
+  listPosts: async (params?: { status?: BlogPostStatus; category_id?: number; search?: string }): Promise<BlogPostListResponse> => {
+    const r = await api.get('/blog/posts', { params });
+    return r.data;
+  },
+  getPost: async (postId: number): Promise<BlogPost> => {
+    const r = await api.get(`/blog/posts/${postId}`);
+    return r.data;
+  },
+  createPost: async (payload: BlogPostPayload): Promise<BlogPost> => {
+    const r = await api.post('/blog/posts', payload);
+    return r.data;
+  },
+  updatePost: async (postId: number, payload: Partial<BlogPostPayload>): Promise<BlogPost> => {
+    const r = await api.patch(`/blog/posts/${postId}`, payload);
+    return r.data;
+  },
+  deletePost: async (postId: number): Promise<void> => {
+    await api.delete(`/blog/posts/${postId}`);
+  },
+};
+
+// ── Media Library ──────────────────────────────────────────────────────────────
+
+export interface MediaFile {
+  id: number;
+  filename: string;
+  original_name: string;
+  size: number;
+  mime_type: string;
+  url: string;
+  created_at: string;
+  uploaded_by_name: string | null;
+}
+
+export const mediaApi = {
+  list: async (): Promise<MediaFile[]> => {
+    const r = await api.get('/media/');
+    return r.data;
+  },
+  upload: async (file: File): Promise<MediaFile> => {
+    const form = new FormData();
+    form.append('file', file);
+    const r = await api.post('/media/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return r.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/media/${id}`);
+  },
+};
+
 export default api;
 

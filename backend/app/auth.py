@@ -81,6 +81,10 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "parent_dashboard.access",
     },
     UserRole.GUEST.value: {"programs.access"},
+    UserRole.SEO_MANAGER.value: {
+        "seo.access",
+        "seo.manage",
+    },
 }
 
 

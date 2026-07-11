@@ -327,6 +327,18 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Право проводить оплаты и пополнения по счетам учеников.",
     },
     {
+        "key": "seo.access",
+        "module": "seo",
+        "label": "SEO: просмотр",
+        "description": "Доступ к разделу SEO: страницы сайта, блог, редиректы.",
+    },
+    {
+        "key": "seo.manage",
+        "module": "seo",
+        "label": "SEO: управление",
+        "description": "Создание, редактирование, публикация и удаление SEO-страниц и записей блога.",
+    },
+    {
         "key": "disk.access",
         "module": "disk",
         "label": "Disk: просмотр",

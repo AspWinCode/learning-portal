@@ -62,6 +62,8 @@ import {
   ChevronRight,
   ExpandLess,
   ExpandMore,
+  RssFeed,
+  RocketLaunch,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
@@ -356,6 +358,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessPrograms = hasPermission(user, 'programs.access');
   const canAccessAbonements = hasPermission(user, 'abonements.access');
   const canAccessSalesModule = hasPermission(user, 'sales.access');
+  const canAccessSeoModule = hasPermission(user, 'seo.access');
   const canAccessOwnerWorkspace = hasPermission(user, 'owner_workspace.access');
   const canAccessSettings = hasPermission(user, 'settings.access');
   const canAccessCommunications = hasPermission(user, 'communications.access');
@@ -396,6 +399,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Диск', icon: <Folder />, path: '/disk' },
         ...(canAccessPasswords ? [{ text: 'Пароли', icon: <Lock />, path: '/passwords' }] : []),
         ...(canAccessNotes ? [{ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' }] : []),
+      ];
+    if (role === 'seo_manager' && canAccessSeoModule)
+      return [
+        { text: 'Страницы сайта', icon: <Description />, path: '/seo/pages' },
+        { text: 'Блог', icon: <RssFeed />, path: '/blog/posts' },
+        { text: 'Публикация сайта', icon: <RocketLaunch />, path: '/seo/publish' },
       ];
 
     const items = [

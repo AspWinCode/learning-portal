@@ -20,6 +20,15 @@ http://{$DOMAIN} {
     }
 }
 
+# Публичный сайт академии — статика, генерируется SSG, nginx проксирует {$ACADEMY_DOMAIN} → 127.0.0.1:8090
+http://{$ACADEMY_DOMAIN} {
+    encode gzip zstd
+
+    root * /srv/academy
+    try_files {path} {path}.html /index.html
+    file_server
+}
+
 # GDevelop — plain HTTP, nginx проксирует gdevelop.tirskix.space → 127.0.0.1:8090
 http://gdevelop.tirskix.space {
     encode gzip zstd

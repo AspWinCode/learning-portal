@@ -8,6 +8,12 @@ class UserRole(str, Enum):
     PARENT = "parent"
     GUEST = "guest"
     SALES = "sales"
+    SEO_MANAGER = "seo_manager"
+
+
+class SeoPageStatus(str, Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
 
 
 class StudentStatus(str, Enum):

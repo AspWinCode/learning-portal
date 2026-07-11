@@ -62,6 +62,11 @@ const SalesInstructionsPage = React.lazy(() => import('./pages/SalesInstructions
 const SalesAbsencesPage = React.lazy(() => import('./pages/SalesAbsencesPage'));
 const SalesDebtsPage = React.lazy(() => import('./pages/SalesDebtsPage'));
 const SalesTaxDeductionPage = React.lazy(() => import('./pages/SalesTaxDeductionPage'));
+const SeoPagesListPage = React.lazy(() => import('./pages/seo/SeoPagesListPage'));
+const SeoPageEditPage = React.lazy(() => import('./pages/seo/SeoPageEditPage'));
+const BlogPostsListPage = React.lazy(() => import('./pages/blog/BlogPostsListPage'));
+const BlogPostEditPage = React.lazy(() => import('./pages/blog/BlogPostEditPage'));
+const SitePublishPage = React.lazy(() => import('./pages/seo/SitePublishPage'));
 const LeadCardPage = React.lazy(() => import('./pages/LeadCardPage'));
 const ManualLessonsPage = React.lazy(() => import('./pages/ManualLessonsPage'));
 const SpecialistQuestionnairePage = React.lazy(() => import('./pages/SpecialistQuestionnairePage'));
@@ -98,6 +103,7 @@ const DefaultRedirect: React.FC = () => {
   if (effectiveRole === 'guest') return <Navigate to="/programs" replace />;
   if (effectiveRole === 'parent') return <Navigate to="/parent-dashboard" replace />;
   if (effectiveRole === 'sales') return <Navigate to="/tasks" replace />;
+  if (effectiveRole === 'seo_manager') return <Navigate to="/seo/pages" replace />;
   if (effectiveRole === 'trainer') return <Navigate to="/trainer-cockpit" replace />;
   return <Navigate to="/dashboard" replace />;
 };
@@ -318,6 +324,56 @@ function App() {
                 <PrivateRoute requiredPermission="sales.access">
                   <SectionBoundary>
                     <SalesDashboardPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/seo/pages"
+              element={
+                <PrivateRoute requiredPermission="seo.access">
+                  <SectionBoundary>
+                    <SeoPagesListPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/seo/pages/:pageId"
+              element={
+                <PrivateRoute requiredPermission="seo.access">
+                  <SectionBoundary>
+                    <SeoPageEditPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/blog/posts"
+              element={
+                <PrivateRoute requiredPermission="seo.access">
+                  <SectionBoundary>
+                    <BlogPostsListPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/blog/posts/:postId"
+              element={
+                <PrivateRoute requiredPermission="seo.access">
+                  <SectionBoundary>
+                    <BlogPostEditPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/seo/publish"
+              element={
+                <PrivateRoute requiredPermission="seo.manage">
+                  <SectionBoundary>
+                    <SitePublishPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

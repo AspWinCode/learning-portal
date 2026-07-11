@@ -7,6 +7,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   trainer: ['tasks.access', 'projects.access', 'owner_workspace.access', 'groups.access', 'programs.access', 'students.access', 'grades.access', 'grades.manage', 'characteristics.access', 'characteristics.manage', 'lessons.access', 'lessons.manage', 'telegram.link', 'trainer_cockpit.access'],
   parent: ['programs.access', 'groups.access', 'grades.access', 'characteristics.access', 'student_accounts.access', 'student_accounts.payment', 'telegram.link', 'parent_dashboard.access'],
   guest: ['programs.access'],
+  seo_manager: ['seo.access', 'seo.manage'],
 };
 
 export const getEffectiveRole = (user: User | null | undefined): string | null => {

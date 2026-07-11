@@ -31,10 +31,32 @@ from app.schemas.common import (
     InvoiceStatus,
     LeadStatus,
     LeadTaskStatus,
+    SeoPageStatus,
     StudentStatus,
     UserRole,
 )
 from app.schemas.roles import RoleBase, RoleCreate, RoleResponse, RoleUpdate
+from app.schemas.seo import (
+    SeoPageBase,
+    SeoPageCreate,
+    SeoPageListResponse,
+    SeoPageResponse,
+    SeoPageUpdate,
+)
+from app.schemas.public_site import PublishResponse
+from app.schemas.blog import (
+    BlogCategoryCreate,
+    BlogCategoryResponse,
+    BlogCategoryUpdate,
+    BlogPostCreate,
+    BlogPostListResponse,
+    BlogPostResponse,
+    BlogPostStatus,
+    BlogPostUpdate,
+    BlogTagCreate,
+    BlogTagResponse,
+    BlogTagUpdate,
+)
 from app.schemas.characteristics import (
     CharacteristicApprove,
     CharacteristicCreate,

@@ -21,6 +21,7 @@ htmlcov/
 venv/
 .venv/
 backend/venv/
+backend/venv312/
 
 # Env files / secrets
 .env

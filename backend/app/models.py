@@ -18,6 +18,12 @@ class UserRole(str, enum.Enum):
     PARENT = "parent"
     GUEST = "guest"
     SALES = "sales"
+    SEO_MANAGER = "seo_manager"
+
+
+class SeoPageStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
 
 
 class StudentStatus(str, enum.Enum):
@@ -2837,6 +2843,116 @@ class Note(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", foreign_keys=[user_id])
+
+
+class SeoPage(Base):
+    __tablename__ = "seo_pages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    slug = Column(String(255), nullable=False, unique=True, index=True)
+    status = Column(
+        SQLEnum(SeoPageStatus, name="seopagestatus", values_callable=lambda e: [item.value for item in e]),
+        nullable=False,
+        server_default=SeoPageStatus.DRAFT.value,
+        index=True,
+    )
+    h1 = Column(String(255), nullable=True)
+    content = Column(Text, nullable=True)
+    seo_title = Column(String(255), nullable=True)
+    seo_description = Column(String(500), nullable=True)
+    canonical = Column(String(500), nullable=True)
+    robots = Column(String(100), nullable=True)
+    og_title = Column(String(255), nullable=True)
+    og_description = Column(String(500), nullable=True)
+    og_image = Column(String(500), nullable=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    author = relationship("User", foreign_keys=[author_id])
+
+
+class BlogPostStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+
+
+class BlogCategory(Base):
+    __tablename__ = "blog_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(255), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    posts = relationship("BlogPost", back_populates="category")
+
+
+class BlogTag(Base):
+    __tablename__ = "blog_tags"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    slug = Column(String(100), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    posts = relationship("BlogPost", secondary="blog_post_tags", back_populates="tags")
+
+
+class BlogPostTag(Base):
+    __tablename__ = "blog_post_tags"
+
+    blog_post_id = Column(Integer, ForeignKey("blog_posts.id", ondelete="CASCADE"), primary_key=True)
+    blog_tag_id = Column(Integer, ForeignKey("blog_tags.id", ondelete="CASCADE"), primary_key=True)
+
+
+class BlogPost(Base):
+    __tablename__ = "blog_posts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    slug = Column(String(255), nullable=False, unique=True, index=True)
+    status = Column(
+        SQLEnum(BlogPostStatus, name="blogpoststatus", values_callable=lambda e: [item.value for item in e]),
+        nullable=False,
+        server_default=BlogPostStatus.DRAFT.value,
+        index=True,
+    )
+    excerpt = Column(String(500), nullable=True)
+    content = Column(Text, nullable=True)
+    cover_image = Column(String(500), nullable=True)
+    seo_title = Column(String(255), nullable=True)
+    seo_description = Column(String(500), nullable=True)
+    og_title = Column(String(255), nullable=True)
+    og_description = Column(String(500), nullable=True)
+    og_image = Column(String(500), nullable=True)
+    canonical = Column(String(500), nullable=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    category_id = Column(Integer, ForeignKey("blog_categories.id", ondelete="SET NULL"), nullable=True, index=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    author = relationship("User", foreign_keys=[author_id])
+    category = relationship("BlogCategory", back_populates="posts")
+    tags = relationship("BlogTag", secondary="blog_post_tags", back_populates="posts")
+
+
+class MediaFile(Base):
+    __tablename__ = "media_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String(255), nullable=False, unique=True, index=True)
+    original_name = Column(String(500), nullable=False)
+    size = Column(Integer, nullable=False)
+    mime_type = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
 
 
 class OwnerWorkspaceUserPreference(Base):

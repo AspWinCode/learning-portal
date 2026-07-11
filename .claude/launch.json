@@ -23,6 +23,12 @@
       "cwd": "frontend"
     },
     {
+      "name": "academy-site-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5050", "--directory", "C:/Users/direc/AppData/Local/Temp/site_preview"],
+      "port": 5050
+    },
+    {
       "name": "kodex-onboarding",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["--yes", "serve", "-l", "4173", "."],

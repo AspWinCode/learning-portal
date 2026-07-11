@@ -16,10 +16,10 @@ export interface User {
   person_id?: number | null;
   email: string;
   full_name: string;
-  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales';
+  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager';
   custom_role_id?: number | null;
   custom_role_name?: string | null;
-  effective_role?: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | null;
+  effective_role?: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | null;
   role_permissions?: string[];
   is_active: boolean;
   created_at: string;
@@ -45,7 +45,7 @@ export interface Role {
   key: string;
   name: string;
   description?: string | null;
-  base_role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales';
+  base_role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager';
   permissions: string[];
   is_system: boolean;
   is_active: boolean;
@@ -2005,7 +2005,7 @@ export interface PhoneSearchUserItem {
   person_id?: number | null;
   full_name: string;
   email: string;
-  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales';
+  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager';
   phone?: string | null;
 }
 

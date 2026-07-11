@@ -1501,6 +1501,41 @@ function BrandingEditor({ content, onChange }: { content: any; onChange: (c: any
         Цвет применяется ко всему сайту: кнопки, ссылки, акценты, фоновые тени. Светлая и тёмная темы генерируются автоматически.
         Изменения видны на сайте после нажатия «Применить сейчас».
       </Typography>
+
+      <Divider />
+
+      <Box>
+        <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Фавиконка сайта</Typography>
+        <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+          Загрузите PNG/ICO 32×32 или 64×64. Отображается во вкладке браузера.
+        </Typography>
+        <ImageUpload
+          label="Фавиконка"
+          value={content.favicon_url || ''}
+          onChange={(v) => onChange({ ...content, favicon_url: v })}
+        />
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Кастомный код в {'<head>'}</Typography>
+        <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+          Произвольный JS-код (без тегов {'<script>'}). Вставляется в {'<head>'} всех страниц.
+          Подходит для пикселей, виджетов, кастомных счётчиков.
+        </Typography>
+        <TextField
+          label="JS-код"
+          multiline
+          rows={5}
+          fullWidth
+          size="small"
+          value={content.custom_head_script || ''}
+          onChange={(e) => onChange({ ...content, custom_head_script: e.target.value })}
+          placeholder={"// Например: window.myWidget = { token: '...' };"}
+          inputProps={{ style: { fontFamily: 'monospace', fontSize: 12 } }}
+        />
+      </Box>
     </Stack>
   );
 }

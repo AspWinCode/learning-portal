@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Alert, Box, Button, CircularProgress, Chip, IconButton,
-  List, ListItemButton, ListItemText, Paper, Stack,
+  Alert, Box, Button, CircularProgress, Chip, Divider, IconButton,
+  List, ListItemButton, ListItemText, ListSubheader, Paper, Stack,
   Tab, Tabs, TextField, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -12,99 +12,819 @@ import Layout from '../../components/Layout';
 import { cmsApi } from '../../services/api';
 import { extractApiError } from '../../utils/extractApiError';
 
-// ─── Default content per page ──────────────────────────────────────────────
+// ─── Pages registry ───────────────────────────────────────────────────────────
 
-const DEFAULTS: Record<string, unknown> = {
-  home: {
-    hero: {
-      badge: 'Набор открыт · Пробный урок бесплатно',
-      h1: 'От хобби —',
-      h1_accent: 'к вершинам IT',
-      subtitle: 'Три мира программирования для детей 10–18 лет. Не курсы — путешествие: от первой игры до олимпиад и поступления в лучшие вузы.',
-      bullets: ['Онлайн, в удобное время', 'Менторы-практики из IT', 'Результаты уже через 3 месяца'],
-      cta_primary: 'Оставить заявку',
-      cta_secondary: 'Узнать о треках',
-    },
-    stats: [
-      { value: '2 БВИ', label: 'без вступительных испытаний в вузы', highlight: true },
-      { value: '19/21', label: 'ОГЭ с нуля за 6 месяцев', highlight: false },
-      { value: '98', label: 'баллов ЕГЭ — лучший результат', highlight: false },
-      { value: 'ICPC', label: 'полуфинал международной олимпиады', highlight: true },
-    ],
-    reviews: [
-      { name: 'Мария К.', role: 'Мама Димы, 14 лет', text: 'Сын в восторге от занятий. За 8 месяцев написал три игры!', initials: 'МК' },
-      { name: 'Алексей П.', role: 'Папа Кирилла, 16 лет', text: 'ЕГЭ по информатике написал на 93 балла. Очень доволен.', initials: 'АП' },
-      { name: 'Светлана В.', role: 'Мама Ани, 17 лет', text: 'Аня стала призёром Всероссийской олимпиады и получила БВИ.', initials: 'СВ' },
+const PAGE_GROUPS = [
+  {
+    group: 'Основные',
+    pages: [
+      { slug: 'home', label: 'Главная' },
+      { slug: 'faq', label: 'FAQ' },
+      { slug: 'o-nas', label: 'О нас' },
+      { slug: 'kontakty', label: 'Контакты' },
     ],
   },
-  faq: {
-    sections: [
-      {
-        title: 'О школе и формате',
-        items: [
-          { q: 'Что такое TirSkix Academy?', a: 'TirSkix Academy — онлайн-школа программирования для детей и подростков 10–18 лет.' },
-        ],
-      },
+  {
+    group: 'Треки',
+    pages: [
+      { slug: 'game-studio', label: '🎮 Игровая студия' },
+      { slug: 'kodeks', label: '🔍 Кодэкс' },
+      { slug: 'technolab', label: '⚙️ ТехноЛаб' },
     ],
   },
-  'o-nas': {
-    hero: {
-      h1: 'Мы учим детей',
-      h1_accent: 'думать как разработчики',
-      subtitle: 'TirSkix Academy — онлайн-школа программирования для детей и подростков 10–18 лет. С 2020 года помогаем ребятам найти свой путь в IT.',
-    },
-    story: {
-      heading: 'Как мы начинали',
-      paragraphs: [
-        'В 2020 году Кирилл Тирских провёл первый урок программирования для детей соседей.',
-        'Он попробовал иначе: дал ребятам задачу — написать детективную программу.',
-        'Сегодня в TirSkix Academy три трека, команда менторов-практиков и сотни учеников.',
-      ],
-    },
-    values: [
-      { emoji: '🔍', title: 'Любопытство', desc: 'Мы культивируем вопрос «А что будет, если...».' },
-      { emoji: '💪', title: 'Упорство', desc: 'Баги — это нормально. Не сдаться — это навык.' },
-      { emoji: '🎨', title: 'Творчество', desc: 'Программирование — это ремесло и искусство одновременно.' },
-    ],
-    team: [
-      { name: 'Кирилл Тирских', role: 'Основатель и директор', initials: 'КТ', bio: 'Разработчик с 10-летним опытом.', specialization: 'Python, алгоритмы, архитектура' },
-    ],
-    stats: [
-      { value: '4 года', label: 'средний срок обучения' },
-      { value: '2 БВИ', label: 'без вступительных в вузы' },
-      { value: '98 б.', label: 'ЕГЭ по информатике' },
-      { value: 'ICPC', label: 'полуфинал олимпиады' },
+  {
+    group: 'Услуги',
+    pages: [
+      { slug: 'besplatnyj-probnyj-urok', label: 'Пробный урок' },
+      { slug: 'individualnye-zanyatiya', label: 'Инд. занятия' },
+      { slug: 'podgotovka-k-oge-po-informatike', label: 'ОГЭ' },
+      { slug: 'podgotovka-k-ege-po-informatike', label: 'ЕГЭ' },
+      { slug: 'dostizheniya-uchenikov', label: 'Достижения' },
+      { slug: 'aktivnosti', label: 'Активности' },
+      { slug: 'igrovye-dzhemy', label: 'Игровые джемы' },
     ],
   },
-  kontakty: {
-    hero: { heading: 'Контакты', subtitle: 'Напишите нам — ответим в течение часа.' },
-    extra_text: '',
+  {
+    group: 'SEO-страницы',
+    pages: [
+      { slug: 'programmirovanie-dlya-detej', label: 'Программирование' },
+      { slug: 'python-dlya-detej', label: 'Python для детей' },
+      { slug: 'razrabotka-igr-na-python', label: 'Игры на Python' },
+      { slug: 'backend-razrabotka', label: 'Backend' },
+      { slug: 'frontend-razrabotka', label: 'Frontend' },
+      { slug: 'napravleniya-razrabotki', label: 'Направления' },
+    ],
   },
-};
-
-const PAGES = [
-  { slug: 'home', label: 'Главная' },
-  { slug: 'faq', label: 'FAQ' },
-  { slug: 'o-nas', label: 'О нас' },
-  { slug: 'kontakty', label: 'Контакты' },
 ];
 
-// ─── Small helpers ────────────────────────────────────────────────────────────
+const ALL_PAGES = PAGE_GROUPS.flatMap((g) => g.pages);
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function TF({ label, value, onChange, multiline = false, rows = 1 }: {
-  label: string; value: string; onChange: (v: string) => void;
-  multiline?: boolean; rows?: number;
+  label: string; value: string; onChange: (v: string) => void; multiline?: boolean; rows?: number;
 }) {
   return (
-    <TextField
-      label={label} value={value || ''} fullWidth size="small"
+    <TextField label={label} value={value || ''} fullWidth size="small"
       multiline={multiline} minRows={multiline ? rows : undefined}
-      onChange={(e) => onChange(e.target.value)}
-    />
+      onChange={(e) => onChange(e.target.value)} />
   );
 }
 
-// ─── Home editor ──────────────────────────────────────────────────────────────
+function StringListEditor({ label, items, onChange }: {
+  label: string; items: string[]; onChange: (v: string[]) => void;
+}) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>{label}</Typography>
+      <Stack spacing={1}>
+        {items.map((item, i) => (
+          <Stack direction="row" spacing={1} key={i} alignItems="center">
+            <DragIndicatorIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+            <TextField size="small" fullWidth value={item}
+              onChange={(e) => { const n = [...items]; n[i] = e.target.value; onChange(n); }} />
+            <IconButton size="small" onClick={() => onChange(items.filter((_, idx) => idx !== i))}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+        ))}
+        <Button size="small" startIcon={<AddIcon />} onClick={() => onChange([...items, ''])} sx={{ alignSelf: 'flex-start' }}>
+          Добавить
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
+
+function KVListEditor({ label, items, onChange, valueLabel = 'Значение', labelLabel = 'Подпись' }: {
+  label: string; items: { value: string; label: string }[];
+  onChange: (v: any[]) => void; valueLabel?: string; labelLabel?: string;
+}) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>{label}</Typography>
+      <Stack spacing={1}>
+        {items.map((item, i) => (
+          <Stack direction="row" spacing={1} key={i} alignItems="center">
+            <TextField size="small" label={valueLabel} value={item.value || ''} sx={{ flex: 1 }}
+              onChange={(e) => { const n = [...items]; n[i] = { ...n[i], value: e.target.value }; onChange(n); }} />
+            <TextField size="small" label={labelLabel} value={item.label || ''} sx={{ flex: 2 }}
+              onChange={(e) => { const n = [...items]; n[i] = { ...n[i], label: e.target.value }; onChange(n); }} />
+            <IconButton size="small" onClick={() => onChange(items.filter((_, idx) => idx !== i))}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+        ))}
+        <Button size="small" startIcon={<AddIcon />} onClick={() => onChange([...items, { value: '', label: '' }])} sx={{ alignSelf: 'flex-start' }}>
+          Добавить
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
+
+function FaqSectionEditor({ items, onChange }: { items: { q: string; a: string }[]; onChange: (v: any[]) => void }) {
+  return (
+    <Stack spacing={2}>
+      {items.map((item, i) => (
+        <Paper key={i} variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
+          <Stack spacing={1.5}>
+            <TextField label="Вопрос" size="small" fullWidth value={item.q || ''}
+              onChange={(e) => { const n = [...items]; n[i] = { ...n[i], q: e.target.value }; onChange(n); }} />
+            <TextField label="Ответ" size="small" fullWidth multiline minRows={2} value={item.a || ''}
+              onChange={(e) => { const n = [...items]; n[i] = { ...n[i], a: e.target.value }; onChange(n); }} />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <IconButton size="small" onClick={() => onChange(items.filter((_, idx) => idx !== i))}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          </Stack>
+        </Paper>
+      ))}
+      <Button startIcon={<AddIcon />} variant="outlined" size="small"
+        onClick={() => onChange([...items, { q: '', a: '' }])}>
+        Добавить вопрос
+      </Button>
+    </Stack>
+  );
+}
+
+// ─── Track editor ─────────────────────────────────────────────────────────────
+
+function TrackEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const patch = (key: string, val: any) => onChange({ ...content, [key]: val });
+
+  const howItWorks: any[] = content.howItWorks || [];
+  const skills: string[] = content.skills || [];
+  const forWhom = content.forWhom || { yes: [], no: [] };
+  const review = content.review || {};
+  const faq: any[] = content.faq || [];
+  const tools: string[] = content.tools || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)}
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }} variant="scrollable" scrollButtons="auto">
+        <Tab label="Основное" />
+        <Tab label="Инструменты" />
+        <Tab label={`Как работает (${howItWorks.length})`} />
+        <Tab label={`Навыки (${skills.length})`} />
+        <Tab label="Для кого" />
+        <Tab label="Отзыв" />
+        <Tab label={`FAQ (${faq.length})`} />
+      </Tabs>
+
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок (H1)" value={content.narrativeH1 || ''} onChange={(v) => patch('narrativeH1', v)} />
+          <TF label="Подзаголовок" value={content.subtitle || ''} onChange={(v) => patch('subtitle', v)} multiline rows={2} />
+          <Stack direction="row" spacing={2}>
+            <TF label="Возраст" value={content.age || ''} onChange={(v) => patch('age', v)} />
+            <TF label="Формат" value={content.format || ''} onChange={(v) => patch('format', v)} />
+            <TF label="Старт" value={content.start || ''} onChange={(v) => patch('start', v)} />
+            <TF label="Эмодзи" value={content.emoji || ''} onChange={(v) => patch('emoji', v)} />
+          </Stack>
+        </Stack>
+      )}
+
+      {tab === 1 && (
+        <StringListEditor label="Инструменты и технологии" items={tools} onChange={(v) => patch('tools', v)} />
+      )}
+
+      {tab === 2 && (
+        <Stack spacing={2}>
+          {howItWorks.map((item, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Шаг (01 —)" value={item.step || ''} onChange={(v) => patch('howItWorks', howItWorks.map((x, idx) => idx === i ? { ...x, step: v } : x))} />
+                  <TF label="Заголовок" value={item.title || ''} onChange={(v) => patch('howItWorks', howItWorks.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={item.desc || ''} onChange={(v) => patch('howItWorks', howItWorks.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => patch('howItWorks', howItWorks.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => patch('howItWorks', [...howItWorks, { step: `0${howItWorks.length + 1} —`, title: '', desc: '' }])} variant="outlined" size="small">
+            Добавить шаг
+          </Button>
+        </Stack>
+      )}
+
+      {tab === 3 && (
+        <StringListEditor label="Что освоит ученик" items={skills} onChange={(v) => patch('skills', v)} />
+      )}
+
+      {tab === 4 && (
+        <Stack spacing={3}>
+          <StringListEditor label="✅ Подходит если..." items={forWhom.yes || []}
+            onChange={(v) => patch('forWhom', { ...forWhom, yes: v })} />
+          <Divider />
+          <StringListEditor label="❌ Лучше другой трек если..." items={forWhom.no || []}
+            onChange={(v) => patch('forWhom', { ...forWhom, no: v })} />
+        </Stack>
+      )}
+
+      {tab === 5 && (
+        <Stack spacing={2}>
+          <TF label="Текст отзыва" value={review.text || ''} onChange={(v) => patch('review', { ...review, text: v })} multiline rows={4} />
+          <Stack direction="row" spacing={2}>
+            <TF label="Имя" value={review.name || ''} onChange={(v) => patch('review', { ...review, name: v })} />
+            <TF label="Роль" value={review.role || ''} onChange={(v) => patch('review', { ...review, role: v })} />
+            <TF label="Инициалы" value={review.initials || ''} onChange={(v) => patch('review', { ...review, initials: v })} />
+          </Stack>
+        </Stack>
+      )}
+
+      {tab === 6 && <FaqSectionEditor items={faq} onChange={(v) => patch('faq', v)} />}
+    </Box>
+  );
+}
+
+// ─── Service page editors ─────────────────────────────────────────────────────
+
+function TrialEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const benefits: any[] = content.benefits || [];
+  const stats: any[] = content.stats || [];
+  const faq: any[] = content.faq || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Преимущества (${benefits.length})`} /><Tab label={`Статистика (${stats.length})`} /><Tab label={`FAQ (${faq.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && (
+        <Stack spacing={2}>
+          {benefits.map((b, i) => (
+            <Stack direction="row" key={i} spacing={1} alignItems="center">
+              <TextField size="small" fullWidth label={`Преимущество ${i + 1}`} value={b.text || ''}
+                onChange={(e) => p('benefits', benefits.map((x, idx) => idx === i ? { ...x, text: e.target.value } : x))} />
+              <IconButton size="small" onClick={() => p('benefits', benefits.filter((_, idx) => idx !== i))}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          ))}
+          <Button size="small" startIcon={<AddIcon />} onClick={() => p('benefits', [...benefits, { text: '' }])}>Добавить</Button>
+        </Stack>
+      )}
+      {tab === 2 && <KVListEditor label="Блоки статистики" items={stats} onChange={(v) => p('stats', v)} />}
+      {tab === 3 && <FaqSectionEditor items={faq} onChange={(v) => p('faq', v)} />}
+    </Box>
+  );
+}
+
+function IndividualEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const advantages: any[] = content.advantages || [];
+  const cases: any[] = content.cases || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Преимущества (${advantages.length})`} /><Tab label={`Случаи (${cases.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && (
+        <Stack spacing={2}>
+          {advantages.map((a, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <TF label="Заголовок" value={a.title || ''} onChange={(v) => p('advantages', advantages.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                <TF label="Описание" value={a.desc || ''} onChange={(v) => p('advantages', advantages.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('advantages', advantages.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('advantages', [...advantages, { title: '', desc: '' }])} variant="outlined" size="small">Добавить</Button>
+        </Stack>
+      )}
+      {tab === 2 && (
+        <Stack spacing={2}>
+          {cases.map((c, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Тег" value={c.tag || ''} onChange={(v) => p('cases', cases.map((x, idx) => idx === i ? { ...x, tag: v } : x))} />
+                  <TF label="Заголовок" value={c.title || ''} onChange={(v) => p('cases', cases.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={c.desc || ''} onChange={(v) => p('cases', cases.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('cases', cases.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('cases', [...cases, { tag: '', title: '', desc: '' }])} variant="outlined" size="small">Добавить</Button>
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+function ExamEditor({ content, onChange, isEge = false }: {
+  content: any; onChange: (c: any) => void; isEge?: boolean;
+}) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const topics: any[] = content.topics || [];
+  const blocks: any[] = content.blocks || [];
+  const results: any[] = content.results || [];
+  const faq: any[] = content.faq || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" />
+        <Tab label={isEge ? `Блоки (${blocks.length})` : `Темы (${topics.length})`} />
+        <Tab label={`Результаты (${results.length})`} />
+        <Tab label={`FAQ (${faq.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && !isEge && (
+        <Stack spacing={2}>
+          {topics.map((t, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Номер" value={t.num || ''} onChange={(v) => p('topics', topics.map((x, idx) => idx === i ? { ...x, num: v } : x))} />
+                  <TF label="Заголовок" value={t.title || ''} onChange={(v) => p('topics', topics.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={t.desc || ''} onChange={(v) => p('topics', topics.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('topics', topics.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('topics', [...topics, { num: '', title: '', desc: '' }])} variant="outlined" size="small">Добавить тему</Button>
+        </Stack>
+      )}
+      {tab === 1 && isEge && (
+        <Stack spacing={2}>
+          {blocks.map((b, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Заголовок блока" value={b.title || ''} onChange={(v) => p('blocks', blocks.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                  <TF label="Подзаголовок" value={b.subtitle || ''} onChange={(v) => p('blocks', blocks.map((x, idx) => idx === i ? { ...x, subtitle: v } : x))} />
+                </Stack>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Пункты блока</Typography>
+                  <Stack spacing={1}>
+                    {(b.items || []).map((item: string, ii: number) => (
+                      <Stack direction="row" spacing={1} key={ii} alignItems="center">
+                        <TextField size="small" fullWidth value={item}
+                          onChange={(e) => {
+                            const items = [...(b.items || [])]; items[ii] = e.target.value;
+                            p('blocks', blocks.map((x, idx) => idx === i ? { ...x, items } : x));
+                          }} />
+                        <IconButton size="small" onClick={() => p('blocks', blocks.map((x, idx) => idx === i ? { ...x, items: (x.items || []).filter((_: any, jj: number) => jj !== ii) } : x))}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    ))}
+                    <Button size="small" startIcon={<AddIcon />}
+                      onClick={() => p('blocks', blocks.map((x, idx) => idx === i ? { ...x, items: [...(x.items || []), ''] } : x))}>
+                      Добавить пункт
+                    </Button>
+                  </Stack>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('blocks', blocks.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('blocks', [...blocks, { title: '', subtitle: '', items: [] }])} variant="outlined" size="small">Добавить блок</Button>
+        </Stack>
+      )}
+      {tab === 2 && <KVListEditor label="Результаты" items={results} onChange={(v) => p('results', v)} />}
+      {tab === 3 && <FaqSectionEditor items={faq} onChange={(v) => p('faq', v)} />}
+    </Box>
+  );
+}
+
+function AchievementsEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const stats: any[] = content.stats || [];
+  const stories: any[] = content.stories || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Статистика (${stats.length})`} /><Tab label={`Истории (${stories.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && <KVListEditor label="Блоки статистики" items={stats} onChange={(v) => p('stats', v)} />}
+      {tab === 2 && (
+        <Stack spacing={2}>
+          {stories.map((s, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Имя" value={s.name || ''} onChange={(v) => p('stories', stories.map((x, idx) => idx === i ? { ...x, name: v } : x))} />
+                  <TF label="Возраст" value={s.age || ''} onChange={(v) => p('stories', stories.map((x, idx) => idx === i ? { ...x, age: v } : x))} />
+                  <TF label="Трек" value={s.track || ''} onChange={(v) => p('stories', stories.map((x, idx) => idx === i ? { ...x, track: v } : x))} />
+                </Stack>
+                <TF label="Достижение" value={s.achievement || ''} onChange={(v) => p('stories', stories.map((x, idx) => idx === i ? { ...x, achievement: v } : x))} />
+                <TF label="Цитата" value={s.quote || ''} onChange={(v) => p('stories', stories.map((x, idx) => idx === i ? { ...x, quote: v } : x))} multiline rows={2} />
+                <TF label="Детали" value={s.detail || ''} onChange={(v) => p('stories', stories.map((x, idx) => idx === i ? { ...x, detail: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('stories', stories.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('stories', [...stories, { name: '', age: '', track: '', achievement: '', quote: '', detail: '' }])} variant="outlined" size="small">
+            Добавить историю
+          </Button>
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+function ActivitiesEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const formats: any[] = content.formats || [];
+  const jams: any[] = content.jams_past || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Форматы (${formats.length})`} /><Tab label={`Прошлые джемы (${jams.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && (
+        <Stack spacing={2}>
+          {formats.map((f, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Заголовок" value={f.title || ''} onChange={(v) => p('formats', formats.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                  <TF label="Бейдж" value={f.badge || ''} onChange={(v) => p('formats', formats.map((x, idx) => idx === i ? { ...x, badge: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={f.desc || ''} onChange={(v) => p('formats', formats.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('formats', formats.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('formats', [...formats, { title: '', desc: '', badge: '' }])} variant="outlined" size="small">Добавить</Button>
+        </Stack>
+      )}
+      {tab === 2 && (
+        <Stack spacing={2}>
+          {jams.map((j, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Название" value={j.title || ''} onChange={(v) => p('jams_past', jams.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                  <TF label="Участники" value={String(j.participants || '')} onChange={(v) => p('jams_past', jams.map((x, idx) => idx === i ? { ...x, participants: v } : x))} />
+                  <TF label="Игр создано" value={String(j.games || '')} onChange={(v) => p('jams_past', jams.map((x, idx) => idx === i ? { ...x, games: v } : x))} />
+                </Stack>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('jams_past', jams.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('jams_past', [...jams, { title: '', participants: '', games: '' }])} variant="outlined" size="small">Добавить джем</Button>
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+function JamsEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const how: any[] = content.how || [];
+  const rules: string[] = content.rules || [];
+  const tools: any[] = content.tools || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Как проходит (${how.length})`} /><Tab label="Правила" /><Tab label="Инструменты" />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && (
+        <Stack spacing={2}>
+          {how.map((h, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Номер" value={h.num || ''} onChange={(v) => p('how', how.map((x, idx) => idx === i ? { ...x, num: v } : x))} />
+                  <TF label="Заголовок" value={h.title || ''} onChange={(v) => p('how', how.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={h.desc || ''} onChange={(v) => p('how', how.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('how', how.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('how', [...how, { num: '', title: '', desc: '' }])} variant="outlined" size="small">Добавить шаг</Button>
+        </Stack>
+      )}
+      {tab === 2 && <StringListEditor label="Правила участия" items={rules} onChange={(v) => p('rules', v)} />}
+      {tab === 3 && (
+        <Stack spacing={2}>
+          {tools.map((t, i) => (
+            <Stack direction="row" spacing={2} key={i} alignItems="center">
+              <TF label="Инструмент" value={t.name || ''} onChange={(v) => p('tools', tools.map((x, idx) => idx === i ? { ...x, name: v } : x))} />
+              <TF label="Тег" value={t.tag || ''} onChange={(v) => p('tools', tools.map((x, idx) => idx === i ? { ...x, tag: v } : x))} />
+              <IconButton onClick={() => p('tools', tools.filter((_, idx) => idx !== i))}>
+                <DeleteIcon />
+              </IconButton>
+            </Stack>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('tools', [...tools, { name: '', tag: '' }])} variant="outlined" size="small">Добавить</Button>
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+// ─── SEO page editors ─────────────────────────────────────────────────────────
+
+function CoursePageEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const topics: any[] = content.topics || [];
+  const skills: string[] = content.skills || [];
+  const results: any[] = content.results || [];
+  const faq: any[] = content.faq || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Темы (${topics.length})`} /><Tab label={`Навыки (${skills.length})`} /><Tab label={`Результаты (${results.length})`} /><Tab label={`FAQ (${faq.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && (
+        <Stack spacing={2}>
+          {topics.map((t, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Номер" value={t.num || ''} onChange={(v) => p('topics', topics.map((x, idx) => idx === i ? { ...x, num: v } : x))} />
+                  <TF label="Заголовок" value={t.title || ''} onChange={(v) => p('topics', topics.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={t.desc || ''} onChange={(v) => p('topics', topics.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('topics', topics.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('topics', [...topics, { num: '', title: '', desc: '' }])} variant="outlined" size="small">Добавить тему</Button>
+        </Stack>
+      )}
+      {tab === 2 && <StringListEditor label="Что освоит ученик" items={skills} onChange={(v) => p('skills', v)} />}
+      {tab === 3 && <KVListEditor label="Результаты" items={results} onChange={(v) => p('results', v)} />}
+      {tab === 4 && <FaqSectionEditor items={faq} onChange={(v) => p('faq', v)} />}
+    </Box>
+  );
+}
+
+function PythonEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const why: any[] = content.why || [];
+  const what_learn: string[] = content.what_learn || [];
+  const faq: any[] = content.faq || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Почему Python (${why.length})`} /><Tab label={`Чему научимся (${what_learn.length})`} /><Tab label={`FAQ (${faq.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && (
+        <Stack spacing={2}>
+          {why.map((w, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Эмодзи" value={w.emoji || ''} onChange={(v) => p('why', why.map((x, idx) => idx === i ? { ...x, emoji: v } : x))} />
+                  <TF label="Заголовок" value={w.title || ''} onChange={(v) => p('why', why.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={w.desc || ''} onChange={(v) => p('why', why.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('why', why.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('why', [...why, { emoji: '✨', title: '', desc: '' }])} variant="outlined" size="small">Добавить</Button>
+        </Stack>
+      )}
+      {tab === 2 && <StringListEditor label="Список навыков" items={what_learn} onChange={(v) => p('what_learn', v)} />}
+      {tab === 3 && <FaqSectionEditor items={faq} onChange={(v) => p('faq', v)} />}
+    </Box>
+  );
+}
+
+function GameDevEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const stages: any[] = content.stages || [];
+  const faq: any[] = content.faq || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Этапы (${stages.length})`} /><Tab label={`FAQ (${faq.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && (
+        <Stack spacing={2}>
+          {stages.map((s, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Номер" value={s.num || ''} onChange={(v) => p('stages', stages.map((x, idx) => idx === i ? { ...x, num: v } : x))} />
+                  <TF label="Заголовок" value={s.title || ''} onChange={(v) => p('stages', stages.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={s.desc || ''} onChange={(v) => p('stages', stages.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('stages', stages.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('stages', [...stages, { num: '', title: '', desc: '' }])} variant="outlined" size="small">Добавить этап</Button>
+        </Stack>
+      )}
+      {tab === 2 && <FaqSectionEditor items={faq} onChange={(v) => p('faq', v)} />}
+    </Box>
+  );
+}
+
+function HeroFaqEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const faq: any[] = content.faq || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`FAQ (${faq.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && <FaqSectionEditor items={faq} onChange={(v) => p('faq', v)} />}
+    </Box>
+  );
+}
+
+function DirectionsEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const [tab, setTab] = useState(0);
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const hero = content.hero || {};
+  const directions: any[] = content.directions || [];
+
+  return (
+    <Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" /><Tab label={`Направления (${directions.length})`} />
+      </Tabs>
+      {tab === 0 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={hero.heading || ''} onChange={(v) => p('hero', { ...hero, heading: v })} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => p('hero', { ...hero, subtitle: v })} multiline rows={2} />
+        </Stack>
+      )}
+      {tab === 1 && (
+        <Stack spacing={2}>
+          {directions.map((d, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2}>
+                  <TF label="Эмодзи" value={d.emoji || ''} onChange={(v) => p('directions', directions.map((x, idx) => idx === i ? { ...x, emoji: v } : x))} />
+                  <TF label="Заголовок" value={d.title || ''} onChange={(v) => p('directions', directions.map((x, idx) => idx === i ? { ...x, title: v } : x))} />
+                  <TF label="Подзаголовок" value={d.subtitle || ''} onChange={(v) => p('directions', directions.map((x, idx) => idx === i ? { ...x, subtitle: v } : x))} />
+                </Stack>
+                <TF label="Описание" value={d.desc || ''} onChange={(v) => p('directions', directions.map((x, idx) => idx === i ? { ...x, desc: v } : x))} multiline rows={2} />
+                <Stack direction="row" spacing={2}>
+                  <TF label="Для кого" value={d.forWhom || ''} onChange={(v) => p('directions', directions.map((x, idx) => idx === i ? { ...x, forWhom: v } : x))} />
+                  <TF label="Результат" value={d.result || ''} onChange={(v) => p('directions', directions.map((x, idx) => idx === i ? { ...x, result: v } : x))} />
+                </Stack>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton size="small" onClick={() => p('directions', directions.filter((_, idx) => idx !== i))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} onClick={() => p('directions', [...directions, { emoji: '', title: '', subtitle: '', desc: '', forWhom: '', result: '' }])} variant="outlined" size="small">
+            Добавить направление
+          </Button>
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+// ─── Basic page editors ───────────────────────────────────────────────────────
 
 function HomeEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
   const hero = content.hero || {};
@@ -114,157 +834,103 @@ function HomeEditor({ content, onChange }: { content: any; onChange: (c: any) =>
 
   const setHero = (k: string, v: string) => onChange({ ...content, hero: { ...hero, [k]: v } });
 
-  const setBullet = (i: number, v: string) => {
-    const b = [...(hero.bullets || [])]; b[i] = v;
-    onChange({ ...content, hero: { ...hero, bullets: b } });
-  };
-  const addBullet = () => onChange({ ...content, hero: { ...hero, bullets: [...(hero.bullets || []), ''] } });
-  const removeBullet = (i: number) => onChange({ ...content, hero: { ...hero, bullets: (hero.bullets || []).filter((_: string, idx: number) => idx !== i) } });
-
-  const setStat = (i: number, k: string, v: string | boolean) =>
-    onChange({ ...content, stats: stats.map((s, idx) => idx === i ? { ...s, [k]: v } : s) });
-  const addStat = () => onChange({ ...content, stats: [...stats, { value: '', label: '', highlight: false }] });
-  const removeStat = (i: number) => onChange({ ...content, stats: stats.filter((_, idx) => idx !== i) });
-
-  const setReview = (i: number, k: string, v: string) =>
-    onChange({ ...content, reviews: reviews.map((r, idx) => idx === i ? { ...r, [k]: v } : r) });
-  const addReview = () => onChange({ ...content, reviews: [...reviews, { name: '', role: '', text: '', initials: '' }] });
-  const removeReview = (i: number) => onChange({ ...content, reviews: reviews.filter((_, idx) => idx !== i) });
-
   return (
     <Box>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Tab label="Герой" />
-        <Tab label={`Статистика (${stats.length})`} />
-        <Tab label={`Отзывы (${reviews.length})`} />
+        <Tab label="Герой" /><Tab label={`Статистика (${stats.length})`} /><Tab label={`Отзывы (${reviews.length})`} />
       </Tabs>
-
       {tab === 0 && (
         <Stack spacing={2}>
-          <TF label="Бейдж" value={hero.badge} onChange={(v) => setHero('badge', v)} />
+          <TF label="Бейдж" value={hero.badge || ''} onChange={(v) => setHero('badge', v)} />
           <Stack direction="row" spacing={2}>
-            <TF label="Заголовок H1" value={hero.h1} onChange={(v) => setHero('h1', v)} />
-            <TF label="H1 акцент (цветной)" value={hero.h1_accent} onChange={(v) => setHero('h1_accent', v)} />
+            <TF label="H1" value={hero.h1 || ''} onChange={(v) => setHero('h1', v)} />
+            <TF label="H1 акцент" value={hero.h1_accent || ''} onChange={(v) => setHero('h1_accent', v)} />
           </Stack>
-          <TF label="Подзаголовок" value={hero.subtitle} onChange={(v) => setHero('subtitle', v)} multiline rows={2} />
-          <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Буллеты (✓ список)</Typography>
-            <Stack spacing={1}>
-              {(hero.bullets || []).map((b: string, i: number) => (
-                <Stack direction="row" spacing={1} key={i} alignItems="center">
-                  <DragIndicatorIcon fontSize="small" sx={{ color: 'text.disabled' }} />
-                  <TextField size="small" fullWidth value={b} onChange={(e) => setBullet(i, e.target.value)} />
-                  <IconButton size="small" onClick={() => removeBullet(i)}><DeleteIcon fontSize="small" /></IconButton>
-                </Stack>
-              ))}
-              <Button size="small" startIcon={<AddIcon />} onClick={addBullet} sx={{ alignSelf: 'flex-start' }}>Добавить</Button>
-            </Stack>
-          </Box>
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => setHero('subtitle', v)} multiline rows={2} />
+          <StringListEditor label="Буллеты" items={hero.bullets || []}
+            onChange={(v) => onChange({ ...content, hero: { ...hero, bullets: v } })} />
           <Stack direction="row" spacing={2}>
-            <TF label="Кнопка (основная)" value={hero.cta_primary} onChange={(v) => setHero('cta_primary', v)} />
-            <TF label="Кнопка (вторичная)" value={hero.cta_secondary} onChange={(v) => setHero('cta_secondary', v)} />
+            <TF label="CTA основная" value={hero.cta_primary || ''} onChange={(v) => setHero('cta_primary', v)} />
+            <TF label="CTA вторичная" value={hero.cta_secondary || ''} onChange={(v) => setHero('cta_secondary', v)} />
           </Stack>
         </Stack>
       )}
-
       {tab === 1 && (
         <Stack spacing={2}>
-          {stats.map((stat, i) => (
+          {stats.map((s, i) => (
             <Paper key={i} variant="outlined" sx={{ p: 2 }}>
               <Stack spacing={1.5}>
                 <Stack direction="row" spacing={2}>
-                  <TF label="Значение" value={stat.value} onChange={(v) => setStat(i, 'value', v)} />
-                  <TF label="Подпись" value={stat.label} onChange={(v) => setStat(i, 'label', v)} />
+                  <TF label="Значение" value={s.value || ''} onChange={(v) => onChange({ ...content, stats: stats.map((x, idx) => idx === i ? { ...x, value: v } : x) })} />
+                  <TF label="Подпись" value={s.label || ''} onChange={(v) => onChange({ ...content, stats: stats.map((x, idx) => idx === i ? { ...x, label: v } : x) })} />
                 </Stack>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="caption">Выделенная (фиолетовый фон):</Typography>
-                  <Chip size="small" label={stat.highlight ? 'Да' : 'Нет'} color={stat.highlight ? 'primary' : 'default'}
-                    onClick={() => setStat(i, 'highlight', !stat.highlight)} sx={{ cursor: 'pointer' }} />
+                  <Typography variant="caption">Выделить:</Typography>
+                  <Chip size="small" label={s.highlight ? 'Да' : 'Нет'} color={s.highlight ? 'primary' : 'default'}
+                    onClick={() => onChange({ ...content, stats: stats.map((x, idx) => idx === i ? { ...x, highlight: !x.highlight } : x) })}
+                    sx={{ cursor: 'pointer' }} />
                   <Box flex={1} />
-                  <IconButton size="small" onClick={() => removeStat(i)}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => onChange({ ...content, stats: stats.filter((_, idx) => idx !== i) })}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
                 </Stack>
               </Stack>
             </Paper>
           ))}
-          <Button startIcon={<AddIcon />} onClick={addStat} variant="outlined" size="small">Добавить статистику</Button>
+          <Button startIcon={<AddIcon />} onClick={() => onChange({ ...content, stats: [...stats, { value: '', label: '', highlight: false }] })} variant="outlined" size="small">Добавить</Button>
         </Stack>
       )}
-
       {tab === 2 && (
         <Stack spacing={2}>
           {reviews.map((r, i) => (
             <Paper key={i} variant="outlined" sx={{ p: 2 }}>
               <Stack spacing={1.5}>
                 <Stack direction="row" spacing={2}>
-                  <TF label="Имя" value={r.name} onChange={(v) => setReview(i, 'name', v)} />
-                  <TF label="Роль" value={r.role} onChange={(v) => setReview(i, 'role', v)} />
-                  <TF label="Инициалы" value={r.initials} onChange={(v) => setReview(i, 'initials', v)} />
+                  <TF label="Имя" value={r.name || ''} onChange={(v) => onChange({ ...content, reviews: reviews.map((x, idx) => idx === i ? { ...x, name: v } : x) })} />
+                  <TF label="Роль" value={r.role || ''} onChange={(v) => onChange({ ...content, reviews: reviews.map((x, idx) => idx === i ? { ...x, role: v } : x) })} />
+                  <TF label="Инициалы" value={r.initials || ''} onChange={(v) => onChange({ ...content, reviews: reviews.map((x, idx) => idx === i ? { ...x, initials: v } : x) })} />
                 </Stack>
-                <TF label="Текст отзыва" value={r.text} onChange={(v) => setReview(i, 'text', v)} multiline rows={3} />
+                <TF label="Текст" value={r.text || ''} onChange={(v) => onChange({ ...content, reviews: reviews.map((x, idx) => idx === i ? { ...x, text: v } : x) })} multiline rows={3} />
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <IconButton size="small" onClick={() => removeReview(i)}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => onChange({ ...content, reviews: reviews.filter((_, idx) => idx !== i) })}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
                 </Box>
               </Stack>
             </Paper>
           ))}
-          <Button startIcon={<AddIcon />} onClick={addReview} variant="outlined" size="small">Добавить отзыв</Button>
+          <Button startIcon={<AddIcon />} onClick={() => onChange({ ...content, reviews: [...reviews, { name: '', role: '', text: '', initials: '' }] })} variant="outlined" size="small">Добавить отзыв</Button>
         </Stack>
       )}
     </Box>
   );
 }
 
-// ─── FAQ editor ───────────────────────────────────────────────────────────────
-
-function FaqEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+function FaqPageEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
   const sections: any[] = content.sections || [];
-
   const setSection = (i: number, k: string, v: any) =>
     onChange({ ...content, sections: sections.map((s, idx) => idx === i ? { ...s, [k]: v } : s) });
-  const addSection = () => onChange({ ...content, sections: [...sections, { title: 'Новый раздел', items: [] }] });
-  const removeSection = (i: number) => onChange({ ...content, sections: sections.filter((_, idx) => idx !== i) });
-
-  const setItem = (si: number, ii: number, k: string, v: string) => {
-    const items = sections[si].items.map((item: any, idx: number) => idx === ii ? { ...item, [k]: v } : item);
-    setSection(si, 'items', items);
-  };
-  const addItem = (si: number) => setSection(si, 'items', [...(sections[si].items || []), { q: '', a: '' }]);
-  const removeItem = (si: number, ii: number) =>
-    setSection(si, 'items', sections[si].items.filter((_: any, idx: number) => idx !== ii));
 
   return (
     <Stack spacing={3}>
       {sections.map((sec, si) => (
         <Paper key={si} variant="outlined" sx={{ p: 2 }}>
           <Stack direction="row" spacing={2} alignItems="center" mb={2}>
-            <TextField label="Название раздела" size="small" fullWidth value={sec.title || ''}
+            <TextField label="Раздел" size="small" fullWidth value={sec.title || ''}
               onChange={(e) => setSection(si, 'title', e.target.value)} />
-            <IconButton onClick={() => removeSection(si)} color="error"><DeleteIcon /></IconButton>
+            <IconButton onClick={() => onChange({ ...content, sections: sections.filter((_, idx) => idx !== si) })} color="error">
+              <DeleteIcon />
+            </IconButton>
           </Stack>
-          <Stack spacing={2} sx={{ pl: 1 }}>
-            {(sec.items || []).map((item: any, ii: number) => (
-              <Paper key={ii} variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
-                <Stack spacing={1.5}>
-                  <TextField label="Вопрос" size="small" fullWidth value={item.q || ''}
-                    onChange={(e) => setItem(si, ii, 'q', e.target.value)} />
-                  <TextField label="Ответ" size="small" fullWidth multiline minRows={2} value={item.a || ''}
-                    onChange={(e) => setItem(si, ii, 'a', e.target.value)} />
-                  <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <IconButton size="small" onClick={() => removeItem(si, ii)}><DeleteIcon fontSize="small" /></IconButton>
-                  </Box>
-                </Stack>
-              </Paper>
-            ))}
-            <Button size="small" startIcon={<AddIcon />} onClick={() => addItem(si)}>Добавить вопрос</Button>
-          </Stack>
+          <FaqSectionEditor items={sec.items || []} onChange={(v) => setSection(si, 'items', v)} />
         </Paper>
       ))}
-      <Button startIcon={<AddIcon />} onClick={addSection} variant="outlined">Добавить раздел</Button>
+      <Button startIcon={<AddIcon />} onClick={() => onChange({ ...content, sections: [...sections, { title: '', items: [] }] })} variant="outlined">
+        Добавить раздел
+      </Button>
     </Stack>
   );
 }
-
-// ─── About editor ─────────────────────────────────────────────────────────────
 
 function AboutEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
   const hero = content.hero || {};
@@ -277,132 +943,121 @@ function AboutEditor({ content, onChange }: { content: any; onChange: (c: any) =
   const patchSection = (section: string, k: string, v: any) =>
     onChange({ ...content, [section]: { ...(content[section] || {}), [k]: v } });
 
-  const setPara = (i: number, v: string) => {
-    const p = [...(story.paragraphs || [])]; p[i] = v;
-    onChange({ ...content, story: { ...story, paragraphs: p } });
-  };
-  const addPara = () => onChange({ ...content, story: { ...story, paragraphs: [...(story.paragraphs || []), ''] } });
-  const removePara = (i: number) => onChange({ ...content, story: { ...story, paragraphs: (story.paragraphs || []).filter((_: string, idx: number) => idx !== i) } });
-
-  const setVal = (i: number, k: string, v: string) =>
-    onChange({ ...content, values: values.map((x, idx) => idx === i ? { ...x, [k]: v } : x) });
-  const addVal = () => onChange({ ...content, values: [...values, { emoji: '⭐', title: '', desc: '' }] });
-  const removeVal = (i: number) => onChange({ ...content, values: values.filter((_, idx) => idx !== i) });
-
-  const setMember = (i: number, k: string, v: string) =>
-    onChange({ ...content, team: team.map((x, idx) => idx === i ? { ...x, [k]: v } : x) });
-  const addMember = () => onChange({ ...content, team: [...team, { name: '', role: '', initials: '', bio: '', specialization: '' }] });
-  const removeMember = (i: number) => onChange({ ...content, team: team.filter((_, idx) => idx !== i) });
-
-  const setStat = (i: number, k: string, v: string) =>
-    onChange({ ...content, stats: stats.map((x, idx) => idx === i ? { ...x, [k]: v } : x) });
-  const addStat = () => onChange({ ...content, stats: [...stats, { value: '', label: '' }] });
-  const removeStat = (i: number) => onChange({ ...content, stats: stats.filter((_, idx) => idx !== i) });
-
   return (
     <Box>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Tab label="Герой" />
-        <Tab label="История" />
-        <Tab label={`Ценности (${values.length})`} />
-        <Tab label={`Команда (${team.length})`} />
-        <Tab label={`Статистика (${stats.length})`} />
+        <Tab label="Герой" /><Tab label="История" /><Tab label={`Ценности (${values.length})`} /><Tab label={`Команда (${team.length})`} /><Tab label="Статистика" />
       </Tabs>
-
       {tab === 0 && (
         <Stack spacing={2}>
           <Stack direction="row" spacing={2}>
-            <TF label="H1 (первая часть)" value={hero.h1} onChange={(v) => patchSection('hero', 'h1', v)} />
-            <TF label="H1 акцент (цветной)" value={hero.h1_accent} onChange={(v) => patchSection('hero', 'h1_accent', v)} />
+            <TF label="H1" value={hero.h1 || ''} onChange={(v) => patchSection('hero', 'h1', v)} />
+            <TF label="H1 акцент" value={hero.h1_accent || ''} onChange={(v) => patchSection('hero', 'h1_accent', v)} />
           </Stack>
-          <TF label="Подзаголовок" value={hero.subtitle} onChange={(v) => patchSection('hero', 'subtitle', v)} multiline rows={2} />
+          <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => patchSection('hero', 'subtitle', v)} multiline rows={2} />
         </Stack>
       )}
-
       {tab === 1 && (
         <Stack spacing={2}>
-          <TF label="Заголовок" value={story.heading} onChange={(v) => patchSection('story', 'heading', v)} />
-          <Typography variant="caption" color="text.secondary">Абзацы:</Typography>
-          {(story.paragraphs || []).map((p: string, i: number) => (
-            <Stack direction="row" spacing={1} key={i} alignItems="flex-start">
-              <TextField size="small" fullWidth multiline minRows={2} value={p} onChange={(e) => setPara(i, e.target.value)} />
-              <IconButton size="small" onClick={() => removePara(i)}><DeleteIcon fontSize="small" /></IconButton>
-            </Stack>
-          ))}
-          <Button size="small" startIcon={<AddIcon />} onClick={addPara} sx={{ alignSelf: 'flex-start' }}>Добавить абзац</Button>
+          <TF label="Заголовок" value={story.heading || ''} onChange={(v) => patchSection('story', 'heading', v)} />
+          <Stack spacing={1}>
+            {(story.paragraphs || []).map((para: string, i: number) => (
+              <Stack direction="row" spacing={1} key={i} alignItems="flex-start">
+                <TextField size="small" fullWidth multiline minRows={2} value={para}
+                  onChange={(e) => { const pp = [...(story.paragraphs || [])]; pp[i] = e.target.value; patchSection('story', 'paragraphs', pp); }} />
+                <IconButton size="small" onClick={() => patchSection('story', 'paragraphs', (story.paragraphs || []).filter((_: string, idx: number) => idx !== i))}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+            ))}
+            <Button size="small" startIcon={<AddIcon />}
+              onClick={() => patchSection('story', 'paragraphs', [...(story.paragraphs || []), ''])} sx={{ alignSelf: 'flex-start' }}>
+              Добавить абзац
+            </Button>
+          </Stack>
         </Stack>
       )}
-
       {tab === 2 && (
         <Stack spacing={2}>
           {values.map((v, i) => (
             <Paper key={i} variant="outlined" sx={{ p: 2 }}>
               <Stack spacing={1.5}>
                 <Stack direction="row" spacing={2}>
-                  <TF label="Эмодзи" value={v.emoji} onChange={(val) => setVal(i, 'emoji', val)} />
-                  <TF label="Заголовок" value={v.title} onChange={(val) => setVal(i, 'title', val)} />
+                  <TF label="Эмодзи" value={v.emoji || ''} onChange={(val) => onChange({ ...content, values: values.map((x, idx) => idx === i ? { ...x, emoji: val } : x) })} />
+                  <TF label="Заголовок" value={v.title || ''} onChange={(val) => onChange({ ...content, values: values.map((x, idx) => idx === i ? { ...x, title: val } : x) })} />
                 </Stack>
-                <TF label="Описание" value={v.desc} onChange={(val) => setVal(i, 'desc', val)} multiline rows={2} />
+                <TF label="Описание" value={v.desc || ''} onChange={(val) => onChange({ ...content, values: values.map((x, idx) => idx === i ? { ...x, desc: val } : x) })} multiline rows={2} />
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <IconButton size="small" onClick={() => removeVal(i)}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => onChange({ ...content, values: values.filter((_, idx) => idx !== i) })}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
                 </Box>
               </Stack>
             </Paper>
           ))}
-          <Button startIcon={<AddIcon />} onClick={addVal} variant="outlined" size="small">Добавить ценность</Button>
+          <Button startIcon={<AddIcon />} onClick={() => onChange({ ...content, values: [...values, { emoji: '⭐', title: '', desc: '' }] })} variant="outlined" size="small">Добавить ценность</Button>
         </Stack>
       )}
-
       {tab === 3 && (
         <Stack spacing={2}>
           {team.map((m, i) => (
             <Paper key={i} variant="outlined" sx={{ p: 2 }}>
               <Stack spacing={1.5}>
                 <Stack direction="row" spacing={2}>
-                  <TF label="Имя" value={m.name} onChange={(v) => setMember(i, 'name', v)} />
-                  <TF label="Должность" value={m.role} onChange={(v) => setMember(i, 'role', v)} />
-                  <TF label="Инициалы" value={m.initials} onChange={(v) => setMember(i, 'initials', v)} />
+                  <TF label="Имя" value={m.name || ''} onChange={(v) => onChange({ ...content, team: team.map((x, idx) => idx === i ? { ...x, name: v } : x) })} />
+                  <TF label="Должность" value={m.role || ''} onChange={(v) => onChange({ ...content, team: team.map((x, idx) => idx === i ? { ...x, role: v } : x) })} />
+                  <TF label="Инициалы" value={m.initials || ''} onChange={(v) => onChange({ ...content, team: team.map((x, idx) => idx === i ? { ...x, initials: v } : x) })} />
                 </Stack>
-                <TF label="Биография" value={m.bio} onChange={(v) => setMember(i, 'bio', v)} multiline rows={2} />
-                <TF label="Специализация" value={m.specialization} onChange={(v) => setMember(i, 'specialization', v)} />
+                <TF label="Биография" value={m.bio || ''} onChange={(v) => onChange({ ...content, team: team.map((x, idx) => idx === i ? { ...x, bio: v } : x) })} multiline rows={2} />
+                <TF label="Специализация" value={m.specialization || ''} onChange={(v) => onChange({ ...content, team: team.map((x, idx) => idx === i ? { ...x, specialization: v } : x) })} />
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <IconButton size="small" onClick={() => removeMember(i)}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => onChange({ ...content, team: team.filter((_, idx) => idx !== i) })}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
                 </Box>
               </Stack>
             </Paper>
           ))}
-          <Button startIcon={<AddIcon />} onClick={addMember} variant="outlined" size="small">Добавить члена команды</Button>
+          <Button startIcon={<AddIcon />} onClick={() => onChange({ ...content, team: [...team, { name: '', role: '', initials: '', bio: '', specialization: '' }] })} variant="outlined" size="small">Добавить</Button>
         </Stack>
       )}
-
-      {tab === 4 && (
-        <Stack spacing={2}>
-          {stats.map((s, i) => (
-            <Stack key={i} direction="row" spacing={2} alignItems="center">
-              <TF label="Значение" value={s.value} onChange={(v) => setStat(i, 'value', v)} />
-              <TF label="Подпись" value={s.label} onChange={(v) => setStat(i, 'label', v)} />
-              <IconButton onClick={() => removeStat(i)}><DeleteIcon /></IconButton>
-            </Stack>
-          ))}
-          <Button startIcon={<AddIcon />} onClick={addStat} variant="outlined" size="small">Добавить</Button>
-        </Stack>
-      )}
+      {tab === 4 && <KVListEditor label="Статистика" items={stats} onChange={(v) => onChange({ ...content, stats: v })} />}
     </Box>
   );
 }
-
-// ─── Contacts editor ──────────────────────────────────────────────────────────
 
 function ContactsEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
   const hero = content.hero || {};
   return (
     <Stack spacing={2}>
-      <Alert severity="info">Телефон, email и соцсети — в «Настройки сайта». Здесь — тексты самой страницы.</Alert>
-      <TF label="Заголовок страницы" value={hero.heading} onChange={(v) => onChange({ ...content, hero: { ...hero, heading: v } })} />
-      <TF label="Подзаголовок" value={hero.subtitle} onChange={(v) => onChange({ ...content, hero: { ...hero, subtitle: v } })} multiline rows={2} />
-      <TF label="Дополнительный текст (опционально)" value={content.extra_text || ''} onChange={(v) => onChange({ ...content, extra_text: v })} multiline rows={3} />
+      <Alert severity="info">Телефон, email и соцсети — в «Настройки сайта».</Alert>
+      <TF label="Заголовок страницы" value={hero.heading || ''} onChange={(v) => onChange({ ...content, hero: { ...hero, heading: v } })} />
+      <TF label="Подзаголовок" value={hero.subtitle || ''} onChange={(v) => onChange({ ...content, hero: { ...hero, subtitle: v } })} multiline rows={2} />
+      <TF label="Дополнительный текст" value={content.extra_text || ''} onChange={(v) => onChange({ ...content, extra_text: v })} multiline rows={3} />
     </Stack>
   );
+}
+
+// ─── Editor router ────────────────────────────────────────────────────────────
+
+function PageEditor({ slug, content, onChange }: { slug: string; content: any; onChange: (c: any) => void }) {
+  if (slug === 'home') return <HomeEditor content={content} onChange={onChange} />;
+  if (slug === 'faq') return <FaqPageEditor content={content} onChange={onChange} />;
+  if (slug === 'o-nas') return <AboutEditor content={content} onChange={onChange} />;
+  if (slug === 'kontakty') return <ContactsEditor content={content} onChange={onChange} />;
+  if (['game-studio', 'kodeks', 'technolab'].includes(slug)) return <TrackEditor content={content} onChange={onChange} />;
+  if (slug === 'besplatnyj-probnyj-urok') return <TrialEditor content={content} onChange={onChange} />;
+  if (slug === 'individualnye-zanyatiya') return <IndividualEditor content={content} onChange={onChange} />;
+  if (slug === 'podgotovka-k-oge-po-informatike') return <ExamEditor content={content} onChange={onChange} />;
+  if (slug === 'podgotovka-k-ege-po-informatike') return <ExamEditor content={content} onChange={onChange} isEge />;
+  if (slug === 'dostizheniya-uchenikov') return <AchievementsEditor content={content} onChange={onChange} />;
+  if (slug === 'aktivnosti') return <ActivitiesEditor content={content} onChange={onChange} />;
+  if (slug === 'igrovye-dzhemy') return <JamsEditor content={content} onChange={onChange} />;
+  if (slug === 'python-dlya-detej') return <PythonEditor content={content} onChange={onChange} />;
+  if (slug === 'razrabotka-igr-na-python') return <GameDevEditor content={content} onChange={onChange} />;
+  if (slug === 'backend-razrabotka' || slug === 'frontend-razrabotka') return <CoursePageEditor content={content} onChange={onChange} />;
+  if (slug === 'napravleniya-razrabotki') return <DirectionsEditor content={content} onChange={onChange} />;
+  return <HeroFaqEditor content={content} onChange={onChange} />;
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -422,11 +1077,10 @@ const CmsEditorPage: React.FC = () => {
     try {
       const data = await cmsApi.getPage(slug);
       const c = data.content && typeof data.content === 'object' && Object.keys(data.content as object).length > 0
-        ? data.content
-        : DEFAULTS[slug] || {};
+        ? data.content : {};
       setContent(c);
     } catch {
-      setContent(DEFAULTS[slug] || {});
+      setContent({});
     } finally {
       setLoading(false);
     }
@@ -441,7 +1095,7 @@ const CmsEditorPage: React.FC = () => {
     try {
       await cmsApi.savePage(selectedSlug, content);
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      setTimeout(() => setSuccess(false), 4000);
     } catch (e) {
       setError(extractApiError(e, 'Не удалось сохранить'));
     } finally {
@@ -449,23 +1103,27 @@ const CmsEditorPage: React.FC = () => {
     }
   };
 
-  const selectedPage = PAGES.find((p) => p.slug === selectedSlug)!;
+  const selectedPage = ALL_PAGES.find((p) => p.slug === selectedSlug)!;
 
   return (
     <Layout>
       <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
         {/* Sidebar */}
-        <Box sx={{ width: 200, borderRight: 1, borderColor: 'divider', flexShrink: 0, overflow: 'auto' }}>
-          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', fontSize: 11 }}>
-              Страницы
-            </Typography>
-          </Box>
+        <Box sx={{ width: 210, borderRight: 1, borderColor: 'divider', flexShrink: 0, overflow: 'auto' }}>
           <List dense disablePadding>
-            {PAGES.map((page) => (
-              <ListItemButton key={page.slug} selected={selectedSlug === page.slug} onClick={() => setSelectedSlug(page.slug)}>
-                <ListItemText primary={page.label} primaryTypographyProps={{ fontSize: 14 }} />
-              </ListItemButton>
+            {PAGE_GROUPS.map((group) => (
+              <React.Fragment key={group.group}>
+                <ListSubheader sx={{ lineHeight: '32px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'text.disabled', bgcolor: 'background.default' }}>
+                  {group.group}
+                </ListSubheader>
+                {group.pages.map((page) => (
+                  <ListItemButton key={page.slug} selected={selectedSlug === page.slug}
+                    onClick={() => setSelectedSlug(page.slug)} sx={{ py: 0.5 }}>
+                    <ListItemText primary={page.label} primaryTypographyProps={{ fontSize: 13 }} />
+                  </ListItemButton>
+                ))}
+                <Divider />
+              </React.Fragment>
             ))}
           </List>
         </Box>
@@ -492,7 +1150,7 @@ const CmsEditorPage: React.FC = () => {
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
           {success && (
             <Alert severity="success" sx={{ mb: 2 }}>
-              Сохранено. Изменения появятся на лендинге в течение 1 часа (ISR кэш).
+              Сохранено. Изменения появятся на сайте в течение 1 часа (ISR-кэш).
             </Alert>
           )}
 
@@ -502,10 +1160,7 @@ const CmsEditorPage: React.FC = () => {
             </Box>
           ) : (
             <Paper sx={{ p: 3 }}>
-              {selectedSlug === 'home' && <HomeEditor content={content} onChange={setContent} />}
-              {selectedSlug === 'faq' && <FaqEditor content={content} onChange={setContent} />}
-              {selectedSlug === 'o-nas' && <AboutEditor content={content} onChange={setContent} />}
-              {selectedSlug === 'kontakty' && <ContactsEditor content={content} onChange={setContent} />}
+              <PageEditor slug={selectedSlug} content={content} onChange={setContent} />
             </Paper>
           )}
         </Box>

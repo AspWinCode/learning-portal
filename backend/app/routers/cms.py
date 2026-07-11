@@ -18,10 +18,26 @@ router = APIRouter()
 
 # ── Known pages with their labels ──────────────────────────────────────────
 KNOWN_PAGES = {
-    "home":    "Главная страница",
-    "faq":     "FAQ — Частые вопросы",
-    "o-nas":   "О нас",
-    "kontakty": "Контакты",
+    "home":                              "Главная страница",
+    "faq":                               "FAQ — Частые вопросы",
+    "o-nas":                             "О нас",
+    "kontakty":                          "Контакты",
+    "game-studio":                       "Трек · Игровая студия",
+    "kodeks":                            "Трек · Кодэкс",
+    "technolab":                         "Трек · ТехноЛаб",
+    "besplatnyj-probnyj-urok":          "Бесплатный пробный урок",
+    "individualnye-zanyatiya":           "Индивидуальные занятия",
+    "podgotovka-k-oge-po-informatike":   "Подготовка к ОГЭ",
+    "podgotovka-k-ege-po-informatike":   "Подготовка к ЕГЭ",
+    "dostizheniya-uchenikov":            "Достижения учеников",
+    "aktivnosti":                        "Активности",
+    "igrovye-dzhemy":                    "Игровые джемы",
+    "programmirovanie-dlya-detej":       "Программирование для детей",
+    "python-dlya-detej":                 "Python для детей",
+    "razrabotka-igr-na-python":          "Разработка игр на Python",
+    "backend-razrabotka":                "Backend-разработка",
+    "frontend-razrabotka":               "Frontend-разработка",
+    "napravleniya-razrabotki":           "Направления разработки",
 }
 
 

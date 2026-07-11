@@ -67,6 +67,7 @@ const SeoPageEditPage = React.lazy(() => import('./pages/seo/SeoPageEditPage'));
 const BlogPostsListPage = React.lazy(() => import('./pages/blog/BlogPostsListPage'));
 const BlogPostEditPage = React.lazy(() => import('./pages/blog/BlogPostEditPage'));
 const SitePublishPage = React.lazy(() => import('./pages/seo/SitePublishPage'));
+const RedirectsPage = React.lazy(() => import('./pages/seo/RedirectsPage'));
 const LeadCardPage = React.lazy(() => import('./pages/LeadCardPage'));
 const ManualLessonsPage = React.lazy(() => import('./pages/ManualLessonsPage'));
 const SpecialistQuestionnairePage = React.lazy(() => import('./pages/SpecialistQuestionnairePage'));
@@ -374,6 +375,16 @@ function App() {
                 <PrivateRoute requiredPermission="seo.manage">
                   <SectionBoundary>
                     <SitePublishPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/seo/redirects"
+              element={
+                <PrivateRoute requiredPermission="seo.access">
+                  <SectionBoundary>
+                    <RedirectsPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

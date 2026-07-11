@@ -2941,6 +2941,17 @@ class BlogPost(Base):
     tags = relationship("BlogTag", secondary="blog_post_tags", back_populates="posts")
 
 
+class SeoRedirect(Base):
+    __tablename__ = "seo_redirects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    from_path = Column(String(500), nullable=False, unique=True, index=True)
+    to_url = Column(String(500), nullable=False)
+    status_code = Column(Integer, nullable=False, default=301)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class MediaFile(Base):
     __tablename__ = "media_files"
 

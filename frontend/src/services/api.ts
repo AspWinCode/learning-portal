@@ -3955,6 +3955,35 @@ export interface MediaFile {
   uploaded_by_name: string | null;
 }
 
+// ── SEO Redirects ───────────────���──────────────────────────────���───────────────
+
+export interface SeoRedirect {
+  id: number;
+  from_path: string;
+  to_url: string;
+  status_code: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export const seoRedirectsApi = {
+  list: async (): Promise<SeoRedirect[]> => {
+    const r = await api.get('/seo/redirects/');
+    return r.data;
+  },
+  create: async (payload: { from_path: string; to_url: string; status_code: number }): Promise<SeoRedirect> => {
+    const r = await api.post('/seo/redirects/', payload);
+    return r.data;
+  },
+  update: async (id: number, payload: { to_url?: string; status_code?: number; is_active?: boolean }): Promise<SeoRedirect> => {
+    const r = await api.patch(`/seo/redirects/${id}`, payload);
+    return r.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/seo/redirects/${id}`);
+  },
+};
+
 export const mediaApi = {
   list: async (): Promise<MediaFile[]> => {
     const r = await api.get('/media/');

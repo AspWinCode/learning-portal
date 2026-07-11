@@ -53,3 +53,27 @@ class SeoPageResponse(SeoPageBase):
 class SeoPageListResponse(BaseModel):
     total: int
     items: List[SeoPageResponse]
+
+
+class SeoRedirectBase(BaseModel):
+    from_path: str = Field(max_length=500)
+    to_url: str = Field(max_length=500)
+    status_code: int = Field(default=301)
+    is_active: bool = True
+
+
+class SeoRedirectCreate(SeoRedirectBase):
+    pass
+
+
+class SeoRedirectUpdate(BaseModel):
+    to_url: Optional[str] = Field(default=None, max_length=500)
+    status_code: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class SeoRedirectResponse(SeoRedirectBase):
+    id: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import BlogPost, BlogPostStatus, BlogCategory, SiteSettings
+from app.models import BlogPost, BlogPostStatus, BlogCategory, SiteSettings, CmsPage
 
 router = APIRouter()
 
@@ -131,3 +131,11 @@ def get_public_settings(db: Session = Depends(get_db)):
     if not s:
         return PublicSettingsOut()
     return s
+
+
+@router.get("/cms/{slug}")
+def get_cms_page(slug: str, db: Session = Depends(get_db)):
+    page = db.query(CmsPage).filter(CmsPage.slug == slug).first()
+    if not page:
+        return {}
+    return page.content

@@ -2985,6 +2985,17 @@ class MediaFile(Base):
     uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
 
 
+class CmsPage(Base):
+    """Stores editable content for landing site pages as JSON blobs."""
+    __tablename__ = "cms_pages"
+
+    id = Column(Integer, primary_key=True)
+    slug = Column(String(100), nullable=False, unique=True, index=True)
+    label = Column(String(255), nullable=False)
+    content = Column(JSON, nullable=False, server_default="{}")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class OwnerWorkspaceUserPreference(Base):
     """Персональные настройки UI задачника (JSON, merge при PATCH)."""
 

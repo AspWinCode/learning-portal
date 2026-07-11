@@ -4029,5 +4029,27 @@ export const mediaApi = {
   },
 };
 
+// ─── CMS ─────────────────────────────────────────────────────────────────────
+
+export interface CmsPageMeta {
+  slug: string;
+  label: string;
+  updated_at: string | null;
+}
+
+export const cmsApi = {
+  listPages: async (): Promise<CmsPageMeta[]> => {
+    const res = await apiClient.get('/api/v1/cms/pages');
+    return res.data;
+  },
+  getPage: async (slug: string): Promise<{ slug: string; label: string; content: unknown; updated_at: string | null }> => {
+    const res = await apiClient.get(`/api/v1/cms/pages/${slug}`);
+    return res.data;
+  },
+  savePage: async (slug: string, content: unknown): Promise<void> => {
+    await apiClient.put(`/api/v1/cms/pages/${slug}`, { content });
+  },
+};
+
 export default api;
 

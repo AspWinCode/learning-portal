@@ -2941,6 +2941,25 @@ class BlogPost(Base):
     tags = relationship("BlogTag", secondary="blog_post_tags", back_populates="posts")
 
 
+class SiteSettings(Base):
+    """Singleton (id=1). Создаё��ся при первом PATCH."""
+
+    __tablename__ = "site_settings"
+
+    id = Column(Integer, primary_key=True, default=1)
+    site_title = Column(String(255), nullable=True)
+    site_description = Column(Text, nullable=True)
+    contact_phone = Column(String(100), nullable=True)
+    contact_email = Column(String(255), nullable=True)
+    vk_url = Column(String(500), nullable=True)
+    tg_url = Column(String(500), nullable=True)
+    inst_url = Column(String(500), nullable=True)
+    ga_measurement_id = Column(String(50), nullable=True)
+    ym_counter_id = Column(String(20), nullable=True)
+    vk_pixel_id = Column(String(100), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class SeoRedirect(Base):
     __tablename__ = "seo_redirects"
 

@@ -3955,7 +3955,34 @@ export interface MediaFile {
   uploaded_by_name: string | null;
 }
 
-// ── SEO Redirects ───────────────���──────────────────────────────���───────────────
+// ── Site Settings ─────────────────────────────────────────────────────────────
+
+export interface SiteSettings {
+  site_title: string | null;
+  site_description: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  vk_url: string | null;
+  tg_url: string | null;
+  inst_url: string | null;
+  ga_measurement_id: string | null;
+  ym_counter_id: string | null;
+  vk_pixel_id: string | null;
+  updated_at: string | null;
+}
+
+export const siteSettingsApi = {
+  get: async (): Promise<SiteSettings> => {
+    const r = await api.get('/seo/settings/');
+    return r.data;
+  },
+  update: async (payload: Partial<Omit<SiteSettings, 'updated_at'>>): Promise<SiteSettings> => {
+    const r = await api.patch('/seo/settings/', payload);
+    return r.data;
+  },
+};
+
+// ── SEO Redirects ─────────────────────────────────────────────────────────────
 
 export interface SeoRedirect {
   id: number;

@@ -65,6 +65,7 @@ import {
   RssFeed,
   RocketLaunch,
   SwapHoriz,
+  Tune,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
@@ -406,6 +407,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Страницы сайта', icon: <Description />, path: '/seo/pages' },
         { text: 'Блог', icon: <RssFeed />, path: '/blog/posts' },
         { text: 'Редиректы', icon: <SwapHoriz />, path: '/seo/redirects' },
+        { text: 'Настройки сайта', icon: <Tune />, path: '/seo/site-settings' },
         { text: 'Публикация сайта', icon: <RocketLaunch />, path: '/seo/publish' },
       ];
 

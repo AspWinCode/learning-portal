@@ -17,7 +17,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import SessionLocal
-from app.models import BlogCategory, BlogPost, BlogPostStatus, SeoPage, SeoPageStatus, SeoRedirect
+from app.models import BlogCategory, BlogPost, BlogPostStatus, SeoPage, SeoPageStatus, SeoRedirect, SiteSettings
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +75,16 @@ def _copy_static() -> None:
 
 # ─── Page generators ─────────────────────────────────────────────────────────
 
-def _generate_index(env: Environment, db: Session) -> None:
+def _load_settings(db: Session) -> SiteSettings:
+    obj = db.get(SiteSettings, 1)
+    return obj or SiteSettings()
+
+
+def _base_ctx(settings: SiteSettings) -> dict:
+    return {"settings": settings, "current_year": datetime.now().year}
+
+
+def _generate_index(env: Environment, db: Session, settings: SiteSettings) -> None:
     recent_posts = (
         db.query(BlogPost)
         .options(joinedload(BlogPost.category), joinedload(BlogPost.tags))
@@ -85,15 +94,12 @@ def _generate_index(env: Environment, db: Session) -> None:
         .all()
     )
     tmpl = env.get_template("index.html")
-    html = tmpl.render(
-        blog_posts=recent_posts,
-        current_year=datetime.now().year,
-    )
+    html = tmpl.render(blog_posts=recent_posts, **_base_ctx(settings))
     _write(OUTPUT_DIR / "index.html", html)
     log.info("generated index.html")
 
 
-def _generate_seo_pages(env: Environment, db: Session) -> None:
+def _generate_seo_pages(env: Environment, db: Session, settings: SiteSettings) -> None:
     pages = (
         db.query(SeoPage)
         .filter(SeoPage.status == SeoPageStatus.PUBLISHED)
@@ -101,12 +107,12 @@ def _generate_seo_pages(env: Environment, db: Session) -> None:
     )
     tmpl = env.get_template("page.html")
     for page in pages:
-        html = tmpl.render(page=page, current_year=datetime.now().year)
+        html = tmpl.render(page=page, **_base_ctx(settings))
         _write(OUTPUT_DIR / f"{page.slug}.html", html)
     log.info("generated %d seo pages", len(pages))
 
 
-def _generate_blog_list(env: Environment, db: Session) -> None:
+def _generate_blog_list(env: Environment, db: Session, settings: SiteSettings) -> None:
     posts = (
         db.query(BlogPost)
         .options(joinedload(BlogPost.category), joinedload(BlogPost.tags))
@@ -120,7 +126,7 @@ def _generate_blog_list(env: Environment, db: Session) -> None:
         posts=posts,
         categories=categories,
         current_category=None,
-        current_year=datetime.now().year,
+        **_base_ctx(settings),
     )
     blog_dir = OUTPUT_DIR / "blog"
     blog_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +134,7 @@ def _generate_blog_list(env: Environment, db: Session) -> None:
     log.info("generated blog/index.html (%d posts)", len(posts))
 
 
-def _generate_blog_posts(env: Environment, db: Session) -> None:
+def _generate_blog_posts(env: Environment, db: Session, settings: SiteSettings) -> None:
     posts = (
         db.query(BlogPost)
         .options(joinedload(BlogPost.category), joinedload(BlogPost.tags))
@@ -137,7 +143,7 @@ def _generate_blog_posts(env: Environment, db: Session) -> None:
     )
     tmpl = env.get_template("blog/post.html")
     for post in posts:
-        html = tmpl.render(post=post, current_year=datetime.now().year)
+        html = tmpl.render(post=post, **_base_ctx(settings))
         _write(OUTPUT_DIR / "blog" / f"{post.slug}.html", html)
     log.info("generated %d blog posts", len(posts))
 
@@ -256,11 +262,12 @@ def generate_site() -> dict:
 
     db: Session = SessionLocal()
     try:
+        settings = _load_settings(db)
         _copy_static()
-        _generate_index(env, db)
-        _generate_seo_pages(env, db)
-        _generate_blog_list(env, db)
-        _generate_blog_posts(env, db)
+        _generate_index(env, db, settings)
+        _generate_seo_pages(env, db, settings)
+        _generate_blog_list(env, db, settings)
+        _generate_blog_posts(env, db, settings)
         _generate_redirects(db)
         _generate_sitemap(db)
         _generate_robots_txt()

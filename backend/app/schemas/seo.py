@@ -55,6 +55,35 @@ class SeoPageListResponse(BaseModel):
     items: List[SeoPageResponse]
 
 
+class SiteSettingsResponse(BaseModel):
+    site_title: Optional[str] = None
+    site_description: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+    vk_url: Optional[str] = None
+    tg_url: Optional[str] = None
+    inst_url: Optional[str] = None
+    ga_measurement_id: Optional[str] = None
+    ym_counter_id: Optional[str] = None
+    vk_pixel_id: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SiteSettingsUpdate(BaseModel):
+    site_title: Optional[str] = Field(default=None, max_length=255)
+    site_description: Optional[str] = None
+    contact_phone: Optional[str] = Field(default=None, max_length=100)
+    contact_email: Optional[str] = Field(default=None, max_length=255)
+    vk_url: Optional[str] = Field(default=None, max_length=500)
+    tg_url: Optional[str] = Field(default=None, max_length=500)
+    inst_url: Optional[str] = Field(default=None, max_length=500)
+    ga_measurement_id: Optional[str] = Field(default=None, max_length=50)
+    ym_counter_id: Optional[str] = Field(default=None, max_length=20)
+    vk_pixel_id: Optional[str] = Field(default=None, max_length=100)
+
+
 class SeoRedirectBase(BaseModel):
     from_path: str = Field(max_length=500)
     to_url: str = Field(max_length=500)

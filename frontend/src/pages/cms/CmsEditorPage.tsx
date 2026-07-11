@@ -74,6 +74,7 @@ const PAGE_GROUPS = [
       { slug: 'header', label: '🔝 Шапка (навигация)' },
       { slug: 'footer', label: '🔻 Подвал (футер)' },
       { slug: 'branding', label: '🎨 Брендинг / Цвета' },
+      { slug: 'announcement', label: '📣 Объявление' },
     ],
   },
 ];
@@ -1422,6 +1423,61 @@ function FooterEditor({ content, onChange }: { content: any; onChange: (c: any) 
   );
 }
 
+// ─── Announcement Editor ─────────────────────────────────────────────────────
+
+function AnnouncementEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const enabled: boolean = content.enabled === true;
+  const currentStyle: string = content.style || 'brand';
+
+  return (
+    <Stack spacing={3}>
+      <Alert severity="info">
+        Баннер показывается вверху всех страниц сайта. Посетитель может закрыть его — он не появится снова до следующего открытия браузера. Новый текст объявления снова виден всем.
+      </Alert>
+      <Stack direction="row" spacing={2} alignItems="center">
+        <Typography variant="subtitle2" fontWeight={700}>Статус:</Typography>
+        <Chip
+          label={enabled ? '✓ Включён' : '✗ Выключен'}
+          color={enabled ? 'success' : 'default'}
+          onClick={() => onChange({ ...content, enabled: !enabled })}
+          sx={{ cursor: 'pointer', fontWeight: 600 }}
+        />
+      </Stack>
+      <TF
+        label="Текст баннера"
+        value={content.text || ''}
+        onChange={(v) => onChange({ ...content, text: v })}
+        placeholder="Записи на август открыты — успейте занять место!"
+      />
+      <TF
+        label="Ссылка (необязательно)"
+        value={content.href || ''}
+        onChange={(v) => onChange({ ...content, href: v })}
+        placeholder="/besplatnyj-probnyj-urok"
+      />
+      <Box>
+        <Typography variant="subtitle2" fontWeight={700} mb={1}>Стиль</Typography>
+        <Stack direction="row" spacing={1}>
+          {[
+            { value: 'brand', label: 'Цвет бренда' },
+            { value: 'green', label: 'Зелёный' },
+            { value: 'yellow', label: 'Оранжевый' },
+          ].map((s) => (
+            <Chip
+              key={s.value}
+              label={s.label}
+              onClick={() => onChange({ ...content, style: s.value })}
+              variant={currentStyle === s.value ? 'filled' : 'outlined'}
+              color={currentStyle === s.value ? 'primary' : 'default'}
+              sx={{ cursor: 'pointer' }}
+            />
+          ))}
+        </Stack>
+      </Box>
+    </Stack>
+  );
+}
+
 // ─── Branding Editor ──────────────────────────────────────────────────────────
 
 const BRAND_PRESETS = [
@@ -1578,6 +1634,7 @@ function PageEditor({ slug, content, onChange }: { slug: string; content: any; o
   if (slug === 'header') return <HeaderEditor content={content} onChange={onChange} />;
   if (slug === 'footer') return <FooterEditor content={content} onChange={onChange} />;
   if (slug === 'branding') return <BrandingEditor content={content} onChange={onChange} />;
+  if (slug === 'announcement') return <AnnouncementEditor content={content} onChange={onChange} />;
   return <HeroFaqEditor content={content} onChange={onChange} />;
 }
 

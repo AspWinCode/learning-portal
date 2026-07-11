@@ -47,6 +47,7 @@ from app.routers import (
     search,
     blog,
     media,
+    public_api,
     public_site,
     seo_pages,
     seo_redirects,
@@ -455,6 +456,7 @@ app.include_router(site_settings.router, prefix="/api/v1/seo/settings", tags=["s
 app.include_router(blog.router, prefix="/api/v1/blog", tags=["blog"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 app.include_router(public_site.router, prefix="/api/v1/public-site", tags=["public-site"])
+app.include_router(public_api.router, prefix="/api/v1/public", tags=["public"])
 
 
 @app.exception_handler(Exception)

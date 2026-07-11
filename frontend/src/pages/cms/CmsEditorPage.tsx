@@ -850,15 +850,41 @@ function HomeEditor({ content, onChange }: { content: any; onChange: (c: any) =>
   const hero = content.hero || {};
   const stats: any[] = content.stats || [];
   const reviews: any[] = content.reviews || [];
+  const adv = content.advantages || {};
+  const advItems: any[] = adv.items || [];
+  const tracks = content.tracks || {};
+  const trackItems: any[] = tracks.items || [];
+  const path = content.path || {};
+  const pathSteps: any[] = path.steps || [];
+  const promos = content.promos || {};
+  const promoItems: any[] = promos.items || [];
+  const lms = content.lms || {};
+  const lmsFeatures: string[] = lms.features || [];
+  const ctaFinal = content.cta_final || {};
   const [tab, setTab] = useState(0);
 
   const setHero = (k: string, v: string) => onChange({ ...content, hero: { ...hero, [k]: v } });
+  const setSection = (key: string, patch: any) => onChange({ ...content, [key]: { ...(content[key] || {}), ...patch } });
+
+  const TRACK_LABELS = ['Игровая студия', 'Кодэкс', 'ТехноЛаб'];
+  const STEP_LABELS = ['Шаг 01', 'Шаг 02', 'Шаг 03'];
 
   return (
     <Box>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Tab label="Герой" /><Tab label={`Статистика (${stats.length})`} /><Tab label={`Отзывы (${reviews.length})`} />
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto"
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Герой" />
+        <Tab label={`Статистика (${stats.length})`} />
+        <Tab label={`Отзывы (${reviews.length})`} />
+        <Tab label="Преимущества" />
+        <Tab label="Треки" />
+        <Tab label="Путь ученика" />
+        <Tab label={`Акции (${promoItems.length})`} />
+        <Tab label="LMS-секция" />
+        <Tab label="Финальный CTA" />
       </Tabs>
+
+      {/* Герой */}
       {tab === 0 && (
         <Stack spacing={2}>
           <TF label="Бейдж" value={hero.badge || ''} onChange={(v) => setHero('badge', v)} />
@@ -875,6 +901,8 @@ function HomeEditor({ content, onChange }: { content: any; onChange: (c: any) =>
           </Stack>
         </Stack>
       )}
+
+      {/* Статистика */}
       {tab === 1 && (
         <Stack spacing={2}>
           {stats.map((s, i) => (
@@ -900,6 +928,8 @@ function HomeEditor({ content, onChange }: { content: any; onChange: (c: any) =>
           <Button startIcon={<AddIcon />} onClick={() => onChange({ ...content, stats: [...stats, { value: '', label: '', highlight: false }] })} variant="outlined" size="small">Добавить</Button>
         </Stack>
       )}
+
+      {/* Отзывы */}
       {tab === 2 && (
         <Stack spacing={2}>
           {reviews.map((r, i) => (
@@ -920,6 +950,168 @@ function HomeEditor({ content, onChange }: { content: any; onChange: (c: any) =>
             </Paper>
           ))}
           <Button startIcon={<AddIcon />} onClick={() => onChange({ ...content, reviews: [...reviews, { name: '', role: '', text: '', initials: '' }] })} variant="outlined" size="small">Добавить отзыв</Button>
+        </Stack>
+      )}
+
+      {/* Преимущества */}
+      {tab === 3 && (
+        <Stack spacing={2}>
+          <Stack direction="row" spacing={2}>
+            <TF label="Заголовок секции" value={adv.heading || ''} onChange={(v) => setSection('advantages', { heading: v })} />
+            <TF label="Подзаголовок" value={adv.subheading || ''} onChange={(v) => setSection('advantages', { subheading: v })} />
+          </Stack>
+          <Typography variant="caption" color="text.secondary">Карточки преимуществ (иконки по позиции: Книга / График / Люди / Наушники)</Typography>
+          {advItems.map((item, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Typography variant="caption" sx={{ minWidth: 24, fontWeight: 700 }}>#{i + 1}</Typography>
+                  <TF label="Заголовок" value={item.title || ''} onChange={(v) => onChange({ ...content, advantages: { ...adv, items: advItems.map((x, idx) => idx === i ? { ...x, title: v } : x) } })} />
+                  <IconButton size="small" color="error" onClick={() => onChange({ ...content, advantages: { ...adv, items: advItems.filter((_, idx) => idx !== i) } })}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+                <TF label="Описание" value={item.description || ''} multiline rows={2} onChange={(v) => onChange({ ...content, advantages: { ...adv, items: advItems.map((x, idx) => idx === i ? { ...x, description: v } : x) } })} />
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} variant="outlined" size="small"
+            onClick={() => onChange({ ...content, advantages: { ...adv, items: [...advItems, { title: '', description: '' }] } })}>
+            Добавить карточку
+          </Button>
+        </Stack>
+      )}
+
+      {/* Треки */}
+      {tab === 4 && (
+        <Stack spacing={2}>
+          <Stack direction="row" spacing={2}>
+            <TF label="Заголовок секции" value={tracks.heading || ''} onChange={(v) => setSection('tracks', { heading: v })} />
+            <TF label="Подзаголовок" value={tracks.subheading || ''} onChange={(v) => setSection('tracks', { subheading: v })} />
+          </Stack>
+          <Typography variant="caption" color="text.secondary">Цвета треков фиксированы (фиолетовый / синий / зелёный). Редактируются только тексты.</Typography>
+          {[0, 1, 2].map((i) => {
+            const t = trackItems[i] || {};
+            const upd = (patch: any) => {
+              const arr = [0, 1, 2].map((j) => j === i ? { ...(trackItems[j] || {}), ...patch } : (trackItems[j] || {}));
+              onChange({ ...content, tracks: { ...tracks, items: arr } });
+            };
+            return (
+              <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" fontWeight={700} mb={1.5}>{TRACK_LABELS[i]}</Typography>
+                <Stack spacing={1.5}>
+                  <Stack direction="row" spacing={2}>
+                    <TF label="Название трека" value={t.title || ''} onChange={(v) => upd({ title: v })} />
+                    <TF label="Возраст" value={t.age || ''} onChange={(v) => upd({ age: v })} sx={{ maxWidth: 140 }} />
+                  </Stack>
+                  <TF label="Нарратив (подзаголовок)" value={t.narrative || ''} onChange={(v) => upd({ narrative: v })} />
+                  <TF label="Описание" value={t.description || ''} multiline rows={3} onChange={(v) => upd({ description: v })} />
+                  <TF label="Ссылка (href)" value={t.href || ''} onChange={(v) => upd({ href: v })} placeholder={`/${['game-studio','kodeks','technolab'][i]}`} />
+                  <StringListEditor label="Теги" items={t.tags || []} onChange={(v) => upd({ tags: v })} />
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+      )}
+
+      {/* Путь ученика */}
+      {tab === 5 && (
+        <Stack spacing={2}>
+          <Stack direction="row" spacing={2}>
+            <TF label="Заголовок секции" value={path.heading || ''} onChange={(v) => setSection('path', { heading: v })} />
+            <TF label="Подзаголовок" value={path.subheading || ''} onChange={(v) => setSection('path', { subheading: v })} />
+          </Stack>
+          <Typography variant="caption" color="text.secondary">Номера шагов (01/02/03) и цвета фиксированы.</Typography>
+          {[0, 1, 2].map((i) => {
+            const s = pathSteps[i] || {};
+            const upd = (patch: any) => {
+              const arr = [0, 1, 2].map((j) => j === i ? { ...(pathSteps[j] || {}), ...patch } : (pathSteps[j] || {}));
+              onChange({ ...content, path: { ...path, steps: arr } });
+            };
+            return (
+              <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" fontWeight={700} mb={1.5}>{STEP_LABELS[i]}</Typography>
+                <Stack spacing={1.5}>
+                  <Stack direction="row" spacing={2}>
+                    <TF label="Название трека" value={s.track || ''} onChange={(v) => upd({ track: v })} />
+                    <TF label="Возраст" value={s.age || ''} onChange={(v) => upd({ age: v })} sx={{ maxWidth: 140 }} />
+                  </Stack>
+                  <TF label="Описание" value={s.description || ''} multiline rows={2} onChange={(v) => upd({ description: v })} />
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+      )}
+
+      {/* Акции */}
+      {tab === 6 && (
+        <Stack spacing={2}>
+          <Stack direction="row" spacing={2}>
+            <TF label="Заголовок секции" value={promos.heading || ''} onChange={(v) => setSection('promos', { heading: v })} />
+            <TF label="Подзаголовок" value={promos.subheading || ''} onChange={(v) => setSection('promos', { subheading: v })} />
+          </Stack>
+          {promoItems.map((promo, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <TF label="Бейдж" value={promo.badge || ''} onChange={(v) => onChange({ ...content, promos: { ...promos, items: promoItems.map((x, idx) => idx === i ? { ...x, badge: v } : x) } })} sx={{ maxWidth: 180 }} />
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="caption">Выделить:</Typography>
+                    <Chip size="small" label={promo.highlight ? 'Да (brand)' : 'Нет'} color={promo.highlight ? 'primary' : 'default'}
+                      onClick={() => onChange({ ...content, promos: { ...promos, items: promoItems.map((x, idx) => idx === i ? { ...x, highlight: !x.highlight } : x) } })}
+                      sx={{ cursor: 'pointer' }} />
+                  </Stack>
+                  <Box flex={1} />
+                  <IconButton size="small" color="error" onClick={() => onChange({ ...content, promos: { ...promos, items: promoItems.filter((_, idx) => idx !== i) } })}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+                <TF label="Заголовок" value={promo.title || ''} onChange={(v) => onChange({ ...content, promos: { ...promos, items: promoItems.map((x, idx) => idx === i ? { ...x, title: v } : x) } })} />
+                <TF label="Описание" value={promo.desc || ''} multiline rows={2} onChange={(v) => onChange({ ...content, promos: { ...promos, items: promoItems.map((x, idx) => idx === i ? { ...x, desc: v } : x) } })} />
+                <Stack direction="row" spacing={2}>
+                  <TF label="Текст кнопки" value={promo.cta || ''} onChange={(v) => onChange({ ...content, promos: { ...promos, items: promoItems.map((x, idx) => idx === i ? { ...x, cta: v } : x) } })} sx={{ maxWidth: 200 }} />
+                  <TF label="Ссылка (href)" value={promo.href || ''} onChange={(v) => onChange({ ...content, promos: { ...promos, items: promoItems.map((x, idx) => idx === i ? { ...x, href: v } : x) } })} />
+                </Stack>
+              </Stack>
+            </Paper>
+          ))}
+          <Button startIcon={<AddIcon />} variant="outlined" size="small"
+            onClick={() => onChange({ ...content, promos: { ...promos, items: [...promoItems, { badge: '', title: '', desc: '', cta: 'Подробнее', href: '/kontakty', highlight: false }] } })}>
+            Добавить акцию
+          </Button>
+        </Stack>
+      )}
+
+      {/* LMS-секция */}
+      {tab === 7 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={lms.heading || ''} onChange={(v) => setSection('lms', { heading: v })} />
+          <TF label="Описание" value={lms.description || ''} multiline rows={4} onChange={(v) => setSection('lms', { description: v })} />
+          <StringListEditor label="Возможности LMS (список)" items={lmsFeatures}
+            onChange={(v) => setSection('lms', { features: v })} />
+          <Stack direction="row" spacing={2}>
+            <TF label="Текст ссылки" value={lms.cta_text || ''} onChange={(v) => setSection('lms', { cta_text: v })} />
+            <TF label="URL кабинета" value={lms.cta_href || ''} onChange={(v) => setSection('lms', { cta_href: v })} />
+          </Stack>
+        </Stack>
+      )}
+
+      {/* Финальный CTA */}
+      {tab === 8 && (
+        <Stack spacing={2}>
+          <TF label="Заголовок" value={ctaFinal.heading || ''} onChange={(v) => setSection('cta_final', { heading: v })} />
+          <TF label="Подзаголовок" value={ctaFinal.subtext || ''} multiline rows={2} onChange={(v) => setSection('cta_final', { subtext: v })} />
+          <Stack direction="row" spacing={2}>
+            <TF label="Кнопка 1 — текст" value={ctaFinal.btn_primary || ''} onChange={(v) => setSection('cta_final', { btn_primary: v })} />
+            <TF label="Кнопка 1 — ссылка" value={ctaFinal.btn_primary_href || ''} onChange={(v) => setSection('cta_final', { btn_primary_href: v })} />
+          </Stack>
+          <Stack direction="row" spacing={2}>
+            <TF label="Кнопка 2 — текст" value={ctaFinal.btn_secondary || ''} onChange={(v) => setSection('cta_final', { btn_secondary: v })} />
+            <TF label="Кнопка 2 — ссылка" value={ctaFinal.btn_secondary_href || ''} onChange={(v) => setSection('cta_final', { btn_secondary_href: v })} />
+          </Stack>
+          <TF label="Подпись под кнопками" value={ctaFinal.note || ''} onChange={(v) => setSection('cta_final', { note: v })} placeholder="Ответим в течение часа. Без спама." />
         </Stack>
       )}
     </Box>

@@ -1,127 +1,74 @@
+"""
+Media router — image upload for CMS pages.
+Upload requires seo.manage; serving files is public (no auth).
+Files stored under DISK_STORAGE_ROOT/media/.
+"""
 import os
-import uuid
 from pathlib import Path
-from typing import List
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session, joinedload
+from pydantic import BaseModel
 
 from app.auth import require_permission
-from app.database import get_db
-from app.models import MediaFile
-from app.routers.action_log import log_action
-from app.schemas.media import MediaFileResponse
+from app.models import User
 
 router = APIRouter()
 
-MEDIA_ROOT = Path(os.getenv("PUBLIC_SITE_OUTPUT_DIR", "/app/public_site")) / "uploads"
-ALLOWED_MIME = {
-    "image/jpeg", "image/png", "image/gif", "image/webp",
-    "image/svg+xml", "image/avif",
-}
-MAX_SIZE = 10 * 1024 * 1024  # 10 MB
+_DISK_ROOT = Path(os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")).resolve()
+MEDIA_ROOT = _DISK_ROOT / "media"
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"}
+EXT_MAP = {"jpeg": "jpg", "jpg": "jpg", "png": "png", "webp": "webp", "gif": "gif", "svg": "svg"}
+
+PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "https://tirskix.space")
 
 
-def _ensure_dir() -> None:
-    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+class MediaUploadOut(BaseModel):
+    url: str
+    key: str
 
 
-def _to_response(m: MediaFile) -> MediaFileResponse:
-    name = m.uploaded_by.first_name + " " + m.uploaded_by.last_name if m.uploaded_by else None
-    return MediaFileResponse(
-        id=m.id,
-        filename=m.filename,
-        original_name=m.original_name,
-        size=m.size,
-        mime_type=m.mime_type,
-        url=f"/api/v1/media/files/{m.filename}",
-        created_at=m.created_at,
-        uploaded_by_name=name,
-    )
-
-
-@router.get("/", response_model=List[MediaFileResponse])
-def list_media(
-    db: Session = Depends(get_db),
-    current_user=Depends(require_permission("seo.access")),
-):
-    files = (
-        db.query(MediaFile)
-        .options(joinedload(MediaFile.uploaded_by))
-        .order_by(MediaFile.created_at.desc())
-        .all()
-    )
-    return [_to_response(f) for f in files]
-
-
-@router.post("/upload", response_model=MediaFileResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=MediaUploadOut)
 async def upload_media(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user=Depends(require_permission("seo.manage")),
+    current_user: User = Depends(require_permission("seo.manage")),
 ):
-    if file.content_type not in ALLOWED_MIME:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Тип файла не поддерживается: {file.content_type}",
-        )
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=415, detail=f"Неподдерживаемый тип файла: {file.content_type}. Разрешены: JPEG, PNG, WebP, GIF, SVG")
 
-    data = await file.read()
-    if len(data) > MAX_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Файл слишком большой (максимум 10 МБ)",
-        )
+    data = await file.read(MAX_IMAGE_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Файл слишком большой (макс. 10 МБ)")
 
-    ext = Path(file.filename or "file").suffix.lower() or ".jpg"
-    unique_name = f"{uuid.uuid4().hex}{ext}"
+    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
-    _ensure_dir()
-    dest = MEDIA_ROOT / unique_name
+    raw_ext = (file.filename or "image").rsplit(".", 1)[-1].lower()
+    ext = EXT_MAP.get(raw_ext, "jpg")
+    key = f"{uuid4().hex}.{ext}"
+
+    dest = (MEDIA_ROOT / key).resolve()
+    if MEDIA_ROOT not in dest.parents:
+        raise HTTPException(status_code=500, detail="Ошибка хранилища")
+
     dest.write_bytes(data)
-
-    record = MediaFile(
-        filename=unique_name,
-        original_name=file.filename or unique_name,
-        size=len(data),
-        mime_type=file.content_type,
-        uploaded_by_id=current_user.id,
-    )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-    db.refresh(record, ["uploaded_by"])
-
-    log_action(db, current_user.id, "media_upload", f"Загружен файл: {file.filename}")
-    return _to_response(record)
+    return MediaUploadOut(url=f"{PORTAL_BASE_URL}/api/v1/media/files/{key}", key=key)
 
 
-@router.get("/files/{filename}")
-def serve_file(filename: str):
-    _ensure_dir()
-    # Sanitise: no path traversal
-    safe_name = Path(filename).name
-    path = MEDIA_ROOT / safe_name
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Файл не найден")
-    return FileResponse(str(path))
+@router.get("/files/{key}")
+async def serve_media(key: str):
+    if "/" in key or "\\" in key or ".." in key:
+        raise HTTPException(status_code=400, detail="Неверный ключ")
 
-
-@router.delete("/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_media(
-    media_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(require_permission("seo.manage")),
-):
-    record = db.get(MediaFile, media_id)
-    if not record:
+    path = (MEDIA_ROOT / key).resolve()
+    if MEDIA_ROOT not in path.parents or not path.exists():
         raise HTTPException(status_code=404, detail="Файл не найден")
 
-    path = MEDIA_ROOT / record.filename
-    if path.exists():
-        path.unlink()
+    ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+    ct = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp",
+          "gif": "image/gif", "svg": "image/svg+xml"}.get(ext, "application/octet-stream")
 
-    log_action(db, current_user.id, "media_delete", f"Удалён файл: {record.original_name}")
-    db.delete(record)
-    db.commit()
+    return FileResponse(path, media_type=ct, headers={"Cache-Control": "public, max-age=31536000, immutable"})

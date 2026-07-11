@@ -44,6 +44,9 @@ x-app-common-env: &app_common_env
   SENTRY_DSN: ${SENTRY_DSN:-}
   PUBLIC_SITE_OUTPUT_DIR: /app/public_site
   ACADEMY_DOMAIN: ${ACADEMY_DOMAIN:-academy.example.com}
+  LANDING_URL: ${LANDING_URL:-https://tirskix-academy.com}
+  LANDING_REVALIDATE_SECRET: ${LANDING_REVALIDATE_SECRET:-cms_revalidate_secret_2026}
+  PORTAL_BASE_URL: ${PORTAL_BASE_URL:-https://tirskix.space}
   SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
   APP_RELEASE: ${APP_RELEASE:-}
 

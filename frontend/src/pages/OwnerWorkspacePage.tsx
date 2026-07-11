@@ -959,6 +959,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskOverdueOnly, setTaskOverdueOnly] = useState(false);
   const [taskActiveOnly, setTaskActiveOnly] = useState(true);
   const [taskAssigneeFilter, setTaskAssigneeFilter] = useState<number | ''>('');
+  const [repeatTaskNotice, setRepeatTaskNotice] = useState<OwnerWorkspaceTask | null>(null);
   const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar' | 'gantt'>('list');
   // Сворачиваемые панели вкладки «Задачи» (уменьшают визуальный перегруз)
   const [showFiltersPanel, setShowFiltersPanel] = useState(
@@ -2780,7 +2781,10 @@ const OwnerWorkspacePage: React.FC = () => {
     }
     try {
       if (completeMode === 'close') {
-        await ownerWorkspaceApi.completeTask(completeDialogTask.id, { action: 'close' });
+        const res = await ownerWorkspaceApi.completeTask(completeDialogTask.id, { action: 'close' });
+        if (res.next_task) {
+          setRepeatTaskNotice(res.next_task);
+        }
       } else {
         const res = await ownerWorkspaceApi.completeTask(completeDialogTask.id, {
           action: 'close_and_create_next',
@@ -5591,6 +5595,24 @@ const OwnerWorkspacePage: React.FC = () => {
       {maxSyncResult && (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setMaxSyncResult(null)}>
           {maxSyncResult}
+        </Alert>
+      )}
+      {repeatTaskNotice && (
+        <Alert
+          severity="success"
+          sx={{ mb: 2 }}
+          onClose={() => setRepeatTaskNotice(null)}
+          action={
+            <Button
+              size="small"
+              color="inherit"
+              onClick={() => { void openTaskDialog(repeatTaskNotice); setRepeatTaskNotice(null); }}
+            >
+              Открыть
+            </Button>
+          }
+        >
+          Создана повторная задача: <strong>{repeatTaskNotice.title}</strong>
         </Alert>
       )}
       <Box

@@ -2,9 +2,11 @@
 CMS router — manages landing page content (home, faq, o-nas, etc.).
 Content is stored as JSON blobs per page slug.
 """
+import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,6 +15,9 @@ from app.database import get_db
 from app.models import CmsPage
 from app.auth import require_permission
 from app.models import User
+
+LANDING_URL = os.getenv("LANDING_URL", "https://tirskix-academy.com")
+LANDING_REVALIDATE_SECRET = os.getenv("LANDING_REVALIDATE_SECRET", "")
 
 router = APIRouter()
 
@@ -41,7 +46,14 @@ KNOWN_PAGES = {
     "legal-oferta":                      "Юридическое · Публичная оферта",
     "legal-privacy":                     "Юридическое · Политика конфиденциальности",
     "legal-terms":                       "Юридическое · Пользовательское соглашение",
+    "header":                            "Шапка · Навигация",
+    "footer":                            "Подвал · Футер",
+    "branding":                          "Брендинг · Цвета",
 }
+
+
+class CmsRevalidateIn(BaseModel):
+    slug: Optional[str] = None  # None or "*" = revalidate all
 
 
 class CmsPageOut(BaseModel):
@@ -117,3 +129,26 @@ def upsert_page(
     db.commit()
     db.refresh(page)
     return page
+
+
+@router.post("/revalidate")
+async def revalidate_cache(
+    payload: CmsRevalidateIn = CmsRevalidateIn(),
+    current_user: User = Depends(require_permission("seo.manage")),
+):
+    """Trigger Next.js on-demand ISR revalidation for a landing page."""
+    if not LANDING_REVALIDATE_SECRET:
+        raise HTTPException(status_code=503, detail="Revalidation not configured (LANDING_REVALIDATE_SECRET missing)")
+
+    url = f"{LANDING_URL}/api/revalidate?secret={LANDING_REVALIDATE_SECRET}"
+    body = {"slug": payload.slug or "*"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=body)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Landing returned {resp.status_code}: {resp.text[:200]}")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Cannot reach landing: {exc}")
+
+    return {"ok": True, "revalidated": body["slug"]}

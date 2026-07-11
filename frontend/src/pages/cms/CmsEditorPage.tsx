@@ -1,15 +1,19 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
+  Accordion, AccordionDetails, AccordionSummary,
   Alert, Box, Button, CircularProgress, Chip, Divider, IconButton,
   List, ListItemButton, ListItemText, ListSubheader, Paper, Stack,
   Tab, Tabs, TextField, Typography,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
+import BoltIcon from '@mui/icons-material/Bolt';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import Layout from '../../components/Layout';
-import { cmsApi } from '../../services/api';
+import { cmsApi, mediaApi } from '../../services/api';
 import { extractApiError } from '../../utils/extractApiError';
 
 // ─── Pages registry ───────────────────────────────────────────────────────────
@@ -61,6 +65,14 @@ const PAGE_GROUPS = [
       { slug: 'legal-oferta', label: '📄 Публичная оферта' },
       { slug: 'legal-privacy', label: '🔒 Политика конф.' },
       { slug: 'legal-terms', label: '📋 Пользоват. соглашение' },
+    ],
+  },
+  {
+    group: 'Оболочка сайта',
+    pages: [
+      { slug: 'header', label: '🔝 Шапка (навигация)' },
+      { slug: 'footer', label: '🔻 Подвал (футер)' },
+      { slug: 'branding', label: '🎨 Брендинг / Цвета' },
     ],
   },
 ];
@@ -1093,6 +1105,215 @@ function LegalEditor({ content, onChange }: { content: any; onChange: (c: any) =
 
 // ─── Editor router ────────────────────────────────────────────────────────────
 
+// ─── Header Editor ────────────────────────────────────────────────────────────
+
+function HeaderEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const links: { label: string; href: string }[] = Array.isArray(content.nav_links) ? content.nav_links : [
+    { label: 'Игровая студия', href: '/game-studio' },
+    { label: 'Кодэкс', href: '/kodeks' },
+    { label: 'ТехноЛаб', href: '/technolab' },
+    { label: 'Направления', href: '/napravleniya-razrabotki' },
+    { label: 'Мероприятия', href: '/aktivnosti' },
+    { label: 'Блог', href: '/blog' },
+    { label: 'О нас', href: '/o-nas' },
+  ];
+  const setLinks = (v: typeof links) => onChange({ ...content, nav_links: v });
+  const setLink = (i: number, field: 'label' | 'href', val: string) => {
+    const next = links.map((l, idx) => idx === i ? { ...l, [field]: val } : l);
+    setLinks(next);
+  };
+
+  return (
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="subtitle2" fontWeight={700} mb={1}>Пункты навигации</Typography>
+        <Stack spacing={1}>
+          {links.map((l, i) => (
+            <Stack key={i} direction="row" spacing={1} alignItems="center">
+              <TextField size="small" label="Название" value={l.label} sx={{ flex: 1 }}
+                onChange={(e) => setLink(i, 'label', e.target.value)} />
+              <TextField size="small" label="Ссылка (/путь)" value={l.href} sx={{ flex: 1 }}
+                onChange={(e) => setLink(i, 'href', e.target.value)} />
+              <IconButton size="small" color="error" onClick={() => setLinks(links.filter((_, idx) => idx !== i))}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          ))}
+        </Stack>
+        <Button size="small" startIcon={<AddIcon />} sx={{ mt: 1 }}
+          onClick={() => setLinks([...links, { label: '', href: '/' }])}>
+          Добавить пункт
+        </Button>
+      </Box>
+      <Divider />
+      <Box>
+        <Typography variant="subtitle2" fontWeight={700} mb={1}>Кнопка CTA (правый угол)</Typography>
+        <Stack direction="row" spacing={2}>
+          <TF label="Текст кнопки" value={content.cta_label ?? ''} onChange={(v) => onChange({ ...content, cta_label: v })} />
+          <TF label="Ссылка кнопки" value={content.cta_href ?? ''} onChange={(v) => onChange({ ...content, cta_href: v })} />
+        </Stack>
+        <Typography variant="caption" color="text.secondary">По умолчанию: «Пробный урок» → /besplatnyj-probnyj-urok</Typography>
+      </Box>
+    </Stack>
+  );
+}
+
+// ─── Footer Editor ────────────────────────────────────────────────────────────
+
+function FooterColumnEditor({ col, onChange }: { col: { title: string; links: { label: string; href: string }[] }; onChange: (c: typeof col) => void }) {
+  const setLink = (i: number, field: 'label' | 'href', val: string) => {
+    const next = col.links.map((l, idx) => idx === i ? { ...l, [field]: val } : l);
+    onChange({ ...col, links: next });
+  };
+  return (
+    <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
+      <TextField size="small" label="Заголовок колонки" value={col.title} fullWidth sx={{ mb: 1.5 }}
+        onChange={(e) => onChange({ ...col, title: e.target.value })} />
+      <Stack spacing={1}>
+        {col.links.map((l, i) => (
+          <Stack key={i} direction="row" spacing={1} alignItems="center">
+            <TextField size="small" label="Название" value={l.label} sx={{ flex: 1 }}
+              onChange={(e) => setLink(i, 'label', e.target.value)} />
+            <TextField size="small" label="Ссылка" value={l.href} sx={{ flex: 1 }}
+              onChange={(e) => setLink(i, 'href', e.target.value)} />
+            <IconButton size="small" color="error"
+              onClick={() => onChange({ ...col, links: col.links.filter((_, idx) => idx !== i) })}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+        ))}
+      </Stack>
+      <Button size="small" startIcon={<AddIcon />} sx={{ mt: 1 }}
+        onClick={() => onChange({ ...col, links: [...col.links, { label: '', href: '/' }] })}>
+        Добавить ссылку
+      </Button>
+    </Box>
+  );
+}
+
+function FooterEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const defaultColumns = [
+    { title: 'Треки', links: [{ label: 'Игровая студия', href: '/game-studio' }, { label: 'Кодэкс', href: '/kodeks' }, { label: 'ТехноЛаб', href: '/technolab' }] },
+    { title: 'Продукты', links: [{ label: 'Направления разработки', href: '/napravleniya-razrabotki' }, { label: 'Подготовка к ОГЭ', href: '/podgotovka-k-oge-po-informatike' }, { label: 'Инд. занятия', href: '/individualnye-zanyatiya' }] },
+    { title: 'Компания', links: [{ label: 'О нас', href: '/o-nas' }, { label: 'Блог', href: '/blog' }, { label: 'Контакты', href: '/kontakty' }] },
+  ];
+  const columns = Array.isArray(content.columns) ? content.columns : defaultColumns;
+  const setCol = (i: number, col: typeof columns[0]) => {
+    const next = columns.map((c: any, idx: number) => idx === i ? col : c);
+    onChange({ ...content, columns: next });
+  };
+
+  return (
+    <Stack spacing={3}>
+      <Stack direction="row" spacing={2}>
+        <TF label="Подпись под логотипом" value={content.tagline ?? ''}
+          onChange={(v) => onChange({ ...content, tagline: v })} multiline rows={2} />
+      </Stack>
+      <TF label="Текст копирайта (без ©, года)" value={content.copyright ?? ''}
+        onChange={(v) => onChange({ ...content, copyright: v })} />
+      <Typography variant="caption" color="text.secondary">
+        Телефон, email и соцсети редактируются в разделе Настройки портала.
+      </Typography>
+      <Divider />
+      <Typography variant="subtitle2" fontWeight={700}>Колонки навигации</Typography>
+      <Stack spacing={2}>
+        {columns.map((col: any, i: number) => (
+          <FooterColumnEditor key={i} col={col} onChange={(c) => setCol(i, c)} />
+        ))}
+      </Stack>
+      <Button size="small" startIcon={<AddIcon />}
+        onClick={() => onChange({ ...content, columns: [...columns, { title: 'Новая колонка', links: [] }] })}>
+        Добавить колонку
+      </Button>
+    </Stack>
+  );
+}
+
+// ─── Branding Editor ──────────────────────────────────────────────────────────
+
+const BRAND_PRESETS = [
+  { label: 'Фиолетовый', color: '#7F23CC' },
+  { label: 'Синий',      color: '#2563EB' },
+  { label: 'Изумрудный', color: '#059669' },
+  { label: 'Оранжевый',  color: '#EA580C' },
+  { label: 'Красный',    color: '#DC2626' },
+  { label: 'Розовый',    color: '#DB2777' },
+];
+
+function BrandingEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const brandHex: string = content.brand_hex ?? '#7F23CC';
+  const set = (v: string) => onChange({ ...content, brand_hex: v });
+
+  return (
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="subtitle2" fontWeight={700} mb={1}>Цвет бренда</Typography>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Box
+            component="input" type="color" value={brandHex}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => set(e.target.value)}
+            sx={{ width: 56, height: 40, border: '1px solid', borderColor: 'divider', borderRadius: 1, cursor: 'pointer', p: 0.5 }}
+          />
+          <TextField size="small" value={brandHex} sx={{ width: 120 }}
+            onChange={(e) => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) set(e.target.value); }}
+            inputProps={{ maxLength: 7, style: { fontFamily: 'monospace' } }}
+          />
+          <Box sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: brandHex, border: '1px solid', borderColor: 'divider', flexShrink: 0 }} />
+        </Stack>
+      </Box>
+
+      <Box>
+        <Typography variant="subtitle2" fontWeight={700} mb={1.5}>Быстрые пресеты</Typography>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          {BRAND_PRESETS.map((p) => (
+            <Chip
+              key={p.color}
+              label={p.label}
+              onClick={() => set(p.color)}
+              variant={brandHex === p.color ? 'filled' : 'outlined'}
+              sx={{
+                bgcolor: brandHex === p.color ? p.color : 'transparent',
+                color: brandHex === p.color ? '#fff' : p.color,
+                borderColor: p.color,
+                fontWeight: 600,
+                '&:hover': { bgcolor: p.color, color: '#fff' },
+              }}
+            />
+          ))}
+        </Stack>
+      </Box>
+
+      <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1, bgcolor: 'background.default' }}>
+        <Typography variant="caption" color="text.secondary" display="block" mb={1.5} fontWeight={600}>
+          Предпросмотр элементов сайта
+        </Typography>
+        <Stack spacing={1.5}>
+          <Stack direction="row" spacing={1}>
+            <Box sx={{ px: 2, py: 1, borderRadius: 1, bgcolor: brandHex, color: '#fff', fontSize: 13, fontWeight: 600 }}>
+              Кнопка CTA
+            </Box>
+            <Box sx={{ px: 2, py: 1, borderRadius: 1, border: '1px solid', borderColor: brandHex, color: brandHex, fontSize: 13, fontWeight: 600 }}>
+              Кнопка outline
+            </Box>
+          </Stack>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: brandHex }} />
+            <Typography variant="body2" sx={{ color: brandHex, fontWeight: 600 }}>Ссылка / акцент</Typography>
+          </Stack>
+          <Box sx={{ height: 4, borderRadius: 2, bgcolor: brandHex, width: '60%' }} />
+        </Stack>
+      </Box>
+
+      <Typography variant="caption" color="text.secondary">
+        Цвет применяется ко всему сайту: кнопки, ссылки, акценты, фоновые тени. Светлая и тёмная темы генерируются автоматически.
+        Изменения видны на сайте после нажатия «Применить сейчас».
+      </Typography>
+    </Stack>
+  );
+}
+
+// ─── Page router ──────────────────────────────────────────────────────────────
+
 function PageEditor({ slug, content, onChange }: { slug: string; content: any; onChange: (c: any) => void }) {
   if (slug === 'home') return <HomeEditor content={content} onChange={onChange} />;
   if (slug === 'faq') return <FaqPageEditor content={content} onChange={onChange} />;
@@ -1111,7 +1332,138 @@ function PageEditor({ slug, content, onChange }: { slug: string; content: any; o
   if (slug === 'backend-razrabotka' || slug === 'frontend-razrabotka') return <CoursePageEditor content={content} onChange={onChange} />;
   if (slug === 'napravleniya-razrabotki') return <DirectionsEditor content={content} onChange={onChange} />;
   if (slug === 'legal-oferta' || slug === 'legal-privacy' || slug === 'legal-terms') return <LegalEditor content={content} onChange={onChange} />;
+  if (slug === 'header') return <HeaderEditor content={content} onChange={onChange} />;
+  if (slug === 'footer') return <FooterEditor content={content} onChange={onChange} />;
+  if (slug === 'branding') return <BrandingEditor content={content} onChange={onChange} />;
   return <HeroFaqEditor content={content} onChange={onChange} />;
+}
+
+// ─── Image Upload ─────────────────────────────────────────────────────────────
+
+function ImageUpload({ value, onChange, label = 'Изображение' }: {
+  value: string;
+  onChange: (url: string) => void;
+  label?: string;
+}) {
+  const [uploading, setUploading] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setErr(null);
+    try {
+      const { url } = await mediaApi.uploadImage(file);
+      onChange(url);
+    } catch (ex) {
+      setErr(extractApiError(ex, 'Ошибка загрузки'));
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>{label}</Typography>
+      <Stack direction="row" spacing={1} alignItems="flex-start">
+        <Box sx={{ flex: 1 }}>
+          <TextField
+            size="small" fullWidth
+            placeholder="https://... или загрузите файл"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          {err && <Typography variant="caption" color="error">{err}</Typography>}
+        </Box>
+        <Button
+          variant="outlined" size="small" component="label"
+          disabled={uploading}
+          startIcon={uploading ? <CircularProgress size={14} /> : undefined}
+          sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+        >
+          {uploading ? 'Загрузка...' : 'Загрузить'}
+          <input type="file" hidden accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml" onChange={handleFile} />
+        </Button>
+      </Stack>
+      {value && (
+        <Box mt={1} sx={{ position: 'relative', display: 'inline-block' }}>
+          <Box
+            component="img" src={value} alt="preview"
+            sx={{ maxHeight: 100, maxWidth: 300, borderRadius: 1, border: '1px solid', borderColor: 'divider', display: 'block' }}
+            onError={(e: any) => { e.target.style.display = 'none'; }}
+          />
+          <IconButton size="small" color="error"
+            sx={{ position: 'absolute', top: -8, right: -8, bgcolor: 'background.paper', boxShadow: 1 }}
+            onClick={() => onChange('')}>
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ─── SEO Section ──────────────────────────────────────────────────────────────
+
+interface SeoSectionProps {
+  content: any;
+  onChange: (c: any) => void;
+}
+
+function SeoSection({ content, onChange }: SeoSectionProps) {
+  const seo = (content?.seo && typeof content.seo === 'object' ? content.seo : {}) as Record<string, string>;
+  const set = (key: string, val: string) => onChange({ ...content, seo: { ...seo, [key]: val } });
+
+  return (
+    <Accordion disableGutters elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb: 2, '&:before': { display: 'none' } }}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <SearchIcon fontSize="small" color="action" />
+          <Typography variant="subtitle2" fontWeight={600}>SEO / Метатеги</Typography>
+          {(seo.meta_title || seo.meta_description) && (
+            <Chip label="настроено" size="small" color="success" variant="outlined" />
+          )}
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails>
+        <Stack spacing={2}>
+          <TextField
+            label="meta title"
+            value={seo.meta_title ?? ''}
+            onChange={(e) => set('meta_title', e.target.value)}
+            fullWidth size="small"
+            helperText={`${(seo.meta_title ?? '').length} / 60 симв. — заголовок во вкладке браузера и в Google`}
+            inputProps={{ maxLength: 120 }}
+          />
+          <TextField
+            label="meta description"
+            value={seo.meta_description ?? ''}
+            onChange={(e) => set('meta_description', e.target.value)}
+            fullWidth size="small" multiline rows={2}
+            helperText={`${(seo.meta_description ?? '').length} / 160 симв. — описание в результатах поиска`}
+            inputProps={{ maxLength: 320 }}
+          />
+          <TextField
+            label="keywords (через запятую)"
+            value={seo.keywords ?? ''}
+            onChange={(e) => set('keywords', e.target.value)}
+            fullWidth size="small"
+            helperText="Например: программирование для детей, Python, онлайн школа"
+          />
+          <ImageUpload
+            label="OG-изображение (для соцсетей, 1200×630 px)"
+            value={seo.og_image ?? ''}
+            onChange={(url) => set('og_image', url)}
+          />
+          <Typography variant="caption" color="text.secondary">
+            Пустые поля — используется текст и изображение по умолчанию из кода страницы.
+          </Typography>
+        </Stack>
+      </AccordionDetails>
+    </Accordion>
+  );
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -1122,6 +1474,8 @@ const CmsEditorPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [revalidating, setRevalidating] = useState(false);
+  const [revalidateSuccess, setRevalidateSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadPage = useCallback(async (slug: string) => {
@@ -1146,14 +1500,29 @@ const CmsEditorPage: React.FC = () => {
     setSaving(true);
     setError(null);
     setSuccess(false);
+    setRevalidateSuccess(false);
     try {
       await cmsApi.savePage(selectedSlug, content);
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 4000);
     } catch (e) {
       setError(extractApiError(e, 'Не удалось сохранить'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRevalidate = async () => {
+    setRevalidating(true);
+    setError(null);
+    setRevalidateSuccess(false);
+    try {
+      await cmsApi.revalidatePage(selectedSlug);
+      setRevalidateSuccess(true);
+      setTimeout(() => setRevalidateSuccess(false), 4000);
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось сбросить кэш'));
+    } finally {
+      setRevalidating(false);
     }
   };
 
@@ -1191,20 +1560,37 @@ const CmsEditorPage: React.FC = () => {
                 tirskix-academy.com/{selectedSlug === 'home' ? '' : selectedSlug + '/'}
               </Typography>
             </Box>
-            <Button
-              variant="contained"
-              startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
-              disabled={saving || loading}
-              onClick={handleSave}
-            >
-              Сохранить
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="contained"
+                startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+                disabled={saving || loading}
+                onClick={handleSave}
+              >
+                Сохранить
+              </Button>
+              <Button
+                variant="outlined"
+                color="success"
+                startIcon={revalidating ? <CircularProgress size={14} color="inherit" /> : <BoltIcon />}
+                disabled={revalidating || loading}
+                onClick={handleRevalidate}
+                title="Применить изменения на сайте сразу, не дожидаясь 1 часа"
+              >
+                Применить сейчас
+              </Button>
+            </Stack>
           </Box>
 
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
           {success && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Сохранено. Изменения появятся на сайте в течение 1 часа (ISR-кэш).
+            <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(false)}>
+              Сохранено. Нажмите «Применить сейчас» чтобы обновить сайт немедленно, или подождите до 1 часа.
+            </Alert>
+          )}
+          {revalidateSuccess && (
+            <Alert severity="success" sx={{ mb: 2 }} onClose={() => setRevalidateSuccess(false)}>
+              Кэш сброшен — изменения уже на сайте.
             </Alert>
           )}
 
@@ -1213,9 +1599,12 @@ const CmsEditorPage: React.FC = () => {
               <CircularProgress />
             </Box>
           ) : (
-            <Paper sx={{ p: 3 }}>
-              <PageEditor slug={selectedSlug} content={content} onChange={setContent} />
-            </Paper>
+            <>
+              <SeoSection content={content} onChange={setContent} />
+              <Paper sx={{ p: 3 }}>
+                <PageEditor slug={selectedSlug} content={content} onChange={setContent} />
+              </Paper>
+            </>
           )}
         </Box>
       </Box>

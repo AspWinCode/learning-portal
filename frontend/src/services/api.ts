@@ -4027,6 +4027,14 @@ export const mediaApi = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/media/${id}`);
   },
+  uploadImage: async (file: File): Promise<{ url: string; key: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await apiClient.post('/api/v1/media/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
 };
 
 // ─── CMS ─────────────────────────────────────────────────────────────────────
@@ -4048,6 +4056,9 @@ export const cmsApi = {
   },
   savePage: async (slug: string, content: unknown): Promise<void> => {
     await apiClient.put(`/api/v1/cms/pages/${slug}`, { content });
+  },
+  revalidatePage: async (slug?: string): Promise<void> => {
+    await apiClient.post('/api/v1/cms/revalidate', { slug: slug ?? null });
   },
 };
 

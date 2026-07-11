@@ -23,6 +23,7 @@ const PAGE_GROUPS = [
     group: 'Основные',
     pages: [
       { slug: 'home', label: 'Главная' },
+      { slug: 'blog', label: '📝 Блог' },
       { slug: 'faq', label: 'FAQ' },
       { slug: 'o-nas', label: 'О нас' },
       { slug: 'kontakty', label: 'Контакты' },
@@ -1506,6 +1507,20 @@ function BrandingEditor({ content, onChange }: { content: any; onChange: (c: any
 
 // ─── Page router ──────────────────────────────────────────────────────────────
 
+function BlogListingEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  return (
+    <Stack spacing={2}>
+      <Typography variant="caption" color="text.secondary">
+        Тексты страницы-листинга /blog. Сами статьи управляются в разделе «Блог» портала.
+      </Typography>
+      <TF label="Заголовок страницы" value={content.heading || ''} onChange={(v) => onChange({ ...content, heading: v })} placeholder="Блог" />
+      <TF label="Подзаголовок" value={content.subheading || ''} multiline rows={2} onChange={(v) => onChange({ ...content, subheading: v })}
+        placeholder="О программировании для детей, подготовке к экзаменам и историях учеников." />
+      <SeoSection content={content} onChange={onChange} />
+    </Stack>
+  );
+}
+
 function PageEditor({ slug, content, onChange }: { slug: string; content: any; onChange: (c: any) => void }) {
   if (slug === 'home') return <HomeEditor content={content} onChange={onChange} />;
   if (slug === 'faq') return <FaqPageEditor content={content} onChange={onChange} />;
@@ -1524,6 +1539,7 @@ function PageEditor({ slug, content, onChange }: { slug: string; content: any; o
   if (slug === 'backend-razrabotka' || slug === 'frontend-razrabotka') return <CoursePageEditor content={content} onChange={onChange} />;
   if (slug === 'napravleniya-razrabotki') return <DirectionsEditor content={content} onChange={onChange} />;
   if (slug === 'legal-oferta' || slug === 'legal-privacy' || slug === 'legal-terms') return <LegalEditor content={content} onChange={onChange} />;
+  if (slug === 'blog') return <BlogListingEditor content={content} onChange={onChange} />;
   if (slug === 'header') return <HeaderEditor content={content} onChange={onChange} />;
   if (slug === 'footer') return <FooterEditor content={content} onChange={onChange} />;
   if (slug === 'branding') return <BrandingEditor content={content} onChange={onChange} />;

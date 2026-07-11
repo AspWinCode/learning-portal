@@ -621,6 +621,91 @@ async def submit_tilda_lead(
     return TildaLeadResponse(lead_id=lead.id)
 
 
+# ── Site lead (from tirskix-academy.com forms) ──────────────────────────────
+
+import re as _re
+from pydantic import BaseModel as _BaseModel
+
+class SiteLeadRequest(_BaseModel):
+    name: str
+    contact: str          # phone or email
+    track: Optional[str] = None
+    message: Optional[str] = None
+
+_SITE_TRACK_SOURCE = {
+    "game-studio": "Сайт_Игровая студия",
+    "kodeks":      "Сайт_Кодэкс",
+    "technolab":   "Сайт_ТехноЛаб",
+    "oge":         "Сайт_ОГЭ",
+    "ege":         "Сайт_ЕГЭ",
+    "individual":  "Сайт_Индивидуальные",
+    "contact-form":"Сайт_Контакты",
+}
+
+@router.post("/public/leads/site-lead", status_code=status.HTTP_201_CREATED)
+def submit_site_lead(payload: SiteLeadRequest, db: Session = Depends(get_db)):
+    """Accept a lead from the public landing site forms (no auth required)."""
+    name = payload.name.strip()
+    contact = payload.contact.strip()
+    if len(name) < 2 or len(contact) < 5:
+        raise HTTPException(status_code=422, detail="Укажите имя и контакт")
+
+    is_email = bool(_re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", contact))
+    if is_email:
+        phone_val = contact
+        phone_norm = None
+        email_val = contact
+    else:
+        phone_val, phone_err = validate_phone_for_lead(contact)
+        if phone_err:
+            phone_val = contact
+            phone_norm = None
+        else:
+            phone_norm = phone_val
+        email_val = None
+
+    source_label = _SITE_TRACK_SOURCE.get(payload.track or "", "Сайт")
+    source_id, source_name = _resolve_source(db, None, source_label)
+
+    owner = (
+        db.query(User)
+        .filter(User.role.in_([UserRole.SALES, UserRole.OWNER, UserRole.ADMIN]))
+        .order_by(User.id)
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=500, detail="Не настроен пользователь для приёма заявок")
+
+    status_option_id = _get_default_lead_status_option_id(db, LeadStatus.NEW)
+
+    parts = []
+    if payload.track:
+        parts.append(f"Трек: {payload.track}")
+    if payload.message and payload.message.strip():
+        parts.append(payload.message.strip())
+    comment = "\n\n".join(parts) or None
+
+    lead = Lead(
+        owner_id=owner.id,
+        contact_name=name,
+        phone=phone_val,
+        phone_normalized=phone_norm,
+        email=email_val,
+        source=source_name or source_label,
+        source_id=source_id,
+        status=LeadStatus.NEW,
+        status_option_id=status_option_id,
+        tags=["site_lead"],
+        comment=comment,
+    )
+    db.add(lead)
+    db.flush()
+    sync_lead_person(db, lead)
+    db.commit()
+    db.refresh(lead)
+    return {"lead_id": lead.id}
+
+
 @router.post("/leads", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
 async def create_lead(
     payload: LeadCreate,

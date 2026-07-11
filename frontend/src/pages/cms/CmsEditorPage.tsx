@@ -55,6 +55,14 @@ const PAGE_GROUPS = [
       { slug: 'napravleniya-razrabotki', label: 'Направления' },
     ],
   },
+  {
+    group: 'Юридические',
+    pages: [
+      { slug: 'legal-oferta', label: '📄 Публичная оферта' },
+      { slug: 'legal-privacy', label: '🔒 Политика конф.' },
+      { slug: 'legal-terms', label: '📋 Пользоват. соглашение' },
+    ],
+  },
 ];
 
 const ALL_PAGES = PAGE_GROUPS.flatMap((g) => g.pages);
@@ -1038,6 +1046,51 @@ function ContactsEditor({ content, onChange }: { content: any; onChange: (c: any
   );
 }
 
+// ─── Legal page editor ────────────────────────────────────────────────────────
+
+function LegalEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const sections: any[] = content.sections || [];
+
+  return (
+    <Stack spacing={3}>
+      <Alert severity="info" sx={{ mb: 1 }}>
+        Разделы отображаются как параграфы. Переносы строк сохраняются. Если поле не заполнено — используется захардкоженный текст страницы.
+      </Alert>
+      <Stack direction="row" spacing={2}>
+        <TF label="Заголовок (H1)" value={content.heading || ''} onChange={(v) => p('heading', v)} />
+        <TF label="Подзаголовок / дата" value={content.effective_date || ''} onChange={(v) => p('effective_date', v)} />
+      </Stack>
+      <Divider />
+      <Typography variant="subtitle2" fontWeight={700}>Разделы</Typography>
+      {sections.map((sec, i) => (
+        <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+          <Stack spacing={1.5}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <TextField size="small" label="Заголовок раздела (h2)" fullWidth value={sec.h2 || ''}
+                onChange={(e) => p('sections', sections.map((x, idx) => idx === i ? { ...x, h2: e.target.value } : x))} />
+              <IconButton size="small" onClick={() => p('sections', sections.filter((_, idx) => idx !== i))}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+            <TextField
+              label="Содержимое раздела (plain text, переносы сохраняются)"
+              size="small" fullWidth multiline minRows={3}
+              value={sec.content || ''}
+              onChange={(e) => p('sections', sections.map((x, idx) => idx === i ? { ...x, content: e.target.value } : x))}
+            />
+          </Stack>
+        </Paper>
+      ))}
+      <Button startIcon={<AddIcon />}
+        onClick={() => p('sections', [...sections, { h2: '', content: '' }])}
+        variant="outlined" size="small">
+        Добавить раздел
+      </Button>
+    </Stack>
+  );
+}
+
 // ─── Editor router ────────────────────────────────────────────────────────────
 
 function PageEditor({ slug, content, onChange }: { slug: string; content: any; onChange: (c: any) => void }) {
@@ -1057,6 +1110,7 @@ function PageEditor({ slug, content, onChange }: { slug: string; content: any; o
   if (slug === 'razrabotka-igr-na-python') return <GameDevEditor content={content} onChange={onChange} />;
   if (slug === 'backend-razrabotka' || slug === 'frontend-razrabotka') return <CoursePageEditor content={content} onChange={onChange} />;
   if (slug === 'napravleniya-razrabotki') return <DirectionsEditor content={content} onChange={onChange} />;
+  if (slug === 'legal-oferta' || slug === 'legal-privacy' || slug === 'legal-terms') return <LegalEditor content={content} onChange={onChange} />;
   return <HeroFaqEditor content={content} onChange={onChange} />;
 }
 

@@ -38,6 +38,9 @@ KNOWN_PAGES = {
     "backend-razrabotka":                "Backend-разработка",
     "frontend-razrabotka":               "Frontend-разработка",
     "napravleniya-razrabotki":           "Направления разработки",
+    "legal-oferta":                      "Юридическое · Публичная оферта",
+    "legal-privacy":                     "Юридическое · Политика конфиденциальности",
+    "legal-terms":                       "Юридическое · Пользовательское соглашение",
 }
 
 

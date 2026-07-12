@@ -1,15 +1,15 @@
 """note_folders: folder hierarchy for notes
 
-Revision ID: 0143_note_folders
-Revises: 0142_notes_table
+Revision ID: 0149_note_folders
+Revises: 0148_cms_pages
 Create Date: 2026-07-12
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0143_note_folders"
-down_revision = "0142_notes_table"
+revision = "0149_note_folders"
+down_revision = "0148_cms_pages"
 branch_labels = None
 depends_on = None
 

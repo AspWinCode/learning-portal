@@ -3,6 +3,7 @@ CMS router — manages landing page content (home, faq, o-nas, etc.).
 Content is stored as JSON blobs per page slug.
 """
 import os
+import re as _re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -54,8 +55,16 @@ KNOWN_PAGES = {
 }
 
 
+_SLUG_RE = _re.compile(r'^[a-z0-9][a-z0-9-]*$')
+
+
 class CmsRevalidateIn(BaseModel):
     slug: Optional[str] = None  # None or "*" = revalidate all
+
+
+class CmsPageCreate(BaseModel):
+    slug: str
+    label: str
 
 
 class CmsPageOut(BaseModel):
@@ -87,12 +96,16 @@ def _get_or_create(db: Session, slug: str) -> CmsPage:
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
+def _is_custom(page: CmsPage) -> bool:
+    return isinstance(page.content, dict) and page.content.get("_custom") is True
+
+
 @router.get("/pages", response_model=list[CmsPageOut])
 def list_pages(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("seo.access")),
 ):
-    """Return all known pages (existing + placeholders for not-yet-created)."""
+    """Return all known pages + custom user-created pages."""
     existing = {p.slug: p for p in db.query(CmsPage).all()}
     result = []
     for slug, label in KNOWN_PAGES.items():
@@ -100,6 +113,10 @@ def list_pages(
             result.append(existing[slug])
         else:
             result.append(CmsPage(slug=slug, label=label, content={}, updated_at=None))
+    # Custom pages (in DB but not in KNOWN_PAGES)
+    for slug, page in existing.items():
+        if slug not in KNOWN_PAGES:
+            result.append(page)
     return result
 
 
@@ -116,6 +133,44 @@ def get_page(
     return page
 
 
+@router.post("/pages", response_model=CmsPageOut, status_code=201)
+def create_custom_page(
+    payload: CmsPageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("seo.manage")),
+):
+    slug = payload.slug.strip().lower()
+    if not _SLUG_RE.match(slug):
+        raise HTTPException(status_code=400, detail="Slug должен содержать только a–z, 0–9, дефис и начинаться с буквы/цифры")
+    if slug in KNOWN_PAGES:
+        raise HTTPException(status_code=400, detail=f"Slug «{slug}» зарезервирован системой")
+    if db.query(CmsPage).filter(CmsPage.slug == slug).first():
+        raise HTTPException(status_code=409, detail="Страница с таким slug уже существует")
+    label = payload.label.strip() or slug
+    page = CmsPage(slug=slug, label=label, content={"_custom": True})
+    db.add(page)
+    db.commit()
+    db.refresh(page)
+    return page
+
+
+@router.delete("/pages/{slug}", status_code=204)
+def delete_custom_page(
+    slug: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("seo.manage")),
+):
+    if slug in KNOWN_PAGES:
+        raise HTTPException(status_code=400, detail="Нельзя удалить системную страницу")
+    page = db.query(CmsPage).filter(CmsPage.slug == slug).first()
+    if not page:
+        raise HTTPException(status_code=404, detail="Страница не найдена")
+    if not _is_custom(page):
+        raise HTTPException(status_code=400, detail="Нельзя удалить системную страницу")
+    db.delete(page)
+    db.commit()
+
+
 @router.put("/pages/{slug}", response_model=CmsPageOut)
 def upsert_page(
     slug: str,
@@ -124,7 +179,9 @@ def upsert_page(
     current_user: User = Depends(require_permission("seo.manage")),
 ):
     if slug not in KNOWN_PAGES:
-        raise HTTPException(status_code=400, detail=f"Неизвестная страница: {slug}")
+        existing = db.query(CmsPage).filter(CmsPage.slug == slug).first()
+        if not existing or not _is_custom(existing):
+            raise HTTPException(status_code=400, detail=f"Неизвестная страница: {slug}")
     page = _get_or_create(db, slug)
     page.content = payload.content
     page.updated_at = datetime.now(timezone.utc)

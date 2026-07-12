@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Accordion, AccordionDetails, AccordionSummary,
-  Alert, Box, Button, CircularProgress, Chip, Divider, IconButton,
+  Alert, Box, Button, CircularProgress, Chip, Dialog, DialogActions,
+  DialogContent, DialogTitle, Divider, IconButton,
   List, ListItemButton, ListItemText, ListSubheader, Paper, Stack,
-  Tab, Tabs, TextField, Typography,
+  Tab, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
@@ -1423,6 +1424,48 @@ function FooterEditor({ content, onChange }: { content: any; onChange: (c: any) 
   );
 }
 
+// ─── Custom Page Editor ──────────────────────────────────────────────────────
+
+function CustomPageEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
+  const p = (k: string, v: any) => onChange({ ...content, [k]: v });
+  const sections: any[] = content.sections || [];
+
+  return (
+    <Stack spacing={3}>
+      <Stack direction="row" spacing={2}>
+        <TF label="Заголовок (H1)" value={content.heading || ''} onChange={(v) => p('heading', v)} />
+        <TF label="Подзаголовок" value={content.subheading || ''} onChange={(v) => p('subheading', v)} />
+      </Stack>
+      <Divider />
+      <Typography variant="subtitle2" fontWeight={700}>Разделы страницы</Typography>
+      {sections.map((sec, i) => (
+        <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+          <Stack spacing={1.5}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <TextField size="small" label="Заголовок раздела (H2)" fullWidth value={sec.h2 || ''}
+                onChange={(e) => p('sections', sections.map((x, idx) => idx === i ? { ...x, h2: e.target.value } : x))} />
+              <IconButton size="small" onClick={() => p('sections', sections.filter((_, idx) => idx !== i))}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+            <TextField
+              label="Текст раздела (переносы строк сохраняются)"
+              size="small" fullWidth multiline minRows={3}
+              value={sec.content || ''}
+              onChange={(e) => p('sections', sections.map((x, idx) => idx === i ? { ...x, content: e.target.value } : x))}
+            />
+          </Stack>
+        </Paper>
+      ))}
+      <Button startIcon={<AddIcon />}
+        onClick={() => p('sections', [...sections, { h2: '', content: '' }])}
+        variant="outlined" size="small">
+        Добавить раздел
+      </Button>
+    </Stack>
+  );
+}
+
 // ─── Announcement Editor ─────────────────────────────────────────────────────
 
 function AnnouncementEditor({ content, onChange }: { content: any; onChange: (c: any) => void }) {
@@ -1635,6 +1678,7 @@ function PageEditor({ slug, content, onChange }: { slug: string; content: any; o
   if (slug === 'footer') return <FooterEditor content={content} onChange={onChange} />;
   if (slug === 'branding') return <BrandingEditor content={content} onChange={onChange} />;
   if (slug === 'announcement') return <AnnouncementEditor content={content} onChange={onChange} />;
+  if (content._custom) return <CustomPageEditor content={content} onChange={onChange} />;
   return <HeroFaqEditor content={content} onChange={onChange} />;
 }
 
@@ -1778,6 +1822,24 @@ const CmsEditorPage: React.FC = () => {
   const [revalidateSuccess, setRevalidateSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [customPages, setCustomPages] = useState<{ slug: string; label: string }[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createSlug, setCreateSlug] = useState('');
+  const [createLabel, setCreateLabel] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const loadCustomPages = useCallback(async () => {
+    try {
+      const all = await cmsApi.listPages();
+      const knownSlugs = new Set(ALL_PAGES.map((p) => p.slug));
+      setCustomPages(all.filter((p) => !knownSlugs.has(p.slug)).map((p) => ({ slug: p.slug, label: p.label })));
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { loadCustomPages(); }, [loadCustomPages]);
+
   const loadPage = useCallback(async (slug: string) => {
     setLoading(true);
     setError(null);
@@ -1795,6 +1857,34 @@ const CmsEditorPage: React.FC = () => {
   }, []);
 
   useEffect(() => { loadPage(selectedSlug); }, [selectedSlug, loadPage]);
+
+  const handleCreate = async () => {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const page = await cmsApi.createPage(createSlug.trim().toLowerCase(), createLabel.trim() || createSlug.trim());
+      setCustomPages((prev) => [...prev, { slug: page.slug, label: page.label }]);
+      setCreateOpen(false);
+      setCreateSlug('');
+      setCreateLabel('');
+      setSelectedSlug(page.slug);
+    } catch (e: any) {
+      setCreateError(e?.response?.data?.detail || 'Ошибка создания страницы');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeleteCustom = async (slug: string) => {
+    try {
+      await cmsApi.deletePage(slug);
+      setCustomPages((prev) => prev.filter((p) => p.slug !== slug));
+      if (selectedSlug === slug) setSelectedSlug('home');
+      setDeleteConfirm(null);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Ошибка удаления');
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -1826,7 +1916,9 @@ const CmsEditorPage: React.FC = () => {
     }
   };
 
-  const selectedPage = ALL_PAGES.find((p) => p.slug === selectedSlug)!;
+  const selectedPage = ALL_PAGES.find((p) => p.slug === selectedSlug)
+    || customPages.find((p) => p.slug === selectedSlug)
+    || { slug: selectedSlug, label: selectedSlug };
 
   return (
     <Layout>
@@ -1848,6 +1940,36 @@ const CmsEditorPage: React.FC = () => {
                 <Divider />
               </React.Fragment>
             ))}
+
+            {/* Custom pages */}
+            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, pt: 0.5 }}>
+              <ListSubheader component="div" sx={{ flex: 1, lineHeight: '32px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'text.disabled', bgcolor: 'transparent', p: 0 }}>
+                Мои страницы
+              </ListSubheader>
+              <Tooltip title="Создать страницу">
+                <IconButton size="small" onClick={() => { setCreateOpen(true); setCreateError(null); setCreateSlug(''); setCreateLabel(''); }}>
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            {customPages.length === 0 && (
+              <Typography variant="caption" color="text.disabled" sx={{ px: 2, py: 0.5, display: 'block' }}>
+                Нет страниц
+              </Typography>
+            )}
+            {customPages.map((page) => (
+              <ListItemButton key={page.slug} selected={selectedSlug === page.slug}
+                onClick={() => setSelectedSlug(page.slug)} sx={{ py: 0.5, pr: 0.5 }}>
+                <ListItemText primary={page.label} primaryTypographyProps={{ fontSize: 13 }} />
+                <Tooltip title="Удалить страницу">
+                  <IconButton size="small" color="error"
+                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(page.slug); }}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </ListItemButton>
+            ))}
+            <Divider />
           </List>
         </Box>
 
@@ -1908,6 +2030,58 @@ const CmsEditorPage: React.FC = () => {
           )}
         </Box>
       </Box>
+      {/* Create page dialog */}
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Создать страницу</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {createError && <Alert severity="error">{createError}</Alert>}
+            <TextField
+              label="URL-slug"
+              size="small"
+              fullWidth
+              value={createSlug}
+              onChange={(e) => setCreateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+              placeholder="moya-stranitsa"
+              helperText="Только a–z, 0–9, дефис. Например: nashi-partnery"
+              inputProps={{ maxLength: 60 }}
+            />
+            <TextField
+              label="Название страницы"
+              size="small"
+              fullWidth
+              value={createLabel}
+              onChange={(e) => setCreateLabel(e.target.value)}
+              placeholder="Наши партнёры"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateOpen(false)}>Отмена</Button>
+          <Button
+            variant="contained"
+            disabled={!createSlug.trim() || creating}
+            startIcon={creating ? <CircularProgress size={14} color="inherit" /> : undefined}
+            onClick={handleCreate}
+          >
+            Создать
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} maxWidth="xs">
+        <DialogTitle>Удалить страницу?</DialogTitle>
+        <DialogContent>
+          <Typography>Страница <b>/{deleteConfirm}</b> будет удалена безвозвратно.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirm(null)}>Отмена</Button>
+          <Button variant="contained" color="error" onClick={() => deleteConfirm && handleDeleteCustom(deleteConfirm)}>
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 };

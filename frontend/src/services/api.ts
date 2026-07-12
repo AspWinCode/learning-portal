@@ -4060,6 +4060,13 @@ export const cmsApi = {
   revalidatePage: async (slug?: string): Promise<void> => {
     await apiClient.post('/api/v1/cms/revalidate', { slug: slug ?? null });
   },
+  createPage: async (slug: string, label: string): Promise<{ slug: string; label: string; content: unknown; updated_at: string | null }> => {
+    const res = await apiClient.post('/api/v1/cms/pages', { slug, label });
+    return res.data;
+  },
+  deletePage: async (slug: string): Promise<void> => {
+    await apiClient.delete(`/api/v1/cms/pages/${slug}`);
+  },
 };
 
 export default api;

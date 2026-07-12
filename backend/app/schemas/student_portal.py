@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from enum import Enum
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -122,6 +122,15 @@ class StudentPortalAdminView(BaseModel):
     """Сводка по кабинету конкретного ученика — для карточки ученика в админке."""
     credential: Optional[StudentCredentialOut] = None
     access_grants: List[StudentCourseAccessOut] = []
+
+
+class UpcomingLessonOut(BaseModel):
+    lesson_date: date
+    start_time: time
+    end_time: Optional[time]
+    group_name: Optional[str]
+    trainer_name: str
+    kind: Literal["regular", "custom"]
 
 
 class ProgressSyncRequest(BaseModel):

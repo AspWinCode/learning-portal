@@ -3,16 +3,24 @@ import hashlib
 import hmac
 import os
 import re
+from datetime import date, timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import auth
 from app.database import get_db
 from app.models import (
     CourseCatalogItem,
     CourseCatalogItemKind,
+    CustomLesson,
+    CustomLessonStudent,
+    Group,
+    GroupSchedule,
+    GroupStatus,
+    GroupStudent,
+    LessonCancellation,
     Student,
     StudentCourseAccess,
     StudentCourseAccessStatus,
@@ -36,6 +44,7 @@ from app.schemas.student_portal import (
     StudentLoginResponse,
     StudentPortalAdminView,
     StudentProfileOut,
+    UpcomingLessonOut,
 )
 from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET, build_launch_redirect_url
 
@@ -72,6 +81,101 @@ async def student_login(payload: StudentLoginRequest, db: Session = Depends(get_
 @router.get("/me", response_model=StudentProfileOut)
 async def get_student_me(current_student: Student = Depends(auth.get_current_student)):
     return StudentProfileOut.model_validate(current_student)
+
+
+# ─── Расписание (ближайшие уроки) ────────────────────────────────────────────
+
+@router.get("/schedule", response_model=List[UpcomingLessonOut])
+async def get_student_schedule(
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    today = date.today()
+    end_date = today + timedelta(days=14)
+
+    # Активные группы студента
+    group_links = (
+        db.query(GroupStudent)
+        .filter(
+            GroupStudent.student_id == current_student.id,
+            GroupStudent.left_at.is_(None),
+        )
+        .all()
+    )
+    group_ids = [gl.group_id for gl in group_links]
+
+    lessons: list[UpcomingLessonOut] = []
+
+    if group_ids:
+        groups = (
+            db.query(Group)
+            .options(selectinload(Group.group_schedules), selectinload(Group.trainer))
+            .filter(Group.id.in_(group_ids), Group.status == GroupStatus.ACTIVE)
+            .all()
+        )
+
+        # Отмены в диапазоне
+        cancellations = db.query(LessonCancellation).filter(
+            LessonCancellation.group_id.in_(group_ids),
+            LessonCancellation.lesson_date >= today,
+            LessonCancellation.lesson_date <= end_date,
+        ).all()
+        cancelled_set = {
+            (c.group_id, c.lesson_date, c.start_time, c.end_time)
+            for c in cancellations
+        }
+
+        for group in groups:
+            trainer_name = group.trainer.full_name if group.trainer else "Тренер"
+            for schedule in group.group_schedules:
+                current = today
+                while current <= end_date:
+                    if current.weekday() == schedule.day_of_week:
+                        if group.start_date and current < group.start_date:
+                            current += timedelta(days=1)
+                            continue
+                        if (group.id, current, schedule.start_time, schedule.end_time) not in cancelled_set:
+                            lessons.append(UpcomingLessonOut(
+                                lesson_date=current,
+                                start_time=schedule.start_time,
+                                end_time=schedule.end_time,
+                                group_name=group.name,
+                                trainer_name=trainer_name,
+                                kind="regular",
+                            ))
+                    current += timedelta(days=1)
+
+    # Кастомные уроки (отработки / доп. занятия)
+    custom_links = (
+        db.query(CustomLessonStudent)
+        .filter(CustomLessonStudent.student_id == current_student.id)
+        .all()
+    )
+    if custom_links:
+        custom_ids = [cl.lesson_id for cl in custom_links]
+        custom_lessons = (
+            db.query(CustomLesson)
+            .options(selectinload(CustomLesson.trainer))
+            .filter(
+                CustomLesson.id.in_(custom_ids),
+                CustomLesson.lesson_date >= today,
+                CustomLesson.lesson_date <= end_date,
+            )
+            .all()
+        )
+        for cl in custom_lessons:
+            trainer_name = cl.trainer.full_name if cl.trainer else "Тренер"
+            lessons.append(UpcomingLessonOut(
+                lesson_date=cl.lesson_date,
+                start_time=cl.start_time,
+                end_time=cl.end_time,
+                group_name=None,
+                trainer_name=trainer_name,
+                kind="custom",
+            ))
+
+    lessons.sort(key=lambda x: (x.lesson_date, x.start_time))
+    return lessons
 
 
 # ─── Витрина курсов (для ученика) ────────────────────────────────────────────

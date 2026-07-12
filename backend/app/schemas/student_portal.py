@@ -134,6 +134,11 @@ class StudentGradeOut(BaseModel):
     trainer_name: str
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=6)
+
+
 class UpcomingLessonOut(BaseModel):
     lesson_date: date
     start_time: time

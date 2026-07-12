@@ -15,7 +15,14 @@ import {
   Chip,
   Divider,
   Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
 } from '@mui/material';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
@@ -50,6 +57,13 @@ const StudentPortalCabinetPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<number | null>(null);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -91,6 +105,24 @@ const StudentPortalCabinetPage: React.FC = () => {
     navigate('/student-portal/login', { replace: true });
   };
 
+  const handlePwOpen = () => { setPwOpen(true); setPwError(null); setPwSuccess(false); setPwCurrent(''); setPwNew(''); setPwConfirm(''); };
+  const handlePwClose = () => { if (!pwLoading) setPwOpen(false); };
+  const handlePwSubmit = async () => {
+    setPwError(null);
+    if (pwNew.length < 6) { setPwError('Новый пароль — минимум 6 символов'); return; }
+    if (pwNew !== pwConfirm) { setPwError('Пароли не совпадают'); return; }
+    setPwLoading(true);
+    try {
+      await studentPortalApi.changePassword(pwCurrent, pwNew);
+      setPwSuccess(true);
+      setTimeout(() => setPwOpen(false), 1500);
+    } catch (err: any) {
+      setPwError(err.response?.data?.detail || 'Ошибка смены пароля');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -114,8 +146,52 @@ const StudentPortalCabinetPage: React.FC = () => {
           <Typography variant="h5">Привет, {profile?.full_name}!</Typography>
           <Typography variant="body2" color="text.secondary">Личный кабинет</Typography>
         </Box>
-        <Button variant="text" onClick={handleLogout}>Выйти</Button>
+        <Stack direction="row" gap={1}>
+          <IconButton onClick={handlePwOpen} size="small" title="Сменить пароль">
+            <LockOutlinedIcon fontSize="small" />
+          </IconButton>
+          <Button variant="text" onClick={handleLogout}>Выйти</Button>
+        </Stack>
       </Stack>
+
+      {/* Диалог смены пароля */}
+      <Dialog open={pwOpen} onClose={handlePwClose} maxWidth="xs" fullWidth>
+        <DialogTitle>Сменить пароль</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {pwSuccess ? (
+              <Alert severity="success">Пароль успешно изменён!</Alert>
+            ) : (
+              <>
+                {pwError && <Alert severity="error">{pwError}</Alert>}
+                <TextField
+                  label="Текущий пароль" type="password" size="small" fullWidth
+                  value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)}
+                  disabled={pwLoading}
+                />
+                <TextField
+                  label="Новый пароль" type="password" size="small" fullWidth
+                  value={pwNew} onChange={(e) => setPwNew(e.target.value)}
+                  disabled={pwLoading} helperText="Минимум 6 символов"
+                />
+                <TextField
+                  label="Повторите новый пароль" type="password" size="small" fullWidth
+                  value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)}
+                  disabled={pwLoading}
+                />
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+        {!pwSuccess && (
+          <DialogActions>
+            <Button onClick={handlePwClose} disabled={pwLoading}>Отмена</Button>
+            <Button variant="contained" onClick={handlePwSubmit} disabled={pwLoading || !pwCurrent || !pwNew || !pwConfirm}>
+              {pwLoading ? 'Сохраняем…' : 'Сохранить'}
+            </Button>
+          </DialogActions>
+        )}
+      </Dialog>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
 

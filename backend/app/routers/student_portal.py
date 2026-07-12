@@ -42,6 +42,7 @@ from app.schemas.student_portal import (
     StudentCourseAccessOut,
     StudentCredentialCreate,
     StudentCredentialOut,
+    ChangePasswordRequest,
     StudentCredentialUpdate,
     StudentGradeOut,
     StudentLoginRequest,
@@ -85,6 +86,26 @@ async def student_login(payload: StudentLoginRequest, db: Session = Depends(get_
 @router.get("/me", response_model=StudentProfileOut)
 async def get_student_me(current_student: Student = Depends(auth.get_current_student)):
     return StudentProfileOut.model_validate(current_student)
+
+
+# ─── Смена пароля ────────────────────────────────────────────────────────────
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_student_password(
+    payload: ChangePasswordRequest,
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    credential = db.query(StudentCredential).filter(
+        StudentCredential.student_id == current_student.id,
+        StudentCredential.is_active.is_(True),
+    ).first()
+    if not credential:
+        raise HTTPException(status_code=404, detail="Учётная запись не найдена")
+    if not auth.verify_password(payload.current_password, credential.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неверный текущий пароль")
+    credential.password_hash = auth.get_password_hash(payload.new_password)
+    db.commit()
 
 
 # ─── Расписание (ближайшие уроки) ────────────────────────────────────────────

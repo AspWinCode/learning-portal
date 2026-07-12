@@ -124,6 +124,16 @@ class StudentPortalAdminView(BaseModel):
     access_grants: List[StudentCourseAccessOut] = []
 
 
+class StudentGradeOut(BaseModel):
+    id: int
+    date: datetime
+    grade: float
+    topic_name: str
+    module_name: str
+    comment: Optional[str]
+    trainer_name: str
+
+
 class UpcomingLessonOut(BaseModel):
     lesson_date: date
     start_time: time

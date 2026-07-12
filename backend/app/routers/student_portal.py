@@ -16,16 +16,19 @@ from app.models import (
     CourseCatalogItemKind,
     CustomLesson,
     CustomLessonStudent,
+    Grade,
     Group,
     GroupSchedule,
     GroupStatus,
     GroupStudent,
     LessonCancellation,
+    Module,
     Student,
     StudentCourseAccess,
     StudentCourseAccessStatus,
     StudentCourseProgress,
     StudentCredential,
+    Topic,
     User,
 )
 from app.schemas.student_portal import (
@@ -40,6 +43,7 @@ from app.schemas.student_portal import (
     StudentCredentialCreate,
     StudentCredentialOut,
     StudentCredentialUpdate,
+    StudentGradeOut,
     StudentLoginRequest,
     StudentLoginResponse,
     StudentPortalAdminView,
@@ -176,6 +180,37 @@ async def get_student_schedule(
 
     lessons.sort(key=lambda x: (x.lesson_date, x.start_time))
     return lessons
+
+
+# ─── Оценки студента ─────────────────────────────────────────────────────────
+
+@router.get("/grades", response_model=List[StudentGradeOut])
+async def get_student_grades(
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    grades = (
+        db.query(Grade)
+        .join(Topic, Grade.topic_id == Topic.id)
+        .join(Module, Topic.module_id == Module.id)
+        .join(User, Grade.trainer_id == User.id)
+        .filter(Grade.student_id == current_student.id)
+        .order_by(Grade.date.desc())
+        .limit(50)
+        .all()
+    )
+    result = []
+    for g in grades:
+        result.append(StudentGradeOut(
+            id=g.id,
+            date=g.date,
+            grade=g.grade,
+            topic_name=g.topic.name,
+            module_name=g.topic.module.name,
+            comment=g.comment,
+            trainer_name=g.trainer.full_name if g.trainer else "Тренер",
+        ))
+    return result
 
 
 # ─── Витрина курсов (для ученика) ────────────────────────────────────────────

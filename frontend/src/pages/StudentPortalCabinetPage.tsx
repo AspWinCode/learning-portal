@@ -20,7 +20,7 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import { studentPortalApi, StudentPortalProfile, UpcomingLesson } from '../services/studentPortalApi';
+import { studentPortalApi, StudentPortalProfile, UpcomingLesson, StudentGrade } from '../services/studentPortalApi';
 import { CourseCatalogItemOut } from '../types';
 
 const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -46,6 +46,7 @@ const StudentPortalCabinetPage: React.FC = () => {
   const [profile, setProfile] = useState<StudentPortalProfile | null>(null);
   const [courses, setCourses] = useState<CourseCatalogItemOut[]>([]);
   const [schedule, setSchedule] = useState<UpcomingLesson[]>([]);
+  const [grades, setGrades] = useState<StudentGrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<number | null>(null);
@@ -61,11 +62,13 @@ const StudentPortalCabinetPage: React.FC = () => {
       studentPortalApi.me(),
       studentPortalApi.listCourses(),
       studentPortalApi.getSchedule(),
+      studentPortalApi.getGrades(),
     ])
-      .then(([me, courseList, lessonList]) => {
+      .then(([me, courseList, lessonList, gradeList]) => {
         setProfile(me);
         setCourses(courseList);
         setSchedule(lessonList);
+        setGrades(gradeList);
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Не удалось загрузить кабинет'))
       .finally(() => setLoading(false));
@@ -164,6 +167,51 @@ const StudentPortalCabinetPage: React.FC = () => {
               </Box>
             </Box>
           ))}
+        </Paper>
+      )}
+
+      {/* Оценки */}
+      <Typography variant="h6" fontWeight={700} sx={{ mb: 1.5 }}>
+        Последние оценки
+      </Typography>
+
+      {grades.length === 0 ? (
+        <Paper variant="outlined" sx={{ p: 2, mb: 4 }}>
+          <Typography variant="body2" color="text.secondary">Оценок пока нет.</Typography>
+        </Paper>
+      ) : (
+        <Paper variant="outlined" sx={{ mb: 4, overflow: 'hidden' }}>
+          {grades.map((g, i) => {
+            const gradeColor = g.grade >= 4 ? 'success' : g.grade >= 3 ? 'warning' : 'error';
+            const d = new Date(g.date);
+            const dateStr = `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+            return (
+              <Box key={g.id}>
+                {i > 0 && <Divider />}
+                <Stack direction="row" alignItems="center" gap={2} sx={{ px: 2, py: 1.5 }}>
+                  <Chip
+                    label={Number.isInteger(g.grade) ? g.grade : g.grade.toFixed(1)}
+                    color={gradeColor}
+                    size="small"
+                    sx={{ fontWeight: 700, minWidth: 40 }}
+                  />
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="body2" noWrap>{g.topic_name}</Typography>
+                    <Typography variant="caption" color="text.secondary" noWrap>{g.module_name}</Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                    <Typography variant="caption" color="text.secondary" display="block">{dateStr}</Typography>
+                    <Typography variant="caption" color="text.secondary">{g.trainer_name}</Typography>
+                  </Box>
+                </Stack>
+                {g.comment && (
+                  <Typography variant="caption" color="text.secondary" sx={{ px: 2, pb: 1.5, display: 'block' }}>
+                    💬 {g.comment}
+                  </Typography>
+                )}
+              </Box>
+            );
+          })}
         </Paper>
       )}
 

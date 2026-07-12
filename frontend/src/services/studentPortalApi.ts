@@ -6,6 +6,16 @@ export interface StudentPortalProfile {
   full_name: string;
 }
 
+export interface StudentGrade {
+  id: number;
+  date: string;
+  grade: number;
+  topic_name: string;
+  module_name: string;
+  comment: string | null;
+  trainer_name: string;
+}
+
 export interface UpcomingLesson {
   lesson_date: string;
   start_time: string;
@@ -34,6 +44,10 @@ export const studentPortalApi = {
   },
   getSchedule: async (): Promise<UpcomingLesson[]> => {
     const response = await studentPortalClient.get('/api/student-portal/schedule');
+    return response.data;
+  },
+  getGrades: async (): Promise<StudentGrade[]> => {
+    const response = await studentPortalClient.get('/api/student-portal/grades');
     return response.data;
   },
   saveToken: (token: string) => localStorage.setItem(STUDENT_PORTAL_TOKEN_KEY, token),

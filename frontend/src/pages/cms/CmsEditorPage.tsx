@@ -84,13 +84,14 @@ const ALL_PAGES = PAGE_GROUPS.flatMap((g) => g.pages);
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-function TF({ label, value, onChange, multiline = false, rows = 1 }: {
-  label: string; value: string; onChange: (v: string) => void; multiline?: boolean; rows?: number;
+function TF({ label, value, onChange, multiline = false, rows = 1, sx, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; multiline?: boolean; rows?: number; sx?: object; placeholder?: string;
 }) {
   return (
     <TextField label={label} value={value || ''} fullWidth size="small"
       multiline={multiline} minRows={multiline ? rows : undefined}
-      onChange={(e) => onChange(e.target.value)} />
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)} sx={sx} />
   );
 }
 

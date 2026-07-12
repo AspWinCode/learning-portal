@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.models import BankTransaction, BankTransactionStatus, FinanceTransaction, FinanceTransactionDirection, FinanceTransactionStatus, Student
+from app.models import BankTransaction, BankTransactionStatus, FinanceTransaction, FinanceTransactionDirection, FinanceTransactionStatus
 from app.routers import finance
 from app.schemas.finance import FinanceTransactionApplyStudentRequest
 from app.services.student_account_payment import AddPaymentResult

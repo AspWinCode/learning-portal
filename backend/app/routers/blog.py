@@ -19,7 +19,7 @@ from app.schemas.blog import (
     BlogTagResponse,
     BlogTagUpdate,
 )
-from app.auth import get_current_user, require_permission
+from app.auth import require_permission
 from app.routers.action_log import log_action
 from app.models import User
 

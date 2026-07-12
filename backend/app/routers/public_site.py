@@ -28,7 +28,6 @@ def site_status(
 ):
     """Return whether the output directory exists and its mtime."""
     import os
-    from pathlib import Path
     from app.public_site.generator import OUTPUT_DIR
 
     index = OUTPUT_DIR / "index.html"

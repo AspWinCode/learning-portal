@@ -1,7 +1,6 @@
 """Личный кабинет ученика: свой логин, витрина курсов, выдача доступа админом/тренером."""
 import hashlib
 import hmac
-import os
 import re
 from datetime import date, timedelta
 from typing import List
@@ -19,7 +18,6 @@ from app.models import (
     CustomLessonStudent,
     Grade,
     Group,
-    GroupSchedule,
     GroupStatus,
     GroupStudent,
     LessonCancellation,

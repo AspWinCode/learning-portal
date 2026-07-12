@@ -59,7 +59,34 @@ jobs:
             git checkout main
             git pull --ff-only origin main
             docker compose pull migrator backend app_worker app_scheduler app_delivery_worker web
+
+            # Run migrations first and wait for them to finish
+            docker compose up -d migrator
+            docker compose wait migrator
+
+            # Bring up all services
             docker compose up -d --no-build
-            docker compose exec -T backend alembic upgrade head
+
+            # Wait for backend to respond (up to 90 seconds)
+            echo "Waiting for backend..."
+            for i in $(seq 1 18); do
+              if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+                echo "Backend is up after $((i * 5))s"
+                break
+              fi
+              echo "  attempt $i/18..."
+              sleep 5
+            done
+
+            # If still not responding — force-restart app containers
+            if ! curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "Backend not responding, forcing restart..."
+              docker compose restart backend app_worker app_scheduler app_delivery_worker
+              sleep 15
+              curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1 \
+                && echo "Backend recovered after restart." \
+                || echo "WARNING: backend still not responding after restart."
+            fi
+
             docker image prune -f
             docker logout ghcr.io

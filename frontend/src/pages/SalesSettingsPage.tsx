@@ -37,7 +37,7 @@ import StudentQuestionnairesSettingsSection from '../components/StudentQuestionn
 import { useAuth } from '../contexts/AuthContext';
 import { PersonRegistryContent } from './PersonRegistryPage';
 import { ProgramMakeupContent } from './SalesProgramMakeupPage';
-import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi } from '../services/api';
+import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi, studentPortalAdminApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
 import { transliterate } from '../utils/transliterate';
@@ -81,6 +81,8 @@ const SalesSettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [error, setError] = useState('');
+  const [portalSettings, setPortalSettings] = useState<{ show_abonement: boolean }>({ show_abonement: false });
+  const [portalSettingsLoading, setPortalSettingsLoading] = useState(false);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [templates, setTemplates] = useState<LeadTaskTemplate[]>([]);
   const [statuses, setStatuses] = useState<LeadTaskStatusOption[]>([]);
@@ -223,6 +225,7 @@ const SalesSettingsPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    studentPortalAdminApi.getPortalSettings().then(setPortalSettings).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -535,6 +538,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="integrations" label="Интеграции" />
           <Tab value="programMakeup" label="Совместимость отработок" />
           <Tab value="notes" label="Заметки" />
+          <Tab value="studentPortal" label="Кабинет ученика" />
         </Tabs>
       </Paper>
 
@@ -1709,6 +1713,39 @@ const SalesSettingsPage: React.FC = () => {
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" mb={1}>Совместимость программ (отработки)</Typography>
             <ProgramMakeupContent />
+          </Paper>
+        )}
+
+        {settingsTab === 'studentPortal' && (
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" mb={2}>Кабинет ученика</Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={portalSettings.show_abonement}
+                  disabled={portalSettingsLoading}
+                  onChange={async (e) => {
+                    setPortalSettingsLoading(true);
+                    try {
+                      const updated = await studentPortalAdminApi.updatePortalSettings({ show_abonement: e.target.checked });
+                      setPortalSettings(updated);
+                    } catch (err: any) {
+                      setError(extractApiError(err, 'Не удалось сохранить настройку'));
+                    } finally {
+                      setPortalSettingsLoading(false);
+                    }
+                  }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body1">Показывать абонемент</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Если включено — студент видит название своего абонемента и дату начала обучения в личном кабинете
+                  </Typography>
+                </Box>
+              }
+            />
           </Paper>
         )}
 

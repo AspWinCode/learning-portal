@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app import auth
 from app.database import get_db
 from app.models import (
+    AppSetting,
     CourseCatalogItem,
     CourseCatalogItemKind,
     CustomLesson,
@@ -43,7 +44,9 @@ from app.schemas.student_portal import (
     StudentCredentialCreate,
     StudentCredentialOut,
     ChangePasswordRequest,
+    StudentAbonementOut,
     StudentCredentialUpdate,
+    StudentPortalSettings,
     StudentGradeOut,
     StudentLoginRequest,
     StudentLoginResponse,
@@ -86,6 +89,65 @@ async def student_login(payload: StudentLoginRequest, db: Session = Depends(get_
 @router.get("/me", response_model=StudentProfileOut)
 async def get_student_me(current_student: Student = Depends(auth.get_current_student)):
     return StudentProfileOut.model_validate(current_student)
+
+
+_PORTAL_SETTINGS_KEY = "student_portal.settings"
+
+
+def _load_portal_settings(db: Session) -> StudentPortalSettings:
+    row = db.query(AppSetting).filter(AppSetting.key == _PORTAL_SETTINGS_KEY).first()
+    if not row or not row.value:
+        return StudentPortalSettings()
+    import json as _json
+    try:
+        return StudentPortalSettings.model_validate(_json.loads(row.value))
+    except Exception:
+        return StudentPortalSettings()
+
+
+# ─── Настройки кабинета (admin) ───────────────────────────────────────────────
+
+@router.get("/admin/portal-settings", response_model=StudentPortalSettings)
+async def get_portal_settings(
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    return _load_portal_settings(db)
+
+
+@router.put("/admin/portal-settings", response_model=StudentPortalSettings)
+async def update_portal_settings(
+    payload: StudentPortalSettings,
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    import json as _json
+    row = db.query(AppSetting).filter(AppSetting.key == _PORTAL_SETTINGS_KEY).first()
+    if not row:
+        row = AppSetting(key=_PORTAL_SETTINGS_KEY, value=_json.dumps(payload.model_dump()))
+        db.add(row)
+    else:
+        row.value = _json.dumps(payload.model_dump())
+    db.commit()
+    return payload
+
+
+# ─── Абонемент студента ───────────────────────────────────────────────────────
+
+@router.get("/abonement", response_model=StudentAbonementOut)
+async def get_student_abonement(
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    settings = _load_portal_settings(db)
+    if not settings.show_abonement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Недоступно")
+    if not current_student.abonement_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Абонемент не назначен")
+    return StudentAbonementOut(
+        name=current_student.abonement.name,
+        training_start_date=current_student.training_start_date,
+    )
 
 
 # ─── Смена пароля ────────────────────────────────────────────────────────────

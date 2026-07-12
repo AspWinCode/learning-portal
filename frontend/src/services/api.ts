@@ -577,6 +577,14 @@ export const studentPortalAdminApi = {
   revokeAccess: async (accessId: number): Promise<void> => {
     await api.delete(`/api/student-portal/admin/access/${accessId}`);
   },
+  getPortalSettings: async (): Promise<{ show_abonement: boolean }> => {
+    const response = await api.get('/api/student-portal/admin/portal-settings');
+    return response.data;
+  },
+  updatePortalSettings: async (payload: { show_abonement: boolean }): Promise<{ show_abonement: boolean }> => {
+    const response = await api.put('/api/student-portal/admin/portal-settings', payload);
+    return response.data;
+  },
 };
 
 // Unified Finance Ledger API

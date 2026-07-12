@@ -54,6 +54,7 @@ const StudentPortalCabinetPage: React.FC = () => {
   const [courses, setCourses] = useState<CourseCatalogItemOut[]>([]);
   const [schedule, setSchedule] = useState<UpcomingLesson[]>([]);
   const [grades, setGrades] = useState<StudentGrade[]>([]);
+  const [abonement, setAbonement] = useState<{ name: string; training_start_date: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<number | null>(null);
@@ -77,12 +78,14 @@ const StudentPortalCabinetPage: React.FC = () => {
       studentPortalApi.listCourses(),
       studentPortalApi.getSchedule(),
       studentPortalApi.getGrades(),
+      studentPortalApi.getAbonement(),
     ])
-      .then(([me, courseList, lessonList, gradeList]) => {
+      .then(([me, courseList, lessonList, gradeList, abon]) => {
         setProfile(me);
         setCourses(courseList);
         setSchedule(lessonList);
         setGrades(gradeList);
+        setAbonement(abon);
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Не удалось загрузить кабинет'))
       .finally(() => setLoading(false));
@@ -194,6 +197,24 @@ const StudentPortalCabinetPage: React.FC = () => {
       </Dialog>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+
+      {/* Абонемент */}
+      {abonement && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Абонемент</Typography>
+            <Typography variant="subtitle1" fontWeight={700}>{abonement.name}</Typography>
+          </Box>
+          {abonement.training_start_date && (
+            <Box sx={{ ml: 'auto', textAlign: 'right' }}>
+              <Typography variant="caption" color="text.secondary">Начало обучения</Typography>
+              <Typography variant="body2">
+                {new Date(abonement.training_start_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </Typography>
+            </Box>
+          )}
+        </Paper>
+      )}
 
       {/* Расписание */}
       <Typography variant="h6" fontWeight={700} sx={{ mb: 1.5 }}>

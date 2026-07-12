@@ -134,6 +134,15 @@ class StudentGradeOut(BaseModel):
     trainer_name: str
 
 
+class StudentPortalSettings(BaseModel):
+    show_abonement: bool = False
+
+
+class StudentAbonementOut(BaseModel):
+    name: str
+    training_start_date: Optional[date] = None
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=6)

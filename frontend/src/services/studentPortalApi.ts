@@ -53,6 +53,14 @@ export const studentPortalApi = {
   changePassword: async (current_password: string, new_password: string): Promise<void> => {
     await studentPortalClient.post('/api/student-portal/change-password', { current_password, new_password });
   },
+  getAbonement: async (): Promise<{ name: string; training_start_date: string | null } | null> => {
+    try {
+      const response = await studentPortalClient.get('/api/student-portal/abonement');
+      return response.data;
+    } catch {
+      return null;
+    }
+  },
   saveToken: (token: string) => localStorage.setItem(STUDENT_PORTAL_TOKEN_KEY, token),
   getToken: (): string | null => localStorage.getItem(STUDENT_PORTAL_TOKEN_KEY),
   logout: () => localStorage.removeItem(STUDENT_PORTAL_TOKEN_KEY),

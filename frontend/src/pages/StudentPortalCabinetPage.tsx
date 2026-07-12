@@ -6,11 +6,16 @@ import {
   Card,
   CardContent,
   CardActions,
+  CardMedia,
   Button,
   CircularProgress,
   Alert,
   Stack,
+  LinearProgress,
+  Chip,
 } from '@mui/material';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import { studentPortalApi, StudentPortalProfile } from '../services/studentPortalApi';
 import { CourseCatalogItemOut } from '../types';
 
@@ -79,29 +84,88 @@ const StudentPortalCabinetPage: React.FC = () => {
           Пока нет доступных курсов. Обратитесь к тренеру.
         </Typography>
       ) : (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fill, minmax(260px, 1fr))' }, gap: 2 }}>
-          {courses.map((course) => (
-            <Card key={course.id} variant="outlined">
-              <CardContent>
-                <Typography variant="h6">{course.name}</Typography>
-                {course.description && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    {course.description}
-                  </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fill, minmax(280px, 1fr))' }, gap: 2 }}>
+          {courses.map((course) => {
+            const p = course.progress;
+            const pct = p && p.cases_total > 0 ? Math.round((p.cases_solved / p.cases_total) * 100) : null;
+
+            return (
+              <Card key={course.id} variant="outlined" sx={{ display: 'flex', flexDirection: 'column' }}>
+                {course.cover_image_url && (
+                  <CardMedia
+                    component="img"
+                    height={140}
+                    image={course.cover_image_url}
+                    alt={course.name}
+                    sx={{ objectFit: 'cover' }}
+                  />
                 )}
-              </CardContent>
-              <CardActions>
-                <Button
-                  variant="contained"
-                  fullWidth
-                  disabled={launchingId === course.id}
-                  onClick={() => handleLaunch(course.id)}
-                >
-                  {launchingId === course.id ? 'Открываем…' : 'Открыть'}
-                </Button>
-              </CardActions>
-            </Card>
-          ))}
+                <CardContent sx={{ flexGrow: 1, pb: 1 }}>
+                  <Typography variant="h6" gutterBottom>{course.name}</Typography>
+
+                  {course.description && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                      {course.description}
+                    </Typography>
+                  )}
+
+                  {p && (
+                    <Box sx={{ mt: 1.5 }}>
+                      {pct !== null && (
+                        <Box sx={{ mb: 1 }}>
+                          <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Прогресс
+                            </Typography>
+                            <Typography variant="caption" fontWeight={600}>
+                              {p.cases_solved} / {p.cases_total} задач ({pct}%)
+                            </Typography>
+                          </Stack>
+                          <LinearProgress
+                            variant="determinate"
+                            value={pct}
+                            sx={{ height: 8, borderRadius: 4 }}
+                          />
+                        </Box>
+                      )}
+
+                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1, gap: 0.5 }}>
+                        {p.rank_name && (
+                          <Chip
+                            icon={<MilitaryTechIcon fontSize="small" />}
+                            label={p.rank_name}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                          />
+                        )}
+                        {p.badges_count > 0 && (
+                          <Chip
+                            icon={<EmojiEventsIcon fontSize="small" />}
+                            label={p.last_badge_name ? p.last_badge_name : `${p.badges_count} бейдж${p.badges_count === 1 ? '' : 'ей'}`}
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                          />
+                        )}
+                      </Stack>
+                    </Box>
+                  )}
+                </CardContent>
+
+                <CardActions sx={{ px: 2, pb: 2 }}>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    disabled={launchingId === course.id}
+                    onClick={() => handleLaunch(course.id)}
+                  >
+                    {launchingId === course.id ? 'Открываем…' : 'Открыть курс'}
+                  </Button>
+                </CardActions>
+              </Card>
+            );
+          })}
         </Box>
       )}
     </Box>

@@ -2332,6 +2332,15 @@ export interface CommandCenterResponse {
   alerts: CommandCenterAlert[];
 }
 
+export interface CourseProgressOut {
+  cases_solved: number;
+  cases_total: number;
+  rank_name?: string | null;
+  badges_count: number;
+  last_badge_name?: string | null;
+  updated_at?: string | null;
+}
+
 export interface CourseCatalogItemOut {
   id: number;
   code: string;
@@ -2340,6 +2349,7 @@ export interface CourseCatalogItemOut {
   cover_image_url?: string | null;
   kind: 'internal' | 'external';
   has_access: boolean;
+  progress?: CourseProgressOut | null;
 }
 
 export interface StudentCredentialOut {

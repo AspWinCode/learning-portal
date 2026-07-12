@@ -112,6 +112,12 @@ const SalesSettingsPage: React.FC = () => {
     phone: '',
   });
   const [schoolImportFile, setSchoolImportFile] = useState<File | null>(null);
+  const [editingSchool, setEditingSchool] = useState<SalesSchool | null>(null);
+  const [editSchoolDraft, setEditSchoolDraft] = useState<{
+    name: string; city: string; district: string; director: string; email: string; address: string; phone: string; is_active: boolean;
+  } | null>(null);
+  const [editSchoolSaving, setEditSchoolSaving] = useState(false);
+  const [editSchoolError, setEditSchoolError] = useState('');
   const [schoolImportResult, setSchoolImportResult] = useState<{
     created: number;
     updated: number;
@@ -387,6 +393,59 @@ const SalesSettingsPage: React.FC = () => {
       setError('');
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось сохранить шаблон'));
+    }
+  };
+
+  const openEditSchool = (school: SalesSchool) => {
+    setEditingSchool(school);
+    setEditSchoolDraft({
+      name: school.name,
+      city: school.city || '',
+      district: school.district || '',
+      director: school.director || '',
+      email: school.email || '',
+      address: school.address || '',
+      phone: school.phone || '',
+      is_active: school.is_active,
+    });
+    setEditSchoolError('');
+  };
+
+  const saveEditSchool = async () => {
+    if (!editingSchool || !editSchoolDraft) return;
+    if (!editSchoolDraft.name.trim()) { setEditSchoolError('Название обязательно'); return; }
+    if (editSchoolDraft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editSchoolDraft.email.trim())) {
+      setEditSchoolError('Некорректная почта'); return;
+    }
+    setEditSchoolSaving(true);
+    setEditSchoolError('');
+    try {
+      await salesApi.updateSalesSchool(editingSchool.id, {
+        name: editSchoolDraft.name.trim(),
+        city: editSchoolDraft.city.trim() || null,
+        district: editSchoolDraft.district.trim() || null,
+        director: editSchoolDraft.director.trim() || null,
+        email: editSchoolDraft.email.trim() || null,
+        address: editSchoolDraft.address.trim() || null,
+        phone: editSchoolDraft.phone.trim() || null,
+        is_active: editSchoolDraft.is_active,
+      });
+      setEditingSchool(null);
+      await loadData();
+    } catch (err: any) {
+      setEditSchoolError(extractApiError(err, 'Не удалось сохранить'));
+    } finally {
+      setEditSchoolSaving(false);
+    }
+  };
+
+  const deleteSchool = async (school: SalesSchool) => {
+    if (!window.confirm(`Удалить школу «${school.name}»? Это действие нельзя отменить.`)) return;
+    try {
+      await salesApi.deleteSalesSchool(school.id);
+      await loadData();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось удалить школу'));
     }
   };
 
@@ -777,6 +836,7 @@ const SalesSettingsPage: React.FC = () => {
                   <TableCell sx={{ minWidth: 120, maxWidth: 180 }}>Адрес</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>Телефон</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>Активна</TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>Действия</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -794,6 +854,18 @@ const SalesSettingsPage: React.FC = () => {
                         checked={s.is_active}
                         onChange={(e) => safeAction(() => salesApi.updateSalesSchool(s.id, { is_active: e.target.checked }))}
                       />
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                      <Tooltip title="Редактировать">
+                        <IconButton size="small" onClick={() => openEditSchool(s)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Удалить">
+                        <IconButton size="small" color="error" onClick={() => deleteSchool(s)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1800,6 +1872,49 @@ const SalesSettingsPage: React.FC = () => {
           </Paper>
         )}
       </Stack>
+
+      {/* Edit school dialog */}
+      <Dialog open={!!editingSchool} onClose={() => !editSchoolSaving && setEditingSchool(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Редактировать школу</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {editSchoolError && <Alert severity="error">{editSchoolError}</Alert>}
+            <TextField size="small" label="Название" fullWidth required
+              value={editSchoolDraft?.name ?? ''} disabled={editSchoolSaving}
+              onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, name: e.target.value } : d)} />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <TextField size="small" label="Город" fullWidth
+                value={editSchoolDraft?.city ?? ''} disabled={editSchoolSaving}
+                onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, city: e.target.value } : d)} />
+              <TextField size="small" label="Район" fullWidth
+                value={editSchoolDraft?.district ?? ''} disabled={editSchoolSaving}
+                onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, district: e.target.value } : d)} />
+            </Stack>
+            <TextField size="small" label="Директор/ИО" fullWidth
+              value={editSchoolDraft?.director ?? ''} disabled={editSchoolSaving}
+              onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, director: e.target.value } : d)} />
+            <TextField size="small" label="Почта" type="email" fullWidth
+              value={editSchoolDraft?.email ?? ''} disabled={editSchoolSaving}
+              onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, email: e.target.value } : d)} />
+            <TextField size="small" label="Адрес" fullWidth
+              value={editSchoolDraft?.address ?? ''} disabled={editSchoolSaving}
+              onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, address: e.target.value } : d)} />
+            <TextField size="small" label="Телефон" fullWidth
+              value={editSchoolDraft?.phone ?? ''} disabled={editSchoolSaving}
+              onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, phone: e.target.value } : d)} />
+            <FormControlLabel
+              control={<Switch checked={editSchoolDraft?.is_active ?? true} disabled={editSchoolSaving}
+                onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, is_active: e.target.checked } : d)} />}
+              label="Активна" />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditingSchool(null)} disabled={editSchoolSaving}>Отмена</Button>
+          <Button variant="contained" onClick={saveEditSchool} disabled={editSchoolSaving || !editSchoolDraft?.name.trim()}>
+            {editSchoolSaving ? 'Сохраняем…' : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Template editor dialog */}
       <Dialog open={templateDialogOpen} onClose={() => setTemplateDialogOpen(false)} maxWidth="md" fullWidth>

@@ -147,6 +147,11 @@ def run_owner_workspace_task_reminders() -> None:
     _run_db_job("owner_workspace_task_reminders", dispatch_task_reminders)
 
 
+def run_daily_task_digest() -> None:
+    from app.services.owner_workspace_daily_digest import dispatch_daily_task_digest
+    _run_db_job("daily_task_digest", dispatch_daily_task_digest)
+
+
 def run_transcription(transcription_id: int) -> None:
     from app.services.transcription_service import run_transcription_job
     _run_db_job("transcription", lambda db: run_transcription_job(db, transcription_id))

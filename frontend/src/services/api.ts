@@ -2045,6 +2045,9 @@ export const salesApi = {
     const response = await api.put(`/api/sales/schools/${id}`, payload);
     return response.data;
   },
+  deleteSalesSchool: async (id: number): Promise<void> => {
+    await api.delete(`/api/sales/schools/${id}`);
+  },
   importSalesSchools: async (file: File): Promise<{ created: number; updated: number; skipped: number; errors: string[] }> => {
     const form = new FormData();
     form.append('file', file);

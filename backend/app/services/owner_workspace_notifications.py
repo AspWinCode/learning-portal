@@ -35,6 +35,7 @@ KIND_TASK_COMMENT = "task_comment"
 KIND_TASK_UPDATED = "task_updated"
 KIND_CONTACT_INCOMING_MESSAGE = "contact_incoming_message"
 KIND_TASK_MENTION = "task_mention"
+KIND_TASK_DAILY_DIGEST = "task_daily_digest"
 
 ACTIVE_STATUSES = ("new", "in_progress", "waiting")
 EMAIL_STATUS_DISABLED = "disabled"
@@ -59,6 +60,7 @@ KIND_TO_PREFERENCE_KEY = {
     KIND_TASK_UPDATED: "notify_task_updated",
     KIND_CONTACT_INCOMING_MESSAGE: "notify_contact_incoming_message",
     KIND_TASK_MENTION: "notify_task_mention",
+    KIND_TASK_DAILY_DIGEST: "notify_task_daily_digest",
 }
 NOTIFICATION_CONFIG_KEY = "owner_workspace_notification_config"
 DEFAULT_NOTIFICATION_CONFIG = {
@@ -69,6 +71,7 @@ DEFAULT_NOTIFICATION_CONFIG = {
     "task_updated": {"label": "Обновление задачи", "enabled": True},
     "contact_incoming_message": {"label": "Сообщение по контакту", "enabled": True},
     "task_mention": {"label": "Упоминание", "enabled": True},
+    "task_daily_digest": {"label": "Дайджест задач на сегодня (утром)", "enabled": True},
 }
 
 

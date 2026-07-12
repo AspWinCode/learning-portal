@@ -6,6 +6,7 @@ import dramatiq
 from app.background_jobs import (
     run_absence_link_tasks,
     run_communication_queue,
+    run_daily_task_digest,
     run_owner_workspace_max_sync,
     run_owner_workspace_notification_email_dispatch,
     run_owner_workspace_notification_web_push_dispatch,
@@ -78,6 +79,11 @@ def task_owner_workspace_notification_web_push_dispatch() -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_owner_workspace_task_reminders() -> None:
     run_owner_workspace_task_reminders()
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_daily_task_digest() -> None:
+    run_daily_task_digest()
 
 
 @dramatiq.actor(queue_name="delivery", max_retries=0)

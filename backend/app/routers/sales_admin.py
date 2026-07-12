@@ -892,6 +892,21 @@ async def update_sales_school(
     return item
 
 
+@router.delete("/schools/{school_id}", status_code=204)
+async def delete_sales_school(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    item = db.query(SalesSchool).filter(SalesSchool.id == school_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="School not found")
+    name = item.name
+    db.delete(item)
+    db.commit()
+    log_action(db, current_user.id, "delete", "sales_school", school_id, {"name": name})
+
+
 @router.get("/classes", response_model=List[SalesClassResponse])
 async def list_sales_classes(
     active_only: bool = True,

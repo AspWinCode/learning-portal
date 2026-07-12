@@ -6,11 +6,9 @@ from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models import OwnerWorkspaceTask, OwnerWorkspaceWebPushSubscription, User
+from app.models import OwnerWorkspaceTask, OwnerWorkspaceWebPushSubscription
 from app.services.owner_workspace_notifications import (
     KIND_TO_PREFERENCE_KEY,
-    WEB_PUSH_STATUS_DISABLED,
-    WEB_PUSH_STATUS_PENDING,
     _send_web_push,
     get_owner_workspace_notification_config,
     is_web_push_configured,

@@ -99,3 +99,7 @@ yarn-error.log*
 *.db
 *.sqlite
 
+# Local DB backups
+backups/
+.env.backup
+

@@ -79,6 +79,7 @@ services:
     restart: unless-stopped
 
   migrator:
+    image: ghcr.io/aspwincode/learning-portal-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -93,6 +94,7 @@ services:
     restart: "no"
 
   backend:
+    image: ghcr.io/aspwincode/learning-portal-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -128,6 +130,7 @@ services:
     restart: unless-stopped
 
   app_worker:
+    image: ghcr.io/aspwincode/learning-portal-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -149,6 +152,7 @@ services:
     restart: unless-stopped
 
   app_scheduler:
+    image: ghcr.io/aspwincode/learning-portal-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -167,6 +171,7 @@ services:
     restart: unless-stopped
 
   app_delivery_worker:
+    image: ghcr.io/aspwincode/learning-portal-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -197,6 +202,7 @@ services:
     profiles: ["telegram"]
 
   web:
+    image: ghcr.io/aspwincode/learning-portal-frontend:latest
     build:
       context: .
       dockerfile: ./frontend/Dockerfile

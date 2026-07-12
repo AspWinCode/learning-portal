@@ -3745,9 +3745,36 @@ export const passwordsApi = {
   },
 };
 
+export interface NoteFolder {
+  id: number;
+  user_id: number;
+  name: string;
+  parent_id: number | null;
+  created_at: string;
+}
+
+export const noteFoldersApi = {
+  list: async (): Promise<NoteFolder[]> => {
+    const response = await api.get('/notes/folders');
+    return response.data;
+  },
+  create: async (payload: { name: string; parent_id?: number | null }): Promise<NoteFolder> => {
+    const response = await api.post('/notes/folders', payload);
+    return response.data;
+  },
+  update: async (folderId: number, payload: { name?: string; parent_id?: number | null }): Promise<NoteFolder> => {
+    const response = await api.patch(`/notes/folders/${folderId}`, payload);
+    return response.data;
+  },
+  delete: async (folderId: number): Promise<void> => {
+    await api.delete(`/notes/folders/${folderId}`);
+  },
+};
+
 export interface Note {
   id: number;
   user_id: number;
+  folder_id: number | null;
   title: string;
   content: string | null;
   created_at: string;
@@ -3759,11 +3786,11 @@ export const notesApi = {
     const response = await api.get('/notes', { params: q ? { q } : {} });
     return response.data;
   },
-  create: async (payload: { title?: string; content?: string }): Promise<Note> => {
+  create: async (payload: { title?: string; content?: string; folder_id?: number | null }): Promise<Note> => {
     const response = await api.post('/notes', payload);
     return response.data;
   },
-  update: async (noteId: number, payload: { title?: string; content?: string }): Promise<Note> => {
+  update: async (noteId: number, payload: { title?: string; content?: string; folder_id?: number | null }): Promise<Note> => {
     const response = await api.patch(`/notes/${noteId}`, payload);
     return response.data;
   },

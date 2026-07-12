@@ -6,8 +6,15 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import AppSetting, Note, User
-from app.schemas.notes import NoteCreate, NoteResponse, NoteUpdate
+from app.models import AppSetting, Note, NoteFolder, User
+from app.schemas.notes import (
+    NoteFolderCreate,
+    NoteFolderResponse,
+    NoteFolderUpdate,
+    NoteCreate,
+    NoteResponse,
+    NoteUpdate,
+)
 
 router = APIRouter()
 
@@ -40,9 +47,117 @@ def _check_notes_access(user: User, db: Session) -> None:
         )
 
 
+# ── Folders ──────────────────────────────────────────────────────────────────
+
+@router.get("/folders", response_model=List[NoteFolderResponse])
+async def list_folders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _check_notes_access(current_user, db)
+    return (
+        db.query(NoteFolder)
+        .filter(NoteFolder.user_id == current_user.id)
+        .order_by(NoteFolder.created_at)
+        .all()
+    )
+
+
+@router.post("/folders", response_model=NoteFolderResponse, status_code=status.HTTP_201_CREATED)
+async def create_folder(
+    payload: NoteFolderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _check_notes_access(current_user, db)
+    if payload.parent_id is not None:
+        parent = (
+            db.query(NoteFolder)
+            .filter(NoteFolder.id == payload.parent_id, NoteFolder.user_id == current_user.id)
+            .first()
+        )
+        if not parent:
+            raise HTTPException(status_code=404, detail="Родительская папка не найдена")
+    folder = NoteFolder(
+        user_id=current_user.id,
+        name=payload.name.strip()[:255],
+        parent_id=payload.parent_id,
+    )
+    db.add(folder)
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+@router.patch("/folders/{folder_id}", response_model=NoteFolderResponse)
+async def update_folder(
+    folder_id: int,
+    payload: NoteFolderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _check_notes_access(current_user, db)
+    folder = (
+        db.query(NoteFolder)
+        .filter(NoteFolder.id == folder_id, NoteFolder.user_id == current_user.id)
+        .first()
+    )
+    if not folder:
+        raise HTTPException(status_code=404, detail="Папка не найдена")
+    if payload.name is not None:
+        name = payload.name.strip()[:255]
+        if name:
+            folder.name = name
+    if "parent_id" in payload.model_fields_set:
+        if payload.parent_id is not None:
+            if payload.parent_id == folder_id:
+                raise HTTPException(status_code=400, detail="Папка не может быть своим родителем")
+            parent = (
+                db.query(NoteFolder)
+                .filter(NoteFolder.id == payload.parent_id, NoteFolder.user_id == current_user.id)
+                .first()
+            )
+            if not parent:
+                raise HTTPException(status_code=404, detail="Родительская папка не найдена")
+        folder.parent_id = payload.parent_id
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+@router.delete("/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _check_notes_access(current_user, db)
+    folder = (
+        db.query(NoteFolder)
+        .filter(NoteFolder.id == folder_id, NoteFolder.user_id == current_user.id)
+        .first()
+    )
+    if not folder:
+        raise HTTPException(status_code=404, detail="Папка не найдена")
+    parent_id = folder.parent_id
+    # Move child folders up one level
+    db.query(NoteFolder).filter(NoteFolder.parent_id == folder_id).update(
+        {"parent_id": parent_id}, synchronize_session=False
+    )
+    # Move notes in this folder to root
+    db.query(Note).filter(Note.folder_id == folder_id, Note.user_id == current_user.id).update(
+        {"folder_id": None}, synchronize_session=False
+    )
+    db.delete(folder)
+    db.commit()
+
+
+# ── Notes ────────────────────────────────────────────────────────────────────
+
 @router.get("", response_model=List[NoteResponse])
 async def list_notes(
     q: Optional[str] = Query(None, max_length=255),
+    folder_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
@@ -51,9 +166,9 @@ async def list_notes(
     search = (q or "").strip()
     if search:
         like = f"%{search}%"
-        query = query.filter(
-            Note.title.ilike(like) | Note.content.ilike(like)
-        )
+        query = query.filter(Note.title.ilike(like) | Note.content.ilike(like))
+    elif folder_id is not None:
+        query = query.filter(Note.folder_id == folder_id)
     return query.order_by(Note.updated_at.desc()).all()
 
 
@@ -64,8 +179,17 @@ async def create_note(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     _check_notes_access(current_user, db)
+    if payload.folder_id is not None:
+        folder = (
+            db.query(NoteFolder)
+            .filter(NoteFolder.id == payload.folder_id, NoteFolder.user_id == current_user.id)
+            .first()
+        )
+        if not folder:
+            raise HTTPException(status_code=404, detail="Папка не найдена")
     note = Note(
         user_id=current_user.id,
+        folder_id=payload.folder_id,
         title=(payload.title or "Без названия").strip()[:512] or "Без названия",
         content=payload.content,
     )
@@ -91,6 +215,16 @@ async def update_note(
         note.title = (data["title"].strip()[:512]) or "Без названия"
     if "content" in data:
         note.content = data["content"]
+    if "folder_id" in data:
+        if data["folder_id"] is not None:
+            folder = (
+                db.query(NoteFolder)
+                .filter(NoteFolder.id == data["folder_id"], NoteFolder.user_id == current_user.id)
+                .first()
+            )
+            if not folder:
+                raise HTTPException(status_code=404, detail="Папка не найдена")
+        note.folder_id = data["folder_id"]
     db.commit()
     db.refresh(note)
     return note

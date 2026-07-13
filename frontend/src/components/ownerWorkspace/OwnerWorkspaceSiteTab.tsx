@@ -5,22 +5,53 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   Divider,
+  IconButton,
   List,
   ListItemButton,
   ListItemText,
+  MenuItem,
+  Select,
+  Slider,
   Snackbar,
   Stack,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
+import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import LayersIcon from '@mui/icons-material/Layers';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PublishIcon from '@mui/icons-material/Publish';
 import SaveIcon from '@mui/icons-material/Save';
 
 import { cmsApi, type CmsPageFull, type CmsPageMeta } from '../../services/api';
+
+// ── Layer type (mirrors landing LayerDef) ────────────────────────────────────
+
+interface LayerDef {
+  id: string;
+  section: string;
+  src: string;
+  x: number;
+  y: number;
+  w: number;
+  opacity: number;
+  zIndex: number;
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  hero: 'Герой',
+  advantages: 'Преимущества',
+  tracks: 'Треки',
+  path: 'Путь',
+  lms: 'LMS',
+  cta_final: 'Финальный CTA',
+};
 
 // ── Page groups for the sidebar ──────────────────────────────────────────────
 
@@ -77,7 +108,9 @@ const PAGE_GROUPS: Array<{ label: string; slugs: string[] }> = [
 type OutboundMsg =
   | { type: 'INIT'; content: unknown; mode: 'edit' | 'preview' }
   | { type: 'SET_CONTENT'; content: unknown }
-  | { type: 'HIGHLIGHT_SLOT'; slotId: string };
+  | { type: 'HIGHLIGHT_SLOT'; slotId: string }
+  | { type: 'ADD_LAYER'; layer: LayerDef }
+  | { type: 'REMOVE_LAYER'; id: string };
 
 type InboundMsg =
   | { type: 'READY' }
@@ -136,6 +169,13 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
+
+  // ── Layer panel state ────────────────────────────────────────────────────
+  const [layerFormOpen, setLayerFormOpen] = useState(false);
+  const [newLayerSrc, setNewLayerSrc] = useState('');
+  const [newLayerSection, setNewLayerSection] = useState('hero');
+  const [newLayerW, setNewLayerW] = useState(0.3);
+  const [newLayerOpacity, setNewLayerOpacity] = useState(1);
 
   // ── Load page list ──────────────────────────────────────────────────────
 
@@ -246,6 +286,41 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
     setSelectedSlug(slug);
     setIframeReady(false);
     setIframeLoading(true);
+  };
+
+  // ── Layer helpers ────────────────────────────────────────────────────────
+
+  function getLayers(): LayerDef[] {
+    return ((draftContent as Record<string, unknown> | null)?._layers as LayerDef[] | undefined) ?? [];
+  }
+
+  const handleAddLayer = () => {
+    if (!newLayerSrc.trim()) return;
+    const layer: LayerDef = {
+      id: crypto.randomUUID(),
+      section: newLayerSection,
+      src: newLayerSrc.trim(),
+      x: 0.05,
+      y: 0.05,
+      w: newLayerW,
+      opacity: newLayerOpacity,
+      zIndex: 10 + getLayers().length,
+    };
+    const nextLayers = [...getLayers(), layer];
+    const nextContent = { ...(draftContent as Record<string, unknown> ?? {}), _layers: nextLayers };
+    setDraftContent(nextContent);
+    setHasUnsaved(true);
+    sendToIframe({ type: 'ADD_LAYER', layer });
+    setNewLayerSrc('');
+    setLayerFormOpen(false);
+  };
+
+  const handleDeleteLayer = (id: string) => {
+    const nextLayers = getLayers().filter(l => l.id !== id);
+    const nextContent = { ...(draftContent as Record<string, unknown> ?? {}), _layers: nextLayers };
+    setDraftContent(nextContent);
+    setHasUnsaved(true);
+    sendToIframe({ type: 'REMOVE_LAYER', id });
   };
 
   const pageStatus = resolvePageStatus(pageData);
@@ -420,10 +495,10 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
         </Box>
       </Box>
 
-      {/* ── Right panel: version info ── */}
+      {/* ── Right panel: versions + layers ── */}
       <Box
         sx={{
-          width: 220,
+          width: 280,
           flexShrink: 0,
           borderLeft: '1px solid',
           borderColor: 'divider',
@@ -435,8 +510,8 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
           gap: 2,
         }}
       >
+        {/* Versions */}
         <Typography variant="subtitle2">Версии</Typography>
-
         {pageLoading ? (
           <CircularProgress size={20} />
         ) : (
@@ -464,17 +539,131 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
               </Box>
             )}
             {!pageData?.draft_version && !pageData?.published_version && (
-              <Typography variant="body2" color="text.secondary">
-                Страница ещё не редактировалась
-              </Typography>
+              <Typography variant="body2" color="text.secondary">Не редактировалась</Typography>
             )}
           </Stack>
         )}
 
         <Divider />
 
+        {/* Layers */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <LayersIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+            <Typography variant="subtitle2">Слои изображений</Typography>
+          </Box>
+          <Tooltip title="Добавить слой">
+            <IconButton size="small" onClick={() => setLayerFormOpen(v => !v)}>
+              <AddPhotoAlternateIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+
+        {/* Add layer form */}
+        <Collapse in={layerFormOpen}>
+          <Stack spacing={1.5} sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+            <TextField
+              size="small"
+              label="URL изображения"
+              value={newLayerSrc}
+              onChange={e => setNewLayerSrc(e.target.value)}
+              placeholder="https://..."
+              fullWidth
+            />
+            <Select
+              size="small"
+              value={newLayerSection}
+              onChange={e => setNewLayerSection(e.target.value)}
+              fullWidth
+            >
+              {Object.entries(SECTION_LABELS).map(([k, v]) => (
+                <MenuItem key={k} value={k}>{v}</MenuItem>
+              ))}
+            </Select>
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Ширина: {Math.round(newLayerW * 100)}%
+              </Typography>
+              <Slider
+                size="small"
+                min={0.05} max={1} step={0.05}
+                value={newLayerW}
+                onChange={(_, v) => setNewLayerW(v as number)}
+              />
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Прозрачность: {Math.round(newLayerOpacity * 100)}%
+              </Typography>
+              <Slider
+                size="small"
+                min={0.1} max={1} step={0.05}
+                value={newLayerOpacity}
+                onChange={(_, v) => setNewLayerOpacity(v as number)}
+              />
+            </Box>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={handleAddLayer}
+              disabled={!newLayerSrc.trim() || !iframeReady}
+              startIcon={<AddPhotoAlternateIcon />}
+            >
+              Добавить
+            </Button>
+          </Stack>
+        </Collapse>
+
+        {/* Layer list */}
+        {getLayers().length === 0 ? (
+          <Typography variant="caption" color="text.disabled">
+            Нет слоёв. Нажмите + чтобы добавить.
+          </Typography>
+        ) : (
+          <Stack spacing={1}>
+            {getLayers().map(layer => (
+              <Box
+                key={layer.id}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  p: 1,
+                  bgcolor: 'action.hover',
+                  borderRadius: 1,
+                }}
+              >
+                <Box
+                  component="img"
+                  src={layer.src}
+                  alt=""
+                  sx={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0, bgcolor: 'divider' }}
+                  onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="caption" display="block" noWrap>
+                    {SECTION_LABELS[layer.section] ?? layer.section}
+                  </Typography>
+                  <Typography variant="caption" color="text.disabled" display="block">
+                    {Math.round(layer.w * 100)}% · {Math.round(layer.opacity * 100)}% op
+                  </Typography>
+                </Box>
+                <Tooltip title="Удалить слой">
+                  <IconButton size="small" onClick={() => handleDeleteLayer(layer.id)}>
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            ))}
+          </Stack>
+        )}
+
+        <Divider />
+
         <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-          Кликайте по тексту в холсте, чтобы редактировать его. Изменения копятся в черновике и не влияют на сайт до публикации.
+          Кликайте по тексту в холсте, чтобы редактировать. Перетаскивайте слои прямо в iframe. Изменения не влияют на сайт до публикации.
         </Typography>
       </Box>
 

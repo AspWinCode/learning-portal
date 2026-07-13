@@ -31,7 +31,10 @@ import SaveIcon from '@mui/icons-material/Save';
 
 import { cmsApi, type CmsPageFull, type CmsPageMeta } from '../../services/api';
 
-// ── Layer type (mirrors landing LayerDef) ────────────────────────────────────
+// ── Types (mirror landing types) ─────────────────────────────────────────────
+
+type HoverEffect = 'none' | 'scale' | 'lift' | 'glow';
+type EntrancePreset = 'none' | 'fade-up' | 'fade-in' | 'zoom-in' | 'slide-left' | 'slide-right';
 
 interface LayerDef {
   id: string;
@@ -42,6 +45,12 @@ interface LayerDef {
   w: number;
   opacity: number;
   zIndex: number;
+  hoverEffect?: HoverEffect;
+}
+
+interface AnimationPreset {
+  sectionId: string;
+  entrance: EntrancePreset;
 }
 
 const SECTION_LABELS: Record<string, string> = {
@@ -52,6 +61,22 @@ const SECTION_LABELS: Record<string, string> = {
   lms: 'LMS',
   cta_final: 'Финальный CTA',
 };
+
+const ENTRANCE_OPTIONS: { value: EntrancePreset; label: string }[] = [
+  { value: 'none',       label: 'Без анимации' },
+  { value: 'fade-up',    label: 'Появление снизу' },
+  { value: 'fade-in',    label: 'Плавное появление' },
+  { value: 'zoom-in',    label: 'Масштабирование' },
+  { value: 'slide-left', label: 'Слайд слева' },
+  { value: 'slide-right',label: 'Слайд справа' },
+];
+
+const HOVER_OPTIONS: { value: HoverEffect; label: string }[] = [
+  { value: 'none',  label: 'Нет' },
+  { value: 'scale', label: 'Увеличение' },
+  { value: 'lift',  label: 'Подъём' },
+  { value: 'glow',  label: 'Свечение' },
+];
 
 // ── Page groups for the sidebar ──────────────────────────────────────────────
 
@@ -321,6 +346,36 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
     setDraftContent(nextContent);
     setHasUnsaved(true);
     sendToIframe({ type: 'REMOVE_LAYER', id });
+  };
+
+  const handleUpdateLayerEffect = (id: string, hoverEffect: HoverEffect) => {
+    const nextLayers = getLayers().map(l => l.id === id ? { ...l, hoverEffect } : l);
+    const nextContent = { ...(draftContent as Record<string, unknown> ?? {}), _layers: nextLayers };
+    setDraftContent(nextContent);
+    setHasUnsaved(true);
+    // Re-send full content so iframe updates the layer hoverEffect
+    sendToIframe({ type: 'SET_CONTENT', content: nextContent });
+  };
+
+  // ── Animation helpers ────────────────────────────────────────────────────
+
+  function getAnimations(): AnimationPreset[] {
+    return ((draftContent as Record<string, unknown> | null)?._animations as AnimationPreset[] | undefined) ?? [];
+  }
+
+  function getEntrancePreset(sectionId: string): EntrancePreset {
+    return getAnimations().find(a => a.sectionId === sectionId)?.entrance ?? 'none';
+  }
+
+  const handleSetEntrance = (sectionId: string, entrance: EntrancePreset) => {
+    const existing = getAnimations();
+    const nextAnimations = existing.some(a => a.sectionId === sectionId)
+      ? existing.map(a => a.sectionId === sectionId ? { ...a, entrance } : a)
+      : [...existing, { sectionId, entrance }];
+    const nextContent = { ...(draftContent as Record<string, unknown> ?? {}), _animations: nextAnimations };
+    setDraftContent(nextContent);
+    setHasUnsaved(true);
+    sendToIframe({ type: 'SET_CONTENT', content: nextContent });
   };
 
   const pageStatus = resolvePageStatus(pageData);
@@ -620,45 +675,81 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
             Нет слоёв. Нажмите + чтобы добавить.
           </Typography>
         ) : (
-          <Stack spacing={1}>
+          <Stack spacing={1.5}>
             {getLayers().map(layer => (
               <Box
                 key={layer.id}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
-                  p: 1,
-                  bgcolor: 'action.hover',
-                  borderRadius: 1,
-                }}
+                sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}
               >
-                <Box
-                  component="img"
-                  src={layer.src}
-                  alt=""
-                  sx={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0, bgcolor: 'divider' }}
-                  onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="caption" display="block" noWrap>
-                    {SECTION_LABELS[layer.section] ?? layer.section}
-                  </Typography>
-                  <Typography variant="caption" color="text.disabled" display="block">
-                    {Math.round(layer.w * 100)}% · {Math.round(layer.opacity * 100)}% op
-                  </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+                  <Box
+                    component="img"
+                    src={layer.src}
+                    alt=""
+                    sx={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0, bgcolor: 'divider' }}
+                    onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="caption" display="block" noWrap>
+                      {SECTION_LABELS[layer.section] ?? layer.section}
+                    </Typography>
+                    <Typography variant="caption" color="text.disabled" display="block">
+                      {Math.round(layer.w * 100)}% · {Math.round(layer.opacity * 100)}% op
+                    </Typography>
+                  </Box>
+                  <Tooltip title="Удалить слой">
+                    <IconButton size="small" onClick={() => handleDeleteLayer(layer.id)}>
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 </Box>
-                <Tooltip title="Удалить слой">
-                  <IconButton size="small" onClick={() => handleDeleteLayer(layer.id)}>
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                    Hover:
+                  </Typography>
+                  <Select
+                    size="small"
+                    value={layer.hoverEffect ?? 'none'}
+                    onChange={e => handleUpdateLayerEffect(layer.id, e.target.value as HoverEffect)}
+                    sx={{ flex: 1, fontSize: 12 }}
+                  >
+                    {HOVER_OPTIONS.map(o => (
+                      <MenuItem key={o.value} value={o.value} sx={{ fontSize: 12 }}>{o.label}</MenuItem>
+                    ))}
+                  </Select>
+                </Box>
               </Box>
             ))}
           </Stack>
         )}
+
+        <Divider />
+
+        {/* Animation presets per section */}
+        <Typography variant="subtitle2">Анимации секций</Typography>
+        <Stack spacing={1}>
+          {Object.entries(SECTION_LABELS).map(([sectionId, label]) => (
+            <Box key={sectionId}>
+              <Typography variant="caption" color="text.secondary" display="block" mb={0.25}>
+                {label}
+              </Typography>
+              <Select
+                size="small"
+                fullWidth
+                value={getEntrancePreset(sectionId)}
+                onChange={e => handleSetEntrance(sectionId, e.target.value as EntrancePreset)}
+                sx={{ fontSize: 12 }}
+                disabled={!iframeReady}
+              >
+                {ENTRANCE_OPTIONS.map(o => (
+                  <MenuItem key={o.value} value={o.value} sx={{ fontSize: 12 }}>{o.label}</MenuItem>
+                ))}
+              </Select>
+            </Box>
+          ))}
+        </Stack>
 
         <Divider />
 

@@ -16,7 +16,6 @@ import {
   Slider,
   Snackbar,
   Stack,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -35,6 +34,7 @@ import PublishIcon from '@mui/icons-material/Publish';
 import SaveIcon from '@mui/icons-material/Save';
 
 import { cmsApi, type CmsPageFull, type CmsPageMeta } from '../../services/api';
+import { MediaPickerDialog } from './MediaPickerDialog';
 
 // ── Types (mirror landing types) ─────────────────────────────────────────────
 
@@ -215,6 +215,7 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
   const [newLayerSection, setNewLayerSection] = useState('hero');
   const [newLayerW, setNewLayerW] = useState(0.3);
   const [newLayerOpacity, setNewLayerOpacity] = useState(1);
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
 
   // ── Load page list ──────────────────────────────────────────────────────
 
@@ -670,14 +671,33 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
         {/* Add layer form */}
         <Collapse in={layerFormOpen}>
           <Stack spacing={1.5} sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
-            <TextField
+            <Button
               size="small"
-              label="URL изображения"
-              value={newLayerSrc}
-              onChange={e => setNewLayerSrc(e.target.value)}
-              placeholder="https://..."
+              variant="outlined"
+              startIcon={<AddPhotoAlternateIcon />}
+              onClick={() => setMediaPickerOpen(true)}
               fullWidth
-            />
+              sx={{
+                justifyContent: 'flex-start',
+                textOverflow: 'ellipsis',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                color: newLayerSrc ? 'text.primary' : 'text.secondary',
+                borderStyle: 'dashed',
+              }}
+            >
+              {newLayerSrc
+                ? newLayerSrc.split('/').pop() ?? newLayerSrc
+                : 'Выбрать из медиатеки…'}
+            </Button>
+            {newLayerSrc && (
+              <Box
+                component="img"
+                src={newLayerSrc}
+                alt=""
+                sx={{ width: '100%', maxHeight: 80, objectFit: 'contain', borderRadius: 1, bgcolor: 'divider' }}
+              />
+            )}
             <Select
               size="small"
               value={newLayerSection}
@@ -714,7 +734,7 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
               size="small"
               variant="contained"
               onClick={handleAddLayer}
-              disabled={!newLayerSrc.trim() || !iframeReady}
+              disabled={!newLayerSrc || !iframeReady}
               startIcon={<AddPhotoAlternateIcon />}
             >
               Добавить
@@ -810,6 +830,16 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
           Кликайте по тексту в холсте, чтобы редактировать. Перетаскивайте слои прямо в iframe. Изменения не влияют на сайт до публикации.
         </Typography>
       </Box>
+
+      {/* ── Media picker ── */}
+      <MediaPickerDialog
+        open={mediaPickerOpen}
+        onClose={() => setMediaPickerOpen(false)}
+        onSelect={(url) => {
+          setNewLayerSrc(url);
+          setMediaPickerOpen(false);
+        }}
+      />
 
       {/* ── Snackbar ── */}
       <Snackbar

@@ -17,9 +17,14 @@ import {
   Snackbar,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
+import LaptopIcon from '@mui/icons-material/Laptop';
+import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
+import TabletIcon from '@mui/icons-material/Tablet';
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -194,6 +199,15 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
+
+  // ── Breakpoint mode ──────────────────────────────────────────────────────
+  type BpMode = 'mobile' | 'tablet' | 'desktop';
+  const [bpMode, setBpMode] = useState<BpMode>('desktop');
+  const BP_IFRAME_WIDTH: Record<BpMode, string> = {
+    mobile: '390px',
+    tablet: '768px',
+    desktop: '100%',
+  };
 
   // ── Layer panel state ────────────────────────────────────────────────────
   const [layerFormOpen, setLayerFormOpen] = useState(false);
@@ -468,6 +482,26 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
 
           <Box sx={{ flex: 1 }} />
 
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={bpMode}
+            onChange={(_, v) => v && setBpMode(v as BpMode)}
+            sx={{ mr: 0.5 }}
+          >
+            <ToggleButton value="mobile" title="Mobile (390px)">
+              <PhoneAndroidIcon sx={{ fontSize: 16 }} />
+            </ToggleButton>
+            <ToggleButton value="tablet" title="Tablet (768px)">
+              <TabletIcon sx={{ fontSize: 16 }} />
+            </ToggleButton>
+            <ToggleButton value="desktop" title="Desktop">
+              <LaptopIcon sx={{ fontSize: 16 }} />
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          <Box sx={{ width: 1, height: 24, bgcolor: 'divider' }} />
+
           <Tooltip title="Открыть черновик для предпросмотра в новой вкладке">
             <span>
               <Button
@@ -512,41 +546,60 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
           </Tooltip>
         </Box>
 
-        {/* Canvas */}
-        <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden', bgcolor: '#f1f5f9' }}>
-          {(iframeLoading || pageLoading) && (
-            <Box
-              sx={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1.5,
-                bgcolor: '#f1f5f9',
-                zIndex: 2,
-              }}
-            >
-              <CircularProgress size={32} />
-              <Typography variant="body2" color="text.secondary">
-                Загрузка страницы…
-              </Typography>
-            </Box>
-          )}
-          <iframe
-            ref={iframeRef}
-            key={selectedSlug}
-            src={landingEditUrl(selectedSlug)}
-            title={`Редактор: ${selectedSlug}`}
-            style={{
-              width: '100%',
+        {/* Canvas — centred, width constrained by bpMode */}
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            bgcolor: '#cbd5e1',
+          }}
+        >
+          <Box
+            sx={{
+              width: BP_IFRAME_WIDTH[bpMode],
+              maxWidth: '100%',
               height: '100%',
-              border: 'none',
-              display: iframeLoading ? 'none' : 'block',
+              position: 'relative',
+              bgcolor: 'white',
+              transition: 'width 0.3s cubic-bezier(.4,0,.2,1)',
+              boxShadow: bpMode !== 'desktop' ? '0 0 0 1px #94a3b8, 0 4px 24px rgba(0,0,0,.15)' : 'none',
             }}
-            // allow same-origin postMessage; sandbox omitted to preserve JS execution
-          />
+          >
+            {(iframeLoading || pageLoading) && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1.5,
+                  bgcolor: 'white',
+                  zIndex: 2,
+                }}
+              >
+                <CircularProgress size={32} />
+                <Typography variant="body2" color="text.secondary">
+                  Загрузка страницы…
+                </Typography>
+              </Box>
+            )}
+            <iframe
+              ref={iframeRef}
+              key={selectedSlug}
+              src={landingEditUrl(selectedSlug)}
+              title={`Редактор: ${selectedSlug}`}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                display: iframeLoading ? 'none' : 'block',
+              }}
+            />
+          </Box>
         </Box>
       </Box>
 

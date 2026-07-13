@@ -3009,6 +3009,22 @@ class CmsPage(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class CmsPageVersion(Base):
+    """Version history for CMS pages — each save creates a draft row; publish promotes it."""
+    __tablename__ = "cms_page_versions"
+
+    id = Column(Integer, primary_key=True)
+    page_id = Column(Integer, ForeignKey("cms_pages.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(JSON, nullable=False, server_default="{}")
+    status = Column(String(20), nullable=False, server_default="draft")  # "draft" | "published"
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+
+    page = relationship("CmsPage", backref="versions")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
 class OwnerWorkspaceUserPreference(Base):
     """Персональные настройки UI задачника (JSON, merge при PATCH)."""
 

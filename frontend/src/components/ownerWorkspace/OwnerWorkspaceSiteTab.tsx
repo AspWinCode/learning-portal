@@ -1,0 +1,496 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Divider,
+  List,
+  ListItemButton,
+  ListItemText,
+  Snackbar,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@mui/material';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import EditNoteIcon from '@mui/icons-material/EditNote';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import PublishIcon from '@mui/icons-material/Publish';
+import SaveIcon from '@mui/icons-material/Save';
+
+import { cmsApi, type CmsPageFull, type CmsPageMeta } from '../../services/api';
+
+// ── Page groups for the sidebar ──────────────────────────────────────────────
+
+const PAGE_GROUPS: Array<{ label: string; slugs: string[] }> = [
+  {
+    label: 'Основные',
+    slugs: ['home', 'o-nas', 'kontakty', 'faq'],
+  },
+  {
+    label: 'Треки',
+    slugs: ['game-studio', 'kodeks', 'technolab'],
+  },
+  {
+    label: 'Услуги',
+    slugs: [
+      'besplatnyj-probnyj-urok',
+      'individualnye-zanyatiya',
+      'podgotovka-k-oge-po-informatike',
+      'podgotovka-k-ege-po-informatike',
+    ],
+  },
+  {
+    label: 'Контент',
+    slugs: [
+      'dostizheniya-uchenikov',
+      'aktivnosti',
+      'igrovye-dzhemy',
+      'blog',
+    ],
+  },
+  {
+    label: 'Направления',
+    slugs: [
+      'programmirovanie-dlya-detej',
+      'python-dlya-detej',
+      'razrabotka-igr-na-python',
+      'backend-razrabotka',
+      'frontend-razrabotka',
+      'napravleniya-razrabotki',
+    ],
+  },
+  {
+    label: 'Служебные',
+    slugs: ['header', 'footer', 'branding', 'announcement'],
+  },
+  {
+    label: 'Юридические',
+    slugs: ['legal-oferta', 'legal-privacy', 'legal-terms'],
+  },
+];
+
+// ── postMessage protocol ─────────────────────────────────────────────────────
+
+type OutboundMsg =
+  | { type: 'INIT'; content: unknown; mode: 'edit' | 'preview' }
+  | { type: 'SET_CONTENT'; content: unknown }
+  | { type: 'HIGHLIGHT_SLOT'; slotId: string };
+
+type InboundMsg =
+  | { type: 'READY' }
+  | { type: 'CONTENT_CHANGED'; content: unknown }
+  | { type: 'SLOT_SELECTED'; slotId: string };
+
+// ── Status chip ──────────────────────────────────────────────────────────────
+
+type PageStatus = 'published' | 'draft' | 'unchanged';
+
+function statusChip(status: PageStatus) {
+  if (status === 'published')
+    return <Chip size="small" color="success" icon={<CheckCircleOutlineIcon />} label="Опубликовано" />;
+  if (status === 'draft')
+    return <Chip size="small" color="warning" icon={<EditNoteIcon />} label="Есть черновик" />;
+  return <Chip size="small" variant="outlined" label="Без изменений" />;
+}
+
+function resolvePageStatus(page: CmsPageFull | null): PageStatus {
+  if (!page) return 'unchanged';
+  if (page.draft_version && !page.published_version) return 'draft';
+  if (page.draft_version && page.published_version) {
+    return page.draft_version.created_at > page.published_version.created_at ? 'draft' : 'published';
+  }
+  if (page.published_version) return 'published';
+  return 'unchanged';
+}
+
+// ── Landing URL ──────────────────────────────────────────────────────────────
+
+const LANDING_BASE = import.meta.env.VITE_LANDING_URL ?? 'https://tirskix-academy.com';
+const LANDING_ORIGIN = new URL(LANDING_BASE).origin;
+
+function landingEditUrl(slug: string) {
+  const path = slug === 'home' ? '/' : `/${slug}`;
+  return `${LANDING_BASE}${path}?edit=1`;
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+export const OwnerWorkspaceSiteTab: React.FC = () => {
+  const [pages, setPages] = useState<CmsPageMeta[]>([]);
+  const [pagesLoading, setPagesLoading] = useState(true);
+  const [selectedSlug, setSelectedSlug] = useState<string>('home');
+  const [pageData, setPageData] = useState<CmsPageFull | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
+
+  // local draft content (accumulated from iframe edits)
+  const [draftContent, setDraftContent] = useState<unknown>(null);
+  const [hasUnsaved, setHasUnsaved] = useState(false);
+
+  const [iframeReady, setIframeReady] = useState(false);
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
+
+  // ── Load page list ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    cmsApi.listPages().then((list) => {
+      setPages(list);
+      setPagesLoading(false);
+    });
+  }, []);
+
+  // ── Load selected page data ─────────────────────────────────────────────
+
+  useEffect(() => {
+    let cancelled = false;
+    setPageLoading(true);
+    setIframeReady(false);
+    setIframeLoading(true);
+    setDraftContent(null);
+    setHasUnsaved(false);
+
+    cmsApi.getPage(selectedSlug).then((data) => {
+      if (cancelled) return;
+      setPageData(data);
+      // start with draft content if available, otherwise published/legacy
+      const initial = data.draft_version ? data.content : data.content;
+      setDraftContent(initial);
+      setPageLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [selectedSlug]);
+
+  // ── postMessage: send to iframe ─────────────────────────────────────────
+
+  const sendToIframe = useCallback((msg: OutboundMsg) => {
+    iframeRef.current?.contentWindow?.postMessage(msg, LANDING_ORIGIN);
+  }, []);
+
+  // ── postMessage: receive from iframe ───────────────────────────────────
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== LANDING_ORIGIN) return;
+      const msg = event.data as InboundMsg;
+      if (msg.type === 'READY') {
+        setIframeReady(true);
+        setIframeLoading(false);
+      } else if (msg.type === 'CONTENT_CHANGED') {
+        setDraftContent(msg.content);
+        setHasUnsaved(true);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  // ── Send INIT after iframe is ready ────────────────────────────────────
+
+  useEffect(() => {
+    if (!iframeReady || draftContent === null) return;
+    sendToIframe({ type: 'INIT', content: draftContent, mode: 'edit' });
+  }, [iframeReady, draftContent, sendToIframe]);
+
+  // ── Actions ─────────────────────────────────────────────────────────────
+
+  const handleSaveDraft = async () => {
+    if (!draftContent) return;
+    setSaving(true);
+    try {
+      const updated = await cmsApi.savePage(selectedSlug, draftContent);
+      setPageData(updated);
+      setHasUnsaved(false);
+      setSnack({ msg: 'Черновик сохранён', severity: 'success' });
+    } catch {
+      setSnack({ msg: 'Не удалось сохранить черновик', severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePreview = () => {
+    if (draftContent !== null) {
+      sendToIframe({ type: 'SET_CONTENT', content: draftContent });
+    }
+    const path = selectedSlug === 'home' ? '/' : `/${selectedSlug}`;
+    window.open(`${LANDING_BASE}${path}?preview=1`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handlePublish = async () => {
+    if (hasUnsaved) {
+      setSnack({ msg: 'Сначала сохраните черновик', severity: 'error' });
+      return;
+    }
+    setPublishing(true);
+    try {
+      const updated = await cmsApi.publishPage(selectedSlug);
+      setPageData(updated);
+      setSnack({ msg: 'Страница опубликована', severity: 'success' });
+    } catch {
+      setSnack({ msg: 'Не удалось опубликовать', severity: 'error' });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleSelectPage = (slug: string) => {
+    if (slug === selectedSlug) return;
+    setSelectedSlug(slug);
+    setIframeReady(false);
+    setIframeLoading(true);
+  };
+
+  const pageStatus = resolvePageStatus(pageData);
+
+  // ── Render ───────────────────────────────────────────────────────────────
+
+  return (
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 112px)', overflow: 'hidden' }}>
+
+      {/* ── Left sidebar: page list ── */}
+      <Box
+        sx={{
+          width: 256,
+          flexShrink: 0,
+          borderRight: '1px solid',
+          borderColor: 'divider',
+          overflowY: 'auto',
+          bgcolor: 'background.paper',
+        }}
+      >
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Страницы сайта
+          </Typography>
+        </Box>
+        <Divider />
+        {pagesLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : (
+          PAGE_GROUPS.map((group) => {
+            const groupPages = pages.filter((p) => group.slugs.includes(p.slug));
+            if (groupPages.length === 0) return null;
+            return (
+              <React.Fragment key={group.label}>
+                <Typography
+                  variant="caption"
+                  sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'block', color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}
+                >
+                  {group.label}
+                </Typography>
+                <List disablePadding dense>
+                  {groupPages.map((p) => (
+                    <ListItemButton
+                      key={p.slug}
+                      selected={p.slug === selectedSlug}
+                      onClick={() => handleSelectPage(p.slug)}
+                      sx={{ pl: 2, pr: 1, py: 0.75 }}
+                    >
+                      <ListItemText
+                        primary={p.label}
+                        primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+              </React.Fragment>
+            );
+          })
+        )}
+      </Box>
+
+      {/* ── Center: iframe canvas ── */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Toolbar */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: 2,
+            py: 1,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            flexShrink: 0,
+          }}
+        >
+          {pageLoading ? (
+            <CircularProgress size={16} />
+          ) : (
+            statusChip(pageStatus)
+          )}
+
+          {hasUnsaved && (
+            <Chip size="small" color="info" label="Несохранённые правки" />
+          )}
+
+          <Box sx={{ flex: 1 }} />
+
+          <Tooltip title="Открыть черновик для предпросмотра в новой вкладке">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<OpenInNewIcon />}
+                onClick={handlePreview}
+                disabled={pageLoading}
+              >
+                Предпросмотр
+              </Button>
+            </span>
+          </Tooltip>
+
+          <Tooltip title={hasUnsaved ? 'Сохранить черновик (несохранённые правки)' : 'Нет несохранённых правок'}>
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={saving ? <CircularProgress size={14} /> : <SaveIcon />}
+                onClick={handleSaveDraft}
+                disabled={saving || !hasUnsaved || pageLoading}
+              >
+                Сохранить
+              </Button>
+            </span>
+          </Tooltip>
+
+          <Tooltip title={hasUnsaved ? 'Сначала сохраните черновик' : 'Опубликовать черновик на сайт'}>
+            <span>
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                startIcon={publishing ? <CircularProgress size={14} /> : <PublishIcon />}
+                onClick={handlePublish}
+                disabled={publishing || pageLoading || hasUnsaved || pageStatus === 'unchanged'}
+              >
+                Опубликовать
+              </Button>
+            </span>
+          </Tooltip>
+        </Box>
+
+        {/* Canvas */}
+        <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden', bgcolor: '#f1f5f9' }}>
+          {(iframeLoading || pageLoading) && (
+            <Box
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 1.5,
+                bgcolor: '#f1f5f9',
+                zIndex: 2,
+              }}
+            >
+              <CircularProgress size={32} />
+              <Typography variant="body2" color="text.secondary">
+                Загрузка страницы…
+              </Typography>
+            </Box>
+          )}
+          <iframe
+            ref={iframeRef}
+            key={selectedSlug}
+            src={landingEditUrl(selectedSlug)}
+            title={`Редактор: ${selectedSlug}`}
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 'none',
+              display: iframeLoading ? 'none' : 'block',
+            }}
+            // allow same-origin postMessage; sandbox omitted to preserve JS execution
+          />
+        </Box>
+      </Box>
+
+      {/* ── Right panel: version info ── */}
+      <Box
+        sx={{
+          width: 220,
+          flexShrink: 0,
+          borderLeft: '1px solid',
+          borderColor: 'divider',
+          overflowY: 'auto',
+          bgcolor: 'background.paper',
+          p: 2,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+        }}
+      >
+        <Typography variant="subtitle2">Версии</Typography>
+
+        {pageLoading ? (
+          <CircularProgress size={20} />
+        ) : (
+          <Stack spacing={1.5}>
+            {pageData?.draft_version && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Черновик</Typography>
+                <Typography variant="body2">
+                  {new Date(pageData.draft_version.created_at).toLocaleString('ru-RU', {
+                    day: '2-digit', month: '2-digit', year: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
+                </Typography>
+              </Box>
+            )}
+            {pageData?.published_version && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">Опубликовано</Typography>
+                <Typography variant="body2">
+                  {new Date(pageData.published_version.published_at ?? pageData.published_version.created_at).toLocaleString('ru-RU', {
+                    day: '2-digit', month: '2-digit', year: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
+                </Typography>
+              </Box>
+            )}
+            {!pageData?.draft_version && !pageData?.published_version && (
+              <Typography variant="body2" color="text.secondary">
+                Страница ещё не редактировалась
+              </Typography>
+            )}
+          </Stack>
+        )}
+
+        <Divider />
+
+        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+          Кликайте по тексту в холсте, чтобы редактировать его. Изменения копятся в черновике и не влияют на сайт до публикации.
+        </Typography>
+      </Box>
+
+      {/* ── Snackbar ── */}
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={4000}
+        onClose={() => setSnack(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {snack ? (
+          <Alert severity={snack.severity} onClose={() => setSnack(null)} variant="filled">
+            {snack.msg}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
+    </Box>
+  );
+};

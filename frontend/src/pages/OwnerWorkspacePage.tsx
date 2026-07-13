@@ -170,6 +170,12 @@ const OwnerWorkspaceSettingsConfigSection = React.lazy(
       default: module.OwnerWorkspaceSettingsConfigSection,
     }))
 );
+const OwnerWorkspaceSiteTab = React.lazy(
+  () =>
+    import('../components/ownerWorkspace/OwnerWorkspaceSiteTab').then((module) => ({
+      default: module.OwnerWorkspaceSiteTab,
+    }))
+);
 
 /** Макс. задач за один запрос для канбана/календаря и вспомогательных списков (лимит API). */
 const OWNER_WS_TASKS_FETCH_CAP = 500;
@@ -723,11 +729,12 @@ const OW_TAB_COMMS = 5;
 const OW_TAB_NOTIFICATIONS = 6;
 const OW_TAB_SETTINGS = 7;
 const OW_TAB_HISTORY = 8;
+const OW_TAB_SITE = 9;
 const OWNER_WS_HISTORY_LIMIT_OPTIONS = [100, 200, 300, 500, 1000] as const;
 const OWNER_WS_HISTORY_QUERY_KEYS = ['h_entity', 'h_entity_id', 'h_action', 'h_author', 'h_from', 'h_to', 'h_limit', 'h_sort'] as const;
 
 /** Слаги для deep-link: `/owner-workspace?tab=<slug>&task=<id>` (совместимость) и пути `/owner-workspace/<slug>`. */
-const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'meetings', 'reports', 'comms', 'notifications', 'settings', 'history'] as const;
+const OW_TAB_SLUGS = ['projects', 'contacts', 'tasks', 'meetings', 'reports', 'comms', 'notifications', 'settings', 'history', 'site'] as const;
 
 /** Путь вкладки (§16): отдельные URL как у `/notifications` и `/settings`. */
 function ownerWorkspaceTabPathname(tabIndex: number): string {
@@ -750,6 +757,8 @@ function ownerWorkspaceTabPathname(tabIndex: number): string {
       return '/owner-workspace/comms';
     case OW_TAB_HISTORY:
       return '/owner-workspace/history';
+    case OW_TAB_SITE:
+      return '/owner-workspace/site';
     default:
       return '/owner-workspace/projects';
   }
@@ -766,6 +775,7 @@ function ownerWorkspacePathToTab(pathname: string): number | null {
   if (p === '/owner-workspace/reports') return OW_TAB_REPORTS;
   if (p === '/owner-workspace/comms') return OW_TAB_COMMS;
   if (p === '/owner-workspace/history') return OW_TAB_HISTORY;
+  if (p === '/owner-workspace/site') return OW_TAB_SITE;
   return null;
 }
 
@@ -5664,6 +5674,9 @@ const OwnerWorkspacePage: React.FC = () => {
           <Tab value={OW_TAB_REPORTS} label="Отчёты" />
           <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
           <Tab value={OW_TAB_HISTORY} label="История" />
+          {effectiveRole === 'seo_manager' && (
+            <Tab value={OW_TAB_SITE} label="Сайт" />
+          )}
         </Tabs>
       </Box>
 
@@ -7172,6 +7185,12 @@ const OwnerWorkspacePage: React.FC = () => {
             historyActionLabels={OWNER_WS_HISTORY_ACTION_LABELS}
             historyLoading={historyLoading}
           />
+        </Suspense>
+      )}
+
+      {tab === OW_TAB_SITE && effectiveRole === 'seo_manager' && (
+        <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+          <OwnerWorkspaceSiteTab />
         </Suspense>
       )}
 

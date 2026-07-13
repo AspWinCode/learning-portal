@@ -4083,22 +4083,48 @@ export interface CmsPageMeta {
   updated_at: string | null;
 }
 
+export interface CmsVersionMeta {
+  id: number;
+  status: 'draft' | 'published';
+  created_at: string;
+  published_at: string | null;
+  created_by_id: number | null;
+}
+
+export interface CmsPageFull {
+  slug: string;
+  label: string;
+  content: unknown;
+  updated_at: string | null;
+  draft_version: CmsVersionMeta | null;
+  published_version: CmsVersionMeta | null;
+}
+
 export const cmsApi = {
   listPages: async (): Promise<CmsPageMeta[]> => {
     const res = await apiClient.get('/api/v1/cms/pages');
     return res.data;
   },
-  getPage: async (slug: string): Promise<{ slug: string; label: string; content: unknown; updated_at: string | null }> => {
+  getPage: async (slug: string): Promise<CmsPageFull> => {
     const res = await apiClient.get(`/api/v1/cms/pages/${slug}`);
     return res.data;
   },
-  savePage: async (slug: string, content: unknown): Promise<void> => {
-    await apiClient.put(`/api/v1/cms/pages/${slug}`, { content });
+  getPageVersions: async (slug: string, limit = 20): Promise<CmsVersionMeta[]> => {
+    const res = await apiClient.get(`/api/v1/cms/pages/${slug}/versions`, { params: { limit } });
+    return res.data;
+  },
+  savePage: async (slug: string, content: unknown): Promise<CmsPageFull> => {
+    const res = await apiClient.put(`/api/v1/cms/pages/${slug}`, { content });
+    return res.data;
+  },
+  publishPage: async (slug: string): Promise<CmsPageFull> => {
+    const res = await apiClient.post(`/api/v1/cms/pages/${slug}/publish`);
+    return res.data;
   },
   revalidatePage: async (slug?: string): Promise<void> => {
     await apiClient.post('/api/v1/cms/revalidate', { slug: slug ?? null });
   },
-  createPage: async (slug: string, label: string): Promise<{ slug: string; label: string; content: unknown; updated_at: string | null }> => {
+  createPage: async (slug: string, label: string): Promise<CmsPageFull> => {
     const res = await apiClient.post('/api/v1/cms/pages', { slug, label });
     return res.data;
   },

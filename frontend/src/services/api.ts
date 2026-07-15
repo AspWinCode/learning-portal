@@ -4068,7 +4068,7 @@ export const mediaApi = {
   uploadImage: async (file: File): Promise<{ url: string; key: string }> => {
     const form = new FormData();
     form.append('file', file);
-    const res = await apiClient.post('/api/v1/media/upload', form, {
+    const res = await apiClient.post('/media/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return res.data;
@@ -4102,34 +4102,34 @@ export interface CmsPageFull {
 
 export const cmsApi = {
   listPages: async (): Promise<CmsPageMeta[]> => {
-    const res = await apiClient.get('/api/v1/cms/pages');
+    const res = await apiClient.get('/cms/pages');
     return res.data;
   },
   getPage: async (slug: string): Promise<CmsPageFull> => {
-    const res = await apiClient.get(`/api/v1/cms/pages/${slug}`);
+    const res = await apiClient.get(`/cms/pages/${slug}`);
     return res.data;
   },
   getPageVersions: async (slug: string, limit = 20): Promise<CmsVersionMeta[]> => {
-    const res = await apiClient.get(`/api/v1/cms/pages/${slug}/versions`, { params: { limit } });
+    const res = await apiClient.get(`/cms/pages/${slug}/versions`, { params: { limit } });
     return res.data;
   },
   savePage: async (slug: string, content: unknown): Promise<CmsPageFull> => {
-    const res = await apiClient.put(`/api/v1/cms/pages/${slug}`, { content });
+    const res = await apiClient.put(`/cms/pages/${slug}`, { content });
     return res.data;
   },
   publishPage: async (slug: string): Promise<CmsPageFull> => {
-    const res = await apiClient.post(`/api/v1/cms/pages/${slug}/publish`);
+    const res = await apiClient.post(`/cms/pages/${slug}/publish`);
     return res.data;
   },
   revalidatePage: async (slug?: string): Promise<void> => {
-    await apiClient.post('/api/v1/cms/revalidate', { slug: slug ?? null });
+    await apiClient.post('/cms/revalidate', { slug: slug ?? null });
   },
   createPage: async (slug: string, label: string): Promise<CmsPageFull> => {
-    const res = await apiClient.post('/api/v1/cms/pages', { slug, label });
+    const res = await apiClient.post('/cms/pages', { slug, label });
     return res.data;
   },
   deletePage: async (slug: string): Promise<void> => {
-    await apiClient.delete(`/api/v1/cms/pages/${slug}`);
+    await apiClient.delete(`/cms/pages/${slug}`);
   },
 };
 

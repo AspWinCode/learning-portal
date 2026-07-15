@@ -216,6 +216,7 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
   const [newLayerW, setNewLayerW] = useState(0.3);
   const [newLayerOpacity, setNewLayerOpacity] = useState(1);
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [heroImagePickerOpen, setHeroImagePickerOpen] = useState(false);
 
   // ── Load page list ──────────────────────────────────────────────────────
 
@@ -369,6 +370,22 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
     setDraftContent(nextContent);
     setHasUnsaved(true);
     // Re-send full content so iframe updates the layer hoverEffect
+    sendToIframe({ type: 'SET_CONTENT', content: nextContent });
+  };
+
+  // ── Hero image helper ────────────────────────────────────────────────────
+
+  function getHeroRightImage(): string {
+    const c = draftContent as Record<string, unknown> | null;
+    return ((c?.hero as Record<string, unknown> | undefined)?.right_image_url as string | undefined) ?? '';
+  }
+
+  const handleSetHeroRightImage = (url: string) => {
+    const c = draftContent as Record<string, unknown> ?? {};
+    const hero = (c.hero as Record<string, unknown> | undefined) ?? {};
+    const nextContent = { ...c, hero: { ...hero, right_image_url: url || undefined } };
+    setDraftContent(nextContent);
+    setHasUnsaved(true);
     sendToIframe({ type: 'SET_CONTENT', content: nextContent });
   };
 
@@ -655,6 +672,50 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
 
         <Divider />
 
+        {/* Hero right image */}
+        {selectedSlug === 'home' && (
+          <>
+            <Typography variant="subtitle2">Изображение в герое</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Заменяет код-мокап справа на своё изображение
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AddPhotoAlternateIcon />}
+              onClick={() => setHeroImagePickerOpen(true)}
+              fullWidth
+              sx={{
+                justifyContent: 'flex-start',
+                borderStyle: getHeroRightImage() ? 'solid' : 'dashed',
+                color: getHeroRightImage() ? 'text.primary' : 'text.secondary',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {getHeroRightImage()
+                ? getHeroRightImage().split('/').pop()
+                : 'Выбрать изображение…'}
+            </Button>
+            {getHeroRightImage() && (
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Box
+                  component="img"
+                  src={getHeroRightImage()}
+                  sx={{ flex: 1, maxHeight: 60, objectFit: 'contain', borderRadius: 1, bgcolor: 'action.hover' }}
+                />
+                <Tooltip title="Убрать изображение (вернуть мокап)">
+                  <IconButton size="small" onClick={() => handleSetHeroRightImage('')}>
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            )}
+            <Divider />
+          </>
+        )}
+
         {/* Layers */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -831,13 +892,23 @@ export const OwnerWorkspaceSiteTab: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* ── Media picker ── */}
+      {/* ── Media picker (layer) ── */}
       <MediaPickerDialog
         open={mediaPickerOpen}
         onClose={() => setMediaPickerOpen(false)}
         onSelect={(url) => {
           setNewLayerSrc(url);
           setMediaPickerOpen(false);
+        }}
+      />
+
+      {/* ── Media picker (hero image) ── */}
+      <MediaPickerDialog
+        open={heroImagePickerOpen}
+        onClose={() => setHeroImagePickerOpen(false)}
+        onSelect={(url) => {
+          handleSetHeroRightImage(url);
+          setHeroImagePickerOpen(false);
         }}
       />
 

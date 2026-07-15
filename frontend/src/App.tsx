@@ -70,6 +70,7 @@ const SitePublishPage = React.lazy(() => import('./pages/seo/SitePublishPage'));
 const RedirectsPage = React.lazy(() => import('./pages/seo/RedirectsPage'));
 const SiteSettingsPage = React.lazy(() => import('./pages/seo/SiteSettingsPage'));
 const CmsEditorPage = React.lazy(() => import('./pages/cms/CmsEditorPage'));
+const SeoVisualEditorPage = React.lazy(() => import('./pages/seo/SeoVisualEditorPage'));
 const LeadCardPage = React.lazy(() => import('./pages/LeadCardPage'));
 const ManualLessonsPage = React.lazy(() => import('./pages/ManualLessonsPage'));
 const SpecialistQuestionnairePage = React.lazy(() => import('./pages/SpecialistQuestionnairePage'));
@@ -407,6 +408,16 @@ function App() {
                 <PrivateRoute requiredPermission="seo.access">
                   <SectionBoundary>
                     <CmsEditorPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/seo/visual-editor"
+              element={
+                <PrivateRoute requiredPermission="seo.access">
+                  <SectionBoundary>
+                    <SeoVisualEditorPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

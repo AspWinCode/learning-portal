@@ -5674,7 +5674,7 @@ const OwnerWorkspacePage: React.FC = () => {
           <Tab value={OW_TAB_REPORTS} label="Отчёты" />
           <Tab value={OW_TAB_COMMS} label={commsUnreadTotal > 0 ? `Коммуникации (${commsUnreadTotal})` : 'Коммуникации'} />
           <Tab value={OW_TAB_HISTORY} label="История" />
-          {effectiveRole === 'seo_manager' && (
+          {(effectiveRole === 'seo_manager' || effectiveRole === 'owner' || effectiveRole === 'admin') && (
             <Tab value={OW_TAB_SITE} label="Сайт" />
           )}
         </Tabs>
@@ -7188,7 +7188,7 @@ const OwnerWorkspacePage: React.FC = () => {
         </Suspense>
       )}
 
-      {tab === OW_TAB_SITE && effectiveRole === 'seo_manager' && (
+      {tab === OW_TAB_SITE && (effectiveRole === 'seo_manager' || effectiveRole === 'owner' || effectiveRole === 'admin') && (
         <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
           <OwnerWorkspaceSiteTab />
         </Suspense>

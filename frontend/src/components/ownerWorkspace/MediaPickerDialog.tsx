@@ -43,7 +43,7 @@ export function MediaPickerDialog({ open, onClose, onSelect }: Props) {
     setLoading(true);
     try {
       const all = await mediaApi.list();
-      setFiles(all.filter(f => f.mime_type.startsWith('image/')));
+      setFiles(all.filter(f => f.mime_type?.startsWith('image/')));
     } finally {
       setLoading(false);
     }
@@ -76,7 +76,7 @@ export function MediaPickerDialog({ open, onClose, onSelect }: Props) {
   };
 
   const filtered = files.filter(f =>
-    f.original_name.toLowerCase().includes(search.toLowerCase())
+    (f.original_name ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (

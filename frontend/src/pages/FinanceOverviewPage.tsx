@@ -182,8 +182,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalFrom, setJournalFrom] = useState(() => {
     const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 10);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
   });
   const [journalTo, setJournalTo] = useState(today());
   const [journalTargetFilter, setJournalTargetFilter] = useState<'all' | number>('all');
@@ -753,6 +752,17 @@ const FinanceOverviewPageContent: React.FC = () => {
     [sortedJournalRows, needsAssignmentOnly]
   );
 
+  const journalTotals = useMemo(() => {
+    let income = 0, expense = 0, transfer = 0;
+    for (const row of displayedJournalRows) {
+      const amt = Math.abs(row.amount);
+      if (row.direction === 'income') income += amt;
+      else if (row.direction === 'expense') expense += amt;
+      else if (row.direction === 'transfer') transfer += amt;
+    }
+    return { income, expense, transfer, net: income - expense };
+  }, [displayedJournalRows]);
+
   const toggleJournalSort = (field: 'occurred_at' | 'amount') => {
     setJournalSort((prev) =>
       prev.field === field ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { field, dir: 'asc' }
@@ -845,6 +855,18 @@ const FinanceOverviewPageContent: React.FC = () => {
     } finally {
       setBulkApplying(false);
     }
+  };
+
+  const handleManualModelSelect = (value: number | '') => {
+    setSelectedModelId(value);
+    const model = models.find((item) => item.id === value);
+    setManualTargetId(model?.target_id ?? '');
+  };
+
+  const handleJournalModelFilter = (value: number | '') => {
+    setSelectedModelId(value);
+    const model = models.find((item) => item.id === value);
+    setJournalTargetFilter(model?.target_id ?? 'all');
   };
 
   const renderModelSelector = () => (
@@ -1433,6 +1455,24 @@ const FinanceOverviewPageContent: React.FC = () => {
             sx={{ minWidth: 0 }}
           />
           </Stack>
+          <FormControl size="small" sx={{ minWidth: { xs: 0, lg: 220 }, width: { xs: '100%', lg: 'auto' } }}>
+            <InputLabel>Финансовая модель</InputLabel>
+            <Select
+              label="Финансовая модель"
+              value={selectedModelId === '' ? '' : String(selectedModelId)}
+              onChange={(event) =>
+                handleJournalModelFilter(event.target.value === '' ? '' : Number(event.target.value))
+              }
+            >
+              <MenuItem value=""><em>Все модели</em></MenuItem>
+              {models.map((model) => (
+                <MenuItem key={model.id} value={model.id}>
+                  {model.name}
+                  {model.target_name ? ` / ${model.target_name}` : ''}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl size="small" sx={{ minWidth: { xs: 0, lg: 190 }, width: { xs: '100%', lg: 'auto' } }}>
             <InputLabel>Проект</InputLabel>
             <Select
@@ -1902,6 +1942,29 @@ const FinanceOverviewPageContent: React.FC = () => {
               </TableRow>
               );
             })}
+            {displayedJournalRows.length > 0 && (
+              <TableRow sx={{ bgcolor: 'action.hover', '& td': { fontWeight: 700, borderTop: '2px solid', borderColor: 'divider' } }}>
+                <TableCell />
+                <TableCell colSpan={4} sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                  Итого за период ({displayedJournalRows.length} оп.)
+                </TableCell>
+                <TableCell />
+                <TableCell />
+                <TableCell align="right">
+                  <Box component="span" sx={{ color: 'success.main', display: 'block' }}>+{money(journalTotals.income)}</Box>
+                  <Box component="span" sx={{ color: 'error.main', display: 'block' }}>−{money(journalTotals.expense)}</Box>
+                  {journalTotals.transfer > 0 && (
+                    <Box component="span" sx={{ color: 'text.secondary', display: 'block', fontSize: '0.75rem' }}>
+                      ↕ {money(journalTotals.transfer)} переводы
+                    </Box>
+                  )}
+                  <Box component="span" sx={{ color: journalTotals.net >= 0 ? 'success.main' : 'error.main', display: 'block', borderTop: '1px solid', borderColor: 'divider', mt: 0.5, pt: 0.5 }}>
+                    {journalTotals.net >= 0 ? '+' : '−'}{money(Math.abs(journalTotals.net))} нетто
+                  </Box>
+                </TableCell>
+                <TableCell colSpan={3} />
+              </TableRow>
+            )}
             {displayedJournalRows.length === 0 && !journalLoading && (
               <TableRow>
                 <TableCell colSpan={11} align="center">
@@ -2581,6 +2644,22 @@ const FinanceOverviewPageContent: React.FC = () => {
               onChange={(e) => setManualAmount(e.target.value)}
               inputProps={{ min: 0, step: 0.01 }}
             />
+            <FormControl size="small" fullWidth>
+              <InputLabel>Финансовая модель</InputLabel>
+              <Select
+                label="Финансовая модель"
+                value={selectedModelId === '' ? '' : String(selectedModelId)}
+                onChange={(e) => handleManualModelSelect(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value=""><em>Не выбрана</em></MenuItem>
+                {models.map((model) => (
+                  <MenuItem key={model.id} value={model.id}>
+                    {model.name}
+                    {model.target_name ? ` / ${model.target_name}` : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <FormControl size="small" fullWidth>
               <InputLabel>Проект</InputLabel>
               <Select

@@ -70,7 +70,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
-import { ownerWorkspaceApi, settingsApi, tasksApi, usersApi } from '../services/api';
+import { mediaApi, ownerWorkspaceApi, settingsApi, tasksApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceContact,
@@ -302,6 +302,39 @@ const DEFAULT_PROJECT_STATUS_LABELS: Record<string, string> = {
   completed: 'Завершён',
   archived: 'Архив',
 };
+
+const TASK_FIELD_LABELS: Record<string, string> = {
+  title: 'Заголовок',
+  description: 'Описание',
+  status: 'Статус',
+  priority: 'Приоритет',
+  assignee_id: 'Исполнитель',
+  deadline_at: 'Дедлайн',
+  start_at: 'Начало',
+  project_id: 'Проект',
+  contact_id: 'Контакт',
+  tags: 'Теги',
+  checklist: 'Чеклист',
+  attachments: 'Вложения',
+  parent_id: 'Родительская задача',
+  previous_task_id: 'Предыдущая задача',
+  note: 'Примечание',
+  is_archived: 'Архив',
+};
+
+function formatHistoryValue(key: string, value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'boolean') return value ? 'Да' : 'Нет';
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '(пусто)';
+    return value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
+  }
+  if (typeof value === 'object') return JSON.stringify(value);
+  if ((key.endsWith('_at') || key === 'deadline_at' || key === 'start_at') && typeof value === 'string') {
+    try { return new Date(value).toLocaleString('ru-RU'); } catch { /* fallthrough */ }
+  }
+  return String(value);
+}
 
 const OWNER_WS_HISTORY_ENTITY_LABELS: Record<string, string> = {
   project: 'Проект',
@@ -916,6 +949,8 @@ const OwnerWorkspacePage: React.FC = () => {
   const [historySortOrder, setHistorySortOrder] = useState<'asc' | 'desc'>('desc');
   const [historyExpandedIds, setHistoryExpandedIds] = useState<number[]>([]);
   const [taskHistoryExpandedIds, setTaskHistoryExpandedIds] = useState<number[]>([]);
+  const [attachUploading, setAttachUploading] = useState(false);
+  const attachUploadRef = useRef<HTMLInputElement>(null);
 
   const [projectName, setProjectName] = useState('');
   const [contactName, setContactName] = useState('');
@@ -6520,9 +6555,6 @@ const OwnerWorkspacePage: React.FC = () => {
 
       <Menu anchorEl={taskActionAnchorEl} open={Boolean(taskActionAnchorEl)} onClose={closeTaskActionMenu}>
         <MenuItem onClick={() => runTaskAction(openTaskDialog)}>
-          <OpenInNewIcon fontSize="small" sx={{ mr: 1 }} />Открыть задачу
-        </MenuItem>
-        <MenuItem onClick={() => runTaskAction(openTaskDialog)}>
           <AssignmentIcon fontSize="small" sx={{ mr: 1 }} />Редактировать
         </MenuItem>
         <MenuItem
@@ -8508,8 +8540,23 @@ const OwnerWorkspacePage: React.FC = () => {
               try { atts = JSON.parse(taskEditAttachmentsText || '[]'); } catch {}
               const canEdit = !taskFormLocked && canEditTaskFieldsDialogContent;
               const update = (next: typeof atts) => setTaskEditAttachmentsText(JSON.stringify(next));
+              const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                e.target.value = '';
+                setAttachUploading(true);
+                try {
+                  const uploaded = await mediaApi.upload(file);
+                  update([...atts, { url: uploaded.url, name: uploaded.original_name || file.name }]);
+                } catch {
+                  setError('Не удалось загрузить файл');
+                } finally {
+                  setAttachUploading(false);
+                }
+              };
               return (
                 <Stack spacing={1}>
+                  <input ref={attachUploadRef} type="file" style={{ display: 'none' }} onChange={handleFileUpload} />
                   {atts.map((att, idx) => (
                     <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       <TextField
@@ -8541,9 +8588,21 @@ const OwnerWorkspacePage: React.FC = () => {
                     </Box>
                   ))}
                   {canEdit && (
-                    <Button size="small" startIcon={<AddIcon />} onClick={() => update([...atts, { url: '', name: '' }])} sx={{ alignSelf: 'flex-start' }}>
-                      Добавить вложение
-                    </Button>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" startIcon={<AddIcon />} onClick={() => update([...atts, { url: '', name: '' }])} sx={{ alignSelf: 'flex-start' }}>
+                        Добавить ссылку
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={attachUploading ? <CircularProgress size={14} /> : <AddIcon />}
+                        onClick={() => attachUploadRef.current?.click()}
+                        disabled={attachUploading}
+                        sx={{ alignSelf: 'flex-start' }}
+                      >
+                        Загрузить файл
+                      </Button>
+                    </Stack>
                   )}
                   {atts.length === 0 && !canEdit && (
                     <Typography variant="caption" color="text.secondary">Нет вложений</Typography>
@@ -8564,66 +8623,63 @@ const OwnerWorkspacePage: React.FC = () => {
                   Записей аудита по этой задаче пока нет.
                 </Typography>
               )}
-              {taskDialogHistory.map((h) => (
+              {taskDialogHistory.map((h) => {
+                const changedKeys = ownerWsHistoryChangedFields(h);
+                const isExpanded = taskHistoryExpandedIds.includes(h.id);
+                return (
                 <Box key={h.id} sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
                   <Typography variant="caption" color="text.secondary">
                     {h.created_at ? new Date(h.created_at).toLocaleString('ru-RU') : ''} · {userName(h.author_id)}
                   </Typography>
-                  <Typography variant="body2">{ownerWsHistoryPrimaryLabel(h)}</Typography>
-                  {ownerWsHistoryChangedFields(h).length > 0 && (
-                    <Stack direction="row" spacing={1} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
-                      {ownerWsHistoryChangedFields(h)
-                        .slice(0, 4)
-                        .map((key) => (
-                          <Chip key={key} size="small" variant="outlined" label={key} />
-                        ))}
-                      {ownerWsHistoryChangedFields(h).length > 4 && (
-                        <Chip size="small" variant="outlined" label={`+${ownerWsHistoryChangedFields(h).length - 4}`} />
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>{ownerWsHistoryPrimaryLabel(h)}</Typography>
+                  {changedKeys.length > 0 && (
+                    <Stack direction="row" spacing={0.75} sx={{ mt: 0.75, flexWrap: 'wrap', gap: 0.5 }}>
+                      {changedKeys.slice(0, 5).map((key) => (
+                        <Chip key={key} size="small" variant="outlined" label={TASK_FIELD_LABELS[key] ?? key} />
+                      ))}
+                      {changedKeys.length > 5 && (
+                        <Chip size="small" variant="outlined" label={`+${changedKeys.length - 5}`} />
                       )}
                     </Stack>
                   )}
-                  {(h.old_value || h.new_value) && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      sx={{ mt: 0.75, alignSelf: 'flex-start' }}
-                      onClick={() => toggleExpandedTaskHistoryEntry(h.id)}
-                    >
-                      {taskHistoryExpandedIds.includes(h.id) ? 'Скрыть детали' : 'Показать детали'}
+                  {changedKeys.length > 0 && (
+                    <Button size="small" variant="text" sx={{ mt: 0.5, p: 0, minWidth: 0, fontSize: 12 }}
+                      onClick={() => toggleExpandedTaskHistoryEntry(h.id)}>
+                      {isExpanded ? 'Скрыть' : 'Подробнее'}
                     </Button>
                   )}
-                  {taskHistoryExpandedIds.includes(h.id) && (
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      {h.old_value && (
-                        <Box sx={{ p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            До
-                          </Typography>
-                          <Box
-                            component="pre"
-                            sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, fontFamily: 'monospace' }}
-                          >
-                            {ownerWsHistoryPayloadText(h.old_value)}
+                  {isExpanded && (
+                    <Stack spacing={0.5} sx={{ mt: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                      {changedKeys.map((key) => {
+                        const oldVal = h.old_value?.[key];
+                        const newVal = h.new_value?.[key];
+                        const bothPresent = oldVal !== undefined && newVal !== undefined;
+                        return (
+                          <Box key={key} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', fontSize: 12 }}>
+                            <Typography variant="caption" sx={{ minWidth: 120, fontWeight: 600, flexShrink: 0, color: 'text.secondary' }}>
+                              {TASK_FIELD_LABELS[key] ?? key}
+                            </Typography>
+                            <Box sx={{ flex: 1, display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                              {oldVal !== undefined && (
+                                <Typography variant="caption" sx={{ color: 'error.main', textDecoration: bothPresent ? 'line-through' : 'none', wordBreak: 'break-all' }}>
+                                  {formatHistoryValue(key, oldVal)}
+                                </Typography>
+                              )}
+                              {bothPresent && <Typography variant="caption" color="text.disabled">→</Typography>}
+                              {newVal !== undefined && (
+                                <Typography variant="caption" sx={{ color: 'success.main', wordBreak: 'break-all' }}>
+                                  {formatHistoryValue(key, newVal)}
+                                </Typography>
+                              )}
+                            </Box>
                           </Box>
-                        </Box>
-                      )}
-                      {h.new_value && (
-                        <Box sx={{ p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            После
-                          </Typography>
-                          <Box
-                            component="pre"
-                            sx={{ m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, fontFamily: 'monospace' }}
-                          >
-                            {ownerWsHistoryPayloadText(h.new_value)}
-                          </Box>
-                        </Box>
-                      )}
+                        );
+                      })}
                     </Stack>
                   )}
                 </Box>
-              ))}
+                );
+              })}
             </Stack>
             <Typography variant="subtitle2">Комментарии</Typography>
             <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}>

@@ -864,12 +864,7 @@ const OwnerCounterpartiesPage: React.FC = () => {
                                       <Button
                                         size="small"
                                         startIcon={<DownloadIcon />}
-                                        onClick={() =>
-                                          window.open(
-                                            ownerWorkspaceApi.downloadProjectDocumentUrl(project.id, doc.id),
-                                            '_blank'
-                                          )
-                                        }
+                                        onClick={() => void ownerWorkspaceApi.downloadProjectDocument(project.id, doc.id, doc.filename)}
                                       >
                                         Скачать
                                       </Button>

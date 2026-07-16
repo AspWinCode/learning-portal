@@ -107,8 +107,19 @@ export const ownerWorkspaceApi = {
     });
     return response.data;
   },
-  downloadProjectDocumentUrl: (projectId: number, documentId: number): string =>
-    `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download`,
+  downloadProjectDocument: async (projectId: number, documentId: number, filename: string): Promise<void> => {
+    const response = await api.get(
+      `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download`,
+      { responseType: 'blob' }
+    );
+    const blob = new Blob([response.data], { type: String(response.headers['content-type'] || 'application/octet-stream') });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   openProjectDocumentInline: async (projectId: number, documentId: number): Promise<void> => {
     const response = await api.get(
       `/api/owner-workspace/projects/${projectId}/documents/${documentId}/download`,

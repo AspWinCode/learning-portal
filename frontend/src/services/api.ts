@@ -3985,9 +3985,9 @@ export const blogApi = {
 export interface MediaFile {
   id: number;
   filename: string;
-  original_name: string;
+  original_name: string | null;
   size: number;
-  mime_type: string;
+  mime_type: string | null;
   url: string;
   created_at: string;
   uploaded_by_name: string | null;

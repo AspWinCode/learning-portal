@@ -1063,12 +1063,7 @@ const ProjectDetailPage: React.FC = () => {
                       <IconButton
                         size="small"
                         title="Скачать"
-                        onClick={() =>
-                          window.open(
-                            ownerWorkspaceApi.downloadProjectDocumentUrl(projectId, doc.id),
-                            '_blank'
-                          )
-                        }
+                        onClick={() => void ownerWorkspaceApi.downloadProjectDocument(projectId, doc.id, doc.filename)}
                       >
                         <DownloadIcon fontSize="small" />
                       </IconButton>

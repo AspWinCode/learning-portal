@@ -871,22 +871,6 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   const renderModelSelector = () => (
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }}>
-      <FormControl size="small" sx={{ minWidth: { xs: 0, md: 280 }, width: { xs: '100%', md: 'auto' } }}>
-        <InputLabel>Финансовая модель</InputLabel>
-        <Select
-          label="Финансовая модель"
-          value={selectedModelId === '' ? '' : String(selectedModelId)}
-          onChange={(event) => setSelectedModelId(event.target.value === '' ? '' : Number(event.target.value))}
-        >
-          <MenuItem value=""><em>Все модели</em></MenuItem>
-          {models.map((model) => (
-            <MenuItem key={model.id} value={model.id}>
-              {model.name}
-              {model.target_name ? ` / ${model.target_name}` : ''}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
       <TextField
         size="small"
         type="month"

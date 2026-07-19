@@ -815,6 +815,7 @@ async def import_sales_schools(
         if not school:
             school = SalesSchool(name=name, is_active=True)
             db.add(school)
+            db.flush()
             created += 1
         else:
             updated += 1

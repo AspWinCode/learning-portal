@@ -19,6 +19,7 @@ from app.background_jobs import (
     run_tochka_auto_import,
     run_transcription,
 )
+from app.services.email_broadcast_service import send_broadcast as _send_broadcast
 
 
 @dramatiq.actor(queue_name="periodic")
@@ -89,3 +90,13 @@ def task_daily_task_digest() -> None:
 @dramatiq.actor(queue_name="delivery", max_retries=0)
 def task_transcribe_audio(transcription_id: int) -> None:
     run_transcription(transcription_id)
+
+
+@dramatiq.actor(queue_name="delivery", max_retries=0)
+def task_send_email_broadcast(broadcast_id: int) -> None:
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        _send_broadcast(db, broadcast_id)
+    finally:
+        db.close()

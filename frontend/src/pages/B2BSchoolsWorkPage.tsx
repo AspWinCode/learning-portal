@@ -29,12 +29,14 @@ import {
 } from '@mui/material';
 import Layout from '../components/Layout';
 import { CampaignsTab } from './CampaignsTab';
+import BroadcastsTab from './BroadcastsTab';
 import { b2bApi, searchApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { B2BDocument, B2BSchool, B2BSchoolCustomField, PersonSearchItem } from '../types';
 
 const TAB_LIST = 'list';
 const TAB_SCHOOLS = 'schools';
+const TAB_BROADCASTS = 'broadcasts';
 
 const schoolStatusOptions = [
   { value: 'unknown', label: 'Не знаем друг друга', color: '#9ca3af' },
@@ -623,10 +625,11 @@ const B2BSchoolsDirectoryTab: React.FC = () => {
 const B2BSchoolsWorkPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const tab = tabParam === TAB_SCHOOLS ? TAB_SCHOOLS : TAB_LIST;
+  const validTabs = [TAB_LIST, TAB_SCHOOLS, TAB_BROADCASTS];
+  const tab = validTabs.includes(tabParam ?? '') ? tabParam! : TAB_LIST;
 
   const handleTabChange = (_: React.SyntheticEvent, value: string) => {
-    setSearchParams(value === TAB_SCHOOLS ? { tab: value } : {});
+    setSearchParams(value === TAB_LIST ? {} : { tab: value });
   };
 
   return (
@@ -635,9 +638,11 @@ const B2BSchoolsWorkPage: React.FC = () => {
         <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 2 }}>
           <Tab label="Работа со школами" value={TAB_LIST} />
           <Tab label="Школы" value={TAB_SCHOOLS} />
+          <Tab label="Рассылки" value={TAB_BROADCASTS} />
         </Tabs>
         {tab === TAB_LIST && <CampaignsTab />}
         {tab === TAB_SCHOOLS && <B2BSchoolsDirectoryTab />}
+        {tab === TAB_BROADCASTS && <BroadcastsTab />}
       </Box>
     </Layout>
   );

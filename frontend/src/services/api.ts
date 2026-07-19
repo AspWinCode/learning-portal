@@ -4133,5 +4133,76 @@ export const cmsApi = {
   },
 };
 
+// ─── Email Broadcasts ────────────────────────────────────────────────────────
+
+export interface EmailBroadcast {
+  id: number;
+  name: string;
+  subject: string;
+  html_body: string;
+  plain_body: string | null;
+  status: 'draft' | 'sending' | 'done' | 'failed';
+  created_by_id: number | null;
+  created_by_name: string | null;
+  created_at: string | null;
+  sent_at: string | null;
+  total_recipients: number;
+  sent_count: number;
+  failed_count: number;
+  opened_count: number;
+  clicked_count: number;
+}
+
+export interface EmailBroadcastRecipient {
+  id: number;
+  broadcast_id: number;
+  school_id: number | null;
+  email: string;
+  school_name: string | null;
+  director_name: string | null;
+  status: 'pending' | 'sending' | 'sent' | 'failed' | 'opened';
+  sent_at: string | null;
+  opened_at: string | null;
+  open_count: number;
+  error_message: string | null;
+}
+
+export const emailBroadcastsApi = {
+  list: async (): Promise<EmailBroadcast[]> => {
+    const res = await api.get('/api/v1/email-broadcasts');
+    return res.data;
+  },
+  create: async (payload: { name: string; subject: string; html_body: string; plain_body?: string }): Promise<EmailBroadcast> => {
+    const res = await api.post('/api/v1/email-broadcasts', payload);
+    return res.data;
+  },
+  get: async (id: number): Promise<EmailBroadcast> => {
+    const res = await api.get(`/api/v1/email-broadcasts/${id}`);
+    return res.data;
+  },
+  update: async (id: number, payload: Partial<{ name: string; subject: string; html_body: string; plain_body: string }>): Promise<EmailBroadcast> => {
+    const res = await api.patch(`/api/v1/email-broadcasts/${id}`, payload);
+    return res.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/email-broadcasts/${id}`);
+  },
+  send: async (id: number, schoolIds: number[]): Promise<EmailBroadcast> => {
+    const res = await api.post(`/api/v1/email-broadcasts/${id}/send`, { school_ids: schoolIds });
+    return res.data;
+  },
+  testSend: async (id: number, toEmail: string): Promise<void> => {
+    await api.post(`/api/v1/email-broadcasts/${id}/test-send`, { to_email: toEmail });
+  },
+  retryFailed: async (id: number): Promise<EmailBroadcast> => {
+    const res = await api.post(`/api/v1/email-broadcasts/${id}/retry-failed`);
+    return res.data;
+  },
+  listRecipients: async (id: number): Promise<EmailBroadcastRecipient[]> => {
+    const res = await api.get(`/api/v1/email-broadcasts/${id}/recipients`);
+    return res.data;
+  },
+};
+
 export default api;
 

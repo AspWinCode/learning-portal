@@ -3138,3 +3138,45 @@ class Transcription(Base):
 
     owner = relationship("User", foreign_keys=[owner_id])
 
+
+class EmailBroadcast(Base):
+    __tablename__ = "email_broadcasts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    subject = Column(String(255), nullable=False)
+    html_body = Column(Text, nullable=False)
+    plain_body = Column(Text, nullable=True)
+    status = Column(String(32), nullable=False, default="draft", index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    total_recipients = Column(Integer, nullable=False, default=0)
+    sent_count = Column(Integer, nullable=False, default=0)
+    failed_count = Column(Integer, nullable=False, default=0)
+    opened_count = Column(Integer, nullable=False, default=0)
+    clicked_count = Column(Integer, nullable=False, default=0)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    recipients = relationship("EmailBroadcastRecipient", back_populates="broadcast", cascade="all, delete-orphan")
+
+
+class EmailBroadcastRecipient(Base):
+    __tablename__ = "email_broadcast_recipients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    broadcast_id = Column(Integer, ForeignKey("email_broadcasts.id", ondelete="CASCADE"), nullable=False, index=True)
+    school_id = Column(Integer, ForeignKey("b2b_schools.id", ondelete="SET NULL"), nullable=True, index=True)
+    email = Column(String(255), nullable=False)
+    school_name = Column(String(255), nullable=True)
+    director_name = Column(String(255), nullable=True)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    tracking_token = Column(String(64), nullable=False, unique=True, index=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    opened_at = Column(DateTime(timezone=True), nullable=True)
+    open_count = Column(Integer, nullable=False, default=0)
+    error_message = Column(Text, nullable=True)
+
+    broadcast = relationship("EmailBroadcast", back_populates="recipients")
+    school = relationship("B2BSchool")
+

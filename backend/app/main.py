@@ -28,6 +28,7 @@ from app.routers import (
     characteristics,
     communications,
     disk,
+    email_broadcasts,
     finance,
     grades,
     groups,
@@ -435,6 +436,7 @@ app.include_router(abonements.router, prefix="/api/v1/abonements", tags=["abonem
 app.include_router(sales.router, prefix="/api/v1/sales", tags=["sales"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(b2b.router, prefix="/api/v1", tags=["b2b"])
+app.include_router(email_broadcasts.router, prefix="/api/v1", tags=["email_broadcasts"])
 app.include_router(campaigns.router, prefix="/api/v1", tags=["campaigns"])
 app.include_router(owner_funnels.router, prefix="/api/v1", tags=["owner_funnels"])
 app.include_router(owner_calculations.router, prefix="/api/v1", tags=["owner_calculations"])

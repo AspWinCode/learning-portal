@@ -37,6 +37,7 @@ class GroupCreate(GroupBase):
     lesson_format: Optional[str] = "group"
     units_per_session: Optional[int] = 1
     extra_rate_per_unit: Optional[float] = None
+    online_url: Optional[str] = None
 
 
 class GroupUpdate(BaseModel):
@@ -49,6 +50,7 @@ class GroupUpdate(BaseModel):
     lesson_format: Optional[str] = None
     units_per_session: Optional[int] = None
     extra_rate_per_unit: Optional[float] = None
+    online_url: Optional[str] = None
 
 
 class GroupResponse(GroupBase):
@@ -60,6 +62,7 @@ class GroupResponse(GroupBase):
     lesson_format: Optional[str] = "group"
     units_per_session: Optional[int] = 1
     extra_rate_per_unit: Optional[float] = None
+    online_url: Optional[str] = None
     trainer: Optional[UserResponse] = None
     students: Optional[List[StudentResponse]] = []
     programs: Optional[List[ProgramSummaryResponse]] = []

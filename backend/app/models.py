@@ -1313,6 +1313,7 @@ class Group(Base):
     start_date = Column(Date, nullable=True)
     # group = групповой (лимит 8 занятий/юнитов), individual = индивидуальный (без лимита 8)
     lesson_format = Column(String(16), nullable=False, default="group", server_default="group")
+    online_url = Column(String(1024), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -1551,6 +1552,7 @@ class CustomLesson(Base):
         index=True,
     )
     comment = Column(Text, nullable=True)
+    online_url = Column(String(1024), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

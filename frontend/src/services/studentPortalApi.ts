@@ -22,6 +22,7 @@ export interface UpcomingLesson {
   end_time: string | null;
   group_name: string | null;
   trainer_name: string;
+  online_url?: string | null;
   kind: 'regular' | 'custom';
 }
 

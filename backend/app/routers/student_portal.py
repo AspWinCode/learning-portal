@@ -227,6 +227,7 @@ async def get_student_schedule(
                                 group_name=group.name,
                                 trainer_name=trainer_name,
                                 kind="regular",
+                                online_url=group.online_url,
                             ))
                     current += timedelta(days=1)
 
@@ -257,6 +258,7 @@ async def get_student_schedule(
                 group_name=None,
                 trainer_name=trainer_name,
                 kind="custom",
+                online_url=cl.online_url,
             ))
 
     lessons.sort(key=lambda x: (x.lesson_date, x.start_time))

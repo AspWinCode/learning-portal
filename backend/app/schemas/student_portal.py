@@ -155,6 +155,7 @@ class UpcomingLessonOut(BaseModel):
     group_name: Optional[str]
     trainer_name: str
     kind: Literal["regular", "custom"]
+    online_url: Optional[str] = None
 
 
 class ProgressSyncRequest(BaseModel):

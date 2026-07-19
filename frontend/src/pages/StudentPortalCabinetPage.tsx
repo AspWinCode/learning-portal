@@ -337,6 +337,27 @@ const StudentPortalCabinetPage: React.FC = () => {
                                 <Typography sx={{ color: '#60A5FA', fontSize: '0.65rem', fontWeight: 700 }}>отработка</Typography>
                               </Box>
                             )}
+                            {lesson.online_url && (
+                              <Box
+                                component="a"
+                                href={lesson.online_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                                sx={{
+                                  display: 'flex', alignItems: 'center', gap: 0.5,
+                                  bgcolor: 'rgba(139,92,246,0.15)',
+                                  border: '1px solid rgba(139,92,246,0.4)',
+                                  borderRadius: 1.5, px: 1, py: 0.25,
+                                  textDecoration: 'none',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s',
+                                  '&:hover': { bgcolor: 'rgba(139,92,246,0.3)', borderColor: 'rgba(139,92,246,0.7)' },
+                                }}
+                              >
+                                <Typography sx={{ color: '#A78BFA', fontSize: '0.65rem', fontWeight: 700 }}>▶ войти</Typography>
+                              </Box>
+                            )}
                           </Box>
                         ))}
                       </Box>

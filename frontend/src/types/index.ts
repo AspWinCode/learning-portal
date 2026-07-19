@@ -316,6 +316,7 @@ export interface Group {
   lesson_format?: 'group' | 'individual';
   /** Краткое расписание (например, "Вт, Чт · 20:00–21:00"). */
   schedule_short?: string | null;
+  online_url?: string | null;
 }
 
 /** Политика доп. юнитов по слоту (дата + время). */

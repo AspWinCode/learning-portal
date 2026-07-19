@@ -57,6 +57,7 @@ def _group_to_response(db: Session, g: Group) -> GroupResponse:
         base["extra_rate_per_unit"] = getattr(g, "extra_rate_per_unit", None)
     base["start_date"] = getattr(g, "start_date", None)
     base["lesson_format"] = getattr(g, "lesson_format", None) or "group"
+    base["online_url"] = getattr(g, "online_url", None)
     return GroupResponse(**base)
 
 
@@ -132,6 +133,7 @@ async def create_group(
         lesson_format=(group.lesson_format or "group").strip().lower() or "group",
         units_per_session=group.units_per_session if group.units_per_session is not None else 1,
         extra_rate_per_unit=group.extra_rate_per_unit,
+        online_url=group.online_url,
     )
     db.add(db_group)
     db.flush()

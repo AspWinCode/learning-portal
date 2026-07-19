@@ -51,6 +51,7 @@ const GroupsPage: React.FC = () => {
     extra_rate_per_unit: '' as number | '',
     start_date: '' as string,
     lesson_format: 'group' as 'group' | 'individual',
+    online_url: '' as string,
   });
   const [formSchedules, setFormSchedules] = useState<Array<{ day_of_week: number; start_time: string; end_time: string }>>([]);
   const [groupsTab, setGroupsTab] = useState<'active' | 'archive'>('active');
@@ -142,6 +143,7 @@ const GroupsPage: React.FC = () => {
         extra_rate_per_unit: full.extra_rate_per_unit != null ? full.extra_rate_per_unit : '',
         start_date: full.start_date ? full.start_date.slice(0, 10) : '',
         lesson_format: (full.lesson_format === 'individual' ? 'individual' : 'group'),
+        online_url: full.online_url ?? '',
       });
       setFormSchedules(
         (full.schedules || []).map((s) => ({
@@ -189,6 +191,7 @@ const GroupsPage: React.FC = () => {
         extra_rate_per_unit: newGroup.extra_rate_per_unit === '' ? undefined : Number(newGroup.extra_rate_per_unit) || undefined,
         start_date: newGroup.start_date || undefined,
         lesson_format: newGroup.lesson_format,
+        online_url: newGroup.online_url || undefined,
         schedules: formSchedules.map((s) => ({
           day_of_week: s.day_of_week,
           start_time: normalizeTime(s.start_time),
@@ -196,7 +199,7 @@ const GroupsPage: React.FC = () => {
         })),
       });
       setOpen(false);
-      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group' });
+      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
       setFormSchedules([]);
       setError('');
       loadGroups();
@@ -225,6 +228,7 @@ const GroupsPage: React.FC = () => {
         extra_rate_per_unit: newGroup.extra_rate_per_unit === '' ? null : Number(newGroup.extra_rate_per_unit) || null,
         start_date: newGroup.start_date || null,
         lesson_format: newGroup.lesson_format,
+        online_url: newGroup.online_url || null,
         schedules: formSchedules.map((s) => ({
           day_of_week: s.day_of_week,
           start_time: normalizeTime(s.start_time),
@@ -233,7 +237,7 @@ const GroupsPage: React.FC = () => {
       });
       setEditOpen(false);
       setSelectedGroup(null);
-      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group' });
+      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
       setFormSchedules([]);
       setError('');
       loadGroups();
@@ -348,7 +352,7 @@ const GroupsPage: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => {
               setOpen(true);
-              setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group' });
+              setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
               setFormSchedules([]);
             }}
           >
@@ -499,6 +503,14 @@ const GroupsPage: React.FC = () => {
                 <MenuItem value="individual">Индивидуальный формат</MenuItem>
               </Select>
             </FormControl>
+            <TextField
+              fullWidth
+              label="Ссылка на онлайн-занятие"
+              placeholder="https://zoom.us/j/..."
+              value={newGroup.online_url}
+              onChange={(e) => setNewGroup({ ...newGroup, online_url: e.target.value })}
+              sx={{ mt: 2 }}
+            />
             {newGroup.lesson_format !== 'individual' && (
               <>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
@@ -684,6 +696,14 @@ const GroupsPage: React.FC = () => {
                 <MenuItem value="individual">Индивидуальный формат</MenuItem>
               </Select>
             </FormControl>
+            <TextField
+              fullWidth
+              label="Ссылка на онлайн-занятие"
+              placeholder="https://zoom.us/j/..."
+              value={newGroup.online_url}
+              onChange={(e) => setNewGroup({ ...newGroup, online_url: e.target.value })}
+              sx={{ mt: 2 }}
+            />
             {newGroup.lesson_format !== 'individual' && (
               <>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>

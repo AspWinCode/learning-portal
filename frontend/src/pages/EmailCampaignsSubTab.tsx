@@ -31,11 +31,12 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ReplayIcon from '@mui/icons-material/Replay';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import SearchIcon from '@mui/icons-material/Search';
 import SendIcon from '@mui/icons-material/Send';
-import type { B2BSchool } from '../types';
 import {
   b2bApi,
   emailBroadcastsApi,
@@ -157,7 +158,7 @@ const CreateCampaignDialog: React.FC<CreateDialogProps> = ({ open, templates, on
           )}
 
           <Alert severity="info" sx={{ '& .MuiAlert-message': { fontSize: 13 } }}>
-            После создания кампании выберите школы-получателей и нажмите «Отправить».
+            После создания выберите получателей и сохраните черновик. Запустить рассылку можно отдельной кнопкой.
             Токены <code>{'{{school_name}}'}</code> и <code>{'{{director_name}}'}</code> заменятся данными каждой школы автоматически.
           </Alert>
         </Stack>
@@ -174,28 +175,35 @@ const CreateCampaignDialog: React.FC<CreateDialogProps> = ({ open, templates, on
 
 // ─── Send dialog (school picker) ──────────────────────────────────────────────
 
+type BroadcastSchool = { id: number; name: string; city: string | null; email: string; director: string | null };
+
+const DIALOG_PAGE_SIZE = 100;
+
 type SendDialogProps = {
   open: boolean;
   campaign: EmailBroadcast | null;
   onClose: () => void;
+  onSaved: (b: EmailBroadcast) => void;
   onSent: (b: EmailBroadcast) => void;
 };
 
-const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent }) => {
-  const [schools, setSchools] = useState<B2BSchool[]>([]);
+const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSaved, onSent }) => {
+  const [schools, setSchools] = useState<BroadcastSchool[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
   const [cityFilter, setCityFilter] = useState('');
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set()); setSearch(''); setCityFilter(''); setError('');
+    setSelected(new Set()); setSearch(''); setCityFilter(''); setPage(0); setError('');
     setLoading(true);
-    b2bApi.listSchools()
-      .then(data => setSchools(data.filter(s => s.email)))
+    b2bApi.listSchoolsForBroadcast()
+      .then(data => setSchools(data))
       .catch(err => setError(extractApiError(err, 'Не удалось загрузить школы')))
       .finally(() => setLoading(false));
   }, [open]);
@@ -208,12 +216,30 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
     return !q || s.name.toLowerCase().includes(q) || (s.city ?? '').toLowerCase().includes(q);
   });
 
-  const allSelected = filtered.length > 0 && filtered.every(s => selected.has(s.id));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / DIALOG_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = filtered.slice(safePage * DIALOG_PAGE_SIZE, (safePage + 1) * DIALOG_PAGE_SIZE);
+
+  const allPageSelected = paged.length > 0 && paged.every(s => selected.has(s.id));
+  const somePageSelected = paged.some(s => selected.has(s.id));
+
+  const togglePage = () => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      allPageSelected
+        ? paged.forEach(s => next.delete(s.id))
+        : paged.forEach(s => next.add(s.id));
+      return next;
+    });
+  };
 
   const toggleAll = () => {
     setSelected(prev => {
       const next = new Set(prev);
-      allSelected ? filtered.forEach(s => next.delete(s.id)) : filtered.forEach(s => next.add(s.id));
+      const allFilteredSelected = filtered.every(s => next.has(s.id));
+      allFilteredSelected
+        ? filtered.forEach(s => next.delete(s.id))
+        : filtered.forEach(s => next.add(s.id));
       return next;
     });
   };
@@ -223,6 +249,21 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
   });
+
+  const handleSearchChange = (v: string) => { setSearch(v); setPage(0); };
+  const handleCityChange = (v: string) => { setCityFilter(v); setPage(0); };
+
+  const handleSave = async () => {
+    if (!campaign || selected.size === 0) return;
+    setSaving(true); setError('');
+    try {
+      const result = await emailBroadcastsApi.saveRecipients(campaign.id, Array.from(selected));
+      onSaved(result);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Ошибка сохранения получателей'));
+      setSaving(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!campaign || selected.size === 0) return;
@@ -236,22 +277,30 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
     }
   };
 
+  const busy = saving || sending;
+  const allFilteredSelected = filtered.length > 0 && filtered.every(s => selected.has(s.id));
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Выбрать получателей: «{campaign?.name}»</DialogTitle>
+      <DialogTitle>Получатели: «{campaign?.name}»</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           {error && <Alert severity="error">{error}</Alert>}
 
           <Alert severity="info" sx={{ '& .MuiAlert-message': { fontSize: 13 } }}>
-            Список включает только школы с указанным e-mail. Токены персонализации заменятся данными каждой школы.
+            Показаны только школы с e-mail. Сохраните получателей как черновик, затем запустите рассылку.
           </Alert>
 
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
             <Typography variant="subtitle2">
-              Выбрано: {selected.size} из {schools.length} школ с e-mail
+              Выбрано: <strong>{selected.size}</strong> из {schools.length} школ
               {cityFilter && ` · показано ${filtered.length} в «${cityFilter}»`}
             </Typography>
+            {filtered.length > 0 && (
+              <Button size="small" variant="outlined" onClick={toggleAll}>
+                {allFilteredSelected ? `Снять все (${filtered.length})` : `Выбрать все (${filtered.length})`}
+              </Button>
+            )}
           </Stack>
 
           <Stack direction="row" spacing={1}>
@@ -260,7 +309,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
               fullWidth
               placeholder="Поиск по названию или городу..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => handleSearchChange(e.target.value)}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
             />
             <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -268,7 +317,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
               <Select
                 value={cityFilter}
                 label="Город"
-                onChange={e => setCityFilter(e.target.value)}
+                onChange={e => handleCityChange(e.target.value)}
               >
                 <MenuItem value="">Все города</MenuItem>
                 {cities.map(c => (
@@ -281,60 +330,81 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
           {loading ? (
             <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
           ) : (
-            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 380 }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        checked={allSelected}
-                        indeterminate={selected.size > 0 && !allSelected}
-                        onChange={toggleAll}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>Школа</TableCell>
-                    <TableCell>Город</TableCell>
-                    <TableCell>E-mail</TableCell>
-                    <TableCell>Директор</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filtered.length === 0 && (
+            <>
+              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 340 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
                     <TableRow>
-                      <TableCell colSpan={5} align="center">
-                        <Typography variant="body2" color="text.secondary">
-                          {schools.length === 0 ? 'Нет школ с e-mail' : 'Ничего не найдено'}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {filtered.map(s => (
-                    <TableRow key={s.id} hover selected={selected.has(s.id)} onClick={() => toggle(s.id)} sx={{ cursor: 'pointer' }}>
                       <TableCell padding="checkbox">
-                        <Checkbox checked={selected.has(s.id)} size="small" onChange={() => toggle(s.id)} onClick={e => e.stopPropagation()} />
+                        <Checkbox
+                          checked={allPageSelected}
+                          indeterminate={somePageSelected && !allPageSelected}
+                          onChange={togglePage}
+                          size="small"
+                        />
                       </TableCell>
-                      <TableCell>{s.name}</TableCell>
-                      <TableCell>{s.city ?? '—'}</TableCell>
-                      <TableCell>{s.email}</TableCell>
-                      <TableCell>{s.director ?? '—'}</TableCell>
+                      <TableCell>Школа</TableCell>
+                      <TableCell>Город</TableCell>
+                      <TableCell>E-mail</TableCell>
+                      <TableCell>Директор</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {paged.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography variant="body2" color="text.secondary">
+                            {schools.length === 0 ? 'Нет школ с e-mail' : 'Ничего не найдено'}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {paged.map(s => (
+                      <TableRow key={s.id} hover selected={selected.has(s.id)} onClick={() => toggle(s.id)} sx={{ cursor: 'pointer' }}>
+                        <TableCell padding="checkbox">
+                          <Checkbox checked={selected.has(s.id)} size="small" onChange={() => toggle(s.id)} onClick={e => e.stopPropagation()} />
+                        </TableCell>
+                        <TableCell>{s.name}</TableCell>
+                        <TableCell>{s.city ?? '—'}</TableCell>
+                        <TableCell>{s.email}</TableCell>
+                        <TableCell>{s.director ?? '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {totalPages > 1 && (
+                <Stack direction="row" alignItems="center" justifyContent="center" spacing={1}>
+                  <Button size="small" disabled={safePage === 0} onClick={() => setPage(p => p - 1)}>←</Button>
+                  <Typography variant="caption">
+                    стр. {safePage + 1} из {totalPages} · показано {paged.length} из {filtered.length}
+                  </Typography>
+                  <Button size="small" disabled={safePage >= totalPages - 1} onClick={() => setPage(p => p + 1)}>→</Button>
+                </Stack>
+              )}
+            </>
           )}
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={sending}>Отмена</Button>
+        <Button onClick={onClose} disabled={busy}>Отмена</Button>
+        <Button
+          variant="outlined"
+          onClick={handleSave}
+          disabled={selected.size === 0 || busy}
+          startIcon={saving ? <CircularProgress size={16} /> : <GroupAddIcon />}
+        >
+          Сохранить получателей {selected.size > 0 ? `(${selected.size})` : ''}
+        </Button>
         <Button
           variant="contained"
+          color="success"
           onClick={handleSend}
-          disabled={selected.size === 0 || sending}
+          disabled={selected.size === 0 || busy}
           startIcon={sending ? <CircularProgress size={16} /> : <SendIcon />}
         >
-          Отправить {selected.size > 0 ? `(${selected.size})` : ''}
+          Запустить рассылку {selected.size > 0 ? `(${selected.size})` : ''}
         </Button>
       </DialogActions>
     </Dialog>
@@ -415,7 +485,7 @@ const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClo
                 <Typography variant="caption" color="text.secondary">{stat.label}</Typography>
               </Paper>
             ))}
-            {campaign.total_recipients > 0 && (
+            {campaign.total_recipients > 0 && campaign.status !== 'draft' && (
               <Paper variant="outlined" sx={{ px: 3, py: 2, minWidth: 130, textAlign: 'center' }}>
                 <Typography variant="h4" color="success.main">
                   {Math.round((campaign.opened_count / campaign.total_recipients) * 100)}%
@@ -518,6 +588,7 @@ const EmailCampaignsSubTab: React.FC = () => {
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [analyticsTarget, setAnalyticsTarget] = useState<EmailBroadcast | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [launching, setLaunching] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -552,6 +623,23 @@ const EmailCampaignsSubTab: React.FC = () => {
       setDeleting(null);
     }
   };
+
+  const handleLaunch = async (b: EmailBroadcast) => {
+    if (!window.confirm(`Запустить рассылку «${b.name}» для ${b.total_recipients} школ?`)) return;
+    setLaunching(b.id);
+    try {
+      const updated = await emailBroadcastsApi.launch(b.id);
+      upsert(updated);
+      setAnalyticsTarget(updated);
+      setAnalyticsOpen(true);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось запустить рассылку'));
+    } finally {
+      setLaunching(null);
+    }
+  };
+
+  const openSendDialog = (b: EmailBroadcast) => { setSendTarget(b); setSendOpen(true); };
 
   return (
     <Box>
@@ -633,20 +721,36 @@ const EmailCampaignsSubTab: React.FC = () => {
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      {/* Draft: choose/edit recipients */}
                       {b.status === 'draft' && (
-                        <Tooltip title="Выбрать школы и отправить">
-                          <IconButton size="small" color="primary" onClick={() => { setSendTarget(b); setSendOpen(true); }}>
-                            <SendIcon fontSize="small" />
+                        <Tooltip title={b.total_recipients > 0 ? 'Изменить получателей' : 'Выбрать получателей'}>
+                          <IconButton size="small" color="primary" onClick={() => openSendDialog(b)}>
+                            <GroupAddIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       )}
-                      {b.status !== 'draft' && (
+                      {/* Draft with saved recipients: launch button */}
+                      {b.status === 'draft' && b.total_recipients > 0 && (
+                        <Tooltip title={`Запустить рассылку (${b.total_recipients} школ)`}>
+                          <IconButton
+                            size="small"
+                            color="success"
+                            onClick={() => handleLaunch(b)}
+                            disabled={launching === b.id}
+                          >
+                            {launching === b.id ? <CircularProgress size={16} /> : <RocketLaunchIcon fontSize="small" />}
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {/* Analytics: all campaigns with recipients */}
+                      {b.total_recipients > 0 && (
                         <Tooltip title="Аналитика">
                           <IconButton size="small" color="info" onClick={() => { setAnalyticsTarget(b); setAnalyticsOpen(true); }}>
                             <AnalyticsIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       )}
+                      {/* Delete: only drafts */}
                       {b.status === 'draft' && (
                         <Tooltip title="Удалить">
                           <IconButton
@@ -672,12 +776,17 @@ const EmailCampaignsSubTab: React.FC = () => {
         open={createOpen}
         templates={templates}
         onClose={() => setCreateOpen(false)}
-        onCreated={b => { upsert(b); setCreateOpen(false); setSendTarget(b); setSendOpen(true); }}
+        onCreated={b => { upsert(b); setCreateOpen(false); openSendDialog(b); }}
       />
       <SendDialog
         open={sendOpen}
         campaign={sendTarget}
         onClose={() => { setSendOpen(false); setSendTarget(null); }}
+        onSaved={b => {
+          upsert(b);
+          setSendOpen(false);
+          setSendTarget(null);
+        }}
         onSent={b => {
           upsert(b);
           setSendOpen(false);

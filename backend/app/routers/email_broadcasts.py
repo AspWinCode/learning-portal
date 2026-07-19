@@ -177,6 +177,73 @@ def send_broadcast(
     return _to_response(broadcast)
 
 
+@router.post("/email-broadcasts/{broadcast_id}/save-recipients", response_model=EmailBroadcastResponse)
+def save_recipients(
+    broadcast_id: int,
+    payload: SendBroadcastRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    """Save school recipients to a draft broadcast without sending."""
+    _check_access(current_user)
+    if not payload.school_ids:
+        raise HTTPException(status_code=400, detail="Выберите хотя бы одну школу")
+
+    broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Рассылка не найдена")
+    if broadcast.status != "draft":
+        raise HTTPException(status_code=400, detail="Получателей можно сохранить только для черновика")
+
+    # Remove previously saved recipients (allow re-selection)
+    db.query(EmailBroadcastRecipient).filter(
+        EmailBroadcastRecipient.broadcast_id == broadcast_id
+    ).delete()
+    db.flush()
+
+    create_recipients(db, broadcast, payload.school_ids)
+    # Restore draft status (create_recipients sets it to "sending" and stamps sent_at)
+    broadcast.status = "draft"
+    broadcast.sent_at = None
+    db.commit()
+    db.refresh(broadcast)
+    return _to_response(broadcast)
+
+
+@router.post("/email-broadcasts/{broadcast_id}/launch", response_model=EmailBroadcastResponse)
+def launch_broadcast(
+    broadcast_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    """Launch sending for a draft that already has saved recipients."""
+    _check_access(current_user)
+    if not is_email_configured():
+        raise HTTPException(status_code=503, detail="SMTP не настроен")
+
+    broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Рассылка не найдена")
+    if broadcast.status != "draft":
+        raise HTTPException(status_code=400, detail="Запустить можно только черновик")
+    if not broadcast.total_recipients:
+        raise HTTPException(status_code=400, detail="Нет получателей. Сначала сохраните список школ.")
+
+    # Reset all recipients to pending and mark broadcast as sending
+    db.query(EmailBroadcastRecipient).filter(
+        EmailBroadcastRecipient.broadcast_id == broadcast_id
+    ).update({"status": "pending", "error_message": None})
+    broadcast.status = "sending"
+    broadcast.sent_at = utcnow()
+    db.commit()
+    db.refresh(broadcast)
+
+    from app.background_tasks import task_send_email_broadcast
+    task_send_email_broadcast.send(broadcast_id)
+
+    return _to_response(broadcast)
+
+
 @router.post("/email-broadcasts/{broadcast_id}/test-send")
 def test_send_broadcast(
     broadcast_id: int,

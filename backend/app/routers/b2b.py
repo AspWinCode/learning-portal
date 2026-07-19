@@ -122,6 +122,21 @@ async def list_b2b_school_cities(
     return [r[0] for r in rows if r[0] and r[0].strip()]
 
 
+@router.get("/b2b-schools/for-broadcast")
+async def list_b2b_schools_for_broadcast(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    """Lightweight school list for email broadcast recipient selection (id, name, city, email, director)."""
+    rows = (
+        db.query(B2BSchool.id, B2BSchool.name, B2BSchool.city, B2BSchool.email, B2BSchool.director)
+        .filter(B2BSchool.email.isnot(None), B2BSchool.email != "")
+        .order_by(B2BSchool.city.asc(), B2BSchool.name.asc())
+        .all()
+    )
+    return [{"id": r.id, "name": r.name, "city": r.city, "email": r.email, "director": r.director} for r in rows]
+
+
 @router.get("/b2b-schools/managers", response_model=List[Dict[str, Any]])
 async def list_b2b_managers(
     db: Session = Depends(get_db),

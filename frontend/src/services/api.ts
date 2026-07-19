@@ -2454,6 +2454,10 @@ export const b2bApi = {
     const response = await api.get('/api/b2b-schools/plan-city-summary');
     return response.data;
   },
+  listSchoolsForBroadcast: async (): Promise<{ id: number; name: string; city: string | null; email: string; director: string | null }[]> => {
+    const response = await api.get('/api/b2b-schools/for-broadcast');
+    return response.data;
+  },
   listSchools: async (opts?: {
     pipeline_stage?: string;
     project_id?: number;
@@ -4232,6 +4236,14 @@ export const emailBroadcastsApi = {
   },
   testSend: async (id: number, toEmail: string): Promise<void> => {
     await api.post(`/email-broadcasts/${id}/test-send`, { to_email: toEmail });
+  },
+  saveRecipients: async (id: number, schoolIds: number[]): Promise<EmailBroadcast> => {
+    const res = await api.post(`/email-broadcasts/${id}/save-recipients`, { school_ids: schoolIds });
+    return res.data;
+  },
+  launch: async (id: number): Promise<EmailBroadcast> => {
+    const res = await api.post(`/email-broadcasts/${id}/launch`);
+    return res.data;
   },
   retryFailed: async (id: number): Promise<EmailBroadcast> => {
     const res = await api.post(`/email-broadcasts/${id}/retry-failed`);

@@ -7,12 +7,8 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  FormControl,
   Grid,
-  InputLabel,
   LinearProgress,
-  MenuItem,
-  Select,
   Stack,
   Tab,
   Tabs,
@@ -26,16 +22,15 @@ import PushPin from '@mui/icons-material/PushPin';
 import WarningAmber from '@mui/icons-material/WarningAmber';
 import { Link as RouterLink } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { b2bApi, ownerWorkspaceApi, tasksApi } from '../services/api';
+import { tasksApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
-import type { B2BSchool, OwnerWorkspaceTask, TaskResponse } from '../types';
+import type { TaskResponse } from '../types';
 
-type SourceKey = 'task_tracker' | 'counterparties' | 'schools' | 'personal';
 type PlanBucket = 'must' | 'should' | 'can_move';
 
 type PlannerTask = {
   id: string;
-  source: SourceKey;
+  source: 'task_tracker';
   entityId: string;
   title: string;
   description?: string | null;
@@ -58,34 +53,7 @@ type PlannerTask = {
   dueThisWeek: boolean;
   reason: string;
   openUrl: string;
-  raw?: TaskResponse | OwnerWorkspaceTask | B2BSchool;
-};
-
-type LoadState = {
-  taskTracker?: string;
-  ownerWorkspace?: string;
-  schools?: string;
-};
-
-const SOURCE_LABELS: Record<SourceKey, string> = {
-  task_tracker: 'Таск-трекер',
-  counterparties: 'Контрагенты',
-  schools: 'Школы',
-  personal: 'Задачи',
-};
-
-const SOURCE_COEFFICIENTS: Record<SourceKey, number> = {
-  schools: 1.3,
-  counterparties: 1.2,
-  task_tracker: 1.0,
-  personal: 0.8,
-};
-
-const SOURCE_COLORS: Record<SourceKey, 'primary' | 'secondary' | 'success' | 'warning'> = {
-  task_tracker: 'primary',
-  counterparties: 'secondary',
-  schools: 'success',
-  personal: 'warning',
+  raw?: TaskResponse;
 };
 
 const todayStart = () => {
@@ -170,10 +138,9 @@ const buildScore = (task: Omit<PlannerTask, 'score' | 'urgencyScore' | 'riskScor
   const riskScore = riskByDeadline(task.deadline, task.estimatedDuration);
   const importanceScore = priorityWeight(task.priority);
   const taskAgeScore = ageScore(task.createdAt);
-  const coefficient = SOURCE_COEFFICIENTS[task.source];
   const score = Math.min(
     100,
-    Math.round((urgencyScore * 0.4 + riskScore * 0.3 + importanceScore * 0.2 + taskAgeScore * 0.1) * coefficient)
+    Math.round(urgencyScore * 0.4 + riskScore * 0.3 + importanceScore * 0.2 + taskAgeScore * 0.1)
   );
   const overdue = diff != null && diff < 0;
   const dueToday = diff === 0;
@@ -197,43 +164,6 @@ const estimateTaskDuration = (task: TaskResponse) => {
   const subtaskMinutes = (task.subtasks?.length || 1) * 25;
   if (task.priority === 'high') return Math.max(45, subtaskMinutes);
   return Math.max(30, subtaskMinutes);
-};
-
-const estimateOwnerTaskDuration = (task: OwnerWorkspaceTask) => {
-  if (task.effort_minutes) return task.effort_minutes;
-  if (task.effort_hours) return task.effort_hours * 60;
-  const checklist = Array.isArray(task.checklist) ? task.checklist.length : 0;
-  return Math.max(30, checklist * 25 || 60);
-};
-
-const b2bReasonLabels: Record<string, string> = {
-  overdue: 'Просрочен следующий шаг',
-  no_next_step: 'Нет следующего шага',
-  find_contacts_stale: 'Поиск контактов больше 3 дней',
-  find_contacts_no_contacts_48h: 'Нет контактов 48 часов',
-  today: 'Запланировано на сегодня',
-  tomorrow: 'Запланировано на завтра',
-  week: 'Срок на этой неделе',
-  no_contacts: 'Нет контактов',
-  no_touches_7d: 'Нет касаний 7 дней',
-  event_done_no_leads: 'Мероприятие проведено без лидов',
-  event_done_no_leads_24_48h: 'Проведено без лидов 24-48 часов',
-  negotiations_14d: 'Переговоры больше 14 дней',
-};
-
-const b2bPriorityByBucket: Record<string, PlannerTask['priority']> = {
-  overdue: 'critical',
-  find_contacts_no_contacts_48h: 'high',
-  event_done_no_leads: 'high',
-  event_done_no_leads_24_48h: 'high',
-  no_next_step: 'high',
-  today: 'high',
-  tomorrow: 'medium',
-  week: 'medium',
-  negotiations_14d: 'medium',
-  no_contacts: 'medium',
-  no_touches_7d: 'medium',
-  find_contacts_stale: 'medium',
 };
 
 const mergeByBestScore = (tasks: PlannerTask[]) => {
@@ -263,7 +193,7 @@ const TaskCard: React.FC<{
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1}>
             <Box>
               <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
-                <Chip size="small" color={SOURCE_COLORS[task.source]} label={SOURCE_LABELS[task.source]} />
+                <Chip size="small" color="primary" label="Таск-трекер" />
                 <Chip size="small" variant="outlined" label={`Score ${task.score}`} />
                 <Chip
                   size="small"
@@ -286,21 +216,12 @@ const TaskCard: React.FC<{
               )}
             </Box>
             <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" sx={{ minWidth: { md: 260 }, justifyContent: { md: 'flex-end' } }}>
-              {task.source === 'task_tracker' && (
-                <>
-                  <Button size="small" variant="outlined" startIcon={<PushPin />} disabled={loading} onClick={() => onPinToday(task)}>
-                    В план
-                  </Button>
-                  <Button size="small" variant="contained" startIcon={<Done />} disabled={loading} onClick={() => onComplete(task)}>
-                    Готово
-                  </Button>
-                </>
-              )}
-              {task.source === 'counterparties' && (
-                <Button size="small" variant="contained" startIcon={<Done />} disabled={loading} onClick={() => onComplete(task)}>
-                  Закрыть
-                </Button>
-              )}
+              <Button size="small" variant="outlined" startIcon={<PushPin />} disabled={loading} onClick={() => onPinToday(task)}>
+                В план
+              </Button>
+              <Button size="small" variant="contained" startIcon={<Done />} disabled={loading} onClick={() => onComplete(task)}>
+                Готово
+              </Button>
               <Button size="small" startIcon={<OpenInNew />} component={RouterLink} to={task.openUrl}>
                 Открыть
               </Button>
@@ -359,38 +280,20 @@ const TaskSection: React.FC<{
 );
 
 const B2BPlanForTodayPage: React.FC = () => {
-  const [cities, setCities] = useState<string[]>([]);
-  const [selectedCity, setSelectedCity] = useState('');
   const [tasks, setTasks] = useState<PlannerTask[]>([]);
-  const [sourceErrors, setSourceErrors] = useState<LoadState>({});
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [tab, setTab] = useState<'focus' | 'day' | 'week' | 'risks' | 'all'>('focus');
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
-  const loadCities = useCallback(async () => {
-    try {
-      setCities(await b2bApi.listCities());
-    } catch {
-      setCities([]);
-    }
-  }, []);
-
   const loadPlanner = useCallback(async () => {
     setLoading(true);
-    const errors: LoadState = {};
-
-    const [taskTrackerRes, ownerWorkspaceRes, schoolsRes] = await Promise.allSettled([
-      tasksApi.listTodayTasks('active'),
-      ownerWorkspaceApi.listTasks({ active_only: true, limit: 500, sort_by: 'deadline_at', sort_dir: 'asc' }),
-      b2bApi.planForToday(selectedCity || undefined),
-    ]);
-
-    const nextTasks: PlannerTask[] = [];
-
-    if (taskTrackerRes.status === 'fulfilled') {
-      taskTrackerRes.value.forEach((task) => {
-        nextTasks.push(withScore({
+    setLoadError('');
+    try {
+      const taskList = await tasksApi.listTodayTasks('active');
+      const nextTasks: PlannerTask[] = taskList.map((task) =>
+        withScore({
           id: `task_tracker:${task.id}`,
           source: 'task_tracker',
           entityId: String(task.id),
@@ -406,72 +309,16 @@ const B2BPlanForTodayPage: React.FC = () => {
           reason: task.pinned_today ? 'Закреплено в плане' : 'Открытая задача',
           openUrl: `/tasks?open=${task.id}`,
           raw: task,
-        }));
-      });
-    } else {
-      errors.taskTracker = extractApiError(taskTrackerRes.reason, 'Таск-трекер недоступен');
+        })
+      );
+      setTasks(mergeByBestScore(nextTasks));
+    } catch (err: any) {
+      setLoadError(extractApiError(err, 'Не удалось загрузить задачи'));
+    } finally {
+      setLastUpdatedAt(new Date());
+      setLoading(false);
     }
-
-    if (ownerWorkspaceRes.status === 'fulfilled') {
-      ownerWorkspaceRes.value.items.forEach((task) => {
-        const source: SourceKey = task.contact_id ? 'counterparties' : 'task_tracker';
-        nextTasks.push(withScore({
-          id: `owner_workspace:${task.id}`,
-          source,
-          entityId: String(task.id),
-          title: task.title,
-          description: task.description,
-          status: task.status,
-          priority: normalizePriority(task.priority === 'medium' ? 'normal' : task.priority),
-          deadline: task.deadline_at,
-          createdAt: task.created_at,
-          updatedAt: task.updated_at,
-          estimatedDuration: estimateOwnerTaskDuration(task),
-          assignee: task.assignee_id,
-          reason: task.contact_id ? 'Задача по контрагенту' : 'Задача из таск-трекера',
-          openUrl: task.contact_id ? `/counterparties/${task.contact_id}` : `/owner-workspace/tasks/${task.id}`,
-          raw: task,
-        }));
-      });
-    } else {
-      errors.ownerWorkspace = extractApiError(ownerWorkspaceRes.reason, 'Контрагенты и task tracker недоступны');
-    }
-
-    if (schoolsRes.status === 'fulfilled') {
-      Object.entries(schoolsRes.value).forEach(([bucket, schools]) => {
-        schools.forEach((school) => {
-          nextTasks.push(withScore({
-            id: `schools:${school.id}`,
-            source: 'schools',
-            entityId: String(school.id),
-            title: school.next_step || `Проверить школу: ${school.name}`,
-            description: `${school.name}${school.city ? ` · ${school.city}` : ''}${school.pipeline_stage ? ` · ${school.pipeline_stage}` : ''}`,
-            status: 'open',
-            priority: b2bPriorityByBucket[bucket] || normalizePriority(school.priority),
-            deadline: school.next_step_date,
-            createdAt: school.created_at,
-            updatedAt: school.updated_at,
-            estimatedDuration: bucket === 'event_done_no_leads' || bucket === 'event_done_no_leads_24_48h' ? 90 : 45,
-            assignee: school.manager_full_name || school.manager_id,
-            reason: b2bReasonLabels[bucket] || 'B2B-риск',
-            openUrl: `/b2b-schools?open=${school.id}`,
-            raw: school,
-          }));
-        });
-      });
-    } else {
-      errors.schools = extractApiError(schoolsRes.reason, 'Работа со школами недоступна');
-    }
-
-    setTasks(mergeByBestScore(nextTasks));
-    setSourceErrors(errors);
-    setLastUpdatedAt(new Date());
-    setLoading(false);
-  }, [selectedCity]);
-
-  useEffect(() => {
-    void loadCities();
-  }, [loadCities]);
+  }, []);
 
   useEffect(() => {
     void loadPlanner();
@@ -487,23 +334,16 @@ const B2BPlanForTodayPage: React.FC = () => {
     const week = active.filter((task) => task.dueThisWeek);
     const totalMinutesToday = must.reduce((sum, task) => sum + task.estimatedDuration, 0);
     const totalMinutesWeek = week.reduce((sum, task) => sum + task.estimatedDuration, 0);
-    const bySource = active.reduce<Record<SourceKey, number>>((acc, task) => {
-      acc[task.source] = (acc[task.source] || 0) + 1;
-      return acc;
-    }, { task_tracker: 0, counterparties: 0, schools: 0, personal: 0 });
     return {
       total: active.length,
       active: active.length,
       overdue: active.filter((task) => task.overdue).length,
       critical: active.filter((task) => task.priority === 'critical' || task.score >= 85).length,
       recommendedToday: must.length,
-      soonRisk: active.filter((task) => !task.overdue && task.dueThisWeek && task.score >= 60).length,
       movable: active.filter((task) => task.bucket === 'can_move').length,
       dayHours: Math.round((totalMinutesToday / 60) * 10) / 10,
       weekHours: Math.round((totalMinutesWeek / 60) * 10) / 10,
       dayOverload: Math.max(0, Math.round(((totalMinutesToday - 8 * 60) / 60) * 10) / 10),
-      weekOverload: Math.max(0, Math.round(((totalMinutesWeek - 40 * 60) / 60) * 10) / 10),
-      bySource,
     };
   }, [tasks]);
 
@@ -521,13 +361,7 @@ const B2BPlanForTodayPage: React.FC = () => {
     setActionLoadingId(task.id);
     setTasks((prev) => prev.filter((t) => t.id !== task.id));
     try {
-      if (task.source === 'task_tracker' && task.id.startsWith('task_tracker:')) {
-        await tasksApi.completeTask(Number(task.entityId));
-      } else if (task.id.startsWith('owner_workspace:')) {
-        await ownerWorkspaceApi.completeTask(Number(task.entityId));
-      } else if (task.source === 'schools') {
-        await b2bApi.updateSchool(Number(task.entityId), { next_step: null, next_step_date: null });
-      }
+      await tasksApi.completeTask(Number(task.entityId));
       await loadPlanner();
     } catch {
       await loadPlanner();
@@ -556,36 +390,15 @@ const B2BPlanForTodayPage: React.FC = () => {
               Мой фокус
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Единый планировщик задач: таск-трекер, контрагенты, школы и операционные задачи. Рекомендации пересчитываются каждые 5 минут.
+              Задачи из таск-трекера. Рекомендации пересчитываются каждые 5 минут.
             </Typography>
           </Box>
-          <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel>Город / регион школ</InputLabel>
-              <Select
-                value={selectedCity}
-                label="Город / регион школ"
-                onChange={(e) => setSelectedCity(e.target.value)}
-              >
-                <MenuItem value="">Все регионы</MenuItem>
-                {cities.map((city) => (
-                  <MenuItem key={city} value={city}>
-                    {city}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Button variant="outlined" startIcon={<Refresh />} disabled={loading} onClick={() => void loadPlanner()}>
-              Обновить
-            </Button>
-          </Stack>
+          <Button variant="outlined" startIcon={<Refresh />} disabled={loading} onClick={() => void loadPlanner()}>
+            Обновить
+          </Button>
         </Stack>
 
-        {Object.values(sourceErrors).length > 0 && (
-          <Alert severity="warning">
-            Часть источников недоступна: {Object.values(sourceErrors).join('; ')}. План построен по доступным данным.
-          </Alert>
-        )}
+        {loadError && <Alert severity="error">{loadError}</Alert>}
 
         {stats.dayOverload > 0 && (
           <Alert severity="warning" icon={<WarningAmber />}>
@@ -619,18 +432,14 @@ const B2BPlanForTodayPage: React.FC = () => {
 
         <Card variant="outlined">
           <CardContent>
-            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2} alignItems="center">
               <Box>
                 <Typography variant="h6">Прогноз нагрузки</Typography>
                 <Typography variant="body2" color="text.secondary">
                   Сегодня: {stats.dayHours} ч из 8 ч · Неделя: {stats.weekHours} ч из 40 ч
                 </Typography>
               </Box>
-              <Stack direction="row" gap={1} flexWrap="wrap">
-                {Object.entries(stats.bySource).map(([source, count]) => (
-                  <Chip key={source} color={SOURCE_COLORS[source as SourceKey]} label={`${SOURCE_LABELS[source as SourceKey]}: ${count}`} />
-                ))}
-              </Stack>
+              <Chip color="primary" label={`Таск-трекер: ${stats.total}`} />
             </Stack>
           </CardContent>
         </Card>

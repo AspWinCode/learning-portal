@@ -853,7 +853,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         }}
       >
         <Toolbar />
-        <Box sx={{ maxWidth: isPwaNavigation ? '100%' : 1240, mx: 'auto' }}>{contentChildren}</Box>
+        <Box sx={{ width: '100%', minWidth: 0 }}>{contentChildren}</Box>
       </Box>
 
       {isPwaNavigation && pwaBottomItems.length > 0 && (

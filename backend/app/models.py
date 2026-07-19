@@ -3139,6 +3139,21 @@ class Transcription(Base):
     owner = relationship("User", foreign_keys=[owner_id])
 
 
+class EmailTemplate(Base):
+    __tablename__ = "email_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    subject = Column(String(255), nullable=False)
+    html_body = Column(Text, nullable=False)
+    plain_body = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
 class EmailBroadcast(Base):
     __tablename__ = "email_broadcasts"
 

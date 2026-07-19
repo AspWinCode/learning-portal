@@ -4133,6 +4133,41 @@ export const cmsApi = {
   },
 };
 
+// ─── Email Templates ─────────────────────────────────────────────────────────
+
+export interface EmailTemplate {
+  id: number;
+  name: string;
+  subject: string;
+  html_body: string;
+  plain_body: string | null;
+  created_by_id: number | null;
+  created_by_name: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export const emailTemplatesApi = {
+  list: async (): Promise<EmailTemplate[]> => {
+    const res = await api.get('/email-templates');
+    return res.data;
+  },
+  create: async (payload: { name: string; subject: string; html_body: string; plain_body?: string }): Promise<EmailTemplate> => {
+    const res = await api.post('/email-templates', payload);
+    return res.data;
+  },
+  update: async (id: number, payload: Partial<{ name: string; subject: string; html_body: string; plain_body: string }>): Promise<EmailTemplate> => {
+    const res = await api.patch(`/email-templates/${id}`, payload);
+    return res.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/email-templates/${id}`);
+  },
+  testSend: async (id: number, payload: { to_email: string; school_name?: string; director_name?: string }): Promise<void> => {
+    await api.post(`/email-templates/${id}/test-send`, payload);
+  },
+};
+
 // ─── Email Broadcasts ────────────────────────────────────────────────────────
 
 export interface EmailBroadcast {

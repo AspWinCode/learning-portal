@@ -4169,37 +4169,37 @@ export interface EmailBroadcastRecipient {
 
 export const emailBroadcastsApi = {
   list: async (): Promise<EmailBroadcast[]> => {
-    const res = await api.get('/api/v1/email-broadcasts');
+    const res = await api.get('/email-broadcasts');
     return res.data;
   },
   create: async (payload: { name: string; subject: string; html_body: string; plain_body?: string }): Promise<EmailBroadcast> => {
-    const res = await api.post('/api/v1/email-broadcasts', payload);
+    const res = await api.post('/email-broadcasts', payload);
     return res.data;
   },
   get: async (id: number): Promise<EmailBroadcast> => {
-    const res = await api.get(`/api/v1/email-broadcasts/${id}`);
+    const res = await api.get(`/email-broadcasts/${id}`);
     return res.data;
   },
   update: async (id: number, payload: Partial<{ name: string; subject: string; html_body: string; plain_body: string }>): Promise<EmailBroadcast> => {
-    const res = await api.patch(`/api/v1/email-broadcasts/${id}`, payload);
+    const res = await api.patch(`/email-broadcasts/${id}`, payload);
     return res.data;
   },
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/email-broadcasts/${id}`);
+    await api.delete(`/email-broadcasts/${id}`);
   },
   send: async (id: number, schoolIds: number[]): Promise<EmailBroadcast> => {
-    const res = await api.post(`/api/v1/email-broadcasts/${id}/send`, { school_ids: schoolIds });
+    const res = await api.post(`/email-broadcasts/${id}/send`, { school_ids: schoolIds });
     return res.data;
   },
   testSend: async (id: number, toEmail: string): Promise<void> => {
-    await api.post(`/api/v1/email-broadcasts/${id}/test-send`, { to_email: toEmail });
+    await api.post(`/email-broadcasts/${id}/test-send`, { to_email: toEmail });
   },
   retryFailed: async (id: number): Promise<EmailBroadcast> => {
-    const res = await api.post(`/api/v1/email-broadcasts/${id}/retry-failed`);
+    const res = await api.post(`/email-broadcasts/${id}/retry-failed`);
     return res.data;
   },
   listRecipients: async (id: number): Promise<EmailBroadcastRecipient[]> => {
-    const res = await api.get(`/api/v1/email-broadcasts/${id}/recipients`);
+    const res = await api.get(`/email-broadcasts/${id}/recipients`);
     return res.data;
   },
 };

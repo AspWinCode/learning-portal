@@ -22,9 +22,9 @@ import PushPin from '@mui/icons-material/PushPin';
 import WarningAmber from '@mui/icons-material/WarningAmber';
 import { Link as RouterLink } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { tasksApi } from '../services/api';
+import { ownerWorkspaceApi } from '../services/api/ownerWorkspace';
 import { extractApiError } from '../utils/extractApiError';
-import type { TaskResponse } from '../types';
+import type { OwnerWorkspaceTask } from '../types';
 
 type PlanBucket = 'must' | 'should' | 'can_move';
 
@@ -53,7 +53,7 @@ type PlannerTask = {
   dueThisWeek: boolean;
   reason: string;
   openUrl: string;
-  raw?: TaskResponse;
+  raw?: OwnerWorkspaceTask;
 };
 
 const todayStart = () => {
@@ -160,10 +160,13 @@ const withScore = (task: Omit<PlannerTask, 'score' | 'urgencyScore' | 'riskScore
   ...buildScore(task),
 });
 
-const estimateTaskDuration = (task: TaskResponse) => {
-  const subtaskMinutes = (task.subtasks?.length || 1) * 25;
-  if (task.priority === 'high') return Math.max(45, subtaskMinutes);
-  return Math.max(30, subtaskMinutes);
+const estimateTaskDuration = (task: OwnerWorkspaceTask) => {
+  if (task.effort_hours != null || task.effort_minutes != null) {
+    return ((task.effort_hours ?? 0) * 60) + (task.effort_minutes ?? 0);
+  }
+  const checklistMinutes = (Array.isArray(task.checklist) ? task.checklist.length : 1) * 25;
+  if (task.priority === 'high' || task.priority === 'critical') return Math.max(45, checklistMinutes);
+  return Math.max(30, checklistMinutes);
 };
 
 const mergeByBestScore = (tasks: PlannerTask[]) => {
@@ -291,8 +294,8 @@ const B2BPlanForTodayPage: React.FC = () => {
     setLoading(true);
     setLoadError('');
     try {
-      const taskList = await tasksApi.listTodayTasks('active');
-      const nextTasks: PlannerTask[] = taskList.map((task) =>
+      const page = await ownerWorkspaceApi.listTasks({ active_only: true, limit: 500 });
+      const nextTasks: PlannerTask[] = page.items.map((task) =>
         withScore({
           id: `task_tracker:${task.id}`,
           source: 'task_tracker',
@@ -301,13 +304,13 @@ const B2BPlanForTodayPage: React.FC = () => {
           description: task.description,
           status: task.status,
           priority: normalizePriority(task.priority),
-          deadline: task.due_at || task.scheduled_for,
+          deadline: task.deadline_at,
           createdAt: task.created_at,
           updatedAt: task.updated_at,
           estimatedDuration: estimateTaskDuration(task),
-          assignee: task.assigned_to_id,
-          reason: task.pinned_today ? 'Закреплено в плане' : 'Открытая задача',
-          openUrl: `/tasks?open=${task.id}`,
+          assignee: task.assignee_id,
+          reason: 'Открытая задача',
+          openUrl: `/owner-workspace?task=${task.id}`,
           raw: task,
         })
       );
@@ -361,7 +364,7 @@ const B2BPlanForTodayPage: React.FC = () => {
     setActionLoadingId(task.id);
     setTasks((prev) => prev.filter((t) => t.id !== task.id));
     try {
-      await tasksApi.completeTask(Number(task.entityId));
+      await ownerWorkspaceApi.completeTask(Number(task.entityId), { action: 'close' });
       await loadPlanner();
     } catch {
       await loadPlanner();
@@ -371,14 +374,8 @@ const B2BPlanForTodayPage: React.FC = () => {
   };
 
   const handlePinToday = async (task: PlannerTask) => {
-    if (!task.id.startsWith('task_tracker:')) return;
-    setActionLoadingId(task.id);
-    try {
-      await tasksApi.pinTaskToday(Number(task.entityId), true);
-      await loadPlanner();
-    } finally {
-      setActionLoadingId(null);
-    }
+    // Owner workspace tasks don't have pin — open the task instead
+    window.location.href = task.openUrl;
   };
 
   return (

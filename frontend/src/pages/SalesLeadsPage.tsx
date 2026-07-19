@@ -72,7 +72,6 @@ import {
   LeadTaskTemplate,
   LeadPushStats,
   SalesCity,
-  SalesSchool,
 } from '../types';
 
 const statusLabels: Record<LeadStatus, string> = {
@@ -179,7 +178,7 @@ const SalesLeadsPage: React.FC = () => {
   const [taskDueAt, setTaskDueAt] = useState('');
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [salesCities, setSalesCities] = useState<SalesCity[]>([]);
-  const [salesSchools, setSalesSchools] = useState<SalesSchool[]>([]);
+  const [salesSchools, setSalesSchools] = useState<string[]>([]);
   const [taskTemplates, setTaskTemplates] = useState<LeadTaskTemplate[]>([]);
   const [taskStatusOptions, setTaskStatusOptions] = useState<LeadTaskStatusOption[]>([]);
   const [leadStatusOptions, setLeadStatusOptions] = useState<LeadStatusOption[]>([]);
@@ -332,7 +331,7 @@ const SalesLeadsPage: React.FC = () => {
   const loadSalesMeta = useCallback(async () => {
     // Города и школы подгружаем отдельно, чтобы при ошибке других запросов списки всё равно обновились
     salesApi.listSalesCities(true).then(setSalesCities).catch(() => setSalesCities([]));
-    salesApi.listSalesSchools(true).then(setSalesSchools).catch(() => setSalesSchools([]));
+    salesApi.listSalesSchoolNames(true).then(setSalesSchools).catch(() => setSalesSchools([]));
     try {
       const [sources, templates, statuses, leadStatuses] = await Promise.all([
         salesApi.listLeadSources(true),
@@ -2891,7 +2890,7 @@ const SalesLeadsPage: React.FC = () => {
                       <Grid item xs={12}>
                         <Autocomplete
                           freeSolo
-                          options={salesSchools.map((s) => s.name)}
+                          options={salesSchools}
                           value={leadInfoDraft.school_name}
                           onInputChange={(_, value) => setLeadInfoDraft((s) => ({ ...s, school_name: value }))}
                           onChange={(_, value) =>

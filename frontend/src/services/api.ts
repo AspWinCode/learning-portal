@@ -2015,8 +2015,12 @@ export const salesApi = {
     const response = await api.put(`/api/sales/cities/${id}`, payload);
     return response.data;
   },
-  listSalesSchools: async (active_only = true): Promise<SalesSchool[]> => {
-    const response = await api.get('/api/sales/schools', { params: { active_only } });
+  listSalesSchools: async (active_only = true, search?: string, limit = 100, offset = 0): Promise<SalesSchool[]> => {
+    const response = await api.get('/api/sales/schools', { params: { active_only, search, limit, offset } });
+    return response.data;
+  },
+  listSalesSchoolNames: async (active_only = true): Promise<string[]> => {
+    const response = await api.get('/api/sales/schools/names', { params: { active_only } });
     return response.data;
   },
   createSalesSchool: async (payload: string | {

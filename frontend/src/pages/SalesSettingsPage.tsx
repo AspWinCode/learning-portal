@@ -99,6 +99,10 @@ const SalesSettingsPage: React.FC = () => {
   const [cities, setCities] = useState<SalesCity[]>([]);
   const [newCity, setNewCity] = useState('');
   const [schools, setSchools] = useState<SalesSchool[]>([]);
+  const [schoolSearch, setSchoolSearch] = useState('');
+  const [schoolPage, setSchoolPage] = useState(0);
+  const [schoolTotal, setSchoolTotal] = useState(0);
+  const SCHOOL_PAGE_SIZE = 100;
   const [searchParams] = useSearchParams();
   const [settingsTab, setSettingsTab] = useState(searchParams.get('tab') || 'schools');
   const canAccessPersons = hasPermission(user, 'persons.access');
@@ -203,7 +207,6 @@ const SalesSettingsPage: React.FC = () => {
       load('Статусы задач', () => salesApi.listLeadTaskStatuses(false), setStatuses),
       load('Статусы лида', () => salesApi.listLeadStatuses(false), setLeadStatuses),
       load('Города', () => salesApi.listSalesCities(false), setCities),
-      load('Школы', () => salesApi.listSalesSchools(false), setSchools),
       load('Классы', () => salesApi.listSalesClasses(false), setClasses),
       load('Абонементы', () => abonementsApi.getAll({ status_filter: 'active' }), setAbonements),
       load('Шаблоны счетов', () => salesApi.listAccountTemplates(), setAccountTemplates),
@@ -229,8 +232,19 @@ const SalesSettingsPage: React.FC = () => {
     }
   };
 
+  const loadSchools = async (search = schoolSearch, page = schoolPage) => {
+    try {
+      const data = await salesApi.listSalesSchools(false, search || undefined, SCHOOL_PAGE_SIZE, page * SCHOOL_PAGE_SIZE);
+      setSchools(data);
+      setSchoolTotal(data.length < SCHOOL_PAGE_SIZE && page === 0 ? data.length : (page + 1) * SCHOOL_PAGE_SIZE + (data.length === SCHOOL_PAGE_SIZE ? 1 : 0));
+    } catch (err: any) {
+      setError(extractApiError(err, 'Ошибка загрузки школ'));
+    }
+  };
+
   useEffect(() => {
     loadData();
+    loadSchools('', 0);
     studentPortalAdminApi.getPortalSettings().then(setPortalSettings).catch(() => {});
   }, []);
 
@@ -243,7 +257,7 @@ const SalesSettingsPage: React.FC = () => {
     try {
       await fn();
       setError('');
-      await loadData();
+      await Promise.all([loadData(), loadSchools()]);
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка сохранения'));
     }
@@ -431,7 +445,7 @@ const SalesSettingsPage: React.FC = () => {
         is_active: editSchoolDraft.is_active,
       });
       setEditingSchool(null);
-      await loadData();
+      await loadSchools();
     } catch (err: any) {
       setEditSchoolError(extractApiError(err, 'Не удалось сохранить'));
     } finally {
@@ -443,7 +457,7 @@ const SalesSettingsPage: React.FC = () => {
     if (!window.confirm(`Удалить школу «${school.name}»? Это действие нельзя отменить.`)) return;
     try {
       await salesApi.deleteSalesSchool(school.id);
-      await loadData();
+      await loadSchools();
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось удалить школу'));
     }
@@ -541,7 +555,9 @@ const SalesSettingsPage: React.FC = () => {
       setSchoolImportResult(result);
       setSchoolImportFile(null);
       setError('');
-      await loadData();
+      setSchoolPage(0);
+      setSchoolSearch('');
+      await loadSchools('', 0);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось импортировать школы'));
     }
@@ -824,6 +840,26 @@ const SalesSettingsPage: React.FC = () => {
               {schoolImportResult.errors.length > 0 && ` Ошибки: ${schoolImportResult.errors.join('; ')}`}
             </Alert>
           )}
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+            <TextField
+              size="small"
+              placeholder="Поиск по названию, городу, директору..."
+              value={schoolSearch}
+              onChange={(e) => {
+                const q = e.target.value;
+                setSchoolSearch(q);
+                setSchoolPage(0);
+                loadSchools(q, 0);
+              }}
+              sx={{ flex: 1, maxWidth: 400 }}
+            />
+            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              Показано: {schools.length}{schools.length === SCHOOL_PAGE_SIZE ? '+' : ''}
+            </Typography>
+            <Button size="small" variant="outlined" disabled={schoolPage === 0} onClick={() => { const p = schoolPage - 1; setSchoolPage(p); loadSchools(schoolSearch, p); }}>←</Button>
+            <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>стр. {schoolPage + 1}</Typography>
+            <Button size="small" variant="outlined" disabled={schools.length < SCHOOL_PAGE_SIZE} onClick={() => { const p = schoolPage + 1; setSchoolPage(p); loadSchools(schoolSearch, p); }}>→</Button>
+          </Box>
           <Box sx={{ overflowX: 'auto' }}>
             <Table size="small" sx={{ minWidth: 900, '& .MuiTableCell-root': { fontSize: '0.75rem', py: 0.5, px: 1 } }}>
               <TableHead>

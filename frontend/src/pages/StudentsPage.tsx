@@ -216,7 +216,7 @@ const StudentsPage: React.FC = () => {
     if (!open && !editOpen) return;
     setRefDataLoaded(true);
     salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
-    salesApi.listSalesSchools(true).then((list) => setSchoolsList(list.filter((s) => s.is_active).map((s) => s.name))).catch(() => setSchoolsList([]));
+    salesApi.listSalesSchoolNames(true).then(setSchoolsList).catch(() => setSchoolsList([]));
     salesApi.listSalesClasses(true).then((list) => setClassesList(list.filter((c) => c.is_active).map((c) => c.name))).catch(() => setClassesList([]));
   }, [hasFullStudentsView, open, editOpen, refDataLoaded]);
 

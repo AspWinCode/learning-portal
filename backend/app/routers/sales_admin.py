@@ -743,16 +743,38 @@ async def update_sales_city(
     return item
 
 
+@router.get("/schools/names", response_model=List[str])
+async def list_sales_school_names(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("sales.access")),
+):
+    query = db.query(SalesSchool.name).order_by(SalesSchool.name.asc())
+    if active_only:
+        query = query.filter(SalesSchool.is_active.is_(True))
+    return [row[0] for row in query.all()]
+
+
 @router.get("/schools", response_model=List[SalesSchoolResponse])
 async def list_sales_schools(
     active_only: bool = True,
+    search: Optional[str] = Query(default=None),
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("sales.access")),
 ):
     query = db.query(SalesSchool).order_by(SalesSchool.name.asc())
     if active_only:
         query = query.filter(SalesSchool.is_active.is_(True))
-    return query.all()
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            cast(SalesSchool.name, Text).ilike(term)
+            | cast(SalesSchool.city, Text).ilike(term)
+            | cast(SalesSchool.director, Text).ilike(term)
+        )
+    return query.offset(offset).limit(limit).all()
 
 
 @router.get("/schools/export")

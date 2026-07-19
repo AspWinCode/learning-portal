@@ -1,7 +1,7 @@
 """Add email_broadcasts and email_broadcast_recipients tables.
 
-Revision ID: 0108_email_broadcasts
-Revises: 0107_disk_storage
+Revision ID: 0151_email_broadcasts
+Revises: 0150_cms_page_versions
 Create Date: 2026-07-19
 """
 
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0108_email_broadcasts"
-down_revision = "0107_disk_storage"
+revision = "0151_email_broadcasts"
+down_revision = "0150_cms_page_versions"
 branch_labels = None
 depends_on = None
 

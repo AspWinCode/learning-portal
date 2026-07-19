@@ -185,13 +185,14 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
   const [schools, setSchools] = useState<B2BSchool[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set()); setSearch(''); setError('');
+    setSelected(new Set()); setSearch(''); setCityFilter(''); setError('');
     setLoading(true);
     b2bApi.listSchools()
       .then(data => setSchools(data.filter(s => s.email)))
@@ -199,7 +200,10 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
       .finally(() => setLoading(false));
   }, [open]);
 
+  const cities = Array.from(new Set(schools.map(s => s.city).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b, 'ru'));
+
   const filtered = schools.filter(s => {
+    if (cityFilter && s.city !== cityFilter) return false;
     const q = search.toLowerCase();
     return !q || s.name.toLowerCase().includes(q) || (s.city ?? '').toLowerCase().includes(q);
   });
@@ -246,17 +250,33 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSent
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Typography variant="subtitle2">
               Выбрано: {selected.size} из {schools.length} школ с e-mail
+              {cityFilter && ` · показано ${filtered.length} в «${cityFilter}»`}
             </Typography>
           </Stack>
 
-          <TextField
-            size="small"
-            fullWidth
-            placeholder="Поиск по названию или городу..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-          />
+          <Stack direction="row" spacing={1}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Поиск по названию или городу..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+            />
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Город</InputLabel>
+              <Select
+                value={cityFilter}
+                label="Город"
+                onChange={e => setCityFilter(e.target.value)}
+              >
+                <MenuItem value="">Все города</MenuItem>
+                {cities.map(c => (
+                  <MenuItem key={c} value={c}>{c}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
 
           {loading ? (
             <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>

@@ -402,7 +402,7 @@ class SalesSchoolBase(BaseModel):
     city: Optional[str] = None
     district: Optional[str] = None
     director: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     address: Optional[str] = None
     phone: Optional[str] = None
     is_active: bool = True

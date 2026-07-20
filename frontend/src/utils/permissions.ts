@@ -8,6 +8,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   parent: ['programs.access', 'groups.access', 'grades.access', 'characteristics.access', 'student_accounts.access', 'student_accounts.payment', 'telegram.link', 'parent_dashboard.access'],
   guest: ['programs.access'],
   seo_manager: ['seo.access', 'seo.manage'],
+  methodist: ['kodex.access', 'kodex.manage'],
 };
 
 export const getEffectiveRole = (user: User | null | undefined): string | null => {

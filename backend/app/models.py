@@ -19,6 +19,7 @@ class UserRole(str, enum.Enum):
     GUEST = "guest"
     SALES = "sales"
     SEO_MANAGER = "seo_manager"
+    METHODIST = "methodist"
 
 
 class SeoPageStatus(str, enum.Enum):
@@ -3196,4 +3197,47 @@ class EmailBroadcastRecipient(Base):
 
     broadcast = relationship("EmailBroadcast", back_populates="recipients")
     school = relationship("B2BSchool")
+
+
+class KodexCaseStatus(str, enum.Enum):
+    DRAFT = "draft"
+    IN_REVIEW = "in_review"
+    APPROVED = "approved"
+    CHANGES_REQUESTED = "changes_requested"
+
+
+class KodexCase(Base):
+    """Дело (кейс) Кодэкс — создаётся методистом, решается учениками."""
+    __tablename__ = "kodex_cases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(64), nullable=False, unique=True, index=True)
+    num = Column(String(32), nullable=True)
+    title = Column(String(512), nullable=False)
+    curator = Column(String(128), nullable=True)
+    playable = Column(Boolean, nullable=False, default=False)
+    rank = Column(Integer, nullable=False, default=1)
+    difficulty = Column(Integer, nullable=False, default=1)
+    reward_credits = Column(Integer, nullable=False, default=0)
+    reward_rep = Column(Integer, nullable=False, default=0)
+    goal = Column(Text, nullable=True)
+    suspects = Column(Text, nullable=True)
+    task = Column(Text, nullable=True)
+    anno = Column(Text, nullable=True)
+    # Narrative arrays stored as JSON
+    briefing = Column(JSON, nullable=False, default=list)
+    materials = Column(JSON, nullable=False, default=list)
+    evidence = Column(JSON, nullable=False, default=list)
+    hints = Column(JSON, nullable=False, default=dict)
+    versions = Column(JSON, nullable=False, default=list)
+    finale = Column(JSON, nullable=False, default=list)
+    theory = Column(JSON, nullable=False, default=list)
+    # Workflow
+    status = Column(String(32), nullable=False, default="draft", index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
 

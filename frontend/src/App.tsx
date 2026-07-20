@@ -94,6 +94,7 @@ const UserDetailsPage = React.lazy(() => import('./pages/UserDetailsPage'));
 const DiskPage = React.lazy(() => import('./pages/DiskPage'));
 const PasswordsPage = React.lazy(() => import('./pages/PasswordsPage'));
 const NotesPage = React.lazy(() => import('./pages/NotesPage'));
+const KodexStudioPage = React.lazy(() => import('./pages/KodexStudioPage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -108,6 +109,7 @@ const DefaultRedirect: React.FC = () => {
   if (effectiveRole === 'parent') return <Navigate to="/parent-dashboard" replace />;
   if (effectiveRole === 'sales') return <Navigate to="/tasks" replace />;
   if (effectiveRole === 'seo_manager') return <Navigate to="/seo/pages" replace />;
+  if (effectiveRole === 'methodist') return <Navigate to="/kodex" replace />;
   if (effectiveRole === 'trainer') return <Navigate to="/trainer-cockpit" replace />;
   return <Navigate to="/dashboard" replace />;
 };
@@ -808,6 +810,16 @@ function App() {
                 <PrivateRoute>
                   <SectionBoundary>
                     <NotesPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/kodex"
+              element={
+                <PrivateRoute requiredPermission="kodex.access">
+                  <SectionBoundary>
+                    <KodexStudioPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

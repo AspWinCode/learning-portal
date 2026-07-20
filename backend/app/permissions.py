@@ -350,6 +350,18 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "label": "Disk: управление",
         "description": "Загрузка, переименование и удаление файлов на диске.",
     },
+    {
+        "key": "kodex.access",
+        "module": "kodex",
+        "label": "Кодэкс: просмотр",
+        "description": "Просмотр дел и теории в редакторе Кодэкс.",
+    },
+    {
+        "key": "kodex.manage",
+        "module": "kodex",
+        "label": "Кодэкс: управление",
+        "description": "Создание, редактирование и публикация дел и теории в Кодэкс.",
+    },
 ]
 
 VALID_PERMISSION_KEYS: Set[str] = {item["key"] for item in PERMISSION_CATALOG}

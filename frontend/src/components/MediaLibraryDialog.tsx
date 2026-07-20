@@ -156,7 +156,7 @@ const MediaLibraryDialog: React.FC<Props> = ({ open, onClose, onSelect }) => {
                 >
                   <img
                     src={imgSrc}
-                    alt={f.original_name}
+                    alt={f.original_name ?? undefined}
                     loading="lazy"
                     style={{ objectFit: 'cover', height: 110, width: '100%' }}
                   />

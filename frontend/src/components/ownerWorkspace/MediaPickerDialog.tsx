@@ -161,8 +161,8 @@ export function MediaPickerDialog({ open, onClose, onSelect }: Props) {
                 >
                   <Box
                     component="img"
-                    src={f.url}
-                    alt={f.original_name}
+                    src={f.url ?? undefined}
+                    alt={f.original_name ?? undefined}
                     sx={{
                       width: '100%',
                       aspectRatio: '1',
@@ -194,7 +194,7 @@ export function MediaPickerDialog({ open, onClose, onSelect }: Props) {
                       variant="caption"
                       noWrap
                       display="block"
-                      title={f.original_name}
+                      title={f.original_name ?? undefined}
                     >
                       {f.original_name}
                     </Typography>

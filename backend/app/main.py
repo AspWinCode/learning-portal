@@ -35,6 +35,7 @@ from app.routers import (
     groups,
     kodex,
     max_messenger,
+    methodist_studio,
     notes,
     owner_calculations,
     owner_dashboard,
@@ -457,6 +458,7 @@ app.include_router(student_portal.router, prefix="/api/v1/student-portal", tags=
 app.include_router(transcription.router, prefix="/api/v1/transcription", tags=["transcription"])
 app.include_router(notes.router, prefix="/api/v1/notes", tags=["notes"])
 app.include_router(kodex.router, prefix="/api/v1/kodex/cases", tags=["kodex"])
+app.include_router(methodist_studio.router, prefix="/api/v1/methodist-studio", tags=["methodist-studio"])
 app.include_router(seo_pages.router, prefix="/api/v1/seo/pages", tags=["seo"])
 app.include_router(seo_redirects.router, prefix="/api/v1/seo/redirects", tags=["seo"])
 app.include_router(site_settings.router, prefix="/api/v1/seo/settings", tags=["seo"])

@@ -95,6 +95,8 @@ const DiskPage = React.lazy(() => import('./pages/DiskPage'));
 const PasswordsPage = React.lazy(() => import('./pages/PasswordsPage'));
 const NotesPage = React.lazy(() => import('./pages/NotesPage'));
 const KodexStudioPage = React.lazy(() => import('./pages/KodexStudioPage'));
+const MethodistStudioLoginPage = React.lazy(() => import('./pages/MethodistStudioLoginPage'));
+const MethodistStudioPage = React.lazy(() => import('./pages/MethodistStudioPage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -154,6 +156,8 @@ function App() {
             <Route path="/set-password" element={<SetPasswordPage />} />
             <Route path="/student-portal/login" element={<StudentPortalLoginPage />} />
             <Route path="/student-portal" element={<StudentPortalCabinetPage />} />
+            <Route path="/methodist-studio/login" element={<MethodistStudioLoginPage />} />
+            <Route path="/methodist-studio" element={<MethodistStudioPage />} />
             <Route
               path="/mobile"
               element={

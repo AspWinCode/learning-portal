@@ -43,6 +43,8 @@ import {
 } from '@mui/icons-material';
 import { kodexApi, KodexCaseFull, KodexCaseSummary } from '../services/kodexApi';
 
+type KodexApiClient = typeof kodexApi;
+
 // ─── Colour palette matching Kodex theme ────────────────────────────────────
 const K = {
   void: '#05070a',
@@ -284,7 +286,7 @@ const CaseCard: React.FC<CaseCardProps> = ({ c, selected, onClick }) => {
 // ─── Main page ───────────────────────────────────────────────────────────────
 const SIDEBAR_WIDTH = 280;
 
-const KodexStudioPage: React.FC = () => {
+const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = kodexApi }) => {
   const [cases, setCases] = useState<KodexCaseSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -298,7 +300,7 @@ const KodexStudioPage: React.FC = () => {
 
   const loadCases = useCallback(async () => {
     try {
-      const data = await kodexApi.list();
+      const data = await apiClient.list();
       setCases(data);
     } catch {
       setToast({ msg: 'Ошибка загрузки дел', severity: 'error' });
@@ -315,7 +317,7 @@ const KodexStudioPage: React.FC = () => {
     setSelectedId(id);
     setTab(0);
     try {
-      const full = await kodexApi.get(id);
+      const full = await apiClient.get(id);
       setEditing({ ...full });
     } catch {
       setToast({ msg: 'Ошибка загрузки дела', severity: 'error' });
@@ -326,7 +328,7 @@ const KodexStudioPage: React.FC = () => {
     if (!editing || !selectedId) return;
     setSaving(true);
     try {
-      const updated = await kodexApi.update(selectedId, editing as any);
+      const updated = await apiClient.update(selectedId, editing as any);
       setEditing({ ...updated });
       setCases((prev) => prev.map((c) => (c.id === selectedId ? { ...c, ...updated } : c)));
       setToast({ msg: 'Сохранено', severity: 'success' });
@@ -339,7 +341,7 @@ const KodexStudioPage: React.FC = () => {
 
   const createCase = async (payload: Partial<KodexCaseFull>) => {
     try {
-      const created = await kodexApi.create(payload as any);
+      const created = await apiClient.create(payload as any);
       setCases((prev) => [created, ...prev]);
       setNewDialog(false);
       await openCase(created.id);
@@ -351,7 +353,7 @@ const KodexStudioPage: React.FC = () => {
 
   const deleteCase = async (id: number) => {
     try {
-      await kodexApi.delete(id);
+      await apiClient.delete(id);
       setCases((prev) => prev.filter((c) => c.id !== id));
       if (selectedId === id) {
         setSelectedId(null);

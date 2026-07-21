@@ -29,6 +29,16 @@ def _get_target_id(db: Session, code: str) -> Optional[int]:
     return tgt[0] if tgt else None
 
 
+_GENERIC_BANK_NAMES = ("банк точка", "bank tochka")
+
+
+def _is_generic_counterparty(name: Optional[str]) -> bool:
+    if not name:
+        return True
+    n = name.lower().replace('"', "").replace("'", "").strip()
+    return any(p in n for p in _GENERIC_BANK_NAMES)
+
+
 def _make_dedup_hash(bank_source: str, payment_date: Optional[str], amount: float, payer_name: Optional[str], payer_phone: Optional[str]) -> str:
     seed = f"{bank_source}|{payment_date or ''}|{amount}|{(payer_name or '').strip()}|{(payer_phone or '').strip()}"
     return hashlib.sha1(seed.encode("utf-8")).hexdigest()
@@ -157,8 +167,13 @@ def ensure_finance_transaction_for_bank_transaction(
         # Обновляем базовые поля, не трогая классификацию (target/article/status), если они уже заданы вручную.
         existing.amount = amount
         existing.direction = direction
-        existing.counterparty_name = (bank_tx.payer_name or "").strip() or None
-        existing.counterparty_phone = (bank_tx.payer_phone or "").strip() or None
+        incoming_name = (bank_tx.payer_name or "").strip() or None
+        incoming_phone = (bank_tx.payer_phone or "").strip() or None
+        # Не затираем реальное ФИО заглушкой банка при повторной синхронизации
+        if not (existing.counterparty_name and not _is_generic_counterparty(existing.counterparty_name) and _is_generic_counterparty(incoming_name)):
+            existing.counterparty_name = incoming_name
+        if incoming_phone or not existing.counterparty_phone:
+            existing.counterparty_phone = incoming_phone
         existing.bank_source = bank_source
         if operation_id and not existing.bank_operation_id:
             existing.bank_operation_id = operation_id

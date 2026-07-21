@@ -1515,6 +1515,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [newContactMessage, setNewContactMessage] = useState('');
 
   const [taskDialog, setTaskDialog] = useState<OwnerWorkspaceTask | null>(null);
+  const [taskPreviousChain, setTaskPreviousChain] = useState<Array<{ id: number; title: string; description?: string | null }>>([]);
   const [deleteTaskConfirm, setDeleteTaskConfirm] = useState<OwnerWorkspaceTask | null>(null);
 
   const closeProjectDialog = useCallback(() => {
@@ -1533,6 +1534,7 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const closeTaskDialog = useCallback(() => {
     setTaskDialog(null);
+    setTaskPreviousChain([]);
     if (entityRoute.kind === 'task') {
       navigate('/owner-workspace/tasks', { replace: true });
       return;
@@ -2623,6 +2625,8 @@ const OwnerWorkspacePage: React.FC = () => {
       );
     }
     setTaskDialog(t);
+    setTaskPreviousChain([]);
+    if (t.previous_task_id) void loadTaskChain(t.previous_task_id);
     setTaskEditTitle(t.title);
     setTaskEditDescription(t.description || '');
     setTaskEditStatus(coerceTaskStatus(String(t.status)));
@@ -2652,10 +2656,26 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   };
 
-  const openPreviousWorkspaceTask = async () => {
-    if (!taskDialog?.previous_task_id) return;
+  const loadTaskChain = async (startId: number) => {
+    const chain: Array<{ id: number; title: string; description?: string | null }> = [];
+    let currentId: number | null = startId;
+    const visited = new Set<number>();
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      try {
+        const task: OwnerWorkspaceTask = await ownerWorkspaceApi.getTask(currentId);
+        chain.push({ id: task.id, title: task.title, description: task.description });
+        currentId = task.previous_task_id ?? null;
+      } catch {
+        break;
+      }
+    }
+    setTaskPreviousChain(chain);
+  };
+
+  const openPreviousWorkspaceTask = async (taskId: number) => {
     try {
-      const full = await ownerWorkspaceApi.getTask(taskDialog.previous_task_id);
+      const full = await ownerWorkspaceApi.getTask(taskId);
       await openTaskDialog(full);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось открыть предыдущую задачу'));
@@ -3740,6 +3760,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const handleWorkspaceTabChange = (_: React.SyntheticEvent, v: number) => {
     if (v !== OW_TAB_TASKS) {
       setTaskDialog(null);
+      setTaskPreviousChain([]);
     }
     setTab(v);
     const params = new URLSearchParams(searchParams);
@@ -8309,10 +8330,39 @@ const OwnerWorkspacePage: React.FC = () => {
                 Копировать ссылку
               </Button>
             )}
-            {taskDialog?.previous_task_id != null && (
-              <Button size="small" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => void openPreviousWorkspaceTask()}>
-                Открыть предыдущую задачу #{taskDialog.previous_task_id}
-              </Button>
+            {taskPreviousChain.length > 0 && (
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Цепочка предыдущих задач
+                </Typography>
+                {taskPreviousChain.map((prevTask, index) => (
+                  <Box key={prevTask.id} sx={{ display: 'flex', gap: 1, mb: index < taskPreviousChain.length - 1 ? 1.5 : 0 }}>
+                    {taskPreviousChain.length > 1 && (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pt: 0.5 }}>
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'primary.main', flexShrink: 0 }} />
+                        {index < taskPreviousChain.length - 1 && (
+                          <Box sx={{ width: 2, flex: 1, bgcolor: 'divider', mt: 0.5 }} />
+                        )}
+                      </Box>
+                    )}
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Button
+                        size="small"
+                        variant="text"
+                        sx={{ p: 0, minWidth: 0, textAlign: 'left', fontWeight: 600, lineHeight: 1.3 }}
+                        onClick={() => void openPreviousWorkspaceTask(prevTask.id)}
+                      >
+                        #{prevTask.id} {prevTask.title}
+                      </Button>
+                      {prevTask.description && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {prevTask.description.length > 200 ? prevTask.description.slice(0, 200) + '…' : prevTask.description}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
             )}
             {taskFormLocked && (
               <Alert severity="info">

@@ -138,6 +138,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [selectedModelId, setSelectedModelId] = useState<number | ''>('');
   const [articleTree, setArticleTree] = useState<FinanceArticleTreeItem[]>([]);
   const [articles, setArticles] = useState<FinanceArticle[]>([]);
+  const [allArticles, setAllArticles] = useState<FinanceArticle[]>([]);
   const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
   const [widgets, setWidgets] = useState<DashboardWidgetComputed[]>([]);
   const [budget, setBudget] = useState<BudgetEntry[]>([]);
@@ -246,16 +247,18 @@ const FinanceOverviewPageContent: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [targetsList, accountsList, templatesList, modelsList] = await Promise.all([
+      const [targetsList, accountsList, templatesList, modelsList, allArticlesList] = await Promise.all([
         financeApi.listTargets(),
         financeApi.listAccounts(),
         financeApi.listModelTemplates(),
         financeApi.listModels(),
+        financeApi.listArticles(),
       ]);
       setTargets(targetsList);
       setAccounts(accountsList);
       setTemplates(templatesList);
       setModels(modelsList);
+      setAllArticles(allArticlesList);
       setSelectedModelId((prev) => {
         if (prev && modelsList.some((model) => model.id === prev)) return prev;
         return modelsList[0]?.id || '';
@@ -1615,7 +1618,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                 onChange={(event) => setBulkArticleId(event.target.value === '' ? '' : Number(event.target.value))}
               >
                 <MenuItem value=""><em>Не менять</em></MenuItem>
-                {articles.map((article) => (
+                {(bulkTargetId !== '' ? allArticles.filter((a) => a.target_id === Number(bulkTargetId)) : allArticles).map((article) => (
                   <MenuItem key={article.id} value={article.id}>{article.name}</MenuItem>
                 ))}
               </Select>
@@ -1748,7 +1751,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                           <MenuItem value="">
                             <em>Не выбрана</em>
                           </MenuItem>
-                          {articles
+                          {(row.target_id ? allArticles.filter((a) => a.target_id === row.target_id) : allArticles)
                             .filter((article) => article.direction === row.direction)
                             .map((article) => (
                               <MenuItem key={article.id} value={article.id}>
@@ -1832,7 +1835,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           </TableHead>
           <TableBody>
             {displayedJournalRows.map((row) => {
-              const rowArticles = articles.filter((article) => article.direction === row.direction);
+              const rowArticles = (row.target_id ? allArticles.filter((a) => a.target_id === row.target_id) : allArticles).filter((article) => article.direction === row.direction);
               const selectedArticle = rowArticles.find((article) => article.id === row.article_id) || null;
               return (
               <TableRow key={row.id} selected={selectedRowIds.has(row.id)}>
@@ -2487,7 +2490,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                   onChange={(e) => setEditTxArticleId(e.target.value === '' ? '' : Number(e.target.value))}
                 >
                   <MenuItem value="">Не выбрана</MenuItem>
-                  {articles
+                  {(editTxTargetId !== '' ? allArticles.filter((a) => a.target_id === Number(editTxTargetId)) : allArticles)
                     .filter((article) => article.direction === editTxDirection)
                     .map((article) => (
                       <MenuItem key={article.id} value={article.id}>

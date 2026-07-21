@@ -35,6 +35,12 @@ from app.schemas.finance import (
 )
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
+
+
+def _sync_ft(db, bank_tx, description: str = "") -> None:
+    ft = ensure_finance_transaction_for_bank_transaction(db, bank_tx, bank_source="tochka")
+    if description and ft and not ft.description_raw:
+        ft.description_raw = description
 from app.student_display import get_student_display_name
 from app.utils.phone import normalize_phone
 
@@ -408,11 +414,7 @@ def _upsert_tochka_bank_transaction(
             bank_transaction.student_id = None
             bank_transaction.student_account_id = None
 
-    ensure_finance_transaction_for_bank_transaction(
-        db,
-        bank_transaction,
-        bank_source="tochka",
-    )
+    _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
     return bank_transaction
 
 
@@ -532,11 +534,7 @@ def do_tochka_import_and_apply(
                 bank_transaction.student_id = None
                 bank_transaction.student_account_id = None
 
-            ensure_finance_transaction_for_bank_transaction(
-                db,
-                bank_transaction,
-                bank_source="tochka",
-            )
+            _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
             if bank_transaction.status == BankTransactionStatus.EXPENSE.value:
                 continue
             if bank_transaction.status == BankTransactionStatus.APPLIED.value:
@@ -582,11 +580,7 @@ def do_tochka_import_and_apply(
 
             if not student_ids:
                 bank_transaction.status = BankTransactionStatus.NO_MATCH.value
-                ensure_finance_transaction_for_bank_transaction(
-                    db,
-                    bank_transaction,
-                    bank_source="tochka",
-                )
+                _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
                 no_match.append(
                     {
                         "payer_name": payer_name,
@@ -600,11 +594,7 @@ def do_tochka_import_and_apply(
             chosen_student_id = _resolve_student_for_bank_payment(db, student_ids)
             if chosen_student_id is None:
                 bank_transaction.status = BankTransactionStatus.AMBIGUOUS.value
-                ensure_finance_transaction_for_bank_transaction(
-                    db,
-                    bank_transaction,
-                    bank_source="tochka",
-                )
+                _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
                 ambiguous.append(
                     {
                         "payer_name": payer_name,
@@ -632,11 +622,7 @@ def do_tochka_import_and_apply(
             student = db.query(Student).filter(Student.id == chosen_student_id).first()
             if student is None:
                 bank_transaction.status = BankTransactionStatus.NO_MATCH.value
-                ensure_finance_transaction_for_bank_transaction(
-                    db,
-                    bank_transaction,
-                    bank_source="tochka",
-                )
+                _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
                 no_match.append(
                     {
                         "payer_name": payer_name,
@@ -689,11 +675,7 @@ def do_tochka_import_and_apply(
             bank_transaction.status = BankTransactionStatus.APPLIED.value
             bank_transaction.student_id = chosen_student_id
             bank_transaction.student_account_id = account.id
-            ensure_finance_transaction_for_bank_transaction(
-                db,
-                bank_transaction,
-                bank_source="tochka",
-            )
+            _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
 
             applied.append(
                 {

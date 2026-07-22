@@ -4231,15 +4231,15 @@ export const emailBroadcastsApi = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/email-broadcasts/${id}`);
   },
-  send: async (id: number, schoolIds: number[]): Promise<EmailBroadcast> => {
-    const res = await api.post(`/email-broadcasts/${id}/send`, { school_ids: schoolIds });
+  send: async (id: number, schoolIds: number[], limit?: number): Promise<EmailBroadcast> => {
+    const res = await api.post(`/email-broadcasts/${id}/send`, { school_ids: schoolIds, limit: limit ?? null });
     return res.data;
   },
   testSend: async (id: number, toEmail: string): Promise<void> => {
     await api.post(`/email-broadcasts/${id}/test-send`, { to_email: toEmail });
   },
-  saveRecipients: async (id: number, schoolIds: number[]): Promise<EmailBroadcast> => {
-    const res = await api.post(`/email-broadcasts/${id}/save-recipients`, { school_ids: schoolIds });
+  saveRecipients: async (id: number, schoolIds: number[], limit?: number): Promise<EmailBroadcast> => {
+    const res = await api.post(`/email-broadcasts/${id}/save-recipients`, { school_ids: schoolIds, limit: limit ?? null });
     return res.data;
   },
   launch: async (id: number): Promise<EmailBroadcast> => {

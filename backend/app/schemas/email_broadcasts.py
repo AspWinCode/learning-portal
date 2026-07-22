@@ -42,6 +42,7 @@ class EmailBroadcastResponse(BaseModel):
 
 class SendBroadcastRequest(BaseModel):
     school_ids: List[int]
+    limit: Optional[int] = None
 
 
 class TestSendRequest(BaseModel):

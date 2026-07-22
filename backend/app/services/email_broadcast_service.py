@@ -50,12 +50,15 @@ def _inject_tracking(html: str, open_token: str) -> str:
     return html + pixel
 
 
-def create_recipients(db: Session, broadcast: EmailBroadcast, school_ids: List[int]) -> int:
+def create_recipients(db: Session, broadcast: EmailBroadcast, school_ids: List[int], limit: int | None = None) -> int:
     schools = db.query(B2BSchool).filter(
         B2BSchool.id.in_(school_ids),
         B2BSchool.email.isnot(None),
         B2BSchool.email != "",
     ).all()
+
+    if limit is not None and limit > 0:
+        schools = schools[:limit]
 
     added = 0
     for school in schools:

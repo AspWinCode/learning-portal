@@ -77,6 +77,66 @@ const leadStatusLabels: Record<LeadStatus, string> = {
   decided_immediately: 'Решил сразу',
 };
 
+const isEmailValid = (email: string) =>
+  !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+type NewSchoolData = {
+  name: string; city: string; district: string;
+  director: string; email: string; address: string; phone: string;
+};
+
+const NewSchoolForm: React.FC<{ onAdd: (data: NewSchoolData) => Promise<void> }> = ({ onAdd }) => {
+  const [form, setForm] = React.useState<NewSchoolData>(
+    { name: '', city: '', district: '', director: '', email: '', address: '', phone: '' }
+  );
+  const set = (field: keyof NewSchoolData) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(prev => ({ ...prev, [field]: e.target.value }));
+
+  const handleAdd = async () => {
+    if (!form.name.trim()) return;
+    if (!isEmailValid(form.email)) return;
+    await onAdd(form);
+    setForm({ name: '', city: '', district: '', director: '', email: '', address: '', phone: '' });
+  };
+
+  return (
+    <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+      <TextField size="small" label="Новая школа" value={form.name} onChange={set('name')} />
+      <TextField size="small" label="Город" value={form.city} onChange={set('city')} />
+      <TextField size="small" label="Район" value={form.district} onChange={set('district')} />
+      <TextField size="small" label="Директор/ИО" value={form.director} onChange={set('director')} />
+      <TextField size="small" label="Почта" type="email" value={form.email} error={!isEmailValid(form.email)} onChange={set('email')} />
+      <TextField size="small" label="Адрес" value={form.address} onChange={set('address')} />
+      <TextField size="small" label="Телефон" value={form.phone} onChange={set('phone')} />
+      <Button variant="contained" onClick={handleAdd} disabled={!form.name.trim() || !isEmailValid(form.email)}>
+        Добавить
+      </Button>
+    </Box>
+  );
+};
+
+const SchoolSearchField: React.FC<{ onSearch: (q: string) => void }> = ({ onSearch }) => {
+  const [value, setValue] = React.useState('');
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value;
+    setValue(q);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => onSearch(q), 350);
+  };
+
+  return (
+    <TextField
+      size="small"
+      placeholder="Поиск по названию, городу, директору..."
+      value={value}
+      onChange={handleChange}
+      sx={{ flex: 1, maxWidth: 400 }}
+    />
+  );
+};
+
 const SalesSettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -106,15 +166,6 @@ const SalesSettingsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [settingsTab, setSettingsTab] = useState(searchParams.get('tab') || 'schools');
   const canAccessPersons = hasPermission(user, 'persons.access');
-  const [newSchool, setNewSchool] = useState({
-    name: '',
-    city: '',
-    district: '',
-    director: '',
-    email: '',
-    address: '',
-    phone: '',
-  });
   const [schoolImportFile, setSchoolImportFile] = useState<File | null>(null);
   const [editingSchool, setEditingSchool] = useState<SalesSchool | null>(null);
   const [editSchoolDraft, setEditSchoolDraft] = useState<{
@@ -463,7 +514,6 @@ const SalesSettingsPage: React.FC = () => {
     }
   };
 
-  const isEmailValid = (email: string) => !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const sectionPaperSx = (section: string) => ({ p: 2, display: settingsTab === section ? 'block' : 'none' });
   const campaignSettingTitles: Record<'types' | 'formats' | 'scales', string> = {
     types: 'Тип кампании',
@@ -526,27 +576,6 @@ const SalesSettingsPage: React.FC = () => {
       </Table>
     </Paper>
   );
-
-  const createSchool = () =>
-    safeAction(async () => {
-      const name = newSchool.name.trim();
-      if (!name) return;
-      if (!isEmailValid(newSchool.email)) {
-        setError('Введите корректную почту школы.');
-        return;
-      }
-      await salesApi.createSalesSchool({
-        name,
-        city: newSchool.city.trim() || null,
-        district: newSchool.district.trim() || null,
-        director: newSchool.director.trim() || null,
-        email: newSchool.email.trim() || null,
-        address: newSchool.address.trim() || null,
-        phone: newSchool.phone.trim() || null,
-      });
-      setNewSchool({ name: '', city: '', district: '', director: '', email: '', address: '', phone: '' });
-      setSchoolImportResult(null);
-    });
 
   const importSchools = async () => {
     if (!schoolImportFile) return;
@@ -744,74 +773,21 @@ const SalesSettingsPage: React.FC = () => {
 
         <Paper sx={sectionPaperSx('schools')}>
           <Typography variant="h6" mb={1}>Школы</Typography>
-          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-            <TextField
-              size="small"
-              label="Новая школа"
-              value={newSchool.name}
-              onChange={(e) => setNewSchool((prev) => ({ ...prev, name: e.target.value }))}
-            />
-            <TextField
-              size="small"
-              label="Город"
-              value={newSchool.city}
-              onChange={(e) => setNewSchool((prev) => ({ ...prev, city: e.target.value }))}
-            />
-            <TextField
-              size="small"
-              label="Район"
-              value={newSchool.district}
-              onChange={(e) => setNewSchool((prev) => ({ ...prev, district: e.target.value }))}
-            />
-            <TextField
-              size="small"
-              label="Директор/ИО"
-              value={newSchool.director}
-              onChange={(e) => setNewSchool((prev) => ({ ...prev, director: e.target.value }))}
-            />
-            <TextField
-              size="small"
-              label="Почта"
-              type="email"
-              value={newSchool.email}
-              error={!isEmailValid(newSchool.email)}
-              onChange={(e) => setNewSchool((prev) => ({ ...prev, email: e.target.value }))}
-            />
-            <TextField
-              size="small"
-              label="Адрес"
-              value={newSchool.address}
-              onChange={(e) => setNewSchool((prev) => ({ ...prev, address: e.target.value }))}
-            />
-            <TextField
-              size="small"
-              label="Телефон"
-              value={newSchool.phone}
-              onChange={(e) => setNewSchool((prev) => ({ ...prev, phone: e.target.value }))}
-            />
-            <Button
-              variant="contained"
-              onClick={() => safeAction(async () => {
-                if (!newSchool.name.trim()) return;
-                if (!isEmailValid(newSchool.email)) {
-                  setError('Введите корректную почту школы.');
-                  return;
-                }
-                await salesApi.createSalesSchool({
-                  name: newSchool.name.trim(),
-                  city: newSchool.city.trim() || null,
-                  district: newSchool.district.trim() || null,
-                  director: newSchool.director.trim() || null,
-                  email: newSchool.email.trim() || null,
-                  address: newSchool.address.trim() || null,
-                  phone: newSchool.phone.trim() || null,
-                });
-                setNewSchool({ name: '', city: '', district: '', director: '', email: '', address: '', phone: '' });
-              })}
-            >
-              Добавить
-            </Button>
-          </Box>
+          <NewSchoolForm
+            onAdd={async (data) => {
+              await salesApi.createSalesSchool({
+                name: data.name.trim(),
+                city: data.city.trim() || null,
+                district: data.district.trim() || null,
+                director: data.director.trim() || null,
+                email: data.email.trim() || null,
+                address: data.address.trim() || null,
+                phone: data.phone.trim() || null,
+              });
+              setSchoolImportResult(null);
+              await loadSchools(schoolSearch, schoolPage);
+            }}
+          />
           <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 1 }}>
             <Button variant="outlined" component="label">
               Импорт CSV/XLSX
@@ -841,17 +817,12 @@ const SalesSettingsPage: React.FC = () => {
             </Alert>
           )}
           <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
-            <TextField
-              size="small"
-              placeholder="Поиск по названию, городу, директору..."
-              value={schoolSearch}
-              onChange={(e) => {
-                const q = e.target.value;
+            <SchoolSearchField
+              onSearch={(q) => {
                 setSchoolSearch(q);
                 setSchoolPage(0);
                 loadSchools(q, 0);
               }}
-              sx={{ flex: 1, maxWidth: 400 }}
             />
             <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
               Показано: {schools.length}{schools.length === SCHOOL_PAGE_SIZE ? '+' : ''}

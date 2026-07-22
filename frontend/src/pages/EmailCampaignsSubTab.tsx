@@ -197,10 +197,16 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [limitInput, setLimitInput] = useState('');
+
+  const effectiveLimit = limitInput.trim() !== '' ? parseInt(limitInput, 10) : undefined;
+  const effectiveCount = effectiveLimit !== undefined && !isNaN(effectiveLimit) && effectiveLimit > 0
+    ? Math.min(effectiveLimit, selected.size)
+    : selected.size;
 
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set()); setSearch(''); setCityFilter(''); setPage(0); setError('');
+    setSelected(new Set()); setSearch(''); setCityFilter(''); setPage(0); setError(''); setLimitInput('');
     setLoading(true);
     b2bApi.listSchoolsForBroadcast()
       .then(data => setSchools(data))
@@ -253,11 +259,13 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
   const handleSearchChange = (v: string) => { setSearch(v); setPage(0); };
   const handleCityChange = (v: string) => { setCityFilter(v); setPage(0); };
 
+  const parsedLimit = effectiveLimit !== undefined && !isNaN(effectiveLimit) && effectiveLimit > 0 ? effectiveLimit : undefined;
+
   const handleSave = async () => {
     if (!campaign || selected.size === 0) return;
     setSaving(true); setError('');
     try {
-      const result = await emailBroadcastsApi.saveRecipients(campaign.id, Array.from(selected));
+      const result = await emailBroadcastsApi.saveRecipients(campaign.id, Array.from(selected), parsedLimit);
       onSaved(result);
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка сохранения получателей'));
@@ -269,7 +277,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
     if (!campaign || selected.size === 0) return;
     setSending(true); setError('');
     try {
-      const result = await emailBroadcastsApi.send(campaign.id, Array.from(selected));
+      const result = await emailBroadcastsApi.send(campaign.id, Array.from(selected), parsedLimit);
       onSent(result);
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка запуска рассылки'));
@@ -295,6 +303,11 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
             <Typography variant="subtitle2">
               Выбрано: <strong>{selected.size}</strong> из {schools.length} школ
               {cityFilter && ` · показано ${filtered.length} в «${cityFilter}»`}
+              {parsedLimit !== undefined && selected.size > 0 && (
+                <Typography component="span" variant="caption" color="warning.main" sx={{ ml: 1 }}>
+                  · отправится {effectiveCount} (лимит {parsedLimit})
+                </Typography>
+              )}
             </Typography>
             {filtered.length > 0 && (
               <Button size="small" variant="outlined" onClick={toggleAll}>
@@ -302,6 +315,22 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
               </Button>
             )}
           </Stack>
+
+          <TextField
+            size="small"
+            label="Лимит получателей"
+            placeholder="Например: 1500 (оставьте пустым — отправить всем)"
+            value={limitInput}
+            onChange={e => setLimitInput(e.target.value.replace(/\D/g, ''))}
+            type="text"
+            inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+            helperText={
+              parsedLimit !== undefined && selected.size > parsedLimit
+                ? `Из ${selected.size} выбранных отправится первым ${parsedLimit}`
+                : 'Порядок отправки — как в базе данных (по ID школы)'
+            }
+            FormHelperTextProps={{ sx: { color: parsedLimit !== undefined && selected.size > parsedLimit ? 'warning.main' : undefined } }}
+          />
 
           <Stack direction="row" spacing={1}>
             <TextField
@@ -395,7 +424,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
           disabled={selected.size === 0 || busy}
           startIcon={saving ? <CircularProgress size={16} /> : <GroupAddIcon />}
         >
-          Сохранить получателей {selected.size > 0 ? `(${selected.size})` : ''}
+          Сохранить получателей {selected.size > 0 ? `(${effectiveCount})` : ''}
         </Button>
         <Button
           variant="contained"
@@ -404,7 +433,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
           disabled={selected.size === 0 || busy}
           startIcon={sending ? <CircularProgress size={16} /> : <SendIcon />}
         >
-          Запустить рассылку {selected.size > 0 ? `(${selected.size})` : ''}
+          Запустить рассылку {selected.size > 0 ? `(${effectiveCount})` : ''}
         </Button>
       </DialogActions>
     </Dialog>

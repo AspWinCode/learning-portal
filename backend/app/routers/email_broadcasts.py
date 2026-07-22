@@ -167,7 +167,7 @@ def send_broadcast(
     if broadcast.status not in ("draft",):
         raise HTTPException(status_code=400, detail="Запустить можно только черновик")
 
-    create_recipients(db, broadcast, payload.school_ids)
+    create_recipients(db, broadcast, payload.school_ids, limit=payload.limit)
     db.refresh(broadcast)
 
     # Kick off background sending
@@ -201,7 +201,7 @@ def save_recipients(
     ).delete()
     db.flush()
 
-    create_recipients(db, broadcast, payload.school_ids)
+    create_recipients(db, broadcast, payload.school_ids, limit=payload.limit)
     # Restore draft status (create_recipients sets it to "sending" and stamps sent_at)
     broadcast.status = "draft"
     broadcast.sent_at = None

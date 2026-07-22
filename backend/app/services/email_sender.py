@@ -6,7 +6,8 @@ import uuid
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import encodebytes, formatdate, make_msgid
+from base64 import encodebytes
+from email.utils import formatdate, make_msgid
 from pathlib import Path
 from typing import List
 

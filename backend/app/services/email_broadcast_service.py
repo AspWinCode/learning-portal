@@ -153,6 +153,8 @@ def send_broadcast(db: Session, broadcast_id: int) -> None:
             failed += 1
             logger.exception("Failed to send broadcast %d to recipient %d", broadcast_id, recipient.id)
 
+        broadcast.sent_count = sent
+        broadcast.failed_count = failed
         db.commit()
         time.sleep(_SEND_DELAY_SECONDS)
 

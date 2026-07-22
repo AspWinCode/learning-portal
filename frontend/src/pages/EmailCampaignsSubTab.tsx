@@ -458,6 +458,8 @@ const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClo
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onCampaignUpdateRef = useRef(onCampaignUpdate);
+  useEffect(() => { onCampaignUpdateRef.current = onCampaignUpdate; });
 
   const load = useCallback(async (id: number) => {
     try {
@@ -466,9 +468,9 @@ const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClo
         emailBroadcastsApi.get(id),
       ]);
       setRecipients(recips);
-      onCampaignUpdate(updated);
+      onCampaignUpdateRef.current(updated);
     } catch { /* silent */ }
-  }, [onCampaignUpdate]);
+  }, []);
 
   useEffect(() => {
     if (!open || !campaign) return;

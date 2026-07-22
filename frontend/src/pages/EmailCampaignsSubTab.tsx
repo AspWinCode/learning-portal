@@ -447,9 +447,10 @@ type AnalyticsDialogProps = {
   campaign: EmailBroadcast | null;
   onClose: () => void;
   onRetry: (b: EmailBroadcast) => void;
+  onCampaignUpdate: (b: EmailBroadcast) => void;
 };
 
-const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClose, onRetry }) => {
+const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClose, onRetry, onCampaignUpdate }) => {
   const [recipients, setRecipients] = useState<EmailBroadcastRecipient[]>([]);
   const [loading, setLoading] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -457,18 +458,23 @@ const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClo
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async (id: number) => {
-    try { setRecipients(await emailBroadcastsApi.listRecipients(id)); } catch { /* silent */ }
-  }, []);
+    try {
+      const [recips, updated] = await Promise.all([
+        emailBroadcastsApi.listRecipients(id),
+        emailBroadcastsApi.get(id),
+      ]);
+      setRecipients(recips);
+      onCampaignUpdate(updated);
+    } catch { /* silent */ }
+  }, [onCampaignUpdate]);
 
   useEffect(() => {
     if (!open || !campaign) return;
     setLoading(true); setError('');
     load(campaign.id).finally(() => setLoading(false));
-    if (campaign.status === 'sending') {
-      pollRef.current = setInterval(() => void load(campaign.id), 4000);
-    }
+    pollRef.current = setInterval(() => void load(campaign.id), 4000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [open, campaign, load]);
+  }, [open, campaign?.id, load]);
 
   const handleRetry = async () => {
     if (!campaign) return;
@@ -829,6 +835,7 @@ const EmailCampaignsSubTab: React.FC = () => {
         campaign={analyticsTarget}
         onClose={() => { setAnalyticsOpen(false); setAnalyticsTarget(null); }}
         onRetry={b => { upsert(b); setAnalyticsTarget(b); }}
+        onCampaignUpdate={b => { upsert(b); setAnalyticsTarget(b); }}
       />
     </Box>
   );

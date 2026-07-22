@@ -43,10 +43,23 @@ def _check_access(current_user: User) -> None:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
 
-def _to_response(broadcast: EmailBroadcast) -> EmailBroadcastResponse:
+def _to_response(broadcast: EmailBroadcast, db: Session | None = None) -> EmailBroadcastResponse:
     created_by_name = None
     if broadcast.created_by:
         created_by_name = broadcast.created_by.full_name
+
+    if db is not None and broadcast.status != "draft":
+        from sqlalchemy import func, case
+        stats = db.query(
+            func.sum(case((EmailBroadcastRecipient.status == "sent", 1), else_=0)).label("sent"),
+            func.sum(case((EmailBroadcastRecipient.status == "failed", 1), else_=0)).label("failed"),
+        ).filter(EmailBroadcastRecipient.broadcast_id == broadcast.id).one()
+        sent_count = int(stats.sent or 0)
+        failed_count = int(stats.failed or 0)
+    else:
+        sent_count = broadcast.sent_count or 0
+        failed_count = broadcast.failed_count or 0
+
     return EmailBroadcastResponse(
         id=broadcast.id,
         name=broadcast.name,
@@ -59,8 +72,8 @@ def _to_response(broadcast: EmailBroadcast) -> EmailBroadcastResponse:
         created_at=broadcast.created_at,
         sent_at=broadcast.sent_at,
         total_recipients=broadcast.total_recipients or 0,
-        sent_count=broadcast.sent_count or 0,
-        failed_count=broadcast.failed_count or 0,
+        sent_count=sent_count,
+        failed_count=failed_count,
         opened_count=broadcast.opened_count or 0,
         clicked_count=broadcast.clicked_count or 0,
         attachments=[
@@ -89,7 +102,7 @@ def list_broadcasts(
         .order_by(EmailBroadcast.created_at.desc())
         .all()
     )
-    return [_to_response(b) for b in broadcasts]
+    return [_to_response(b, db) for b in broadcasts]
 
 
 @router.post("/email-broadcasts", response_model=EmailBroadcastResponse, status_code=201)
@@ -123,7 +136,7 @@ def get_broadcast(
     broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
     if not broadcast:
         raise HTTPException(status_code=404, detail="Рассылка не найдена")
-    return _to_response(broadcast)
+    return _to_response(broadcast, db)
 
 
 @router.patch("/email-broadcasts/{broadcast_id}", response_model=EmailBroadcastResponse)

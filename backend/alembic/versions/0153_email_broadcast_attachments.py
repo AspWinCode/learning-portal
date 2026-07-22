@@ -1,7 +1,7 @@
 """Add email_broadcast_attachments table.
 
 Revision ID: 0153_email_broadcast_attachments
-Revises: 0152_email_templates
+Revises: 0154
 Create Date: 2026-07-22
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "0153_email_broadcast_attachments"
-down_revision = "0152_email_templates"
+down_revision = "0154"
 branch_labels = None
 depends_on = None
 

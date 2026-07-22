@@ -332,6 +332,45 @@ def retry_failed(
     return _to_response(broadcast)
 
 
+@router.post("/email-broadcasts/{broadcast_id}/resume", response_model=EmailBroadcastResponse)
+def resume_broadcast(
+    broadcast_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    """Resume a stuck/interrupted broadcast by re-queuing pending recipients."""
+    _check_access(current_user)
+    broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Рассылка не найдена")
+
+    # Reset any stuck 'sending' recipients back to pending
+    db.query(EmailBroadcastRecipient).filter(
+        EmailBroadcastRecipient.broadcast_id == broadcast_id,
+        EmailBroadcastRecipient.status == "sending",
+    ).update({"status": "pending"})
+
+    pending_count = (
+        db.query(EmailBroadcastRecipient)
+        .filter(
+            EmailBroadcastRecipient.broadcast_id == broadcast_id,
+            EmailBroadcastRecipient.status == "pending",
+        )
+        .count()
+    )
+    if pending_count == 0:
+        raise HTTPException(status_code=400, detail="Нет получателей для отправки")
+
+    broadcast.status = "sending"
+    db.commit()
+    db.refresh(broadcast)
+
+    from app.background_tasks import task_send_email_broadcast
+    task_send_email_broadcast.send(broadcast_id)
+
+    return _to_response(broadcast, db)
+
+
 # ─── ATTACHMENTS ─────────────────────────────────────────────────────────────
 
 @router.post("/email-broadcasts/{broadcast_id}/attachments", response_model=EmailBroadcastAttachmentResponse, status_code=201)

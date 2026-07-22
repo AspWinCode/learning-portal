@@ -3177,6 +3177,20 @@ class EmailBroadcast(Base):
 
     created_by = relationship("User", foreign_keys=[created_by_id])
     recipients = relationship("EmailBroadcastRecipient", back_populates="broadcast", cascade="all, delete-orphan")
+    attachments = relationship("EmailBroadcastAttachment", back_populates="broadcast", cascade="all, delete-orphan")
+
+
+class EmailBroadcastAttachment(Base):
+    __tablename__ = "email_broadcast_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    broadcast_id = Column(Integer, ForeignKey("email_broadcasts.id", ondelete="CASCADE"), nullable=False, index=True)
+    storage_key = Column(String(255), nullable=False)
+    original_filename = Column(String(255), nullable=False)
+    content_type = Column(String(128), nullable=True)
+    size_bytes = Column(BigInteger, nullable=False, default=0)
+
+    broadcast = relationship("EmailBroadcast", back_populates="attachments")
 
 
 class EmailBroadcastRecipient(Base):

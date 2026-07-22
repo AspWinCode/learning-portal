@@ -30,6 +30,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -42,6 +43,7 @@ import {
   emailBroadcastsApi,
   emailTemplatesApi,
   type EmailBroadcast,
+  type EmailBroadcastAttachment,
   type EmailBroadcastRecipient,
   type EmailTemplate,
 } from '../services/api';
@@ -609,6 +611,149 @@ const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClo
   );
 };
 
+// ─── Attachments dialog ───────────────────────────────────────────────────────
+
+const fmt_size = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+};
+
+type AttachmentsDialogProps = {
+  open: boolean;
+  campaign: EmailBroadcast | null;
+  onClose: () => void;
+  onUpdated: (b: EmailBroadcast) => void;
+};
+
+const AttachmentsDialog: React.FC<AttachmentsDialogProps> = ({ open, campaign, onClose, onUpdated }) => {
+  const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [error, setError] = useState('');
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const attachments: EmailBroadcastAttachment[] = campaign?.attachments ?? [];
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || !campaign) return;
+    setUploading(true); setError('');
+    try {
+      for (const file of Array.from(files)) {
+        await emailBroadcastsApi.uploadAttachment(campaign.id, file);
+      }
+      const updated = await emailBroadcastsApi.get(campaign.id);
+      onUpdated(updated);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Ошибка загрузки файла'));
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  const handleDelete = async (attId: number) => {
+    if (!campaign) return;
+    setDeletingId(attId); setError('');
+    try {
+      await emailBroadcastsApi.deleteAttachment(campaign.id, attId);
+      const updated = await emailBroadcastsApi.get(campaign.id);
+      onUpdated(updated);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Ошибка удаления'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const isDraft = campaign?.status === 'draft';
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Вложения: «{campaign?.name}»</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          {error && <Alert severity="error">{error}</Alert>}
+
+          {isDraft && (
+            <Box>
+              <input
+                ref={inputRef}
+                type="file"
+                multiple
+                hidden
+                onChange={e => handleFiles(e.target.files)}
+              />
+              <Button
+                variant="outlined"
+                startIcon={uploading ? <CircularProgress size={16} /> : <AttachFileIcon />}
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? 'Загружается...' : 'Прикрепить файл'}
+              </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                Макс. 25 МБ на файл
+              </Typography>
+            </Box>
+          )}
+
+          {attachments.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              {isDraft ? 'Нет вложений. Прикрепите файлы выше.' : 'Вложения отсутствуют.'}
+            </Typography>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Файл</TableCell>
+                    <TableCell>Размер</TableCell>
+                    {isDraft && <TableCell align="right">Удалить</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {attachments.map(a => (
+                    <TableRow key={a.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" noWrap sx={{ maxWidth: 280 }}>{a.original_filename}</Typography>
+                        {a.content_type && (
+                          <Typography variant="caption" color="text.secondary">{a.content_type}</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>{fmt_size(a.size_bytes)}</TableCell>
+                      {isDraft && (
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDelete(a.id)}
+                            disabled={deletingId === a.id}
+                          >
+                            {deletingId === a.id ? <CircularProgress size={14} /> : <DeleteOutlineIcon fontSize="small" />}
+                          </IconButton>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+
+          {!isDraft && attachments.length > 0 && (
+            <Alert severity="info" sx={{ '& .MuiAlert-message': { fontSize: 13 } }}>
+              Рассылка уже отправлена — вложения изменить нельзя.
+            </Alert>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Закрыть</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 // ─── EmailCampaignsSubTab ─────────────────────────────────────────────────────
 
 const EmailCampaignsSubTab: React.FC = () => {
@@ -622,6 +767,8 @@ const EmailCampaignsSubTab: React.FC = () => {
   const [sendTarget, setSendTarget] = useState<EmailBroadcast | null>(null);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [analyticsTarget, setAnalyticsTarget] = useState<EmailBroadcast | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [attachmentsTarget, setAttachmentsTarget] = useState<EmailBroadcast | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [launching, setLaunching] = useState<number | null>(null);
 
@@ -756,6 +903,14 @@ const EmailCampaignsSubTab: React.FC = () => {
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      {/* Attachments button */}
+                      {b.status === 'draft' && (
+                        <Tooltip title={`Вложения${b.attachments?.length ? ` (${b.attachments.length})` : ''}`}>
+                          <IconButton size="small" color={b.attachments?.length ? 'warning' : 'default'} onClick={() => { setAttachmentsTarget(b); setAttachmentsOpen(true); }}>
+                            <AttachFileIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       {/* Draft: choose/edit recipients */}
                       {b.status === 'draft' && (
                         <Tooltip title={b.total_recipients > 0 ? 'Изменить получателей' : 'Выбрать получателей'}>
@@ -836,6 +991,12 @@ const EmailCampaignsSubTab: React.FC = () => {
         onClose={() => { setAnalyticsOpen(false); setAnalyticsTarget(null); }}
         onRetry={b => { upsert(b); setAnalyticsTarget(b); }}
         onCampaignUpdate={b => { upsert(b); setAnalyticsTarget(b); }}
+      />
+      <AttachmentsDialog
+        open={attachmentsOpen}
+        campaign={attachmentsTarget}
+        onClose={() => { setAttachmentsOpen(false); setAttachmentsTarget(null); }}
+        onUpdated={b => { upsert(b); setAttachmentsTarget(b); }}
       />
     </Box>
   );

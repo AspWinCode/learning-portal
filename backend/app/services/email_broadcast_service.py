@@ -8,7 +8,10 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-from app.models import B2BSchool, EmailBroadcast, EmailBroadcastRecipient
+import os
+from app.models import B2BSchool, EmailBroadcast, EmailBroadcastAttachment, EmailBroadcastRecipient
+
+_BROADCAST_STORAGE_ROOT = os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")
 from app.services.email_sender import is_email_configured, send_email_html
 from app.utils.datetime import utcnow
 
@@ -99,6 +102,19 @@ def send_broadcast(db: Session, broadcast_id: int) -> None:
         EmailBroadcastRecipient.status == "pending",
     ).all()
 
+    # Pre-load attachments once for the whole broadcast
+    db_attachments = db.query(EmailBroadcastAttachment).filter(
+        EmailBroadcastAttachment.broadcast_id == broadcast_id,
+    ).all()
+    attachments = [
+        {
+            "path": os.path.join(_BROADCAST_STORAGE_ROOT, a.storage_key),
+            "filename": a.original_filename,
+            "content_type": a.content_type or "application/octet-stream",
+        }
+        for a in db_attachments
+    ] or None
+
     sent = 0
     failed = 0
 
@@ -119,6 +135,7 @@ def send_broadcast(db: Session, broadcast_id: int) -> None:
                 html_body=html,
                 plain_body=plain,
                 list_id=f"broadcast-{broadcast_id}.portal",
+                attachments=attachments,
             )
 
             if ok:

@@ -6,6 +6,16 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 
 
+class EmailBroadcastAttachmentResponse(BaseModel):
+    id: int
+    broadcast_id: int
+    original_filename: str
+    content_type: Optional[str] = None
+    size_bytes: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class EmailBroadcastCreate(BaseModel):
     name: str
     subject: str
@@ -36,6 +46,7 @@ class EmailBroadcastResponse(BaseModel):
     failed_count: int = 0
     opened_count: int = 0
     clicked_count: int = 0
+    attachments: List[EmailBroadcastAttachmentResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 

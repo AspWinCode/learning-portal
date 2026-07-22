@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import os
+import uuid
+from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import EmailBroadcast, EmailBroadcastRecipient, User, UserRole
+from app.models import EmailBroadcast, EmailBroadcastAttachment, EmailBroadcastRecipient, User, UserRole
 from app.schemas.email_broadcasts import (
+    EmailBroadcastAttachmentResponse,
     EmailBroadcastCreate,
     EmailBroadcastRecipientResponse,
     EmailBroadcastResponse,
@@ -17,6 +21,9 @@ from app.schemas.email_broadcasts import (
     SendBroadcastRequest,
     TestSendRequest,
 )
+
+_STORAGE_ROOT = Path(os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")).resolve()
+_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024  # 25 MB per file
 from app.services.email_broadcast_service import create_recipients, record_open
 from app.services.email_sender import is_email_configured, send_email_html
 from app.utils.datetime import utcnow
@@ -56,6 +63,16 @@ def _to_response(broadcast: EmailBroadcast) -> EmailBroadcastResponse:
         failed_count=broadcast.failed_count or 0,
         opened_count=broadcast.opened_count or 0,
         clicked_count=broadcast.clicked_count or 0,
+        attachments=[
+            EmailBroadcastAttachmentResponse(
+                id=a.id,
+                broadcast_id=a.broadcast_id,
+                original_filename=a.original_filename,
+                content_type=a.content_type,
+                size_bytes=a.size_bytes or 0,
+            )
+            for a in (broadcast.attachments or [])
+        ],
     )
 
 
@@ -300,6 +317,79 @@ def retry_failed(
     task_send_email_broadcast.send(broadcast_id)
 
     return _to_response(broadcast)
+
+
+# ─── ATTACHMENTS ─────────────────────────────────────────────────────────────
+
+@router.post("/email-broadcasts/{broadcast_id}/attachments", response_model=EmailBroadcastAttachmentResponse, status_code=201)
+async def upload_attachment(
+    broadcast_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    _check_access(current_user)
+    broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Рассылка не найдена")
+    if broadcast.status != "draft":
+        raise HTTPException(status_code=400, detail="Вложения можно добавлять только к черновику")
+
+    data = await file.read()
+    if len(data) > _MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=413, detail="Файл слишком большой (макс. 25 МБ)")
+
+    _STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+    original_filename = file.filename or "attachment"
+    storage_key = f"{uuid.uuid4().hex}_{original_filename}"
+    dest = (_STORAGE_ROOT / storage_key).resolve()
+    if _STORAGE_ROOT not in dest.parents and dest != _STORAGE_ROOT:
+        raise HTTPException(status_code=500, detail="Недопустимый путь файла")
+    dest.write_bytes(data)
+
+    attachment = EmailBroadcastAttachment(
+        broadcast_id=broadcast_id,
+        storage_key=storage_key,
+        original_filename=original_filename,
+        content_type=file.content_type,
+        size_bytes=len(data),
+    )
+    db.add(attachment)
+    db.commit()
+    db.refresh(attachment)
+    return EmailBroadcastAttachmentResponse(
+        id=attachment.id,
+        broadcast_id=attachment.broadcast_id,
+        original_filename=attachment.original_filename,
+        content_type=attachment.content_type,
+        size_bytes=attachment.size_bytes,
+    )
+
+
+@router.delete("/email-broadcasts/{broadcast_id}/attachments/{attachment_id}", status_code=204)
+def delete_attachment(
+    broadcast_id: int,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    _check_access(current_user)
+    attachment = db.query(EmailBroadcastAttachment).filter(
+        EmailBroadcastAttachment.id == attachment_id,
+        EmailBroadcastAttachment.broadcast_id == broadcast_id,
+    ).first()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Вложение не найдено")
+
+    try:
+        path = (_STORAGE_ROOT / attachment.storage_key).resolve()
+        if path.exists():
+            path.unlink()
+    except Exception:
+        pass
+
+    db.delete(attachment)
+    db.commit()
 
 
 # ─── ANALYTICS ───────────────────────────────────────────────────────────────

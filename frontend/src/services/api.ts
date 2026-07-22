@@ -4179,6 +4179,14 @@ export const emailTemplatesApi = {
 
 // ─── Email Broadcasts ────────────────────────────────────────────────────────
 
+export interface EmailBroadcastAttachment {
+  id: number;
+  broadcast_id: number;
+  original_filename: string;
+  content_type: string | null;
+  size_bytes: number;
+}
+
 export interface EmailBroadcast {
   id: number;
   name: string;
@@ -4195,6 +4203,7 @@ export interface EmailBroadcast {
   failed_count: number;
   opened_count: number;
   clicked_count: number;
+  attachments: EmailBroadcastAttachment[];
 }
 
 export interface EmailBroadcastRecipient {
@@ -4253,6 +4262,17 @@ export const emailBroadcastsApi = {
   listRecipients: async (id: number): Promise<EmailBroadcastRecipient[]> => {
     const res = await api.get(`/email-broadcasts/${id}/recipients`);
     return res.data;
+  },
+  uploadAttachment: async (id: number, file: File): Promise<EmailBroadcastAttachment> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await api.post(`/email-broadcasts/${id}/attachments`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+  deleteAttachment: async (broadcastId: number, attachmentId: number): Promise<void> => {
+    await api.delete(`/email-broadcasts/${broadcastId}/attachments/${attachmentId}`);
   },
 };
 

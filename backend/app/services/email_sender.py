@@ -11,8 +11,14 @@ from email.utils import formatdate, make_msgid
 from pathlib import Path
 from typing import List
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def is_email_configured() -> bool:
+    if (os.getenv("RUSENDER_API_KEY") or "").strip():
+        return True
     return bool(
         (os.getenv("SMTP_HOST") or "").strip()
         and (os.getenv("SMTP_PORT") or "").strip()
@@ -21,7 +27,6 @@ def is_email_configured() -> bool:
 
 
 def send_email(*, to_email: str, subject: str, body: str) -> bool:
-    """Send a plain-text email. Returns True on success."""
     return send_email_html(to_email=to_email, subject=subject, html_body=None, plain_body=body)
 
 
@@ -35,13 +40,96 @@ def send_email_html(
     list_id: str | None = None,
     attachments: List[dict] | None = None,
 ) -> bool:
-    """Send an email with HTML + plain-text fallback and optional file attachments.
+    api_key = (os.getenv("RUSENDER_API_KEY") or "").strip()
+    if api_key:
+        return _send_via_rusender(
+            api_key=api_key,
+            to_email=to_email,
+            subject=subject,
+            html_body=html_body,
+            plain_body=plain_body,
+            from_name=from_name,
+        )
+    return _send_via_smtp(
+        to_email=to_email,
+        subject=subject,
+        html_body=html_body,
+        plain_body=plain_body,
+        from_name=from_name,
+        list_id=list_id,
+        attachments=attachments,
+    )
 
-    Each entry in `attachments` must have keys:
-      - path: str | Path  — absolute path to the file on disk
-      - filename: str     — original filename shown to recipient
-      - content_type: str — MIME type, e.g. "application/pdf"
-    """
+
+def _send_via_rusender(
+    *,
+    api_key: str,
+    to_email: str,
+    subject: str,
+    html_body: str | None,
+    plain_body: str | None,
+    from_name: str | None,
+) -> bool:
+    import requests as req
+
+    from_email = (os.getenv("FROM_EMAIL") or "").strip()
+    if not from_email:
+        logger.error("RuSender: FROM_EMAIL not set")
+        return False
+
+    key_id = (os.getenv("RUSENDER_KEY_ID") or "").strip()
+
+    mail: dict = {
+        "to": {"email": to_email.strip()},
+        "from": {"email": from_email},
+        "subject": subject.strip()[:255],
+    }
+    if from_name:
+        mail["from"]["name"] = from_name
+    if html_body:
+        mail["html"] = html_body
+    if plain_body or html_body:
+        mail["text"] = plain_body or _html_to_plain(html_body or "")
+
+    payload = {
+        "idempotencyKey": str(uuid.uuid4()),
+        "mail": mail,
+    }
+
+    try:
+        if key_id:
+            url = f"https://api.rusender.ru/api/v1/external-mails/send/{key_id}"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+        else:
+            url = "https://api.rusender.ru/api/v1/external-mails/send"
+            headers = {
+                "X-Api-Key": api_key,
+                "Content-Type": "application/json",
+            }
+
+        resp = req.post(url, json=payload, headers=headers, timeout=15)
+        if resp.status_code in (200, 201):
+            return True
+        logger.error("RuSender error %s: %s", resp.status_code, resp.text[:300])
+        return False
+    except Exception as exc:
+        logger.exception("RuSender send failed: %s", exc)
+        return False
+
+
+def _send_via_smtp(
+    *,
+    to_email: str,
+    subject: str,
+    html_body: str | None,
+    plain_body: str | None,
+    from_name: str | None,
+    list_id: str | None,
+    attachments: List[dict] | None,
+) -> bool:
     host = (os.getenv("SMTP_HOST") or "").strip()
     port_raw = (os.getenv("SMTP_PORT") or "").strip()
     smtp_user = (os.getenv("SMTP_USER") or "").strip()
@@ -98,7 +186,7 @@ def send_email_html(
                 main_type, _, sub_type = (att.get("content_type") or "application/octet-stream").partition("/")
                 part = MIMEBase(main_type, sub_type or "octet-stream")
                 part.set_payload(file_data)
-                encodebytes(file_data)  # validate; actual encoding below
+                encodebytes(file_data)
                 import email.encoders
                 email.encoders.encode_base64(part)
                 part.add_header(
@@ -108,7 +196,7 @@ def send_email_html(
                 )
                 msg.attach(part)
             except Exception:
-                pass  # skip unreadable files rather than failing the whole send
+                pass
 
     try:
         with smtplib.SMTP(host, port, timeout=15) as server:
@@ -120,12 +208,12 @@ def send_email_html(
                 server.login(smtp_user, smtp_password)
             server.send_message(msg)
         return True
-    except Exception:
+    except Exception as exc:
+        logger.exception("SMTP send failed: %s", exc)
         return False
 
 
 def _html_to_plain(html: str) -> str:
-    """Very basic HTML → plain text strip for email fallback."""
     import re
     text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
     text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)

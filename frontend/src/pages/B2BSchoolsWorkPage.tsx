@@ -22,6 +22,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -30,7 +31,7 @@ import {
 import Layout from '../components/Layout';
 import { CampaignsTab } from './CampaignsTab';
 import BroadcastsTab from './BroadcastsTab';
-import { b2bApi, searchApi } from '../services/api';
+import { b2bApi, searchApi, type EmailBroadcastRecipient } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import type { B2BDocument, B2BSchool, B2BSchoolCustomField, PersonSearchItem } from '../types';
 
@@ -103,10 +104,22 @@ type SchoolCardDialogProps = {
   onSaved: (school: B2BSchool) => void;
 };
 
+type SchoolBroadcast = {
+  id: number; name: string; subject: string; status: string; sent_at: string | null;
+  recipient_status: string; opened_at: string | null; open_count: number;
+  clicked_at: string | null; click_count: number; email: string;
+};
+
+const BROADCAST_RCPT_STATUS_LABEL: Record<string, string> = {
+  pending: 'Ожидает', sending: 'Отправляется', sent: 'Доставлено',
+  failed: 'Ошибка', opened: 'Прочитано', clicked: 'Кликнул',
+};
+
 const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClose, onSaved }) => {
   const [form, setForm] = React.useState<SchoolForm | null>(null);
   const [contacts, setContacts] = React.useState<B2BSchool['contacts']>([]);
   const [documents, setDocuments] = React.useState<B2BDocument[]>([]);
+  const [broadcasts, setBroadcasts] = React.useState<SchoolBroadcast[]>([]);
   const [logoUrl, setLogoUrl] = React.useState<string | null>(null);
   const [personQuery, setPersonQuery] = React.useState('');
   const [persons, setPersons] = React.useState<PersonSearchItem[]>([]);
@@ -139,9 +152,13 @@ const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClo
     setLoading(true);
     setError('');
     try {
-      const full = await b2bApi.getSchool(school.id);
+      const [full, bcs] = await Promise.all([
+        b2bApi.getSchool(school.id),
+        b2bApi.listSchoolBroadcasts(school.id).catch(() => [] as SchoolBroadcast[]),
+      ]);
       setForm(formFromSchool(full));
       setContacts(full.contacts ?? []);
+      setBroadcasts(bcs);
       await loadDocuments(full.id);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить карточку школы'));
@@ -490,6 +507,50 @@ const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClo
                 ))}
                 {form.custom_fields.length === 0 && <Typography color="text.secondary">Пользовательские поля еще не добавлены.</Typography>}
               </Stack>
+            </Box>
+
+            {/* Broadcast history */}
+            <Box>
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                История рассылок ({broadcasts.length})
+              </Typography>
+              {broadcasts.length === 0 ? (
+                <Typography color="text.secondary" variant="body2">Рассылок ещё не было.</Typography>
+              ) : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Кампания</TableCell>
+                      <TableCell>Отправлено</TableCell>
+                      <TableCell>Статус письма</TableCell>
+                      <TableCell>Открыто</TableCell>
+                      <TableCell>Открытий</TableCell>
+                      <TableCell>Кликов</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {broadcasts.map(b => (
+                      <TableRow key={b.id}>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={600}>{b.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">{b.subject}</Typography>
+                        </TableCell>
+                        <TableCell>{b.sent_at ? formatDate(b.sent_at) : '—'}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={BROADCAST_RCPT_STATUS_LABEL[b.recipient_status] ?? b.recipient_status}
+                            color={b.recipient_status === 'opened' || b.recipient_status === 'clicked' ? 'success' : b.recipient_status === 'failed' ? 'error' : 'default'}
+                          />
+                        </TableCell>
+                        <TableCell>{b.opened_at ? formatDate(b.opened_at) : '—'}</TableCell>
+                        <TableCell>{b.open_count > 0 ? b.open_count : '—'}</TableCell>
+                        <TableCell>{b.click_count > 0 ? b.click_count : '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </Box>
           </Stack>
         )}

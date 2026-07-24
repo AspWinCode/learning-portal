@@ -2455,8 +2455,19 @@ export const b2bApi = {
     const response = await api.get('/api/b2b-schools/plan-city-summary');
     return response.data;
   },
-  listSchoolsForBroadcast: async (): Promise<{ id: number; name: string; city: string | null; email: string; director: string | null }[]> => {
-    const response = await api.get('/api/b2b-schools/for-broadcast');
+  listSchoolsForBroadcast: async (opts?: { pipeline_stage?: string; friendship_degree?: string }): Promise<{ id: number; name: string; city: string | null; email: string; director: string | null; pipeline_stage: string | null; friendship_degree: string | null }[]> => {
+    const params: Record<string, string> = {};
+    if (opts?.pipeline_stage) params.pipeline_stage = opts.pipeline_stage;
+    if (opts?.friendship_degree) params.friendship_degree = opts.friendship_degree;
+    const response = await api.get('/api/b2b-schools/for-broadcast', { params });
+    return response.data;
+  },
+  listSchoolBroadcasts: async (schoolId: number): Promise<{
+    id: number; name: string; subject: string; status: string; sent_at: string | null;
+    recipient_status: string; opened_at: string | null; open_count: number;
+    clicked_at: string | null; click_count: number; email: string;
+  }[]> => {
+    const response = await api.get(`/api/b2b-schools/${schoolId}/broadcasts`);
     return response.data;
   },
   listSchools: async (opts?: {
@@ -4213,10 +4224,12 @@ export interface EmailBroadcastRecipient {
   email: string;
   school_name: string | null;
   director_name: string | null;
-  status: 'pending' | 'sending' | 'sent' | 'failed' | 'opened';
+  status: 'pending' | 'sending' | 'sent' | 'failed' | 'opened' | 'clicked';
   sent_at: string | null;
   opened_at: string | null;
   open_count: number;
+  clicked_at: string | null;
+  click_count: number;
   error_message: string | null;
 }
 
@@ -4240,15 +4253,15 @@ export const emailBroadcastsApi = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/email-broadcasts/${id}`);
   },
-  send: async (id: number, schoolIds: number[], limit?: number): Promise<EmailBroadcast> => {
-    const res = await api.post(`/email-broadcasts/${id}/send`, { school_ids: schoolIds, limit: limit ?? null });
+  send: async (id: number, schoolIds: number[], limit?: number, campaignId?: number): Promise<EmailBroadcast> => {
+    const res = await api.post(`/email-broadcasts/${id}/send`, { school_ids: schoolIds, limit: limit ?? null, campaign_id: campaignId ?? null });
     return res.data;
   },
   testSend: async (id: number, toEmail: string): Promise<void> => {
     await api.post(`/email-broadcasts/${id}/test-send`, { to_email: toEmail });
   },
-  saveRecipients: async (id: number, schoolIds: number[], limit?: number): Promise<EmailBroadcast> => {
-    const res = await api.post(`/email-broadcasts/${id}/save-recipients`, { school_ids: schoolIds, limit: limit ?? null });
+  saveRecipients: async (id: number, schoolIds: number[], limit?: number, campaignId?: number): Promise<EmailBroadcast> => {
+    const res = await api.post(`/email-broadcasts/${id}/save-recipients`, { school_ids: schoolIds, limit: limit ?? null, campaign_id: campaignId ?? null });
     return res.data;
   },
   launch: async (id: number): Promise<EmailBroadcast> => {

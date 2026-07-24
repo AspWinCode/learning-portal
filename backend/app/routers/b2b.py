@@ -19,6 +19,8 @@ from app.models import (
     B2BSchoolInteraction,
     B2BProject,
     B2BSchoolPipelineStage,
+    EmailBroadcast,
+    EmailBroadcastRecipient,
     Lead,
     LeadStatus,
     Task,
@@ -124,17 +126,29 @@ async def list_b2b_school_cities(
 
 @router.get("/b2b-schools/for-broadcast")
 async def list_b2b_schools_for_broadcast(
+    pipeline_stage: Optional[str] = Query(None),
+    friendship_degree: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.get_current_user),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
 ):
     """Lightweight school list for email broadcast recipient selection (id, name, city, email, director)."""
-    rows = (
-        db.query(B2BSchool.id, B2BSchool.name, B2BSchool.city, B2BSchool.email, B2BSchool.director)
+    q = (
+        db.query(B2BSchool.id, B2BSchool.name, B2BSchool.city, B2BSchool.email, B2BSchool.director,
+                 B2BSchool.pipeline_stage, B2BSchool.friendship_degree)
         .filter(B2BSchool.email.isnot(None), B2BSchool.email != "")
-        .order_by(B2BSchool.city.asc(), B2BSchool.name.asc())
-        .all()
     )
-    return [{"id": r.id, "name": r.name, "city": r.city, "email": r.email, "director": r.director} for r in rows]
+    if pipeline_stage:
+        q = q.filter(B2BSchool.pipeline_stage == pipeline_stage)
+    if friendship_degree:
+        q = q.filter(B2BSchool.friendship_degree == friendship_degree)
+    rows = q.order_by(B2BSchool.city.asc(), B2BSchool.name.asc()).all()
+    return [
+        {
+            "id": r.id, "name": r.name, "city": r.city, "email": r.email, "director": r.director,
+            "pipeline_stage": r.pipeline_stage, "friendship_degree": r.friendship_degree,
+        }
+        for r in rows
+    ]
 
 
 @router.get("/b2b-schools/managers", response_model=List[Dict[str, Any]])
@@ -1477,6 +1491,52 @@ async def delete_school_document(
     db.delete(doc)
     db.commit()
     return None
+
+
+# ── Broadcast history ─────────────────────────────────────────────────────────
+
+@router.get("/b2b-schools/{school_id}/broadcasts")
+async def list_school_broadcasts(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("b2b.access")),
+):
+    """Return all email broadcasts that were sent to this school."""
+    rows = (
+        db.query(
+            EmailBroadcast.id,
+            EmailBroadcast.name,
+            EmailBroadcast.subject,
+            EmailBroadcast.status,
+            EmailBroadcast.sent_at,
+            EmailBroadcastRecipient.status.label("recipient_status"),
+            EmailBroadcastRecipient.opened_at,
+            EmailBroadcastRecipient.open_count,
+            EmailBroadcastRecipient.clicked_at,
+            EmailBroadcastRecipient.click_count,
+            EmailBroadcastRecipient.email,
+        )
+        .join(EmailBroadcastRecipient, EmailBroadcastRecipient.broadcast_id == EmailBroadcast.id)
+        .filter(EmailBroadcastRecipient.school_id == school_id)
+        .order_by(EmailBroadcast.sent_at.desc().nullslast())
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "subject": r.subject,
+            "status": r.status,
+            "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+            "recipient_status": r.recipient_status,
+            "opened_at": r.opened_at.isoformat() if r.opened_at else None,
+            "open_count": r.open_count,
+            "clicked_at": r.clicked_at.isoformat() if r.clicked_at else None,
+            "click_count": r.click_count,
+            "email": r.email,
+        }
+        for r in rows
+    ]
 
 
 # ── Partnership checklist ──────────────────────────────────────────────────────

@@ -40,6 +40,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import SendIcon from '@mui/icons-material/Send';
 import {
   b2bApi,
+  campaignsApi,
   emailBroadcastsApi,
   emailTemplatesApi,
   type EmailBroadcast,
@@ -48,6 +49,7 @@ import {
   type EmailTemplate,
 } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+import type { Campaign } from '../types';
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
@@ -65,10 +67,10 @@ const STATUS_COLOR: Record<string, 'default' | 'warning' | 'success' | 'error'> 
 };
 
 const RCPT_STATUS_LABEL: Record<string, string> = {
-  pending: 'Ожидает', sending: 'Отправляется', sent: 'Доставлено', failed: 'Ошибка', opened: 'Прочитано',
+  pending: 'Ожидает', sending: 'Отправляется', sent: 'Доставлено', failed: 'Ошибка', opened: 'Прочитано', clicked: 'Кликнул',
 };
 const RCPT_STATUS_COLOR: Record<string, 'default' | 'warning' | 'info' | 'error' | 'success'> = {
-  pending: 'default', sending: 'warning', sent: 'info', failed: 'error', opened: 'success',
+  pending: 'default', sending: 'warning', sent: 'info', failed: 'error', opened: 'success', clicked: 'success',
 };
 
 const fmt = (dt: string | null) =>
@@ -177,9 +179,27 @@ const CreateCampaignDialog: React.FC<CreateDialogProps> = ({ open, templates, on
 
 // ─── Send dialog (school picker) ──────────────────────────────────────────────
 
-type BroadcastSchool = { id: number; name: string; city: string | null; email: string; director: string | null };
+type BroadcastSchool = {
+  id: number; name: string; city: string | null; email: string; director: string | null;
+  pipeline_stage: string | null; friendship_degree: string | null;
+};
 
 const DIALOG_PAGE_SIZE = 100;
+
+const PIPELINE_STAGE_LABELS: Record<string, string> = {
+  new: 'Новая', find_contacts: 'Поиск контактов', first_contact: 'Первый контакт',
+  contact_found: 'Контакт найден', letter_sent: 'Письмо отправлено', agreement: 'Соглашение',
+  meeting_scheduled: 'Встреча запланирована', meeting_held: 'Встреча проведена',
+  permission_received: 'Разрешение получено', event_scheduled: 'Мероприятие запланировано',
+  walkthrough_scheduled: 'Обход запланирован', event_done: 'Мероприятие проведено',
+  walkthrough_done: 'Обход проведён', leads_received: 'Лиды получены',
+  thank_you: 'Благодарность', support_letter_requested: 'Запрошено письмо',
+  support_letter_received: 'Письмо получено', partners: 'Партнёры', rejected: 'Отказ',
+};
+
+const FRIENDSHIP_LABELS: Record<string, string> = {
+  unknown: 'Не знаем', indirect: 'Косвенный контакт', friends: 'Дружим', enemies: 'Отказ',
+};
 
 type SendDialogProps = {
   open: boolean;
@@ -194,8 +214,13 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
   const [cityFilter, setCityFilter] = useState('');
+  const [pipelineFilter, setPipelineFilter] = useState('');
+  const [friendshipFilter, setFriendshipFilter] = useState('');
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [crmCampaignId, setCrmCampaignId] = useState<number | ''>('');
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingCampaignSchools, setLoadingCampaignSchools] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -206,15 +231,44 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
     ? Math.min(effectiveLimit, selected.size)
     : selected.size;
 
-  useEffect(() => {
-    if (!open) return;
-    setSelected(new Set()); setSearch(''); setCityFilter(''); setPage(0); setError(''); setLimitInput('');
+  const loadSchools = (ps?: string, fd?: string) => {
     setLoading(true);
-    b2bApi.listSchoolsForBroadcast()
+    b2bApi.listSchoolsForBroadcast({ pipeline_stage: ps || undefined, friendship_degree: fd || undefined })
       .then(data => setSchools(data))
       .catch(err => setError(extractApiError(err, 'Не удалось загрузить школы')))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    setSelected(new Set()); setSearch(''); setCityFilter(''); setPipelineFilter(''); setFriendshipFilter('');
+    setCrmCampaignId(''); setPage(0); setError(''); setLimitInput('');
+    loadSchools();
+    campaignsApi.list().then(setCampaigns).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const handlePipelineChange = (v: string) => { setPipelineFilter(v); setPage(0); loadSchools(v, friendshipFilter); };
+  const handleFriendshipChange = (v: string) => { setFriendshipFilter(v); setPage(0); loadSchools(pipelineFilter, v); };
+
+  const handleCrmCampaignChange = async (campaignId: number | '') => {
+    setCrmCampaignId(campaignId);
+    if (!campaignId) return;
+    setLoadingCampaignSchools(true);
+    try {
+      const schoolCampaigns = await campaignsApi.listSchoolCampaigns(campaignId as number);
+      const ids = new Set(schoolCampaigns.map((sc: any) => sc.b2b_school_id as number));
+      setSelected(prev => {
+        const next = new Set(prev);
+        schools.forEach(s => { if (ids.has(s.id)) next.add(s.id); });
+        return next;
+      });
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось загрузить школы кампании'));
+    } finally {
+      setLoadingCampaignSchools(false);
+    }
+  };
 
   const cities = Array.from(new Set(schools.map(s => s.city).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b, 'ru'));
 
@@ -234,9 +288,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
   const togglePage = () => {
     setSelected(prev => {
       const next = new Set(prev);
-      allPageSelected
-        ? paged.forEach(s => next.delete(s.id))
-        : paged.forEach(s => next.add(s.id));
+      allPageSelected ? paged.forEach(s => next.delete(s.id)) : paged.forEach(s => next.add(s.id));
       return next;
     });
   };
@@ -245,9 +297,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
     setSelected(prev => {
       const next = new Set(prev);
       const allFilteredSelected = filtered.every(s => next.has(s.id));
-      allFilteredSelected
-        ? filtered.forEach(s => next.delete(s.id))
-        : filtered.forEach(s => next.add(s.id));
+      allFilteredSelected ? filtered.forEach(s => next.delete(s.id)) : filtered.forEach(s => next.add(s.id));
       return next;
     });
   };
@@ -267,7 +317,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
     if (!campaign || selected.size === 0) return;
     setSaving(true); setError('');
     try {
-      const result = await emailBroadcastsApi.saveRecipients(campaign.id, Array.from(selected), parsedLimit);
+      const result = await emailBroadcastsApi.saveRecipients(campaign.id, Array.from(selected), parsedLimit, crmCampaignId || undefined);
       onSaved(result);
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка сохранения получателей'));
@@ -279,7 +329,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
     if (!campaign || selected.size === 0) return;
     setSending(true); setError('');
     try {
-      const result = await emailBroadcastsApi.send(campaign.id, Array.from(selected), parsedLimit);
+      const result = await emailBroadcastsApi.send(campaign.id, Array.from(selected), parsedLimit, crmCampaignId || undefined);
       onSent(result);
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка запуска рассылки'));
@@ -298,8 +348,27 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
           {error && <Alert severity="error">{error}</Alert>}
 
           <Alert severity="info" sx={{ '& .MuiAlert-message': { fontSize: 13 } }}>
-            Показаны только школы с e-mail. Сохраните получателей как черновик, затем запустите рассылку.
+            Показаны только школы с e-mail. Фильтры «стадия» и «отношение» применяются на сервере — список перезагружается.
           </Alert>
+
+          {/* CRM-campaign quick-select */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <FormControl size="small" sx={{ flex: 1 }}>
+              <InputLabel>Загрузить из CRM-кампании</InputLabel>
+              <Select
+                value={crmCampaignId}
+                label="Загрузить из CRM-кампании"
+                onChange={e => handleCrmCampaignChange(e.target.value as number | '')}
+                disabled={loadingCampaignSchools}
+              >
+                <MenuItem value="">— не выбрана —</MenuItem>
+                {campaigns.map(c => (
+                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {loadingCampaignSchools && <CircularProgress size={20} />}
+          </Stack>
 
           <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
             <Typography variant="subtitle2">
@@ -334,26 +403,34 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
             FormHelperTextProps={{ sx: { color: parsedLimit !== undefined && selected.size > parsedLimit ? 'warning.main' : undefined } }}
           />
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
             <TextField
               size="small"
-              fullWidth
+              sx={{ flex: 1, minWidth: 180 }}
               placeholder="Поиск по названию или городу..."
               value={search}
               onChange={e => handleSearchChange(e.target.value)}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
             />
-            <FormControl size="small" sx={{ minWidth: 180 }}>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
               <InputLabel>Город</InputLabel>
-              <Select
-                value={cityFilter}
-                label="Город"
-                onChange={e => handleCityChange(e.target.value)}
-              >
+              <Select value={cityFilter} label="Город" onChange={e => handleCityChange(e.target.value)}>
                 <MenuItem value="">Все города</MenuItem>
-                {cities.map(c => (
-                  <MenuItem key={c} value={c}>{c}</MenuItem>
-                ))}
+                {cities.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Стадия воронки</InputLabel>
+              <Select value={pipelineFilter} label="Стадия воронки" onChange={e => handlePipelineChange(e.target.value)}>
+                <MenuItem value="">Все стадии</MenuItem>
+                {Object.entries(PIPELINE_STAGE_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Отношение</InputLabel>
+              <Select value={friendshipFilter} label="Отношение" onChange={e => handleFriendshipChange(e.target.value)}>
+                <MenuItem value="">Все</MenuItem>
+                {Object.entries(FRIENDSHIP_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
               </Select>
             </FormControl>
           </Stack>
@@ -362,7 +439,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
             <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
           ) : (
             <>
-              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 340 }}>
+              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 320 }}>
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow>
@@ -385,7 +462,7 @@ const SendDialog: React.FC<SendDialogProps> = ({ open, campaign, onClose, onSave
                       <TableRow>
                         <TableCell colSpan={5} align="center">
                           <Typography variant="body2" color="text.secondary">
-                            {schools.length === 0 ? 'Нет школ с e-mail' : 'Ничего не найдено'}
+                            {schools.length === 0 ? 'Нет школ с e-mail по заданным фильтрам' : 'Ничего не найдено'}
                           </Typography>
                         </TableCell>
                       </TableRow>
@@ -517,20 +594,31 @@ const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClo
               { label: 'Всего', value: campaign.total_recipients, color: 'text.primary' },
               { label: 'Доставлено', value: campaign.sent_count, color: 'info.main' },
               { label: 'Прочитано', value: campaign.opened_count, color: 'success.main' },
+              { label: 'Кликнули', value: campaign.clicked_count, color: 'primary.main' },
               { label: 'Ошибок', value: campaign.failed_count, color: 'error.main' },
             ].map(stat => (
-              <Paper key={stat.label} variant="outlined" sx={{ px: 3, py: 2, minWidth: 130, textAlign: 'center' }}>
+              <Paper key={stat.label} variant="outlined" sx={{ px: 3, py: 2, minWidth: 120, textAlign: 'center' }}>
                 <Typography variant="h4" color={stat.color}>{stat.value}</Typography>
                 <Typography variant="caption" color="text.secondary">{stat.label}</Typography>
               </Paper>
             ))}
             {campaign.total_recipients > 0 && campaign.status !== 'draft' && (
-              <Paper variant="outlined" sx={{ px: 3, py: 2, minWidth: 130, textAlign: 'center' }}>
-                <Typography variant="h4" color="success.main">
-                  {Math.round((campaign.opened_count / campaign.total_recipients) * 100)}%
-                </Typography>
-                <Typography variant="caption" color="text.secondary">Open rate</Typography>
-              </Paper>
+              <>
+                <Paper variant="outlined" sx={{ px: 3, py: 2, minWidth: 120, textAlign: 'center' }}>
+                  <Typography variant="h4" color="success.main">
+                    {Math.round((campaign.opened_count / campaign.total_recipients) * 100)}%
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">Open rate</Typography>
+                </Paper>
+                {campaign.clicked_count > 0 && (
+                  <Paper variant="outlined" sx={{ px: 3, py: 2, minWidth: 120, textAlign: 'center' }}>
+                    <Typography variant="h4" color="primary.main">
+                      {Math.round((campaign.clicked_count / campaign.total_recipients) * 100)}%
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">Click rate</Typography>
+                  </Paper>
+                )}
+              </>
             )}
           </Stack>
 
@@ -566,13 +654,14 @@ const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClo
                     <TableCell>Отправлено</TableCell>
                     <TableCell>Прочитано</TableCell>
                     <TableCell>Открытий</TableCell>
+                    <TableCell>Кликов</TableCell>
                     <TableCell>Ошибка</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {recipients.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} align="center">
+                      <TableCell colSpan={9} align="center">
                         <Typography variant="body2" color="text.secondary">Нет данных</Typography>
                       </TableCell>
                     </TableRow>
@@ -592,6 +681,7 @@ const AnalyticsDialog: React.FC<AnalyticsDialogProps> = ({ open, campaign, onClo
                       <TableCell>{fmt(r.sent_at)}</TableCell>
                       <TableCell>{r.opened_at ? fmt(r.opened_at) : '—'}</TableCell>
                       <TableCell>{r.open_count > 0 ? r.open_count : '—'}</TableCell>
+                      <TableCell>{r.click_count > 0 ? r.click_count : '—'}</TableCell>
                       <TableCell>
                         {r.error_message
                           ? <Tooltip title={r.error_message}><Typography variant="caption" color="error" sx={{ cursor: 'help' }}>Подробнее</Typography></Tooltip>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 import time
 from typing import List
@@ -9,7 +10,14 @@ from typing import List
 from sqlalchemy.orm import Session
 
 import os
-from app.models import B2BSchool, EmailBroadcast, EmailBroadcastAttachment, EmailBroadcastRecipient
+from app.models import (
+    B2BSchool,
+    B2BSchoolInteraction,
+    B2BSchoolInteractionType,
+    EmailBroadcast,
+    EmailBroadcastAttachment,
+    EmailBroadcastRecipient,
+)
 
 _BROADCAST_STORAGE_ROOT = os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")
 from app.services.email_sender import is_email_configured, send_email_html
@@ -18,6 +26,9 @@ from app.utils.datetime import utcnow
 logger = logging.getLogger(__name__)
 
 _SEND_DELAY_SECONDS = 0.15  # ~6-7 emails/sec — well within Yandex 360 limits
+
+# Regex matches http/https URLs inside href="..." or href='...'
+_HREF_RE = re.compile(r"""href=["'](https?://[^"']+)["']""", re.IGNORECASE)
 
 
 def _portal_base_url() -> str:
@@ -51,6 +62,17 @@ def _inject_tracking(html: str, open_token: str) -> str:
         idx = html.lower().rfind("</body>")
         return html[:idx] + pixel + html[idx:]
     return html + pixel
+
+
+def _inject_click_tracking(html: str, token: str) -> str:
+    """Replace http(s) href values with click-tracking URLs."""
+    def _replace(m: re.Match) -> str:
+        original = m.group(1)
+        tracked = _build_click_url(token, original)
+        quote = m.group(0)[5]  # ' or "
+        return f"href={quote}{tracked}{quote}"
+
+    return _HREF_RE.sub(_replace, html)
 
 
 def create_recipients(db: Session, broadcast: EmailBroadcast, school_ids: List[int], limit: int | None = None) -> int:
@@ -124,6 +146,7 @@ def send_broadcast(db: Session, broadcast_id: int) -> None:
             db.commit()
 
             html = _personalize(broadcast.html_body, recipient.school_name, recipient.director_name)
+            html = _inject_click_tracking(html, recipient.tracking_token)
             html = _inject_tracking(html, recipient.tracking_token)
             plain = _personalize(broadcast.plain_body or "", recipient.school_name, recipient.director_name) or None
 
@@ -181,5 +204,35 @@ def record_open(db: Session, token: str) -> None:
         broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == recipient.broadcast_id).first()
         if broadcast:
             broadcast.opened_count = (broadcast.opened_count or 0) + 1
+
+        # Auto-create interaction in b2b school log on first open
+        if recipient.school_id:
+            interaction = B2BSchoolInteraction(
+                b2b_school_id=recipient.school_id,
+                type=B2BSchoolInteractionType.LETTER.value,
+                happened_at=utcnow(),
+                summary=f"Письмо «{broadcast.name if broadcast else 'рассылка'}» открыто получателем",
+            )
+            db.add(interaction)
+
+    db.commit()
+
+
+def record_click(db: Session, token: str) -> None:
+    recipient = db.query(EmailBroadcastRecipient).filter(
+        EmailBroadcastRecipient.tracking_token == token,
+    ).first()
+    if not recipient:
+        return
+
+    recipient.click_count += 1
+    if not recipient.clicked_at:
+        recipient.clicked_at = utcnow()
+        if recipient.status in ("sent", "opened"):
+            recipient.status = "opened"  # keep opened, click doesn't change status
+
+        broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == recipient.broadcast_id).first()
+        if broadcast:
+            broadcast.clicked_count = (broadcast.clicked_count or 0) + 1
 
     db.commit()

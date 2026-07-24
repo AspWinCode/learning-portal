@@ -5,12 +5,13 @@ import uuid
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import EmailBroadcast, EmailBroadcastAttachment, EmailBroadcastRecipient, User, UserRole
+from app.models import EmailBroadcast, EmailBroadcastAttachment, EmailBroadcastRecipient, SchoolCampaign, User, UserRole
 from app.schemas.email_broadcasts import (
     EmailBroadcastAttachmentResponse,
     EmailBroadcastCreate,
@@ -24,7 +25,7 @@ from app.schemas.email_broadcasts import (
 
 _STORAGE_ROOT = Path(os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")).resolve()
 _MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024  # 25 MB per file
-from app.services.email_broadcast_service import create_recipients, record_open
+from app.services.email_broadcast_service import create_recipients, record_click, record_open
 from app.services.email_sender import is_email_configured, send_email_html
 from app.utils.datetime import utcnow
 
@@ -188,7 +189,13 @@ def send_broadcast(
     _check_access(current_user)
     if not is_email_configured():
         raise HTTPException(status_code=503, detail="SMTP не настроен")
-    if not payload.school_ids:
+    school_ids = list(payload.school_ids)
+    if payload.campaign_id:
+        extra = db.query(SchoolCampaign.b2b_school_id).filter(
+            SchoolCampaign.campaign_id == payload.campaign_id
+        ).all()
+        school_ids = list({sid for sid, in extra} | set(school_ids))
+    if not school_ids:
         raise HTTPException(status_code=400, detail="Выберите хотя бы одну школу")
 
     broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
@@ -197,7 +204,7 @@ def send_broadcast(
     if broadcast.status not in ("draft",):
         raise HTTPException(status_code=400, detail="Запустить можно только черновик")
 
-    create_recipients(db, broadcast, payload.school_ids, limit=payload.limit)
+    create_recipients(db, broadcast, school_ids, limit=payload.limit)
     db.refresh(broadcast)
 
     # Kick off background sending
@@ -216,7 +223,13 @@ def save_recipients(
 ):
     """Save school recipients to a draft broadcast without sending."""
     _check_access(current_user)
-    if not payload.school_ids:
+    school_ids = list(payload.school_ids)
+    if payload.campaign_id:
+        extra = db.query(SchoolCampaign.b2b_school_id).filter(
+            SchoolCampaign.campaign_id == payload.campaign_id
+        ).all()
+        school_ids = list({sid for sid, in extra} | set(school_ids))
+    if not school_ids:
         raise HTTPException(status_code=400, detail="Выберите хотя бы одну школу")
 
     broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
@@ -231,7 +244,7 @@ def save_recipients(
     ).delete()
     db.flush()
 
-    create_recipients(db, broadcast, payload.school_ids, limit=payload.limit)
+    create_recipients(db, broadcast, school_ids, limit=payload.limit)
     # Restore draft status (create_recipients sets it to "sending" and stamps sent_at)
     broadcast.status = "draft"
     broadcast.sent_at = None
@@ -479,3 +492,12 @@ def track_open(token: str, db: Session = Depends(get_db)):
         media_type="image/gif",
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
     )
+
+
+@router.get("/mail-track/click/{token}", include_in_schema=False)
+def track_click(token: str, url: str = Query(...), db: Session = Depends(get_db)):
+    try:
+        record_click(db, token)
+    except Exception:
+        pass
+    return RedirectResponse(url=url, status_code=302)

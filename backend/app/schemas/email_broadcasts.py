@@ -52,8 +52,9 @@ class EmailBroadcastResponse(BaseModel):
 
 
 class SendBroadcastRequest(BaseModel):
-    school_ids: List[int]
+    school_ids: List[int] = []
     limit: Optional[int] = None
+    campaign_id: Optional[int] = None
 
 
 class TestSendRequest(BaseModel):
@@ -71,6 +72,8 @@ class EmailBroadcastRecipientResponse(BaseModel):
     sent_at: Optional[datetime] = None
     opened_at: Optional[datetime] = None
     open_count: int = 0
+    clicked_at: Optional[datetime] = None
+    click_count: int = 0
     error_message: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

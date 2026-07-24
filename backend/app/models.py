@@ -3207,6 +3207,8 @@ class EmailBroadcastRecipient(Base):
     sent_at = Column(DateTime(timezone=True), nullable=True)
     opened_at = Column(DateTime(timezone=True), nullable=True)
     open_count = Column(Integer, nullable=False, default=0)
+    clicked_at = Column(DateTime(timezone=True), nullable=True)
+    click_count = Column(Integer, nullable=False, default=0)
     error_message = Column(Text, nullable=True)
 
     broadcast = relationship("EmailBroadcast", back_populates="recipients")

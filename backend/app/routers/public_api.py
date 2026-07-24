@@ -174,7 +174,7 @@ def submit_site_lead(payload: SiteLeadRequest, db: Session = Depends(get_db)):
 
     is_email = bool(_re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", contact))
     if is_email:
-        phone_val = contact
+        phone_val = ""
         phone_norm = None
         email_val = contact
     else:

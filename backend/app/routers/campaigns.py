@@ -484,13 +484,11 @@ async def list_schools_available_for_campaign(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("campaigns.access")),
 ):
-    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
-    if not campaign:
+    exists = db.query(Campaign.id).filter(Campaign.id == campaign_id).scalar()
+    if not exists:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    already_ids = {sc.b2b_school_id for sc in campaign.school_campaigns}
-    q = db.query(B2BSchool)
-    if already_ids:
-        q = q.filter(~B2BSchool.id.in_(already_ids))
+    already_subq = db.query(SchoolCampaign.b2b_school_id).filter(SchoolCampaign.campaign_id == campaign_id).subquery()
+    q = db.query(B2BSchool).filter(~B2BSchool.id.in_(already_subq))
     city_values = _split_csv_filter(cities) or ([city.strip()] if city and city.strip() else [])
     district_values = _split_csv_filter(districts) or ([district.strip()] if district and district.strip() else [])
     if city_values:
@@ -1087,17 +1085,23 @@ async def get_campaign_school_event_counts(
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    sc_ids = [row[0] for row in db.query(SchoolCampaign.id).filter(SchoolCampaign.campaign_id == campaign_id).all()]
-    if not sc_ids:
+
+    sc_subq = db.query(SchoolCampaign.id).filter(SchoolCampaign.campaign_id == campaign_id).subquery()
+    sc_ids_list = [row[0] for row in db.query(sc_subq).all()]
+    if not sc_ids_list:
         return {}
-    event_ids = [row[0] for row in db.query(CampaignEvent.id).filter(CampaignEvent.campaign_id == campaign_id).all()]
-    if not event_ids:
-        return {str(sid): {"events_invited_count": 0, "events_participated_count": 0, "events_hosted_count": 0} for sid in sc_ids}
+
+    event_exists = db.query(CampaignEvent.id).filter(CampaignEvent.campaign_id == campaign_id).first()
+    if not event_exists:
+        return {str(sid): {"events_invited_count": 0, "events_participated_count": 0, "events_hosted_count": 0} for sid in sc_ids_list}
+
+    event_subq = db.query(CampaignEvent.id).filter(CampaignEvent.campaign_id == campaign_id).subquery()
+
     invited = (
         db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
         .filter(
-            SchoolCampaignEvent.school_campaign_id.in_(sc_ids),
-            SchoolCampaignEvent.campaign_event_id.in_(event_ids),
+            SchoolCampaignEvent.school_campaign_id.in_(sc_subq),
+            SchoolCampaignEvent.campaign_event_id.in_(event_subq),
             SchoolCampaignEvent.invite_status.in_(["invited", "awaiting_reply", "accepted", "declined"]),
         )
         .group_by(SchoolCampaignEvent.school_campaign_id)
@@ -1106,8 +1110,8 @@ async def get_campaign_school_event_counts(
     participated = (
         db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
         .filter(
-            SchoolCampaignEvent.school_campaign_id.in_(sc_ids),
-            SchoolCampaignEvent.campaign_event_id.in_(event_ids),
+            SchoolCampaignEvent.school_campaign_id.in_(sc_subq),
+            SchoolCampaignEvent.campaign_event_id.in_(event_subq),
             SchoolCampaignEvent.participation_status == "participated",
         )
         .group_by(SchoolCampaignEvent.school_campaign_id)
@@ -1116,14 +1120,14 @@ async def get_campaign_school_event_counts(
     hosted = (
         db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
         .filter(
-            SchoolCampaignEvent.school_campaign_id.in_(sc_ids),
-            SchoolCampaignEvent.campaign_event_id.in_(event_ids),
+            SchoolCampaignEvent.school_campaign_id.in_(sc_subq),
+            SchoolCampaignEvent.campaign_event_id.in_(event_subq),
             SchoolCampaignEvent.host_status.in_(["host_proposed", "host_confirmed", "hosted"]),
         )
         .group_by(SchoolCampaignEvent.school_campaign_id)
         .all()
     )
-    by_sc = {sid: {"events_invited_count": 0, "events_participated_count": 0, "events_hosted_count": 0} for sid in sc_ids}
+    by_sc = {sid: {"events_invited_count": 0, "events_participated_count": 0, "events_hosted_count": 0} for sid in sc_ids_list}
     for sid, cnt in invited:
         by_sc[sid]["events_invited_count"] = cnt
     for sid, cnt in participated:

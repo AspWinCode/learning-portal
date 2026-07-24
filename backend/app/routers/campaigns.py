@@ -501,7 +501,7 @@ async def list_schools_available_for_campaign(
         q = q.filter(
             B2BSchool.name.ilike(f"%{search.strip()}%")
         )
-    schools = q.order_by(B2BSchool.name).limit(500).all()
+    schools = q.order_by(B2BSchool.name).all()
     return [{"id": s.id, "name": s.name, "city": s.city, "district": s.district} for s in schools]
 
 

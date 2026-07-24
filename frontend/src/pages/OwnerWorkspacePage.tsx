@@ -1568,7 +1568,7 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const [completeDialogTask, setCompleteDialogTask] = useState<OwnerWorkspaceTask | null>(null);
   const [completeMode, setCompleteMode] = useState<'close' | 'close_and_create_next'>('close');
-  const [nextTaskTitle, setNextTaskTitle] = useState('');
+  const nextTaskTitleRef = useRef<HTMLInputElement>(null);
 
   const [commsContactId, setCommsContactId] = useState<number | null>(null);
   const [commsMessages, setCommsMessages] = useState<OwnerWorkspaceMessage[]>([]);
@@ -2854,7 +2854,7 @@ const OwnerWorkspacePage: React.FC = () => {
         const res = await ownerWorkspaceApi.completeTask(completeDialogTask.id, {
           action: 'close_and_create_next',
           next_task: {
-            title: nextTaskTitle.trim() || `Следующий шаг: ${completeDialogTask.title}`,
+            title: (nextTaskTitleRef.current?.value ?? '').trim() || `Следующий шаг: ${completeDialogTask.title}`,
             description: null,
             project_id: completeDialogTask.project_id,
             contact_id: completeDialogTask.contact_id,
@@ -2867,7 +2867,6 @@ const OwnerWorkspacePage: React.FC = () => {
         }
       }
       setCompleteDialogTask(null);
-      setNextTaskTitle('');
       await loadTasksFiltered();
       void loadDigest();
       void loadNotifications(80);
@@ -8800,11 +8799,12 @@ const OwnerWorkspacePage: React.FC = () => {
             )}
             {completeMode === 'close_and_create_next' && (
               <TextField
+                key={completeDialogTask?.id ?? 'none'}
                 fullWidth
                 sx={{ mt: 2 }}
                 label="Название следующей задачи"
-                value={nextTaskTitle}
-                onChange={(e) => setNextTaskTitle(e.target.value)}
+                defaultValue=""
+                inputRef={nextTaskTitleRef}
                 disabled={completeDialogTask ? !canCompleteTaskActionUi(completeDialogTask) || !canCreateTaskUi : false}
                 placeholder="Оставьте пустым — подставится автоматически"
               />

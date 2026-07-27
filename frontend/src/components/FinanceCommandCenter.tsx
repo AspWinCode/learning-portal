@@ -4,6 +4,12 @@ import {
   Box,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  LinearProgress,
   Paper,
   Stack,
   Table,
@@ -20,14 +26,19 @@ import {
   AccountBalance,
   ArrowDownward,
   ArrowUpward,
+  Close,
   CreditCard,
   ErrorOutline,
   SwapHoriz,
   TrendingDown,
   TrendingUp,
 } from '@mui/icons-material';
+import {
+  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
+  ResponsiveContainer, PieChart, Pie,
+} from 'recharts';
 import { financeApi } from '../services/api';
-import type { CommandCenterResponse } from '../types';
+import type { CommandCenterResponse, FinanceLedgerBankRow } from '../types';
 
 const PROJECT_COLORS = [
   '#185FA5', '#0F6E56', '#854F0B', '#534AB7', '#993C1D',
@@ -52,11 +63,49 @@ interface Props {
   onNavigateToJournal?: () => void;
 }
 
+type ArticleRow = { name: string; amount: number };
+
+function groupByArticle(rows: FinanceLedgerBankRow[], direction: 'income' | 'expense'): ArticleRow[] {
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (r.direction !== direction) continue;
+    const key = r.article_name || 'Без статьи';
+    map.set(key, (map.get(key) ?? 0) + Math.abs(r.amount));
+  }
+  return Array.from(map.entries())
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+const INCOME_COLOR = '#22c55e';
+const EXPENSE_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#84cc16', '#f43f5e',
+];
+
+const fmtRub = (v: number) =>
+  new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Math.round(v)) + ' ₽';
+
+// Recharts custom tooltip
+const ChartTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ value: number; payload: ArticleRow }> }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <Paper variant="outlined" sx={{ px: 1.5, py: 0.75, borderRadius: 1.5 }}>
+      <Typography variant="caption" sx={{ fontWeight: 600 }}>{payload[0].payload.name}</Typography>
+      <Typography variant="body2" sx={{ fontWeight: 700 }}>{fmtRub(payload[0].value)}</Typography>
+    </Paper>
+  );
+};
+
 const FinanceCommandCenter: React.FC<Props> = ({ onNavigateToJournal }) => {
   const [period, setPeriod] = useState(currentMonth);
   const [data, setData] = useState<CommandCenterResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalRows, setModalRows] = useState<FinanceLedgerBankRow[]>([]);
+  const [drillArticle, setDrillArticle] = useState<{ name: string; direction: 'income' | 'expense' } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +122,31 @@ const FinanceCommandCenter: React.FC<Props> = ({ onNavigateToJournal }) => {
   }, [period]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const openPersonalModal = async () => {
+    if (!data || data.personal_projects.length === 0) return;
+    setModalOpen(true);
+    setModalLoading(true);
+    setDrillArticle(null);
+    try {
+      const targetIds = data.personal_projects
+        .map((p) => p.target_id)
+        .filter((id): id is number => id != null);
+      const [y, m] = period.split('-');
+      const lastDay = new Date(Number(y), Number(m), 0).getDate();
+      const rows = await financeApi.listJournalTransactions({
+        target_ids: targetIds.length > 0 ? targetIds : undefined,
+        date_from: `${period}-01`,
+        date_to: `${period}-${String(lastDay).padStart(2, '0')}`,
+        limit: 5000,
+      });
+      setModalRows(rows);
+    } catch {
+      setModalRows([]);
+    } finally {
+      setModalLoading(false);
+    }
+  };
 
   const kpi = data?.kpi;
   const maxCashflow = data
@@ -409,7 +483,15 @@ const FinanceCommandCenter: React.FC<Props> = ({ onNavigateToJournal }) => {
 
       {/* Personal finances block */}
       {data && data.personal_projects.length > 0 && (
-        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
+        <Paper
+          variant="outlined"
+          onClick={openPersonalModal}
+          sx={{
+            borderRadius: 2, p: 2, cursor: 'pointer',
+            transition: 'box-shadow 0.15s, border-color 0.15s',
+            '&:hover': { boxShadow: 2, borderColor: 'primary.main' },
+          }}
+        >
           <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.68rem', fontWeight: 500, display: 'block', mb: 1.5 }}>
             Личные финансы — {monthLabel(data.period)}
           </Typography>
@@ -459,6 +541,195 @@ const FinanceCommandCenter: React.FC<Props> = ({ onNavigateToJournal }) => {
           </Box>
         </Paper>
       )}
+
+      {/* ── Modal: personal finance breakdown by articles ── */}
+      {(() => {
+        const incomeRows = groupByArticle(modalRows, 'income');
+        const expenseRows = groupByArticle(modalRows, 'expense');
+        const totalIncome = incomeRows.reduce((s, r) => s + r.amount, 0);
+        const totalExpense = expenseRows.reduce((s, r) => s + r.amount, 0);
+        const net = totalIncome - totalExpense;
+
+        // Drill-down: transactions for selected article
+        const drillRows = drillArticle
+          ? modalRows.filter(
+              (r) =>
+                r.direction === drillArticle.direction &&
+                (r.article_name || 'Без статьи') === drillArticle.name
+            )
+          : [];
+
+        return (
+          <Dialog
+            open={modalOpen}
+            onClose={() => { setModalOpen(false); setDrillArticle(null); }}
+            maxWidth="md"
+            fullWidth
+            PaperProps={{ sx: { borderRadius: 2 } }}
+          >
+            <DialogTitle sx={{ pb: 1, pr: 6 }}>
+              {drillArticle ? (
+                <Stack direction="row" alignItems="center" gap={1}>
+                  <IconButton size="small" onClick={() => setDrillArticle(null)}>
+                    <ArrowUpward sx={{ transform: 'rotate(-90deg)', fontSize: 18 }} />
+                  </IconButton>
+                  <Box>
+                    <Typography variant="h6" fontWeight={700}>{drillArticle.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {drillArticle.direction === 'income' ? 'Поступления' : 'Расходы'} — {data ? monthLabel(data.period) : ''}
+                    </Typography>
+                  </Box>
+                </Stack>
+              ) : (
+                <Box>
+                  <Typography variant="h6" fontWeight={700}>Личные финансы — {data ? monthLabel(data.period) : ''}</Typography>
+                  <Typography variant="caption" color="text.secondary">Нажмите на статью для просмотра транзакций</Typography>
+                </Box>
+              )}
+              <IconButton onClick={() => { setModalOpen(false); setDrillArticle(null); }} size="small"
+                sx={{ position: 'absolute', top: 12, right: 12 }}>
+                <Close fontSize="small" />
+              </IconButton>
+            </DialogTitle>
+
+            <DialogContent sx={{ pb: 3 }}>
+              {modalLoading ? (
+                <LinearProgress sx={{ mt: 1 }} />
+              ) : drillArticle ? (
+                /* ── DRILL-DOWN: транзакции по статье ── */
+                <Stack spacing={0}>
+                  {drillRows.length === 0 ? (
+                    <Typography color="text.secondary">Нет транзакций</Typography>
+                  ) : (
+                    drillRows.map((r) => (
+                      <Box key={r.id} sx={{
+                        py: 1, px: 0.5, borderBottom: '1px solid', borderColor: 'divider',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2,
+                      }}>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="body2" fontWeight={500} noWrap>
+                            {r.description || r.counterparty_name || r.bank_source || '—'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {r.occurred_at ? new Date(r.occurred_at).toLocaleDateString('ru-RU') : '—'}
+                            {r.account_name ? ` · ${r.account_name}` : ''}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" fontWeight={700}
+                          sx={{ color: r.direction === 'expense' ? 'error.main' : 'success.main', whiteSpace: 'nowrap' }}>
+                          {r.direction === 'expense' ? '−' : '+'}{fmtRub(Math.abs(r.amount))}
+                        </Typography>
+                      </Box>
+                    ))
+                  )}
+                  <Box sx={{ pt: 1.5, display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" fontWeight={700}>Итого</Typography>
+                    <Typography variant="body2" fontWeight={800}
+                      sx={{ color: drillArticle.direction === 'expense' ? 'error.main' : 'success.main' }}>
+                      {fmtRub(drillRows.reduce((s, r) => s + Math.abs(r.amount), 0))}
+                    </Typography>
+                  </Box>
+                </Stack>
+              ) : (
+                /* ── OVERVIEW: графики ── */
+                <Stack spacing={3} sx={{ mt: 0.5 }}>
+                  {/* KPI row */}
+                  <Stack direction="row" spacing={2}>
+                    {[
+                      { label: 'Поступления', value: `+${fmtRub(totalIncome)}`, color: INCOME_COLOR },
+                      { label: 'Расходы', value: `−${fmtRub(totalExpense)}`, color: '#ef4444' },
+                      { label: 'Остаток', value: (net >= 0 ? '+' : '') + fmtRub(net), color: net >= 0 ? INCOME_COLOR : '#ef4444' },
+                    ].map((kv) => (
+                      <Paper key={kv.label} variant="outlined" sx={{ flex: 1, p: 1.5, borderRadius: 1.5, textAlign: 'center' }}>
+                        <Typography variant="caption" color="text.secondary">{kv.label}</Typography>
+                        <Typography variant="subtitle1" fontWeight={800} sx={{ color: kv.color, fontSize: '1rem' }}>{kv.value}</Typography>
+                      </Paper>
+                    ))}
+                  </Stack>
+
+                  {/* Donut: income vs expense */}
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Структура (доходы vs расходы)</Typography>
+                    <Box sx={{ height: 200 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: 'Поступления', value: totalIncome },
+                              { name: 'Расходы', value: totalExpense },
+                            ]}
+                            cx="50%" cy="50%"
+                            innerRadius={55} outerRadius={85}
+                            dataKey="value"
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            labelLine={false}
+                          >
+                            <Cell fill={INCOME_COLOR} />
+                            <Cell fill="#ef4444" />
+                          </Pie>
+                          <ReTooltip formatter={(v: number) => fmtRub(v)} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </Box>
+                  </Box>
+
+                  <Divider />
+
+                  {/* Bar chart: income by article */}
+                  {incomeRows.length > 0 && (
+                    <Box>
+                      <Typography variant="subtitle2" fontWeight={700} color="success.main" sx={{ mb: 1 }}>
+                        Поступления по статьям
+                      </Typography>
+                      <Box sx={{ height: Math.max(120, incomeRows.length * 36) }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={incomeRows} layout="vertical" margin={{ left: 8, right: 60, top: 0, bottom: 0 }}
+                            onClick={(e) => { if (e?.activePayload?.[0]?.payload) setDrillArticle({ name: e.activePayload[0].payload.name, direction: 'income' }); }}
+                          >
+                            <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                            <XAxis type="number" hide />
+                            <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12 }} />
+                            <ReTooltip content={<ChartTooltip />} />
+                            <Bar dataKey="amount" radius={[0, 4, 4, 0]} cursor="pointer"
+                              label={{ position: 'right', formatter: (v: number) => fmtRub(v), fontSize: 11, fill: '#22c55e' }}>
+                              {incomeRows.map((_, i) => <Cell key={i} fill={INCOME_COLOR} fillOpacity={1 - i * 0.08} />)}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Bar chart: expense by article */}
+                  {expenseRows.length > 0 && (
+                    <Box>
+                      <Typography variant="subtitle2" fontWeight={700} color="error.main" sx={{ mb: 1 }}>
+                        Расходы по статьям
+                      </Typography>
+                      <Box sx={{ height: Math.max(120, expenseRows.length * 36) }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={expenseRows} layout="vertical" margin={{ left: 8, right: 60, top: 0, bottom: 0 }}
+                            onClick={(e) => { if (e?.activePayload?.[0]?.payload) setDrillArticle({ name: e.activePayload[0].payload.name, direction: 'expense' }); }}
+                          >
+                            <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                            <XAxis type="number" hide />
+                            <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12 }} />
+                            <ReTooltip content={<ChartTooltip />} />
+                            <Bar dataKey="amount" radius={[0, 4, 4, 0]} cursor="pointer"
+                              label={{ position: 'right', formatter: (v: number) => fmtRub(v), fontSize: 11, fill: '#ef4444' }}>
+                              {expenseRows.map((_, i) => <Cell key={i} fill={EXPENSE_COLORS[i % EXPENSE_COLORS.length]} />)}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Box>
+                  )}
+                </Stack>
+              )}
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* Bottom row: cashflow + recent transactions */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>

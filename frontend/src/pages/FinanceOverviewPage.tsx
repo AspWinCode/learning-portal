@@ -121,6 +121,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const theme = useTheme();
   const location = useLocation();
   const isJournalMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isJournalCompact = useMediaQuery(theme.breakpoints.down('lg')); // md–lg: скрываем второстепенные колонки
   const isPwaJournal = useMemo(() => {
     const hasPwaQuery = new URLSearchParams(location.search).get('pwa') === '1';
     const hasPwaSession = typeof window !== 'undefined' && sessionStorage.getItem('pwa_mode') === '1';
@@ -1645,7 +1646,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             const accountLabel = row.transfer_group_id
               ? `${row.account_name || row.account_code || '?'} → ${row.to_account_name || row.to_account_code || '?'}`
               : (row.account_name || row.account_code || '—');
-            const amountColor = row.direction === 'expense' ? 'error.main' : 'success.main';
+            const amountColor = row.direction === 'expense' ? 'error.main' : row.direction === 'transfer' ? 'text.secondary' : 'success.main';
 
             return (
               <Paper key={row.id} variant="outlined" sx={{ p: isPwaJournal ? 1 : 1.5, borderRadius: 1 }}>
@@ -1794,7 +1795,7 @@ const FinanceOverviewPageContent: React.FC = () => {
       {!isJournalMobile && (
       <Paper variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
         <TableContainer sx={{ overflowX: 'auto' }}>
-        <Table size="small" sx={{ minWidth: 1650 }}>
+        <Table size="small" sx={{ minWidth: isJournalCompact ? 900 : 1300 }}>
           <TableHead>
             <TableRow>
               <TableCell padding="checkbox">
@@ -1815,10 +1816,10 @@ const FinanceOverviewPageContent: React.FC = () => {
                 </TableSortLabel>
               </TableCell>
               <TableCell>Счет</TableCell>
-              <TableCell>Проект</TableCell>
-              <TableCell>Статья</TableCell>
+              <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Проект</TableCell>
+              <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Статья</TableCell>
               <TableCell>Тип</TableCell>
-              <TableCell>Статус</TableCell>
+              <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Статус</TableCell>
               <TableCell align="right" sortDirection={journalSort.field === 'amount' ? journalSort.dir : false}>
                 <TableSortLabel
                   active={journalSort.field === 'amount'}
@@ -1828,8 +1829,8 @@ const FinanceOverviewPageContent: React.FC = () => {
                   Сумма
                 </TableSortLabel>
               </TableCell>
-              <TableCell>Контрагент</TableCell>
-              <TableCell>Описание</TableCell>
+              <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Контрагент</TableCell>
+              <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Описание</TableCell>
               <TableCell />
             </TableRow>
           </TableHead>
@@ -1842,13 +1843,39 @@ const FinanceOverviewPageContent: React.FC = () => {
                 <TableCell padding="checkbox">
                   <Checkbox size="small" checked={selectedRowIds.has(row.id)} onChange={() => toggleRowSelected(row.id)} />
                 </TableCell>
-                <TableCell>{row.occurred_at ? new Date(row.occurred_at).toLocaleString('ru-RU') : '—'}</TableCell>
-                <TableCell>
-                  {row.transfer_group_id
-                    ? `${row.account_name || row.account_code || '?'} → ${row.to_account_name || row.to_account_code || '?'}`
-                    : (row.account_name || row.account_code || '—')}
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                  {row.occurred_at ? new Date(row.occurred_at).toLocaleString('ru-RU', isJournalCompact ? { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' } : undefined) : '—'}
                 </TableCell>
                 <TableCell>
+                  <Box>
+                    <Typography variant="body2">
+                      {row.transfer_group_id
+                        ? `${row.account_name || row.account_code || '?'} → ${row.to_account_name || row.to_account_code || '?'}`
+                        : (row.account_name || row.account_code || '—')}
+                    </Typography>
+                    {isJournalCompact && (
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.25 }}>
+                        {row.target_name && <Typography variant="caption" color="text.secondary">{row.target_name}</Typography>}
+                        {row.target_name && row.article_name && <Typography variant="caption" color="text.disabled">·</Typography>}
+                        {row.article_name && <Typography variant="caption" color="text.secondary">{row.article_name}</Typography>}
+                        {matchStatusChip(row)}
+                        {needsAssignment(row) && (
+                          <Tooltip title="Зачислить платёж ученику">
+                            <IconButton size="small" color="warning" sx={{ p: 0 }} onClick={() => openAssignDialog(row)}>
+                              <PersonAddAlt sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Stack>
+                    )}
+                    {isJournalCompact && (row.counterparty_name || row.description || (row.bank_source && row.bank_source !== 'manual')) && (
+                      <Typography variant="caption" color="text.disabled" noWrap sx={{ display: 'block', maxWidth: 220 }}>
+                        {row.counterparty_name || row.description || row.bank_source}
+                      </Typography>
+                    )}
+                  </Box>
+                </TableCell>
+                <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>
                   <FormControl size="small" sx={{ minWidth: 170 }}>
                     <Select
                       value={row.target_id ?? ''}
@@ -1869,7 +1896,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                     </Select>
                   </FormControl>
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>
                   {row.direction === 'transfer' ? (
                     row.article_name || '—'
                   ) : (
@@ -1890,7 +1917,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                   )}
                 </TableCell>
                 <TableCell>{directionLabel(row.direction)}</TableCell>
-                <TableCell>
+                <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     {matchStatusChip(row)}
                     {needsAssignment(row) && (
@@ -1902,11 +1929,11 @@ const FinanceOverviewPageContent: React.FC = () => {
                     )}
                   </Stack>
                 </TableCell>
-                <TableCell align="right" sx={{ color: row.direction === 'expense' ? 'error.main' : 'success.main' }}>
+                <TableCell align="right" sx={{ color: row.direction === 'expense' ? 'error.main' : row.direction === 'transfer' ? 'text.secondary' : 'success.main' }}>
                   {money(row.amount)}
                 </TableCell>
-                <TableCell>{renderCounterparty(row)}</TableCell>
-                <TableCell>{row.description || row.bank_source || '—'}</TableCell>
+                <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>{renderCounterparty(row)}</TableCell>
+                <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>{row.description || row.bank_source || '—'}</TableCell>
                 <TableCell align="right">
                   <Tooltip title="Редактировать операцию">
                     <IconButton

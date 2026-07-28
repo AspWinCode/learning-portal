@@ -45,6 +45,7 @@ import {
   Delete,
   Edit,
   PersonAddAlt,
+  PersonOff,
   Refresh,
   Save,
   Sync,
@@ -779,6 +780,13 @@ const FinanceOverviewPageContent: React.FC = () => {
     setAssignOptions([]);
     setAssignSelected(null);
     setAssignDialogOpen(true);
+  };
+
+  const handleIgnoreAssignment = async (row: FinanceLedgerBankRow) => {
+    try {
+      const updated = await financeApi.ignoreTransactionAssignment(row.id);
+      setJournalRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    } catch { /* silent */ }
   };
 
   useEffect(() => {
@@ -1690,9 +1698,16 @@ const FinanceOverviewPageContent: React.FC = () => {
                     <Chip size="small" label={row.article_name || 'Статья не выбрана'} variant={row.article_id ? 'filled' : 'outlined'} />
                     {matchStatusChip(row)}
                     {needsAssignment(row) && (
-                      <Button size="small" startIcon={<PersonAddAlt fontSize="small" />} onClick={() => openAssignDialog(row)}>
-                        Зачислить
-                      </Button>
+                      <>
+                        <Button size="small" startIcon={<PersonAddAlt fontSize="small" />} onClick={() => openAssignDialog(row)}>
+                          Зачислить
+                        </Button>
+                        <Tooltip title="Зачисление не требуется">
+                          <IconButton size="small" color="default" onClick={() => handleIgnoreAssignment(row)}>
+                            <PersonOff fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </>
                     )}
                   </Stack>
                   )}
@@ -1860,11 +1875,18 @@ const FinanceOverviewPageContent: React.FC = () => {
                         {row.article_name && <Typography variant="caption" color="text.secondary">{row.article_name}</Typography>}
                         {matchStatusChip(row)}
                         {needsAssignment(row) && (
-                          <Tooltip title="Зачислить платёж ученику">
-                            <IconButton size="small" color="warning" sx={{ p: 0 }} onClick={() => openAssignDialog(row)}>
-                              <PersonAddAlt sx={{ fontSize: 14 }} />
-                            </IconButton>
-                          </Tooltip>
+                          <>
+                            <Tooltip title="Зачислить платёж ученику">
+                              <IconButton size="small" color="warning" sx={{ p: 0 }} onClick={() => openAssignDialog(row)}>
+                                <PersonAddAlt sx={{ fontSize: 14 }} />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Зачисление не требуется">
+                              <IconButton size="small" sx={{ p: 0 }} onClick={() => handleIgnoreAssignment(row)}>
+                                <PersonOff sx={{ fontSize: 14 }} />
+                              </IconButton>
+                            </Tooltip>
+                          </>
                         )}
                       </Stack>
                     )}
@@ -1921,11 +1943,18 @@ const FinanceOverviewPageContent: React.FC = () => {
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     {matchStatusChip(row)}
                     {needsAssignment(row) && (
+                      <>
                       <Tooltip title="Зачислить платёж ученику">
                         <IconButton size="small" color="warning" onClick={() => openAssignDialog(row)}>
                           <PersonAddAlt fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      <Tooltip title="Зачисление не требуется">
+                        <IconButton size="small" onClick={() => handleIgnoreAssignment(row)}>
+                          <PersonOff fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      </>
                     )}
                   </Stack>
                 </TableCell>

@@ -923,6 +923,10 @@ export const financeApi = {
     });
     return response.data;
   },
+  ignoreTransactionAssignment: async (transactionId: number): Promise<FinanceLedgerBankRow> => {
+    const response = await api.post(`/api/finance/transactions/${transactionId}/ignore-assignment`);
+    return response.data;
+  },
   applyTransactionToStudent: async (
     transactionId: number,
     payload: { student_id: number }
@@ -2952,6 +2956,26 @@ export const campaignsApi = {
     );
     return response.data;
   },
+
+  // Broadcasts linked to campaign
+  listCampaignBroadcasts: async (campaignId: number): Promise<Array<{
+    id: number; name: string; subject: string; status: string;
+    sent_at: string | null; total_recipients: number;
+    sent_count: number; opened_count: number; clicked_count: number;
+  }>> => {
+    const response = await api.get(`/api/campaigns/${campaignId}/broadcasts`);
+    return response.data;
+  },
+  linkBroadcastToCampaign: async (campaignId: number, broadcastId: number): Promise<void> => {
+    await api.post(`/api/campaigns/${campaignId}/broadcasts/${broadcastId}/link`);
+  },
+  unlinkBroadcastFromCampaign: async (campaignId: number, broadcastId: number): Promise<void> => {
+    await api.delete(`/api/campaigns/${campaignId}/broadcasts/${broadcastId}/link`);
+  },
+  syncBroadcastCampaignStages: async (campaignId: number, broadcastId: number): Promise<{ advanced_sent: number; advanced_opened: number }> => {
+    const response = await api.post(`/api/campaigns/${campaignId}/broadcasts/${broadcastId}/sync`);
+    return response.data;
+  },
 };
 
 export const ownerFunnelsApi = {
@@ -4205,6 +4229,7 @@ export interface EmailBroadcast {
   html_body: string;
   plain_body: string | null;
   status: 'draft' | 'sending' | 'done' | 'failed';
+  campaign_id?: number | null;
   created_by_id: number | null;
   created_by_name: string | null;
   created_at: string | null;

@@ -3024,9 +3024,17 @@ async def list_finance_transactions(
     if article_ids:
         q = q.filter(FinanceTransaction.article_id.in_(article_ids))
     if direction:
-        if direction not in {d.value for d in FinanceTransactionDirection}:  # type: ignore[attr-defined]
+        if direction == "transfer":
+            # Переводы хранятся как income/expense с transfer_group_id — фильтруем по группе
+            q = q.filter(FinanceTransaction.transfer_group_id.isnot(None))
+        elif direction in {"income", "expense"}:
+            # Доходы/расходы — исключаем строки переводов (у них тоже direction=income/expense)
+            q = q.filter(
+                FinanceTransaction.direction == FinanceTransactionDirection(direction),  # type: ignore[call-arg]
+                FinanceTransaction.transfer_group_id.is_(None),
+            )
+        else:
             raise HTTPException(status_code=400, detail="Некорректное значение direction")
-        q = q.filter(FinanceTransaction.direction == FinanceTransactionDirection(direction))  # type: ignore[call-arg]
     if status:
         allowed = {s.value for s in FinanceTransactionStatus}  # type: ignore[attr-defined]
         invalid = [s for s in status if s not in allowed]
@@ -3037,9 +3045,10 @@ async def list_finance_transactions(
             )
         q = q.filter(FinanceTransaction.status.in_(status))
     if unclassified_only:
+        # Переводы никогда не требуют статьи — исключаем их из «неразобранных»
         q = q.filter(
-            (FinanceTransaction.target_id.is_(None))
-            | (FinanceTransaction.article_id.is_(None))
+            FinanceTransaction.transfer_group_id.is_(None),
+            (FinanceTransaction.target_id.is_(None)) | (FinanceTransaction.article_id.is_(None)),
         )
     if date_from is not None:
         q = q.filter(FinanceTransaction.occurred_at >= datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc))
@@ -3063,7 +3072,7 @@ async def list_finance_transactions(
                 id=tx.id,
                 occurred_at=tx.occurred_at,
                 amount=float(tx.amount or 0.0),
-                direction=str(getattr(tx.direction, "value", tx.direction)),
+                direction="transfer" if tx.transfer_group_id else str(getattr(tx.direction, "value", tx.direction)),
                 status=str(getattr(tx.status, "value", tx.status)),
                 account_id=tx.account_id,
                 account_code=getattr(account, "code", None),
@@ -3348,6 +3357,73 @@ async def apply_finance_transaction_to_student(
         bank_transaction_status=(
             BankTransactionStatus.APPLIED.value if tx.bank_source and tx.bank_operation_id else None
         ),
+    )
+
+
+@router.post("/transactions/{transaction_id}/ignore-assignment", response_model=FinanceLedgerBankRow)
+async def ignore_finance_transaction_assignment(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceLedgerBankRow:
+    """Пометить транзакцию как 'зачисление не требуется' (ignored)."""
+    _require_finance_access(current_user)
+
+    tx = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.account),
+            joinedload(FinanceTransaction.to_account),
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(FinanceTransaction.id == transaction_id)
+        .first()
+    )
+    if not tx:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+
+    if tx.bank_source and tx.bank_operation_id:
+        bank_tx = (
+            db.query(BankTransaction)
+            .filter(BankTransaction.operation_id == tx.bank_operation_id)
+            .first()
+        )
+        if bank_tx is not None:
+            bank_tx.status = BankTransactionStatus.IGNORED.value
+    db.commit()
+    db.refresh(tx)
+
+    account_obj = getattr(tx, "account", None)
+    to_account_obj = getattr(tx, "to_account", None)
+    target_obj = getattr(tx, "target", None)
+    article_obj = getattr(tx, "article", None)
+
+    return FinanceLedgerBankRow(
+        id=tx.id,
+        occurred_at=tx.occurred_at,
+        amount=float(tx.amount or 0.0),
+        direction=str(getattr(tx.direction, "value", tx.direction)),
+        status=str(getattr(tx.status, "value", tx.status)),
+        account_id=tx.account_id,
+        account_code=getattr(account_obj, "code", None),
+        account_name=getattr(account_obj, "name", None),
+        to_account_id=tx.to_account_id,
+        to_account_code=getattr(to_account_obj, "code", None),
+        to_account_name=getattr(to_account_obj, "name", None),
+        transfer_group_id=tx.transfer_group_id,
+        counterparty_name=tx.counterparty_name,
+        counterparty_phone=tx.counterparty_phone,
+        bank_source=tx.bank_source,
+        bank_operation_id=tx.bank_operation_id,
+        target_id=tx.target_id,
+        target_code=getattr(target_obj, "code", None),
+        target_name=getattr(target_obj, "name", None),
+        article_id=tx.article_id,
+        article_name=getattr(article_obj, "name", None),
+        student_id=tx.student_id,
+        student_name=None,
+        bank_transaction_status=BankTransactionStatus.IGNORED.value,
     )
 
 

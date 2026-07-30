@@ -5,6 +5,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  createTheme,
   Dialog,
   DialogActions,
   DialogContent,
@@ -22,6 +23,7 @@ import {
   Tab,
   Tabs,
   TextField,
+  ThemeProvider,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -40,21 +42,70 @@ import { kodexExternalApi, KodexExternalFull, KodexExternalSummary } from '../se
 
 type KodexApiClient = typeof kodexExternalApi;
 
-// ─── Colour palette ──────────────────────────────────────────────────────────
+// ─── Brand colours ────────────────────────────────────────────────────────────
 const K = {
   void: '#05070a',
-  panel: 'rgba(10,15,18,0.90)',
-  panelBorder: 'rgba(0,255,171,0.18)',
+  surface: '#0d1117',
+  surfaceUp: '#131a21',
+  border: 'rgba(0,255,171,0.14)',
+  borderHover: 'rgba(0,201,138,0.4)',
   neon: '#00ffab',
   neonSoft: '#58ffcb',
   neonDim: '#00c98a',
   cyan: '#35c7ff',
   danger: '#ff3d54',
-  text: '#e9f3f1',
-  textDim: '#8ea3a1',
-  textFaint: '#52605f',
-  mono: '"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
+  text: '#ddeae7',
+  textDim: '#7a9490',
+  textFaint: '#3e5450',
+  mono: '"JetBrains Mono","SFMono-Regular",Consolas,monospace',
 };
+
+// ─── MUI dark theme scoped to this page ──────────────────────────────────────
+const kodexTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: { main: K.neon },
+    error: { main: K.danger },
+    background: { default: K.void, paper: K.surface },
+    text: { primary: K.text, secondary: K.textDim },
+    divider: K.border,
+  },
+  typography: { fontFamily: K.mono, fontSize: 13 },
+  shape: { borderRadius: 6 },
+  components: {
+    MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'rgba(255,255,255,0.03)',
+          '& .MuiOutlinedInput-notchedOutline': { borderColor: K.border },
+          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: K.borderHover },
+          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: K.neon, borderWidth: 1 },
+          '&.Mui-focused': { backgroundColor: 'rgba(0,255,171,0.03)' },
+        },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: { color: K.textDim, fontSize: 12, '&.Mui-focused': { color: K.neon } },
+      },
+    },
+    MuiFormHelperText: { styleOverrides: { root: { color: K.textFaint, fontSize: 11 } } },
+    MuiTab: {
+      styleOverrides: {
+        root: { fontFamily: K.mono, fontSize: 12, letterSpacing: '0.05em', textTransform: 'none', minHeight: 44 },
+      },
+    },
+    MuiButton: { styleOverrides: { root: { textTransform: 'none', fontFamily: K.mono } } },
+    MuiMenuItem: { styleOverrides: { root: { fontFamily: K.mono, fontSize: 13 } } },
+    MuiChip: { styleOverrides: { root: { fontFamily: K.mono } } },
+    MuiSwitch: {
+      styleOverrides: {
+        switchBase: { '&.Mui-checked': { color: K.neon }, '&.Mui-checked + .MuiSwitch-track': { backgroundColor: K.neonDim } },
+      },
+    },
+  },
+});
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: 'Черновик', color: K.textDim },
@@ -63,441 +114,250 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   changes_requested: { label: 'Нужны правки', color: K.danger },
 };
 
-const DIFFICULTY_LABELS = ['', 'Новичок', 'Агент', 'Эксперт'];
-
-// ─── Empty case template ─────────────────────────────────────────────────────
-const EMPTY_CASE = (): Partial<KodexExternalFull> => ({
-  slug: '',
-  num: '',
-  title: '',
-  curator: '',
-  playable: false,
-  rank: 1,
-  difficulty: 1,
-  reward_credits: 0,
-  reward_rep: 0,
-  goal: '',
-  suspects: '',
-  task: '',
-  anno: '',
-  fn_name: '',
-  starter: '',
-  briefing: [],
-  materials: [],
-  evidence: [],
-  hints: {},
-  versions: [],
-  finale: [],
-  is_seed: false,
-  is_override: false,
-  status: null,
-});
-
-// ─── Field stylings shared ───────────────────────────────────────────────────
-const fieldSx = {
-  '& .MuiOutlinedInput-root': {
-    '& fieldset': { borderColor: K.panelBorder },
-    '&:hover fieldset': { borderColor: K.neonDim },
-    '&.Mui-focused fieldset': { borderColor: K.neon },
-    color: K.text,
-  },
-  '& .MuiInputLabel-root': { color: K.textFaint },
-  '& .MuiInputLabel-root.Mui-focused': { color: K.neon },
-  '& .MuiFormHelperText-root': { color: K.textFaint },
+const DIFFICULTY: Record<number, { label: string; color: string }> = {
+  1: { label: 'Новичок', color: K.neonDim },
+  2: { label: 'Агент', color: K.cyan },
+  3: { label: 'Эксперт', color: K.danger },
 };
 
-const monoSx = { fontFamily: K.mono, fontSize: 12 };
+const EMPTY_CASE = (): Partial<KodexExternalFull> => ({
+  slug: '', num: '', title: '', curator: '', playable: false,
+  rank: 1, difficulty: 1, reward_credits: 0, reward_rep: 0,
+  goal: '', suspects: '', task: '', anno: '',
+  fn_name: '', starter: '',
+  briefing: [], materials: [], evidence: [], hints: {}, versions: [], finale: [],
+  is_seed: false, is_override: false, status: null,
+});
 
-// ─── Raw JSON editor (fallback) ──────────────────────────────────────────────
-interface JsonFieldProps {
-  label: string;
-  value: any;
-  onChange: (v: any) => void;
-  minRows?: number;
-}
+// ─── Section label ────────────────────────────────────────────────────────────
+const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Typography sx={{ fontSize: 10, letterSpacing: '0.22em', color: K.textFaint, textTransform: 'uppercase', fontFamily: K.mono, mb: 1.5, mt: 0.5 }}>
+    {children}
+  </Typography>
+);
 
-const JsonField: React.FC<JsonFieldProps> = ({ label, value, onChange, minRows = 4 }) => {
+// ─── JSON editor ──────────────────────────────────────────────────────────────
+const JsonField: React.FC<{ label: string; value: any; onChange: (v: any) => void; minRows?: number }> = ({ label, value, onChange, minRows = 4 }) => {
   const [text, setText] = useState(() => JSON.stringify(value, null, 2));
   const [err, setErr] = useState('');
   useEffect(() => { setText(JSON.stringify(value, null, 2)); }, [value]);
-  const handleBlur = () => {
-    try { setErr(''); onChange(JSON.parse(text)); }
-    catch { setErr('Некорректный JSON'); }
-  };
   return (
-    <TextField label={label} multiline minRows={minRows} maxRows={20} fullWidth
-      value={text} onChange={(e) => setText(e.target.value)} onBlur={handleBlur}
-      error={!!err} helperText={err || 'Редактируется как JSON'}
-      inputProps={{ style: monoSx }}
-      sx={{ ...fieldSx }}
+    <TextField label={label} multiline minRows={minRows} maxRows={18} fullWidth
+      value={text} onChange={(e) => setText(e.target.value)}
+      onBlur={() => { try { setErr(''); onChange(JSON.parse(text)); } catch { setErr('Некорректный JSON'); } }}
+      error={!!err} helperText={err || 'JSON'} inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }}
     />
   );
 };
 
-// ─── Move item helpers ───────────────────────────────────────────────────────
+// ─── Array helpers ────────────────────────────────────────────────────────────
 function moveItem<T>(arr: T[], from: number, to: number): T[] {
-  const a = [...arr];
-  const [item] = a.splice(from, 1);
-  a.splice(to, 0, item);
-  return a;
+  const a = [...arr]; const [item] = a.splice(from, 1); a.splice(to, 0, item); return a;
 }
 
-// ─── Finale editor ──────────────────────────────────────────────────────────
-// Structure: Array<{ curator: string; text: string } | { curator: string; body: any[]; expect?: string }>
-interface FinaleEditorProps {
-  items: any[];
-  onChange: (v: any[]) => void;
-}
+interface SortControlsProps { i: number; len: number; onUp: () => void; onDown: () => void; onRemove: () => void }
+const SortControls: React.FC<SortControlsProps> = ({ i, len, onUp, onDown, onRemove }) => (
+  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, flexShrink: 0 }}>
+    <IconButton size="small" disabled={i === 0} onClick={onUp} sx={{ color: K.textFaint, '&:not(:disabled):hover': { color: K.neon }, p: 0.5 }}>
+      <ArrowUpIcon sx={{ fontSize: 16 }} />
+    </IconButton>
+    <IconButton size="small" disabled={i === len - 1} onClick={onDown} sx={{ color: K.textFaint, '&:not(:disabled):hover': { color: K.neon }, p: 0.5 }}>
+      <ArrowDownIcon sx={{ fontSize: 16 }} />
+    </IconButton>
+    <IconButton size="small" onClick={onRemove} sx={{ color: K.danger, p: 0.5 }}>
+      <DeleteIcon sx={{ fontSize: 15 }} />
+    </IconButton>
+  </Box>
+);
 
-const FinaleEditor: React.FC<FinaleEditorProps> = ({ items, onChange }) => {
-  const add = () => onChange([...items, { curator: '', text: '' }]);
-  const remove = (i: number) => onChange(items.filter((_, j) => j !== i));
-  const upd = (i: number, field: string, val: any) =>
-    onChange(items.map((it, j) => j === i ? { ...it, [field]: val } : it));
+// ─── Body blocks editor (text + code) ────────────────────────────────────────
+const BodyBlocks: React.FC<{ blocks: any[]; onChange: (v: any[]) => void }> = ({ blocks, onChange }) => {
+  const upd = (i: number, v: any) => onChange(blocks.map((b, j) => j === i ? v : b));
+  const rem = (i: number) => onChange(blocks.filter((_, j) => j !== i));
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {blocks.map((block, i) => {
+        const isCode = typeof block === 'object' && block !== null && 'code' in block;
+        return (
+          <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+            <Box sx={{ width: 3, alignSelf: 'stretch', borderRadius: 1, bgcolor: isCode ? K.cyan : K.neonDim, flexShrink: 0 }} />
+            <TextField multiline minRows={isCode ? 3 : 1} maxRows={10} fullWidth size="small"
+              label={isCode ? 'Код' : 'Текст'}
+              value={isCode ? block.code : block}
+              onChange={(e) => upd(i, isCode ? { code: e.target.value } : e.target.value)}
+              inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }}
+            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+              <Tooltip title={isCode ? 'Преобразовать в текст' : 'Преобразовать в код'} placement="left">
+                <IconButton size="small" onClick={() => upd(i, isCode ? (block.code || '') : { code: String(block) })}
+                  sx={{ color: isCode ? K.cyan : K.neonDim, width: 28, height: 28, fontSize: 11, fontFamily: K.mono }}>
+                  {isCode ? '</>' : 'T'}
+                </IconButton>
+              </Tooltip>
+              <SortControls i={i} len={blocks.length} onUp={() => onChange(moveItem(blocks, i, i - 1))} onDown={() => onChange(moveItem(blocks, i, i + 1))} onRemove={() => rem(i)} />
+            </Box>
+          </Box>
+        );
+      })}
+      <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+        <Button size="small" onClick={() => onChange([...blocks, ''])} startIcon={<AddIcon sx={{ fontSize: 13 }} />}
+          sx={{ color: K.neonDim, fontSize: 11, px: 1.5 }}>Текст</Button>
+        <Button size="small" onClick={() => onChange([...blocks, { code: '' }])} startIcon={<AddIcon sx={{ fontSize: 13 }} />}
+          sx={{ color: K.cyan, fontSize: 11, px: 1.5 }}>Код</Button>
+      </Box>
+    </Box>
+  );
+};
 
+// ─── Briefing editor ──────────────────────────────────────────────────────────
+const BriefingEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> = ({ items, onChange }) => {
+  const [open, setOpen] = useState<number | null>(0);
+  const upd = (i: number, f: string, v: any) => onChange(items.map((it, j) => j === i ? { ...it, [f]: v } : it));
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim, flex: 1 }}>
-          Финальный диалог — показывается после решения дела
-        </Typography>
-        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={add}
-          sx={{ color: K.neon, fontFamily: K.mono, fontSize: 11, letterSpacing: '0.05em' }}>
-          Добавить реплику
-        </Button>
+        <SectionLabel>Брифинг</SectionLabel>
+        <Box sx={{ flex: 1 }} />
+        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />}
+          onClick={() => { const next = [...items, { curator: '', body: [''], expect: '' }]; onChange(next); setOpen(next.length - 1); }}
+          sx={{ color: K.neon, fontSize: 11, px: 1.5 }}>Добавить блок</Button>
       </Box>
-
-      {items.length === 0 && (
-        <Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic', py: 1 }}>
-          Финал пуст — нажмите «Добавить реплику»
-        </Typography>
-      )}
-
-      {items.map((entry, i) => (
-        <Paper key={i} sx={{ p: 2, mb: 1.5, bgcolor: 'rgba(0,0,0,0.25)', border: `1px solid ${K.panelBorder}`, borderRadius: 1.5 }}>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-            <TextField
-              label="Спикер"
-              value={entry.curator ?? entry.speaker ?? ''}
-              onChange={(e) => upd(i, entry.curator !== undefined ? 'curator' : 'speaker', e.target.value)}
-              size="small"
-              sx={{ width: 150, ...fieldSx, '& input': monoSx }}
-              placeholder="viktor"
-            />
-            <TextField
-              label="Текст реплики"
-              value={entry.text ?? ''}
-              onChange={(e) => upd(i, 'text', e.target.value)}
-              multiline minRows={2} maxRows={6}
-              size="small" sx={{ flex: 1, ...fieldSx }}
-              inputProps={{ style: monoSx }}
-            />
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <IconButton size="small" disabled={i === 0} onClick={() => onChange(moveItem(items, i, i - 1))}
-                sx={{ color: K.textFaint, '&:not(:disabled):hover': { color: K.neon } }}>
-                <ArrowUpIcon fontSize="small" />
-              </IconButton>
-              <IconButton size="small" disabled={i === items.length - 1} onClick={() => onChange(moveItem(items, i, i + 1))}
-                sx={{ color: K.textFaint, '&:not(:disabled):hover': { color: K.neon } }}>
-                <ArrowDownIcon fontSize="small" />
-              </IconButton>
-              <IconButton size="small" onClick={() => remove(i)} sx={{ color: K.danger }}>
-                <DeleteIcon sx={{ fontSize: 16 }} />
-              </IconButton>
+      {items.length === 0 && <Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic', py: 1 }}>Брифинг пуст</Typography>}
+      {items.map((entry, i) => {
+        const isOpen = open === i;
+        const body: any[] = Array.isArray(entry.body) ? entry.body : [''];
+        return (
+          <Paper key={i} sx={{ mb: 1.5, border: `1px solid ${isOpen ? K.borderHover : K.border}`, borderRadius: 1.5, overflow: 'hidden', bgcolor: 'rgba(255,255,255,0.02)' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25, cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => setOpen(isOpen ? null : i)}>
+              <Typography sx={{ fontFamily: K.mono, fontSize: 11, color: K.neonDim, mr: 1.5, minWidth: 24 }}>#{i + 1}</Typography>
+              <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: entry.curator ? K.text : K.textFaint, flex: 1 }}>
+                {entry.curator || '— куратор не задан —'}
+              </Typography>
+              <SortControls i={i} len={items.length}
+                onUp={(e?: any) => { if (e) e.stopPropagation(); onChange(moveItem(items, i, i - 1)); }}
+                onDown={(e?: any) => { if (e) e.stopPropagation(); onChange(moveItem(items, i, i + 1)); }}
+                onRemove={() => { onChange(items.filter((_, j) => j !== i)); setOpen(null); }} />
+              {isOpen ? <ExpandLessIcon sx={{ color: K.textFaint, fontSize: 18, ml: 0.5 }} /> : <ExpandMoreIcon sx={{ color: K.textFaint, fontSize: 18, ml: 0.5 }} />}
             </Box>
-          </Box>
-        </Paper>
+            {isOpen && (
+              <Box sx={{ px: 2, pb: 2, pt: 0.5, borderTop: `1px solid ${K.border}` }}>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2, mt: 1.5 }}>
+                  <TextField label="Куратор / спикер" value={entry.curator ?? ''} onChange={(e) => upd(i, 'curator', e.target.value)}
+                    size="small" sx={{ width: 180 }} placeholder="viktor" />
+                  {entry.expect !== undefined && (
+                    <TextField label="Ожидаемый вывод (expect)" value={entry.expect ?? ''} onChange={(e) => upd(i, 'expect', e.target.value)}
+                      size="small" sx={{ flex: 1 }} inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }} />
+                  )}
+                  <Button size="small" onClick={() => upd(i, 'expect', entry.expect !== undefined ? undefined : '')}
+                    sx={{ color: K.textFaint, fontSize: 10, whiteSpace: 'nowrap', px: 1 }}>
+                    {entry.expect !== undefined ? '− expect' : '+ expect'}
+                  </Button>
+                </Box>
+                <Typography sx={{ fontSize: 10, color: K.textFaint, letterSpacing: '0.15em', mb: 1 }}>СОДЕРЖИМОЕ</Typography>
+                <BodyBlocks blocks={body} onChange={(v) => upd(i, 'body', v)} />
+              </Box>
+            )}
+          </Paper>
+        );
+      })}
+    </Box>
+  );
+};
+
+// ─── Finale editor ────────────────────────────────────────────────────────────
+const FinaleEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> = ({ items, onChange }) => {
+  const upd = (i: number, f: string, v: any) => onChange(items.map((it, j) => j === i ? { ...it, [f]: v } : it));
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <SectionLabel>Финальный диалог</SectionLabel>
+        <Box sx={{ flex: 1 }} />
+        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />}
+          onClick={() => onChange([...items, { curator: '', text: '' }])}
+          sx={{ color: K.neon, fontSize: 11, px: 1.5 }}>Добавить реплику</Button>
+      </Box>
+      {items.length === 0 && <Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic', py: 1 }}>Финал пуст</Typography>}
+      {items.map((entry, i) => (
+        <Box key={i} sx={{ display: 'flex', gap: 1.5, mb: 1.5, alignItems: 'flex-start' }}>
+          <TextField label="Спикер" value={entry.curator ?? entry.speaker ?? ''}
+            onChange={(e) => upd(i, 'curator' in entry ? 'curator' : 'speaker', e.target.value)}
+            size="small" sx={{ width: 150, flexShrink: 0 }} placeholder="viktor"
+            inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }}
+          />
+          <TextField label="Текст реплики" value={entry.text ?? ''} onChange={(e) => upd(i, 'text', e.target.value)}
+            multiline minRows={2} maxRows={5} size="small" sx={{ flex: 1 }}
+          />
+          <SortControls i={i} len={items.length}
+            onUp={() => onChange(moveItem(items, i, i - 1))}
+            onDown={() => onChange(moveItem(items, i, i + 1))}
+            onRemove={() => onChange(items.filter((_, j) => j !== i))} />
+        </Box>
       ))}
     </Box>
   );
 };
 
-// ─── Body block editor ───────────────────────────────────────────────────────
-// body = Array<string | { code: string }>
-// We render each block as a card with a type toggle (text / code)
-interface BodyBlocksProps {
-  blocks: any[];
-  onChange: (v: any[]) => void;
-}
-
-const BodyBlocks: React.FC<BodyBlocksProps> = ({ blocks, onChange }) => {
-  const addText = () => onChange([...blocks, '']);
-  const addCode = () => onChange([...blocks, { code: '' }]);
-  const remove = (i: number) => onChange(blocks.filter((_, j) => j !== i));
-  const upd = (i: number, val: any) => onChange(blocks.map((b, j) => j === i ? val : b));
-
-  return (
-    <Box>
-      {blocks.map((block, i) => {
-        const isCode = typeof block === 'object' && block !== null && 'code' in block;
-        return (
-          <Box key={i} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'flex-start' }}>
-            <Box sx={{
-              width: 4, alignSelf: 'stretch', borderRadius: 1, flexShrink: 0,
-              bgcolor: isCode ? K.cyan : K.neonDim,
-            }} />
-            <TextField
-              multiline minRows={isCode ? 3 : 2} maxRows={10}
-              fullWidth size="small"
-              label={isCode ? 'Код' : 'Текст'}
-              value={isCode ? block.code : block}
-              onChange={(e) => upd(i, isCode ? { code: e.target.value } : e.target.value)}
-              inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }}
-              sx={fieldSx}
-            />
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Tooltip title={isCode ? 'Сделать текстом' : 'Сделать кодом'}>
-                <IconButton size="small" onClick={() => upd(i, isCode ? (block.code || '') : { code: typeof block === 'string' ? block : '' })}
-                  sx={{ color: isCode ? K.cyan : K.neonDim, fontSize: 11, fontFamily: K.mono, width: 28, height: 28 }}>
-                  {isCode ? '<>' : 'T'}
-                </IconButton>
-              </Tooltip>
-              <IconButton size="small" disabled={i === 0} onClick={() => onChange(moveItem(blocks, i, i - 1))}
-                sx={{ color: K.textFaint }}>
-                <ArrowUpIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton size="small" disabled={i === blocks.length - 1} onClick={() => onChange(moveItem(blocks, i, i + 1))}
-                sx={{ color: K.textFaint }}>
-                <ArrowDownIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton size="small" onClick={() => remove(i)} sx={{ color: K.danger }}>
-                <DeleteIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-            </Box>
-          </Box>
-        );
-      })}
-      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />} onClick={addText}
-          sx={{ color: K.neonDim, fontFamily: K.mono, fontSize: 11 }}>
-          + Текст
-        </Button>
-        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />} onClick={addCode}
-          sx={{ color: K.cyan, fontFamily: K.mono, fontSize: 11 }}>
-          + Код
-        </Button>
-      </Box>
-    </Box>
-  );
-};
-
-// ─── Briefing editor ─────────────────────────────────────────────────────────
-// Structure: Array<{ curator: string; body: (string | { code: string })[]; expect?: string }>
-interface BriefingEditorProps {
-  items: any[];
-  onChange: (v: any[]) => void;
-}
-
-const BriefingEditor: React.FC<BriefingEditorProps> = ({ items, onChange }) => {
-  const [expanded, setExpanded] = useState<number | null>(0);
-  const add = () => {
-    const next = [...items, { curator: '', body: [''], expect: '' }];
-    onChange(next);
-    setExpanded(next.length - 1);
-  };
-  const remove = (i: number) => {
-    onChange(items.filter((_, j) => j !== i));
-    setExpanded(null);
-  };
-  const upd = (i: number, field: string, val: any) =>
-    onChange(items.map((it, j) => j === i ? { ...it, [field]: val } : it));
-
+// ─── Evidence editor ──────────────────────────────────────────────────────────
+const EvidenceEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> = ({ items, onChange }) => {
+  const [open, setOpen] = useState<number | null>(null);
+  const upd = (i: number, f: string, v: any) => onChange(items.map((it, j) => j === i ? { ...it, [f]: v } : it));
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim, flex: 1 }}>
-          Брифинг — диалог куратора до начала задания
-        </Typography>
-        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={add}
-          sx={{ color: K.neon, fontFamily: K.mono, fontSize: 11 }}>
-          Добавить блок
-        </Button>
+        <SectionLabel>Улики — задачи на программирование</SectionLabel>
+        <Box sx={{ flex: 1 }} />
+        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />}
+          onClick={() => { const next = [...items, { id: String(items.length + 1), title: '', fnName: '', starter: '', tests: [] }]; onChange(next); setOpen(next.length - 1); }}
+          sx={{ color: K.neon, fontSize: 11, px: 1.5 }}>Добавить улику</Button>
       </Box>
-
-      {items.length === 0 && (
-        <Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic', py: 1 }}>
-          Брифинг пуст — нажмите «Добавить блок»
-        </Typography>
-      )}
-
-      {items.map((entry, i) => {
-        const isOpen = expanded === i;
-        const curator = entry.curator ?? '';
-        const body: any[] = Array.isArray(entry.body) ? entry.body : (entry.body ? [entry.body] : ['']);
-        return (
-          <Paper key={i} sx={{ mb: 1.5, bgcolor: 'rgba(0,0,0,0.25)', border: `1px solid ${K.panelBorder}`, borderRadius: 1.5, overflow: 'hidden' }}>
-            {/* Header row */}
-            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1, gap: 1,
-              bgcolor: isOpen ? 'rgba(0,255,171,0.05)' : 'transparent', cursor: 'pointer' }}
-              onClick={() => setExpanded(isOpen ? null : i)}
-            >
-              <Typography sx={{ fontFamily: K.mono, fontSize: 11, color: K.neonDim, minWidth: 20 }}>
-                #{i + 1}
-              </Typography>
-              <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: curator ? K.text : K.textFaint, flex: 1 }}>
-                {curator || '(нет спикера)'}
-              </Typography>
-              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onChange(moveItem(items, i, i - 1)); }} disabled={i === 0}
-                sx={{ color: K.textFaint }}>
-                <ArrowUpIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onChange(moveItem(items, i, i + 1)); }} disabled={i === items.length - 1}
-                sx={{ color: K.textFaint }}>
-                <ArrowDownIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton size="small" onClick={(e) => { e.stopPropagation(); remove(i); }} sx={{ color: K.danger }}>
-                <DeleteIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              {isOpen ? <ExpandLessIcon sx={{ color: K.textFaint, fontSize: 18 }} /> : <ExpandMoreIcon sx={{ color: K.textFaint, fontSize: 18 }} />}
-            </Box>
-
-            {/* Expanded content */}
-            {isOpen && (
-              <Box sx={{ px: 2, pb: 2, pt: 1, borderTop: `1px solid ${K.panelBorder}` }}>
-                <TextField
-                  label="Куратор / спикер"
-                  value={curator}
-                  onChange={(e) => upd(i, 'curator', e.target.value)}
-                  size="small" fullWidth sx={{ mb: 2, ...fieldSx, '& input': monoSx }}
-                  placeholder="viktor"
-                />
-                <Typography sx={{ fontFamily: K.mono, fontSize: 11, color: K.textFaint, mb: 1 }}>
-                  Содержимое блока (блоки текста и кода)
-                </Typography>
-                <BodyBlocks blocks={body} onChange={(v) => upd(i, 'body', v)} />
-                {('expect' in entry) && (
-                  <TextField
-                    label="Ожидаемый вывод (expect)"
-                    value={entry.expect ?? ''}
-                    onChange={(e) => upd(i, 'expect', e.target.value)}
-                    size="small" fullWidth sx={{ mt: 2, ...fieldSx, '& input': monoSx }}
-                    inputProps={{ style: monoSx }}
-                  />
-                )}
-                <Button size="small" onClick={() => upd(i, 'expect', entry.expect !== undefined ? undefined : '')}
-                  sx={{ mt: 1, color: K.textFaint, fontFamily: K.mono, fontSize: 10 }}>
-                  {entry.expect !== undefined ? '− убрать expect' : '+ добавить expect'}
-                </Button>
-              </Box>
-            )}
-          </Paper>
-        );
-      })}
-    </Box>
-  );
-};
-
-// ─── Evidence (улики) editor ──────────────────────────────────────────────────
-// Structure: Array<{ id: string; title: string; fnName?: string; starter?: string; tests?: any[]; body?: any[]; ... }>
-interface EvidenceEditorProps {
-  items: any[];
-  onChange: (v: any[]) => void;
-}
-
-const EvidenceEditor: React.FC<EvidenceEditorProps> = ({ items, onChange }) => {
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const add = () => {
-    const next = [...items, { id: String(items.length + 1), title: '', fnName: '', starter: '', tests: [] }];
-    onChange(next);
-    setExpanded(next.length - 1);
-  };
-  const remove = (i: number) => { onChange(items.filter((_, j) => j !== i)); setExpanded(null); };
-  const upd = (i: number, field: string, val: any) =>
-    onChange(items.map((it, j) => j === i ? { ...it, [field]: val } : it));
-
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim, flex: 1 }}>
-          Улики — задачи на программирование внутри дела
-        </Typography>
-        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={add}
-          sx={{ color: K.neon, fontFamily: K.mono, fontSize: 11 }}>
-          Добавить улику
-        </Button>
-      </Box>
-
-      {items.length === 0 && (
-        <Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic', py: 1 }}>
-          Улики отсутствуют
-        </Typography>
-      )}
-
+      {items.length === 0 && <Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic', py: 1 }}>Улики отсутствуют</Typography>}
       {items.map((item, i) => {
-        const isOpen = expanded === i;
+        const isOpen = open === i;
         return (
-          <Paper key={i} sx={{ mb: 1.5, bgcolor: 'rgba(0,0,0,0.25)', border: `1px solid ${K.panelBorder}`, borderRadius: 1.5, overflow: 'hidden' }}>
-            {/* Header */}
-            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1, gap: 1,
-              bgcolor: isOpen ? 'rgba(0,255,171,0.05)' : 'transparent', cursor: 'pointer' }}
-              onClick={() => setExpanded(isOpen ? null : i)}
-            >
-              <Box sx={{ bgcolor: K.neonDim, color: '#04140f', borderRadius: 0.5, px: 0.75, py: 0.25, fontFamily: K.mono, fontSize: 10, fontWeight: 700 }}>
+          <Paper key={i} sx={{ mb: 1.5, border: `1px solid ${isOpen ? K.borderHover : K.border}`, borderRadius: 1.5, overflow: 'hidden', bgcolor: 'rgba(255,255,255,0.02)' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25, cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => setOpen(isOpen ? null : i)}>
+              <Box sx={{ fontFamily: K.mono, fontSize: 10, fontWeight: 700, color: '#04140f', bgcolor: K.neonDim, borderRadius: 0.75, px: 0.75, py: 0.25, mr: 1.5, flexShrink: 0 }}>
                 #{item.id || i + 1}
               </Box>
               <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: item.title ? K.text : K.textFaint, flex: 1 }}>
-                {item.title || '(без названия)'}
+                {item.title || '— без названия —'}
               </Typography>
               {item.fnName && (
-                <Typography sx={{ fontFamily: K.mono, fontSize: 10, color: K.cyan }}>
-                  {item.fnName}()
-                </Typography>
+                <Typography sx={{ fontFamily: K.mono, fontSize: 11, color: K.cyan, mr: 1 }}>{item.fnName}()</Typography>
               )}
-              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onChange(moveItem(items, i, i - 1)); }} disabled={i === 0}
-                sx={{ color: K.textFaint }}>
-                <ArrowUpIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onChange(moveItem(items, i, i + 1)); }} disabled={i === items.length - 1}
-                sx={{ color: K.textFaint }}>
-                <ArrowDownIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton size="small" onClick={(e) => { e.stopPropagation(); remove(i); }} sx={{ color: K.danger }}>
-                <DeleteIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              {isOpen ? <ExpandLessIcon sx={{ color: K.textFaint, fontSize: 18 }} /> : <ExpandMoreIcon sx={{ color: K.textFaint, fontSize: 18 }} />}
+              <SortControls i={i} len={items.length}
+                onUp={() => onChange(moveItem(items, i, i - 1))}
+                onDown={() => onChange(moveItem(items, i, i + 1))}
+                onRemove={() => { onChange(items.filter((_, j) => j !== i)); setOpen(null); }} />
+              {isOpen ? <ExpandLessIcon sx={{ color: K.textFaint, fontSize: 18, ml: 0.5 }} /> : <ExpandMoreIcon sx={{ color: K.textFaint, fontSize: 18, ml: 0.5 }} />}
             </Box>
-
-            {/* Expanded fields */}
             {isOpen && (
-              <Box sx={{ px: 2, pb: 2, pt: 1.5, borderTop: `1px solid ${K.panelBorder}`, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ px: 2, pb: 2, pt: 1, borderTop: `1px solid ${K.border}`, display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                  <TextField label="ID улики" value={item.id ?? ''} onChange={(e) => upd(i, 'id', e.target.value)}
-                    size="small" sx={{ width: 100, ...fieldSx, '& input': monoSx }} />
-                  <TextField label="Название" value={item.title ?? ''} onChange={(e) => upd(i, 'title', e.target.value)}
-                    size="small" sx={{ flex: 1, ...fieldSx }} />
+                  <TextField label="ID" value={item.id ?? ''} onChange={(e) => upd(i, 'id', e.target.value)}
+                    size="small" sx={{ width: 80 }} inputProps={{ style: { fontFamily: K.mono } }} />
+                  <TextField label="Название улики" value={item.title ?? ''} onChange={(e) => upd(i, 'title', e.target.value)}
+                    size="small" sx={{ flex: 1 }} />
+                  <TextField label="Имя функции" value={item.fnName ?? ''} onChange={(e) => upd(i, 'fnName', e.target.value)}
+                    size="small" sx={{ width: 180 }} inputProps={{ style: { fontFamily: K.mono } }} placeholder="solve" />
                 </Box>
-
-                {/* Body (description blocks) if present */}
-                {Array.isArray(item.body) && (
+                {Array.isArray(item.body) ? (
                   <Box>
-                    <Typography sx={{ fontFamily: K.mono, fontSize: 11, color: K.textFaint, mb: 1 }}>Описание (блоки)</Typography>
+                    <Typography sx={{ fontSize: 10, color: K.textFaint, letterSpacing: '0.15em', mb: 1 }}>ОПИСАНИЕ</Typography>
                     <BodyBlocks blocks={item.body} onChange={(v) => upd(i, 'body', v)} />
                   </Box>
+                ) : typeof item.description === 'string' && (
+                  <TextField label="Описание задачи" value={item.description}
+                    onChange={(e) => upd(i, 'description', e.target.value)}
+                    multiline minRows={2} size="small" fullWidth />
                 )}
-                {/* Plain description if present */}
-                {typeof item.description === 'string' && (
-                  <TextField label="Описание" value={item.description} onChange={(e) => upd(i, 'description', e.target.value)}
-                    multiline minRows={2} size="small" fullWidth sx={fieldSx} inputProps={{ style: monoSx }} />
-                )}
-
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <TextField label="Имя функции (fnName)" value={item.fnName ?? ''} onChange={(e) => upd(i, 'fnName', e.target.value)}
-                    size="small" sx={{ flex: 1, ...fieldSx, '& input': monoSx }} placeholder="solve" />
-                </Box>
-
                 <TextField label="Стартовый код" value={item.starter ?? ''} onChange={(e) => upd(i, 'starter', e.target.value)}
-                  multiline minRows={3} maxRows={10} size="small" fullWidth sx={fieldSx}
+                  multiline minRows={3} maxRows={10} size="small" fullWidth
                   inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }}
-                  helperText="Шаблон кода, который видит студент" />
-
-                <JsonField label="Тесты (JSON)" value={item.tests ?? []}
-                  onChange={(v) => upd(i, 'tests', v)} minRows={3} />
-
-                {/* Hints per evidence if present */}
-                {item.hints !== undefined && (
-                  <JsonField label="Подсказки (JSON)" value={item.hints}
-                    onChange={(v) => upd(i, 'hints', v)} minRows={2} />
-                )}
+                  helperText="Шаблон, который видит студент" />
+                <JsonField label="Тесты" value={item.tests ?? []} onChange={(v) => upd(i, 'tests', v)} minRows={3} />
               </Box>
             )}
           </Paper>
@@ -507,49 +367,39 @@ const EvidenceEditor: React.FC<EvidenceEditorProps> = ({ items, onChange }) => {
   );
 };
 
-// ─── Case card in sidebar ─────────────────────────────────────────────────────
-interface CaseCardProps {
-  c: KodexExternalSummary;
-  selected: boolean;
-  onClick: () => void;
-}
-
-const CaseCard: React.FC<CaseCardProps> = ({ c, selected, onClick }) => {
-  const st = STATUS_LABELS[c.status ?? ''] || STATUS_LABELS.draft;
+// ─── Sidebar case card ────────────────────────────────────────────────────────
+const CaseCard: React.FC<{ c: KodexExternalSummary; selected: boolean; onClick: () => void }> = ({ c, selected, onClick }) => {
+  const diff = DIFFICULTY[c.difficulty] || DIFFICULTY[1];
   return (
     <Box onClick={onClick} sx={{
-      p: 1.5, cursor: 'pointer',
+      px: 2, py: 1.5, cursor: 'pointer',
       borderLeft: `2px solid ${selected ? K.neon : 'transparent'}`,
-      background: selected ? 'rgba(0,255,171,0.06)' : 'transparent',
+      bgcolor: selected ? 'rgba(0,255,171,0.06)' : 'transparent',
       transition: 'all 0.15s',
-      '&:hover': { background: 'rgba(0,255,171,0.04)' },
+      '&:hover': { bgcolor: selected ? 'rgba(0,255,171,0.06)' : 'rgba(255,255,255,0.03)' },
     }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
         <Typography sx={{ fontFamily: K.mono, fontSize: 11, color: K.textFaint }}>
           {c.num || c.slug}
         </Typography>
         <Box sx={{ flex: 1 }} />
-        <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: st.color, flexShrink: 0 }} />
+        {c.is_override && (
+          <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: K.cyan, mr: 0.75, flexShrink: 0 }} />
+        )}
+        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: c.playable ? K.neonDim : K.textFaint, flexShrink: 0 }} />
       </Box>
-      <Typography sx={{ fontSize: 13, color: K.text, lineHeight: 1.3, mb: 0.3 }}>
+      <Typography sx={{ fontSize: 13, color: selected ? K.neonSoft : K.text, lineHeight: 1.35, mb: 0.5, fontWeight: selected ? 600 : 400 }}>
         {c.title}
       </Typography>
-      <Box sx={{ display: 'flex', gap: 1 }}>
-        <Typography sx={{ fontSize: 11, color: K.textFaint }}>
-          {DIFFICULTY_LABELS[c.difficulty] || ''}
-        </Typography>
-        {c.playable && (
-          <Typography sx={{ fontSize: 11, color: K.neonDim }}>● активно</Typography>
-        )}
-      </Box>
+      <Typography sx={{ fontSize: 10, color: diff.color, fontFamily: K.mono }}>
+        {diff.label}
+      </Typography>
     </Box>
   );
 };
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-const SIDEBAR_WIDTH = 272;
-const TOP_BAR_H = 52;
-const SECOND_BAR_H = 44;
+const SIDEBAR_W = 268;
 
 const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = kodexExternalApi }) => {
   const [cases, setCases] = useState<KodexExternalSummary[]>([]);
@@ -558,34 +408,24 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
   const [editing, setEditing] = useState<Partial<KodexExternalFull> | null>(null);
   const [tab, setTab] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
   const [newDialog, setNewDialog] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [delConfirm, setDelConfirm] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const loadCases = useCallback(async () => {
     setLoading(true);
-    try {
-      const data = await apiClient.list();
-      setCases(data);
-    } catch {
-      setToast({ msg: 'Ошибка загрузки дел', severity: 'error' });
-    } finally {
-      setLoading(false);
-    }
+    try { setCases(await apiClient.list()); }
+    catch { setToast({ msg: 'Ошибка загрузки дел', sev: 'error' }); }
+    finally { setLoading(false); }
   }, [apiClient]);
 
   useEffect(() => { loadCases(); }, [loadCases]);
 
   const openCase = async (slug: string) => {
-    setSelectedId(slug);
-    setTab(0);
-    try {
-      const full = await apiClient.get(slug);
-      setEditing({ ...full });
-    } catch {
-      setToast({ msg: 'Ошибка загрузки дела', severity: 'error' });
-    }
+    setSelectedId(slug); setTab(0);
+    try { setEditing({ ...await apiClient.get(slug) }); }
+    catch { setToast({ msg: 'Ошибка загрузки дела', sev: 'error' }); }
   };
 
   const save = async () => {
@@ -594,17 +434,12 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
     try {
       const updated = await apiClient.update(selectedId, editing as any);
       setEditing({ ...updated });
-      setCases((prev) => prev.map((c) => (c.slug === selectedId ? { ...c, ...updated } : c)));
-      setToast({ msg: 'Сохранено', severity: 'success' });
+      setCases((prev) => prev.map((c) => c.slug === selectedId ? { ...c, ...updated } : c));
+      setToast({ msg: 'Сохранено', sev: 'success' });
     } catch (e: any) {
-      const detail = e?.response?.data?.detail;
-      const errMsg = Array.isArray(detail?.errors)
-        ? detail.errors.join('; ')
-        : (detail?.error || (typeof detail === 'string' ? detail : null) || 'Ошибка сохранения');
-      setToast({ msg: String(errMsg), severity: 'error' });
-    } finally {
-      setSaving(false);
-    }
+      const d = e?.response?.data?.detail;
+      setToast({ msg: String(Array.isArray(d?.errors) ? d.errors.join('; ') : d?.error || d || 'Ошибка сохранения'), sev: 'error' });
+    } finally { setSaving(false); }
   };
 
   const createCase = async (payload: Partial<KodexExternalFull>) => {
@@ -613,9 +448,9 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
       setNewDialog(false);
       await loadCases();
       if (payload.slug) await openCase(payload.slug);
-      setToast({ msg: 'Дело создано', severity: 'success' });
+      setToast({ msg: 'Дело создано', sev: 'success' });
     } catch (e: any) {
-      setToast({ msg: e?.response?.data?.detail?.error || e?.response?.data?.detail || 'Ошибка создания', severity: 'error' });
+      setToast({ msg: e?.response?.data?.detail?.error || e?.response?.data?.detail || 'Ошибка', sev: 'error' });
     }
   };
 
@@ -623,438 +458,334 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
     const isSeed = cases.find((c) => c.slug === slug)?.is_seed ?? true;
     try {
       await apiClient.delete(slug);
-      setCases((prev) => prev.filter((c) => c.slug !== slug));
       if (selectedId === slug) { setSelectedId(null); setEditing(null); }
-      setDeleteConfirm(null);
-      setToast({ msg: isSeed ? 'Правки сброшены к исходному делу' : 'Дело удалено', severity: 'success' });
-      if (isSeed) await loadCases();
-    } catch {
-      setToast({ msg: 'Ошибка', severity: 'error' });
-    }
+      setDelConfirm(null);
+      setToast({ msg: isSeed ? 'Правки сброшены' : 'Дело удалено', sev: 'success' });
+      await loadCases();
+    } catch { setToast({ msg: 'Ошибка', sev: 'error' }); }
   };
 
-  const patch = (field: string, value: any) =>
-    setEditing((prev) => (prev ? { ...prev, [field]: value } : prev));
+  const patch = (f: string, v: any) => setEditing((p) => p ? { ...p, [f]: v } : p);
 
-  const filtered = cases.filter(
-    (c) =>
-      c.title.toLowerCase().includes(search.toLowerCase()) ||
-      (c.slug || '').toLowerCase().includes(search.toLowerCase()) ||
-      (c.num || '').toLowerCase().includes(search.toLowerCase()),
+  const filtered = cases.filter((c) =>
+    c.title.toLowerCase().includes(search.toLowerCase()) ||
+    (c.slug || '').includes(search.toLowerCase()) ||
+    (c.num || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <Box sx={{ height: '100vh', bgcolor: K.void, color: K.text, display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: K.mono }}>
+    <ThemeProvider theme={kodexTheme}>
+      <Box sx={{ height: '100vh', bgcolor: K.void, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* ── Row 1: full-width top bar ── */}
-      <Box sx={{
-        height: TOP_BAR_H, flexShrink: 0, display: 'flex', alignItems: 'center',
-        borderBottom: `1px solid ${K.panelBorder}`, bgcolor: 'rgba(0,255,171,0.025)',
-      }}>
-        {/* Logo section (aligned with sidebar) */}
-        <Box sx={{ width: SIDEBAR_WIDTH, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1, px: 2 }}>
-          <ShieldIcon sx={{ color: K.neon, fontSize: 18 }} />
-          <Typography sx={{ fontFamily: K.mono, fontWeight: 700, letterSpacing: '0.18em', color: K.text, fontSize: 13 }}>
-            КОДЭКС
-          </Typography>
-          <Typography sx={{ fontSize: 10, color: K.textFaint, letterSpacing: '0.3em' }}>
-            СТУДИЯ
-          </Typography>
+        {/* ── Top bar ── */}
+        <Box sx={{ height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${K.border}`, bgcolor: K.surface }}>
+          {/* Logo */}
+          <Box sx={{ width: SIDEBAR_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1.5, px: 2 }}>
+            <ShieldIcon sx={{ color: K.neon, fontSize: 20 }} />
+            <Box>
+              <Typography sx={{ fontFamily: K.mono, fontWeight: 700, letterSpacing: '0.2em', color: K.text, fontSize: 13, lineHeight: 1.1 }}>
+                КОДЭКС
+              </Typography>
+              <Typography sx={{ fontSize: 9, color: K.textFaint, letterSpacing: '0.35em' }}>СТУДИЯ</Typography>
+            </Box>
+          </Box>
+
+          <Box sx={{ width: 1, height: 28, bgcolor: K.border, flexShrink: 0 }} />
+
+          {/* Case toolbar */}
+          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5, px: 2.5 }}>
+            {editing ? (
+              <>
+                <Typography sx={{ fontFamily: K.mono, fontSize: 13, color: K.text, fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {editing.num || editing.slug} — {editing.title}
+                </Typography>
+                {editing.status && (
+                  <Chip label={STATUS_LABELS[editing.status]?.label || editing.status} size="small"
+                    sx={{ fontSize: 10, height: 22, color: STATUS_LABELS[editing.status]?.color, bgcolor: 'rgba(0,0,0,0.4)', border: `1px solid ${STATUS_LABELS[editing.status]?.color || K.border}` }}
+                  />
+                )}
+                {editing.is_override && (
+                  <Chip label="Изменено" size="small"
+                    sx={{ fontSize: 10, height: 22, color: K.cyan, bgcolor: 'rgba(53,199,255,0.08)', border: `1px solid ${K.cyan}` }}
+                  />
+                )}
+                <Tooltip title={editing.is_seed ? 'Сбросить правки к оригиналу' : 'Удалить дело'}>
+                  <IconButton size="small" onClick={() => setDelConfirm(selectedId!)} sx={{ color: K.danger, '&:hover': { bgcolor: 'rgba(255,61,84,0.1)' } }}>
+                    <DeleteIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+                <Button variant="contained" onClick={save} disabled={saving}
+                  startIcon={saving ? <CircularProgress size={13} color="inherit" /> : <SaveIcon sx={{ fontSize: 16 }} />}
+                  sx={{ bgcolor: K.neon, color: '#04140f', fontWeight: 700, height: 34, fontSize: 12, letterSpacing: '0.06em', '&:hover': { bgcolor: K.neonSoft }, '&:disabled': { bgcolor: K.neonDim, color: '#04140f' } }}>
+                  Сохранить
+                </Button>
+              </>
+            ) : (
+              <Typography sx={{ fontSize: 12, color: K.textFaint }}>Выберите дело из списка</Typography>
+            )}
+          </Box>
         </Box>
 
-        <Divider orientation="vertical" flexItem sx={{ borderColor: K.panelBorder }} />
-
-        {/* Case toolbar */}
-        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5, px: 2.5 }}>
+        {/* ── Sub bar: search + tabs ── */}
+        <Box sx={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${K.border}`, bgcolor: K.surface }}>
+          <Box sx={{ width: SIDEBAR_W, flexShrink: 0, px: 1.5 }}>
+            <TextField size="small" fullWidth placeholder="Поиск..." value={search} onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: <SearchIcon sx={{ color: K.textFaint, fontSize: 15, mr: 0.75 }} />,
+                sx: { height: 32, fontSize: 12 },
+              }}
+            />
+          </Box>
+          <Box sx={{ width: 1, height: 24, bgcolor: K.border, flexShrink: 0 }} />
           {editing ? (
-            <>
-              <Typography sx={{ fontFamily: K.mono, fontSize: 13, color: K.text, fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {editing.num || editing.slug || 'Дело'} — {editing.title}
-              </Typography>
-              {editing.status && (
-                <Chip
-                  label={STATUS_LABELS[editing.status]?.label || editing.status}
-                  size="small"
-                  sx={{ fontFamily: K.mono, fontSize: 10, color: STATUS_LABELS[editing.status]?.color || K.textDim, bgcolor: 'rgba(0,0,0,0.35)', border: `1px solid ${STATUS_LABELS[editing.status]?.color || K.panelBorder}` }}
-                />
+            <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{
+              flex: 1, minHeight: 44,
+              '& .MuiTabs-indicator': { bgcolor: K.neon, height: 2 },
+              '& .Mui-selected': { color: `${K.neon} !important` },
+              '& .MuiTab-root': { color: K.textDim, minHeight: 44, px: 2 },
+            }}>
+              <Tab label="Основное" />
+              <Tab label="Брифинг" />
+              <Tab label="Улики" />
+              <Tab label="Финал" />
+              <Tab label="JSON" />
+            </Tabs>
+          ) : <Box sx={{ flex: 1 }} />}
+        </Box>
+
+        {/* ── Content row ── */}
+        <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+          {/* Sidebar */}
+          <Box sx={{ width: SIDEBAR_W, flexShrink: 0, borderRight: `1px solid ${K.border}`, display: 'flex', flexDirection: 'column', bgcolor: K.surface }}>
+            <Box sx={{ flex: 1, overflowY: 'auto' }}>
+              {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', pt: 5 }}>
+                  <CircularProgress size={22} sx={{ color: K.neon }} />
+                </Box>
+              ) : filtered.length === 0 ? (
+                <Box sx={{ p: 3, textAlign: 'center' }}>
+                  <Typography sx={{ fontSize: 12, color: K.textFaint }}>
+                    {search ? 'Ничего не найдено' : 'Дел нет'}
+                  </Typography>
+                </Box>
+              ) : (
+                filtered.map((c) => (
+                  <React.Fragment key={c.slug}>
+                    <CaseCard c={c} selected={c.slug === selectedId} onClick={() => openCase(c.slug)} />
+                    <Divider />
+                  </React.Fragment>
+                ))
               )}
-              <Tooltip title={editing.is_seed ? 'Сбросить правки к исходному' : 'Удалить дело'}>
-                <IconButton size="small" onClick={() => setDeleteConfirm(selectedId!)} sx={{ color: K.danger }}>
-                  <DeleteIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-              </Tooltip>
-              <Button
-                variant="contained"
-                startIcon={saving ? <CircularProgress size={13} color="inherit" /> : <SaveIcon sx={{ fontSize: 16 }} />}
-                onClick={save} disabled={saving}
-                sx={{ bgcolor: K.neon, color: '#04140f', fontFamily: K.mono, fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', height: 34, '&:hover': { bgcolor: K.neonSoft }, '&:disabled': { bgcolor: K.neonDim, color: '#04140f' } }}
-              >
-                Сохранить
+            </Box>
+            <Box sx={{ p: 1.5, borderTop: `1px solid ${K.border}` }}>
+              <Button fullWidth variant="outlined" startIcon={<AddIcon />} onClick={() => setNewDialog(true)}
+                sx={{ color: K.neon, borderColor: K.border, fontSize: 12, height: 36, '&:hover': { borderColor: K.neon, bgcolor: 'rgba(0,255,171,0.06)' } }}>
+                Новое дело
               </Button>
-            </>
+            </Box>
+          </Box>
+
+          {/* Editor */}
+          {!editing ? (
+            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 1.5, opacity: 0.35 }}>
+              <ShieldIcon sx={{ fontSize: 52, color: K.textFaint }} />
+              <Typography sx={{ fontFamily: K.mono, color: K.textDim, letterSpacing: '0.12em', fontSize: 13 }}>
+                Выберите дело из списка
+              </Typography>
+            </Box>
           ) : (
-            <Typography sx={{ fontSize: 12, color: K.textFaint, fontFamily: K.mono }}>
-              Выберите дело из списка
-            </Typography>
+            <Box sx={{ flex: 1, overflowY: 'auto', bgcolor: K.void }}>
+              <Box sx={{ maxWidth: 740, px: 4, py: 3 }}>
+
+                {/* ── Tab 0: Basic ── */}
+                {tab === 0 && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3.5 }}>
+                    {/* ID */}
+                    <Box>
+                      <SectionLabel>Идентификатор</SectionLabel>
+                      <Box sx={{ display: 'flex', gap: 2 }}>
+                        <TextField label="slug" value={editing.slug || ''} onChange={(e) => patch('slug', e.target.value)}
+                          size="small" sx={{ flex: 1 }} inputProps={{ style: { fontFamily: K.mono } }}
+                          helperText="case-b01 — только a-z, 0-9, дефис" />
+                        <TextField label="num" value={editing.num || ''} onChange={(e) => patch('num', e.target.value)}
+                          size="small" sx={{ width: 150 }} inputProps={{ style: { fontFamily: K.mono } }} placeholder="ДЕЛО-001" />
+                      </Box>
+                    </Box>
+
+                    {/* Content */}
+                    <Box>
+                      <SectionLabel>Контент</SectionLabel>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <TextField label="Название дела" value={editing.title || ''} onChange={(e) => patch('title', e.target.value)} fullWidth required />
+                        <TextField label="Куратор" value={editing.curator || ''} onChange={(e) => patch('curator', e.target.value)} fullWidth placeholder="viktor" />
+                        <TextField label="Аннотация (для карточки студента)" value={editing.anno || ''} onChange={(e) => patch('anno', e.target.value)} fullWidth multiline rows={2} />
+                      </Box>
+                    </Box>
+
+                    {/* Parameters */}
+                    <Box>
+                      <SectionLabel>Параметры</SectionLabel>
+                      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <FormControl size="small" sx={{ minWidth: 140 }}>
+                          <InputLabel>Сложность</InputLabel>
+                          <Select value={editing.difficulty || 1} onChange={(e) => patch('difficulty', Number(e.target.value))} label="Сложность">
+                            <MenuItem value={1}>Новичок</MenuItem>
+                            <MenuItem value={2}>Агент</MenuItem>
+                            <MenuItem value={3}>Эксперт</MenuItem>
+                          </Select>
+                        </FormControl>
+                        <TextField label="Ранг" type="number" value={editing.rank || 1} onChange={(e) => patch('rank', Number(e.target.value))}
+                          size="small" sx={{ width: 90 }} inputProps={{ min: 1 }} />
+                        <TextField label="Кредиты" type="number" value={editing.reward_credits || 0} onChange={(e) => patch('reward_credits', Number(e.target.value))}
+                          size="small" sx={{ width: 100 }} inputProps={{ min: 0 }} />
+                        <TextField label="Репутация" type="number" value={editing.reward_rep || 0} onChange={(e) => patch('reward_rep', Number(e.target.value))}
+                          size="small" sx={{ width: 100 }} inputProps={{ min: 0 }} />
+                        <FormControlLabel
+                          control={<Switch checked={!!editing.playable} onChange={(e) => patch('playable', e.target.checked)} />}
+                          label={<Typography sx={{ fontSize: 12, color: K.textDim }}>Активно для учеников</Typography>}
+                        />
+                      </Box>
+                    </Box>
+
+                    {/* Investigation */}
+                    <Box>
+                      <SectionLabel>Расследование</SectionLabel>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <TextField label="Цель расследования" value={editing.goal || ''} onChange={(e) => patch('goal', e.target.value)} fullWidth multiline rows={2} />
+                        <TextField label="Подозреваемые / участники" value={editing.suspects || ''} onChange={(e) => patch('suspects', e.target.value)} fullWidth multiline rows={2} />
+                        <TextField label="Задание для агента" value={editing.task || ''} onChange={(e) => patch('task', e.target.value)} fullWidth multiline rows={3} />
+                      </Box>
+                    </Box>
+
+                    {/* Code */}
+                    <Box>
+                      <SectionLabel>Код</SectionLabel>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <TextField label="Имя функции (fnName)" value={editing.fn_name || ''} onChange={(e) => patch('fn_name', e.target.value)}
+                          fullWidth inputProps={{ style: { fontFamily: K.mono } }} helperText="Пусто = script mode" />
+                        <TextField label="Стартовый код" value={editing.starter || ''} onChange={(e) => patch('starter', e.target.value)}
+                          fullWidth multiline rows={6} inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }}
+                          helperText="Шаблон кода для студента" />
+                      </Box>
+                    </Box>
+                  </Box>
+                )}
+
+                {/* ── Tab 1: Briefing ── */}
+                {tab === 1 && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <BriefingEditor items={editing.briefing || []} onChange={(v) => patch('briefing', v)} />
+                    <Box>
+                      <SectionLabel>Материалы дела</SectionLabel>
+                      <JsonField label="materials" value={editing.materials || []} onChange={(v) => patch('materials', v)} minRows={3} />
+                    </Box>
+                  </Box>
+                )}
+
+                {/* ── Tab 2: Evidence ── */}
+                {tab === 2 && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <EvidenceEditor items={editing.evidence || []} onChange={(v) => patch('evidence', v)} />
+                    <Box>
+                      <SectionLabel>Версии закрытия дела</SectionLabel>
+                      <JsonField label={`versions — [{ id, text, correct: bool }]`} value={editing.versions || []} onChange={(v) => patch('versions', v)} minRows={3} />
+                    </Box>
+                    <Box>
+                      <SectionLabel>Подсказки</SectionLabel>
+                      <JsonField label={`hints — { "key": { "1": "...", "2": "..." } }`} value={editing.hints || {}} onChange={(v) => patch('hints', v)} minRows={3} />
+                    </Box>
+                  </Box>
+                )}
+
+                {/* ── Tab 3: Finale ── */}
+                {tab === 3 && (
+                  <FinaleEditor items={editing.finale || []} onChange={(v) => patch('finale', v)} />
+                )}
+
+                {/* ── Tab 4: JSON ── */}
+                {tab === 4 && (
+                  <Box>
+                    <Typography sx={{ fontSize: 11, color: K.textFaint, mb: 2 }}>
+                      Полный JSON дела (только чтение)
+                    </Typography>
+                    <TextField multiline fullWidth minRows={24} value={JSON.stringify(editing, null, 2)}
+                      InputProps={{ readOnly: true, sx: { fontFamily: K.mono, fontSize: 11, bgcolor: 'rgba(0,0,0,0.3)' } }}
+                    />
+                  </Box>
+                )}
+
+              </Box>
+            </Box>
           )}
         </Box>
-      </Box>
 
-      {/* ── Row 2: search + tabs ── */}
-      <Box sx={{
-        height: SECOND_BAR_H, flexShrink: 0, display: 'flex', alignItems: 'center',
-        borderBottom: `1px solid ${K.panelBorder}`,
-      }}>
-        {/* Search (aligned with sidebar) */}
-        <Box sx={{ width: SIDEBAR_WIDTH, flexShrink: 0, px: 1.5, display: 'flex', alignItems: 'center' }}>
-          <TextField
-            placeholder="Поиск дел..."
-            size="small"
-            fullWidth
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            InputProps={{
-              startAdornment: <SearchIcon sx={{ color: K.textFaint, fontSize: 15, mr: 0.5 }} />,
-              sx: { fontFamily: K.mono, fontSize: 12, height: 32 },
-            }}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                bgcolor: 'rgba(0,0,0,0.3)',
-                '& fieldset': { borderColor: K.panelBorder },
-                '&:hover fieldset': { borderColor: K.neonDim },
-                '&.Mui-focused fieldset': { borderColor: K.neon },
-              },
-            }}
-          />
-        </Box>
+        {/* ── New case dialog ── */}
+        <NewCaseDialog open={newDialog} onClose={() => setNewDialog(false)} onCreate={createCase} />
 
-        <Divider orientation="vertical" flexItem sx={{ borderColor: K.panelBorder }} />
-
-        {/* Tabs */}
-        {editing ? (
-          <Tabs
-            value={tab}
-            onChange={(_, v) => setTab(v)}
-            sx={{
-              flex: 1, minHeight: SECOND_BAR_H,
-              '& .MuiTab-root': { fontFamily: K.mono, fontSize: 12, color: K.textFaint, letterSpacing: '0.06em', minHeight: SECOND_BAR_H, py: 0 },
-              '& .Mui-selected': { color: K.neon },
-              '& .MuiTabs-indicator': { bgcolor: K.neon },
-            }}
-          >
-            <Tab label="Основное" />
-            <Tab label="Брифинг" />
-            <Tab label="Улики" />
-            <Tab label="Финал" />
-            <Tab label="JSON" />
-          </Tabs>
-        ) : (
-          <Box sx={{ flex: 1 }} />
-        )}
-      </Box>
-
-      {/* ── Main area ── */}
-      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-
-        {/* Sidebar */}
-        <Box sx={{
-          width: SIDEBAR_WIDTH, flexShrink: 0,
-          borderRight: `1px solid ${K.panelBorder}`,
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-        }}>
-          {/* Case list */}
-          <Box sx={{ flex: 1, overflowY: 'auto' }}>
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', pt: 4 }}>
-                <CircularProgress size={22} sx={{ color: K.neon }} />
-              </Box>
-            ) : filtered.length === 0 ? (
-              <Box sx={{ p: 3, textAlign: 'center' }}>
-                <Typography sx={{ fontSize: 12, color: K.textFaint }}>
-                  {search ? 'Ничего не найдено' : 'Дел пока нет'}
-                </Typography>
-              </Box>
-            ) : (
-              filtered.map((c) => (
-                <React.Fragment key={c.slug}>
-                  <CaseCard c={c} selected={c.slug === selectedId} onClick={() => openCase(c.slug)} />
-                  <Divider sx={{ borderColor: K.panelBorder, opacity: 0.35 }} />
-                </React.Fragment>
-              ))
-            )}
-          </Box>
-
-          {/* Add button */}
-          <Box sx={{ p: 1.5, borderTop: `1px solid ${K.panelBorder}` }}>
-            <Button
-              fullWidth variant="outlined"
-              startIcon={<AddIcon sx={{ fontSize: 16 }} />}
-              onClick={() => setNewDialog(true)}
-              sx={{ color: K.neon, borderColor: K.panelBorder, fontFamily: K.mono, fontSize: 11, letterSpacing: '0.08em', height: 34, '&:hover': { borderColor: K.neon, bgcolor: 'rgba(0,255,171,0.06)' } }}
-            >
-              Новое дело
-            </Button>
-          </Box>
-        </Box>
-
-        {/* ── Editor content ── */}
-        {!editing ? (
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.4 }}>
-            <SearchIcon sx={{ fontSize: 48, color: K.textFaint, mb: 2 }} />
-            <Typography sx={{ fontFamily: K.mono, color: K.textDim, letterSpacing: '0.1em' }}>
-              Выберите дело из списка слева
+        {/* ── Delete confirm ── */}
+        <Dialog open={delConfirm !== null} onClose={() => setDelConfirm(null)}
+          PaperProps={{ sx: { border: `1px solid ${K.danger}` } }}>
+          <DialogTitle sx={{ color: K.danger, fontSize: 14 }}>
+            {editing?.is_seed ? 'Сбросить правки?' : 'Удалить дело?'}
+          </DialogTitle>
+          <DialogContent>
+            <Typography sx={{ fontSize: 13, color: K.textDim }}>
+              {editing?.is_seed
+                ? 'Все изменения будут удалены. Дело вернётся к оригиналу.'
+                : 'Новое дело будет удалено из базы Кодэкс. Это необратимо.'}
             </Typography>
-          </Box>
-        ) : (
-          <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDelConfirm(null)} sx={{ color: K.textDim }}>Отмена</Button>
+            <Button onClick={() => deleteCase(delConfirm!)} sx={{ color: K.danger }}>
+              {editing?.is_seed ? 'Сбросить' : 'Удалить'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-            {/* ── Tab 0: Basic ── */}
-            {tab === 0 && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, maxWidth: 720 }}>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <TextField label="Идентификатор (slug)"
-                    value={editing.slug || ''}
-                    onChange={(e) => patch('slug', e.target.value)}
-                    inputProps={{ style: monoSx }} size="small" sx={{ flex: 1, ...fieldSx }}
-                    helperText="Только латиница, цифры и дефис"
-                  />
-                  <TextField label="Номер (num)"
-                    value={editing.num || ''}
-                    onChange={(e) => patch('num', e.target.value)}
-                    inputProps={{ style: monoSx }} size="small" sx={{ width: 140, ...fieldSx }}
-                    placeholder="CASE-001"
-                  />
-                </Box>
+        {/* ── Toast ── */}
+        <Snackbar open={!!toast} autoHideDuration={3000} onClose={() => setToast(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+          <Alert severity={toast?.sev || 'success'} onClose={() => setToast(null)} sx={{ fontSize: 13 }}>
+            {toast?.msg}
+          </Alert>
+        </Snackbar>
 
-                <TextField label="Название дела *"
-                  value={editing.title || ''}
-                  onChange={(e) => patch('title', e.target.value)}
-                  fullWidth sx={fieldSx}
-                />
-
-                <TextField label="Куратор"
-                  value={editing.curator || ''}
-                  onChange={(e) => patch('curator', e.target.value)}
-                  fullWidth sx={fieldSx} placeholder="viktor"
-                />
-
-                <TextField label="Аннотация (для карточки)"
-                  value={editing.anno || ''}
-                  onChange={(e) => patch('anno', e.target.value)}
-                  fullWidth multiline rows={2} sx={fieldSx}
-                />
-
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <InputLabel sx={{ color: K.textFaint, '&.Mui-focused': { color: K.neon } }}>Сложность</InputLabel>
-                    <Select value={editing.difficulty || 1}
-                      onChange={(e) => patch('difficulty', Number(e.target.value))}
-                      label="Сложность"
-                      sx={{ color: K.text, '& .MuiOutlinedInput-notchedOutline': { borderColor: K.panelBorder } }}>
-                      <MenuItem value={1}>Новичок</MenuItem>
-                      <MenuItem value={2}>Агент</MenuItem>
-                      <MenuItem value={3}>Эксперт</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <TextField label="Ранг (уровень доступа)" type="number"
-                    value={editing.rank || 1} onChange={(e) => patch('rank', Number(e.target.value))}
-                    size="small" sx={{ width: 160, ...fieldSx }} inputProps={{ min: 1 }}
-                  />
-                  <TextField label="Кредиты" type="number"
-                    value={editing.reward_credits || 0} onChange={(e) => patch('reward_credits', Number(e.target.value))}
-                    size="small" sx={{ width: 110, ...fieldSx }} inputProps={{ min: 0 }}
-                  />
-                  <TextField label="Репутация" type="number"
-                    value={editing.reward_rep || 0} onChange={(e) => patch('reward_rep', Number(e.target.value))}
-                    size="small" sx={{ width: 110, ...fieldSx }} inputProps={{ min: 0 }}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch checked={!!editing.playable} onChange={(e) => patch('playable', e.target.checked)}
-                        sx={{ '& .MuiSwitch-thumb': { bgcolor: editing.playable ? K.neon : undefined } }}
-                      />
-                    }
-                    label={<Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim }}>Активно для учеников</Typography>}
-                  />
-                </Box>
-
-                <Divider sx={{ borderColor: K.panelBorder }} />
-
-                <TextField label="Цель расследования"
-                  value={editing.goal || ''} onChange={(e) => patch('goal', e.target.value)}
-                  fullWidth multiline rows={2} sx={fieldSx}
-                />
-                <TextField label="Подозреваемые / участники"
-                  value={editing.suspects || ''} onChange={(e) => patch('suspects', e.target.value)}
-                  fullWidth multiline rows={2} sx={fieldSx}
-                />
-                <TextField label="Задание для агента"
-                  value={editing.task || ''} onChange={(e) => patch('task', e.target.value)}
-                  fullWidth multiline rows={3} sx={fieldSx}
-                />
-
-                <Divider sx={{ borderColor: K.panelBorder }} />
-
-                <TextField label="Имя функции (fnName)"
-                  value={editing.fn_name || ''} onChange={(e) => patch('fn_name', e.target.value)}
-                  fullWidth inputProps={{ style: monoSx }} sx={fieldSx}
-                  helperText="Пустое = script mode (студент пишет скрипт целиком)"
-                />
-                <TextField label="Стартовый код"
-                  value={editing.starter || ''} onChange={(e) => patch('starter', e.target.value)}
-                  fullWidth multiline rows={5} inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }} sx={fieldSx}
-                  helperText="Шаблон кода, который видит студент в начале задачи"
-                />
-              </Box>
-            )}
-
-            {/* ── Tab 1: Briefing ── */}
-            {tab === 1 && (
-              <Box sx={{ maxWidth: 760 }}>
-                <BriefingEditor
-                  items={editing.briefing || []}
-                  onChange={(v) => patch('briefing', v)}
-                />
-                <Divider sx={{ borderColor: K.panelBorder, my: 3 }} />
-                <Box>
-                  <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim, mb: 1 }}>Материалы дела</Typography>
-                  <JsonField label="Материалы (JSON)" value={editing.materials || []} onChange={(v) => patch('materials', v)} minRows={3} />
-                </Box>
-              </Box>
-            )}
-
-            {/* ── Tab 2: Evidence / Tests ── */}
-            {tab === 2 && (
-              <Box sx={{ maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <EvidenceEditor
-                  items={editing.evidence || []}
-                  onChange={(v) => patch('evidence', v)}
-                />
-                <Box>
-                  <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim, mb: 1 }}>
-                    Версии закрытия дела — {`[{ id, text, correct: bool }]`}
-                  </Typography>
-                  <JsonField label="Версии (JSON)" value={editing.versions || []} onChange={(v) => patch('versions', v)} minRows={3} />
-                </Box>
-                <Box>
-                  <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim, mb: 1 }}>
-                    Подсказки — {`{ "key": { "1": "...", "2": "..." } }`}
-                  </Typography>
-                  <JsonField label="Подсказки (JSON)" value={editing.hints || {}} onChange={(v) => patch('hints', v)} minRows={3} />
-                </Box>
-              </Box>
-            )}
-
-            {/* ── Tab 3: Finale ── */}
-            {tab === 3 && (
-              <Box sx={{ maxWidth: 760 }}>
-                <FinaleEditor
-                  items={editing.finale || []}
-                  onChange={(v) => patch('finale', v)}
-                />
-              </Box>
-            )}
-
-            {/* ── Tab 4: Raw JSON ── */}
-            {tab === 4 && (
-              <Box sx={{ maxWidth: 900 }}>
-                <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textFaint, mb: 2 }}>
-                  Полный JSON дела (только чтение). Используйте вкладки выше для редактирования.
-                </Typography>
-                <TextField multiline fullWidth minRows={22}
-                  value={JSON.stringify(editing, null, 2)}
-                  InputProps={{ readOnly: true, sx: { fontFamily: K.mono, fontSize: 11 } }}
-                  sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(0,0,0,0.4)', '& fieldset': { borderColor: K.panelBorder } } }}
-                />
-              </Box>
-            )}
-
-          </Box>
-        )}
       </Box>
-
-      {/* ── Dialogs & toasts ── */}
-      <NewCaseDialog open={newDialog} onClose={() => setNewDialog(false)} onCreate={createCase} />
-
-      <Dialog open={deleteConfirm !== null} onClose={() => setDeleteConfirm(null)}
-        PaperProps={{ sx: { bgcolor: '#0a0f12', border: `1px solid ${K.danger}`, borderRadius: 2 } }}>
-        <DialogTitle sx={{ fontFamily: K.mono, color: K.danger, fontSize: 14 }}>
-          {editing?.is_seed ? 'Сбросить правки?' : 'Удалить дело?'}
-        </DialogTitle>
-        <DialogContent>
-          <Typography sx={{ fontFamily: K.mono, fontSize: 13, color: K.textDim }}>
-            {editing?.is_seed
-              ? 'Все изменения будут удалены. Дело вернётся к исходному виду из базы Кодэкс.'
-              : 'Это действие необратимо. Новое дело будет удалено из базы Кодэкс.'}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteConfirm(null)} sx={{ color: K.textDim, fontFamily: K.mono }}>Отмена</Button>
-          <Button onClick={() => deleteCase(deleteConfirm!)} sx={{ color: K.danger, fontFamily: K.mono }}>
-            {editing?.is_seed ? 'Сбросить' : 'Удалить'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar open={!!toast} autoHideDuration={3000} onClose={() => setToast(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert severity={toast?.severity || 'success'} onClose={() => setToast(null)}
-          sx={{ fontFamily: K.mono, fontSize: 13 }}>
-          {toast?.msg}
-        </Alert>
-      </Snackbar>
-    </Box>
+    </ThemeProvider>
   );
 };
 
 // ─── New case dialog ──────────────────────────────────────────────────────────
-interface NewCaseDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onCreate: (payload: Partial<KodexExternalFull>) => void;
-}
-
+interface NewCaseDialogProps { open: boolean; onClose: () => void; onCreate: (p: Partial<KodexExternalFull>) => void }
 const NewCaseDialog: React.FC<NewCaseDialogProps> = ({ open, onClose, onCreate }) => {
   const [form, setForm] = useState({ slug: '', num: '', title: '' });
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (open) { setForm({ slug: '', num: '', title: '' }); setError(''); }
-  }, [open]);
-
-  const handleCreate = () => {
-    if (!form.slug.trim() || !form.title.trim()) { setError('Идентификатор и название обязательны'); return; }
-    if (!/^[a-z0-9\-]+$/.test(form.slug)) { setError('Идентификатор: только строчные латинские буквы, цифры и дефис'); return; }
+  const [err, setErr] = useState('');
+  useEffect(() => { if (open) { setForm({ slug: '', num: '', title: '' }); setErr(''); } }, [open]);
+  const submit = () => {
+    if (!form.slug.trim() || !form.title.trim()) { setErr('Slug и название обязательны'); return; }
+    if (!/^[a-z0-9\-]+$/.test(form.slug)) { setErr('Slug: только строчные буквы, цифры и дефис'); return; }
     onCreate({ ...EMPTY_CASE(), ...form });
   };
-
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth
-      PaperProps={{ sx: { bgcolor: '#0a0f12', border: `1px solid ${K.panelBorder}`, borderRadius: 2 } }}>
-      <DialogTitle sx={{ fontFamily: K.mono, color: K.neon, fontSize: 14, letterSpacing: '0.12em' }}>
-        НОВОЕ ДЕЛО
-      </DialogTitle>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ color: K.neon, fontSize: 14, letterSpacing: '0.12em' }}>НОВОЕ ДЕЛО</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-        {error && <Alert severity="error" sx={{ fontFamily: K.mono, fontSize: 12 }}>{error}</Alert>}
-        <TextField label="Идентификатор (slug)" value={form.slug}
+        {err && <Alert severity="error">{err}</Alert>}
+        <TextField label="Slug (идентификатор)" value={form.slug}
           onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9\-]/g, '') }))}
-          fullWidth required inputProps={{ style: monoSx }} helperText="Например: case-001, mystery-cipher"
-          sx={fieldSx}
-        />
-        <TextField label="Номер дела" value={form.num}
+          fullWidth required inputProps={{ style: { fontFamily: K.mono } }} helperText="Например: case-001" />
+        <TextField label="Номер (num)" value={form.num}
           onChange={(e) => setForm((f) => ({ ...f, num: e.target.value }))}
-          fullWidth placeholder="CASE-001" inputProps={{ style: monoSx }} sx={fieldSx}
-        />
+          fullWidth placeholder="ДЕЛО-001" inputProps={{ style: { fontFamily: K.mono } }} />
         <TextField label="Название" value={form.title}
           onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          fullWidth required sx={fieldSx}
-        />
+          fullWidth required />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} sx={{ color: K.textDim, fontFamily: K.mono }}>Отмена</Button>
-        <Button onClick={handleCreate} variant="contained"
-          sx={{ bgcolor: K.neon, color: '#04140f', fontFamily: K.mono, fontWeight: 700, fontSize: 12, '&:hover': { bgcolor: K.neonSoft } }}>
+        <Button onClick={onClose} sx={{ color: K.textDim }}>Отмена</Button>
+        <Button onClick={submit} variant="contained" sx={{ bgcolor: K.neon, color: '#04140f', fontWeight: 700, '&:hover': { bgcolor: K.neonSoft } }}>
           Создать
         </Button>
       </DialogActions>

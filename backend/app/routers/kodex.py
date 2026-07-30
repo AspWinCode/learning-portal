@@ -21,6 +21,146 @@ from app.schemas.kodex import (
 
 router = APIRouter()
 
+# ─── JavaScript → JSON converter (for data.js which uses JS object syntax) ───
+
+
+def _strip_js_comments(s: str) -> str:
+    """Remove JS block and line comments outside of string literals."""
+    out: list[str] = []
+    i = 0
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c in ('"', "'"):
+            out.append(c)
+            i += 1
+            while i < n:
+                c2 = s[i]
+                out.append(c2)
+                if c2 == "\\":
+                    i += 1
+                    if i < n:
+                        out.append(s[i])
+                        i += 1
+                elif c2 == c:
+                    i += 1
+                    break
+                else:
+                    i += 1
+        elif c == "/" and i + 1 < n and s[i + 1] == "*":
+            i += 2
+            while i + 1 < n and not (s[i] == "*" and s[i + 1] == "/"):
+                i += 1
+            i += 2
+        elif c == "/" and i + 1 < n and s[i + 1] == "/":
+            i += 2
+            while i < n and s[i] not in "\r\n":
+                i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def _js_to_json(js: str) -> str:
+    """
+    Convert a JavaScript object/array literal to valid JSON.
+    Requires comments to be stripped first; call _strip_js_comments before this.
+    Handles: single-quoted strings → double-quoted, unquoted keys → quoted,
+    trailing commas, and basic escape normalization.
+    """
+    s = _strip_js_comments(js)
+    out: list[str] = []
+    i = 0
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c == '"':
+            out.append(c)
+            i += 1
+            while i < n:
+                c2 = s[i]
+                if c2 == "\\":
+                    out.append(c2)
+                    i += 1
+                    if i < n:
+                        out.append(s[i])
+                        i += 1
+                elif c2 == '"':
+                    out.append(c2)
+                    i += 1
+                    break
+                else:
+                    out.append(c2)
+                    i += 1
+        elif c == "'":
+            out.append('"')
+            i += 1
+            while i < n:
+                c2 = s[i]
+                if c2 == "\\" and i + 1 < n:
+                    nc = s[i + 1]
+                    if nc == "'":
+                        out.append("'")
+                    elif nc == '"':
+                        out.append('\\"')
+                    elif nc == "\\":
+                        out.append("\\\\")
+                    elif nc == "n":
+                        out.append("\\n")
+                    elif nc == "r":
+                        out.append("\\r")
+                    elif nc == "t":
+                        out.append("\\t")
+                    else:
+                        out.append("\\")
+                        out.append(nc)
+                    i += 2
+                elif c2 == '"':
+                    out.append('\\"')
+                    i += 1
+                elif c2 == "'":
+                    out.append('"')
+                    i += 1
+                    break
+                elif c2 == "\n":
+                    out.append("\\n")
+                    i += 1
+                elif c2 == "\r":
+                    i += 1
+                else:
+                    out.append(c2)
+                    i += 1
+        elif c == ",":
+            j = i + 1
+            while j < n and s[j] in " \t\r\n":
+                j += 1
+            if j < n and s[j] in "}]":
+                i += 1
+            else:
+                out.append(c)
+                i += 1
+        elif c.isalpha() or c in "_$":
+            j = i
+            while j < n and (s[j].isalnum() or s[j] in "_$"):
+                j += 1
+            identifier = s[i:j]
+            k = j
+            while k < n and s[k] in " \t\r\n":
+                k += 1
+            if k < n and s[k] == ":":
+                out.append('"')
+                out.append(identifier)
+                out.append('"')
+            else:
+                out.append(identifier)
+            i = j
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 # ─── External Kodex proxy ────────────────────────────────────────────────────
 
 KODEX_EXTERNAL_BASE = os.getenv("KODEX_BASE_URL", "https://kodex.tirskix.space")
@@ -91,7 +231,8 @@ async def _fetch_merged_cases() -> list:
         if idx < 0:
             raise ValueError("CASES array not found in data.js")
         start = content.index("[", idx)
-        seed_cases, _ = json.JSONDecoder().raw_decode(content, start)
+        json_str = _js_to_json(content[start:])
+        seed_cases, _ = json.JSONDecoder().raw_decode(json_str)
 
         overrides_res = await client.get(f"{KODEX_EXTERNAL_BASE}/api/content?all=1")
         store = overrides_res.json() if overrides_res.is_success else {"cases": {}, "meta": {}}
